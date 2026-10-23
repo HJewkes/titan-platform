@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
+import { claimsCheckWith } from "./lint-claims.js";
 import { flowCheck } from "./lint-flow.js";
 import { headlineCheck } from "./lint-headline.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
@@ -68,6 +69,14 @@ describe("repair hints for rows whose value says too little", () => {
     const script = tour(withBeat("w2", { extra: { visual: { assertion: headline, job: "artifact-filling" } } }));
 
     expect(hintFor(script, "Q-V13")).toBe(`headlines past the band: w2 "${headline}" (3 lines). The band shows 2 lines of about 55 characters; shorten each to fit`);
+  });
+
+  it("Q-E20 quotes the claims of each beat the gathered facts do not back", () => {
+    const script = tour(withBeat("w2", { spoken: "So three open PRs wait at the desk, and PD-three hundred ten holds them.", extra: { fact_ids: ["pr/acme/desk#4/opened"] } }));
+    const facts = [{ id: "pr/acme/desk#4/opened", change: "opened" }, { id: "task/PD-310/opened" }];
+    const row = runL0(script, undefined, [claimsCheckWith(facts)])[0]!;
+
+    expect(repairHint(row, script)).toMatch(/^claims the gathered facts do not back are among w2: "PD-310", "3 open PRs"\. Name only/);
   });
 
   it("gives no hint for a row whose beats and value already say what to fix", () => {
