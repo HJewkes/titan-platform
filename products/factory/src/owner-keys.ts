@@ -14,7 +14,7 @@ const S_IFDIR = 0o040000;
 
 export type OwnerKeys = { ok: true; ring: KeyRing; ids: string[] } | { ok: false; refusal: string };
 
-/** Tests swap the directory and stat; serve uses the defaults. */
+/** The OS edge the key ring is read through; serve uses the defaults. */
 export interface KeyDirPorts {
   dir: string;
   stat: StatPort;
@@ -23,6 +23,19 @@ export interface KeyDirPorts {
 }
 
 const DEFAULT_PORTS: KeyDirPorts = { dir: OWNER_KEYS_DIR, stat: defaultStat, list: (dir) => readdirSync(dir), read: (path) => readFileSync(path, "utf8") };
+
+let keyDirEdge: Partial<KeyDirPorts> = {};
+
+/**
+ * Swaps the key directory and stat loadOwnerKeys reads, until the returned reset puts the real directory back. Only `test-support/` calls it
+ * (owner-identity-seams.test.ts checks), so no production deps object can hand serve another key ring.
+ */
+export function setOwnerKeysEdge(edge: Partial<KeyDirPorts>): () => void {
+  keyDirEdge = edge;
+  return () => {
+    keyDirEdge = {};
+  };
+}
 
 /** Why `path` is not something only root can replace: missing, a symlink, owned by another uid, or group or other writable. */
 function rootOnlyRefusal(path: string, stat: StatPort): string | undefined {
@@ -54,8 +67,8 @@ function fileRefusal(path: string, stat: StatPort): string | undefined {
  * fails the check, or one key that is not ECDSA P-256, refuses the whole set, since either means someone tampered with it.
  * The directory itself is root-only, so no file can be swapped between its check and its read.
  */
-export function loadOwnerKeys(overrides: Partial<KeyDirPorts> = {}): OwnerKeys {
-  const ports = { ...DEFAULT_PORTS, ...overrides };
+export function loadOwnerKeys(): OwnerKeys {
+  const ports = { ...DEFAULT_PORTS, ...keyDirEdge };
   try {
     return loadChecked(ports);
   } catch (error) {

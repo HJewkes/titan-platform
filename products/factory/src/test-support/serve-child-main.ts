@@ -38,6 +38,7 @@ if (process.argv[3] === CHORE_FLAG) {
 const { silentLogger } = await import("@titan-design/daemon");
 const { defineWorkflow } = await import("../definition.js");
 const { startFactoryServer } = await import("../serve.js");
+const { setOwnerKeysEdge } = await import("../owner-keys.js");
 const { systemChorePorts } = await import("../workflows/post-merge-chore.js");
 
 const blocking = defineWorkflow({
@@ -87,6 +88,9 @@ async function blockUntilReleased(input: Parameters<StepRoute["runner"]["run"]>[
   return { ok: true, output: "released" };
 }
 
+// A key directory the child never installs, so its serve refuses owner proofs and never reads the machine's real keys.
+setOwnerKeysEdge({ dir: `${paths.stateDir}/owner-keys` });
+
 const server = await startFactoryServer({
   dbPath: paths.dbPath,
   stateDir: paths.stateDir,
@@ -99,7 +103,6 @@ const server = await startFactoryServer({
   logger: silentLogger,
   github: { status: () => "ok", refresh: async () => undefined },
   build: { sha: "test", behindMain: { status: () => 0, refresh: async () => undefined } },
-  ownerKeys: () => ({ ok: false, refusal: "serve child has no owner keys" }),
   onEvent: (event) => send({ kind: "event", event }),
 });
 

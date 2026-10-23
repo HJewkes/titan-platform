@@ -4,10 +4,10 @@ import { join } from "node:path";
 import type { GateResolver } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli, type CliDeps } from "../cli.js";
-import type { OwnerPresence } from "../gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { createFactoryRegistry } from "../registry.js";
 import { H1, REPO } from "../test-support/land.js";
+import { fakeOwnerHelper } from "../test-support/owner-edges.js";
 import { callCommand, shepherdFixture } from "../test-support/shepherd.js";
 import { SHEPHERD_COMMAND_MAP } from "./commands.js";
 import { ownerRelease } from "./owner-release.js";
@@ -95,19 +95,14 @@ describe("ownerRelease", () => {
 });
 
 describe("titan-factory shepherd owner-release", () => {
-  function presenceStub(proof: string | undefined): { presence: OwnerPresence; reasons: string[] } {
-    const reasons: string[] = [];
-    return { reasons, presence: async (reason) => (reasons.push(reason), proof) };
-  }
-
   /** Runs the verb on `w`'s database, then reopens it so the test reads what the CLI wrote. */
-  async function ownerReleaseCli(w: ReturnType<typeof world>, env: NodeJS.ProcessEnv, presence: OwnerPresence, head = H1) {
+  async function ownerReleaseCli(w: ReturnType<typeof world>, env: NodeJS.ProcessEnv, head = H1) {
     w.host.close();
     hosts.splice(hosts.indexOf(w.host), 1);
     let out = "";
     let err = "";
     const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: { XDG_CONFIG_HOME: w.dir, ...env } };
-    const deps: CliDeps = { workflows: w.fixture.workflows, routes: w.fixture.routes, host: { gatePollMs: 5 }, presence };
+    const deps: CliDeps = { workflows: w.fixture.workflows, routes: w.fixture.routes, host: { gatePollMs: 5 } };
     const code = await runCli(["--db", w.dbPath, "shepherd", "owner-release", `${REPO}#1`, "--head", head], io, deps);
     hosts.push(openFactoryHost({ dbPath: w.dbPath, workflows: w.fixture.workflows, routes: w.fixture.routes, gatePollMs: 5 }));
     return { code, out, err };
@@ -115,9 +110,9 @@ describe("titan-factory shepherd owner-release", () => {
 
   it("refuses an agent's shell when the owner does not confirm presence, exit 77, writing nothing", async () => {
     const w = world(OWNER);
-    const { presence, reasons } = presenceStub(undefined);
+    const { reasons } = fakeOwnerHelper(undefined);
 
-    const { code, err } = await ownerReleaseCli(w, AGENT_SHELL, presence);
+    const { code, err } = await ownerReleaseCli(w, AGENT_SHELL);
 
     expect(code).toBe(77);
     expect(err).toContain("tc-synthetic, a shell agent-chat launched, is refused");
@@ -128,8 +123,9 @@ describe("titan-factory shepherd owner-release", () => {
 
   it("releases from an agent-chat shell once the owner confirms presence, recording the proof", async () => {
     const w = world(OWNER);
+    fakeOwnerHelper(PROOF);
 
-    const { code, out } = await ownerReleaseCli(w, AGENT_SHELL, presenceStub(PROOF).presence);
+    const { code, out } = await ownerReleaseCli(w, AGENT_SHELL);
 
     expect(code).toBe(0);
     expect(out).toContain(`released the owner-asked hold on ${REPO}#1 at ${H1} as owner-terminal`);
@@ -138,9 +134,9 @@ describe("titan-factory shepherd owner-release", () => {
 
   it("releases from the owner's own terminal without asking for presence", async () => {
     const w = world(OWNER);
-    const { presence, reasons } = presenceStub(undefined);
+    const { reasons } = fakeOwnerHelper(undefined);
 
-    const { code } = await ownerReleaseCli(w, {}, presence);
+    const { code } = await ownerReleaseCli(w, {});
 
     expect(code).toBe(0);
     expect(reasons).toEqual([]);
@@ -150,7 +146,7 @@ describe("titan-factory shepherd owner-release", () => {
   it("refuses a head the PR is not at, from the owner's own terminal", async () => {
     const w = world(OWNER);
 
-    const { code, err } = await ownerReleaseCli(w, {}, presenceStub(undefined).presence, H2);
+    const { code, err } = await ownerReleaseCli(w, {}, H2);
 
     expect(code).toBe(65);
     expect(err).toContain(`is at ${H1}, not ${H2}`);
@@ -159,9 +155,9 @@ describe("titan-factory shepherd owner-release", () => {
 
   it("refuses a run with no owner-asked hold before it asks the owner anything", async () => {
     const w = world(G10);
-    const { presence, reasons } = presenceStub(PROOF);
+    const { reasons } = fakeOwnerHelper(PROOF);
 
-    const { code, err } = await ownerReleaseCli(w, AGENT_SHELL, presence);
+    const { code, err } = await ownerReleaseCli(w, AGENT_SHELL);
 
     expect(code).toBe(65);
     expect(err).toContain("holds no owner-asked hold");
@@ -172,7 +168,7 @@ describe("titan-factory shepherd owner-release", () => {
   it("refuses a --head that is not a full sha as usage", async () => {
     const w = world(OWNER);
 
-    const { code } = await ownerReleaseCli(w, {}, presenceStub(undefined).presence, "abc123");
+    const { code } = await ownerReleaseCli(w, {}, "abc123");
 
     expect(code).toBe(2);
     expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OWNER });

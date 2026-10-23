@@ -26,7 +26,7 @@ export function registerGate(program: Command, { io, deps, withHost }: Verbs): v
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
     .action((runId: string, stepId: string, opts: { json: string }) =>
-      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd))),
+      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd))),
     );
 }
 
