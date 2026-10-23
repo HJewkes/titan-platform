@@ -57,6 +57,11 @@ export const ExplainerFactSchema = z.object({
   claim_status: z.string().optional(),
   group: z.string().optional(),
   captions: z.array(z.string()).optional(),
+  // RX2's structure fields; optional so an RX1 fact still parses. Null centrality means no cited file is indexed.
+  centrality: z.number().min(0).max(1).nullable().optional(),
+  reading_rank: z.number().int().min(1).nullable().optional(),
+  module: z.string().min(1).optional(),
+  shape_hints: z.object({ graph: z.boolean() }).optional(),
 });
 export type ExplainerFact = z.infer<typeof ExplainerFactSchema>;
 
