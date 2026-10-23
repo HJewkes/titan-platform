@@ -41,7 +41,8 @@ import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
 import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed.js";
 import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
-import { fixConflict } from "./conflict-demotion.js";
+import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
+import { conflictBaseRoute } from "./conflict-base.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -59,7 +60,7 @@ import { askingOnlyOverMerge, type NoMergeRun } from "./no-merge-no-ask.js";
 
 export { SHEPHERD_STEPS };
 
-interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun {
+interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRoundsState, NoMergeRun, ConflictRun {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -81,8 +82,6 @@ interface ShepherdRun extends WakeRun, FixFirstTrail, VisualAcceptRun, FailedRou
   throttledRounds: number;
   /** The consecutive FIX_FIRSTs that said Closer: no; the FIX_FIRST count itself is `fixFirstCount(ctx)`. */
   closer: CloserStreak;
-  /** Conflict wakes since the PR was last green; a conflict that survives one wakes a fresh fixer, then the seat. */
-  conflictWakes: number;
   conflictChecks: number;
   /** Red heads checked against a frozen main's failures. */
   freezeChecks: number;
@@ -110,7 +109,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map() },
     ...{ policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set() },
+    ...{ ...freshFailedRounds(), throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, conflictBaseReads: 0, freezeChecks: 0, fresh: new Set() },
     ...{ seatHeld: new Map(), seatHeldRounds: new Map(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map() },
     ...{ wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [], visualAcceptOffers: 0, unreviewedAsks: new Set() },
   };
@@ -351,7 +350,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
-    conflictCheckRoute(deps),
+    conflictCheckRoute(deps), conflictBaseRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),

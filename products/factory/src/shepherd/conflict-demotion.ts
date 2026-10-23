@@ -1,21 +1,26 @@
 import type { LandOutcome } from "../workflows/land.js";
 import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { noticeHeldSeat } from "./gate-route.js";
+import { conflictAtNewBase, type ConflictBaseRun } from "./conflict-base.js";
 import { awaitNewHead, conflictGate, type GateRun } from "./gates.js";
 
 /** Fixer attempts at one conflict under D9: the implementer's, then one fresh agent's. */
 const MAX_CONFLICT_WAKES = 2;
 
-interface ConflictRun extends GateRun {
-  /** Conflict wakes since the PR was last green. */
+export interface ConflictRun extends GateRun, ConflictBaseRun {
+  /** Conflict wakes since the PR was last green or its base moved past the fixer's merge (`conflictAtNewBase`). */
   conflictWakes: number;
 }
 
 /** Wakes a fixer with `payload`; true when an agent took it and a new head is up. */
 type Wake = (payload: unknown) => Promise<boolean>;
 
-/** One fixer attempt per conflict, the implementer's; a conflict that survives it goes to `demoteConflict`. Undefined lands the next round. */
+/**
+ * One fixer attempt per conflict, the implementer's; a conflict that survives it goes to `demoteConflict`. A conflict at
+ * a base that moved past the fixer's merge (TP-4098) is a new one. Undefined lands the next round.
+ */
 export async function fixConflict(run: ConflictRun, headSha: string, wake: Wake): Promise<LandOutcome | undefined> {
+  if (await conflictAtNewBase(run, headSha)) run.conflictWakes = 0;
   if (run.conflictWakes >= 1) return demoteConflict(run, headSha, wake);
   run.conflictWakes += 1;
   if (await wake({ mergeableState: "dirty" })) return undefined;
