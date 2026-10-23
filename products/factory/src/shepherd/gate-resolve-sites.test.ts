@@ -4,7 +4,7 @@ import { pathTouches } from "@titan-design/review-panel";
 import ts from "typescript";
 import { beforeAll, describe, expect, it } from "vitest";
 import { SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
-import { COMPILER_OPTIONS, GateResolveClosure, repoClosure, sourceProgram } from "./gate-resolve-closure.test-helpers.js";
+import { type ClosureRules, COMPILER_OPTIONS, GateResolveClosure, repoClosure, sourceProgram } from "./gate-resolve-closure.test-helpers.js";
 import { adversaryTouches } from "./signoffs.js";
 
 const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -95,13 +95,27 @@ function probeHost(files: Map<string, string>): ts.CompilerHost {
 
 describe("a resolve site written the ways a name or regex scan misses", () => {
   let closure: string[] = [];
+  let scanWith: (rules: Partial<ClosureRules>) => string[] = () => [];
 
   beforeAll(() => {
     const files = new Map(Object.entries(PROBES).map(([name, body]) => [probePath(name), PROBE_HEADER + body]));
     files.set(MIRROR_PROBE_PATH, MIRROR_PROBE);
     const roots = [...files.keys()];
-    closure = new GateResolveClosure(ROOT).scan(sourceProgram(roots, probeHost(files)), roots);
+    const program = sourceProgram(roots, probeHost(files));
+    scanWith = (rules) => new GateResolveClosure(ROOT, rules).scan(program, roots);
+    closure = scanWith({});
   }, PROGRAM_TIMEOUT_MS);
+
+  it.each<[keyof ClosureRules, string]>([
+    ["destructuring", "destructured-method"],
+    ["forwarders", "forwarder-caller"],
+    ["implementers", "queue-source"],
+    ["factories", "factory-spread"],
+  ])("needs the %s rule to find %s", (rule, probe) => {
+    const without = scanWith({ [rule]: false });
+    expect(without).not.toContain(`${PROBE_DIR}/${probe}.ts`);
+    expect(closure).toContain(`${PROBE_DIR}/${probe}.ts`);
+  });
 
   it.each(Object.keys(PROBES).filter((name) => name !== "read-only"))("finds %s", (name) => {
     expect(closure).toContain(`${PROBE_DIR}/${name}.ts`);

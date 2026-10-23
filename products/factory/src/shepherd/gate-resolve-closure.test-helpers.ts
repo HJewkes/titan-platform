@@ -77,6 +77,19 @@ function ownerOf(node: ts.Node): ts.Node | undefined {
 const isTopLevel = (node: ts.Node): boolean => ts.isSourceFile(node.parent) || (ts.isVariableDeclaration(node) && ts.isSourceFile(node.parent.parent.parent));
 
 /**
+ * The tracing rules a self-test switches off one at a time, to show each finds a site the rest miss. Fix-proof never
+ * mutates a test-support file, so these switches stand in for mutations of this one.
+ */
+export interface ClosureRules {
+  destructuring: boolean;
+  forwarders: boolean;
+  implementers: boolean;
+  factories: boolean;
+}
+
+const ALL_RULES: ClosureRules = { destructuring: true, forwarders: true, implementers: true, factories: true };
+
+/**
  * Who answers a gate, traced by the type checker over the repo (TP-4052): files that call, reference or implement a
  * resolve sink, forward a parameter into one, or build a `GateResolver` (a literal typed as one, or a function that
  * returns one, declared or referenced). The checker resolves receivers, destructuring, aliases and element access to
@@ -90,7 +103,14 @@ export class GateResolveClosure {
   private sinkInterfaces: { type: ts.Type; member: string; slot: number }[] = [];
   private factoryCache = new Map<ts.Symbol, boolean>();
 
-  constructor(private readonly root: string) {}
+  private readonly rules: ClosureRules;
+
+  constructor(
+    private readonly root: string,
+    rules: Partial<ClosureRules> = {},
+  ) {
+    this.rules = { ...ALL_RULES, ...rules };
+  }
 
   /**
    * Repo-relative paths of the scanned files that sit in the closure. Scan a unit after every unit it imports: an
@@ -103,8 +123,8 @@ export class GateResolveClosure {
     this.factoryCache = new Map();
     const files = scanned.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
     this.anchorSinkInterfaces();
-    this.addImplementers(program.getSourceFiles());
-    this.addForwarders(files);
+    if (this.rules.implementers) this.addImplementers(program.getSourceFiles());
+    if (this.rules.forwarders) this.addForwarders(files);
     return files.filter((file) => this.touches(file)).map((file) => relative(this.root, file.fileName).split(sep).join("/"));
   }
 
@@ -271,7 +291,7 @@ export class GateResolveClosure {
   /** The symbol a node names, with a destructured binding read through to the property it takes. */
   private symbolAt(node: ts.Node): ts.Symbol | undefined {
     const parent = node.parent;
-    if (ts.isBindingElement(parent) && ts.isObjectBindingPattern(parent.parent) && (parent.propertyName ?? parent.name) === node) {
+    if (this.rules.destructuring && ts.isBindingElement(parent) && ts.isObjectBindingPattern(parent.parent) && (parent.propertyName ?? parent.name) === node) {
       const property = parent.propertyName ?? parent.name;
       const name = ts.isIdentifier(property) || ts.isStringLiteral(property) ? property.text : undefined;
       return name ? this.checker.getTypeAtLocation(parent.parent).getProperty(name) : undefined;
@@ -303,7 +323,7 @@ export class GateResolveClosure {
   private isFactory(decl: ts.Declaration): boolean {
     const name = ts.getNameOfDeclaration(decl);
     const symbol = name && this.checker.getSymbolAtLocation(name);
-    if (!symbol || ts.isParameter(decl)) return false;
+    if (!this.rules.factories || !symbol || ts.isParameter(decl)) return false;
     const cached = this.factoryCache.get(symbol);
     if (cached !== undefined) return cached;
     const signatures = this.checker.getTypeOfSymbolAtLocation(symbol, decl).getCallSignatures();
