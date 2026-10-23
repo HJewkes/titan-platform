@@ -8,7 +8,8 @@
       "replace": "message=\"\" testID={`${testID}-outcome`}",
       "kills": [
         "taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed",
-        "sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again"
+        "sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again",
+        "shows a moved head as a warning naming the new head"
       ]
     },
     {
