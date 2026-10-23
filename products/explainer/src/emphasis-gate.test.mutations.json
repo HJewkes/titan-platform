@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a target naming two elements passes",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "if (found > 1) return",
+      "replace": "if (found > 2) return",
+      "kills": [
+        "emphasis target gate fails an ambiguous target: one id names a node and an edge"
+      ]
+    },
+    {
+      "name": "a target naming no element passes",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "if (found === 0) return",
+      "replace": "if (found < 0) return",
+      "kills": [
+        "emphasis target gate fails a target that names no element of the beat"
+      ]
+    },
+    {
+      "name": "a box past the frame's right edge counts as on the frame",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "box.x + box.width <= stage.width",
+      "replace": "box.x <= stage.width",
+      "kills": [
+        "emphasis target gate fails an element laid out off the frame"
+      ]
+    },
+    {
+      "name": "an element the layout never placed passes",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "if (!box) return [fail(cue, target, \"off-frame\", `element ${target} is not laid out`)];",
+      "replace": "if (!box) return [];",
+      "kills": [
+        "emphasis target gate fails a target the layout never placed"
+      ]
+    },
+    {
+      "name": "each step is checked against the first cue's marks",
+      "file": "products/explainer/src/emphasis-gate.ts",
+      "find": "const step = input.marks?.[beat]?.[cue];",
+      "replace": "const step = input.marks?.[beat]?.[0];",
+      "kills": [
+        "emphasis target gate contact-sheet rule fails a step that changes only another element"
+      ]
+    }
+  ]
+}

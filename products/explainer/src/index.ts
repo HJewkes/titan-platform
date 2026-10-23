@@ -32,5 +32,6 @@ export * from "./lint-exports.js";
 export * from "./speech-exports.js";
 export * from "./doctrine-exports.js";
 export * from "./rewrite-exports.js";
+export * from "./emphasis-exports.js";
 export * from "./workflow/index.js";
 export * from "./presets/article/index.js";
