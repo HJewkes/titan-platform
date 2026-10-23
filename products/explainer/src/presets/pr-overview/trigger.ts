@@ -4,8 +4,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { prDiag } from "./diagnostics.js";
-import { gatherPr, writeGather, type GatherPrOptions } from "./gather.js";
 import type { PrRef } from "./pr-read.js";
 
 /** Shepherd's hold class for a PR waiting on the owner's Gate 2 visual sign-off. */
@@ -46,17 +44,21 @@ export function autoBriefTargets(waiting: Waiting): BriefTarget[] {
 }
 
 /** One brief directory per PR head, so a new head gets a new brief and a re-run sweep starts nothing twice. */
-export const briefDir = (dataDir: string, target: BriefTarget): string =>
+export const briefDir = (dataDir: string, target: Pick<BriefTarget, "repo" | "number" | "head">): string =>
   join(dataDir, "pr-briefs", `${target.repo.replace("/", "--")}--${target.number}--${target.head.slice(0, 12)}`);
 
 const execFileAsync = promisify(execFile);
 const OverdueExit = z.looseObject({ code: z.literal(1), stdout: z.string().trim().min(1) });
 
+/** Runs `titan-factory` with its args; rejects, as `execFile` does, with `code` and `stdout` on a non-zero exit. */
+export type FactoryExec = (args: string[]) => Promise<{ stdout: string }>;
+const execFactory: FactoryExec = (args) => execFileAsync("titan-factory", args);
+
 /** `shepherd waiting` exits 1 when an owner gate is overdue and still prints the list, so stdout is read either way. */
-export async function shepherdWaiting(port?: number): Promise<unknown> {
+export async function shepherdWaiting(port?: number, exec: FactoryExec = execFactory): Promise<unknown> {
   const args = ["shepherd", "waiting", "--json", ...(port === undefined ? [] : ["--port", String(port)])];
   try {
-    return JSON.parse((await execFileAsync("titan-factory", args)).stdout);
+    return JSON.parse((await exec(args)).stdout);
   } catch (error) {
     const overdue = OverdueExit.safeParse(error);
     if (overdue.success) return JSON.parse(overdue.data.stdout);
@@ -64,7 +66,7 @@ export async function shepherdWaiting(port?: number): Promise<unknown> {
   }
 }
 
-/** Starts a decision-brief run for one PR: its gather stage, written to `dir`. */
+/** Starts a decision-brief run for one PR, keeping its brief, gather and run record in `dir`. */
 export type StartBrief = (target: BriefTarget, dir: string) => Promise<"started" | "refused">;
 
 export interface TriggerOptions {
@@ -77,8 +79,16 @@ export interface TriggerOptions {
 export interface TriggerRow {
   pr: string;
   head: string;
-  outcome: "would-start" | "started" | "refused" | "already";
+  /** `moved`: the head was no longer the gate's current head when the sweep came to start it. */
+  outcome: "would-start" | "started" | "refused" | "already" | "moved";
   dir: string;
+}
+
+const sameHead = (a: BriefTarget) => (b: BriefTarget): boolean => a.repo === b.repo && a.number === b.number && a.head === b.head;
+
+/** Re-read right before a gather: an earlier brief in the sweep can take minutes, and the head can move meanwhile. */
+async function stillCurrent(options: TriggerOptions, target: BriefTarget): Promise<boolean> {
+  return autoBriefTargets(WaitingSchema.parse(await options.readWaiting())).some(sameHead(target));
 }
 
 /** One sweep: reads the waiting gates, picks the visual-gate PRs, and starts a brief for each head not yet briefed. */
@@ -90,23 +100,16 @@ export async function runPrVideoTrigger(options: TriggerOptions): Promise<Trigge
     const row = { pr: `${target.repo}#${target.number}`, head: target.head, dir };
     if (existsSync(join(dir, "brief.json"))) rows.push({ ...row, outcome: "already" });
     else if (options.dryRun) rows.push({ ...row, outcome: "would-start" });
+    else if (!(await stillCurrent(options, target))) rows.push({ ...row, outcome: "moved" });
     else rows.push({ ...row, outcome: await options.start(target, dir) });
   }
   return rows;
 }
 
-/** The production start: writes `brief.json` first, so a failed gather is not retried on the same head, then gathers. */
-export function gatherStart(cloneFor: (repo: string) => string | undefined, deps: Pick<GatherPrOptions, "gh" | "callEdges"> = {}): StartBrief {
-  return async (target, dir) => {
-    const pr = `${target.repo}#${target.number}`;
-    const clonePath = cloneFor(target.repo);
-    await mkdir(dir, { recursive: true });
-    const brief = { schema: "explainer.pr-brief/v1", profile: "pr-overview", cut: DECISION_BRIEF_CUT, trigger: VISUAL_GATE_CLASS, pr, head: target.head, gateId: target.gateId };
-    await writeFile(join(dir, "brief.json"), `${JSON.stringify(brief, null, 2)}\n`);
-    const result = clonePath === undefined
-      ? { ok: false as const, diagnostics: [prDiag("E-NO-CLONE", `no clone is configured for ${target.repo}`)] }
-      : await gatherPr({ pr, clonePath, ...deps });
-    await writeGather(dir, result);
-    return result.ok ? "started" : "refused";
-  };
+/** Written first, so a brief whose gather fails is not retried on the same head. */
+export async function writeBrief(dir: string, target: BriefTarget): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  const pr = `${target.repo}#${target.number}`;
+  const brief = { schema: "explainer.pr-brief/v1", profile: "pr-overview", cut: DECISION_BRIEF_CUT, trigger: VISUAL_GATE_CLASS, pr, head: target.head, gateId: target.gateId };
+  await writeFile(join(dir, "brief.json"), `${JSON.stringify(brief, null, 2)}\n`);
 }

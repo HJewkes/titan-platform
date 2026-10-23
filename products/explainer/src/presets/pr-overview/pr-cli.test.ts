@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { fakeAuditionModel } from "../../audition-fakes.test-helpers.js";
+import { fakeBridge, fakeHost, fixture } from "../../workflow/run-fakes.test-helpers.js";
 import { runPrCli, type PrCliDeps } from "./pr-cli.js";
 import { fakeEdges, fakeGh, gate, PR, REPO, VIEW } from "./pr-fakes.test-helpers.js";
 
@@ -15,6 +17,13 @@ async function scratch(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "pr-cli-"));
   temps.push(dir);
   return dir;
+}
+
+/** A decision-brief run on a fake audition model and a fake clone; the CLI passes its own --data-dir. */
+function briefHost(): NonNullable<PrCliDeps["host"]> {
+  const fx = fixture();
+  temps.push(path.dirname(fx.dataDir));
+  return { ...fakeHost(fx, fakeAuditionModel(), fakeBridge()), gather: { readAt: async () => "" } };
 }
 
 function cli(deps: PrCliDeps = {}) {
@@ -61,12 +70,12 @@ describe("explainer pr trigger", () => {
 
   it("starts the brief, passing --port through to the waiting reader", async () => {
     const ports: (number | undefined)[] = [];
-    const { run, out } = cli({ readWaiting: async (port) => (ports.push(port), { owner: [gate()], seat: [] }) });
+    const { run, out } = cli({ readWaiting: async (port) => (ports.push(port), { owner: [gate()], seat: [] }), host: briefHost() });
 
     const code = await run("trigger", "--data-dir", await scratch(), "--clone", `${REPO}=/clone/widgets`, "--port", "7411", "--json");
 
     expect(code).toBe(0);
-    expect(ports).toEqual([7411]);
+    expect(ports).toEqual([7411, 7411]);
     expect(JSON.parse(out.join(""))).toMatchObject([{ pr: `${REPO}#7`, outcome: "started" }]);
   });
 

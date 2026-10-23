@@ -1,10 +1,9 @@
-import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { fakeEdges, fakeGh, gate, HEAD, REPO } from "./pr-fakes.test-helpers.js";
-import { autoBriefTargets, briefDir, gatherStart, runPrVideoTrigger, type BriefTarget, type StartBrief } from "./trigger.js";
+import { gate, HEAD, REPO } from "./pr-fakes.test-helpers.js";
+import { autoBriefTargets, runPrVideoTrigger, shepherdWaiting, type BriefTarget, type StartBrief } from "./trigger.js";
 
 const temps: string[] = [];
 afterEach(async () => {
@@ -87,38 +86,51 @@ describe("runPrVideoTrigger", () => {
   });
 });
 
-describe("gatherStart", () => {
-  const sweep = async (dir: string, head = HEAD) =>
-    runPrVideoTrigger({ dataDir: dir, readWaiting: async () => waiting([gate({ head })]), start: gatherStart(() => "/clone/widgets", { gh: fakeGh(), callEdges: fakeEdges() }) });
+describe("runPrVideoTrigger head re-check", () => {
+  it("re-reads the gates right before a start and skips a head that moved since the sweep's first read", async () => {
+    const start = recordingStart();
+    const reads = [waiting([gate(), gate({ pr: 8 })]), waiting([gate(), gate({ pr: 8 })]), waiting([gate(), gate({ pr: 8, head: "b".repeat(40) })])];
 
-  it("writes a decision-brief brief.json and the gathered facts.jsonl", async () => {
-    const dir = await dataDir();
+    const rows = await runPrVideoTrigger({ dataDir: await dataDir(), readWaiting: async () => reads.shift(), start });
 
-    const [row] = await sweep(dir);
-
-    expect(row?.outcome).toBe("started");
-    expect(JSON.parse(await readFile(join(row!.dir, "brief.json"), "utf8"))).toMatchObject({ profile: "pr-overview", cut: "decision-brief", trigger: "visual-gate2", pr: `${REPO}#7`, head: HEAD });
-    expect(existsSync(join(row!.dir, "facts.jsonl"))).toBe(true);
+    expect(rows.map((r) => [r.pr, r.outcome])).toEqual([[`${REPO}#7`, "started"], [`${REPO}#8`, "moved"]]);
+    expect(start.started.map((t) => t.number)).toEqual([7]);
   });
 
-  it("starts each head once: a second sweep finds the brief, a new head starts again", async () => {
-    const dir = await dataDir();
-    await sweep(dir);
+  it("skips a head whose gate Shepherd no longer calls current", async () => {
+    const start = recordingStart();
+    const reads = [waiting([gate()]), waiting([gate({ headIsCurrent: false })])];
 
-    const again = await sweep(dir);
-    const moved = await sweep(dir, "b".repeat(40));
+    const rows = await runPrVideoTrigger({ dataDir: await dataDir(), readWaiting: async () => reads.shift(), start });
 
-    expect(again.map((r) => r.outcome)).toEqual(["already"]);
-    expect(moved.map((r) => r.outcome)).toEqual(["started"]);
+    expect(rows.map((r) => r.outcome)).toEqual(["moved"]);
+    expect(start.started).toEqual([]);
+  });
+});
+
+describe("shepherdWaiting", () => {
+  const exitWith = (code: number, stdout: string) => async () => {
+    throw Object.assign(new Error(`titan-factory exited ${code}`), { code, stdout });
+  };
+
+  it("reads the list from stdout when an overdue owner gate makes it exit 1", async () => {
+    const listed = { owner: [gate()], seat: [] };
+
+    expect(await shepherdWaiting(undefined, exitWith(1, JSON.stringify(listed)))).toEqual(listed);
   });
 
-  it("records E-NO-CLONE and reports refused when no clone is configured for the repo", async () => {
-    const dir = await dataDir();
-    const target = { repo: REPO, number: 7, head: HEAD, gateId: "g" };
+  it("passes --port through and parses a clean exit", async () => {
+    const calls: string[][] = [];
+    const exec = async (args: string[]) => (calls.push(args), { stdout: '{"owner":[],"seat":[]}' });
 
-    const outcome = await gatherStart(() => undefined)(target, briefDir(dir, target));
+    expect(await shepherdWaiting(7411, exec)).toEqual({ owner: [], seat: [] });
+    expect(calls).toEqual([["shepherd", "waiting", "--json", "--port", "7411"]]);
+  });
 
-    expect(outcome).toBe("refused");
-    expect(JSON.parse(await readFile(join(briefDir(dir, target), "gather.json"), "utf8")).diagnostics[0].code).toBe("E-NO-CLONE");
+  it.each([
+    ["exit 1 with nothing on stdout", exitWith(1, "")],
+    ["any other exit", exitWith(2, '{"owner":[],"seat":[]}')],
+  ])("throws on %s", async (_name, exec) => {
+    await expect(shepherdWaiting(undefined, exec)).rejects.toThrow(/exited/);
   });
 });

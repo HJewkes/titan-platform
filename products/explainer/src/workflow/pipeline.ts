@@ -11,10 +11,11 @@ import { runPaths, writeJson } from "./run-dir.js";
 import { ChildStageFailure, runStageCached, type CacheDeps } from "./stage-cache.js";
 import { stageSpec, VariantSchema } from "./stage-spec.js";
 import { failedRecord, stageRecord } from "./stage-workflows.js";
+import { GatherRequestSchema } from "./run-gather.js";
 
 export const VIDEO_WORKFLOW = "explainer-video";
 /** Bumped whenever the stage list or a stage's inputs change, so a run never replays under another shape. */
-export const VIDEO_WORKFLOW_VERSION = "tp2614";
+export const VIDEO_WORKFLOW_VERSION = "tp4078";
 
 /** Everything a run needs, stored as its one param, so a resumed run rebuilds the same routes. */
 export const RunPlanSchema = z.object({
@@ -34,6 +35,8 @@ export const RunPlanSchema = z.object({
   rounds: z.number().int().positive(),
   /** The video type whose profile the audition reads; required when the run starts at `audition`. */
   profile: z.string().optional(),
+  /** What the gather stage gathers; required when the run starts at `gather`. */
+  gather: GatherRequestSchema.optional(),
   /** Stage → the artifact sha of its variant file; a stage with none runs the champion settings above. */
   variants: z.partialRecord(z.enum(STAGES), z.string()).default({}),
   /** Stage → sample index; part of the stage key, so n samples are n cached runs. */
