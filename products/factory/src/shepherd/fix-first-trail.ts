@@ -84,7 +84,7 @@ export interface FixRound {
 }
 
 /** The reviewer FIX_FIRSTs since the run's last MERGE, oldest first: what a fix round must answer (TP-3735). */
-export const openFindingsOf = (run: FixFirstTrail): FixFirstEntry[] => run.fixFirstTrail.slice(run.openFrom ?? 0).filter((entry) => entry.noRepro !== true);
+const openFindingsOf = (run: FixFirstTrail): FixFirstEntry[] => run.fixFirstTrail.slice(run.openFrom ?? 0).filter((entry) => entry.noRepro !== true);
 
 export const earlierFindingOf = (entry: FixFirstEntry): EarlierFinding => ({ head: entry.headSha, text: entry.text, ...(entry.defectClass !== undefined && { defectClass: entry.defectClass }) });
 

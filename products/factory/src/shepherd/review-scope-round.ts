@@ -24,7 +24,7 @@ const Mode = z.enum(["shadow", "on"]);
 const EarlierFindingSchema = z.object({ head: z.string(), text: z.string(), defectClass: z.string().optional() });
 
 /** What the sh-review step is given about a fix round; a refusal keeps its reason, and the brief stays the whole PR's. */
-export const ScopedRereviewSchema = z.discriminatedUnion("scoped", [
+const ScopedRereviewSchema = z.discriminatedUnion("scoped", [
   z.object({ mode: Mode, scoped: z.literal(true), scope: ScopeSchema, earlierFindings: z.array(EarlierFindingSchema).min(1) }),
   z.object({ mode: Mode, scoped: z.literal(false), reason: z.string() }),
 ]);
