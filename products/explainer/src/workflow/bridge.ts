@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { loadProfiles, profileFor } from "../profile-load.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { StageFailure } from "./model-stages.js";
 import { BRIDGE_STAGES, NO_USAGE, type BridgeStage, type Check, type StageOutcome } from "./records.js";
@@ -50,16 +51,39 @@ type BridgeCommand = z.infer<typeof CommandSchema>;
 /** A host file written while tts was bridged. */
 const PortedStagesSchema = z.object({ stages: z.object({ tts: z.unknown().refine((block) => block !== undefined) }) });
 
-export const bridgeFilePath =(dataDir: string): string => path.join(dataDir, "bridge.json");
+/** A bridge a profile names, kept once per host so a run in any data dir uses it without a per-run copy. */
+export interface NamedBridge {
+  /** The host's own explainer data dir, which holds `bridges/<name>.json`. */
+  home: string;
+  name: string;
+}
 
-export function readBridgeFile(dataDir: string): BridgeFile {
-  const file = bridgeFilePath(dataDir);
+export const bridgeFilePath = (dataDir: string, named?: NamedBridge): string =>
+  named ? path.join(named.home, "bridges", `${named.name}.json`) : path.join(dataDir, "bridge.json");
+
+export function readBridgeFile(dataDir: string, named?: NamedBridge): BridgeFile {
+  const file = bridgeFilePath(dataDir, named);
   if (!existsSync(file)) throw new Error(`no bridge host file at ${file}; see the explainer README, "explainer run"`);
   const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
   if (PortedStagesSchema.safeParse(raw).success) {
     throw new Error(`${file} still has a "tts" block, but tts runs in TypeScript now; delete it, and move any command it ran that is not TTS (a sample builder) to the start of "render"`);
   }
   return BridgeFileSchema.parse(raw);
+}
+
+export interface RunBridgeChoice {
+  /** Where a named bridge lives; the data dir by default. */
+  home?: string | undefined;
+  profile?: string | undefined;
+  /** Replaces the bridge's `theater.dir`. */
+  theater?: string | undefined;
+}
+
+/** A run's bridge: the one its profile names, else the data dir's, linking into the theater folder the run asked for. */
+export function runBridgeFile(dataDir: string, choice: RunBridgeChoice): BridgeFile {
+  const name = choice.profile === undefined ? undefined : profileFor(loadProfiles(), choice.profile).bridge;
+  const file = readBridgeFile(dataDir, name === undefined ? undefined : { home: choice.home ?? dataDir, name });
+  return choice.theater ? { ...file, theater: { ...file.theater, dir: choice.theater } } : file;
 }
 
 export interface ExecResult {

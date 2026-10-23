@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { appDirs } from "@titan-design/app-paths";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { JudgeConfigSchema } from "../eval-harness.js";
@@ -36,6 +37,7 @@ interface RunFlags {
   label?: string;
   dryRun?: boolean;
   profile?: string;
+  theater?: string;
   listenerQuestions?: boolean;
   listenerThreshold?: number;
 }
@@ -97,7 +99,9 @@ export function rounds(text: string): number {
 }
 
 export const dataDirOption = () => new Option("--data-dir <dir>", "run state, artifacts, run reports and the bridge host file bridge.json (default: the per-user data dir)");
-export const hostFor = (flags: { dataDir?: string }, deps: RunCliDeps): RunHost => ({ ...deps.host, dataDir: flags.dataDir ?? appDirs("explainer").data });
+/** A bridge a profile names is the host's, so it is read from the per-user data dir whatever `--data-dir` says. */
+export const hostFor = (flags: { dataDir?: string }, deps: RunCliDeps): RunHost =>
+  ({ bridgeHome: appDirs("explainer").data, ...deps.host, dataDir: flags.dataDir ?? appDirs("explainer").data });
 
 function summary(result: RunOutcome, io: Io): number {
   const t = result.report.totals;
@@ -159,7 +163,7 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.spine ? { spine: flags.spine } : {}), ...(facts ? { facts } : {}), ...(flags.base ? { base: flags.base } : {}),
     ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
     from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-    ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}),
+    ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}), ...(flags.theater ? { theater: path.resolve(flags.theater) } : {}),
   }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}) }, flags));
   return summary(result, io);
 }
@@ -181,7 +185,8 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .addOption(dataDirOption())
     .option("--spine <file>", "story spine markdown; required from script unless --base supplies it")
     .option("--facts <file>", "facts pack, markdown or JSON lines; required from audition or script unless --base supplies it")
-    .option("--profile <type>", "the video type whose profile the audition reads; required from audition")
+    .option("--profile <type>", "the video type whose profile the audition reads, and whose named bridge renders; required from audition")
+    .option("--theater <dir>", "the folder export links the video into, in place of the bridge's theater.dir")
     .addOption(new Option("--from <stage>", "first stage to run; earlier stages reuse the base run's outputs").choices(STAGES).default("script"))
     .addOption(new Option("--to <stage>", "last stage to run; a run that stops before export never reaches the theater").choices(STAGES).default("export"))
     .option("--base <runId>", "the run whose outputs stand in for the stages before --from (default: the latest run, unless --pin is given)")

@@ -9,7 +9,7 @@ import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
-import { readBridgeFile, spawnExec, type BridgeExec } from "./bridge.js";
+import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
 import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan } from "./pipeline.js";
 import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
@@ -25,6 +25,8 @@ import type { GatherDeps, GatherRequest } from "./run-gather.js";
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
   dataDir: string;
+  /** Where a bridge the run's profile names lives, as `bridges/<name>.json`; the data dir by default. */
+  bridgeHome?: string;
   /** Model seams; tests pass fakes, production uses `agentRunner` and the judge harness. */
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
@@ -71,6 +73,8 @@ export interface RunRequest {
   profile?: string;
   /** What the gather stage gathers; required from `gather`. */
   gather?: GatherRequest;
+  /** The folder export links into, in place of the bridge's `theater.dir`. */
+  theater?: string;
 }
 
 export interface RunOutcome {
@@ -171,7 +175,7 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
     variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
-    ...(request.gather ? { gather: request.gather } : {}),
+    ...(request.gather ? { gather: request.gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
   };
   if (from === "audition" && !profile) throw new Error("a run from audition needs --profile <type>");
   const runs = new WorkflowRunStore(db);
@@ -245,14 +249,14 @@ export interface Runtime {
   runtime: WorkflowRuntime;
   store: ArtifactStore;
   cache: CacheDeps;
-  bridge: () => ReturnType<typeof readBridgeFile>;
+  bridge: () => BridgeFile;
 }
 
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
-  let bridgeFile: ReturnType<typeof readBridgeFile> | undefined;
-  const bridge = () => (bridgeFile ??= readBridgeFile(host.dataDir));
+  let bridgeFile: BridgeFile | undefined;
+  const bridge = () => (bridgeFile ??= runBridgeFile(host.dataDir, { home: host.bridgeHome, profile: plan?.profile, theater: plan?.theater }));
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
