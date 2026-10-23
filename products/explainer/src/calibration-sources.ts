@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CaseRef, JudgedOutput } from "./calibration-queue.js";
-import { codeDecidedZero } from "./eval-cold.js";
+import { codeDecidedZero, COLD_QUESTION_TEXT } from "./eval-cold.js";
 import { paceInput } from "./eval-pace-cli.js";
 import { readTsv, scriptSha } from "./eval-store.js";
 import type { PaceBeat } from "./pace-items.js";
@@ -42,7 +42,7 @@ const RUBRIC_QUESTIONS: Record<string, string> = {
   J12: "Visual consistency: is there one look, even with stretches of plain cards?",
 };
 
-const COLD_KINDS = new Set(["what-why", "invariant", "spoken-term", "viewer-term"]);
+const coldText = (kind: string | undefined) => Object.entries(COLD_QUESTION_TEXT).find(([k]) => k === kind)?.[1];
 
 const spokenOf = (beats: readonly PaceBeat[]): string => beats.map((b) => b.spoken).join(" ");
 const screenOf = (beat: PaceBeat): string => (beat.items.length === 0 ? "" : `\nOn screen: ${beat.items.map((i) => i.label).join(", ")}`);
@@ -71,22 +71,27 @@ const origin = (r: Record<string, string>) => ({ configId: r.config_id ?? "", ru
 
 /**
  * A bench appends a row per run and per invocation, so one question can carry several verdicts. The owner labels
- * each question once, against the last verdict written: the latest config's last run.
+ * each question once, against the last verdict written: the latest config's last run. A target names everything
+ * that identifies the question the judge was asked, so two questions never share one.
  */
 function latestPerTarget(outputs: readonly JudgedOutput[]): JudgedOutput[] {
   return [...new Map(outputs.map((o) => [`${o.judge}\0${o.target}`, o])).values()];
 }
 
 function coldOutputs(source: Source): JudgedOutput[] {
-  return rows(source, "cold-scores.tsv").filter((r) => COLD_KINDS.has(r.kind!)).map((r) => ({
-    ...source.ref,
-    judge: "cold",
-    target: `${r.beat} · ${r.item}`,
-    question: `A first-time viewer hears only this chapter. Does it tell them what "${r.item}" is?`,
-    excerpt: `[${r.chapter}] ${spokenOf(source.beats.filter((b) => b.chapter === r.chapter))}`,
-    pass: Number(r.score) > 0,
-    ...origin(r),
-  }));
+  return rows(source, "cold-scores.tsv").flatMap((r) => {
+    const text = coldText(r.kind);
+    if (!text) return [];
+    return [{
+      ...source.ref,
+      judge: "cold" as const,
+      target: `${r.beat} · ${r.kind} · ${r.item}`,
+      question: `A first-time viewer hears only this chapter, then is asked: ${text(r.item!)} Does the chapter answer it?`,
+      excerpt: `[${r.chapter}] ${spokenOf(source.beats.filter((b) => b.chapter === r.chapter))}`,
+      pass: Number(r.score) > 0,
+      ...origin(r),
+    }];
+  });
 }
 
 function rubricOutputs(source: Source): JudgedOutput[] {

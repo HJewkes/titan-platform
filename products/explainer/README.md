@@ -327,7 +327,8 @@ beat dimensions) stay reported only until the owner's labels show they agree wit
   than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
   last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
   no question:
-  - cold probe: does the chapter say what an item is (a score above 0)?
+  - cold probe: does the chapter answer the question the viewer was asked about an item, in that kind's own
+    words (what-why, invariant or term), with a score above 0? An `inv` item gives two questions.
   - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
   - L1: does the beat pass a B dimension?
 - It drops holdout and owner-named cases. Judges take turns, so each gets an even share of the queue; within a

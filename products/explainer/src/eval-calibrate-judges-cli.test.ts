@@ -34,6 +34,7 @@ function bench(name: string): { script: string; bench: string } {
   const root = join(dir, `bench-${name}`);
   const cold = (run: string) => BEATS.map((beat, i) => ({ run, script_sha: sha, chapter: beat.chapter, kind: "what-why", beat: beat.id, item: `item-${i}`, score: String(i % 3), void_reason: i % 3 === 0 ? "not stated" : "" }));
   tsv(root, "cold-scores.tsv", ["1", "2", "3"].flatMap(cold));
+  tsv(root, "cold-scores.tsv", [{ run: "3", script_sha: sha, chapter: BEATS[1]!.chapter, kind: "invariant", beat: BEATS[1]!.id, item: "item-1", score: "0", void_reason: "not stated" }]);
   tsv(root, "cold-scores.tsv", Object.entries(CODE_ZEROS).map(([item, reason]) => ({ script_sha: sha, chapter: BEATS[0]!.chapter, kind: "what-why", beat: BEATS[0]!.id, item, score: "0", void_reason: reason })));
   const rubric = (config: string) => ["J8", "J9", "J10", "J11", "J12"].map((dim, i) => ({ config_id: config, run: "1", script_sha: sha, dim, score: String(i + 1) }));
   tsv(root, "cold-rubric-scores.tsv", [...rubric("cfg-old"), ...rubric("cfg-new")]);
@@ -95,6 +96,17 @@ describe("explainer eval calibrate queue", () => {
     expect(entries.some((e) => e.judge === "cold" && e.target.endsWith("item-0") && !e.pass)).toBe(true);
     expect(entries.filter((e) => e.judge === "cold").map((e) => e.run)).toEqual(entries.filter((e) => e.judge === "cold").map(() => "3"));
     expect(new Set(entries.filter((e) => e.judge === "cold-rubric").map((e) => e.configId))).toEqual(new Set(["cfg-new"]));
+  });
+
+  it("queues an invariant item's what-why and invariant verdicts as two questions, each in the words the viewer was asked", async () => {
+    expect(await queue("--size", "200")).toBe(0);
+
+    const round = z.object({ questions: z.array(z.looseObject({ id: z.string(), prompt: z.string() })) }).parse(readJson(join(dir, "round", "round.json")));
+    const prompt = new Map(round.questions.map((q) => [q.id, q.prompt]));
+    const asked = readKey().entries.filter((e) => e.case.endsWith("tour") && e.judge === "cold" && e.target.endsWith("item-1"));
+    expect(asked.map((e) => [e.target.split(" · ")[1], e.pass]).sort()).toEqual([["invariant", false], ["what-why", true]]);
+    expect(asked.map((e) => prompt.get(e.id)!).filter((p) => p.includes("must always hold"))).toHaveLength(1);
+    expect(asked.map((e) => prompt.get(e.id)!).filter((p) => p.includes('What is "item-1"'))).toHaveLength(1);
   });
 
   it("refuses to overwrite a round that is already published", async () => {
