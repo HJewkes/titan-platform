@@ -12,6 +12,7 @@ import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
 import type { GatheredFact } from "../lint-claims.js";
 import { repairHint } from "../l0-repair-hints.js";
+import { stampLedgerTerms, type LedgerStamp, type Stamped } from "../ledger-stamp.js";
 import { paceRows } from "../lint-pace.js";
 import { CUE_KIND_ROLES, fromScriptV1, unknownCueKinds } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
@@ -232,11 +233,11 @@ async function draftScript(call: Call, prompt: string, plan: ScriptPlan): Promis
 
 const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
 
-function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, facts?: readonly GatheredFact[]): string {
+function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1): string {
   const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
   const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
   const found = (row: L0Result) => {
-    const hint = repairHint(row, script, facts);
+    const hint = repairHint(row, script, facts, spine);
     return hint ? `\n  Found: ${hint}` : "";
   };
   return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})${found(row)}`).join("\n");
@@ -247,6 +248,7 @@ const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string
 
 interface Repair {
   script: ScriptV1;
+  stamps: LedgerStamp[];
   usage: StageUsage;
   check: Check;
   /** The kept repair's dropped keys; absent while the draft is still the script. */
@@ -264,25 +266,35 @@ interface Lint {
   rows: (script: ScriptV1) => L0Result[];
   /** The gathered facts the Q-E20 rows read, so its hint names the nearest one. */
   facts?: readonly GatheredFact[];
+  /** The spine whose ledger the Q-E17 hint reads and whose handles a reply's `new_terms` are stamped from. */
+  spine: SpineV1;
 }
 
-async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: ScriptV1, { rows: lint, facts }: Lint): Promise<Repair | undefined> {
-  const first = failingErrors(lint(draft)).length;
+async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, { rows: lint, facts, spine }: Lint): Promise<Repair | undefined> {
+  const first = failingErrors(lint(draft.script)).length;
   if (first === 0) return undefined;
   const rules = loadRuleRegistry();
-  let script = draft;
-  let failing = failingErrors(lint(draft));
+  let { script, stamps } = draft;
+  let failing = failingErrors(lint(script));
   let usage = NO_USAGE;
   let stripped: string[] | undefined;
   for (let round = 0; round < MAX_REPAIR_ROUNDS && failing.length > 0; round++) {
-    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script, facts)));
+    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script, facts, spine)));
     usage = addUsage(usage, stageUsage(outcome.usage));
     const reply = checked(outcome, plan);
-    const after = reply.script ? failingErrors(lint(reply.script)) : failing;
-    if (reply.script && after.length < failing.length) [script, failing, stripped] = [reply.script, after, reply.stripped ?? []];
+    const next = reply.script && stampLedgerTerms(reply.script, spine);
+    const after = next ? failingErrors(lint(next.script)) : failing;
+    if (next && after.length < failing.length) [{ script, stamps }, failing, stripped] = [next, after, reply.stripped ?? []];
   }
   const detail = `${first} failing error checks before repair, ${failing.length} after`;
-  return { script, usage, ...(stripped ? { stripped } : {}), check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
+  return { script, stamps, usage, ...(stripped ? { stripped } : {}), check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
+}
+
+/** Reported only, so a reader sees which `new_terms` the stage wrote rather than the model. */
+function stampCheck(stamps: readonly LedgerStamp[]): Check[] {
+  if (stamps.length === 0) return [];
+  const named = stamps.map((stamp) => `${stamp.beat} ${stamp.term}`).join(", ");
+  return [{ name: "ledger-stamp", gate: false, pass: true, detail: `stamped new_terms on ${stamps.length} ledger item(s): ${named}` }];
 }
 
 const SHOWN_KEYS = 10;
@@ -310,12 +322,13 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
   const facts = claimFacts(factsText);
   const l0Checks = withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts);
-  const lint: Lint = { rows: (script) => runL0(script, undefined, l0Checks, undefined, spine), ...(facts ? { facts } : {}) };
-  const repair = await repairScript(call, prompt, plan, draft.script, lint);
+  const lint: Lint = { rows: (script) => runL0(script, undefined, l0Checks, undefined, spine), spine, ...(facts ? { facts } : {}) };
+  const stamped = stampLedgerTerms(draft.script, spine);
+  const repair = await repairScript(call, prompt, plan, stamped, lint);
   const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
   const stripped = repair?.stripped ?? draft.stripped ?? [];
-  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(stripped), ...(repair ? [repair.check] : [])];
-  const script = repair?.script ?? draft.script;
+  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(stripped), ...stampCheck(repair?.stamps ?? stamped.stamps), ...(repair ? [repair.check] : [])];
+  const script = repair?.script ?? stamped.script;
   const companion = companionOutputs(input, script, spine);
   return { outputs: { draft: putJson(input, script, "script"), ...companion.outputs }, usage, retries, checks, notes: companion.notes };
 }
