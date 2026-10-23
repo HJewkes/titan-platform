@@ -772,7 +772,7 @@ Key exports:
 - `manifest`: `arStepId`
 - `handlers`: `arStepHandlers`
 - `snapshot`: `cadence`, `CadenceSchema`, `snapshotLog`, `SnapshotSettingsSchema`, `SyncGateAnswerSchema`
-- +145 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
+- +148 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
 <a id="cap-code-graph"></a>
 
@@ -1208,7 +1208,7 @@ Key exports:
 - `cli`: `runCli`, `defaultIndexPath`, `formatHit`, `formatStats`
 - `header`: `parseHeader`, `splitTitle`
 - `index-corpus`: `chapterOwnerRef`, `indexCorpus`, `listChapters`, `migrateIndex`, `openSpans`, `readSpanText`
-- +88 more in `products/corpus-query/src/index.ts`
+- +106 more in `products/corpus-query/src/index.ts`
 
 <a id="cap-evals"></a>
 

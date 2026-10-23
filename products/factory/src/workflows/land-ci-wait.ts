@@ -6,6 +6,7 @@ import { deadline, type Deadline, type DeadlineTiming } from "./deadline.js";
 import type { LandDeps, Timing } from "./land.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { noRunVerdict, type NoRunWatch } from "../shepherd/ci-norun.js";
+import { orphanVerdict, orphanWatch } from "./land-orphan.js";
 
 /** Writes go through the port, which re-reads the PR first; the snapshot is dropped once a write is through, so the next read sees it. */
 export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, write: Promise<T>): Promise<T> {
@@ -51,12 +52,13 @@ export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing &
   let last = "no read yet";
   const read = observedReadCi(port, reads, readOptions(deps, input, timing, firstReads));
   const noRun: NoRunWatch = {};
+  const orphans = orphanWatch();
   for (;;) {
     try {
       const snapshot = await read(input);
       const readAt = timing.now();
       if (snapshot.verdict === "red" && (await rerunWithinDeadline(deps, input, snapshot, { timing, signal, flaky, clock }))) continue;
-      const done = snapshot.verdict === "pending" ? await noRunVerdict(port, input, snapshot, readAt, noRun) : snapshot;
+      const done = snapshot.verdict === "pending" ? ((await noRunVerdict(port, input, snapshot, readAt, noRun)) ?? (await orphanVerdict(port, input, snapshot, readAt, orphans))) : snapshot;
       if (done) return { ...done, readAt };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
       backlog = snapshot.backlog === true;

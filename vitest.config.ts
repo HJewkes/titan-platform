@@ -42,9 +42,8 @@ export default defineConfig({
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
-    // One key: a second `setupFiles` would silently replace this list. In-test waits get their own budget below
-    // testTimeout (scripts/wait-budget.mjs says why); the factory setup keeps its tests off the real bot token.
-    setupFiles: ["scripts/vitest-wait-budget.mjs", "products/factory/src/test-support/vitest-setup.ts"],
+    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
+    setupFiles: ["products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],

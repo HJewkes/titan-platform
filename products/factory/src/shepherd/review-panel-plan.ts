@@ -84,17 +84,35 @@ function withHoldMember(policy: PanelPolicy, member: HoldMember, fullPanel: bool
   return { ...policy, panel: [HOLD_RULE, ...rest], shapeRoles: { ...policy.shapeRoles, adversary: { g10: member.profile, standard: member.profile } } };
 }
 
-/** How the head is planned beyond its files: a held head's adversary member, and whether the rest of the panel table applies. */
+const TESTS_RULE: ShapeRule = { shape: "tests", classes: ["g10", "standard"], touches: [], blocking: true, always: true };
+
+/**
+ * A test-only head's proof is vacuous by construction, so a fresh tests member must fill the seat aggregate would otherwise
+ * leave missing (TP-4058). It goes right after a hold's adversary, so the member cap never drops it, and it blocks.
+ */
+function withTestsMember(policy: PanelPolicy, afterHold: boolean): PanelPolicy {
+  const panel = policy.panel ?? [];
+  const lead = afterHold ? panel.slice(0, 1) : [];
+  const rest = panel.slice(lead.length).filter((rule) => rule.shape !== "tests");
+  return { ...policy, panel: [...lead, TESTS_RULE, ...rest] };
+}
+
+/**
+ * How the head is planned beyond its files: a held head's adversary member, whether the rest of the panel table applies, and
+ * whether its fix-proof is a test-only head's vacuous one that a tests member must answer.
+ */
 interface PlanOptions {
   holdMember?: HoldMember;
   fullPanel?: boolean;
+  testsMember?: boolean;
 }
 
 /** The class, touches and panel plan for one head. Pure. */
 export function intentPlan({ facts, sizeUnread }: PanelFacts, policy: PanelPolicy, headroom: Headroom = OPEN_HEADROOM, rules: ClassRules = DEFAULT_CLASS_RULES, options: PlanOptions = {}): IntentPlan {
   const found = classifyPr(facts, rules);
   const cls = sizeUnread ? stricter(found) : found;
-  const planned = options.holdMember ? withHoldMember(policy, options.holdMember, options.fullPanel ?? true) : policy;
+  const held = options.holdMember ? withHoldMember(policy, options.holdMember, options.fullPanel ?? true) : policy;
+  const planned = options.testsMember ? withTestsMember(held, options.holdMember !== undefined) : held;
   return { class: cls.class, touches: cls.touches, plan: planPanel(cls, planned, headroom) };
 }
 

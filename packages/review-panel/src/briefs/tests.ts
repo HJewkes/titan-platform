@@ -95,6 +95,14 @@ export function workflowCiLines(head: string, proof: WorkflowCiProof | undefined
   ];
 }
 
+const TEST_ONLY_MEMBER =
+  "This head changes only tests, so none can fail on the base. For each changed test, name the code change it covers and say whether the test would fail without that change, as when that code is reverted or broken. Say FIX_FIRST when any changed test would still pass without it.";
+
+/** The tests member's question for a test-only head, which Shepherd plans it to answer in place of the proof (TP-4058). */
+export function testOnlyMemberLines(why: FixProofUnverified | undefined): string[] {
+  return why === "no-repro-test-only" ? [TEST_ONLY_MEMBER] : [];
+}
+
 /** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
 export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
   const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];

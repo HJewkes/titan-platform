@@ -245,6 +245,11 @@ export const SyncResultSchema = z.object({
   treeChanged: z.boolean().optional(),
 });
 export type SyncResult = z.infer<typeof SyncResultSchema>;
+/** As with a snapshot, `failed` is the recorded answer of a sync port that threw, so a replay never syncs again. */
+export const SyncStepSchema = z.union([SyncResultSchema, z.object({ failed: z.string() })]);
+
+/** A sync that finds the ratchet moved under it needs a person: a later round's retry would only find it moved again. */
+export const RATCHET_MOVED = "[ratchet-moved]";
 
 export const InboxSchema = z.object({ ideas: z.array(ProposalSchema), cursor: z.number().int().nonnegative() });
 

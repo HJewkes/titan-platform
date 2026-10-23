@@ -19,8 +19,10 @@ This package is the pure core of that gate. It adds three primitives:
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
   deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
-  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
-  true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
+  (`mutations`) and every path that is not test material (`source`). Given `headFiles`, the
+  paths at head beside those specs, it also plans each spec's one sibling test unless the PR
+  deletes it, so a diff that changes only a spec runs the test its mutants are judged on.
+  `testOnlyOf(plan)` is true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
   also count as `source`. `testOnlyReading(plan)` names why a diff is not test-only: `source`,
   `deletes-tests` or `no-tests`.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a

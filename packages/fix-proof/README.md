@@ -4,9 +4,11 @@ Decides whether a fix pull request's new tests prove the fix: they must fail on 
 base with the non-test changes removed and pass at head. Pure functions plan and classify;
 the `fix-proof` bin does the git and vitest work.
 
-- `planFixProof({ nameStatus, baseConfig, headConfig })`: tests to run, carried support files,
+- `planFixProof({ nameStatus, baseConfig, headConfig, headFiles })`: tests to run, carried support files,
   deleted tests and overlay removals, with globs from the base config only. It also lists
-  mutation specs (`mutations`) and every non-test path (`source`); `testOnlyOf(plan)` is true
+  mutation specs (`mutations`) and every non-test path (`source`). A spec whose one sibling test
+  is in `headFiles` (paths at head beside the specs) and not deleted plans that test, so a
+  spec-only diff still has a test for its mutants; `testOnlyOf(plan)` is true
   when `source` is empty. Paths matching the config's `runtime` globs (fixtures a package
   publishes or production code reads) stay carried but also count as `source`.
   `testOnlyReading(plan)` refuses test-only with a reason: `source`, then `deletes-tests` for any

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FakeHttpError, fakeGitHub, fakeSha } from "./fake.js";
+import { FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
 import { GitHubConflictError, githubPort } from "./port.js";
 
 const REPO = "octo/demo";
@@ -189,6 +189,28 @@ describe("check-then-act port over the fake", () => {
 
     expect([first, again]).toEqual([{ done: true }, { done: false, skipped: "in-progress" }]);
     expect(fake.effects.rerunFailedJobs).toBe(1);
+  });
+
+  it("reads a run with a job still open as that job's status", async () => {
+    const fake = fakeGitHub();
+    fake.setRuns(H1, [{ ...successRun("validate", 42), status: "in_progress", conclusion: null, workflowRunId: 55 }, successRun("lint", 43)]);
+    const port = githubPort(fake.wire);
+
+    expect([await port.workflowRunStatus(REPO, 55), await port.workflowRunStatus(REPO, 1043)]).toEqual(["in_progress", "completed"]);
+  });
+
+  it("rerunJob reruns one job of a completed run once, and skips while that run is queued again", async () => {
+    const fake = fakeGitHub();
+    fake.setRuns(H1, [{ ...successRun("validate", 42), status: "in_progress", conclusion: null, workflowRunId: 55 }]);
+    fake.runStatuses.set(55, "completed");
+    const port = githubPort(fake.wire);
+
+    const first = await port.rerunJob(REPO, 55, 42);
+    const again = await port.rerunJob(REPO, 55, 42);
+
+    expect([first, again]).toEqual([{ done: true }, { done: false, skipped: "in-progress" }]);
+    expect(fake.jobReruns).toEqual([42]);
+    expect(await port.workflowRunStatus(REPO, 55)).toBe("queued");
   });
 });
 

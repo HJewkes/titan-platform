@@ -323,6 +323,16 @@ describe("gh api adapter", () => {
     expect(gh.calls[1]?.args).toEqual(["api", "-i", "-X", "GET", "repositories/9/commits/x/check-runs?per_page=100&page=2"]);
   });
 
+  it("asks GitHub for every attempt only when the read is for attempt history", async () => {
+    const gh = scriptedGh({ "check-runs": included(200, {}, { check_runs: [] }) });
+    const wire = ghCliWire(gh.exec);
+
+    await wire.listCheckRuns(REPO, H1);
+    await wire.listCheckRuns(REPO, H1, "all");
+
+    expect(gh.calls.map((call) => call.args.includes("filter=all"))).toEqual([false, true]);
+  });
+
   it("reads a missing ref as null and sends file content base64-encoded on stdin", async () => {
     const notFound = { code: 1, stdout: '{"message":"Not Found","status":"404"}', stderr: "gh: Not Found (HTTP 404)\n" };
     const gh = scriptedGh({ "git/ref/heads/": notFound, "contents/": JSON.stringify({ content: { sha: "blob2" } }) });
@@ -375,6 +385,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/git\/commits$/, { sha: H2 }],
   [/actions\/runs\/\d+$/, { status: "completed" }],
   [/rerun-failed-jobs$/, undefined],
+  [/actions\/jobs\/\d+\/rerun$/, undefined],
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
   [/actions\/jobs\/\d+$/, { id: 42, steps: [{ name: "Set up job", conclusion: "success", number: 1 }, { name: "Run pnpm test", conclusion: "failure", number: 2 }] }],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
@@ -419,6 +430,7 @@ describe("gh api adapter, REST only", () => {
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       branchProtected: () => port.branchProtected(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
+      checkRunAttempts: () => port.checkRunAttempts(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
@@ -433,6 +445,8 @@ describe("gh api adapter, REST only", () => {
       merge: () => port.merge(REPO, 7, H1, "squash"),
       mergeIntoBranch: () => port.mergeIntoBranch(REPO, { branch: "topic", head: H1 }),
       rerunFailed: () => port.rerunFailed(REPO, 55),
+      workflowRunStatus: () => port.workflowRunStatus(REPO, 55),
+      rerunJob: () => port.rerunJob(REPO, 55, 42),
       listPrFiles: () => port.listPrFiles(REPO, 7),
       listPrCommits: () => port.listPrCommits(REPO, 7),
       getSquashSource: () => port.getSquashSource(REPO, 7),

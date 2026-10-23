@@ -13,6 +13,12 @@ export function commitUrl(repo: string | undefined, sha: string): string | undef
   return repo !== undefined && REPO.test(repo) && SHA.test(sha) ? `https://github.com/${repo}/commit/${sha}` : undefined;
 }
 
+/** A snapshot PR's own URL when the factory recorded one, else one built from the target's repository like `commitUrl`. */
+export function pullUrl(repo: string | undefined, pr: number, url?: string): string | undefined {
+  if (url?.startsWith("https://") === true) return url;
+  return repo !== undefined && REPO.test(repo) ? `https://github.com/${repo}/pull/${pr}` : undefined;
+}
+
 /** The round's ratchet move, when this outcome is the winner that made it. */
 export function keptMove(round: ArRound, outcome: ArOutcome | null): ArRound["ratchet"] {
   const { ratchet } = round;
@@ -43,7 +49,12 @@ const REASON_LABELS: Readonly<Record<string, string>> = {
   "clearly-worse": "L2 run below −2σ",
   "no-micro-signal": "micro rung missed predicted direction",
   superseded: "another winner moved the ratchet first; requeued",
+  conflict: "the merge onto the new head conflicted",
+  "no-integrate": "the host cannot merge onto the new head",
 };
+
+/** C-256 S5a: a later winner rejected when measured again on the head the round's first winner left. */
+const REEVAL_PREFIX = "reeval:";
 
 /** Codes that carry a name after their prefix, so the label names it too. */
 const PREFIXED_LABELS: readonly (readonly [string, string])[] = [
@@ -55,8 +66,17 @@ const PREFIXED_LABELS: readonly (readonly [string, string])[] = [
 
 /** An unknown code has no label, so the page shows the bare code rather than guess at one. */
 export function reasonLabel(code: string): string | undefined {
+  if (code.startsWith(REEVAL_PREFIX)) {
+    const inner = code.slice(REEVAL_PREFIX.length);
+    return `re-evaluated on the new head: ${reasonLabel(inner) ?? inner}`;
+  }
   const exact = REASON_LABELS[code];
   if (exact !== undefined) return exact;
   const prefixed = PREFIXED_LABELS.find(([prefix]) => code.startsWith(prefix));
   return prefixed ? `${prefixed[1]}: ${code.slice(prefixed[0].length)}` : undefined;
+}
+
+export function reasonText(code: string): string {
+  const label = reasonLabel(code);
+  return label === undefined ? code : `${code}: ${label}`;
 }
