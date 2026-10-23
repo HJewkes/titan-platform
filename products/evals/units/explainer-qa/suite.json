@@ -1,0 +1,62 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-qa",
+    "version": "1.0.0"
+  },
+  "id": "explainer-qa-checks",
+  "version": "1.0.0",
+  "cases": [
+    "187ae159e76727ab4eb366974633a11e49e09b365a93072ce8cd3cfee29aea1e",
+    "70e633159936be7a860397a727f0c671b938df88cc66a2678ef547be8b5b95f5",
+    "99454f2eec8e29ae9eeb3d44bf9e3f94d8de8bad923710d600b13cb7e0ab09b7",
+    "b10de877f16c919768e275124dc6b0766be4a96720586f19faa5e4904e0b1a24",
+    "b36044d2b93867d3c272e79053f44d4141635cc96d63232bb51ef7bb3e2996a7",
+    "bea26221b2cfd1ece8dc983853c8ab523144ef87dfab4f004e34a4ff920c8c11",
+    "da5d3397adee816c1ec7b9ac654591e49ffacb955e6da076cc9f6932282b3f36",
+    "e38c7576a065982f77151e1be8c88c65abbbfffdb76a962106aa47f30d110a3c"
+  ],
+  "checks": [
+    {
+      "id": "qa",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "qa/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "stage",
+          "qa",
+          "--json"
+        ],
+        "in": "input.inputs",
+        "verdict": "checks[name=qa]",
+        "gate": true
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "qa/",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "qa/",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "qa/",
+      "metric": "retries"
+    }
+  ],
+  "trials": 1
+}

@@ -1,11 +1,13 @@
 import { codeRecordRoute, codeStep, type StepRoute, type StepUsage, type WorkflowFn } from "@titan-design/workflow";
-import type { L0Check } from "../eval-l0.js";
+import { z } from "zod";
+import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
 import { isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
 import { runPaths, writeJson } from "./run-dir.js";
-import { BODY_STEP } from "./stage-cache.js";
+import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
+import { failedGates, runStageChecks } from "./stage-checks.js";
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 
 interface BodyDeps {
@@ -15,16 +17,17 @@ interface BodyDeps {
   exec: BridgeExec;
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
-  /** The L0 checks the eval stage runs; all of them by default. */
+  /** The L0 checks the script, rewrite and eval stages run; all of them by default. */
   evalChecks?: readonly L0Check[];
   signal?: AbortSignal;
   now?: () => Date;
 }
 
-/** One `explainer.<stage>` run: a single code step that runs the stage body on the spec it was started with. */
+/** One `explainer.<stage>` run: the stage body on the spec it was started with, then the stage's checks over its artifacts. */
 export const stageWorkflow = (): WorkflowFn => async (ctx) => {
   const spec = StageSpecSchema.parse(JSON.parse(ctx.param("spec") ?? "{}"));
-  await codeStep(ctx, `${BODY_STEP}:${spec.stage}`, spec, StageRecordSchema);
+  const body = await codeStep(ctx, `${BODY_STEP}:${spec.stage}`, spec, StageRecordSchema);
+  await codeStep(ctx, `${CHECKS_STEP}:${spec.stage}`, { spec, body }, StageRecordSchema);
 };
 
 async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -65,8 +68,8 @@ export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, ou
 
 /** The record of a stage that threw: its timing, and its spend when the body had spent before failing. */
 export function failedRecord(stage: StageName, startedAt: Date, endedAt: Date, error: unknown): StageRecord {
-  const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries } : {};
-  return stageRecord(stage, startedAt, endedAt, { outputs: {}, ...spent, checks: [], notes: [error instanceof Error ? error.message : String(error)] });
+  const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries, checks: [...error.checks] } : {};
+  return stageRecord(stage, startedAt, endedAt, { outputs: {}, checks: [], ...spent, notes: [error instanceof Error ? error.message : String(error)] });
 }
 
 const stepUsage = (usage: StageUsage): StepUsage => ({
@@ -89,5 +92,29 @@ export function bodyRoute(deps: BodyDeps): StepRoute {
       writeJson(runPaths(deps.dataDir, step.runId).failed(spec.stage), failedRecord(spec.stage, startedAt, now(), error));
       throw error;
     }
+  });
+}
+
+const ChecksInputSchema = z.object({ spec: StageSpecSchema, body: StageRecordSchema });
+
+/**
+ * The route for every child's `checks:<stage>` step: it adds the stage's checks to the body's record. Any failed
+ * gate, the body's or its own, fails the stage and leaves the record, verdicts included, in `failed/<stage>.json`.
+ */
+export function checksRoute(deps: Pick<BodyDeps, "dataDir" | "store" | "evalChecks" | "now">): StepRoute {
+  const now = deps.now ?? (() => new Date());
+  return codeRecordRoute(CHECKS_STEP, async (raw: z.input<typeof ChecksInputSchema>, step) => {
+    const { spec, body } = ChecksInputSchema.parse(raw);
+    const run = runStageChecks(spec.stage, { artifacts: { ...spec.inputs, ...body.outputs }, store: deps.store, l0Checks: deps.evalChecks ?? L0_CHECKS });
+    const endedAt = now();
+    const record: StageRecord = {
+      ...body, endedAt: endedAt.toISOString(), wallMs: endedAt.getTime() - Date.parse(body.startedAt),
+      checks: [...body.checks, ...run.checks], notes: [...body.notes, ...run.notes],
+    };
+    const red = failedGates(record.checks);
+    if (red.length === 0) return { result: record };
+    const message = `${spec.stage}: gate ${red.map((check) => `${check.name} failed (${check.detail ?? "no detail"})`).join("; ")}`;
+    writeJson(runPaths(deps.dataDir, step.runId).failed(spec.stage), { ...record, notes: [...record.notes, message] });
+    throw new Error(message);
   });
 }

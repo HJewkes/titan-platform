@@ -24,7 +24,7 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, "ran"]));
-    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh"]);
+    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
@@ -40,7 +40,7 @@ describe("explainer run", () => {
     expect(row(result, "rewrite").outputs.script).not.toBe(row(result, "script").outputs.draft);
   });
 
-  it("stops at the eval stage when an error-severity L0 check fails, before any bridged command", async () => {
+  it("stops at the script stage's l0 gate when an error-severity L0 check fails, before the rewrite spends", async () => {
     fx = fixture();
     const bridge = fakeBridge();
     const model = fakeScriptModel();
@@ -49,11 +49,10 @@ describe("explainer run", () => {
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
-    expect(row(result, "script").checks).toBe("1 pass, 1 fail");
-    expect(result.error).toContain("eval: l0");
+    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "3 pass, 1 gate fail, 1 reported fail" });
+    expect(result.error).toContain("script: gate l0 failed");
     expect(bridge.calls).toEqual([]);
-    expect(row(result, "eval").status).toBe("failed");
-    expect(row(result, "tts").status).toBe("not run");
+    expect(row(result, "rewrite").status).toBe("not run");
   });
 
   it("retries the script call once with the schema issues, and counts both calls", async () => {
@@ -81,7 +80,18 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
-    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "2 pass, 0 fail" });
+    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "5 pass, 0 gate fail, 0 reported fail" });
+  });
+
+  // Mutation: keeping the reply's structure records bluf, which the spine was never planned under.
+  it("records the planned design-journey structure on the draft, whatever the reply names", async () => {
+    fx = fixture();
+    const model = fakeScriptModel({ ...choppy(), structure: "bluf" });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
+    expect(draft.structure).toBe("design-journey");
   });
 
   it("makes no repair call for a draft that passes L0", async () => {
@@ -117,7 +127,7 @@ describe("the cold rubric on every run", () => {
     expect(host.rubric.calls).toHaveLength(1);
     expect(evalRow.outputs["cold-rubric"]).toMatch(/^[0-9a-f]{64}$/);
     expect(evalRow.notes[0]).toMatch(/^cold rubric \(reported only\): J8 \d, J9 \d, J10 \d, J11 \d, J12 \d; canary held$/);
-    expect(evalRow.checks).toBe("2 pass, 0 fail");
+    expect(evalRow.checks).toBe("2 pass, 0 gate fail, 0 reported fail");
   });
 
   // Mutation: adding the rubric to the eval stage's checks, failing below 3 or on a missed canary, fails this test.
@@ -133,9 +143,9 @@ describe("the cold rubric on every run", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { rubric }));
 
     expect(result.status, result.error).toBe("completed");
-    expect(row(result, "eval").checks).toBe("2 pass, 0 fail");
+    expect(row(result, "eval").checks).toBe("2 pass, 0 gate fail, 0 reported fail");
     expect(row(result, "eval").notes[0]).toMatch(/^cold rubric \(reported only\)/);
-    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh"]);
+    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
   });
 });
 
@@ -220,9 +230,9 @@ describe("bridged stages", () => {
     const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), bridge));
 
     expect(failed.error).toContain("bridge qa: command 1 (qa.ts) exited 1: held errors at b1");
-    expect(row(failed, "qa").status).toBe("failed");
+    expect(row(failed, "qa")).toMatchObject({ status: "failed", checks: "0 pass, 1 gate fail, 0 reported fail" });
     expect(resumed.status, resumed.error).toBe("completed");
-    expect(bridge.calls).toEqual(["qa.ts", "sheets.sh"]);
+    expect(bridge.calls).toEqual(["qa.ts", "sheets.sh", "variety.mjs"]);
   });
 
   it("writes each command's output to the run's log directory", async () => {
@@ -235,6 +245,54 @@ describe("bridged stages", () => {
   });
 });
 
+describe("checks as stage steps", () => {
+  /** h1 shows a V6 card on "courier", a word h1 speaks in the draft and in its rewrite. */
+  const cued = () => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", cues: [{ action: "V6", target: "card", atCue: "courier" }] } } });
+
+  it("fails the tts stage at its cue gate when the voice drops a cue word, before render", async () => {
+    fx = fixture();
+    const bridge = fakeBridge({ dropWord: "courier" });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), bridge));
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("tts: gate cue-resolution failed (0 of 1 cues resolve; unresolved: h1:courier)");
+    expect(row(result, "tts")).toMatchObject({ status: "failed", checks: "0 pass, 1 gate fail, 0 reported fail" });
+    expect(row(result, "render").status).toBe("not run");
+    expect(bridge.calls).toEqual(["tts.mjs"]);
+  });
+
+  it("passes the cue gate when every cue word is voiced", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(row(result, "tts").checks).toBe("1 pass, 0 gate fail, 0 reported fail");
+  });
+
+  it("records a failed reported-only bridge check and runs on to the theater", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge({ varietyFails: true })));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(row(result, "sheets").checks).toBe("0 pass, 0 gate fail, 1 reported fail");
+    expect(readFileSync(result.reportPath, "utf8")).toContain("| sheets | variety | reported | **fail** | variety WARN: 3 beats in a row share a framing |");
+  });
+
+  it("lists every stage's verdicts with their role in the report", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+
+    const md = readFileSync(result.reportPath, "utf8");
+    expect(md).toContain("| script | l0 | gate | pass |");
+    expect(md).toContain("| rewrite | rewrite-rows | reported |");
+    expect(md).toContain("| tts | cue-resolution | gate | pass | 0 of 0 cues resolve |");
+  });
+});
+
 describe("run report", () => {
   it("gives each stage its wall time, usd, tokens and shares, and totals that add up", async () => {
     fx = fixture();
@@ -244,8 +302,9 @@ describe("run report", () => {
 
     const { report } = result;
     const rewrite = row(result, "rewrite");
-    expect(report.rows.every((r) => r.wallMs === 1000)).toBe(true);
-    expect(report.totals.wallMs).toBe(8000);
+    // One clock read for the body's start and one each for its end and the checks step's end; export has no checks step.
+    expect(report.rows.map((r) => r.wallMs)).toEqual([...Array(7).fill(2000), 1000]);
+    expect(report.totals.wallMs).toBe(15000);
     expect(row(result, "script")).toMatchObject({ usd: 0.05, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, calls: 1 });
     expect(rewrite.usd).toBeGreaterThan(0);
     expect(row(result, "eval")).toMatchObject({ usd: 0.01, calls: 1 });

@@ -70,3 +70,23 @@ it takes `costUsd` from the run's recorded cost, since the report holds none.
 
 `samples/` holds a perfect report with reworded titles, a partial report and an empty report.
 The tests score all three without running a model.
+
+`units/explainer-*` are the explainer video units (TP-4011): `explainer-video` is the parent, and its `children` are
+one unit per `explainer.<stage>` child workflow (`script`, `rewrite`, `eval`, `tts`, `render`, `qa`, `sheets`), with
+the stage name as the prefix. Each unit has a `champion` variant, its cases and a suite.
+
+- **Cases** are frozen upstream artifacts named by their explainer artifact-store sha (the sha `explainer stage --in`
+  takes), never by text: the eight most recent renders as `recent-01` to `recent-08`, and the in-repo spike fixtures
+  `fixture-v4` and `fixture-pipeline-explainer`, which also name their repo path and commit. The renders' scripts,
+  facts, words, audio and MP4s stay outside this public repo; a case can only be run where the artifact store holds
+  those shas. The split is a seeded hash of the video id (seed `explainer`), so one video sits on the same side in
+  every stage. The owner-named hold-out, `fixture-pipeline-explainer`, is always `holdout`.
+- **Suites** hold the stage's deterministic checks from the explainer workflow plan's §5.1 as `command` checks with
+  `scope` set to the stage prefix: a gate check is `required` and `critical`, the rest `reported`. Judges are
+  `reported` `command` checks until the owner's labelling round calibrates them. `cost_usd`, `wall_ms` and `retries`
+  are reported metrics with no cap.
+- **Scorecards are not built.** Running these suites over cases and aggregating a scorecard waits on TP-690 (the check
+  engine). The seam is the stage record: `explainer stage <name> --json` prints `checks` (`name`, `gate`, `pass`,
+  `detail`), and `explainer run report <runId> --json` carries each stage's `checkRows`. The same checks already run
+  as steps inside every stage, so a production run report shows them today.
+

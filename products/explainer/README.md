@@ -54,7 +54,10 @@ focus boxes that keeps them above the 83 % caption line.
 
 `script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
 (`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema
-unchanged. Every cue must be a word the beat speaks. `deriveEvalView` computes the view the
+unchanged. Every cue must be a word the beat speaks. The optional profile fields (`visual.layer`,
+`framing`, `anchors`, `scene`, a cue's `untilCue`, the script's `structure` and `signature_layer`)
+leave a legacy script parsing; `script-load.ts` (`parseScript`) also rejects a `structure` the
+registry lacks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
 
@@ -169,7 +172,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 |---|---|---|
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
-| `eval` | in-process L0 (with the spine lints) and pace; an error-severity failure stops the run | script, spine → l0 |
+| `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
 | `tts`, `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `export` | hard links the declared artifacts into the theater folder; the run ends here | mp4 and sidecars → the same shas |
 
@@ -177,11 +180,37 @@ The bridge is temporary: it runs today's template commands, Python included, fro
 so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
 (`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
 the commands run), `outputs` (name → path, `tree: true` for a directory) and `commands` (`argv`, optional `cwd`,
-`env`, `timeoutS`, and `check`, which records the command's verdict), plus `vars`, the defaults for `{var.<name>}`
+`env`, `timeoutS`, `check`, which records the command's verdict, and `gate`, `true` by default; a `check` command
+with `gate: false` is reported only, so its non-zero exit records a failed verdict and the commands after it still
+run), plus `vars`, the defaults for `{var.<name>}`
 tokens a stage variant may set. `{workdir}`, `{in.<name>}` and `{out.<name>}` expand to absolute paths. `theater`
 names the folder, the file stem and the suffix per artifact for `export`. A bridged stage's `inputs` are also its
 cache key: declare every artifact its commands read (the MP4 for `qa` and `sheets`), or a new render will hit an old
 QA entry.
+
+**Checks as stage steps.** Each `explainer.<stage>` child run is two code steps: the body, then `checks:<stage>`,
+which runs the stage's deterministic checks from the workflow plan's §5.1 over its input and output artifacts. Every
+verdict carries `gate`: a failed gate check fails the stage (and the run) and its record, verdicts included, lands in
+`failed/<stage>.json`; a reported check only shows in the report. A check whose artifact the stage did not produce is
+skipped with a note.
+
+| Stage | Gate | Reported |
+|---|---|---|
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair` |
+| `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
+| `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
+| `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced | — |
+| `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
+
+The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift, `unknownWords: "fail"`,
+speech-vet and the rate band (with the TTS port, TP-2615 and TP-3004), duration agreement and two-run determinism
+(TP-2992), the QA sweep gates (TP-2610, TP-2669, TP-2998), and the variety lints (PP-9). Each becomes a row of
+`STAGE_CHECKS` in `src/workflow/stage-checks.ts`, or a `check` command while its stage is bridged. The judges stay
+reported only until the owner labels about 20 items to calibrate them (owner answer Q6 A).
+
+The checks are also the `products/evals/units/explainer-*` suites. Scoring them over cases into a scorecard waits on
+TP-690; until then `explainer stage <name> --json` prints a stage's record with its verdicts, even when a gate failed
+(exit 1), which is what a check engine reads.
 
 **Stage cache.** A stage's key is `sha(stage, definition version, config, the input shas it reads, sample)`. The
 config is the run's settings for that stage (script model; judge and rounds; for a bridged stage its whole
@@ -200,7 +229,7 @@ the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the
 
 `explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--json] [--data-dir <dir>]` runs one
 stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its child run,
-key, spend and output shas. Exit 0 when it finished, 1 when it failed, 2 on usage.
+key, spend, output shas and check verdicts. Exit 0 when it finished, 1 when it failed, 2 on usage.
 
 Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
 checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
@@ -210,8 +239,8 @@ runaway backstop: once model spend reaches it, the run stops before the next sta
 stage, and fails. `explainer run resume <runId> [--budget-usd <usd>]` drives a crashed run on, or starts a run linked
 to a stopped or failed one from the stage it did not finish. `explainer run report <runId> [--json]` writes
 `run-report.md` and `run-report.json` into the run directory: per stage the wall time and its share, usd and its share,
-tokens, calls, retries, whether it was reused (a cache hit), check verdicts and output shas, with each bridged stage
-marked, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
+tokens, calls, retries, whether it was reused (a cache hit), check counts (pass, gate fail, reported fail) and
+output shas, with each bridged stage marked, a "Checks" table with every verdict, its role and its detail, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
 stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
 `--facts-from gatherDaily --type daily-overview [--day <YYYY-MM-DD>] [--repo <owner/name>]... [--transcripts <dir>]...
 [--initiative <slug>]` replaces `--facts`: the adapter writes `digest.json` and `facts.md` under
@@ -252,12 +281,14 @@ that shows a new item the ledger lacks, or first shows an item whose defining be
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
 
-`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 (FB1)
+`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 runs
+only for a script whose `structure` is `design-journey` or that names none, as a legacy script does. Q-E15 (FB1)
 fails a chapter whose §8 row cites a §4 architecture row before the first chapter that cites a §3
 journey row, and a journey step whose "why" is empty; chapters are ordered by position in §8, never by
 id. Q-E18 (FB6) fails an invariant (a §3 invariant column or `video.invariants`) that no §4 row states a
 mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script> --spine <spine.md>`
-reads the spine for all of these; without `--spine` a rule claiming Q-E15 or Q-E18 is not a ghost.
+reads the spine for all of these; without `--spine`, or for Q-E15 under another structure, a rule claiming the
+skipped check is not a ghost.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set

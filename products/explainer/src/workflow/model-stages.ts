@@ -5,10 +5,11 @@ import { L0_CHECKS, l0HardPass, failedChecks, runL0, type L0Check, type L0Result
 import { readColdRubric, rubricBeatsFromPace, rubricNote, runColdRubric } from "../eval-cold-rubric.js";
 import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
 import { canonicalSha } from "../eval-store.js";
-import { guidePlan } from "../guide-plan.js";
+import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
+import { parseScript } from "../script-load.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine } from "../spine-schema.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
@@ -23,7 +24,7 @@ export const SCRIPT_CALL_USD = 4;
 
 export interface ModelStageInput {
   artifacts: Readonly<Record<string, string>>;
-  store: ArtifactStore;
+  store: Pick<ArtifactStore, "readText" | "putText">;
   from: Provenance;
   remainingUsd: number;
 }
@@ -34,7 +35,7 @@ const need = (input: ModelStageInput, name: string): string => {
   return sha;
 };
 
-const readScript = (input: ModelStageInput, name: string): ScriptV1 => ScriptSchema.parse(JSON.parse(input.store.readText(need(input, name))));
+const readScript = (input: ModelStageInput, name: string): ScriptV1 => parseScript(JSON.parse(input.store.readText(need(input, name))));
 const putJson = (input: ModelStageInput, value: unknown, kind: string): string => input.store.putText(`${JSON.stringify(value, null, 2)}\n`, kind, input.from);
 
 export function stageUsage(usage: StepUsage | undefined): StageUsage {
@@ -96,7 +97,8 @@ function checked(outcome: StepRunOutcome): { script?: ScriptV1; error?: string }
     return { error: "the reply holds no JSON object" };
   }
   const parsed = ScriptSchema.safeParse(raw);
-  if (parsed.success) return { script: parsed.data };
+  // The stage planned the spine under this structure, so the script records it whatever the reply says.
+  if (parsed.success) return { script: { ...parsed.data, structure: GUIDE_PLAN_STRUCTURE } };
   return { error: issueText(parsed.error.issues) };
 }
 
@@ -104,7 +106,7 @@ const isSchemaFailure = (outcome: StepRunOutcome): boolean => outcome.ok || outc
 
 /** A stage that failed after spending: the route records the spend before the run fails, so the report still shows it. */
 export class StageFailure extends Error {
-  constructor(message: string, readonly usage: StageUsage, readonly retries = 0) {
+  constructor(message: string, readonly usage: StageUsage, readonly retries = 0, readonly checks: readonly Check[] = []) {
     super(message);
     this.name = "StageFailure";
   }
@@ -175,7 +177,7 @@ async function repairScript(call: Call, prompt: string, draft: ScriptV1, lint: (
     if (repaired && after.length < failing.length) [script, failing] = [repaired, after];
   }
   const detail = `${first} failing error checks before repair, ${failing.length} after`;
-  return { script, usage, check: { name: "l0-repair", pass: failing.length === 0, detail } };
+  return { script, usage, check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
 }
 
 /** One model call from spine and facts to a script/v1 draft, one retry that names schema issues, then the L0 repair rounds. */
@@ -192,7 +194,7 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const spine = parseSpine(spineText);
   const repair = await repairScript(call, prompt, draft.script, (script) => runL0(script, undefined, deps.l0Checks ?? L0_CHECKS, undefined, spine));
   const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
-  const checks: Check[] = [{ name: "script-schema", pass: true }, ...(repair ? [repair.check] : [])];
+  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...(repair ? [repair.check] : [])];
   return { outputs: { draft: putJson(input, repair?.script ?? draft.script, "script") }, usage, retries, checks };
 }
 
@@ -212,11 +214,10 @@ export async function runRewriteStage(input: ModelStageInput, deps: RewriteStage
     outputs: { script: putJson(input, script, "script"), "rewrite-report": putJson(input, report, "rewrite-report") },
     usage,
     retries: failed,
-    checks: [{ name: "rewrite-rows", pass: report.after.every((row) => row.pass), detail: `${report.after.filter((row) => !row.pass).length} target rows red` }],
   };
 }
 
-const verdict = (name: string, rows: readonly L0Result[]) => ({ name, pass: l0HardPass(rows), detail: `${rows.length} checks; failed: ${failedChecks(rows).join(", ") || "none"}` });
+const verdict = (name: string, rows: readonly L0Result[]): Check => ({ name, gate: true, pass: l0HardPass(rows), detail: `${rows.length} checks; failed: ${failedChecks(rows).join(", ") || "none"}` });
 
 export interface EvalStageDeps {
   judge: JudgeConfig;
@@ -239,7 +240,10 @@ async function reportColdRubric(input: ModelStageInput, script: ScriptV1, deps: 
   }
 }
 
-/** L0 with the spine lints, and pace, on the final script. An error-severity failure stops the run here. */
+/**
+ * L0 with the spine lints, and pace, on the final script: gates, checked before the reported-only rubric spends. An
+ * error-severity failure stops the run here.
+ */
 export async function runEvalStage(input: ModelStageInput, deps: EvalStageDeps, l0Checks: readonly L0Check[] = L0_CHECKS): Promise<StageOutcome> {
   const script = readScript(input, "script");
   const spine = parseSpine(input.store.readText(need(input, "spine")));
@@ -247,7 +251,7 @@ export async function runEvalStage(input: ModelStageInput, deps: EvalStageDeps, 
   const pace = paceRows(fromScriptV1(script), script.video.invariants ?? []);
   const checks = [verdict("l0", l0), verdict("pace", pace)];
   const red = checks.filter((check) => !check.pass);
-  if (red.length > 0) throw new Error(`eval: ${red.map((check) => `${check.name} ${check.detail}`).join("; ")}`);
+  if (red.length > 0) throw new StageFailure(`eval: ${red.map((check) => `${check.name} ${check.detail}`).join("; ")}`, NO_USAGE, 0, checks);
   const rubric = await reportColdRubric(input, script, deps);
   return { ...rubric, outputs: { l0: putJson(input, { l0, pace }, "eval-rows"), ...rubric.outputs }, checks };
 }

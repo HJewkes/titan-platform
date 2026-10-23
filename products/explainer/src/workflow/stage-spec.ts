@@ -10,7 +10,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = { script: "x3", rewrite: "x3", eval: "x3", tts: "x3", render: "x3", qa: "x3", sheets: "x3" };
+export const STAGE_VERSIONS: Record<CachedStage, string> = { script: "x4", rewrite: "x4", eval: "x4", tts: "x4", render: "x4", qa: "x4", sheets: "x4" };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
 const MODEL_INPUTS: Record<"script" | "rewrite" | "eval", readonly string[]> = { script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"] };

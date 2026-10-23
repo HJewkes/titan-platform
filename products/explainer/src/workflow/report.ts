@@ -1,6 +1,6 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
-import { isBridgeStage, STAGES, StageRecordSchema, type StageName, type StageRecord, type Stop } from "./records.js";
+import { isBridgeStage, STAGES, StageRecordSchema, type Check, type StageName, type StageRecord, type Stop } from "./records.js";
 
 /** `reused`: before `--from`, taken from the base run; `cached`: a stage-key hit on a finished child run. */
 export type StageStatus = "ran" | "cached" | "reused" | "failed" | "not run";
@@ -19,7 +19,9 @@ export interface ReportRow {
   /** The stage's outputs came from an earlier run instead of being made again. */
   cacheHit: boolean;
   costUnknown: boolean;
+  /** The verdict counts, gate and reported apart, so a reported failure never reads as a stopped stage. */
   checks: string;
+  checkRows: Check[];
   outputs: Record<string, string>;
   reusedFrom?: string;
   childRunId?: string;
@@ -64,10 +66,12 @@ export function stageRecords(run: WorkflowRun): StageRecord[] {
 /** What a run spent itself: reused stages cost nothing here, and a failed stage still counts. */
 export const ownUsd = (records: readonly StageRecord[]): number => records.reduce((sum, record) => sum + record.usage.usd, 0);
 
-const checkText = (record: StageRecord): string => {
-  const failed = record.checks.filter((check) => !check.pass).length;
-  return record.checks.length === 0 ? "—" : `${record.checks.length - failed} pass, ${failed} fail`;
-};
+function checkText(record: StageRecord): string {
+  if (record.checks.length === 0) return "—";
+  const failed = record.checks.filter((check) => !check.pass);
+  const gates = failed.filter((check) => check.gate === true).length;
+  return `${record.checks.length - failed.length} pass, ${gates} gate fail, ${failed.length - gates} reported fail`;
+}
 
 function row(stage: StageName, record: StageRecord | undefined, failed: boolean): ReportRow {
   const status: StageStatus = !record ? "not run" : failed ? "failed" : record.reusedFrom ? "reused" : record.cached ? "cached" : "ran";
@@ -77,7 +81,7 @@ function row(stage: StageName, record: StageRecord | undefined, failed: boolean)
     wallMs: record?.wallMs ?? 0, usd: usage?.usd ?? 0, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0,
     cacheReadTokens: usage?.cacheReadTokens ?? 0, calls: usage?.calls ?? 0, retries: record?.retries ?? 0,
     cacheHit: status === "reused" || status === "cached", costUnknown: usage?.costUnknown === true,
-    checks: record ? checkText(record) : "—", outputs: record?.outputs ?? {},
+    checks: record ? checkText(record) : "—", checkRows: record?.checks ?? [], outputs: record?.outputs ?? {},
     ...(record?.reusedFrom ? { reusedFrom: record.reusedFrom } : {}), ...(record?.childRunId ? { childRunId: record.childRunId } : {}),
     ...(record?.key ? { key: record.key } : {}), notes: record?.notes ?? [],
   };
@@ -165,8 +169,15 @@ function origin(r: ReportRow): string {
   return ` (${r.status === "cached" ? "cache hit on" : "child"} run ${r.childRunId}, key ${r.key?.slice(0, 12) ?? "—"})`;
 }
 
+/** Every check verdict, per stage; a check without `gate` predates the flag and reads as reported. */
+function checkTable(report: RunReport): string[] {
+  const lines = report.rows.flatMap((r) =>
+    r.checkRows.map((c) => `| ${r.stage} | ${c.name} | ${c.gate === true ? "gate" : "reported"} | ${c.pass ? "pass" : "**fail**"} | ${(c.detail ?? "").replaceAll("|", "\\|")} |`));
+  return lines.length === 0 ? ["No checks ran."] : ["| Stage | Check | Role | Verdict | Detail |", "|---|---|---|---|---|", ...lines];
+}
+
 export function renderReport(report: RunReport): string {
-  return [...header(report), "", "## Stages", "", ...table(report), "", "## Stage notes", "", ...notes(report), ""].join("\n");
+  return [...header(report), "", "## Stages", "", ...table(report), "", "## Checks", "", ...checkTable(report), "", "## Stage notes", "", ...notes(report), ""].join("\n");
 }
 
 export interface CompareRow {

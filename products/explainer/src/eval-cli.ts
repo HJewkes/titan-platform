@@ -9,11 +9,12 @@ import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
 import { migrateSpike } from "./migrate.js";
-import { SPINE_CHECK_IDS } from "./lint-spine.js";
+import { skippedSpineChecks } from "./lint-spine.js";
 import { MAX_SENTENCE_WORDS, vettableSentences } from "./lint-voice.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry, unimplementedL0Rules, type RuleRegistry } from "./rules.js";
-import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
+import { parseScript } from "./script-load.js";
+import type { ScriptV1 } from "./script-schema.js";
 import { parseSpine } from "./spine-schema.js";
 import { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVet } from "./speech-vet-gate.js";
 import { localSentenceVet } from "./speech-vet-local.js";
@@ -53,12 +54,13 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 
 /**
  * Check ids a rule claims that no run check emitted, one string per rule and id. The map lints
- * emit nothing without a layout, and the spine lints nothing without a spine, so those ids are not ghosts in such a run.
+ * emit nothing without a layout, and a spine lint nothing without a spine or for a structure it does not cover, so those
+ * ids are not ghosts in such a run.
  */
-function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], skipped: { layout: boolean; spine: boolean }): string[] {
+function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], skipped: { layout: boolean; spine: ReadonlySet<string> }): string[] {
   const emitted = new Set(results.map((result) => result.check_id));
   const claimed = new Map(registry.rules.map((rule) => [rule.id, rule.l0?.status === "implemented" ? rule.l0.checks : (rule.l0?.partial ?? [])]));
-  const known = (id: string): boolean => emitted.has(id) || (skipped.layout && id.startsWith("map:")) || (skipped.spine && SPINE_CHECK_IDS.has(id));
+  const known = (id: string): boolean => emitted.has(id) || (skipped.layout && id.startsWith("map:")) || skipped.spine.has(id);
   return unimplementedL0Rules(registry, new Set([...emitted, ...[...claimed.values()].flat().filter(known)])).flatMap((ruleId) =>
     [...new Set((claimed.get(ruleId) ?? []).filter((id) => !known(id)))].map((id) => `${ruleId}: claimed check id ${id} is never emitted`),
   );
@@ -96,7 +98,7 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   const now = deps.now ?? (() => new Date());
   const started = now();
   const raw = readJson(file);
-  const script = flags.format === "spike" ? migrateSpike(raw) : ScriptSchema.parse(raw);
+  const script = flags.format === "spike" ? migrateSpike(raw) : parseScript(raw);
   const layout = flags.layout ? MapLayoutSchema.parse(readJson(flags.layout)) : undefined;
   const bench = benchLayout(flags.bench);
   const registry = readFileSync(flags.rules ?? DEFAULT_RULES_PATH);
@@ -111,7 +113,7 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
   const pass = l0HardPass(results);
   console.log(JSON.stringify({ script_sha: sha, rules_sha: rules, pass, checks: results.length, failed: failedChecks(results) }));
-  const ghosts = ghostCheckIds(parsed, results, { layout: layout === undefined, spine: spine === undefined });
+  const ghosts = ghostCheckIds(parsed, results, { layout: layout === undefined, spine: skippedSpineChecks(script, spine !== undefined) });
   ghosts.forEach((ghost) => console.error(`warning: ghost L0 check: ${ghost}`));
   return pass && !(flags.failOnGhosts && ghosts.length > 0);
 }

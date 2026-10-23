@@ -13,9 +13,9 @@ import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, vide
 import { CACHED_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
-import { BODY_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
+import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
-import { bodyRoute, stageWorkflow } from "./stage-workflows.js";
+import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
 
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
@@ -23,7 +23,7 @@ export interface RunHost {
   /** Model seams; tests pass fakes, production uses `agentRunner` and the judge harness. */
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
-  /** The L0 checks the eval stage runs; all of them by default. */
+  /** The L0 checks the script, rewrite and eval stages run; all of them by default. */
   evalChecks?: readonly L0Check[];
   /** Runs a bridged command; tests pass a fake. */
   exec?: BridgeExec;
@@ -215,9 +215,10 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}),
   });
-  const routes = plan ? [body, stageRoute({ dataDir: host.dataDir, store, plan, bridge, cache, now })] : [body];
+  const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}) });
+  const routes = plan ? [body, checks, stageRoute({ dataDir: host.dataDir, store, plan, bridge, cache, now })] : [body, checks];
   const runner = routedRunner(routes);
-  for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`]);
+  for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`]);
   if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
   const gates = new SqliteGateStore(db, { migrate: false });
   const runtime = new WorkflowRuntime({ db, gates, runner, leaseMs: host.leaseMs ?? DEFAULT_LEASE_MS, ...(host.onEvent ? { onEvent: host.onEvent } : {}) });
