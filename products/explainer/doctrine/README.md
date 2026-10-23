@@ -12,16 +12,18 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 | `types/<type>.yaml` | One `type-profile/v1` per video type | `loadProfiles` |
 | `audiences/<id>.yaml` | The audience packs a profile allows (`audience-pack/v1`) | `loadProfiles` |
 | `structures/<id>.yaml` | One `narrative-structure/v1` per narrative structure a profile may pick | `loadStructures` |
+| `beats/<type>.yaml` | One `beat-spec/v1` per beat type: the builder's packet, and a ref to its zod slot schema in `src/beat-slots.ts` | `loadBeatSpecs` |
 | `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |
 
 `checkProfiles(loadProfiles(), loadDoctrine().vocabulary)` and
-`checkStructures(loadStructures(), loadDoctrine().vocabulary)` must also return no issues.
+`checkStructures(loadStructures(), loadDoctrine().vocabulary)` and
+`checkBeatSpecs(loadBeatSpecs(), loadDoctrine().vocabulary)` must also return no issues.
 
 ## Adding a type profile
 
 Name the file after its `type`, which must be in `vocabulary.yaml`. Each block's beats come from
-the vocabulary; a beat a profile needs that is missing there waits for the beat-spec registry
-rather than being added alongside the profile. List in `series.mustVary` every `SERIES_BASE`
+the vocabulary; a beat a profile needs that is missing there is added as a beat spec first, in a
+change of its own. The planner guide indexes every beat the blocks allow from its spec. List in `series.mustVary` every `SERIES_BASE`
 field, plus `structure` when the order is `heuristic`. A fixed order lists neither `structure`
 nor `chapter-labels` there. Then run `explainer guide types` and commit the regenerated guides.
 
@@ -39,6 +41,39 @@ change to its section numbers is a `spine/v1` change. A heuristic profile names 
 a macro; its row's `ask` words the question for that type, and the registry's predicate decides.
 A rule that applies only to one structure is a `T` rule naming it in `structures`. Then run
 `explainer guide types` and commit the regenerated guides.
+
+## Adding a beat spec
+
+Add the name to `beats` in `vocabulary.yaml` and name the file after it. Every vocabulary beat has a
+spec, and a builder asking for a beat with none is refused (`beatSpecFor`).
+
+```yaml
+schema: beat-spec/v1
+type: proof
+summary: "The checks that show it holds: failing at base, passing at head."
+role: evidence
+component: { name: ChecklistBeat, maturity: spike }
+slots: proof
+speech: { band: code }
+durationS: [6, 12, 22]
+preset: false
+emphasis: { targets: [checks], treatments: [highlight, scale] }
+recipe: "Show one to six checks with their result at base and at head. Show proof, do not assert it."
+```
+
+- **Slots:** a key of `BEAT_SLOTS` in `src/beat-slots.ts`, the zod schema the builder fills. Two
+  specs may share one, as `arch-map` and `zoom` share `map`. `parseBeatSlots` rejects an unknown beat
+  and any slot the schema rejects.
+- **Component:** the name and maturity from the video components catalogue (`shipped`, `spike`,
+  `doc`); `gap` names none.
+- **Emphasis:** the mapping contract. `targets` are slot lists whose items carry an `id`; a script
+  cue names one of those ids, and an id used twice in one list is rejected. `treatments` are what
+  the template may do to the named element. There is no default treatment: the template picks per
+  cue, so emphasis does not look the same everywhere.
+- **Recipe:** the packet text, 200 words or fewer. `preset: true` marks a template fill that needs
+  no model. Beat rules stay in `craft/` as `B` rules naming the beat; the spec does not list them.
+
+Then run `explainer guide types` and commit the regenerated guides.
 
 ## Adding a craft rule
 

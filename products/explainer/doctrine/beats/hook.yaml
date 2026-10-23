@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: hook
+summary: "The stake or the thing in action, before any context."
+role: open
+component: { name: HookBeat, maturity: spike }
+slots: hook
+speech: { band: story }
+durationS: [4, 8, 15]
+preset: false
+emphasis: { targets: [cards], treatments: [scale, highlight] }
+recipe: "Open on the one image or line that makes the viewer need the rest: a pain, a surprising number or the thing working. Say the stake in the first sentence. Cards are optional; use them only for a short named set, each landing on its word."

@@ -1,5 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { beatSpecFor, loadBeatSpecs } from "./beat-load.js";
+import type { BeatSpec } from "./beat-schema.js";
 import { DEFAULT_DOCTRINE_DIR, loadDoctrine } from "./doctrine-load.js";
 import type { DoctrineRegistry, DoctrineRule } from "./doctrine-schema.js";
 import { sliceForStage } from "./doctrine-slice.js";
@@ -11,6 +13,7 @@ export interface TypeGuideDeps {
   registry?: DoctrineRegistry;
   qRules?: RuleRegistry;
   profiles?: ProfileSet;
+  beats?: ReadonlyMap<string, BeatSpec>;
 }
 
 const minutes = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -64,6 +67,18 @@ function renderProfile(profile: TypeProfile, set: ProfileSet): string {
   ].join("\n\n");
 }
 
+/** The planner's beat index (VT §5.4): each beat the profile's blocks allow, with its purpose, role and duration range. */
+function renderBeatIndex(profile: TypeProfile, beats: ReadonlyMap<string, BeatSpec>): string {
+  const types = [...new Set(profile.structure.blocks.flatMap((block) => block.beats))];
+  const rows = types.map((type) => {
+    const { summary, role, durationS } = beatSpecFor(beats, type);
+    return `- **${type}** (${role}, ${durationS[0]}-${durationS[2]} s): ${summary}`;
+  });
+  return `## Beats
+
+${rows.join("\n")}`;
+}
+
 const renderRule = ({ id, text }: DoctrineRule): string => `- **${id}**: ${text}`;
 
 /** The plan-stage rules a video gets only when it picks `structure`. */
@@ -88,19 +103,20 @@ function renderStructures(profile: TypeProfile, set: ProfileSet, registry: Doctr
  * default audience. Gate thresholds stay out: QA reads them from the profile, never the planner.
  */
 export function guideForType(type: string, deps: TypeGuideDeps = {}): string {
-  const { registry = loadDoctrine(), qRules = loadRuleRegistry(), profiles = loadProfiles() } = deps;
+  const { registry = loadDoctrine(), qRules = loadRuleRegistry(), profiles = loadProfiles(), beats = loadBeatSpecs() } = deps;
   const profile = profileFor(profiles, type);
   const { prompt } = sliceForStage(registry, qRules, { stage: "plan", type, audience: profile.audience.default });
   const rules = prompt.length > 0 ? prompt.map(renderRule).join("\n") : "- (none)";
-  return `${renderProfile(profile, profiles)}\n\n${renderStructures(profile, profiles, registry, qRules)}\n\n## Rules for the plan stage\n\n${rules}\n`;
+  return `${renderProfile(profile, profiles)}\n\n${renderStructures(profile, profiles, registry, qRules)}\n\n${renderBeatIndex(profile, beats)}\n\n## Rules for the plan stage\n\n${rules}\n`;
 }
 
 /** Writes `guides/planner/<type>.md` for every profile under `doctrineDir`; returns the types written. */
 export function writeTypeGuides(doctrineDir: string = DEFAULT_DOCTRINE_DIR, deps: TypeGuideDeps = {}): string[] {
   const profiles = deps.profiles ?? loadProfiles(doctrineDir);
+  const beats = deps.beats ?? loadBeatSpecs(doctrineDir);
   const outDir = join(doctrineDir, "guides", "planner");
   mkdirSync(outDir, { recursive: true });
   const types = [...profiles.profiles.keys()];
-  for (const type of types) writeFileSync(join(outDir, `${type}.md`), guideForType(type, { ...deps, profiles }));
+  for (const type of types) writeFileSync(join(outDir, `${type}.md`), guideForType(type, { ...deps, profiles, beats }));
   return types;
 }

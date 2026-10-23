@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: zoom
+summary: "A push into one part of the map to show what is inside it."
+role: explain
+component: { name: MapBeat, maturity: spike }
+slots: map
+speech: { band: concept }
+durationS: [6, 12, 25]
+preset: false
+emphasis: { targets: [nodes, edges], treatments: [camera, highlight] }
+recipe: "Start from the map node in focus and move the camera in; show its inner parts. Return to the map before the next station."

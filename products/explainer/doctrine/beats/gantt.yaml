@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: gantt
+summary: "Tasks on a date axis, with milestones."
+role: evidence
+component: { name: Gantt, maturity: doc }
+slots: gantt
+speech: { band: story }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [tasks, milestones], treatments: [highlight, camera] }
+recipe: "One to twelve tasks with start and end dates, plus milestones. A playhead may sweep the day; light the task being said."

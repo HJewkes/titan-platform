@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: stakes
+summary: "What it costs if this goes wrong, or what it opens if it goes right."
+role: open
+component: { name: StatBeat, maturity: spike }
+slots: stakes
+speech: { band: story }
+durationS: [5, 9, 15]
+preset: false
+emphasis: { targets: [figures], treatments: [scale, colour] }
+recipe: "Say the cost or the gain in one line, with at most two figures behind it. Make it concrete to the viewer."

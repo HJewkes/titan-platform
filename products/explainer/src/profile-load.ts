@@ -17,7 +17,8 @@ export interface ProfileSet {
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-function readYamlDir<T>(dir: string, sub: string, schema: z.ZodType<T>, key: (item: T) => string): Map<string, T> {
+/** Reads every `<sub>/*.yaml` under `dir` through `schema`; a file is named after its key. */
+export function readYamlDir<T>(dir: string, sub: string, schema: z.ZodType<T>, key: (item: T) => string): Map<string, T> {
   const path = join(dir, sub);
   const files = existsSync(path) ? readdirSync(path).filter((name) => name.endsWith(".yaml")).sort() : [];
   return new Map(

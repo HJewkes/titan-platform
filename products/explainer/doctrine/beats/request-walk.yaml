@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: request-walk
+summary: "One running example traced across the map, hop by hop."
+role: explain
+component: { name: MapBeat, maturity: spike }
+slots: request-walk
+speech: { band: concept }
+durationS: [15, 30, 60]
+preset: false
+emphasis: { targets: [nodes, edges], treatments: [trace, camera, pointer] }
+recipe: "Trace one request from its entry point through the named hops on the fixed map. Slow pass first, then a fast replay."

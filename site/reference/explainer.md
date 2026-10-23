@@ -239,7 +239,8 @@ capped, and no signature-layer requirement.
   fallback (`fallback: true`).
 - `guideForType(type)` renders a type's planner guide: the profile, each structure it may pick
   with its spine sections and the rules scoped to that structure, then the `plan` slice for the
-  type and its default audience. `explainer guide types` writes every guide to
+  type and its default audience, then a beat index of every beat its blocks allow (role, duration
+  range and purpose, from the beat specs). `explainer guide types` writes every guide to
   `doctrine/guides/planner/<type>.md`, and `explainer guide plan --type <type>` prints one.
   A test fails when a checked-in guide differs from its profile. Tracked by TP-2746.
 
@@ -263,3 +264,30 @@ each video and the runner-up goes in the render notes; there is no owner pick.
 - `renderSpine(structure)` renders the structure's spine as a fillable template. `design-journey`
   is the owner's journey (owner-FB1, now scoped to it): its spine is the `spine/v1` template, and
   `explainer guide plan` prints it. Tracked by TP-4006.
+
+## Beat specs
+
+`doctrine/beats/<type>.yaml` holds one `beat-spec/v1` per vocabulary beat, including the review
+and briefing beats `verdict-card`, `change-group`, `diff-map`, `finding-card`, `proof`,
+`frame-flow`, `replot`, `sim`, `rule-diff`, `kanban-flow`, `gantt`, `forecast`, `history-why`,
+`attempt` and `companion-link`. A spec gives the beat's purpose and role, its component and that
+component's maturity, a slot schema ref, the speech band, a `[min, default, max]` duration, the
+packet recipe (200 words or fewer), whether it is a no-model preset, and its emphasis contract.
+
+- `BEAT_SLOTS` holds the zod slot schema each spec's `slots` names.
+- The emphasis contract lists the slot lists whose item ids a script cue may target and the
+  treatments (`pointer`, `highlight`, `trace`, `scale`, `colour`, `camera`) the template may use.
+  There is no default treatment and no separate pointer layer.
+- `loadBeatSpecs(dir?)` reads the registry and throws on a shape error, naming the file.
+  `beatSpecFor(specs, type)` throws `UnknownBeatError` for a beat with no spec.
+- `parseBeatSlots(specs, type, slots)` validates one beat's slots. It throws `BeatSlotError` for a
+  slot the schema rejects or for an emphasis element id used twice. `emphasisTargets(spec, slots)`
+  lists the ids a cue may name.
+- `checkBeatSpecs(specs, vocabulary)` returns coded `BeatIssue`s:
+  - a spec missing from the vocabulary, or a vocabulary beat with no spec;
+  - a slots ref with no schema;
+  - a duration out of order;
+  - a recipe over 200 words;
+  - an emphasis target that is not a list of elements with ids.
+
+Tracked by TP-2867.

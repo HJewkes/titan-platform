@@ -46,6 +46,20 @@ export { PAPER_PUBLISH_CHECKS, PROFILE_ISSUE_CODES, SERIES_BASE, checkProfiles, 
 export { chapterOrder, type ChapterOrder, type MaterialSignals } from "./profile-order.js";
 export { guideForType, writeTypeGuides, type TypeGuideDeps } from "./guide-type.js";
 export {
+  BEAT_ROLES,
+  BeatSpecSchema,
+  COMPONENT_MATURITIES,
+  EMPHASIS_TREATMENTS,
+  RECIPE_MAX_WORDS,
+  SPEECH_BANDS,
+  type BeatSpec,
+  type EmphasisTreatment,
+  type SpeechBand,
+} from "./beat-schema.js";
+export { BEAT_SLOTS, isSlotRef, isTargetField, type BeatSlotRef } from "./beat-slots.js";
+export { BeatSlotError, UnknownBeatError, beatSpecFor, emphasisTargets, loadBeatSpecs, parseBeatSlots } from "./beat-load.js";
+export { BEAT_ISSUE_CODES, checkBeatSpecs, type BeatIssue, type BeatIssueCode } from "./beat-checks.js";
+export {
   EvidenceSpanSchema,
   ExplainerFactSchema,
   FACT_KINDS,
