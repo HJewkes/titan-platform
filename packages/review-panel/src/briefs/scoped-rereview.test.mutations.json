@@ -1,0 +1,56 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "scope ignored, as on main",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "usableScope(input.scope, input.earlierFindings?.length ?? 0) ? input.scope : undefined",
+      "replace": "undefined",
+      "kills": [
+        "a scoped fix-round brief reads the fix diff since the reviewed head in place of the whole PR's diff",
+        "a scoped fix-round brief states the unchanged-line, no-repeat and callers rules",
+        "a scope the brief refuses keeps 40 paths scoped"
+      ]
+    },
+    {
+      "name": "a panel member's brief takes the scope",
+      "file": "packages/review-panel/src/briefs/shape-brief.ts",
+      "find": "scope: _fullDiff, ",
+      "replace": "",
+      "kills": [
+        "a panel member given a scope renders the adversary brief byte for byte as without one",
+        "a panel member given a scope renders the tests brief byte for byte as without one",
+        "a panel member given a scope renders the perf brief byte for byte as without one",
+        "a panel member given a scope renders the visual brief byte for byte as without one"
+      ]
+    },
+    {
+      "name": "the scoped checklist stays optional",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "scoped ? scopedChecklistLine : checklistLine",
+      "replace": "checklistLine",
+      "kills": [
+        "a scoped fix-round brief carries the open findings fenced as data, with a required fixed / partly fixed / not fixed checklist"
+      ]
+    },
+    {
+      "name": "gh pr diff kept in a scoped brief",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "scope === undefined ? `  gh pr diff ${pr} --repo ${repo}` : scopedDiffLine(git, head, scope),",
+      "replace": "`  gh pr diff ${pr} --repo ${repo}`, ...(scope === undefined ? [] : [scopedDiffLine(git, head, scope)]),",
+      "kills": [
+        "a scoped fix-round brief reads the fix diff since the reviewed head in place of the whole PR's diff",
+        "a scope the brief refuses keeps 40 paths scoped"
+      ]
+    },
+    {
+      "name": "the callers, unchanged-line and no-repeat rule lines dropped",
+      "file": "packages/review-panel/src/briefs/scoped-rereview.ts",
+      "find": "    \"For every function whose behaviour the fix changes, read its callers at this head, even when the callers are unchanged.\",\n    `A new blocking item on a line outside those ranges is allowed only when it starts with \\`${IMPORTANT_TAG}\\` and has a line \\`${CLASS_TAG} <class>\\` naming its class; leave out any other finding outside them.`,\n    \"Never restate an earlier finding as a new blocking item: one that is still open goes in the earlier findings checklist as not fixed or partly fixed.\",\n",
+      "replace": "",
+      "kills": [
+        "a scoped fix-round brief states the unchanged-line, no-repeat and callers rules"
+      ]
+    }
+  ]
+}
