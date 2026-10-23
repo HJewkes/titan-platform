@@ -200,6 +200,7 @@ describe("mutant proof over tests head declines to run", () => {
   const FILE = "src/guard.test.ts";
   const skipped = (name: string): FakeTest => ({ name, status: "skipped" });
   const todo = (name: string): FakeTest => ({ name, status: "todo" });
+  const pending = (name: string): FakeTest => ({ name, status: "pending" });
 
   function proved(base: FakeTest[], head: FakeTest[], headStatus = "passed") {
     const classification = classifyReports(input([FILE], report(fileResult(FILE, base)), report(fileResult(FILE, head, headStatus))));
@@ -218,7 +219,7 @@ describe("mutant proof over tests head declines to run", () => {
 
   it.each([
     ["a test passes at head but is missing at base", [passing("guards")], [passing("guards"), passing("new case")], "passed"],
-    ["base reports a test as neither run nor skipped", [passing("guards"), { name: "queued", status: "pending" } as FakeTest], [passing("guards"), passing("queued")], "passed"],
+    ["base reports a test as neither run nor skipped", [passing("guards"), pending("queued")], [passing("guards"), passing("queued")], "passed"],
     ["a test fails at head", [passing("guards"), passing("bound")], [passing("guards"), failing("bound")], "failed"],
     ["head skips a test base passed", [passing("guards"), passing("bound")], [passing("guards"), skipped("bound")], "passed"],
     ["head skips a test inside a failed file", [passing("guards")], [passing("guards"), skipped("after hook")], "failed"],

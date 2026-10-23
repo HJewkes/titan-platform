@@ -33,12 +33,12 @@ function testName(result: UnknownRecord): string | null {
   return [...(ancestors as string[]), result.title].join(" ");
 }
 
-const DECLINED = new Set(["skipped", "todo"]);
+const DECLINED: ReadonlySet<unknown> = new Set(["skipped", "todo"]);
 
 // vitest also reports a test skipped because a hook threw as `skipped`, so a skip inside a failed file is never taken as deliberate.
 function statusOf(result: UnknownRecord, fileFailed: boolean): TestStatus {
   if (result.status === "passed" || result.status === "failed") return result.status;
-  return !fileFailed && DECLINED.has(result.status as string) ? "skipped" : "other";
+  return !fileFailed && DECLINED.has(result.status) ? "skipped" : "other";
 }
 
 function readTest(result: unknown, fileFailed: boolean): TestRun | null {
