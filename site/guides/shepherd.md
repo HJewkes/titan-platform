@@ -1134,20 +1134,45 @@ policy, authority or security path, or a `security` kind, takes `g10-adversary`.
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
 
-Policy paths also cover who may resolve a gate, not only the owner's rule file. A file is on
-that route when it builds a `GateResolver` or hands one to a resolve sink (`gates.resolve`,
-`runtime.signal`, `resolveGate`), or holds a check such a file leans on: hitl's whole source,
-the workflow runtime and its gate authorize step, the Matrix answer path and its owner fold, the
-factory's answer entry points (`gate-resolve*`, `gate-answer-*`, `gate-batch*`, `gate-notify*`,
-`console-action/`, `owner-ops/`, the round-ship sweep), the owner presence and proof files, the
-store wiring in `host.ts`, and the coordinator evidence, allowance and device-gate rules. The list
-is `GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`. A change to
-any of them takes `g10-adversary`; a change to their test files alone does not.
+Policy paths also cover who may resolve a gate, not only the owner's rule file. The list is
+`GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`: hitl's whole
+source, the workflow runtime, its types and its gate authorize step, queue-mirror's whole source
+and the Matrix owner fold, the owner queue's source port, the factory's owner-queue sources and
+answer entry points (`gate-resolve*`, `gate-answer-*`, `gate-batch*`, `gate-notify*`,
+`console-action/`, `owner-ops/`, the round-ship sweep), the land workflow's gate rules, the owner
+presence and proof files, the store wiring in `host.ts`, and the coordinator evidence, allowance
+and device-gate rules. The owner's skill-diff guard (`merge-facts.ts`, `skill-paths.ts`,
+`approval-carry.ts`) is held beside it. A change to any of them takes `g10-adversary`; a change to
+their test files alone does not.
 
-The list is not trusted to stay complete by hand. `gate-resolve-sites.test.ts` scans every
-non-test source file for a resolver-shaped object, a `class` written beside `GateResolver`, or a
-call into a resolve sink, and fails when such a file is not held. A new resolve path therefore
-fails CI until it joins the list.
+What CI checks is the part of that list the type checker can derive.
+`gate-resolve-sites.test.ts` builds one TypeScript program per package, product or app whose
+dependencies reach a resolve sink, and collects every non-test source file that does one of these:
+
+- names a resolve sink: hitl's `GateStore.resolve` and `resolveGate`, `WorkflowRuntime.signal`, or
+  either `QueueSource.resolve`;
+- implements one of those interfaces;
+- calls a function that forwards one of its own parameters into a sink's who-answered argument;
+- declares or names a function that returns a `GateResolver`;
+- writes an object literal typed as a `GateResolver`.
+
+The checker resolves the receiver, so a destructured, aliased, optional-chained or bracketed call
+is found the same as `host.gates.resolve(...)`. The test fails when a file in that closure is not
+held, and it checks that known sites are found, so an empty closure cannot pass. Synthetic probe
+files pin each spelling an earlier text scan missed.
+
+**Accepted residual.** The closure does not reach the following:
+
+- Values that cross a process boundary (HTTP, Matrix, CLI). The receiving side builds the
+  resolver and is in the closure.
+- A file upstream of a sink call that only computes part of a resolver's input. The file that
+  hands the value to the sink is held; the file that computed it is not.
+- A receiver typed `any`. Lint's `no-explicit-any` refuses one unless the line disables that
+  rule.
+- `test-support/` and `fixtures/` directories and `*.test-helpers.ts` files, which the scan skips.
+- The checks and proofs in the list that build no resolver, such as the skill-diff guard and the
+  presence and evidence rules. Those are kept by hand, and `registration-hold.test.ts` pins each
+  one with a row.
 
 **Accepted residual.** The factory config's `resolverClass` (which owner class agent-chat
 answers resolve as) is not held, because `config.ts` is broad. `gate-notify.ts` takes the value

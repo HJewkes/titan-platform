@@ -188,6 +188,12 @@ describe("the G10 hold Shepherd places at registration", () => {
     "products/factory/src/console-action/release.ts",
     "products/factory/src/owner-ops/standing-answers.ts",
     "products/factory/src/shepherd/round-ship-sweep.ts",
+    "packages/queue-mirror/src/mirror.ts",
+    "packages/queue-mirror/src/types.ts",
+    "packages/owner-queue/src/port.ts",
+    "products/factory/src/needs/hitl-source.ts",
+    "products/factory/src/workflows/land-approval.ts",
+    "packages/workflow/src/types.ts",
   ])(
     "holds a gate-resolve actor or evidence rule in %s g10-adversary",
     async (path) => {
@@ -196,6 +202,16 @@ describe("the G10 hold Shepherd places at registration", () => {
       expect(await holdOf(r)).toBe("g10-adversary: policy touch");
     },
   );
+
+  it.each([
+    "products/factory/src/shepherd/merge-facts.ts",
+    "products/factory/src/shepherd/skill-paths.ts",
+    "products/factory/src/shepherd/approval-carry.ts",
+  ])("holds the owner's skill-diff guard in %s g10-adversary as policy, though it builds no resolver", async (path) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toMatch(/^g10-adversary: (.+, )?policy touch$/);
+  });
 
   it("leaves a test-only change to the gate-resolve actor and evidence rules unheld", async () => {
     const r = rig([

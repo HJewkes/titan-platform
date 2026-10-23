@@ -13,20 +13,28 @@ export const OWNER_ACTION_FILES = ["apps/console/server/**/owner-tap*.ts", "apps
 /**
  * Who may resolve a gate (TP-4052, tp#2253): every file that builds a `GateResolver` or hands one to a resolve sink,
  * and the checks those files lean on. A diff here can widen gate resolves past the owner as surely as an authority
- * table edit. `gate-resolve-sites.test.ts` scans the repo and fails when a new resolver site is missing from this list.
+ * table edit. `gate-resolve-sites.test.ts` traces the resolve sinks with the type checker and fails when a file in
+ * their closure is missing from this list.
  */
 const GATE_RESOLVE_ACTOR_FILES = [
   // hitl is the gate store itself: the resolver refusal, allowances, payload schema and the stores that apply them.
   "packages/hitl/src/**",
-  // The resolve sinks and their gate authorize step.
+  // The resolve sinks, the signal and resolver contract they take, and their gate authorize step.
   "packages/workflow/src/runtime.ts",
+  "packages/workflow/src/types.ts",
   "packages/workflow/src/authorize.ts",
-  // The Matrix answer path: the owner-remote resolver and the fold that checks its sender is the owner.
-  "packages/queue-mirror/src/hitl.ts",
+  // The Matrix answer path: the mirror that picks the owner the fold compares against, its sources, the owner-remote
+  // resolver, and the fold that checks the sender is the owner.
+  "packages/queue-mirror/src/**",
   "packages/matrix-bus/src/fold.ts",
-  // Owner answers on rounds, and the answer shape that names who gave them.
+  // The owner queue's source port, owner answers on rounds, and the answer shape that names who gave them.
+  "packages/owner-queue/src/port.ts",
   "packages/owner-queue/src/round-items.ts",
   "packages/owner-queue/src/schema.ts",
+  // The factory's owner-queue sources, whose `resolve` answers an item at its store of record.
+  "products/factory/src/needs/*-source.ts",
+  // The land workflow's gate rules: which resolver classes and delegates may answer each row.
+  "products/factory/src/workflows/land-approval.ts",
   // The factory's answer entry points, each of which stamps a resolver class.
   "products/factory/src/gate-answer-*.ts",
   "products/factory/src/gate-batch*.ts",
@@ -50,12 +58,18 @@ const GATE_RESOLVE_ACTOR_FILES = [
   "products/factory/src/shepherd/stale-gates.ts",
 ];
 
+/**
+ * The owner's skill-diff guard (CC-1120): a head that changes a repo skill gates for the owner at that head, and no
+ * earlier approval carries onto it. These files build no resolver, so the closure cannot find them; they are listed.
+ */
+const OWNER_SKILL_GUARD_FILES = ["merge-facts.ts", "skill-paths.ts", "approval-carry.ts"].map((name) => `products/factory/src/shepherd/${name}`);
+
 /** agent-chat's leak guard, self-grant, permission hook and host directory (owner decision 350 Q5), and its agent profiles (458 E1); test files stay exempt in the panel. */
 const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts", "profiles/*.json", "src/agents/profile*.ts"];
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES, ...GATE_RESOLVE_ACTOR_FILES],
+  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES, ...GATE_RESOLVE_ACTOR_FILES, ...OWNER_SKILL_GUARD_FILES],
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
