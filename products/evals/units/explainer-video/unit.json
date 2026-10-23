@@ -1,0 +1,162 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "explainer-video",
+  "version": "1.0.0",
+  "title": "Make an explainer video from a spine and a facts pack",
+  "description": "The parent explainer-video run: each stage is one explainer.<stage> child run behind the stage cache, ending when the MP4 reaches the theater. A failed gate check stops the run at its stage.",
+  "input": {
+    "type": "object",
+    "required": [
+      "inputs"
+    ],
+    "properties": {
+      "inputs": {
+        "type": "object",
+        "required": [
+          "spine",
+          "facts"
+        ],
+        "properties": {
+          "spine": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "facts": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "files": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": [
+      "outputs",
+      "checks"
+    ],
+    "properties": {
+      "outputs": {
+        "type": "object",
+        "required": [
+          "mp4"
+        ],
+        "properties": {
+          "mp4": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "checks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "pass"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "pass": {
+              "type": "boolean"
+            },
+            "gate": {
+              "type": "boolean"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "objective": {
+    "constraints": [
+      {
+        "metric": "gate-failures",
+        "max": 0
+      }
+    ],
+    "noCriticalFailures": true,
+    "primary": {
+      "name": "cold-undefined-items-per-min",
+      "direction": "minimize"
+    }
+  },
+  "acceptance": {
+    "levels": [
+      {
+        "level": 1,
+        "minCases": 2
+      },
+      {
+        "level": 2,
+        "successLowerBound": 0.7
+      },
+      {
+        "level": 3,
+        "successLowerBound": 0.85
+      },
+      {
+        "level": 4,
+        "holdDays": 14
+      }
+    ]
+  },
+  "visibility": "public",
+  "children": [
+    {
+      "id": "explainer-script",
+      "version": "1.0.0",
+      "prefix": "script/"
+    },
+    {
+      "id": "explainer-rewrite",
+      "version": "1.0.0",
+      "prefix": "rewrite/"
+    },
+    {
+      "id": "explainer-eval",
+      "version": "1.0.0",
+      "prefix": "eval/"
+    },
+    {
+      "id": "explainer-tts",
+      "version": "1.0.0",
+      "prefix": "tts/"
+    },
+    {
+      "id": "explainer-render",
+      "version": "1.0.0",
+      "prefix": "render/"
+    },
+    {
+      "id": "explainer-qa",
+      "version": "1.0.0",
+      "prefix": "qa/"
+    },
+    {
+      "id": "explainer-sheets",
+      "version": "1.0.0",
+      "prefix": "sheets/"
+    }
+  ]
+}

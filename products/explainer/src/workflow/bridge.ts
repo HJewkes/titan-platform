@@ -4,7 +4,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import type { ArtifactStore } from "./artifacts.js";
-import { BRIDGE_STAGES, type BridgeStage, type Check, type StageOutcome } from "./records.js";
+import { StageFailure } from "./model-stages.js";
+import { BRIDGE_STAGES, NO_USAGE, type BridgeStage, type Check, type StageOutcome } from "./records.js";
 
 /**
  * The host file `<dataDir>/bridge.json`: the argv each bridged stage runs, kept outside the repo so no template
@@ -18,6 +19,11 @@ const CommandSchema = z.object({
   timeoutS: z.number().positive().default(1800),
   /** Names a check: the command's exit code is its verdict and its last stdout line the detail. */
   check: z.string().optional(),
+  /**
+   * A failed gate check fails the stage, as any other failed command does. `false` makes the check reported only: a
+   * non-zero exit is recorded as a failed verdict and the commands after it still run.
+   */
+  gate: z.boolean().default(true),
 });
 
 const OutputSchema = z.object({ path: z.string(), tree: z.boolean().default(false) });
@@ -121,9 +127,19 @@ async function runCommand(run: BridgeRun, command: BridgeCommand, n: number, exp
   const line = sharable(lastLine(result.stdout), run.file.workdir);
   // The script an interpreter runs names the command better than the interpreter does.
   const name = path.basename(argv.find((arg) => /\.[cm]?[jt]s$|\.sh$|\.py$/.test(arg)) ?? argv[0]!);
-  if (result.code !== 0) throw new Error(`bridge ${run.stage}: command ${n} (${name}) exited ${result.code}: ${sharable(lastLine(result.stderr), run.file.workdir) || line}`);
+  const pass = result.code === 0;
+  const check = command.check ? { check: { name: command.check, gate: command.gate, pass, detail: line.slice(0, 160) } } : {};
+  if (!pass && (command.gate || !command.check)) {
+    throw new CommandFailure(`bridge ${run.stage}: command ${n} (${name}) exited ${result.code}: ${sharable(lastLine(result.stderr), run.file.workdir) || line}`, check.check);
+  }
   const note = `${name} ${((Date.now() - started) / 1000).toFixed(1)} s${line ? `: ${line.slice(0, 160)}` : ""}`;
-  return { note, ...(command.check ? { check: { name: command.check, pass: true, detail: line.slice(0, 160) } } : {}) };
+  return { note, ...check };
+}
+
+class CommandFailure extends Error {
+  constructor(message: string, readonly check: Check | undefined) {
+    super(message);
+  }
 }
 
 /** Writes the declared inputs, runs the commands in order, then stores the declared outputs. Any non-zero exit fails the stage. */
@@ -139,9 +155,14 @@ export async function runBridgeStage(run: BridgeRun): Promise<StageOutcome> {
   const notes: string[] = [];
   const checks: Check[] = [];
   for (const [i, command] of stage.commands.entries()) {
-    const { note, check } = await runCommand(run, command, i + 1, expand);
-    notes.push(note);
-    if (check) checks.push(check);
+    try {
+      const { note, check } = await runCommand(run, command, i + 1, expand);
+      notes.push(note);
+      if (check) checks.push(check);
+    } catch (error) {
+      if (!(error instanceof CommandFailure)) throw error;
+      throw new StageFailure(error.message, NO_USAGE, 0, error.check ? [...checks, error.check] : checks);
+    }
   }
   const from = { runId: run.runId, stage: run.stage };
   const outputs = Object.fromEntries(Object.entries(stage.outputs).map(([name, out]) => {

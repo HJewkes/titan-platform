@@ -36,7 +36,8 @@ export type StageUsage = z.infer<typeof StageUsageSchema>;
 
 export const NO_USAGE: StageUsage = { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 };
 
-export const CheckSchema = z.object({ name: z.string(), pass: z.boolean(), detail: z.string().optional() });
+/** A check's verdict. `gate: true` means a failed check failed its stage; any other check is reported only. */
+export const CheckSchema = z.object({ name: z.string(), pass: z.boolean(), gate: z.boolean().optional(), detail: z.string().optional() });
 export type Check = z.infer<typeof CheckSchema>;
 
 /**
