@@ -3,6 +3,7 @@ import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
 import { JudgeConfigSchema } from "../eval-harness.js";
+import { COMPANION_FILE } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore } from "./artifacts.js";
 import type { StylePack } from "../style-pack-schema.js";
 import type { BridgeFile } from "./bridge.js";
@@ -15,7 +16,7 @@ import { GatherRequestSchema } from "./run-gather.js";
 
 export const VIDEO_WORKFLOW = "explainer-video";
 /** Bumped whenever the stage list or a stage's inputs change, so a run never replays under another shape. */
-export const VIDEO_WORKFLOW_VERSION = "tp4078";
+export const VIDEO_WORKFLOW_VERSION = "tp4107";
 
 /** Everything a run needs, stored as its one param, so a resumed run rebuilds the same routes. */
 export const RunPlanSchema = z.object({
@@ -94,23 +95,38 @@ export interface StageDeps {
   now?: () => Date;
 }
 
+function linkInto(dest: string, from: string): void {
+  if (existsSync(dest)) unlinkSync(dest);
+  try {
+    linkSync(from, dest);
+  } catch {
+    copyFileSync(from, dest);
+  }
+}
+
+/**
+ * Name → file name in the theater folder. A repo run's companion doc keeps its own name beside the video whether or
+ * not the host lists it, because the resolved chapter cards link `companion.md#<anchor>` relative to the video.
+ */
+function theaterNames(artifacts: Readonly<Record<string, string>>, theater: BridgeFile["theater"]): [string, string][] {
+  const named = Object.keys(theater.files).filter((name) => name !== "companion").map((name): [string, string] => [name, `${theater.stem}${theater.files[name]}`]);
+  const companion = artifacts.companion !== undefined || theater.files.companion !== undefined;
+  return companion ? [...named, ["companion", COMPANION_FILE]] : named;
+}
+
 /** Hard links the finished files into the theater folder; a run ends here (owner answer Q2 B). */
 function runExportStage(artifacts: Readonly<Record<string, string>>, store: ArtifactStore, file: BridgeFile): StageOutcome {
   mkdirSync(file.theater.dir, { recursive: true });
   const outputs: Record<string, string> = {};
-  for (const [name, suffix] of Object.entries(file.theater.files)) {
+  for (const [name, fileName] of theaterNames(artifacts, file.theater)) {
     const sha = artifacts[name];
     if (sha === undefined) throw new Error(`stage export needs artifact "${name}", which no earlier stage produced`);
-    const dest = path.join(file.theater.dir, `${file.theater.stem}${suffix}`);
-    if (existsSync(dest)) unlinkSync(dest);
-    try {
-      linkSync(store.path(sha), dest);
-    } catch {
-      copyFileSync(store.path(sha), dest);
-    }
+    linkInto(path.join(file.theater.dir, fileName), store.path(sha));
     outputs[name] = sha;
   }
-  return { outputs, notes: [`linked ${Object.keys(outputs).join(", ")} as ${file.theater.stem}.*`] };
+  const stemmed = Object.keys(outputs).filter((name) => name !== "companion");
+  const companion = outputs.companion === undefined ? [] : [`linked companion as ${COMPANION_FILE}`];
+  return { outputs, notes: [`linked ${stemmed.join(", ")} as ${file.theater.stem}.*`, ...companion] };
 }
 
 function reused(base: StageRecord, baseRunId: string | undefined, at: Date): StageRecord {

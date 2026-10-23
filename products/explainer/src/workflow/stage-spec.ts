@@ -19,7 +19,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g1", audition: "pp9", script: "x5", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
+  gather: "g1", audition: "pp9", script: "x5", rewrite: "x4", eval: "x4", resolve: "pp7", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
@@ -28,7 +28,7 @@ const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly stri
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
-const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = { resolve: ["code", "slots", "layout"] };
+const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = { resolve: ["code", "slots", "layout", "chapter-links"] };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
 export const VariantSchema = z.object({

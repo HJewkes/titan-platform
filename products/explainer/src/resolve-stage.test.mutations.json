@@ -13,8 +13,8 @@
     {
       "name": "the stage writes before it resolves",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "  const specs = loadBeatSpecs();\n  const beats = resolveScript(",
-      "replace": "  const specs = loadBeatSpecs();\n  store.putText(\"early\", \"resolved\", input.from);\n  const beats = resolveScript(",
+      "find": "  const specs = loadBeatSpecs();\n  const read = ",
+      "replace": "  const specs = loadBeatSpecs();\n  store.putText(\"early\", \"resolved\", input.from);\n  const read = ",
       "kills": [
         "resolve stage refuses a code beat citing a line past EOF before it writes any artifact",
         "resolve stage refuses a beat no resolver row matches before it writes any artifact"

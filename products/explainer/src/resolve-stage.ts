@@ -3,6 +3,7 @@ import { loadBeatSpecs } from "./beat-load.js";
 import { COMPONENT_MATURITIES, SPEECH_BANDS, type BeatSpec } from "./beat-schema.js";
 import type { EmphasisGateInput } from "./emphasis-gate.js";
 import { canonicalJson } from "./eval-store.js";
+import { ChapterLinksSchema, companionLinkSlots } from "./presets/repo-explainer/companion.js";
 import { loadProfiles, profileFor } from "./profile-load.js";
 import { ResolveError, resolveBeats, type ResolvedBeat } from "./resolve-beat.js";
 import { beatBudget, blockBudgets, budgetVerdict, type BudgetRow } from "./resolve-budget.js";
@@ -27,6 +28,8 @@ const ResolvedBeatSchema = z.object({
   framing: z.enum(FRAMINGS),
   layer: z.enum(VISUAL_LAYERS),
   anchors: z.array(z.string()),
+  /** Slots resolve fills itself, before template fill writes the rest: a `companion-link` card's link. */
+  slots: z.record(z.string(), z.string()).optional(),
 });
 
 const BudgetRowSchema = z.object({ scope: z.enum(["beat", "block"]), id: z.string(), words: z.number(), seconds: z.number(), wordsPerS: z.number(), cap: z.number() });
@@ -47,7 +50,7 @@ export function resolveConfig(rows: readonly ResolveRow[] = RESOLVE_ROWS): { doc
   return { doctrine: sha256(canonicalJson(doctrine)) };
 }
 
-function budgets(script: ScriptV1, resolved: readonly ResolvedBeat[], specs: ReadonlyMap<string, BeatSpec>): { rows: BudgetRow[]; unplaced: string[] } {
+function budgets(script: ScriptV1, resolved: readonly Pick<ResolvedBeat, "id" | "band">[], specs: ReadonlyMap<string, BeatSpec>): { rows: BudgetRow[]; unplaced: string[] } {
   const bandOf = new Map(resolved.map((beat) => [beat.id, beat.band]));
   const bands = loadSpeechBands();
   const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs, bands);
@@ -61,6 +64,21 @@ function resolveScript(script: ScriptV1, code: string | undefined, specs: Readon
   return resolveBeats(script.beats, specs, shippedVisualRouter());
 }
 
+const COMPANION_LINK = "companion-link";
+
+/** Fills each `companion-link` card from the run's chapter links, so it opens its chapter's section of the companion doc. */
+function linkCompanionCards(beats: readonly ResolvedBeat[], chapterLinks: string | undefined): { beats: Resolved["beats"]; unlinked: string[] } {
+  if (chapterLinks === undefined) return { beats: [...beats], unlinked: [] };
+  const links = ChapterLinksSchema.parse(JSON.parse(chapterLinks));
+  const unlinked: string[] = [];
+  const linked = beats.map((beat) => {
+    const slots = beat.beat === COMPANION_LINK ? companionLinkSlots(links, beat.chapter) : undefined;
+    if (beat.beat === COMPANION_LINK && slots === undefined) unlinked.push(beat.id);
+    return slots === undefined ? beat : { ...beat, slots: { ...slots } };
+  });
+  return { beats: linked, unlinked };
+}
+
 /**
  * The `explainer.resolve` body (workflow plan §2.3 stage 6, PP-6): every beat of the script through the resolver
  * tables, with its word budgets. The spec's config pins the doctrine it was keyed on; other doctrine refuses.
@@ -71,13 +89,18 @@ export function runResolveStage(input: ModelStageInput, config: { doctrine: stri
   if (artifacts.script === undefined) throw new Error(`stage resolve needs artifact "script", which no earlier stage produced`);
   const script = ScriptSchema.parse(JSON.parse(store.readText(artifacts.script)));
   const specs = loadBeatSpecs();
-  const beats = resolveScript(script, artifacts.code === undefined ? undefined : store.readText(artifacts.code), specs);
+  const read = (name: string): string | undefined => {
+    const sha = artifacts[name];
+    return sha === undefined ? undefined : store.readText(sha);
+  };
+  const { beats, unlinked } = linkCompanionCards(resolveScript(script, read("code"), specs), read("chapter-links"));
   const { rows, unplaced } = budgets(script, beats, specs);
   const resolved: Resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats, budgets: rows };
   const sha = store.putText(`${JSON.stringify(resolved, null, 2)}\n`, "resolved", input.from);
   const rowsUsed = [...new Set(beats.map((beat) => beat.row))];
   const unplacedNote = `no block cap for chapters ${unplaced.join(", ")}: no block of ${script.profile} has that id`;
-  const notes = [`${beats.length} beats resolved by rows ${rowsUsed.join(", ")}`, ...(unplaced.length ? [unplacedNote] : [])];
+  const unlinkedNote = `no chapter link for companion-link beats ${unlinked.join(", ")}: the chapter-links artifact lacks their chapters`;
+  const notes = [`${beats.length} beats resolved by rows ${rowsUsed.join(", ")}`, ...(unplaced.length ? [unplacedNote] : []), ...(unlinked.length ? [unlinkedNote] : [])];
   return { outputs: { resolved: sha }, notes };
 }
 

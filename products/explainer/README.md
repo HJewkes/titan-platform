@@ -235,10 +235,10 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow loses those keys (reported as `script-unknown-keys`), any other fault gets one retry naming the schema issues, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
-| `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned) → resolved |
+| `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them) → resolved |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
-| `export` | hard links the declared artifacts into the theater folder; the run ends here | mp4 and sidecars → the same shas |
+| `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
 **The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
 script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`
@@ -249,7 +249,10 @@ no row, block n for chapter n; a chapter that merges blocks links the first. The
 tour and its review-digest cut over one review link the same bytes. The script stage is the first that holds both the
 facts and the chapters, and later stages keep the chapter ids, so resolve can fill a `companion-link` card from the
 links. A chapter that plays no tour block links the contents (`W-CHAPTER-UNMAPPED`), and a review with no SUMMARY
-facts warns `W-NO-SUMMARY`; both land in the stage's notes.
+facts warns `W-NO-SUMMARY`; both land in the stage's notes. Resolve fills each `companion-link` beat's `slots`
+(`title`, `section`, `href`) from its chapter's link, and notes a card whose chapter has none (TP-4107). Export
+links `companion` as exactly `companion.md` in the theater folder, never `<stem><suffix>`, whether or not
+`bridge.json` lists it, so the relative `companion.md#<anchor>` hrefs resolve beside the video.
 
 **The tts stage (TP-2615).** Each beat's `spoken` text is voiced by speech-tts Kokoro (Kokoro-82M at fp32 over
 speech-g2p misaki English, on the host's speech runtime) with `unknownWords: "fail"`, so a word with no phonemes
