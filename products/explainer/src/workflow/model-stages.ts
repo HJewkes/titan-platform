@@ -23,6 +23,7 @@ import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { COMPANION_FILE, companionChapters, renderCompanion, reviewFacts, type ChapterLinks } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry, type RuleRegistry } from "../rules.js";
+import { issueText, replyObject, stripUnknownKeys } from "./script-reply.js";
 import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
 
@@ -104,34 +105,6 @@ export function scriptPrompt(spine: string, facts: string): string {
 
 const retryPrompt = (prompt: string, error: string): string =>
   `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
-
-/** Enough issues to fix the reply by, few enough that a reply in the wrong shape does not flood the run error. */
-const MAX_ISSUES = 25;
-const issueText = (issues: readonly z.core.$ZodIssue[]): string => {
-  const shown = issues.slice(0, MAX_ISSUES).map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
-  return [...shown, ...(issues.length > MAX_ISSUES ? [`and ${issues.length - MAX_ISSUES} more`] : [])].join("; ");
-};
-
-/** The reply's outermost JSON object, so a reply wrapped in a code fence or a sentence still parses. */
-function replyObject(text: string): unknown {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("no JSON object");
-  return JSON.parse(text.slice(start, end + 1));
-}
-
-const isObject = (value: unknown): value is Record<PropertyKey, unknown> => typeof value === "object" && value !== null;
-
-/** Deletes, in place, each key zod reports as unrecognized, and returns its dotted path. */
-function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
-  return issues.flatMap((issue) => {
-    if (issue.code !== "unrecognized_keys") return [];
-    const owner = issue.path.reduce<unknown>((node, key) => (isObject(node) ? node[key] : undefined), raw);
-    if (!isObject(owner)) return [];
-    for (const key of issue.keys) Reflect.deleteProperty(owner, key);
-    return issue.keys.map((key) => [...issue.path, key].join("."));
-  });
-}
 
 interface Checked {
   script?: ScriptV1;

@@ -133,7 +133,7 @@ export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
   return { exec, calls };
 }
 
-interface FakeScriptModel {
+export interface FakeScriptModel {
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
   prompts: string[];
   budgets: number[];
