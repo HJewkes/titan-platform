@@ -11,7 +11,8 @@ import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
 import { parseScript } from "../script-load.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
-import { parseSpine } from "../spine-schema.js";
+import { parseSpine, type SpineV1 } from "../spine-schema.js";
+import { COMPANION_FILE, companionChapters, renderCompanion, reviewFacts, type ChapterLinks } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry, type RuleRegistry } from "../rules.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
@@ -195,7 +196,24 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const repair = await repairScript(call, prompt, draft.script, (script) => runL0(script, undefined, deps.l0Checks ?? L0_CHECKS, undefined, spine));
   const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
   const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...(repair ? [repair.check] : [])];
-  return { outputs: { draft: putJson(input, repair?.script ?? draft.script, "script") }, usage, retries, checks };
+  const script = repair?.script ?? draft.script;
+  const companion = companionOutputs(input, script, spine);
+  return { outputs: { draft: putJson(input, script, "script"), ...companion.outputs }, usage, retries, checks, notes: companion.notes };
+}
+
+/**
+ * A repo run's companion doc and chapter links. Written here because the script stage is the first that holds both the
+ * gathered facts and the chapters, and the later stages keep every chapter id, so resolve can fill a `companion-link`
+ * card from the links. Facts that are not gathered review facts make no companion.
+ */
+function companionOutputs(input: ModelStageInput, script: ScriptV1, spine: SpineV1): Pick<StageOutcome, "outputs" | "notes"> {
+  const facts = reviewFacts(input.store.readText(need(input, "facts")));
+  if (facts === undefined) return { outputs: {}, notes: [] };
+  const { markdown, links, diagnostics } = renderCompanion(facts, companionChapters(script, spine));
+  const companion = input.store.putText(markdown, "companion", input.from);
+  const record: ChapterLinks = { schema: "explainer.chapter-links/v1", doc: COMPANION_FILE, docSha: companion, links };
+  const notes = [`companion doc ${COMPANION_FILE} links ${links.length} chapters`, ...diagnostics.map((d) => `${d.code} ${d.message}`)];
+  return { outputs: { companion, "chapter-links": putJson(input, record, "chapter-links") }, notes };
 }
 
 export interface RewriteStageDeps {

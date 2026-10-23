@@ -232,13 +232,24 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 |---|---|---|
 | `gather` | in-process: the profile's gather body (`gatherDaily`, `gatherPr` or `gatherArticle`) on the run's gather request, which is the stage's key, written into its gather directory as well. A `gatherPr` gather refuses a head other than the one the gate named, and also stores `code` (`{ files }`, each changed file the head still has) for resolve's code citations. Optional: a run takes it only when it starts there, with `--from gather --facts-from <adapter>` (the type's profile, and so the audition's, by default); re-gathering the same request needs `--sample gather=<k>` | (the outside world) → facts, code |
 | `audition` | in-process: the material map and the fit predicates, then one sampling call for k spines, code scores, the reported-only cold-viewer rubric per candidate, and the pick (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map, audition, and spine for a profile with `spine: { from: audition-pick }` |
-| `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft |
+| `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; one retry names the schema issues, then up to two repair calls name the failing error-severity L0 rows (a repair is kept only when it fails fewer) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
 | `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned) → resolved |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `export` | hard links the declared artifacts into the theater folder; the run ends here | mp4 and sidecars → the same shas |
+
+**The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
+script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`
+(`explainer.chapter-links/v1`: the doc's name and sha, and per chapter its section, `href` and the anchor of each fact
+it cites). The doc holds every gathered fact, one section per repo-tour block in the tour's order, anchored by the
+block id. A chapter's blocks come from its spine §8 row (`§3.n` names journey row n, whose step is the block) or, with
+no row, block n for chapter n; a chapter that merges blocks links the first. The doc depends only on the facts, so the
+tour and its review-digest cut over one review link the same bytes. The script stage is the first that holds both the
+facts and the chapters, and later stages keep the chapter ids, so resolve can fill a `companion-link` card from the
+links. A chapter that plays no tour block links the contents (`W-CHAPTER-UNMAPPED`), and a review with no SUMMARY
+facts warns `W-NO-SUMMARY`; both land in the stage's notes.
 
 **The tts stage (TP-2615).** Each beat's `spoken` text is voiced by speech-tts Kokoro (Kokoro-82M at fp32 over
 speech-g2p misaki English, on the host's speech runtime) with `unknownWords: "fail"`, so a word with no phonemes
