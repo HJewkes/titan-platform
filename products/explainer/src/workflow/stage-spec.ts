@@ -9,7 +9,7 @@ import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../sty
 import type { StylePack } from "../style-pack-schema.js";
 import { sha256 } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
-import { auditionConfig } from "./audition-stage.js";
+import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
 import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from "./records.js";
@@ -19,7 +19,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g1", audition: "pp9", script: "x5", rewrite: "x4", eval: "x4", resolve: "pp7", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
+  gather: "g1", audition: "pp9", script: "x6", rewrite: "x4", eval: "x4", resolve: "pp7", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
@@ -54,7 +54,7 @@ export const StageConfigSchema = z.object({
   model: z.string().optional(),
   judge: JudgeConfigSchema.optional(),
   rounds: z.number().optional(),
-  /** The audition's profile and structure registry, by version and content hash. */
+  /** The run's profile, by version and content hash: the audition reads it and the script stage stamps its type. */
   profile: z.object({ type: z.string(), version: z.string(), sha: z.string() }).optional(),
   structures: z.string().optional(),
   /** The resolve stage's beat specs, profiles and router, by content hash. */
@@ -136,7 +136,10 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
     if (!settings.profile) throw new Error("stage audition needs a profile: pass --profile <type>");
     return auditionConfig(settings.profile, { model: settings.scriptModel, judge: settings.judge });
   }
-  if (stage === "script") return { model: ScriptParamsSchema.parse(params).model ?? settings.scriptModel };
+  if (stage === "script") {
+    const model = ScriptParamsSchema.parse(params).model ?? settings.scriptModel;
+    return { model, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
+  }
   if (stage === "rewrite") {
     const p = RewriteParamsSchema.parse(params);
     return { judge: p.model ? { ...settings.judge, model: p.model } : settings.judge, rounds: p.rounds ?? settings.rounds };

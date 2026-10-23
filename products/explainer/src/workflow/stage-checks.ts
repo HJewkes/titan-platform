@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { loadBeatSpecs } from "../beat-load.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { JudgeConfig, JudgeHarness } from "../eval-harness.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
@@ -9,6 +10,7 @@ import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
 import { readEmphasisInput, wordBudgetVerdict } from "../resolve-stage.js";
 import { parseSpine } from "../spine-schema.js";
+import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import type { ArtifactStore } from "./artifacts.js";
@@ -69,6 +71,21 @@ function rewriteTargetRows(input: CheckInput): Verdict {
   return { pass: red.length === 0, detail: `${red.length} of ${report.after.length} target rows red${red.length ? `: ${red.join(", ")}` : ""}` };
 }
 
+const shownList = (items: readonly string[]): string => items.slice(0, 5).join(", ") + (items.length > 5 ? ` and ${items.length - 5} more` : "");
+
+/** Every emphasis target the draft's beat specs declare has a cue to land on, so the render never holds a static frame. */
+function cuesPresent(input: CheckInput): Verdict {
+  const specs = loadBeatSpecs();
+  const uncued = uncuedTargets(script(input, "draft"), leadBeats(parseSpine(text(input, "spine")), specs), specs);
+  return { pass: uncued.length === 0, detail: uncued.length === 0 ? "every emphasis target has a cue" : `uncued: ${shownList(uncued)}` };
+}
+
+/** Beats whose beat spec declares emphasis targets: with any, a script of no cues has nothing to resolve and fails. */
+function cuedBeats(beats: ScriptV1["beats"]): number {
+  const specs = loadBeatSpecs();
+  return beats.filter(({ visual }) => (specs.get(visual.beat ?? "")?.emphasis?.targets.length ?? 0) > 0).length;
+}
+
 /** Every cue the script names lands on a word the voice actually spoke, so no visual fires on a guess. */
 function cueResolution(input: CheckInput): Verdict {
   const timing = readTiming(JSON.parse(text(input, "words")));
@@ -76,7 +93,8 @@ function cueResolution(input: CheckInput): Verdict {
   const resolve = cueResolverFromWords(words);
   const missed: string[] = [];
   let total = 0;
-  for (const beat of script(input, "script").beats) {
+  const { beats } = script(input, "script");
+  for (const beat of beats) {
     for (const cue of beatCues(beat.visual)) {
       total++;
       try {
@@ -86,8 +104,9 @@ function cueResolution(input: CheckInput): Verdict {
       }
     }
   }
-  const shown = missed.slice(0, 5).join(", ") + (missed.length > 5 ? ` and ${missed.length - 5} more` : "");
-  return { pass: missed.length === 0, detail: `${total - missed.length} of ${total} cues resolve${missed.length ? `; unresolved: ${shown}` : ""}` };
+  const targeted = total === 0 ? cuedBeats(beats) : 0;
+  if (targeted > 0) return { pass: false, detail: `0 cues, but ${targeted} beats name a beat spec with emphasis targets` };
+  return { pass: missed.length === 0, detail: `${total - missed.length} of ${total} cues resolve${missed.length ? `; unresolved: ${shownList(missed)}` : ""}` };
 }
 
 /**
@@ -102,6 +121,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "l0", gate: true, reads: ["draft", "spine"], run: (input) => rowsVerdict(errorRows(l0Draft(input))) },
     { name: "l0-warnings", gate: false, reads: ["draft", "spine"], run: (input) => rowsVerdict(warningRows(l0Draft(input))) },
     { name: "pace", gate: true, reads: ["draft"], run: paceVerdict("draft") },
+    { name: "cues-present", gate: true, reads: ["draft", "spine"], run: cuesPresent },
   ],
   rewrite: [
     { name: "no-new-l0-error", gate: true, reads: ["draft", "script"], run: noNewL0Error },

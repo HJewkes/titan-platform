@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
@@ -9,10 +9,13 @@ import { sha256 } from "./artifacts.js";
 import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
 import { resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+
+/** A chapter order leading ch1 on verdict-card, whose emphasis target list is `reasons`. */
+const LEAD_ORDER = "\n## 8. Chapter order\n| Chapter | Question | Rows | Beat |\n|---|---|---|---|\n| ch1 | Why does the desk refuse a parcel? | §3.1 | verdict-card |\n";
 
 const row = (outcome: Awaited<ReturnType<typeof runVideo>>, stage: string) => outcome.report.rows.find((r) => r.stage === stage)!;
 
@@ -50,7 +53,7 @@ describe("explainer run", () => {
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
-    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "3 pass, 1 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "4 pass, 1 gate fail, 1 reported fail" });
     expect(result.error).toContain("script: gate l0 failed");
     expect(bridge.calls).toEqual([]);
     expect(row(result, "rewrite").status).toBe("not run");
@@ -95,7 +98,7 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(1);
-    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "4 pass, 0 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "5 pass, 0 gate fail, 1 reported fail" });
     const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
     expect(draft.beats[0]).not.toHaveProperty("chips");
     expect(draft.beats[1]).not.toHaveProperty("cues");
@@ -112,7 +115,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain('Unrecognized key: "cues"');
-    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "4 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "5 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("repairs a draft that fails L0 with one call naming the failing checks, and keeps the repair", async () => {
@@ -126,7 +129,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
-    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "5 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "6 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("tells the repair what a failing check found where its row alone is opaque", async () => {
@@ -148,6 +151,31 @@ describe("explainer run", () => {
 
     const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
     expect(draft.structure).toBe("design-journey");
+  });
+
+  // Mutation: stamping GUIDE_PLAN_STRUCTURE, or keeping the reply's profile, stores design-journey or daily-briefing.
+  it("records the run's profile and the spine's structure on the draft, and names the lead beat's targets in the prompt", async () => {
+    fx = fixture();
+    writeFileSync(fx.spine, SPINE.replace("\n\n## 3. Journey", `\n\nStructure: scqa\n\n## 3. Journey`) + LEAD_ORDER);
+    const model = fakeScriptModel({ ...choppy(), profile: "daily-briefing", structure: "design-journey" }, { followLeads: true });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
+    expect(draft).toMatchObject({ profile: "daily-overview", structure: "scqa" });
+    expect(model.prompts[0]).toContain("- ch1: verdict-card (emphasis targets: reasons).");
+  });
+
+  it("retries a reply that leaves a lead beat uncued, naming the chapter", async () => {
+    fx = fixture();
+    writeFileSync(fx.spine, SPINE + LEAD_ORDER);
+    const model = fakeScriptModel(choppy(), { invalid: 1, invalidReply: choppy(), followLeads: true });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts[1]).toContain("lead beats: ch1's lead beat verdict-card is on none of its beats");
   });
 
   it("makes no repair call for a draft that passes L0", async () => {

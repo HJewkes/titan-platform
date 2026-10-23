@@ -138,11 +138,27 @@ interface FakeScriptModel {
   budgets: number[];
 }
 
+const LEAD_LINE = /^- (\S+): ([a-z0-9-]+) \(emphasis targets: ([^)]+)\)/gm;
+
+/** `script` with each lead beat the prompt lists on its chapter's first beat, cued once per target on a word it speaks. */
+export function withLeadBeats(script: ScriptV1, prompt: string): ScriptV1 {
+  const leads = new Map([...prompt.matchAll(LEAD_LINE)].map(([, chapter, spec, targets]) => [chapter!, { spec: spec!, targets: targets!.split(", ") }]));
+  const beats = script.beats.map((beat) => {
+    const lead = leads.get(beat.chapter);
+    if (!lead || script.beats.find((b) => b.chapter === beat.chapter) !== beat) return beat;
+    const word = beat.spoken.split(/\s+/).find((w) => /^[A-Za-z]+$/.test(w))!;
+    const cues = lead.targets.map((target) => ({ action: "V6" as const, target: `${target}-1`, atCue: word }));
+    return { ...beat, visual: { ...beat.visual, beat: lead.spec, cues } };
+  });
+  return { ...script, beats };
+}
+
 /** The script model: answers with `script`, after `invalid` replies that fail the schema, at `usd` a call. */
 /** `invalidReply` is what each of the first `invalid` calls answers; by default the script with no chapters. */
+/** `followLeads` places the prompt's lead beats on the reply, as a model following the prompt would. */
 export function fakeScriptModel(
   script: ScriptV1 = choppy(),
-  options: { invalid?: number; invalidReply?: unknown; usd?: number; repaired?: ScriptV1 } = {},
+  options: { invalid?: number; invalidReply?: unknown; usd?: number; repaired?: ScriptV1; followLeads?: boolean } = {},
 ): FakeScriptModel {
   const prompts: string[] = [];
   const budgets: number[] = [];
@@ -153,7 +169,8 @@ export function fakeScriptModel(
       prompts.push(input.prompt);
       budgets.push(runner.maxBudgetUsd);
       if (bad-- > 0) return { ok: true, output: JSON.stringify(options.invalidReply ?? { ...script, chapters: [] }), usage };
-      const reply = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      const answer = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      const reply = options.followLeads ? withLeadBeats(answer, input.prompt) : answer;
       return { ok: true, output: `Here is the script.\n\n\`\`\`json\n${JSON.stringify(reply)}\n\`\`\`\n`, usage };
     },
   });
@@ -161,7 +178,7 @@ export function fakeScriptModel(
 }
 
 /** The decision brief's two models: the sampling call answers the audition's prompt, `script` the script stage's. */
-export function fakeBriefModels(script = fakeScriptModel()): FakeScriptModel & { script: FakeScriptModel } {
+export function fakeBriefModels(script = fakeScriptModel(choppy(), { followLeads: true })): FakeScriptModel & { script: FakeScriptModel } {
   const audition = fakeAuditionModel();
   const runnerFor = (options: AgentRunnerOptions) => {
     const sampler = audition.runnerFor(options);

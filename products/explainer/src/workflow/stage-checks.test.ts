@@ -24,6 +24,19 @@ const warning = (pass: boolean): L0Check => () => [{ check_id: "fake-warn", mode
 /** h1 shows a V6 card on "courier", a word h1 speaks. */
 const cued = (): ScriptV1 => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", cues: [{ action: "V6", target: "card", atCue: "courier" }] } } });
 
+/** SPINE with a chapter order whose ch1 leads on verdict-card, a beat spec with an emphasis target list. */
+const LEAD_SPINE = `${SPINE}
+## 8. Chapter order
+| Chapter | Question | Rows | Beat |
+|---|---|---|---|
+| ch1 | Why does the desk refuse a parcel? | §3.1 | verdict-card |
+`;
+
+type Cue = ScriptV1["beats"][number]["visual"]["cues"][number];
+/** h1 names verdict-card, with the given cues. */
+const verdictLead = (cues: Cue[]): ScriptV1 =>
+  choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "verdict-card", cues } } });
+
 function words(script: ScriptV1, drop?: string): string {
   const beats = script.beats.map((beat) => {
     const spoken = beat.spoken.split(/\s+/).filter((word) => word !== drop);
@@ -57,6 +70,28 @@ describe("script stage checks", () => {
 
   it("passes pace on the plain draft", () => {
     expect(verdict(runStageChecks("script", input({ draft: json(choppy()), spine: SPINE })), "pace")).toMatchObject({ pass: true });
+  });
+
+  // Mutation: skipping a beat's own spec check lets a verdict-card with no cue through.
+  it("gates on a beat whose beat spec has emphasis targets and no cue", () => {
+    const run = runStageChecks("script", input({ draft: json(verdictLead([])), spine: LEAD_SPINE }));
+
+    expect(verdict(run, "cues-present")).toMatchObject({ gate: true, pass: false, detail: "uncued: h1 (verdict-card) has no cue for reasons" });
+  });
+
+  // Mutation: skipping the spine's lead beats passes a draft that never places verdict-card, at 0 cues.
+  it("gates on a chapter whose lead beat spec is on none of its beats, so a cue-less draft is no vacuous pass", () => {
+    const run = runStageChecks("script", input({ draft: json(choppy()), spine: LEAD_SPINE }));
+
+    expect(verdict(run, "cues-present")).toMatchObject({ gate: true, pass: false, detail: "uncued: ch1's lead beat verdict-card is on none of its beats" });
+  });
+
+  it("passes cues-present when the lead beat names its spec and cues a target", () => {
+    const draft = verdictLead([{ action: "V6", target: "reasons-1", atCue: "courier" }]);
+
+    const run = runStageChecks("script", input({ draft: json(draft), spine: LEAD_SPINE }));
+
+    expect(verdict(run, "cues-present")).toMatchObject({ pass: true });
   });
 });
 
@@ -112,6 +147,15 @@ describe("tts stage checks", () => {
 
     expect(verdict(run, "cue-resolution")).toMatchObject({ gate: true, pass: false, detail: "0 of 1 cues resolve; unresolved: h1:courier" });
   });
+
+  // Mutation: passing at 0 cues lets a script whose beat specs want emphasis render with no cue at all.
+  it("gates on a script of no cues when a beat names a beat spec with emphasis targets", () => {
+    const script = verdictLead([]);
+
+    const run = runStageChecks("tts", input({ script: json(script), words: words(script) }));
+
+    expect(verdict(run, "cue-resolution")).toMatchObject({ gate: true, pass: false, detail: "0 cues, but 1 beats name a beat spec with emphasis targets" });
+  });
 });
 
 describe("running a stage's checks", () => {
@@ -134,7 +178,7 @@ describe("running a stage's checks", () => {
     expect(roles).toEqual({
       gather: [],
       audition: [],
-      script: ["l0:gate", "l0-warnings:reported", "pace:gate"],
+      script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate"],
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
       eval: [], resolve: ["emphasis-target:gate", "word-budget:gate"], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });
