@@ -66,8 +66,8 @@ describe("land with the merge held for an owner release", () => {
 
     const merges = Object.values(final?.stepResults ?? {}).filter((row) => row.stepId.startsWith("merge:")).map((row) => row.stepId);
     expect(merges).toEqual(Array.from({ length: 20 }, (_, n) => `merge:${n}`));
-    expect(whileParked?.error ?? null).toBeNull();
-    expect(whileParked?.status).toBe("running");
+    expect(whileParked.error ?? null).toBeNull();
+    expect(whileParked.status).toBe("running");
     expect(final?.status).toBe("completed");
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", own: true });
   });
