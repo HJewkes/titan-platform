@@ -86,6 +86,23 @@ describe("script stage checks", () => {
     expect(verdict(run, "cues-present")).toMatchObject({ gate: true, pass: false, detail: "uncued: ch1's lead beat verdict-card is on none of its beats" });
   });
 
+  // Mutation: testing misaki's rating instead of the phonemes, or dropping the lexicon, changes these verdicts.
+  it("gates on a spoken word the voice has no phonemes for, naming the word and its beat", () => {
+    const draft = choppy({ h2: { spoken: "The desk held 12 parcels through zqxjkv today." } });
+
+    const run = runStageChecks("script", input({ draft: json(draft), spine: SPINE }));
+
+    expect(verdict(run, "unknown-words")).toMatchObject({ gate: true, pass: false, detail: "no phonemes for: zqxjkv (h2)" });
+  });
+
+  it("passes unknown-words on a word only the doctrine lexicon voices, and on spelled numbers", () => {
+    const draft = choppy({ h2: { spoken: "The desk encodes 12 parcels with ffmpeg today." } });
+
+    const run = runStageChecks("script", input({ draft: json(draft), spine: SPINE }));
+
+    expect(verdict(run, "unknown-words")).toMatchObject({ pass: true });
+  });
+
   it("passes cues-present when the lead beat names its spec and cues a target", () => {
     const draft = verdictLead([{ action: "V6", target: "reasons-1", atCue: "courier" }]);
 
@@ -178,7 +195,7 @@ describe("running a stage's checks", () => {
     expect(roles).toEqual({
       gather: [],
       audition: [],
-      script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate"],
+      script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate", "unknown-words:gate"],
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
       eval: [], resolve: ["emphasis-target:gate", "word-budget:gate"], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });

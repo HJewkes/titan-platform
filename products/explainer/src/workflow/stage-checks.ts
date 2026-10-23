@@ -1,3 +1,4 @@
+import { misakiEnglish, type G2p } from "@titan-design/speech-g2p";
 import { z } from "zod";
 import { loadBeatSpecs } from "../beat-load.js";
 import { cueResolverFromWords } from "../cues.js";
@@ -13,6 +14,8 @@ import { parseSpine } from "../spine-schema.js";
 import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
+import { unknownWords } from "../unknown-words.js";
+import { misakiWords } from "./tts-engine.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
 
@@ -80,6 +83,19 @@ function cuesPresent(input: CheckInput): Verdict {
   return { pass: uncued.length === 0, detail: uncued.length === 0 ? "every emphasis target has a cue" : `uncued: ${shownList(uncued)}` };
 }
 
+let voiceG2p: G2p | undefined;
+const doctrineG2p = (): G2p => (voiceG2p ??= misakiEnglish({ words: misakiWords() }));
+
+/**
+ * Every word of the spelled draft has phonemes in the voice's g2p, the doctrine lexicon included, so a word the voice
+ * cannot say fails here, before the rewrite and tts spend, rather than at tts (owner, TP-3032 s7 item 9).
+ */
+function knownWords(input: CheckInput): Verdict {
+  const unknown = unknownWords(doctrineG2p(), spellScript(script(input, "draft")));
+  const named = [...new Set(unknown.map(({ beat, word }) => `${word} (${beat})`))];
+  return { pass: unknown.length === 0, detail: unknown.length === 0 ? "every spoken word has phonemes" : `no phonemes for: ${shownList(named)}` };
+}
+
 /** Beats whose beat spec declares emphasis targets: with any, a script of no cues has nothing to resolve and fails. */
 function cuedBeats(beats: ScriptV1["beats"]): number {
   const specs = loadBeatSpecs();
@@ -122,6 +138,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "l0-warnings", gate: false, reads: ["draft", "spine"], run: (input) => rowsVerdict(warningRows(l0Draft(input))) },
     { name: "pace", gate: true, reads: ["draft"], run: paceVerdict("draft") },
     { name: "cues-present", gate: true, reads: ["draft", "spine"], run: cuesPresent },
+    { name: "unknown-words", gate: true, reads: ["draft"], run: knownWords },
   ],
   rewrite: [
     { name: "no-new-l0-error", gate: true, reads: ["draft", "script"], run: noNewL0Error },

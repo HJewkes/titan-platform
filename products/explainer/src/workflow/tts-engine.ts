@@ -26,7 +26,7 @@ function loadDoctrineLexicon(path = DOCTRINE_LEXICON_PATH): Lexicon {
 }
 
 /** The `{ term: misaki phonemes }` map of the entries that carry misaki phonemes: the only part the voice hears. */
-function misakiWords(lexicon: Lexicon): Record<string, string> {
+export function misakiWords(lexicon: Lexicon = loadDoctrineLexicon()): Record<string, string> {
   return Object.fromEntries(lexicon.entries.flatMap(({ term, phonemes }) => (phonemes?.misaki === undefined ? [] : [[term, phonemes.misaki]])));
 }
 
