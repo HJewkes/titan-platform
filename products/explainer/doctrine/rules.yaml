@@ -480,7 +480,7 @@ rules:
     related: ["FB 1"]
     rubric_dims: [J3]
     owner_support: for
-    note: "Owner feedback rule 1. Needs the spine (spine/v1): the check runs only when a spine is supplied. The L1 J3 anchor carries the judge half."
+    note: "Owner feedback rule 1. Needs the spine (spine/v1): the check runs only when a spine is supplied, and only for a design-journey script or a legacy one that names no structure (owner-FB1.2). The L1 J3 anchor carries the judge half."
     l0: { severity: error, status: implemented, checks: ["Q-E15"] }
     judge: { layer: L1, status: cited, rubric: rubrics/l1-script.md }
   - id: Q-E16
