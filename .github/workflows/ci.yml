@@ -127,7 +127,7 @@ jobs:
         with:
           path: node_modules/.vite/vitest
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
-      # CAPABILITIES.md is committed; a stale copy fails here. docs:build writes the site's copy.
+      # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
       # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
