@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a disabled rule still orders the repo",
+      "file": "products/factory/src/shepherd/merge-order-guard.ts",
+      "find": "if (!rule?.enabled || branch",
+      "replace": "if (rule === undefined || branch",
+      "kills": [
+        "the merge-order guard reads nothing at all under the shipped rule file, which leaves every repo unordered",
+        "a merge step behind a merge-order reservation merges at once under the shipped rule file, as it did before merge order existed"
+      ]
+    },
+    {
+      "name": "a stacked PR is ordered too",
+      "file": "products/factory/src/shepherd/merge-order-guard.ts",
+      "find": " || baseRef !== (await port.defaultBranch(repo))) return undefined;",
+      "replace": ") return undefined;",
+      "kills": [
+        "the merge-order guard never orders a disabled repo, the Version Packages branch, a stacked PR or an unregistered PR"
+      ]
+    },
+    {
+      "name": "a merged or closed reserving PR keeps blocking",
+      "file": "products/factory/src/shepherd/merge-order-guard.ts",
+      "find": "return read === undefined || (read.state === \"open\" && !read.merged);",
+      "replace": "return true;",
+      "kills": [
+        "the merge-order guard stops holding once the reserving PR has merged or closed",
+        "a merge step behind a merge-order reservation waits in the merge step and answers held, merging nothing, while an overlapping reservation is live"
+      ]
+    },
+    {
+      "name": "unread paths overlap nothing",
+      "file": "products/factory/src/shepherd/merge-order-guard.ts",
+      "find": "if (read.unread !== undefined) return { paths: [], unread: true };",
+      "replace": "if (read.unread !== undefined) return { paths: [] };",
+      "kills": [
+        "the merge-order guard holds a PR whose changed paths cannot be read until the reservation passes its TTL"
+      ]
+    }
+  ]
+}
