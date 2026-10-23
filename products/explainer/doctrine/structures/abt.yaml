@@ -1,0 +1,29 @@
+schema: narrative-structure/v1
+id: abt
+version: 0.1.0
+source: "story-structure §2.6 (And-But-Therefore), §4 row 3 under five minutes and the default row"
+summary: "And (what holds), but (the problem), therefore (the resolution), in under five minutes."
+fit:
+  ask: "Is there one central problem worked through in a short video?"
+  all: [central-problem]
+blocks:
+  - { id: and, goal: "What the viewer already accepts.", share: 0.2 }
+  - { id: but, goal: "The problem, or the naive way that fails.", share: 0.25 }
+  - { id: therefore, goal: "How it is resolved.", share: 0.4 }
+  - { id: takeaway, goal: "The one thing to take away.", share: 0.15 }
+hook: "The but lands by 25% of runtime."
+ending: "takeaways+button"
+spine:
+  - title: ABT sentence
+    body: |-
+      <And ..., but ..., therefore ...: one sentence the whole video expands.>
+  - title: And
+    body: |-
+      <What holds today, with one fact id.>
+  - title: But
+    body: |-
+      <The problem, with one fact id.>
+  - title: Therefore
+    body: |-
+      | # | Step of the resolution | Fact id | Beat |
+      |---|---|---|---|

@@ -51,6 +51,15 @@ describe("checkDoctrine", () => {
     expect([isCodeEnforced(fully), codesFor(fully)]).toEqual([true, ["code-rule-in-prompt-enforcement"]]);
   });
 
+  it("scopes a T rule to a structure in the vocabulary, and nothing else", () => {
+    const structureRule = (layer: DoctrineRule["scope"]["layer"], structures: string[]): DoctrineRule =>
+      craftRule({ scope: { layer, structures }, enforcement: ["planner"], stages: ["plan"] });
+
+    expect(codesFor(structureRule("T", ["scqa"]))).toEqual([]);
+    expect(codesFor(structureRule("T", ["freytag"]))).toEqual(["unknown-vocabulary"]);
+    expect(codesFor(structureRule("U", ["scqa"]))).toEqual(["universal-rule-scoped"]);
+  });
+
   it("resolves qrule checks against the Q-registry and its L0 status", () => {
     const qrule = (ref: string, live: boolean): DoctrineRule =>
       craftRule({ enforcement: ["lint"], stages: ["qa"], check: { kind: "qrule", ref, live } });

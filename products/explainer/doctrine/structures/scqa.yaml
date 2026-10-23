@@ -1,0 +1,31 @@
+schema: narrative-structure/v1
+id: scqa
+version: 0.1.0
+source: "story-structure §2.7 (Minto pyramid / SCQA), §4 row 1"
+summary: "Situation, complication, question, then the answer by 25% of runtime and its supports by importance."
+fit:
+  ask: "Is the viewer deciding something, and the verdict is the product?"
+  any: [decision-pending]
+blocks:
+  - { id: situation, goal: "What the viewer already accepts.", share: 0.1 }
+  - { id: complication, goal: "What changed or what hurts, which raises the question.", share: 0.15 }
+  - { id: answer, goal: "The answer as one line, by 25% of runtime.", share: 0.15 }
+  - { id: supports, goal: "The supports, ordered by importance.", share: 0.45 }
+  - { id: takeaway, goal: "The decision and what to do next.", share: 0.15 }
+hook: "State the stake and the question the viewer must answer in the first beat."
+ending: "takeaways+button"
+spine:
+  - title: Situation
+    body: |-
+      <What the viewer already accepts, in one sentence, with one fact id.>
+  - title: Complication
+    body: |-
+      <What changed or what hurts, with one fact id.>
+  - title: Question and answer
+    body: |-
+      - Question: <the decision, as the viewer would ask it>.
+      - Answer: <the verdict in one line>.
+  - title: Supports, by importance
+    body: |-
+      | # | Support | Fact id | Beat |
+      |---|---|---|---|

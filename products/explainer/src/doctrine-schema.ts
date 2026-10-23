@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Scope (VT §4.1): U universal, U* universal with a profile-supplied value, B beat or render, T type. */
+/** Scope (VT §4.1): U universal, U* universal with a profile-supplied value, B beat or render, T type, audience or structure. */
 export const DOCTRINE_LAYERS = ["U", "U*", "B", "T"] as const;
 
 /** Enforcement (VT §5.1 a–f): where a rule is applied. */
@@ -36,7 +36,13 @@ const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-cas
 const Names = z.array(Kebab).min(1);
 
 const ScopeSchema = z
-  .object({ layer: z.enum(DOCTRINE_LAYERS), beats: Names.optional(), types: Names.optional(), audiences: Names.optional() })
+  .object({
+    layer: z.enum(DOCTRINE_LAYERS),
+    beats: Names.optional(),
+    types: Names.optional(),
+    audiences: Names.optional(),
+    structures: Names.optional(),
+  })
   .strict();
 
 const CheckSchema = z
@@ -68,9 +74,9 @@ export const DoctrineRuleSchema = z
 
 export type DoctrineRule = z.infer<typeof DoctrineRuleSchema>;
 
-/** The allowed scope values: beat types, video types and audiences. */
+/** The allowed scope values (beat types, video types, audiences and structures), plus the material signals fit predicates read. */
 export const DoctrineVocabularySchema = z
-  .object({ schema: z.literal("doctrine-vocabulary/v1"), beats: Names, types: Names, audiences: Names })
+  .object({ schema: z.literal("doctrine-vocabulary/v1"), beats: Names, types: Names, audiences: Names, structures: Names, signals: Names })
   .strict();
 
 export type DoctrineVocabulary = z.infer<typeof DoctrineVocabularySchema>;

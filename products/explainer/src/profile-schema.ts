@@ -39,14 +39,16 @@ const BlockSchema = z
   .object({ id: Kebab, goal: z.string().min(1), seconds: Band, beats: z.array(Kebab).min(1), require: z.array(Kebab).optional() })
   .strict();
 
-const HeuristicRowSchema = z
-  .object({ signal: Kebab, ask: z.string().min(1), macro: Kebab, minRuntimeS: Seconds.optional() })
-  .strict();
+/** One heuristic row: a registered structure, and the profile's own wording of its fit question. */
+const HeuristicRowSchema = z.object({ macro: Kebab, ask: z.string().min(1) }).strict();
 
 /** A fixed structure plays its blocks in the listed order: chapters are the viewer's navigation (VT §2.2). */
 const FixedStructureSchema = z.object({ order: z.literal("fixed"), macro: Kebab, blocks: z.array(BlockSchema).min(1) }).strict();
 
-/** A heuristic structure takes the macro of the first heuristic row whose signal holds (story-structure §4). */
+/**
+ * A heuristic structure takes the first heuristic row whose registered structure fits the material
+ * (story-structure §4). Each macro names a structure in `doctrine/structures/`.
+ */
 const HeuristicStructureSchema = z
   .object({
     order: z.literal("heuristic"),
