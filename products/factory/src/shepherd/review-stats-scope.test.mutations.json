@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a shadow-scoped round counts as scoped",
+      "file": "products/factory/src/shepherd/review-stats.ts",
+      "find": "result.scoped && result.scopeShadow !== true",
+      "replace": "result.scoped",
+      "kills": [
+        "review stats for scoped fix rounds stores a shadow-scoped fix round as full, so the first-scoped cutoff waits for a round whose brief was scoped"
+      ]
+    },
+    {
+      "name": "the corrected reply's check overwrites the first check's counts",
+      "file": "products/factory/src/shepherd/review-stats.ts",
+      "find": "return name === \"sh-scope-check\" && suffix === undefined;",
+      "replace": "return name === \"sh-scope-check\";",
+      "kills": [
+        "review stats for scoped fix rounds records the first scope check's counts on the correctness round, not the corrected reply's, and sums them per week"
+      ]
+    }
+  ]
+}

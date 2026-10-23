@@ -7,7 +7,6 @@ import { WorkflowRunStore, workflowMigration, workflowOwnershipMigration, type W
 import { describe, expect, it } from "vitest";
 import { ReviewStatsStore, REVIEW_STATS_DB, REVIEW_STATS_MIGRATIONS } from "./review-stats-store.js";
 import { ledgerRuns, readRetireCosts, refreshReviewStats } from "./review-stats.js";
-import { reviewReport } from "./review-stats-report.js";
 import type { SessionRead, TranscriptPort } from "./stats-cost.js";
 
 const T0 = Date.parse("2026-10-05T10:00:00Z");
@@ -205,38 +204,6 @@ describe("review labels", () => {
       expect.objectContaining({ round: 1, cause: "convergence", shape: "correctness" }),
       expect.objectContaining({ round: 2, cause: "fix-round" }),
     ]);
-  });
-
-  it("stores a shadow-scoped fix round as full, so the first-scoped cutoff waits for a round whose brief was scoped", async () => {
-    const store = storeFile();
-    const steps = panelRounds().map(([key, minutes, result]): Step => [key, minutes, key === "sh-review:h2:0" ? { ...result, scopeShadow: true } : result]);
-
-    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}) });
-
-    expect(store.db.prepare("SELECT scoped FROM review WHERE round = 2").get()).toEqual({ scoped: 0 });
-    expect(reviewReport(store.db, {}, at(60)).rereview).toMatchObject({ cutoff: null, cutoffFrom: "none" });
-  });
-
-  it("records the first scope check's counts on the correctness round, not the corrected reply's", async () => {
-    const store = storeFile();
-    const steps: Step[] = [
-      ...panelRounds().slice(0, 8),
-      ["sh-await-verdict:h2:0", 15, verdict(SESSION.c, "h2", "FIX_FIRST")],
-      ["sh-scope-check:h2:0", 15, { kind: "checked", mode: "on", untagged: 2, repeated: 1, at: at(15) }],
-      ["sh-correct-verdict:h2:scope-1:0", 16, { kind: "asked", startedAt: at(16) }],
-      ["sh-await-verdict:h2:scope-1:0", 17, verdict(SESSION.c, "h2", "FIX_FIRST")],
-      ["sh-scope-check:h2:reply-1:0", 17, { kind: "checked", mode: "on", untagged: 1, repeated: 0, at: at(17), kept: true }],
-      ["sh-await-verdict:h2:adversary:0", 18, verdict(SESSION.b, "h2", "MERGE")],
-    ];
-
-    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}) });
-
-    const counts = store.db.prepare("SELECT round, shape, scope_untagged, scope_repeated FROM review WHERE head_sha = 'h2' ORDER BY round").all();
-    expect(counts).toEqual([
-      { round: 2, shape: "correctness", scope_untagged: 2, scope_repeated: 1 },
-      { round: 3, shape: "adversary", scope_untagged: null, scope_repeated: null },
-    ]);
-    expect(reviewReport(store.db, {}, at(60)).scopeCheckByWeek).toEqual({ "2026-W41": { checked: 1, untagged: 2, repeated: 1 } });
   });
 
   it("migrates a v1 store and fills its stored rows' labels on the next refresh without pricing them again", async () => {
