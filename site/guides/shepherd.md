@@ -156,6 +156,15 @@ The fix-proof wake brief says the same to a fixer woken on a NO_REPRO: a flaky-t
 changes only tests registers `--kind test-only` and leaves out any mutation spec, since
 `shepherd.gateReset.noReproProceed` lets only a spec-free test-only pull request past a vacuous proof.
 
+The re-register is no longer needed (TP-3261). With `noReproProceed` on, the gate also lets a
+spec-free `correctness` run past a vacuous or test-less proof when the same diff classifier reads
+its diff at that head as test material alone: tests, carried test files, `*.mutations.json` sidecars
+and `.changeset/*.md`. The diff decides here, not the label, so the run goes to review marked
+`no-repro-test-only` and needs no owner waiver. The gate stays strict. A diff that also touches
+source still needs `REPRO`, and so does a diff the classifier cannot read in full. A `security`
+run keeps its gate. A line that carries `mutants` still passes only through `provedByMutants`, so a
+surviving mutation or a refused spec ends the round as `NO_REPRO`.
+
 ## Phases
 
 ```mermaid
@@ -219,6 +228,15 @@ intent, Shepherd checks that every fallback a member is lowered to is an install
 agent-chat profile. If one is not, the intent step is refused with
 `UninstalledProfileError`, naming the profile, rather than dispatching a member that could
 only come back with no verdict.
+
+A test-only head that `shepherd.gateReset.noReproProceed` lets past its vacuous proof gets a
+blocking tests member, planned right after a hold's adversary so the member cap never drops
+it. It is a fresh reviewer, never one of the members that vote MERGE, and its brief asks
+whether each changed test would fail without the change it covers. Its MERGE lets the panel
+merge with no waiver. Its silence still means no verdict, and its FIX_FIRST sends the head
+back. Before TP-4058 the plan had no tests member, so the aggregate's unplanned tests seat
+stayed empty and the head went back as the proof's `NO_REPRO`; an intent recorded then keeps
+that ending.
 
 The aggregate decides:
 
@@ -590,6 +608,10 @@ none, as after its coordinator retired, the notice goes to the first live one of
 `shepherd.redSeat` entry, `shepherd.redSeat.fallback` and `shepherd.hubSeat`, and the step's
 `detail` names which one. With none live, no notice is sent and the owner gate opens with that
 reason. A roster that cannot be read keeps the chosen seat.
+
+The seat digest follows the same routing (TP-4050): a retired seat's digest lines go to the
+first live fallback. With none live, serve sends no digest, logs `could not send a seat digest`
+with the reason as its cause, and the next sweep tries again.
 
 A registrant stands in only for a repo that has one seat. A notice lets the gate take its
 default action, and the seat book is what authorises that, so a repo that is on a deny list

@@ -12,6 +12,9 @@ export interface CompletedStep {
   usage?: StepUsage;
   /** The attempt that succeeded, counted from 0 across retries and recovery. */
   attempt: number;
+  startedAt: string;
+  firstStartedAt: string;
+  restarts: number;
 }
 
 /** What one call position found in the record: its iteration, its key, and the row if it recorded one. */

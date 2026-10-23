@@ -126,6 +126,20 @@ const INBOX_DERIVED: Served["inbox.list"]["result"]["derived"] = [
   },
 ];
 
+const INBOX_NUDGES: Served["inbox.list"]["result"]["nudges"] = [
+  {
+    roundId: "kiln-schedule-r2", unit: "kiln-schedule", round: 2, openedAt: at(7 * HOUR), manifestSha256: "ab".repeat(32), oneTap: true, nudgedAt: at(HOUR),
+    recommendations: [], recommendationsHidden: true,
+    line: "kiln-schedule-r2 has waited 7 h: 2 questions; recommendations hidden until you answer",
+  },
+  {
+    roundId: "lantern-cards-r1", unit: "lantern-cards", round: 1, openedAt: at(9 * HOUR), manifestSha256: "cd".repeat(32), oneTap: false, nudgedAt: null, recommendationsHidden: false,
+    withoutTap: 'question "card-notes" has no recommendation that answers it',
+    recommendations: [{ questionId: "card-density", prompt: "How dense should a card be?", answer: "Compact" }],
+    line: "lantern-cards-r1 has waited 9 h; open it to answer (recommended: card-density: Compact)",
+  },
+];
+
 const TIMELINE_ENTRIES = [
   { kind: "step", stepId: "sh-ci", iteration: 1, startedAt: at(3 * HOUR), completedAt: at(3 * HOUR - 10 * MINUTE), signal: null, status: "done" },
   { kind: "verdict", stepId: "sh-review", verdict: "MERGE", headSha: HEAD.slice(0, 16), locator: null, reviewer: "relay-reviewer" },
@@ -275,7 +289,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
   answer("work.tasks", {}, { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks: TASKS, evidence: EVIDENCE }),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
-  answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED }),
+  answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED, nudges: INBOX_NUDGES }),
   answer("shepherd.list", { state: "active" }, WATCHED),
   answer("shepherd.waiting", {}, { owner: [{ gateId: "run-12/approve-merge", stepId: "approve-merge", repo: "orbit/relay", pr: 12, task: "orbit-relay/OR-12", since: at(2 * HOUR), ageHours: 2 }], seat: [] }),
   answer("shepherd.timeline", { repo: "orbit/relay", pr: 12 }, { row: WATCHED[0]!, entries: TIMELINE_ENTRIES }),

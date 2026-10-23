@@ -1149,7 +1149,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`
-- +85 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
+- +86 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/workflow)
 
 ## UI
 
@@ -1208,7 +1208,7 @@ Key exports:
 - `cli`: `runCli`, `defaultIndexPath`, `formatHit`, `formatStats`
 - `header`: `parseHeader`, `splitTitle`
 - `index-corpus`: `chapterOwnerRef`, `indexCorpus`, `listChapters`, `migrateIndex`, `openSpans`, `readSpanText`
-- +88 more in `products/corpus-query/src/index.ts`
+- +106 more in `products/corpus-query/src/index.ts`
 
 <a id="cap-evals"></a>
 

@@ -7,7 +7,7 @@
       "find": "verdict.fixProofShortfall === true && line !== undefined",
       "replace": "false",
       "kills": [
-        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof goes back as the proof's NO_REPRO when only the unplanned tests member is missing, never a reviewer retry"
+        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof goes back as the proof's NO_REPRO when its intent, recorded before TP-4058, planned no tests member"
       ]
     },
     {

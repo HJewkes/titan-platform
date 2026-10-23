@@ -189,6 +189,7 @@ graph TD
   activeWork --> sessionRead
   activeWork --> storeSqlite
   corpusQuery --> agent
+  corpusQuery --> agentProtocol
   corpusQuery --> appPaths
   corpusQuery --> evidence
   corpusQuery --> hitl
