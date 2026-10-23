@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { loadDoctrine } from "./doctrine-load.js";
 import type { DoctrineRegistry, DoctrineRule, DoctrineStage } from "./doctrine-schema.js";
 import { sliceForStage } from "./doctrine-slice.js";
+import { JOURNEY_ORDER_STRUCTURE } from "./lint-spine.js";
 import { labelKey } from "./pace-items.js";
 import { loadStructures, structureFor } from "./profile-load.js";
 import { loadRuleRegistry, type RuleRegistry } from "./rules.js";
@@ -49,7 +50,7 @@ function renderSpineActs(spine: SpineV1): string {
 }
 
 /** The structure this guide plans: its spine is the spine/v1 template that lint-spine reads. */
-export const GUIDE_PLAN_STRUCTURE = "design-journey";
+export const GUIDE_PLAN_STRUCTURE = JOURNEY_ORDER_STRUCTURE;
 
 /**
  * The planner's markdown guide for one stage of a `design-journey` video: the intro, the

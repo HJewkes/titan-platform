@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { stringify } from "yaml";
 import { describe, expect, it } from "vitest";
 import { beatSpec, BEATS, codeWalkSlots } from "./beat-fixtures.test-helpers.js";
-import { BeatSlotError, beatSpecFor, emphasisTargets, loadBeatSpecs, parseBeatSlots, UnknownBeatError } from "./beat-load.js";
+import { BeatSlotError, beatSpecFor, cueElement, emphasisTargets, loadBeatSpecs, parseBeatSlots, UnknownBeatError } from "./beat-load.js";
 import { BeatSpecSchema } from "./beat-schema.js";
 
 const PROFILE_PLAN_BEATS = [
@@ -102,5 +102,21 @@ describe("emphasisTargets", () => {
     const slots = parseBeatSlots(BEATS, "code-walk", codeWalkSlots());
 
     expect(emphasisTargets(beatSpecFor(BEATS, "code-walk"), slots)).toEqual(["open", "close"]);
+  });
+});
+
+describe("cueElement", () => {
+  const slots = codeWalkSlots();
+
+  it("resolves a cue target to the one element it names", () => {
+    expect(cueElement(beatSpecFor(BEATS, "code-walk"), slots, "close")).toBe("close");
+  });
+
+  it.each([
+    ["names no element", beatSpecFor(BEATS, "code-walk"), "middle", /middle resolves to 0 elements/],
+    ["names an element two target lists share", beatSpec("code-walk", { emphasis: { targets: ["lines", "lines"], treatments: ["highlight"] } }), "open", /open resolves to 2 elements/],
+  ])("rejects a target that %s", (_name, spec, target, message) => {
+    expect(() => cueElement(spec, slots, target)).toThrow(BeatSlotError);
+    expect(() => cueElement(spec, slots, target)).toThrow(message);
   });
 });
