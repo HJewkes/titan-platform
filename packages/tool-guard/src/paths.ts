@@ -204,8 +204,10 @@ function absoluteGlob(pattern: string, home: string): string {
 /** Never throws: `onFail` is the safe reading for the call site if the source still does not compile. */
 function globRegExp(glob: string, onFail: RegExp): RegExp {
   let src = "";
+  // Found once: searching for each `[`'s close would read to the end per unterminated `[`, quadratic in them (TP-4051).
+  const lastClose = glob.lastIndexOf("]");
   for (let i = 0; i < glob.length; ) {
-    const [piece, width] = globPiece(glob, i);
+    const [piece, width] = globPiece(glob, i, lastClose);
     src += piece;
     i += width;
   }
@@ -217,7 +219,7 @@ function globRegExp(glob: string, onFail: RegExp): RegExp {
 }
 
 /** Regex source for the glob syntax starting at `i`, and how many characters it consumed. */
-function globPiece(glob: string, i: number): [string, number] {
+function globPiece(glob: string, i: number, lastClose: number): [string, number] {
   const rest = glob.slice(i);
   if (rest.startsWith("/**/")) return ["(?:/.*)?/", 4];
   if (rest === "/**") return ["(?:/.*)?", 3];
@@ -225,17 +227,17 @@ function globPiece(glob: string, i: number): [string, number] {
   if (c === "*") return ["[^/]*", 1];
   if (c === "?") return ["[^/]", 1];
   if (c === "[") {
-    const cls = bracketClass(glob, i);
+    const cls = bracketClass(glob, i, lastClose);
     if (cls) return cls;
   }
   return [c.replace(/[.+^${}()|[\]\\]/g, "\\$&"), 1];
 }
 
 /** A bash bracket expression at `i` as a regex class, or null when unterminated (the `[` is then literal). */
-function bracketClass(glob: string, i: number): [string, number] | null {
+function bracketClass(glob: string, i: number, lastClose: number): [string, number] | null {
   const negated = glob[i + 1] === "!" || glob[i + 1] === "^";
   const start = i + (negated ? 2 : 1);
-  const end = glob.indexOf("]", start + 1);
+  const end = lastClose > start ? glob.indexOf("]", start + 1) : -1;
   if (end < 0) return null;
   const body = glob.slice(start, end);
   let members = "";
