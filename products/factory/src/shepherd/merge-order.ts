@@ -81,7 +81,7 @@ export class MergeOrder {
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge fails closed. */
-export interface MergeOrderRef {
+interface MergeOrderRef {
   get(): MergeOrder;
   bind(db: Db): () => void;
 }

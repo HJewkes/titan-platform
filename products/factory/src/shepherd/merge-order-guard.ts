@@ -8,7 +8,7 @@ interface RunLookup {
   byPr(repo: RepoSlug, pr: number): { runId: string } | undefined;
 }
 
-export interface MergeOrderGuardDeps {
+interface MergeOrderGuardDeps {
   order: () => MergeOrder;
   registrations: () => RunLookup;
   rules: MergeOrderRules;
