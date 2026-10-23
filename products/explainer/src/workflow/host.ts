@@ -3,7 +3,7 @@ import path from "node:path";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
-import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
+import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
@@ -15,6 +15,7 @@ import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, S
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
+import type { CheckJudge } from "./stage-checks.js";
 import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
 
@@ -26,6 +27,8 @@ export interface RunHost {
   harnessFor?: HarnessFor;
   /** The L0 checks the script, rewrite and eval stages run; all of them by default. */
   evalChecks?: readonly L0Check[];
+  /** Runs the reported `listener-questions` check on the script stage, on the run's judge; off by default since it spends. */
+  listener?: { threshold?: number };
   /** Runs a bridged command; tests pass a fake. */
   exec?: BridgeExec;
   /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
@@ -211,6 +214,13 @@ export function writeReport(runId: string, host: Pick<RunHost, "dataDir">): { re
   }
 }
 
+function listenerJudge(host: RunHost, plan: RunPlan | undefined): { judge?: CheckJudge } {
+  if (!host.listener) return {};
+  const config = plan?.judge ?? DEFAULT_JUDGE;
+  const threshold = host.listener.threshold === undefined ? {} : { listenerThreshold: host.listener.threshold };
+  return { judge: { config, harness: (host.harnessFor ?? createJudgeHarness)(config), ...threshold } };
+}
+
 export interface Runtime {
   runtime: WorkflowRuntime;
   store: ArtifactStore;
@@ -231,7 +241,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}),
   });
-  const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}) });
+  const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
   const styles = host.stylePacks ? { stylePacks: host.stylePacks } : {};
   const routes = plan ? [body, checks, stageRoute({ dataDir: host.dataDir, store, plan, bridge, cache, now, ...styles })] : [body, checks];
   const runner = routedRunner(routes);
