@@ -104,7 +104,7 @@ describe("audition code scores", () => {
   it("a block the profile bands longer than the re-hook ceiling is held to its own band", () => {
     const scqa = (supportsS: number) => spine({
       structure: "scqa", payoff: "answer",
-      blocks: [["situation", 20], ["complication", 30], ["answer", 40], ["supports", supportsS], ["takeaway", 150 - supportsS]].map(([id, seconds]) => ({ id: id as string, question: "Why?", facts: ["F1"], seconds: seconds as number, beat: `${id}-beat`, covers: [] })),
+      blocks: Object.entries({ situation: 20, complication: 30, answer: 40, supports: supportsS, takeaway: 150 - supportsS }).map(([id, seconds]) => ({ id, question: "Why?", facts: ["F1"], seconds, beat: `${id}-beat`, covers: [] })),
     });
 
     expect(tensionChecks(scqa(120), ctx())[REHOOK]).toBe(true);

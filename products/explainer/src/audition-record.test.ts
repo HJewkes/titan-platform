@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chapterBlocks, rubricCandidate, skippedRows, withoutSkipped } from "./audition-record.js";
 import type { SpineCandidate } from "./audition-sample.js";
-import type { ColdRubricResult } from "./eval-cold-rubric.js";
+import { COLD_RUBRIC_DIMS, type ColdRubricResult } from "./eval-cold-rubric.js";
 import { loadProfiles, profileFor } from "./profile-load.js";
 
 const profile = profileFor(loadProfiles(), "repo-argument");
@@ -15,9 +15,11 @@ const SPINE: SpineCandidate = {
 };
 
 const verdict = (score: number | null) => ({ score, evidence: "", void_reason: score === null ? "quote shorter than 2 words" : null });
-const RUBRIC = {
-  dims: (["J8", "J9", "J10", "J11", "J12"] as const).map((dim) => ({ dim, verdict: verdict(dim === "J12" ? null : 3) })),
-} as ColdRubricResult;
+const RUBRIC: ColdRubricResult = {
+  eval_version: "0", judge: "fake", mode: "reported", failures: [], trusted: true,
+  canary: { canary: "vague-filler", dim: "J11", got: "1", pass: true }, spend: { usd: 0, tokensIn: 0, tokensOut: 0 },
+  dims: COLD_RUBRIC_DIMS.map((dim) => ({ dim, verdict: verdict(dim === "J12" ? null : 3) })),
+};
 
 describe("audition record", () => {
   it("shows the cold viewer only the signature layer as a visual, never a bare beat id", () => {
