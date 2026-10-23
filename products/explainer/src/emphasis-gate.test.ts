@@ -11,7 +11,10 @@ describe("emphasis target gate", () => {
 
   it("fails an ambiguous target: one id names a node and an edge", () => {
     const slots = emphasisSlots();
-    (slots["b2-map"]!.edges as unknown[]).push({ id: "ledger", from: "desk", to: "ledger" });
+    slots["b2-map"]!.edges = [
+      { id: "scan-to-desk", from: "scanner", to: "desk" },
+      { id: "ledger", from: "desk", to: "ledger" },
+    ];
 
     expect(emphasisTargetGate(gateInput({ slots }))).toEqual([
       { beat: "b2-map", cue: 1, target: "ledger", problem: "ambiguous", detail: "ledger names 2 elements of beat spec flow-map" },

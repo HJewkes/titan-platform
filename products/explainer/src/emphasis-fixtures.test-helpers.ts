@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
+import { z } from "zod";
 import { beatSpec, BEATS } from "./beat-fixtures.test-helpers.js";
 import type { BeatSpec } from "./beat-schema.js";
-import type { EmphasisBox, MarkFrame } from "./emphasis-change.js";
-import type { EmphasisGateInput, EmphasisLayout } from "./emphasis-gate.js";
+import type { MarkFrame } from "./emphasis-change.js";
+import type { EmphasisGateInput } from "./emphasis-gate.js";
 import { ScriptSchema } from "./script-schema.js";
 
 // Synthetic: an invented two-line code walk and a three-node map; nothing here is a real render.
@@ -15,8 +16,11 @@ const SPECS: ReadonlyMap<string, BeatSpec> = new Map([
 ]);
 
 export const emphasisScript = () => ScriptSchema.parse(read("script.json"));
-export const emphasisSlots = () => read("slots.json") as Record<string, Record<string, unknown>>;
-export const emphasisLayout = () => read("layout.json") as EmphasisLayout & { boxes: Record<string, Record<string, EmphasisBox>> };
+const Box = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() });
+const LayoutSchema = z.object({ stage: z.object({ width: z.number(), height: z.number() }), boxes: z.record(z.string(), z.record(z.string(), Box)) });
+
+export const emphasisSlots = () => z.record(z.string(), z.record(z.string(), z.unknown())).parse(read("slots.json"));
+export const emphasisLayout = () => LayoutSchema.parse(read("layout.json"));
 
 /** The gate's input over the fixtures, with any field replaced. */
 export const gateInput = (overrides: Partial<EmphasisGateInput> = {}): EmphasisGateInput => ({
