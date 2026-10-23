@@ -3,12 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { checkClaims, gatherArticle, parseArticleFacts, writeArticleGather } from "./gather-article.js";
 import { isVerbatim, quoteStates } from "./quotes.js";
 
 const DEMO = fileURLToPath(new URL("../../../fixtures/article/demo", import.meta.url));
 const ARTICLE = join(DEMO, "article.md");
-const claims = async (): Promise<unknown[]> => JSON.parse(await readFile(join(DEMO, "claims.json"), "utf8")) as unknown[];
+const claims = async (): Promise<unknown[]> => z.array(z.unknown()).parse(JSON.parse(await readFile(join(DEMO, "claims.json"), "utf8")));
 const gather = async () => gatherArticle({ articlePath: ARTICLE, label: "Fewer Rounds by Design", claims: await claims() });
 
 let scratch: string | undefined;
@@ -28,7 +29,7 @@ describe("gatherArticle facts", () => {
   it("rejects a paraphrased quote, an over-long quote and a quote that does not state the number, each with its reason", async () => {
     const { rejected } = await gather();
 
-    expect(rejected.map(({ claim, reason }) => [(claim as { id: string }).id, reason])).toEqual([
+    expect(rejected.map(({ claim, reason }) => [z.object({ id: z.string() }).parse(claim).id, reason])).toEqual([
       ["paraphrased", "the quote is not verbatim in the article"],
       ["whole-abstract", "the quote runs 41 words; the limit is 25"],
       ["wrong-number", "the quote does not state 1.3"],

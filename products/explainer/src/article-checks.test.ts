@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { paperPublishEligibility } from "./article-checks.js";
+import { BEAT_SLOTS } from "./beat-slots.js";
 import { gatherArticle } from "./presets/article/gather-article.js";
 import type { ArticleFact } from "./presets/article/schemas.js";
 import { loadProfiles, profileFor } from "./profile-load.js";
@@ -12,7 +14,7 @@ const DEMO = fileURLToPath(new URL("../fixtures/article/demo", import.meta.url))
 
 let facts: ArticleFact[];
 beforeAll(async () => {
-  const claims = JSON.parse(readFileSync(join(DEMO, "claims.json"), "utf8")) as unknown[];
+  const claims = z.array(z.unknown()).parse(JSON.parse(readFileSync(join(DEMO, "claims.json"), "utf8")));
   ({ facts } = await gatherArticle({ articlePath: join(DEMO, "article.md"), label: "Fewer Rounds by Design", claims }));
 });
 
@@ -25,7 +27,19 @@ function edited(change: (beats: Storyboard["beats"]) => void): Storyboard {
 }
 
 const LONG_QUOTE = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six";
-const replotSeries = (beats: Storyboard["beats"]) => (beats[1]!.slots as { series: { points: { x: number; y: number }[] }[] }).series;
+type Beats = Storyboard["beats"];
+
+function editReplot(beats: Beats, change: (slots: z.infer<typeof BEAT_SLOTS.replot>) => void): void {
+  const slots = BEAT_SLOTS.replot.parse(beats[1]!.slots);
+  change(slots);
+  beats[1]!.slots = slots;
+}
+
+function editQuote(beats: Beats, text: string): void {
+  const slots = BEAT_SLOTS["claim-card"].parse(beats[0]!.slots);
+  slots.quote!.text = text;
+  beats[0]!.slots = slots;
+}
 
 describe("paper publish eligibility", () => {
   it("makes a video eligible when every figure is re-plotted from its data and every quote is short, and still requires the owner's ask", () => {
@@ -48,21 +62,21 @@ describe("paper publish eligibility", () => {
   });
 
   it("fails a replot whose points are not the figure's data", () => {
-    const video = edited((beats) => (replotSeries(beats)[1]!.points[2]!.y = 1.2));
+    const video = edited((beats) => editReplot(beats, (slots) => (slots.series[1]!.points[2]!.y = 1.2)));
 
     expect(paperPublishEligibility(video, facts).issues).toEqual([{ check: "figures-replotted-from-data", beat: "beat-02", message: "replot beat-02 plots points that are not figure/figure-1's data" }]);
   });
 
   it("fails a replot that drops a point, and a replot with no series", () => {
-    const dropped = edited((beats) => replotSeries(beats)[0]!.points.pop());
-    const empty = edited((beats) => ((beats[1]!.slots as { series: unknown[] }).series = []));
+    const dropped = edited((beats) => editReplot(beats, (slots) => slots.series[0]!.points.pop()));
+    const empty = edited((beats) => (beats[1]!.slots = { ...beats[1]!.slots, series: [] }));
 
     expect(paperPublishEligibility(dropped, facts).eligible).toBe(false);
     expect(paperPublishEligibility(empty, facts).eligible).toBe(false);
   });
 
   it("fails a replot citing a source that is not a gathered figure", () => {
-    const video = edited((beats) => ((beats[1]!.slots as { source: { ref: string } }).source.ref = "number/rounds-after"));
+    const video = edited((beats) => editReplot(beats, (slots) => (slots.source.ref = "number/rounds-after")));
 
     expect(paperPublishEligibility(video, facts).issues[0]?.message).toBe("replot beat-02 cites no gathered figure; its source.ref must name a figure fact id");
   });
@@ -74,7 +88,7 @@ describe("paper publish eligibility", () => {
   });
 
   it("fails a slot quote over the length limit", () => {
-    const video = edited((beats) => ((beats[0]!.slots as { quote: { text: string } }).quote.text = LONG_QUOTE));
+    const video = edited((beats) => editQuote(beats, LONG_QUOTE));
 
     expect(paperPublishEligibility(video, facts).issues).toEqual([{ check: "quotes-short", beat: "beat-01", message: "beat-01 quotes 26 words; the limit is 25" }]);
   });
@@ -95,7 +109,7 @@ describe("paper publish eligibility", () => {
 
   it("allows a quote of exactly the limit, and applies a tighter limit when given one", () => {
     const limit = LONG_QUOTE.split(" ").slice(0, 25).join(" ");
-    const video = edited((beats) => ((beats[0]!.slots as { quote: { text: string } }).quote.text = limit));
+    const video = edited((beats) => editQuote(beats, limit));
 
     expect(paperPublishEligibility(video, facts).eligible).toBe(true);
     expect(paperPublishEligibility(board(), facts, undefined, 10).issues.map((issue) => issue.beat)).toEqual(["beat-01"]);

@@ -88,8 +88,8 @@
     {
       "name": "a plain-string quote slot is skipped",
       "file": "products/explainer/src/article-checks.ts",
-      "find": "return typeof inner === \"string\" ? [inner] : strings((inner as { text?: unknown }).text);",
-      "replace": "return strings((inner as { text?: unknown }).text);",
+      "find": "typeof inner === \"string\" ? [inner] : isRecord",
+      "replace": "isRecord",
       "kills": [
         "paper publish eligibility fails a plain-string quote slot and a quote read out in the narration or shown on screen"
       ]

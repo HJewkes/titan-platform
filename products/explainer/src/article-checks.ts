@@ -67,12 +67,14 @@ const figuresReplotted: PublishCheck = ({ board, facts }) => {
   });
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
 function slotQuotes(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(slotQuotes);
-  if (!value || typeof value !== "object") return [];
+  if (!isRecord(value)) return [];
   return Object.entries(value).flatMap(([key, inner]) => {
     if (key !== "quote") return slotQuotes(inner);
-    return typeof inner === "string" ? [inner] : strings((inner as { text?: unknown }).text);
+    return typeof inner === "string" ? [inner] : isRecord(inner) ? strings(inner.text) : [];
   });
 }
 
