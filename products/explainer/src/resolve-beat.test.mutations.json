@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a code excerpt is not read as code content",
+      "file": "products/explainer/src/resolve-beat.ts",
+      "find": "if (visual.code) return \"code\";",
+      "replace": "",
+      "kills": [
+        "resolver tables routes a beat with a code excerpt to the code walk whatever its job"
+      ]
+    },
+    {
+      "name": "a cast-in-motion beat may resolve to a still template",
+      "file": "products/explainer/src/resolve-beat.ts",
+      "find": "if (key.job === \"cast-in-motion\" && layer !== \"custom\")",
+      "replace": "if (key.job === \"cast-in-motion\" && layer === \"none\")",
+      "kills": [
+        "resolver tables resolves a cast-in-motion beat to a moving layer and refuses one authored as a still template"
+      ]
+    },
+    {
+      "name": "refused beats do not stop the resolver",
+      "file": "products/explainer/src/resolve-beat.ts",
+      "find": "if (refused.length > 0) throw new ResolveError(refused);",
+      "replace": "",
+      "kills": [
+        "resolver tables throws one ResolveError naming every refused beat"
+      ]
+    }
+  ]
+}

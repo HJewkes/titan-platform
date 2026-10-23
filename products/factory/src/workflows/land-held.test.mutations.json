@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "held merge cycles count toward the settle limit again",
+      "file": "products/factory/src/workflows/land.ts",
+      "find": "state.cycle - state.settles - state.helds >= MAX_CI_CYCLES",
+      "replace": "state.cycle - state.settles >= MAX_CI_CYCLES",
+      "kills": [
+        "land with the merge held for an owner release keeps a run parked across a restart after 19 held merge cycles, and merges on the release"
+      ]
+    },
+    {
+      "name": "every skipped merge is exempt from the settle limit, not only a held one",
+      "file": "products/factory/src/workflows/land.ts",
+      "find": "  if (merge.skipped === \"held\") state.helds++;",
+      "replace": "  state.helds++;",
+      "kills": [
+        "land with the merge held for an owner release still fails a merge that never lands for another reason at the cycle limit"
+      ]
+    }
+  ]
+}

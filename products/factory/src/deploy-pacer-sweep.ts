@@ -6,7 +6,7 @@ import { cachedAncestry, gitAncestry, runningHolds } from "./build-ancestry.js";
 import { FACTORY_REPO } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
 import { readDeployHolds } from "./deploy-pause.js";
-import { readLastDeploy } from "./deploy-ports.js";
+import { readDeployWindow, readLastDeploy } from "./deploy-ports.js";
 import { nodeMorningHoldPorts, syncMorningHold, type MorningHoldAction } from "./morning-deploy-hold.js";
 import { morningQueuesDir } from "./needs/morning-source.js";
 import type { CommandResult } from "./service-control.js";
@@ -121,6 +121,7 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
       runningHolds: (sha) => sha === settled.held,
       express: (sha) => sha === settled.express,
       lastDeploy: () => readLastDeploy(stateDir) ?? undefined,
+      deployWindow: () => readDeployWindow(stateDir),
       busy: service.busy,
       paused: () => readDeployHolds(pauseReadPorts, stateDir).held,
       spawn,

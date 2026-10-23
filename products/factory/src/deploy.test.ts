@@ -451,14 +451,18 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
-  it("refuses a target behind the checkout's main and names the commit to deploy instead", async () => {
-    const machine = fakeMachine({ head: TIP });
+  it("deploys origin/main when a rollback left the checkout's main past the asked sha", async () => {
+    const rolledBack = { outcome: "rolled-back", target: CORE, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "1 more run(s) failed during the watch" };
+    const machine = fakeMachine({ head: CORE, files: { [RECORD]: JSON.stringify(rolledBack) } });
 
-    const { code, err } = await deploy(machine, CORE);
+    const { code, out, err } = await deploy(machine, DOCS);
 
-    expect(code).toBe(1);
-    expect(err).toContain(`already past ${CORE}; deploy that commit instead with titan-factory service deploy --expect ${TIP}`);
-    expect(machine.mutations()).toEqual([]);
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(out).toContain(`the checkout's main is at ${CORE}, already past ${DOCS}; deploying origin/main at ${TIP} instead`);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${TIP}`, "pnpm install --frozen-lockfile", "pnpm --filter @titan-design/factory... build", `launchctl kickstart -k ${TARGET}`]);
+    expect(machine.serving()).toBe(TIP);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP, from: BASE });
   });
 
   it("refuses before the fast-forward when the lockfile changes a native-build package, naming it", async () => {
@@ -675,6 +679,23 @@ describe("titan-factory service deploy", () => {
     expect(err).toContain(`deploy held: ${TIP} rolled back`);
     expect(machine.mutations()).toEqual([]);
     expect(machine.record()).toEqual(rolledBack);
+  });
+
+  it("after a containing deploy rolls back and the pause is cleared, the older asked sha deploys origin/main and the origin/main re-ask finds it deployed (TP-4083)", async () => {
+    const machine = fakeMachine({ crashes: [CORE] });
+    await deploy(machine, CORE);
+    const afterRollback = { record: machine.record(), head: machine.state.head, serving: machine.serving() };
+    machine.files.delete(deployPausePath(STATE));
+
+    const reAsk = await deploy(machine, DOCS);
+    const deployed = machine.record();
+    const toMain = await deploy(machine);
+
+    expect(afterRollback).toEqual({ record: expect.objectContaining({ outcome: "rolled-back", target: CORE }), head: CORE, serving: BASE });
+    expect(reAsk).toMatchObject({ code: 0, out: expect.stringContaining(`already past ${DOCS}; deploying origin/main at ${TIP} instead`) });
+    expect(deployed).toMatchObject({ outcome: "deployed", target: TIP, from: BASE });
+    expect(toMain).toMatchObject({ code: 0, out: expect.stringContaining(`already deployed: build ${TIP}`) });
+    expect(machine.serving()).toBe(TIP);
   });
 
   it("deploys when /health does not answer, since an unknown build counts as touched", async () => {

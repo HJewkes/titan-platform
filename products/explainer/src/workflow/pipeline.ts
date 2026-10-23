@@ -14,7 +14,7 @@ import { failedRecord, stageRecord } from "./stage-workflows.js";
 
 export const VIDEO_WORKFLOW = "explainer-video";
 /** Bumped whenever the stage list or a stage's inputs change, so a run never replays under another shape. */
-export const VIDEO_WORKFLOW_VERSION = "pp7";
+export const VIDEO_WORKFLOW_VERSION = "tp2614";
 
 /** Everything a run needs, stored as its one param, so a resumed run rebuilds the same routes. */
 export const RunPlanSchema = z.object({

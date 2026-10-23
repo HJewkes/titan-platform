@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the stage skips citation checks",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "if (refused.length > 0) throw new ResolveError(refused);",
+      "replace": "",
+      "kills": [
+        "resolve stage refuses a code beat citing a line past EOF before it writes any artifact"
+      ]
+    },
+    {
+      "name": "the stage writes before it resolves",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "  const specs = loadBeatSpecs();\n  const beats = resolveScript(",
+      "replace": "  const specs = loadBeatSpecs();\n  store.putText(\"early\", \"resolved\", input.from);\n  const beats = resolveScript(",
+      "kills": [
+        "resolve stage refuses a code beat citing a line past EOF before it writes any artifact",
+        "resolve stage refuses a beat no resolver row matches before it writes any artifact"
+      ]
+    },
+    {
+      "name": "the word budget only reports",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"word-budget\", gate: true",
+      "replace": "{ name: \"word-budget\", gate: false",
+      "kills": [
+        "resolve stage gates on the word budget: a 30-word beat in a 5 s slot fails the stage"
+      ]
+    },
+    {
+      "name": "the emphasis gate reads the script's own beat spec",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "beat: chosen.get(id) ?? visual.beat",
+      "replace": "beat: visual.beat",
+      "kills": [
+        "emphasis-target gate on the resolve stage resolves a cue against the beat spec the resolver chose for the beat"
+      ]
+    },
+    {
+      "name": "the stage runs on doctrine it was not keyed on",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "if (resolveConfig().doctrine !== config.doctrine) throw",
+      "replace": "if (config.doctrine === \"\") throw",
+      "kills": [
+        "resolve stage refuses to run on doctrine other than the doctrine its spec was keyed on"
+      ]
+    }
+  ]
+}

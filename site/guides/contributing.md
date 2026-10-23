@@ -279,14 +279,20 @@ fixed by running `pnpm docs:reference` and committing; the second needs a line o
 
 ### The capability catalog {#the-capability-catalog}
 
-`pnpm capabilities` writes `CAPABILITIES.md` at the repository root and
-`site/guides/capabilities.md` from the same data. It reuses the reference index's package
-discovery, then adds each unit's version, its key exports parsed from `src/index.ts` (capped
-at twelve, runtime values before types), and the text of its `CAPABILITY.md`. The runtime
-paths and known gaps come from `scripts/capabilities-data.json`, which is edited by hand.
+`pnpm capabilities` writes `CAPABILITIES.md` at the repository root. It reuses the reference
+index's package discovery, then adds each unit's version, its key exports parsed from
+`src/index.ts` (capped at twelve, runtime values before types), and the lines of its
+`CAPABILITY.md`. The runtime paths and known gaps come from `scripts/capabilities-data.json`,
+which is edited by hand.
 
-Both outputs are committed. `validate` runs `pnpm capabilities:check`, which regenerates in
-memory and fails when either file differs, so edit the sources and rerun the script. The
+The catalog is merge-stable: each output line comes from one input line, and it holds no
+counts, so two pull requests whose sources merge cleanly also merge cleanly in the catalog.
+The quick index takes only the first sentence of each `CAPABILITY.md`.
+
+`CAPABILITIES.md` is committed. `validate` runs `pnpm capabilities:check`, which regenerates in
+memory and fails when it differs, so edit the sources and rerun the script. The site's copy,
+`site/guides/capabilities.md`, is not committed: `docs:build` writes it with
+`gen-capabilities.mjs --site` before VitePress builds. The
 "Version Packages" pull request stays green because `pnpm version-packages` regenerates the
 catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
 

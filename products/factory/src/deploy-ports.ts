@@ -4,8 +4,10 @@ import { dirname } from "node:path";
 import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
+import { z } from "zod";
+import { deployWindowPath } from "./deploy-output.js";
 import type { CommandResult } from "./service-control.js";
-import { UNAVAILABLE, type Probe } from "./deploy-watch-window.js";
+import { UNAVAILABLE, type Probe, type WatchIntent } from "./deploy-watch-window.js";
 import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
 import { systemServicePorts } from "./service-ports.js";
 
@@ -134,5 +136,17 @@ export function readLastDeploy(stateDir: string): DeployRecord | null {
     return parseDeployRecord(readFileSync(deployRecordPath(stateDir), "utf8")) ?? null;
   } catch {
     return null;
+  }
+}
+
+const WindowRecord = z.object({ sha: z.string(), windowEnd: z.number() });
+
+/** The open or last health watch; an absent or unreadable record reads as none. */
+export function readDeployWindow(stateDir: string): WatchIntent | undefined {
+  try {
+    const parsed = WindowRecord.safeParse(JSON.parse(readFileSync(deployWindowPath(stateDir), "utf8")));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
   }
 }
