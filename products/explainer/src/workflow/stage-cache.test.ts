@@ -360,7 +360,7 @@ describe("stage key", () => {
     const tts = { schema: "explainer.variant/v1" as const, stage: "tts" as const, name: "styled", params: { stylePack: "night-drafting" } };
     const loud = { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "render" as const, name: "loud", params: { stylePack: "loud" } } };
 
-    expect(() => stageSpec({ stage: "tts", artifacts: { script: "a".repeat(64) }, settings: SETTINGS, sample: 0, remainingUsd: 1, bridge: () => BRIDGE("4"), variant: { sha: "c".repeat(64), value: tts } })).toThrow(/only a render variant/);
+    expect(() => stageSpec({ stage: "tts", artifacts: { script: "a".repeat(64), resolved: "d".repeat(64) }, settings: SETTINGS, sample: 0, remainingUsd: 1, bridge: () => BRIDGE("4"), variant: { sha: "c".repeat(64), value: tts } })).toThrow(/only a render variant/);
     expect(() => keyOf({ variant: loud })).toThrow(/unknown style pack loud/);
   });
 

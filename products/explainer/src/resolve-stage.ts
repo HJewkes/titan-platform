@@ -9,6 +9,7 @@ import { beatBudget, blockBudgets, budgetVerdict, type BudgetRow } from "./resol
 import { citationRefusals, codeSource } from "./resolve-citation.js";
 import { CONTENT_SHAPES } from "./resolve-tables.js";
 import { BEAT_FUNCTIONS, FRAMINGS, ScriptSchema, VISUAL_LAYERS, type ScriptV1 } from "./script-schema.js";
+import { loadSpeechBands } from "./speech-bands.js";
 import { shippedVisualRouter } from "./visual-router.js";
 import { sha256 } from "./workflow/artifacts.js";
 import type { ModelStageInput } from "./workflow/model-stages.js";
@@ -39,16 +40,18 @@ export const ResolvedSchema = z.object({
 });
 type Resolved = z.infer<typeof ResolvedSchema>;
 
-/** The doctrine the resolve stage reads, by content hash: beat specs, profiles and the pinned router. */
+/** The doctrine the resolve stage reads, by content hash: beat specs, profiles, the pinned router and the speech bands' caps. */
 export function resolveConfig(): { doctrine: string } {
   const sorted = <T>(map: ReadonlyMap<string, T>): T[] => [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, value]) => value);
-  return { doctrine: sha256(canonicalJson({ beats: sorted(loadBeatSpecs()), profiles: sorted(loadProfiles().profiles), router: shippedVisualRouter() })) };
+  const doctrine = { beats: sorted(loadBeatSpecs()), profiles: sorted(loadProfiles().profiles), router: shippedVisualRouter(), bands: loadSpeechBands() };
+  return { doctrine: sha256(canonicalJson(doctrine)) };
 }
 
 function budgets(script: ScriptV1, resolved: readonly ResolvedBeat[], specs: ReadonlyMap<string, BeatSpec>): { rows: BudgetRow[]; unplaced: string[] } {
-  const bands = new Map(resolved.map((beat) => [beat.id, beat.band]));
-  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs);
-  return { rows: [...script.beats.map((beat) => beatBudget(beat, bands.get(beat.id)!)), ...blocks.rows], unplaced: blocks.unplaced };
+  const bandOf = new Map(resolved.map((beat) => [beat.id, beat.band]));
+  const bands = loadSpeechBands();
+  const blocks = blockBudgets(script.beats, profileFor(loadProfiles(), script.profile), specs, bands);
+  return { rows: [...script.beats.map((beat) => beatBudget(beat, bandOf.get(beat.id)!, bands)), ...blocks.rows], unplaced: blocks.unplaced };
 }
 
 /** Code citations first, then the tables; any refusal throws before the stage stores an artifact. */

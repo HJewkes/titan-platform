@@ -22,8 +22,8 @@
     {
       "name": "every beat type gets the story rate",
       "file": "products/explainer/src/resolve-budget.ts",
-      "find": "BAND_WORDS_PER_S[band])",
-      "replace": "BAND_WORDS_PER_S.story)",
+      "find": "bands[band].wordsPerS)",
+      "replace": "bands.story.wordsPerS)",
       "kills": [
         "word budget caps each beat type at its own band rate: 25 words in 10 s fit a concept beat but not a code beat"
       ]

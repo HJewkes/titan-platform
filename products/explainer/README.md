@@ -218,15 +218,20 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 **The tts stage (TP-2615).** Each beat's `spoken` text is voiced by speech-tts Kokoro (Kokoro-82M at fp32 over
 speech-g2p misaki English, on the host's speech runtime) with `unknownWords: "fail"`, so a word with no phonemes
 fails the stage before any audio is made. The voice and its rate are the run profile's voice band (`--profile`); a
-tts variant may set `voice` and `rate`, and a run with no profile speaks as `af_heart` at 1. The engine's own word
+tts variant may set `voice` and `rate`, and a run with no profile speaks as `af_heart` at 1. Each beat speaks at its
+beat type's speech band (TP-2670): the stage reads the band from the `resolved` artifact and its words a minute from
+`doctrine/speech-bands.yaml` (story 195, concept 175, code 160, takeaways 180, held 175), times the voice rate.
+speech-tts `calibrateSpeed` steps Kokoro's speed until the measured articulation rate (pauses of 0.25 s or more not
+counted) is within 5 wpm, as the bridge's `gen_audio.py` did, and truing reads the calibrated take. The engine's own word
 times are re-timed against the script words (the port of the template's `realign.py`: number words meet digits,
 hyphenated words meet their parts, and `HOMOPHONES` in `src/lexicon.ts` maps a heard spelling to the script's word;
 an unmatched run shares the gap between its neighbours). A beat lasts `max(plannedS, 0.3 s lead + speech + 0.6 s
 tail)`, rounded up to a whole frame at 30 fps, and its WAV starts with the lead's silence. The stage writes the
 `audio` tree (`<beat>.wav`), `words.json` (`explainer.words/v1`: per beat `startS`, `durationS`, `words` and `heard`
-relative to the beat start, and `absolute`, every word on the video timeline) and `voice.json` (provider, engine
-build, voice, rate and where they came from). Takes are cached per beat in `<dataDir>/tts-takes/` under
-`sha(spoken, voice, rate, engine version)`, so a re-voiced script synthesizes only the beats whose text changed and
+relative to the beat start, and `absolute`, every word on the video timeline) and `voice.json` (`explainer.voice/v2`:
+provider, engine build, voice, rate and where they came from, and per beat its band, target words a minute, the speed
+found and the rate measured). Takes are cached per beat in `<dataDir>/tts-takes/` under
+`sha(spoken, voice, words a minute, engine version)`, so a re-voiced script synthesizes only the beats whose text or band changed and
 keeps the others' audio byte for byte. A host `bridge.json` that still has a `tts` block is refused: delete it, and
 move any command it ran besides TTS (a sample builder) to the start of `render`.
 
@@ -269,7 +274,7 @@ same exercise on a script file.
 | `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
-speech-vet and the rate band (TP-3004 and the per-beat rate, TP-2670), duration agreement and two-run determinism
+speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism
 (TP-2992), the QA sweep gates (TP-2610, TP-2669, TP-2998), and the variety lints (PP-9). Each becomes a row of
 `STAGE_CHECKS` in `src/workflow/stage-checks.ts`, or a `check` command while its stage is bridged. The judges stay
 reported only until the owner labels about 20 items to calibrate them (owner answer Q6 A).
@@ -589,7 +594,8 @@ beat specs, profiles and pinned router by content hash, so a doctrine edit is a 
     its range, or the run has no `code` artifact. This is evidence's `verifyRange`, the quote-free half of
     `verifyCitation`.
 - **Word budget** (`resolve-budget.ts`). A beat holds `floor(plannedS × rate)` words at its beat type's speech band:
-  story 3.2, concept 2.8, code 2.3, takeaways 2.8 and held 1.5 words a second (TP-2670). A chapter whose id names a
+  story 3.2, concept 2.8, code 2.3, takeaways 2.8 and held 1.5 words a second (TP-2670), read from
+  `doctrine/speech-bands.yaml`, which also joins the resolve stage's doctrine sha. A chapter whose id names a
   profile block is also held to that block's longest airtime at the fastest rate its beat types allow. Other
   chapters are listed in a note and not capped.
 - **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,
