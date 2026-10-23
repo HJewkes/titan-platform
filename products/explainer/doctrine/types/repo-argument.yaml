@@ -3,7 +3,7 @@
 # Freytag (6 min and up) and the hero's journey (onboarding) fall outside this type's runtime and intent.
 schema: type-profile/v1
 type: repo-argument
-version: 0.1.0
+version: 0.2.0
 family: review-repo
 intent: "One idea from the repo lands and sticks for a senior engineer on a first watch: why it matters, how it works, and the one thing to take away."
 audience: { default: public-youtube, allow: [public-youtube, owner-internal] }
@@ -26,6 +26,8 @@ structure:
     abt: [situation, complication, resolution, takeaway]
     kishotenketsu: [situation, development, twist, reconcile, takeaway]
     countdown: [situation, complication, countdown, takeaway]
+  systems:
+    - { system: countdown-rung, macro: countdown, blocks: [countdown] }
   blocks:
     - { id: situation, goal: "What the viewer already accepts, in one beat.", seconds: [15, 40], beats: [hook, promise, context-map] }
     - { id: complication, goal: "The but: the pain fact or the naive way that fails.", seconds: [20, 50], beats: [misconception, stakes, issue-pin, stat] }

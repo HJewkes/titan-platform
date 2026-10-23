@@ -3,7 +3,7 @@
 # owner ask per video (owner Q4 B). Simulations are TypeScript only (owner Q3 A).
 schema: type-profile/v1
 type: paper-summary
-version: 0.2.0
+version: 0.3.0
 family: review-paper
 intent: "One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us."
 audience: { default: owner-internal, allow: [owner-internal, public-youtube] }
@@ -21,6 +21,11 @@ structure:
     scqa: [example, situation, complication, answer, limits, so-for-us]
     mystery: [anomaly, method, result, limits, so-for-us]
     kishotenketsu: [example, key-idea, twist, result, so-for-us]
+  systems:
+    - { system: example-first, macro: lab-report }
+    - { system: example-first, macro: scqa }
+    - { system: lab-cycle, macro: mystery }
+    - { system: lab-cycle, macro: kishotenketsu }
   blocks:
     - { id: example, goal: "One concrete example before any generality.", seconds: [20, 50], beats: [hook, user-flow, stat] }
     - { id: key-idea, goal: "The one key idea.", seconds: [20, 50], beats: [claim-card, info-flow] }

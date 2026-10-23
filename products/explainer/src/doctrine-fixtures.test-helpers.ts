@@ -13,6 +13,7 @@ export const VOCABULARY = {
   types: ["repo-tour", "repo-argument"],
   audiences: ["public-youtube"],
   structures: ["scqa-c4", "scqa", "mystery", "three-act", "abt"],
+  beatSystems: ["walk-first", "hook-close"],
   signals: ["deciding", "anomaly", "problem"],
 };
 

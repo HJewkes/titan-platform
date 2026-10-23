@@ -74,9 +74,9 @@ export const DoctrineRuleSchema = z
 
 export type DoctrineRule = z.infer<typeof DoctrineRuleSchema>;
 
-/** The allowed scope values (beat types, video types, audiences and structures), plus the material signals fit predicates read. */
+/** The allowed scope values (beat types, video types, audiences and structures), the beat systems, and the material signals fit predicates read. */
 export const DoctrineVocabularySchema = z
-  .object({ schema: z.literal("doctrine-vocabulary/v1"), beats: Names, types: Names, audiences: Names, structures: Names, signals: Names })
+  .object({ schema: z.literal("doctrine-vocabulary/v1"), beats: Names, types: Names, audiences: Names, structures: Names, beatSystems: Names, signals: Names })
   .strict();
 
 export type DoctrineVocabulary = z.infer<typeof DoctrineVocabularySchema>;

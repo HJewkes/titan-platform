@@ -42,8 +42,16 @@ const BlockSchema = z
 /** One heuristic row: a registered structure, and the profile's own wording of its fit question. */
 const HeuristicRowSchema = z.object({ macro: Kebab, ask: z.string().min(1) }).strict();
 
+/**
+ * A beat system the profile plays inside one macro: over every block of the macro, or only inside
+ * `blocks`, as a segment nests in a larger order. The audition picks among the systems a macro lists.
+ */
+const SystemBindingSchema = z.object({ system: Kebab, macro: Kebab, blocks: z.array(Kebab).min(1).optional() }).strict();
+
+const Systems = z.array(SystemBindingSchema).default([]);
+
 /** A fixed structure plays its blocks in the listed order: chapters are the viewer's navigation (VT §2.2). */
-const FixedStructureSchema = z.object({ order: z.literal("fixed"), macro: Kebab, blocks: z.array(BlockSchema).min(1) }).strict();
+const FixedStructureSchema = z.object({ order: z.literal("fixed"), macro: Kebab, blocks: z.array(BlockSchema).min(1), systems: Systems }).strict();
 
 /**
  * A heuristic structure takes the first heuristic row whose registered structure fits the material
@@ -56,6 +64,7 @@ const HeuristicStructureSchema = z
     macros: z.record(Kebab, z.array(Kebab).min(1)),
     heuristic: z.array(HeuristicRowSchema).min(1),
     fallback: Kebab,
+    systems: Systems,
   })
   .strict();
 
@@ -93,6 +102,7 @@ export const TypeProfileSchema = z
 export type TypeProfile = z.infer<typeof TypeProfileSchema>;
 export type ProfileBlock = z.infer<typeof BlockSchema>;
 export type HeuristicStructure = z.infer<typeof HeuristicStructureSchema>;
+export type SystemBinding = z.infer<typeof SystemBindingSchema>;
 
 /** An audience parameter pack (VT §5.2): who watches, and whether the video may leave the machine. */
 export const AudiencePackSchema = z

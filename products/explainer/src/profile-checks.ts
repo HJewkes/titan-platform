@@ -1,6 +1,7 @@
+import { placeBeatSystem } from "./beat-system-schema.js";
 import type { DoctrineVocabulary } from "./doctrine-schema.js";
 import type { ProfileSet } from "./profile-load.js";
-import type { SeriesField, TypeProfile } from "./profile-schema.js";
+import type { ProfileBlock, SeriesField, SystemBinding, TypeProfile } from "./profile-schema.js";
 
 export const PROFILE_ISSUE_CODES = [
   "unknown-vocabulary",
@@ -13,6 +14,8 @@ export const PROFILE_ISSUE_CODES = [
   "series-base-missing",
   "series-structure-mismatch",
   "publish-unguarded",
+  "unknown-beat-system",
+  "beat-system-order",
 ] as const;
 
 export type ProfileIssueCode = (typeof PROFILE_ISSUE_CODES)[number];
@@ -119,7 +122,39 @@ function publish(profile: TypeProfile, { audiences: packs }: ProfileSet): Profil
   return issues;
 }
 
-const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish];
+/** The block ids macro `macro` plays in this profile, or undefined when the profile has no such macro. */
+function macroBlocks({ structure }: TypeProfile, macro: string): string[] | undefined {
+  if (structure.order === "fixed") return structure.macro === macro ? structure.blocks.map((block) => block.id) : undefined;
+  return structure.macros[macro];
+}
+
+/** The blocks one binding spans, in macro order, or the names it gets wrong. */
+function boundBlocks(profile: TypeProfile, { macro, blocks: only }: SystemBinding): { blocks: ProfileBlock[] } | { dangling: string[] } {
+  const ids = macroBlocks(profile, macro);
+  if (!ids) return { dangling: [`macro ${macro} is not one this profile plays`] };
+  const outside = (only ?? []).filter((id) => !ids.includes(id)).map((id) => `block ${id} is not in macro ${macro}`);
+  if (outside.length > 0) return { dangling: outside };
+  const spanned = only ? ids.filter((id) => only.includes(id)) : ids;
+  return { blocks: spanned.flatMap((id) => profile.structure.blocks.filter((block) => block.id === id)) };
+}
+
+/**
+ * Each beat system a profile binds is registered, and its required steps land, in order, in the
+ * blocks it spans: the system is a beat order inside the structure's blocks, not a second structure.
+ */
+function beatSystems(profile: TypeProfile, { beatSystems: registry }: ProfileSet): ProfileIssue[] {
+  return profile.structure.systems.flatMap((binding) => {
+    const system = registry.get(binding.system);
+    if (!system) return [issue("unknown-beat-system", profile, `beat system ${binding.system} has no beat-systems/${binding.system}.yaml`)];
+    const span = boundBlocks(profile, binding);
+    if ("dangling" in span) return span.dangling.map((message) => issue("dangling-ref", profile, `beat system ${binding.system}: ${message}`));
+    return placeBeatSystem(system, span.blocks).unplaced.map((step) =>
+      issue("beat-system-order", profile, `beat system ${binding.system} in ${binding.macro}: step ${step + 1} (${system.steps[step]!.beats.join(" or ")}) lands in no block after the step before it`),
+    );
+  });
+}
+
+const PROFILE_CHECKS: ProfileCheck[] = [vocabulary, audiences, structureRefs, registeredStructures, runtimeOrder, series, publish, beatSystems];
 
 /** Every cross-field and cross-file refinement over the loaded profiles. Empty when sound. */
 export function checkProfiles(set: ProfileSet, vocabulary: DoctrineVocabulary): ProfileIssue[] {

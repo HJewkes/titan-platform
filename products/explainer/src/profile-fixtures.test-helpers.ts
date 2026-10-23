@@ -1,5 +1,6 @@
 import type { ProfileSet } from "./profile-load.js";
 import type { AudiencePack, HeuristicStructure, TypeProfile } from "./profile-schema.js";
+import type { BeatSystem } from "./beat-system-schema.js";
 import type { NarrativeStructure, StructureFit } from "./structure-schema.js";
 import { VOCABULARY } from "./doctrine-fixtures.test-helpers.js";
 
@@ -32,7 +33,7 @@ export const fixedProfile = (overrides: Partial<TypeProfile> = {}): TypeProfile 
   audience: { default: "owner-internal", allow: ["owner-internal"] },
   inputs: { adapters: [], preconditions: [] },
   runtime: { targetS: 600, minS: 480, maxS: 720, splitAboveS: 900 },
-  structure: { order: "fixed", macro: "scqa-c4", blocks: [block("open"), block("map"), block("close")] },
+  structure: { order: "fixed", macro: "scqa-c4", blocks: [block("open"), block("map"), block("close")], systems: [] },
   cuts: [],
   hook: "Verdict first.",
   ending: "button",
@@ -63,6 +64,26 @@ export const narrativeStructure = (id: string, fit: Partial<StructureFit> = {}, 
   ...overrides,
 });
 
+/** A sound beat system over the invented beats; overrides replace whole top-level fields. */
+export const beatSystem = (id: string, overrides: Partial<BeatSystem> = {}): BeatSystem => ({
+  schema: "beat-system/v1",
+  id,
+  version: "0.1.0",
+  source: `${id} source`,
+  summary: `${id} summary.`,
+  steps: [
+    { beats: ["hook"], does: "Open." },
+    { beats: ["code-walk"], does: "Walk.", optional: true },
+    { beats: ["hook"], does: "Close." },
+  ],
+  ...overrides,
+});
+
+export const BEAT_SYSTEMS: ReadonlyMap<string, BeatSystem> = new Map([
+  ["walk-first", beatSystem("walk-first", { steps: [{ beats: ["code-walk"], does: "Walk." }, { beats: ["hook"], does: "Close." }] })],
+  ["hook-close", beatSystem("hook-close")],
+]);
+
 /** Deciding → scqa, anomaly → mystery, problem → three-act at 300 s or longer, else abt. */
 export const STRUCTURES: ReadonlyMap<string, NarrativeStructure> = new Map(
   [
@@ -85,6 +106,7 @@ export const HEURISTIC: HeuristicStructure = {
   fallback: "abt",
   macros: { scqa: ["setup", "answer", "close"], mystery: ["anomaly", "reveal", "close"], "three-act": ["setup", "struggle", "answer", "close"], abt: ["setup", "turn", "close"] },
   blocks: ["setup", "answer", "anomaly", "reveal", "struggle", "turn", "close"].map(block),
+  systems: [],
 };
 
 /** A sound heuristic-order profile over `HEURISTIC`. */
@@ -101,4 +123,5 @@ export const setOf = (...profiles: TypeProfile[]): ProfileSet => ({
   profiles: new Map(profiles.map((profile) => [profile.type, profile])),
   audiences: AUDIENCES,
   structures: STRUCTURES,
+  beatSystems: BEAT_SYSTEMS,
 });
