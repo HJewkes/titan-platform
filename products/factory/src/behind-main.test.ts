@@ -99,6 +99,25 @@ describe("behindMain against the deploy pacer's path filter", () => {
     expect(await read("1\n1\ndocs/guide.md\n", () => undefined)).toBe(1);
   });
 
+  it("counts the commits when the compare carries no file list", async () => {
+    expect(await read("3\n-1\n")).toBe(3);
+    expect(await read("3\n0\n")).toBe(3);
+  });
+
+  it("counts a commit that moves a file out of the factory build", async () => {
+    expect(await read("1\n1\ndocs/a.md\nproducts/factory/src/a.ts\n")).toBe(1);
+  });
+
+  it("asks gh for each moved file's old path and marks a missing list", async () => {
+    const exec = vi.fn<GhExec>(ok("0"));
+
+    await behindMain({ sha: "abc", exec }).refresh();
+
+    const jq = exec.mock.calls[0]?.[0].join(" ");
+    expect(jq).toContain(".previous_filename");
+    expect(jq).toContain("else -1 end");
+  });
+
   it("counts the commits when GitHub capped the file list", async () => {
     const files = Array.from({ length: COMPARE_FILE_CAP }, (_, index) => `docs/page-${index}.md`);
 

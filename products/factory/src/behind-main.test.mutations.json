@@ -4,10 +4,28 @@
     {
       "name": "a capped compare file list clears the commits",
       "file": "products/factory/src/behind-main.ts",
-      "find": "listed === files.length && listed < COMPARE_FILE_CAP;",
-      "replace": "listed === files.length;",
+      "find": "listed > 0 && listed < COMPARE_FILE_CAP && files.length >= listed;",
+      "replace": "listed > 0 && files.length >= listed;",
       "kills": [
         "behindMain against the deploy pacer's path filter counts the commits when GitHub capped the file list"
+      ]
+    },
+    {
+      "name": "an empty compare file list clears the commits",
+      "file": "products/factory/src/behind-main.ts",
+      "find": "Number.isInteger(listed) && listed > 0 && listed < COMPARE_FILE_CAP",
+      "replace": "Number.isInteger(listed) && listed < COMPARE_FILE_CAP",
+      "kills": [
+        "behindMain against the deploy pacer's path filter counts the commits when the compare carries no file list"
+      ]
+    },
+    {
+      "name": "a moved file's old path is dropped from the compare read",
+      "file": "products/factory/src/behind-main.ts",
+      "find": "(.files[]? | .filename, (.previous_filename // empty))",
+      "replace": "(.files[]? | .filename)",
+      "kills": [
+        "behindMain against the deploy pacer's path filter asks gh for each moved file's old path and marks a missing list"
       ]
     },
     {

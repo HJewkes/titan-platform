@@ -33,8 +33,11 @@ export function behindMain(options: BehindMainOptions): BehindMain {
   return cachedProbe(() => probe(exec, repo, cleanSha, timeoutMs, closure), { now, ttlMs, pending: PROBE_PENDING });
 }
 
+/** The commit count, the file count (-1 when absent), then every path, old and new, since the deployer's `--no-renames` diff sees both ends of a move. */
+const COMPARE_JQ = '.ahead_by, (.files | if type == "array" then length else -1 end), (.files[]? | .filename, (.previous_filename // empty))';
+
 async function probe(exec: GhExec, repo: string, sha: string, timeoutMs: number, closure: () => readonly string[] | undefined): Promise<number | string> {
-  const args = ["api", `repos/${repo}/compare/${sha}...main`, "--jq", ".ahead_by, (.files // [] | length), .files[]?.filename"];
+  const args = ["api", `repos/${repo}/compare/${sha}...main`, "--jq", COMPARE_JQ];
   try {
     const { code, stdout, stderr } = await exec(args, undefined, { timeoutMs });
     if (code !== 0) return redactForEvidence(`gh compare failed (${code}): ${stderr.trim() || stdout.trim()}`);
@@ -47,9 +50,9 @@ async function probe(exec: GhExec, repo: string, sha: string, timeoutMs: number,
   }
 }
 
-/** Only a complete file list can clear the commits; a missing or capped one counts them. */
+/** Only a complete file list can clear the commits; a missing, empty or capped one counts them. */
 function skippable(count: string | undefined, files: string[], closure: readonly string[] | undefined): boolean {
   const listed = Number(count);
-  const complete = Number.isInteger(listed) && listed === files.length && listed < COMPARE_FILE_CAP;
+  const complete = Number.isInteger(listed) && listed > 0 && listed < COMPARE_FILE_CAP && files.length >= listed;
   return complete && !reachesFactoryBuild(files, closure);
 }
