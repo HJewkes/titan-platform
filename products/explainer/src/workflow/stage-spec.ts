@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { SPEECH_BANDS, type SpeechBand } from "../beat-schema.js";
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import { canonicalJson } from "../eval-store.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
+import { loadSpeechBands } from "../speech-bands.js";
 import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../style-pack-load.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { sha256 } from "./artifacts.js";
@@ -15,11 +17,11 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
-export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8c", script: "x4", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "x6", render: "x4", qa: "x4", sheets: "x4" };
+export const STAGE_VERSIONS: Record<CachedStage, string> = { audition: "pp8c", script: "x4", rewrite: "x4", eval: "x4", resolve: "pp6", tts: "p6b", render: "x4", qa: "x4", sheets: "x4" };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
 const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly string[]> = {
-  audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script"],
+  audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"],
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
@@ -57,6 +59,8 @@ export const StageConfigSchema = z.object({
   vars: z.record(z.string(), z.string()).optional(),
   /** The tts stage's voice band: the profile's, with a tts variant's `voice` and `rate` over it. */
   voice: z.object({ id: z.string(), rate: z.number(), source: z.string() }).optional(),
+  /** The tts stage's words a minute per speech band, from doctrine `speech-bands.yaml`, so a band edit re-voices. */
+  rates: z.record(z.enum(SPEECH_BANDS), z.number()).optional(),
   /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
   stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
 });
@@ -108,6 +112,12 @@ function ttsVoice(profile: string | undefined, params: z.infer<typeof TtsParamsS
   return { id: params.voice ?? band.id, rate: params.rate ?? band.rate, source };
 }
 
+/** Read when the spec is built, like the voice, so an edited band rate is a new key. */
+function bandRates(): Record<SpeechBand, number> {
+  const { story, concept, code, takeaways, held } = loadSpeechBands();
+  return { story: story.wpm, concept: concept.wpm, code: code.wpm, takeaways: takeaways.wpm, held: held.wpm };
+}
+
 function settingsConfig(stage: CachedStage, settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
   if (stage === "audition") {
     z.strictObject({}).parse(params);
@@ -121,7 +131,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
   }
   if (stage === "eval") return { ...z.strictObject({}).parse(params), judge: settings.judge };
   if (stage === "resolve") return { ...z.strictObject({}).parse(params), ...resolveConfig() };
-  if (stage === "tts") return { voice: ttsVoice(settings.profile, TtsParamsSchema.parse(params)) };
+  if (stage === "tts") return { voice: ttsVoice(settings.profile, TtsParamsSchema.parse(params)), rates: bandRates() };
   return bridgeConfig(stage, params, bridge);
 }
 
