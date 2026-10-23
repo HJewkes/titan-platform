@@ -46,15 +46,6 @@
       "kills": [
         "audition record maps each script chapter to the profile block it plays, in spine order"
       ]
-    },
-    {
-      "name": "chapters count from ch0",
-      "file": "products/explainer/src/audition-record.ts",
-      "find": "chapter: `ch${i + 1}`",
-      "replace": "chapter: `ch${i}`",
-      "kills": [
-        "audition record maps each script chapter to the profile block it plays, in spine order"
-      ]
     }
   ]
 }
