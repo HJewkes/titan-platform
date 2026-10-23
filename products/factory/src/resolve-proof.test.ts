@@ -1,18 +1,18 @@
 import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLIENT_HEADER, listTools, silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import type { OwnerKeys } from "./owner-keys.js";
 import { holdSinceOf } from "./hold-release-proof.js";
-import { holdDigest, itemsDigest, keyIdOf, keyRing, type ProofItem } from "./presence-proof.js";
+import { holdDigest, itemsDigest, keyIdOf, type ProofItem } from "./presence-proof.js";
 import { createFactoryRegistry } from "./registry.js";
 import { HOLD_RELEASE_PROOF_PATH, MAX_PROOF_BODY_BYTES, RESOLVE_PROOF_PATH } from "./resolve-proof.js";
 import { startFactoryServer, TOOL_PREFIX, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
+import { rootStat, useOwnerKeyDir } from "./test-support/owner-edges.js";
 import { REPO as SHEPHERD_REPO } from "./test-support/land.js";
 import { callCommand, shepherdFixture } from "./test-support/shepherd.js";
 
@@ -23,7 +23,22 @@ const HEAD = "a".repeat(40);
 
 const owner = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const KEY_ID = keyIdOf(owner.publicKey);
-const LOADED: OwnerKeys = { ok: true, ring: keyRing([owner.publicKey]), ids: [KEY_ID] };
+
+type KeyInstall = "installed" | "user-owned" | "empty" | "missing";
+
+/** The owner's key ring on disk under the test's state dir, read through a stat that reports root ownership. */
+function installOwnerKeys(root: string, install: KeyInstall): void {
+  const dir = join(root, "owner-keys");
+  if (install !== "missing") {
+    mkdirSync(dir);
+    chmodSync(dir, 0o755);
+  }
+  if (install === "installed" || install === "user-owned") {
+    writeFileSync(join(dir, "owner.pem"), owner.publicKey.export({ type: "spki", format: "pem" }).toString());
+    chmodSync(join(dir, "owner.pem"), 0o644);
+  }
+  useOwnerKeyDir(dir, rootStat(dir, (path, real) => (install === "user-owned" && path === dir ? { uid: 501, mode: real.mode } : undefined)));
+}
 
 const mergeGate = defineWorkflow({
   name: "merge-gate",
@@ -42,9 +57,10 @@ afterEach(async () => {
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
 
-async function serve(overrides: Partial<FactoryServerOptions> = {}): Promise<FactoryServer> {
+async function serve(overrides: Partial<FactoryServerOptions> = {}, keys: KeyInstall = "installed"): Promise<FactoryServer> {
   const dir = mkdtempSync(join(tmpdir(), "factory-resolve-proof-"));
   dirs.push(dir);
+  installOwnerKeys(dir, keys);
   const server = await startFactoryServer({
     dbPath: join(dir, "factory.sqlite3"),
     workflows: [mergeGate],
@@ -56,7 +72,6 @@ async function serve(overrides: Partial<FactoryServerOptions> = {}): Promise<Fac
     github: { status: () => "ok", refresh: async () => undefined },
     build: { sha: "test", behindMain: { status: () => 0, refresh: async () => undefined } },
     aud: AUD,
-    ownerKeys: () => LOADED,
     ...overrides,
   });
   servers.push(server);
@@ -127,13 +142,13 @@ describe("POST /gates/resolve-proof", () => {
   });
 
   it("answers 503 owner keys not installed when the key directory was refused", async () => {
-    const server = await serve({ ownerKeys: () => ({ ok: false, refusal: "/etc/titan-factory/owner-keys is owned by uid 501, not root" }) });
+    const server = await serve({}, "user-owned");
     const item = await gated(server, 1);
 
     const response = await post(server, JSON.stringify(proofOf([item])));
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ ok: false, error: "owner keys not installed", detail: "/etc/titan-factory/owner-keys is owned by uid 501, not root" });
+    expect(await response.json()).toMatchObject({ ok: false, error: "owner keys not installed", detail: expect.stringMatching(/\/owner-keys is owned by uid 501, not root$/) });
     expect(server.host.gates.get(item.gate)?.status).toBe("pending");
   });
 
@@ -250,7 +265,7 @@ describe("POST /holds/release-proof", () => {
   });
 
   it("answers 503 owner keys not installed when the key directory was refused", async () => {
-    const server = await serve({ ownerKeys: () => ({ ok: false, refusal: "/etc/titan-factory/owner-keys is missing" }) });
+    const server = await serve({}, "missing");
 
     const response = await post(server, JSON.stringify(holdProof("run-1", 1)), HOLD_RELEASE_PROOF_PATH);
 
@@ -292,9 +307,9 @@ describe("serve health and gates for owner proofs", () => {
   });
 
   it("shows the refusal in /health when the key directory was refused", async () => {
-    const server = await serve({ ownerKeys: () => ({ ok: false, refusal: "no .pem key in /etc/titan-factory/owner-keys" }) });
+    const server = await serve({}, "empty");
 
-    expect(await health(server)).toMatchObject({ ownerKeys: { count: 0, refusal: "no .pem key in /etc/titan-factory/owner-keys" } });
+    expect(await health(server)).toMatchObject({ ownerKeys: { count: 0, refusal: expect.stringMatching(/^no \.pem key in .*\/owner-keys$/) } });
   });
 
   it("names the serving host as the audience in factory.gates", async () => {

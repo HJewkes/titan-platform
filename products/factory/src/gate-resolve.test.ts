@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import { ownerResolver, presenceReason, resolveGate, type OwnerPresence } from "./gate-resolve.js";
+import { ownerResolver, presenceReason, resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
+import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 
 const HEAD = "a".repeat(40);
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -37,25 +38,20 @@ async function pausedMerge(): Promise<{ host: FactoryHost; runId: string }> {
   return { host, runId };
 }
 
-function presenceStub(proof: string | undefined): { presence: OwnerPresence; reasons: string[] } {
-  const reasons: string[] = [];
-  return { reasons, presence: async (reason) => (reasons.push(reason), proof) };
-}
-
-async function resolve(host: FactoryHost, runId: string, env: NodeJS.ProcessEnv, presence: OwnerPresence, json = JSON.stringify({ decision: "merge", headSha: HEAD })) {
+async function resolve(host: FactoryHost, runId: string, env: NodeJS.ProcessEnv, json = JSON.stringify({ decision: "merge", headSha: HEAD })) {
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env };
-  const code = await resolveGate(host, io, runId, "approve-merge", json, presence).catch((error: Error) => ((err += error.message), 1));
+  const code = await resolveGate(host, io, runId, "approve-merge", json).catch((error: Error) => ((err += error.message), 1));
   return { code, out, err };
 }
 
 describe("gate resolve with owner presence", () => {
   it("the owner resolves a gate from an agent-chat-launched session once presence is confirmed", async () => {
     const { host, runId } = await pausedMerge();
-    const { presence, reasons } = presenceStub(PROOF);
+    const { reasons } = fakeOwnerHelper(PROOF);
 
-    const { code } = await resolve(host, runId, AGENT_SHELL, presence);
+    const { code } = await resolve(host, runId, AGENT_SHELL);
 
     expect(code).toBe(0);
     expect(reasons).toEqual([`resolve gate ${runId}/approve-merge: merge at ${HEAD}`]);
@@ -64,8 +60,9 @@ describe("gate resolve with owner presence", () => {
 
   it("an agent in the same session is refused when presence is not confirmed and the gate stays pending", async () => {
     const { host, runId } = await pausedMerge();
+    fakeOwnerHelper(undefined);
 
-    const { code, err } = await resolve(host, runId, AGENT_SHELL, presenceStub(undefined).presence);
+    const { code, err } = await resolve(host, runId, AGENT_SHELL);
 
     expect(code).toBe(1);
     expect(err).toContain("refused a resolution by coordinator");
@@ -74,19 +71,21 @@ describe("gate resolve with owner presence", () => {
 
   it("the stored resolver carries the presence proof as confirmEvent", async () => {
     const { host, runId } = await pausedMerge();
+    fakeOwnerHelper(PROOF);
 
-    await resolve(host, runId, AGENT_SHELL, presenceStub(PROOF).presence);
+    await resolve(host, runId, AGENT_SHELL);
 
     expect(host.gates.get(`${runId}/approve-merge`)?.resolvedBy).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });
   });
 
   it("a repeat of an answered resolve asks for no presence", async () => {
     const { host, runId } = await pausedMerge();
-    await resolve(host, runId, AGENT_SHELL, presenceStub(PROOF).presence);
+    fakeOwnerHelper(PROOF);
+    await resolve(host, runId, AGENT_SHELL);
     await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
-    const repeat = presenceStub(PROOF);
+    const repeat = fakeOwnerHelper(PROOF);
 
-    const { code, out } = await resolve(host, runId, AGENT_SHELL, repeat.presence);
+    const { code, out } = await resolve(host, runId, AGENT_SHELL);
 
     expect(code).toBe(0);
     expect(out).toBe(`already resolved ${runId}/approve-merge with this answer\n`);
@@ -95,9 +94,9 @@ describe("gate resolve with owner presence", () => {
 
   it("a shell with no agent marker resolves as the owner without a dialog", async () => {
     const { host, runId } = await pausedMerge();
-    const { presence, reasons } = presenceStub(undefined);
+    const { reasons } = fakeOwnerHelper(undefined);
 
-    const { code } = await resolve(host, runId, {}, presence);
+    const { code } = await resolve(host, runId, {});
 
     expect(code).toBe(0);
     expect(reasons).toEqual([]);
@@ -107,8 +106,9 @@ describe("gate resolve with owner presence", () => {
   it("a proof or helper path supplied through the environment is ignored", async () => {
     const { host, runId } = await pausedMerge();
     const env = { ...AGENT_SHELL, OWNER_PRESENCE_PROOF: PROOF, TITAN_FACTORY_PROOF: PROOF, OWNER_PRESENCE_HELPER: "/synthetic/stub" };
+    fakeOwnerHelper(undefined);
 
-    const { code } = await resolve(host, runId, env, presenceStub(undefined).presence);
+    const { code } = await resolve(host, runId, env);
 
     expect(code).toBe(1);
     expect(host.gates.get(`${runId}/approve-merge`)?.status).toBe("pending");
@@ -119,9 +119,9 @@ describe("gate resolve with owner presence", () => {
     ["a line separator", "merge approved"],
   ])("a decision carrying %s is refused before any dialog and the gate stays pending", async (_name, decision) => {
     const { host, runId } = await pausedMerge();
-    const { presence, reasons } = presenceStub(PROOF);
+    const { reasons } = fakeOwnerHelper(PROOF);
 
-    const { code, err } = await resolve(host, runId, AGENT_SHELL, presence, JSON.stringify({ decision, headSha: HEAD }));
+    const { code, err } = await resolve(host, runId, AGENT_SHELL, JSON.stringify({ decision, headSha: HEAD }));
 
     expect(code).toBe(2);
     expect(err).toContain("unexpected shape");
@@ -173,7 +173,8 @@ describe("gate resolve by a coordinator", () => {
   async function resolveAs(host: FactoryHost, runId: string, step: string, json: string, env: NodeJS.ProcessEnv = AGENT_SHELL) {
     let err = "";
     const io = { stdout: () => {}, stderr: (t: string) => void (err += t), env };
-    const code = await resolveGate(host, io, runId, step, json, presenceStub(undefined).presence).catch((error: Error) => ((err += error.message), 1));
+    fakeOwnerHelper(undefined);
+    const code = await resolveGate(host, io, runId, step, json).catch((error: Error) => ((err += error.message), 1));
     return { code, err };
   }
 
@@ -216,10 +217,10 @@ describe("gate resolve by a coordinator", () => {
 
   it("never asks for owner presence on a matching stuck-behind retry from an agent shell", async () => {
     const { host, runId } = await pausedAt("stuck-behind");
-    const { presence, reasons } = presenceStub(PROOF);
+    const { reasons } = fakeOwnerHelper(PROOF);
     const io = { stdout: () => {}, stderr: () => {}, env: AGENT_SHELL };
 
-    const code = await resolveGate(host, io, runId, "stuck-behind", '{"decision":"retry"}', presence);
+    const code = await resolveGate(host, io, runId, "stuck-behind", '{"decision":"retry"}');
 
     expect(code).toBe(0);
     expect(reasons).toEqual([]);
@@ -228,10 +229,10 @@ describe("gate resolve by a coordinator", () => {
 
   it("still asks for owner presence on a stuck-behind abandon from an agent shell", async () => {
     const { host, runId } = await pausedAt("stuck-behind");
-    const { presence, reasons } = presenceStub(undefined);
+    const { reasons } = fakeOwnerHelper(undefined);
     const io = { stdout: () => {}, stderr: () => {}, env: AGENT_SHELL };
 
-    await resolveGate(host, io, runId, "stuck-behind", '{"decision":"abandon"}', presence).catch(() => 1);
+    await resolveGate(host, io, runId, "stuck-behind", '{"decision":"abandon"}').catch(() => 1);
 
     expect(reasons).toEqual([`resolve gate ${runId}/stuck-behind: abandon`]);
   });
@@ -240,13 +241,12 @@ describe("gate resolve by a coordinator", () => {
 describe("ownerResolver", () => {
   it("refuses an agent shell without presence, proves it with presence, and asks nothing of the owner's own terminal", async () => {
     const reason = "release the owner-asked hold on octo/demo#1";
-    const refused = presenceStub(undefined);
-    const confirmed = presenceStub(PROOF);
-    const ownShell = presenceStub(undefined);
-
-    const agent = await ownerResolver(AGENT_SHELL, reason, refused.presence);
-    const proved = await ownerResolver(AGENT_SHELL, reason, confirmed.presence);
-    const terminal = await ownerResolver({}, reason, ownShell.presence);
+    const refused = fakeOwnerHelper(undefined);
+    const agent = await ownerResolver(AGENT_SHELL, reason);
+    const confirmed = fakeOwnerHelper(PROOF);
+    const proved = await ownerResolver(AGENT_SHELL, reason);
+    const ownShell = fakeOwnerHelper(undefined);
+    const terminal = await ownerResolver({}, reason);
 
     expect(agent).toBe(`owner presence was not confirmed, so tc-synthetic, a shell agent-chat launched, is refused: only the owner may ${reason}`);
     expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });

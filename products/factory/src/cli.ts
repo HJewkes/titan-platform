@@ -14,7 +14,6 @@ import { configuredConsoleAnswers, type ConsoleAnswersOptions } from "./gate-ans
 import { configuredGateNotify, type GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { EXIT } from "./exit-codes.js";
-import type { OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
@@ -70,8 +69,6 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
-  /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
-  presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */

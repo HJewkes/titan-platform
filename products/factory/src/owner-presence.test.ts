@@ -3,8 +3,9 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { confirmOwner, defaultHelperPath, helperSearchOrder, ownerKeyId, ROOT_HELPER_PATH, signStatement, type HelperRunner, type StatPort } from "./owner-presence.js";
+import { confirmOwner, defaultHelperPath, helperSearchOrder, ownerKeyId, ROOT_HELPER_PATH, signStatement, type ConfirmOptions, type HelperRunner, type StatPort } from "./owner-presence.js";
 import { keyIdOf } from "./presence-proof.js";
+import { useOwnerPresenceEdge } from "./test-support/owner-edges.js";
 
 const helperPath = "/synthetic/owner-presence";
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -21,25 +22,31 @@ function fakeStat(overrides: Record<string, Entry | undefined> = {}): StatPort {
   return (path) => entries[path];
 }
 
+/** confirmOwner through `edge`, the only override it takes. */
+function confirm(reason: string, edge: ConfirmOptions): Promise<string | undefined> {
+  useOwnerPresenceEdge(edge);
+  return confirmOwner(reason);
+}
+
 async function confirmWith(stat: StatPort, helperPaths: readonly string[] = [helperPath]) {
   const runs: string[] = [];
   const reports: string[] = [];
   const run: HelperRunner = async (file) => (runs.push(file), PROOF);
-  const proof = await confirmOwner("resolve gate", { run, stat, getuid: () => OWNER, helperPaths, report: (line) => reports.push(line) });
+  const proof = await confirm("resolve gate", { run, stat, getuid: () => OWNER, helperPaths, report: (line) => reports.push(line) });
   return { proof, runs, reports };
 }
 
 describe("confirmOwner", () => {
   it("returns the proof the helper prints on success", async () => {
     const run: HelperRunner = async () => `${PROOF}\n`;
-    expect(await confirmOwner("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBe(PROOF);
+    expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBe(PROOF);
   });
 
   it.each([["a word", "proof-1234"], ["an uppercase UUID", PROOF.toUpperCase()], ["a UUID and more", `${PROOF} ok`], ["a non-v4 UUID", PROOF.replace("-4c3a-", "-1c3a-")]])(
     "refuses %s as a proof",
     async (_name, printed) => {
       const run: HelperRunner = async () => `${printed}\n`;
-      expect(await confirmOwner("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
+      expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
     },
   );
 
@@ -50,7 +57,7 @@ describe("confirmOwner", () => {
     const stat: StatPort = (path) => (path === ROOT_HELPER_PATH ? undefined : { uid: OWNER, mode: path === build ? FILE : DIR });
     process.env.OWNER_PRESENCE_HELPER = "/synthetic/stub";
     try {
-      await confirmOwner("resolve gate", { run, stat, getuid: () => OWNER });
+      await confirm("resolve gate", { run, stat, getuid: () => OWNER });
     } finally {
       delete process.env.OWNER_PRESENCE_HELPER;
     }
@@ -62,12 +69,12 @@ describe("confirmOwner", () => {
     const run: HelperRunner = async () => {
       throw Object.assign(new Error("Command failed"), { code: 1 });
     };
-    expect(await confirmOwner("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
+    expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
   });
 
   it("returns undefined when the helper succeeds but prints no proof", async () => {
     const run: HelperRunner = async () => "\n";
-    expect(await confirmOwner("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
+    expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
   });
 
   it("escapes control characters in the reason", async () => {
@@ -76,7 +83,7 @@ describe("confirmOwner", () => {
       seen.push([...args]);
       return PROOF;
     };
-    await confirmOwner("approve\x1b[2J‮ and\\more", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] });
+    await confirm("approve\x1b[2J‮ and\\more", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] });
     expect(seen).toEqual([["approve\\x1b[2J\\u202E and\\\\more"]]);
   });
 });
@@ -113,7 +120,7 @@ describe("confirmOwner checks the helper path before each run", () => {
   it("refuses when there is no OS user id to compare owners against", async () => {
     const runs: string[] = [];
     const run: HelperRunner = async (file) => (runs.push(file), PROOF);
-    const proof = await confirmOwner("resolve gate", { run, stat: fakeStat(), getuid: () => undefined, helperPaths: [helperPath], report: () => {} });
+    const proof = await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => undefined, helperPaths: [helperPath], report: () => {} });
     expect(proof).toBeUndefined();
     expect(runs).toEqual([]);
   });
@@ -170,9 +177,9 @@ describe("confirmOwner with the real lstat", () => {
       writeFileSync(join(locked, "helper"), "");
       const run: HelperRunner = async () => PROOF;
       const reports: string[] = [];
-      const absent = await confirmOwner("r", { run, getuid: () => 0, helperPaths: [join(root, "missing")], report: (l) => reports.push(l) });
+      const absent = await confirm("r", { run, getuid: () => 0, helperPaths: [join(root, "missing")], report: (l) => reports.push(l) });
       chmodSync(locked, 0o000);
-      const denied = await confirmOwner("r", { run, getuid: () => 0, helperPaths: [join(locked, "helper")], report: (l) => reports.push(l) });
+      const denied = await confirm("r", { run, getuid: () => 0, helperPaths: [join(locked, "helper")], report: (l) => reports.push(l) });
       expect([absent, denied]).toEqual([undefined, undefined]);
       expect(reports[0]).toBe(`owner presence refused: no helper at ${join(root, "missing")}\n`);
       expect(reports[1]).toMatch(/failed with (EACCES|EPERM)\n$/);

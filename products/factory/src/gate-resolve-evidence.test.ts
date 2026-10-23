@@ -10,10 +10,11 @@ import { z } from "zod";
 import type { EvidenceSources } from "./coordinator-evidence-read.js";
 import { defineWorkflow } from "./definition.js";
 import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecision, sentBackDecision, stuckBehindDecision } from "./gate-brief.js";
-import { resolveGate, type OwnerPresence } from "./gate-resolve.js";
+import { resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./shepherd/policy.js";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
+import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 import { codeRoute, step } from "./workflows/land.js";
 import { tableGateRule } from "./workflows/land-approval.js";
 
@@ -128,19 +129,14 @@ function mergedPr(gh: FakeGitHub): void {
   Object.assign(gh.pr(1), { state: "closed", merged: true, mergeSha: MERGE_SHA });
 }
 
-function presenceStub(): { presence: OwnerPresence; reasons: string[] } {
-  const reasons: string[] = [];
-  return { reasons, presence: async (reason) => (reasons.push(reason), undefined) };
-}
-
 const STEPS: Record<Scenario["gate"] | "stuck-behind", string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen", "stuck-behind": "stuck-behind" };
 
 async function resolveAs(world: World, gate: Scenario["gate"] | "stuck-behind", payload: object) {
-  const { presence, reasons } = presenceStub();
+  const { reasons } = fakeOwnerHelper(undefined);
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: AGENT_SHELL };
-  const code = await resolveGate(world.host, io, world.runId, STEPS[gate], JSON.stringify(payload), presence, world.sources).catch((error: Error) => ((err += error.message), 1));
+  const code = await resolveGate(world.host, io, world.runId, STEPS[gate], JSON.stringify(payload), world.sources).catch((error: Error) => ((err += error.message), 1));
   return { code, out, err, reasons, gate: world.host.gates.get(`${world.runId}/${STEPS[gate]}`) };
 }
 
@@ -267,8 +263,9 @@ describe("coordinator resolve of an approve-merge gate on fresh evidence", () =>
   it("an owner terminal resolves as the owner and reads no evidence", async () => {
     const world = await paused({ gate: "merge" });
     const io = { stdout: () => undefined, stderr: () => undefined, env: {} };
+    fakeOwnerHelper(undefined);
 
-    await resolveGate(world.host, io, world.runId, "approve-merge", JSON.stringify(MERGE), presenceStub().presence, world.sources);
+    await resolveGate(world.host, io, world.runId, "approve-merge", JSON.stringify(MERGE), world.sources);
 
     expect(world.gh.calls).toEqual([]);
     expect(world.host.gates.get(`${world.runId}/approve-merge`)).toMatchObject({ resolvedBy: { class: "owner-terminal" }, resolvedEvidence: undefined });
