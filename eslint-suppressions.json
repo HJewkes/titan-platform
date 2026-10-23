@@ -1375,11 +1375,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/review-stats-report.ts": {
-    "titan/max-line-length": {
-      "count": 3
-    }
-  },
   "products/factory/src/shepherd/review-stats-store.ts": {
     "titan/max-line-length": {
       "count": 1
