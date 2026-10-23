@@ -13,6 +13,7 @@ import { heteronymCheck } from "./lint-heteronyms.js";
 import { ledgerCheck } from "./lint-ledger.js";
 import { spineCheck } from "./lint-spine.js";
 import { paceCheck } from "./lint-pace.js";
+import { headlineCheck } from "./lint-headline.js";
 import { visualKindCheck } from "./lint-visual-kind.js";
 import type { SpineV1 } from "./spine-schema.js";
 import type { ScriptTiming } from "./timing.js";
@@ -58,7 +59,7 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
 
 export const L0_CHECKS: readonly L0Check[] = [
   mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, ledgerCheck, spineCheck,
-  heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck,
+  heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, headlineCheck,
 ];
 
 export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming, spine?: SpineV1): L0Result[] {

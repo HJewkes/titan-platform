@@ -100,6 +100,12 @@ rules:
     related: [Q-V11]
     owner_support: none
     l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
+  - id: Q-V13
+    rule: "A beat headline wraps to at most two lines at the width of the headline band, so the band never clips it"
+    fields: [beats.visual.assertion]
+    owner_support: none
+    note: "The band is sized for two lines (TP-4105); the width estimate lives in src/lint-headline.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-V13"] }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
