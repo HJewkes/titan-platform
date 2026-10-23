@@ -2,6 +2,7 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowStatus } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { factoryMigrations, openFactoryHost, type FactoryHost } from "../host.js";
 import { SHEPHERD_MIGRATIONS, factoryRoutesFor } from "../workflows.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
@@ -16,6 +17,7 @@ const AT = Date.parse("2026-10-23T10:00:00.000Z");
 const ON: MergeOrderRules = () => ({ enabled: true, ttlMinutes: 120, ignore: [".changeset/**"] }) satisfies MergeOrderRule;
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const SHARED = "products/explainer/CAPABILITY.md";
+const StepOutput = z.looseObject({ result: z.unknown() });
 const HEADS = { 2301: fakeSha("order-x"), 2310: fakeSha("order-y") } as const;
 
 interface Rig {
@@ -27,7 +29,7 @@ interface Rig {
   clock: { now: number };
 }
 
-const file = (path: string, previousPath?: string): PrFile => ({ path, status: previousPath ? "renamed" : "modified", ...(previousPath && { previousPath }) }) as PrFile;
+const file = (path: string, previousPath?: string): PrFile => ({ path, status: previousPath ? "renamed" : "modified", ...(previousPath && { previousPath }) });
 
 function running(runs: WorkflowRunStore, id: string, status: WorkflowStatus = "running"): void {
   runs.create({ id, workflowName: "shepherd-pr", params: { repo: REPO }, status, currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: new Date(AT).toISOString(), completedAt: null, error: null });
@@ -151,7 +153,7 @@ describe("a merge step behind a merge-order reservation", () => {
     const merge = routes.find((route) => route.match === "merge")!;
     const prompt = JSON.stringify({ repo: REPO, pr: 2310, sha: HEADS[2310], method: "squash", taskIds: [], base: "main" });
     const out = await merge.runner.run({ runId: "run-y", workflowName: "land-pr", stepId: "merge", iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "merge" });
-    return { fake, result: out.ok ? (JSON.parse(out.output) as { result: unknown }).result : out, waits };
+    return { fake, result: out.ok ? StepOutput.parse(JSON.parse(out.output)).result : out, waits };
   }
 
   it("waits in the merge step and answers held, merging nothing, while an overlapping reservation is live", async () => {
