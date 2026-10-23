@@ -15,7 +15,7 @@ const S_IFDIR = 0o040000;
 export type OwnerKeys = { ok: true; ring: KeyRing; ids: string[] } | { ok: false; refusal: string };
 
 /** The OS edge the key ring is read through; serve uses the defaults. */
-export interface KeyDirPorts {
+interface KeyDirPorts {
   dir: string;
   stat: StatPort;
   list: (dir: string) => string[];

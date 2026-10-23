@@ -18,7 +18,7 @@ export function registerResume(program: Command, { io, withHost }: Verbs): void 
     .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
 }
 
-export function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
+export function registerGate(program: Command, { io, withHost }: Verbs): void {
   program
     .command("gate")
     .description("human gates")
