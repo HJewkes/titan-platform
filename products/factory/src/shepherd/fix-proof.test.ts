@@ -4,6 +4,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
@@ -120,7 +121,11 @@ interface Scene {
   panel?: PanelMode;
   /** The owner waives the head's fix-proof after the first review, which then runs again. */
   waiveAfterFirst?: boolean;
+  /** The intent step reads its input as one recorded before TP-4058, which named no test-only proof and planned no tests member. */
+  legacyIntent?: boolean;
 }
+
+const beforeTestsMember = (prompt: string): string => JSON.stringify(Object.fromEntries(Object.entries(z.record(z.string(), z.unknown()).parse(JSON.parse(prompt))).filter(([key]) => key !== "testOnlyProof")));
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
   const fake = {
@@ -158,7 +163,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     const reader: ReviewerReader = { read: async (input) => dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map(said) };
     const verdicts: Verdict[] = [];
     const inputs: Record<string, unknown> = {};
-    const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...(scene.panel && { panel: scene.panel }) }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
+    const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...(scene.panel && { panel: scene.panel }) }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(scene.legacyIntent ? { ...step, prompt: beforeTestsMember(step.prompt) } : step)) } }));
     const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), proofWaiverMigration(32)], bind: store.bind } });
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
       verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
@@ -530,15 +535,22 @@ describe("sh-fix-proof in reviewPhase", () => {
     describe("a test-only head that proceeds on a vacuous proof", () => {
       const testOnly = (overrides: Partial<Scene> = {}): Scene => ({ kind: "test-only", noReproProceed: "on", panel: "on", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "packages/x/src/a.test.ts", status: "modified" }], ...overrides });
 
-      it("goes back as the proof's NO_REPRO when only the unplanned tests member is missing, never a reviewer retry", async () => {
-        const { verdicts, stepIds } = await review(testOnly());
+      it("is reviewed to a MERGE by a planned tests member with no waiver, never sent back as the proof's NO_REPRO (TP-4058)", async () => {
+        const { verdicts, spawns } = await review(testOnly());
+
+        expect(spawns.map((spawn) => spawn.name)).toContainEqual(expect.stringMatching(/-tests$/));
+        expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+      });
+
+      it("goes back as the proof's NO_REPRO when its intent, recorded before TP-4058, planned no tests member", async () => {
+        const { verdicts, stepIds } = await review(testOnly({ legacyIntent: true }));
 
         expect(stepIds).toContain(`sh-review-panel:${H}`);
         expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { head: H, verdict: "vacuous" } }]);
       });
 
       it("is reviewed to a MERGE once the owner waives that NO_REPRO, not sent back again", async () => {
-        const { verdicts } = await review(testOnly({ waiveAfterFirst: true }));
+        const { verdicts } = await review(testOnly({ waiveAfterFirst: true, legacyIntent: true }));
 
         expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }, { kind: "MERGE", headSha: H }]);
       });
