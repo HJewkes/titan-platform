@@ -1248,6 +1248,30 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-loop.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-loop.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-steps.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-order.json",
    "fate": "delete",
    "task": "D-M3-19",

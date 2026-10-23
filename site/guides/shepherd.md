@@ -1404,6 +1404,49 @@ the Version Packages pull request, so a hold never wedges the repo. Only `shephe
 ride the train; `titan-factory land` does not. A holder still waits through the review of
 the head its update produced.
 
+## Merge order {#merge-order}
+
+The train serializes the merge write only. Without more, a clean pull request that edits the
+same lines as a conflicted one can land while the conflicted one is being resolved, and
+conflict it again. Merge order stops that loop (TP-4098, `products/factory/src/shepherd/merge-order*.ts`).
+
+**When a reservation is taken.** Only when a run conflicts with its base. In the
+`sh-order-reserve` step the run pins the paths its pull request changes at the conflicted head,
+reads the default branch's sha, and writes one row to the `shepherd_merge_order` table.
+Nothing is ordered until some pull request has actually conflicted, so clean lanes never
+wait. A repeat at the same head keeps the first row and its time.
+
+**Who waits.** Every other registered run whose pull request changes one of the reserved
+paths waits in its merge step, like any hold, until the reserving pull request merges or
+closes, its run stops driving, or the reservation passes its TTL. Paths listed in
+`generated-paths.json` and the rule's `ignore` globs (`.changeset/**`) never count. A run
+that cannot read its own changed paths waits behind every live reservation, bounded by the
+TTL. Two reservations that overlap land in the order they were taken.
+
+**Grace.** Runs that are already in their merge step when the reservation is taken are
+recorded as `ahead` and land first; they are never held behind it. In the `sh-order-wait`
+step the conflicted run gives up the train and waits for them, and for any earlier
+overlapping reservation. Then it wakes its fixer once, in the usual conflict wake, so the one
+merge of main happens at the base they leave behind. A push to the pull request during the
+wait ends it with no wake; the next land round reads the new head.
+
+**TTL and release.** The rule file `merge-order.json` sets the TTL per repo (120 minutes for
+titan-platform). The run deletes its row in `sh-order-release` when it ends, merged or not.
+A row whose run crashed stops blocking once the run no longer drives, so no sweeper is
+needed. A seat's repair-stop still wins over the conflict wake; the reservation keeps
+blocking under it until the TTL.
+
+**How it reads.** A waiting run's merge step answers `skipped: "held"` and spends no CI
+cycle. The hold reason names the reserving pull request and the shared paths:
+
+```
+merge order: waiting behind #2301 (products/explainer/CAPABILITY.md)
+```
+
+The conflicted run shows `merging` while it waits in `sh-order-wait`; the step's result
+lists the pull requests it waited behind. Only repos with `"enabled": true` in
+`merge-order.json` are ordered: titan-platform today.
+
 ## The Version Packages pull request {#version-packages}
 
 The changesets action opens a "Version Packages" pull request from `changeset-release/main`.

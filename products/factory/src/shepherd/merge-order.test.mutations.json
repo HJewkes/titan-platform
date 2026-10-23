@@ -22,10 +22,19 @@
     {
       "name": "a reservation never expires",
       "file": "products/factory/src/shepherd/merge-order.ts",
-      "find": "now - Date.parse(reservation.since) < rule.ttlMinutes * 60_000 && driving(reservation.runId)",
+      "find": "withinTtl(reservation, rule, now) && driving(reservation.runId)",
       "replace": "driving(reservation.runId)",
       "kills": [
         "which reservations a PR waits behind stops waiting once the reservation is older than the TTL or its run no longer drives"
+      ]
+    },
+    {
+      "name": "a run let through first still waits behind the reservation",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": " && !reservation.ahead.includes(self.runId)",
+      "replace": "",
+      "kills": [
+        "which reservations a PR waits behind never waits behind a reservation that let it merge first"
       ]
     }
   ]
