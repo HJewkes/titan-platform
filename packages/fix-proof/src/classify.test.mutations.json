@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a skip inside a failed file reads as deliberate",
+      "file": "packages/fix-proof/src/report.ts",
+      "find": "return !fileFailed && DECLINED.has(",
+      "replace": "return DECLINED.has(",
+      "kills": [
+        "classifyReports reports an error, not a vacuous run, when a base hook failure skipped every test in a file",
+        "mutant proof over tests head declines to run does not prove killed mutants when head skips a test inside a failed file"
+      ]
+    },
+    {
+      "name": "todo tests stay not-run",
+      "file": "packages/fix-proof/src/report.ts",
+      "find": "new Set([\"skipped\", \"todo\"])",
+      "replace": "new Set([\"skipped\"])",
+      "kills": [
+        "mutant proof over tests head declines to run proves a test-only diff whose head skips and todos tests on purpose once its mutants are killed"
+      ]
+    },
+    {
+      "name": "head may skip a test base passed",
+      "file": "packages/fix-proof/src/classify.ts",
+      "find": "head.status === \"skipped\" && baseFile?.tests.get(key)?.status !== \"passed\"",
+      "replace": "head.status === \"skipped\"",
+      "kills": [
+        "mutant proof over tests head declines to run does not prove killed mutants when head skips a test base passed"
+      ]
+    },
+    {
+      "name": "a base skip counts as a base failure",
+      "file": "packages/fix-proof/src/classify.ts",
+      "find": "if (base?.status !== \"failed\") return \"not-run\";",
+      "replace": "if (base === undefined) return \"not-run\";",
+      "kills": [
+        "classifyReports still calls a file with deliberately skipped tests vacuous"
+      ]
+    }
+  ]
+}

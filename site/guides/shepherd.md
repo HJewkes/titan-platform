@@ -121,7 +121,9 @@ merge base with the head's tests overlaid, and the judge adds a `mutants` field 
 
 The gate lets the review proceed on a `vacuous` line only when its `mutants` verdict is
 `killed`, every changed test file has a spec of its own added or changed in the same diff (a carried test that loads only carried files needs none), and
-every selected test ran and passed at head (`provedByMutants`). A killed spec proves only the
+every selected test ran and passed at head (`provedByMutants`). A test the head skips on purpose
+(`skip`, `skipIf`, `todo`) in a file that did not fail is not counted, unless base passed it.
+A killed spec proves only the
 test file beside it, so one beside an unchanged test cannot vouch for a test the PR changed.
 A changed test file with no spec (listed as `mutants.uncovered`), a surviving mutation, a test
 that fails or does not run at head, a mutants error, or a line from a judge that never checked
