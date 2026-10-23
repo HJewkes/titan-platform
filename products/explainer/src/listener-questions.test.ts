@@ -135,24 +135,27 @@ describe("the listener verdict", () => {
     sentences: Array.from({ length: sentences }, (_, i) => ({ id: `S${i + 1}`, beat: "b", text: "x", questions: 0 })),
     flags: { list_spread: [{ items: ["a", "b"], sentences: ["S1", "S2"] }], terms_before_setup: [], fragments: ["S2"] },
   });
-  const result = (chapters: ListenerChapter[]) =>
-    ({ chapters, questions: chapters.reduce((n, c) => n + c.questions, 0), sentences: chapters.reduce((n, c) => n + c.sentences.length, 0) }) as Parameters<typeof listenerVerdict>[0];
+  const result = (chapters: ListenerChapter[], failures: string[] = []) => {
+    const questions = chapters.reduce((n, c) => n + c.questions, 0);
+    const sentences = chapters.reduce((n, c) => n + c.sentences.length, 0);
+    return { chapters, questions, sentences, density: questions / sentences, failures };
+  };
 
   it("passes with no threshold, whatever the density, and says the counts and flags", () => {
-    const verdict = listenerVerdict({ ...result([chapter("c1", 4, 2), chapter("c2", 37, 7)]), density: 41 / 9, failures: [] });
+    const verdict = listenerVerdict(result([chapter("c1", 4, 2), chapter("c2", 37, 7)]));
 
     expect(verdict).toEqual({ pass: true, detail: "41 questions over 9 sentences (4.56 a sentence); c1 4/2, c2 37/7; flags: 2 list-spread, 0 term-before-setup, 2 fragment" });
   });
 
   it("fails a chapter above the threshold and names it, and passes one at it", () => {
-    const run = { ...result([chapter("c1", 4, 2), chapter("c2", 37, 7)]), density: 41 / 9, failures: [] };
+    const run = result([chapter("c1", 4, 2), chapter("c2", 37, 7)]);
 
     expect(listenerVerdict(run, 2)).toMatchObject({ pass: false, detail: expect.stringMatching(/; over 2 a sentence: c2$/) });
     expect(listenerVerdict(run, 37 / 7).pass).toBe(true);
   });
 
   it("fails a run with an unscored chapter whatever the threshold", () => {
-    const run = { ...result([chapter("c1", 0, 2, "timeout")]), density: 0, failures: ["c1: timeout"] };
+    const run = result([chapter("c1", 0, 2, "timeout")], ["c1: timeout"]);
 
     expect(listenerVerdict(run)).toMatchObject({ pass: false, detail: expect.stringMatching(/; not scored: c1: timeout$/) });
   });
