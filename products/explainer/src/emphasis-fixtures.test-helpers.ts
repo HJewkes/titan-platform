@@ -9,7 +9,7 @@ import { ScriptSchema } from "./script-schema.js";
 const read = (name: string): unknown => JSON.parse(readFileSync(new URL(`../fixtures/emphasis/${name}`, import.meta.url), "utf8"));
 
 /** The invented specs plus `flow-map`, whose nodes and edges are both target lists, so one id can name two elements. */
-export const SPECS: ReadonlyMap<string, BeatSpec> = new Map([
+const SPECS: ReadonlyMap<string, BeatSpec> = new Map([
   ...BEATS,
   ["flow-map", beatSpec("flow-map", { slots: "map", emphasis: { targets: ["nodes", "edges"], treatments: ["trace", "colour"] } })],
 ]);
