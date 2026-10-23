@@ -30,7 +30,18 @@ export {
   type SeriesField,
   type TypeProfile,
 } from "./profile-schema.js";
-export { EXPLAIN_REPO_DEFAULT_TYPE, UnknownProfileError, loadProfiles, profileFor, type ProfileSet } from "./profile-load.js";
+export {
+  EXPLAIN_REPO_DEFAULT_TYPE,
+  UnknownProfileError,
+  UnknownStructureError,
+  loadProfiles,
+  loadStructures,
+  profileFor,
+  structureFor,
+  type ProfileSet,
+} from "./profile-load.js";
+export { NarrativeStructureSchema, fits, renderSpine, type FitInput, type NarrativeStructure, type StructureFit } from "./structure-schema.js";
+export { STRUCTURE_ISSUE_CODES, checkStructures, type StructureIssue, type StructureIssueCode } from "./structure-checks.js";
 export { PAPER_PUBLISH_CHECKS, PROFILE_ISSUE_CODES, SERIES_BASE, checkProfiles, type ProfileIssue, type ProfileIssueCode } from "./profile-checks.js";
 export { chapterOrder, type ChapterOrder, type MaterialSignals } from "./profile-order.js";
 export { guideForType, writeTypeGuides, type TypeGuideDeps } from "./guide-type.js";

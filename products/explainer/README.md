@@ -110,8 +110,8 @@ and map_state `map`/`old`/`new` as the optional fields `ScriptSchema` admits. Th
 not the migrated form. More than two `video.invariants` no longer fail the parse: `Q-W6:invariant-cap` warns instead.
 
 `explainer guide plan [--stage plan|script] [--spine <spine.md>]` (default `plan`) prints the planner guide v0 as markdown: the
-intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rules, and the story-spine template
-(`doctrine/guides/spine-template.md`: problem, one task's journey, architecture, constraints, item ledger, cut list,
+intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rules for a `design-journey` video, and that
+structure's story-spine template (`doctrine/structures/design-journey.yaml`: problem, one task's journey, architecture, constraints, item ledger, cut list,
 chapter order). Code-enforced rules never appear, so the thresholds a lint checks (the cap on new items in a beat,
 the digest gap) reach the planner only as L0 failures. With `--spine` (or `guidePlan`'s `spine` dep) the guide ends with the spine's rows and ledger per act (chapter). It exits 2 on an unknown stage.
 

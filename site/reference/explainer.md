@@ -169,8 +169,8 @@ separate registry from the Q-rules in `doctrine/rules.yaml`, and its ids never s
 Each rule sits on two axes:
 
 - **Scope:** layer `U` (every type and beat), `U*` (universal, with a value a type profile
-  supplies through `param`), `B` (named `beats`) or `T` (named `types` or `audiences`). The allowed
-  names are in `doctrine/vocabulary.yaml`.
+  supplies through `param`), `B` (named `beats`) or `T` (named `types`, `audiences` or
+  `structures`). The allowed names are in `doctrine/vocabulary.yaml`.
 - **Enforcement:** `token`, `component`, `lint`, `gate`, `planner`, `packet`, `base` or `human`,
   plus the pipeline `stages` that load it (`gather` through `publish`). A `lint` or `gate` rule
   has a `check`; a `token` rule names titan-design `tokens`, never their values.
@@ -187,10 +187,10 @@ all live. Such a rule must not list `planner`, `packet` or `base`, because what 
 never goes into a prompt. A rule whose check is not live yet keeps its prompt enforcement as the
 fallback. Tracked by TP-2745.
 
-**Stage slices.** `sliceForStage(registry, loadRuleRegistry(), { stage, type?, audience?, beats? })`
+**Stage slices.** `sliceForStage(registry, loadRuleRegistry(), { stage, type?, audience?, structure?, beats? })`
 returns the rules one pipeline stage loads, each list sorted by id. A `T` rule matches when its
-`types` include `type` or its `audiences` include `audience`; a `B` rule matches the requested
-`beats`.
+`types` include `type`, its `audiences` include `audience` or its `structures` include
+`structure`; a `B` rule matches the requested `beats`.
 
 | Stage | What it returns |
 | --- | --- |
@@ -219,12 +219,13 @@ structure, cuts, hook and ending, series fields, audition size, layer shares, va
 values, coverage and publish checks. It has no spend cap, since cost is tracked rather than
 capped, and no signature-layer requirement.
 
-- `loadProfiles(dir?)` reads both directories and throws on a shape error, naming the file.
+- `loadProfiles(dir?)` reads those directories and `doctrine/structures/`, and throws on a shape
+  error, naming the file.
   `profileFor(set, type)` throws `UnknownProfileError` for a type with no profile.
 - `checkProfiles(set, vocabulary)` returns coded `ProfileIssue`s:
   - names missing from the vocabulary, or audiences with no pack;
   - a default audience outside `allow`;
-  - dangling macro or block refs;
+  - dangling macro or block refs, or a macro with no registered structure;
   - a runtime band out of order;
   - a series field in both `mayRepeat` and `mustVary`;
   - a `mustVary` missing a `SERIES_BASE` field;
@@ -232,10 +233,33 @@ capped, and no signature-layer requirement.
     not vary its structure;
   - a publishable audience with no per-video owner ask, or a paper profile without the
     `PAPER_PUBLISH_CHECKS`.
-- `chapterOrder(profile, { signals, runtimeS? })` gives one video's block order. A `fixed`
-  structure ignores the material. A `heuristic` one takes the macro of the first row whose
-  signal holds, as story-structure §4 asks its questions, and otherwise the fallback.
-- `guideForType(type)` renders a type's planner guide: the profile, then the `plan` slice for
-  the type and its default audience. `explainer guide types` writes every guide to
+- `chapterOrder(profile, { signals, runtimeS? }, structures)` gives one video's block order. A
+  `fixed` structure ignores the material. A `heuristic` one takes the first row whose registered
+  structure `fits` the material, as story-structure §4 asks its questions, and otherwise the
+  fallback (`fallback: true`).
+- `guideForType(type)` renders a type's planner guide: the profile, each structure it may pick
+  with its spine sections and the rules scoped to that structure, then the `plan` slice for the
+  type and its default audience. `explainer guide types` writes every guide to
   `doctrine/guides/planner/<type>.md`, and `explainer guide plan --type <type>` prints one.
   A test fails when a checked-in guide differs from its profile. Tracked by TP-2746.
+
+## Narrative structures
+
+`doctrine/structures/<id>.yaml` holds one `narrative-structure/v1` per structure a profile may
+pick: `design-journey`, `scqa`, `scqa-c4`, `mystery`, `three-act`, `abt`, `kishotenketsu`,
+`countdown`, `attempt-journey`, `review-saga`, `before-after`, `lab-report`, `timeline`,
+`board-walk` and `bluf`. Each states its source, a fit predicate over the material map's signals
+(`all`, `any`, `none`, and optional runtime bounds, with the question it encodes), blocks with
+airtime shares, a hook, an ending and its own spine sections. The agent picks the structure for
+each video and the runner-up goes in the render notes; there is no owner pick.
+
+- `loadStructures(dir?)` reads the registry; `structureFor(structures, id)` throws
+  `UnknownStructureError` for an unregistered id.
+- `fits(structure, { signals, runtimeS })` evaluates the fit predicate.
+- `checkStructures(structures, vocabulary)` returns coded `StructureIssue`s: a structure missing
+  from the vocabulary or a vocabulary structure with no file, a fit signal missing from the
+  vocabulary's `signals`, block shares that do not sum to 1, a runtime minimum above its maximum,
+  and a block listed twice.
+- `renderSpine(structure)` renders the structure's spine as a fillable template. `design-journey`
+  is the owner's journey (owner-FB1, now scoped to it): its spine is the `spine/v1` template, and
+  `explainer guide plan` prints it. Tracked by TP-4006.

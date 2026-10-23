@@ -47,9 +47,18 @@ Must differ from the previous video: hook-kind, close-kind, function-mix, compon
 
 Sample 3 or more spines, each with a different beat system inside the fixed chapters, and stop at the storyboard.
 
+## Structures
+
+The spine you write follows the structure you pick. The runner-up goes in the render notes.
+
+### scqa-c4
+
+A verdict first, then fixed chapters from context down to code; the chapters are the viewer's map. (video-types study §2.2 (the repo tour's fixed C4 chapter skeleton under an SCQA verdict))
+
+Spine sections: 1. Verdict; 2. Map stations; 3. Running example; 4. Read first.
+
 ## Rules for the plan stage
 
-- **owner-FB1**: Open on the problem, then follow one task's journey with each step's why, then show the architecture that carries it.
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.

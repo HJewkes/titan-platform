@@ -6,14 +6,16 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 |---|---|---|
 | `rules.yaml` | The Q-rule registry (`rules/v1`): script-quality rules, `Q-` ids, each with an L0 and/or judge check | `loadRuleRegistry` |
 | `craft/<source>.yaml` | The craft doctrine (`doctrine-craft/v1`): every rule id the video-types study (VT §4) lists, one file per source doctrine | `loadDoctrine` |
-| `vocabulary.yaml` | The allowed beats, video types and audiences a craft rule may scope to | `loadDoctrine` |
+| `vocabulary.yaml` | The allowed beats, video types, audiences and structures a craft rule may scope to, and the material signals fit predicates read | `loadDoctrine` |
 | `evidence.tsv` | A verbatim copy of the narrative evidence ledger (`E##` ids and grades) | `loadDoctrine` |
 | `visual-router.json` | A pinned copy of titan-design's visual router; rewrite it with `scripts/pin-visual-router.mjs`, never by hand | `loadVisualRouter` |
 | `types/<type>.yaml` | One `type-profile/v1` per video type | `loadProfiles` |
 | `audiences/<id>.yaml` | The audience packs a profile allows (`audience-pack/v1`) | `loadProfiles` |
+| `structures/<id>.yaml` | One `narrative-structure/v1` per narrative structure a profile may pick | `loadStructures` |
 | `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |
 
-`checkProfiles(loadProfiles(), loadDoctrine().vocabulary)` must also return no issues.
+`checkProfiles(loadProfiles(), loadDoctrine().vocabulary)` and
+`checkStructures(loadStructures(), loadDoctrine().vocabulary)` must also return no issues.
 
 ## Adding a type profile
 
@@ -25,6 +27,18 @@ nor `chapter-labels` there. Then run `explainer guide types` and commit the rege
 
 `checkDoctrine(loadDoctrine(), loadRuleRegistry())` returns every issue in the craft registry; it
 must return none.
+
+## Adding a narrative structure
+
+Add the id to `structures` in `vocabulary.yaml` and name the file after it. The fit predicate
+reads only names in the vocabulary's `signals`; a new signal is a vocabulary change of its own,
+and the material map (TP-4008) must compute it. `fit.ask` is the story-structure §4 question the
+predicate encodes. Block shares sum to 1. The spine sections are the template the planner fills
+for a video that picks the structure. `design-journey`'s spine is the `spine/v1` template, so a
+change to its section numbers is a `spine/v1` change. A heuristic profile names the structure as
+a macro; its row's `ask` words the question for that type, and the registry's predicate decides.
+A rule that applies only to one structure is a `T` rule naming it in `structures`. Then run
+`explainer guide types` and commit the regenerated guides.
 
 ## Adding a craft rule
 
@@ -53,8 +67,9 @@ rules:
   `.<n>` only splits one source row into several rules that share `source.ref`. Never `Q-`: that
   prefix belongs to `rules.yaml`. The id never carries the layer.
 - **Text:** 40 words or fewer, the rule's do and don't condensed. Never change a number.
-- **Scope:** the VT §4 layer exactly. `B` names `beats`; `T` names `types` or `audiences`; `U*`
-  names the profile `param` that supplies its value; `U` and `U*` name neither beats nor types.
+- **Scope:** the VT §4 layer exactly. `B` names `beats`; `T` names `types`, `audiences` or
+  `structures`; `U*` names the profile `param` that supplies its value; `U` and `U*` name no
+  beats, types or structures.
   Every name must be in `vocabulary.yaml`.
 - **Evidence and grade:** only the `[E##]` citations the source states, with the grade it states.
   A rule that cites evidence states a grade, and that grade must be one of the cited rows' grades.

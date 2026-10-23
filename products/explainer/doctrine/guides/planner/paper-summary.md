@@ -56,9 +56,36 @@ Must differ from the previous video: structure, hook-kind, chapter-labels, close
 
 Sample 3 or more spines, each under a different macro structure, and stop at the storyboard.
 
+## Structures
+
+The spine you write follows the structure you pick. The runner-up goes in the render notes.
+
+### scqa
+
+Situation, complication, question, then the answer by 25% of runtime and its supports by importance. (story-structure §2.7 (Minto pyramid / SCQA), §4 row 1)
+
+Spine sections: 1. Situation; 2. Complication; 3. Question and answer; 4. Supports, by importance.
+
+### mystery
+
+Cold open on an anomaly, follow the clues and false leads, then reveal the cause. (story-structure §2.10 (mystery / open loop), §4 row 2)
+
+Spine sections: 1. Anomaly; 2. Clues and false leads; 3. Reveal; 4. Open loops.
+
+### kishotenketsu
+
+Introduce, develop, twist with an unexpected angle, reconcile: an elegant idea with no conflict. (story-structure §2.4 (kishōtenketsu), §4 row 5)
+
+Spine sections: 1. Idea; 2. Development; 3. Twist; 4. Reconciliation.
+
+### lab-report
+
+A concrete example, the key idea, how it was shown, the result with its limits, and what it changes for us. (video-profiles plan §B.2 (example before generality))
+
+Spine sections: 1. Example; 2. Key idea; 3. Method and result; 4. So for us.
+
 ## Rules for the plan stage
 
-- **owner-FB1**: Open on the problem, then follow one task's journey with each step's why, then show the architecture that carries it.
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.

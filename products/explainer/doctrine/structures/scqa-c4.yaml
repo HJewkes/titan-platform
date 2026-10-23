@@ -1,0 +1,30 @@
+schema: narrative-structure/v1
+id: scqa-c4
+version: 0.1.0
+source: "video-types study §2.2 (the repo tour's fixed C4 chapter skeleton under an SCQA verdict)"
+summary: "A verdict first, then fixed chapters from context down to code; the chapters are the viewer's map."
+fit:
+  ask: "Does the viewer need the whole repo laid out, from what it is for down to where to read first?"
+  any: [repo-overview]
+blocks:
+  - { id: verdict, goal: "What it is and the verdict, with open scorecard rows.", share: 0.1 }
+  - { id: context, goal: "Who uses it and how it is entered.", share: 0.2 }
+  - { id: containers, goal: "The packages and one request walked through them.", share: 0.25 }
+  - { id: features, goal: "Two to four feature chapters, each closing a scorecard row.", share: 0.35 }
+  - { id: scorecard, goal: "The filled scorecard and where to read first.", share: 0.1 }
+hook: "State the verdict in one line by 10% of runtime."
+ending: "scorecard+button"
+spine:
+  - title: Verdict
+    body: |-
+      <Adopt, adapt or avoid, in one line, with the fact ids behind it.>
+  - title: Map stations
+    body: |-
+      | Chapter | Map station | Question it opens | Scorecard row it closes |
+      |---|---|---|---|
+  - title: Running example
+    body: |-
+      <The one request or task the tour follows through every chapter.>
+  - title: Read first
+    body: |-
+      <Five files, each with why to read it.>

@@ -321,6 +321,15 @@ describe("stage key", () => {
 
     expect(() => keyOf({ variant })).toThrow(/sets wokers/);
   });
+
+  it("an eval key changes with the judge, since eval scores the cold-viewer rows with it", () => {
+    const evalKey = (model: string) => stageSpec({
+      stage: "eval", artifacts: { script: "a".repeat(64), spine: "c".repeat(64) }, settings: { ...SETTINGS, judge: { ...SETTINGS.judge, model } },
+      sample: 0, remainingUsd: 1, bridge: () => BRIDGE("4"),
+    }).key;
+
+    expect(evalKey("haiku")).not.toBe(evalKey("sonnet"));
+  });
 });
 
 

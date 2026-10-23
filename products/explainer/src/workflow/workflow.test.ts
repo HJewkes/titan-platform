@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { sha256 } from "./artifacts.js";
@@ -102,6 +103,39 @@ describe("explainer run", () => {
     expect(model.prompts).toHaveLength(2);
     expect(row(result, "script")).toMatchObject({ status: "failed", usd: 0.1, retries: 1 });
     expect(result.report.totals.usd).toBeCloseTo(0.1);
+  });
+});
+
+describe("the cold rubric on every run", () => {
+  it("scores J8 to J12 on the final script and records them as a note and an artifact, never a check", async () => {
+    fx = fixture();
+    const host = fakeHost(fx, fakeScriptModel(), fakeBridge());
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, host);
+
+    const evalRow = row(result, "eval");
+    expect(host.rubric.calls).toHaveLength(1);
+    expect(evalRow.outputs["cold-rubric"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(evalRow.notes[0]).toMatch(/^cold rubric \(reported only\): J8 \d, J9 \d, J10 \d, J11 \d, J12 \d; canary held$/);
+    expect(evalRow.checks).toBe("2 pass, 0 fail");
+  });
+
+  // Mutation: adding the rubric to the eval stage's checks, failing below 3 or on a missed canary, fails this test.
+  it.each([
+    ["scores every row 1 and misses its canary", fakeRubricJudge({ score: 1, lenient: true }).harness],
+    ["fails its call", failingRubric],
+    ["throws", throwingRubric],
+  ])("cannot fail the run or gate a stage when the rubric judge %s", async (_, harness) => {
+    fx = fixture();
+    const bridge = fakeBridge();
+    const rubric = { harness, calls: [] as string[] };
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { rubric }));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(row(result, "eval").checks).toBe("2 pass, 0 fail");
+    expect(row(result, "eval").notes[0]).toMatch(/^cold rubric \(reported only\)/);
+    expect(bridge.calls).toEqual(["tts.mjs", "render.ts", "qa.ts", "sheets.sh"]);
   });
 });
 
@@ -214,8 +248,9 @@ describe("run report", () => {
     expect(report.totals.wallMs).toBe(8000);
     expect(row(result, "script")).toMatchObject({ usd: 0.05, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, calls: 1 });
     expect(rewrite.usd).toBeGreaterThan(0);
-    expect(report.totals.usd).toBeCloseTo(0.05 + rewrite.usd);
-    expect(report.totals.calls).toBe(1 + rewrite.calls);
+    expect(row(result, "eval")).toMatchObject({ usd: 0.01, calls: 1 });
+    expect(report.totals.usd).toBeCloseTo(0.05 + rewrite.usd + 0.01);
+    expect(report.totals.calls).toBe(1 + rewrite.calls + 1);
   });
 
   it("marks exactly the bridged stages, and lists each stage's output shas", async () => {

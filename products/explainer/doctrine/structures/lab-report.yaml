@@ -1,0 +1,30 @@
+schema: narrative-structure/v1
+id: lab-report
+version: 0.1.0
+source: "video-profiles plan §B.2 (example before generality)"
+summary: "A concrete example, the key idea, how it was shown, the result with its limits, and what it changes for us."
+fit:
+  ask: "Does the material report a method and a measured result?"
+  any: [experiment]
+blocks:
+  - { id: example, goal: "One concrete example before any generality.", share: 0.15 }
+  - { id: key-idea, goal: "The one key idea.", share: 0.15 }
+  - { id: method, goal: "How it was shown.", share: 0.25 }
+  - { id: result, goal: "The result with its interval, then its limits.", share: 0.3 }
+  - { id: so-for-us, goal: "What it changes for us.", share: 0.15 }
+hook: "Open on the concrete example, never on the abstract."
+ending: "takeaways+button"
+spine:
+  - title: Example
+    body: |-
+      <One concrete case the result explains, with one fact id.>
+  - title: Key idea
+    body: |-
+      <The idea in one sentence.>
+  - title: Method and result
+    body: |-
+      | Claim | How it was shown | Result and interval | Grade |
+      |---|---|---|---|
+  - title: So for us
+    body: |-
+      <What we would change, and how far to trust it.>

@@ -82,7 +82,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
     const p = RewriteParamsSchema.parse(params);
     return { judge: p.model ? { ...settings.judge, model: p.model } : settings.judge, rounds: p.rounds ?? settings.rounds };
   }
-  if (stage === "eval") return z.strictObject({}).parse(params);
+  if (stage === "eval") return { ...z.strictObject({}).parse(params), judge: settings.judge };
   return bridgeConfig(stage, params, bridge);
 }
 

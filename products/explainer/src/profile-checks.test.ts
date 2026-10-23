@@ -13,12 +13,14 @@ describe("checkProfiles", () => {
   });
 
   it.each<[string, TypeProfile, ProfileIssueCode]>([
-    ["a block beat missing from the vocabulary", fixedProfile({ structure: { order: "fixed", macro: "m", blocks: [{ id: "a", goal: "g", seconds: [1, 2], beats: ["verdict-card"] }] } }), "unknown-vocabulary"],
+    ["a block beat missing from the vocabulary", fixedProfile({ structure: { order: "fixed", macro: "scqa-c4", blocks: [{ id: "a", goal: "g", seconds: [1, 2], beats: ["verdict-card"] }] } }), "unknown-vocabulary"],
     ["a cut whose type is missing from the vocabulary", fixedProfile({ cuts: [{ id: "brief", type: "decision-brief", when: "w", runtimeS: [45, 90] }] }), "unknown-vocabulary"],
     ["an allowed audience with no pack", fixedProfile({ audience: { default: "owner-internal", allow: ["owner-internal", "investors"] } }), "unknown-audience"],
     ["a default audience outside allow", fixedProfile({ audience: { default: "public-youtube", allow: ["owner-internal"] } }), "audience-not-allowed"],
     ["a macro naming a missing block", heuristicProfile({ structure: { ...heuristic, macros: { ...heuristic.macros, abt: ["setup", "ghost"] } } }), "dangling-ref"],
-    ["a heuristic row naming a missing macro", heuristicProfile({ structure: { ...heuristic, fallback: "freytag" } }), "dangling-ref"],
+    ["a heuristic row naming a missing macro", heuristicProfile({ structure: { ...heuristic, fallback: "scqa-c4" } }), "dangling-ref"],
+    ["a fixed macro with no registered structure", fixedProfile({ structure: { order: "fixed", macro: "freytag", blocks: [{ id: "a", goal: "g", seconds: [1, 2], beats: ["hook"] }] } }), "unknown-structure"],
+    ["a heuristic macro with no registered structure", heuristicProfile({ structure: { ...heuristic, macros: { ...heuristic.macros, freytag: ["setup"] }, fallback: "freytag" } }), "unknown-structure"],
     ["a target above the max", fixedProfile({ runtime: { targetS: 800, minS: 480, maxS: 720, splitAboveS: 900 } }), "runtime-order"],
     ["a field both repeated and varied", fixedProfile({ series: { mayRepeat: ["hook-kind"], mustVary: fixedProfile().series.mustVary } }), "series-overlap"],
     ["mustVary without the style pack", fixedProfile({ series: { mayRepeat: [], mustVary: ["hook-kind", "close-kind", "function-mix", "component-histogram"] } }), "series-base-missing"],

@@ -38,7 +38,10 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     if (!config.judge || config.rounds === undefined) throw new Error("rewrite stage spec has no judge or rounds");
     return runRewriteStage(input, { judge: config.judge, rounds: config.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
   }
-  if (stage === "eval") return runEvalStage(input, deps.evalChecks);
+  if (stage === "eval") {
+    if (!config.judge) throw new Error("eval stage spec has no judge");
+    return runEvalStage(input, { judge: config.judge, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) }, deps.evalChecks);
+  }
   return runBridgeStage({
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
