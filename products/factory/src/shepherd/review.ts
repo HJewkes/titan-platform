@@ -8,11 +8,12 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { StepClock } from "../workflows/deadline.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { awaitVerdictStep } from "./await-verdict-step.js";
 import { ACCOUNT_STEPS, accountHeld, accountRoutes, billIntent, dispatchFor } from "./account-hold.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
-import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { seatVetoed } from "./external-review.js";
 import { ownerIn } from "./seat-tie.js";
 import { checkoutRootOf, dropCheckout, holdContextOf, thenDropCheckout } from "./review-member.js";
 import { Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
@@ -293,26 +294,15 @@ function repeatAwareRoute<I>(match: string, now: () => number, fn: (input: I, si
   return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0 || (step.restarts ?? 0) > 0).runner.run(step) } };
 }
 
-/** A panel member's await names its shape, so its own checkout is the one removed. */
-const MemberShapeRead = z.looseObject({ shape: z.enum(OVERLAY_SHAPES).optional() });
-
 /** With no reader wired the verdict step answers `none` at once, so the owner gate decides. */
 export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonly StepRoute[] => {
   const timing = { ...brokerTiming(deps), timeoutMs: wiring?.timeoutMs ?? DEFAULT_VERDICT_TIMEOUT_MS, exitGraceMs: wiring?.exitGraceMs, detachGraceMs: wiring?.detachGraceMs };
-  const run = async (raw: unknown, signal: AbortSignal): Promise<AwaitVerdictResult> => {
-    if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
-    const input = parseAwaitVerdictInput(raw);
-    if (!wiring) return { kind: "none" };
-    const { reader, dispatch } = wiring;
-    const work = () => awaitVerdict(reader, input, timing, signal, dispatch && (() => dispatch.roster()));
-    return thenDropCheckout(deps, input, work, (result) => result.kind === "verdict", MemberShapeRead.parse(raw).shape);
-  };
   const seatWait = { ...brokerTiming(deps), timeoutMs: wiring?.seatWaitMs ?? DEFAULT_SEAT_WAIT_MS };
   return [
     ...fixProofRoutes(deps),
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
-    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now, seatWait, ownerIn(deps.store))),
+    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, awaitVerdictStep(deps, wiring, timing), deps.now, seatWait, ownerIn(deps.store))),
     codeRoute(LATE_VERDICT_STEP, deps.now, (raw: unknown, signal, clock) => seatVetoed(wiring, (late: unknown, lateSignal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(late), lateSignal, clock.firstStartedAtMs), deps.now, seatWait, ownerIn(deps.store))(raw, signal)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(SEAT_RECHECK_STEP, deps.now, seatVetoed(wiring, async (raw: unknown) => heldMerge(raw), deps.now, seatWait, ownerIn(deps.store))),

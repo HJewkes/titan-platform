@@ -12,7 +12,7 @@ import { scopeViolations, type CheckedHunk } from "./scope-check.js";
 /** `shepherd.review.scopeCheck` (TP-3735 S5): `shadow` counts a scoped FIX_FIRST's out-of-range and repeated items, `on` also asks for one correction. */
 export type ScopeCheckMode = "off" | "shadow" | "on";
 
-export const SCOPE_CHECK_STEP = "sh-scope-check";
+const SCOPE_CHECK_STEP = "sh-scope-check";
 export const SCOPE_CHECK_STEPS: readonly StepDeclaration[] = [{ id: SCOPE_CHECK_STEP, kind: "dispatch" }];
 
 const Mode = z.enum(["shadow", "on"]);

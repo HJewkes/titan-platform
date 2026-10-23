@@ -207,7 +207,8 @@ export function reviewReport(db: Db, range: ReviewRange, now: number, withRows =
     prs,
   };
   const echoed = { from: range.from ?? null, to: range.to ?? null, repo: range.repo?.toLowerCase() ?? null };
-  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview: rereviewOf(rows.map(rereviewInput), range.sinceScoped), scopeCheckByWeek: scopeCheckByWeek(rows) };
+  const rereview = rereviewOf(rows.map(rereviewInput), range.sinceScoped);
+  const report: ReviewReport = { v: 1, at: new Date(now).toISOString(), range: echoed, perReview, perPr, rereview, scopeCheckByWeek: scopeCheckByWeek(rows) };
   return withRows ? { ...report, rows: rows.map(record) } : report;
 }
 

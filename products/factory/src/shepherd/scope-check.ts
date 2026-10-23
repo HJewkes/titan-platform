@@ -7,7 +7,7 @@ export interface CheckedHunk {
   end: number;
 }
 
-export interface ScopeViolations {
+interface ScopeViolations {
   /** New items whose every cite is outside the fix's ranges, with no `Important:` tag and `Class:` line. */
   untagged: string[];
   /** New items that equal an earlier finding's item once case, punctuation and spacing are dropped. */
