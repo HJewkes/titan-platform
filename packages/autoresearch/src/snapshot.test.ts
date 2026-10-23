@@ -255,3 +255,108 @@ describe("ar-sync", () => {
     expect(summaryOf(run, 2).against.head).toBe(resolved);
   });
 });
+
+describe("a failed ar-sync", () => {
+  const FETCH = "[pin-fetch] git fetch origin failed in fixture-clone: could not resolve host";
+  const FailedSync = z.object({ pr: z.number(), error: z.string() });
+  const failedOf = (run: WorkflowRun, round: number | "end") => run.stepResults[`ar-sync:${round}.failed`] && seedOf(run, `ar-sync:${round}.failed`, FailedSync);
+  /** The sync step's recorded answers, which a replay reads instead of syncing again. */
+  const answersOf = (run: WorkflowRun, stepId: string) => resultsOf(run, stepId).map((result) => z.object({ result: z.unknown() }).parse(result.data).result);
+  const failingOnce = (error: string) => async (_input: SyncRequest, call: number) => {
+    if (call === 1) throw new Error(error);
+    return { state: "open" as const };
+  };
+
+  it("is recorded, keeps the snapshot open, and the next round's sync retries it under its own id", async () => {
+    const { ports, run } = await loop([["a"], ["b"], ["c"]], { rounds: 3, snapshot: { keptIdeas: 1 } }, { sync: failingOnce(FETCH) });
+
+    expect(run.status).toBe("completed");
+    expect(failedOf(run, 2)).toEqual({ pr: 101, error: FETCH });
+    expect(answersOf(run, "ar-sync:2")).toEqual([{ failed: FETCH }]);
+    expect(failedOf(run, 3)).toBeUndefined();
+    expect(ports.calls.sync.map((input) => [input.round, input.pr])).toEqual([[2, 101], [3, 101], ["end", 101]]);
+    expect(cadenceOf(run, 2)).toMatchObject({ due: true, blockedBy: "open" });
+    expect(ports.calls.plans.map((plan) => plan.round)).toEqual([1, 2, 3]);
+  });
+
+  it("replays the recorded failure after a kill past it, with no second sync for that round", async () => {
+    const held = latch();
+    let killed = false;
+    const beforePlan = async (round: number) => {
+      if (round !== 3 || killed) return;
+      killed = true;
+      held.open();
+      await new Promise(() => undefined);
+    };
+    const { repo, ports } = await world([["a"], ["b"], ["c"]], { beforePlan, sync: failingOnce(FETCH) });
+    const dir = mkdtempSync(join(tmpdir(), "ar-sync-"));
+    dirs.push(dir);
+    const first = openHost(ports, join(dir, "runs.db"));
+    const runId = start(first, repo, { rounds: 3, snapshot: { keptIdeas: 1 } });
+    await held.opened;
+    first.close();
+
+    const second = openHost(ports, join(dir, "runs.db"));
+    await second.adopt();
+    const run = await second.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(ports.calls.sync.map((input) => input.round)).toEqual([2, 3, "end"]);
+    expect(failedOf(run, 2)).toEqual({ pr: 101, error: FETCH });
+  });
+
+  it("after a gate answer is recorded the same way, and the next round gates again and moves onto the owner's merge", async () => {
+    const UNREACHABLE = "a".repeat(40);
+    const sync = async (input: SyncRequest) => {
+      if (!input.resolved) return { state: "merged" as const, conflict: ["src/config.json"] };
+      if (input.resolved === UNREACHABLE) throw new Error("[sync-fixture] the resolved merge was not on origin");
+      return { state: "merged" as const, merged: { from: input.head, to: input.resolved, main: input.resolved }, treeChanged: false };
+    };
+    const { repo, ports } = await world([["a"], ["b"], ["c"]], { sync });
+    const host = openHost(ports);
+    const runId = start(host, repo, { rounds: 3, snapshot: { keptIdeas: 1 } });
+    const owner = { class: "owner-terminal" as const, id: "owner-fixture", channel: "test-cli" };
+    await until(() => host.runtime.status(runId)?.status === "paused", "the first sync gate");
+    host.runtime.signal(runId, "ar-sync-gate:2", { resolved: UNREACHABLE }, owner);
+    await until(() => ports.calls.sync.length === 3 && host.runtime.status(runId)?.status === "paused", "the second sync gate");
+    const resolved = await mainMergedOnto(repo, ports.calls.sync[2]!, "docs/resolved.md");
+    host.runtime.signal(runId, "ar-sync-gate:3", { resolved }, owner);
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(failedOf(run, 2)).toEqual({ pr: 101, error: "[sync-fixture] the resolved merge was not on origin" });
+    expect(answersOf(run, "ar-sync:2.resolved")).toEqual([{ failed: "[sync-fixture] the resolved merge was not on origin" }]);
+    expect(ports.calls.sync.slice(0, 4).map((input) => [input.round, input.resolved])).toEqual([[2, undefined], [2, UNREACHABLE], [3, undefined], [3, resolved]]);
+    expect(summaryOf(run, 2).against.head).not.toBe(resolved);
+    expect(summaryOf(run, 3).against.head).toBe(resolved);
+  });
+
+  it("at the end is recorded, and the run ends normally with the snapshot still open", async () => {
+    const { ports, run } = await loop([["a"]], { rounds: 1, snapshot: { keptIdeas: 1 } }, { sync: failingOnce(FETCH) });
+
+    expect(run.status).toBe("completed");
+    expect(ports.calls.sync.map((input) => input.round)).toEqual(["end"]);
+    expect(failedOf(run, "end")).toEqual({ pr: 101, error: FETCH });
+    expect(ports.calls.snapshot).toHaveLength(1);
+  });
+
+  it("still stops the run when the ratchet moved under a restarted sync, since a retry would only meet it again", async () => {
+    const { ports, run } = await loop([["a"], ["b"]], { rounds: 2, snapshot: { keptIdeas: 1 } }, { sync: failingOnce("[ratchet-moved] refs/heads/autoresearch/fixture is at s9, not s1") });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("[ratchet-moved]");
+    expect(failedOf(run, 2)).toBeUndefined();
+    expect(ports.calls.plans.map((plan) => plan.round)).toEqual([1]);
+  });
+
+  it("on a host with a snapshot port but no sync port is recorded as [no-sync], and the run goes on", async () => {
+    const { repo, ports } = await world([["a"], ["b"]]);
+    const host = openHost({ ...ports, sync: undefined });
+    const run = await host.runtime.wait(start(host, repo, { rounds: 2, snapshot: { keptIdeas: 1 } }));
+
+    expect(run.status).toBe("completed");
+    expect(failedOf(run, 2)).toEqual({ pr: 101, error: "[no-sync] this host has no sync port" });
+    expect(answersOf(run, "ar-sync:2")).toEqual([{ failed: "[no-sync] this host has no sync port" }]);
+    expect(failedOf(run, "end")).toMatchObject({ error: expect.stringContaining("[no-sync]") });
+  });
+});

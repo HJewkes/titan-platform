@@ -1525,8 +1525,35 @@ interface ArRoundView {
         plannerTopK: string[];
     };
     ladders: ArLadderView[];
+    /** The net move; `moves` holds each step of it. */
     ratchet: RoundSummary["ratchet"];
+    moves: z.infer<typeof RatchetMoveSchema>[];
+    reevals: ArReevalView[];
 }
+/** A later winner's re-evaluation on top of the round's new head, with its runs named as the console names them. */
+type ArReevalView = Omit<Reeval, "runs"> & {
+    runs: ArEvalView[];
+};
+/** A cut snapshot, with the trigger and round its recorded cadence decided. */
+type ArSnapshotView = Omit<z.infer<typeof SnapshotCutSchema>, "shepherdRunId"> & {
+    trigger: CadenceTrigger;
+    round: CadenceRound;
+};
+/**
+ * One sync of the open snapshot PR. `conflict` and `frozen` say why a gate held; the other fields are where it settled.
+ * `runs` are B's re-measure after main changed the tree, kept out of every ladder.
+ */
+type ArSyncView = SyncResult & {
+    round: CadenceRound;
+    pr: number;
+    gate?: {
+        answered: boolean;
+        resolved?: string;
+    };
+    runs?: ArEvalView[];
+    /** Why the sync failed; the PR stays open and the next round's sync retries it. */
+    failed?: string;
+};
 interface ArRunView {
     runId: string;
     status: WorkflowStatus;
@@ -1548,6 +1575,12 @@ interface ArRunView {
         maxLooks: number;
         looks: LookAggregate[];
     };
+    snapshots: ArSnapshotView[];
+    /** A phase-end cut that waited behind the open snapshot when the run ended. */
+    snapshotPending: {
+        trigger: CadenceTrigger;
+    } | null;
+    syncs: ArSyncView[];
 }
 interface ArRunSummary {
     runId: string;
@@ -1561,6 +1594,11 @@ interface ArRunSummary {
     /** Null until every baseline eval is recorded. */
     best: RoundSummary["best"] | null;
     spend: number;
+    /** The snapshot whose PR no sync has yet seen merged or closed. */
+    openSnapshot: {
+        k: number;
+        pr: number;
+    } | null;
 }
 
 /**
@@ -1583,4 +1621,4 @@ declare function ideaRefs(run: WorkflowRun, ideaId: string): {
 /** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
 declare function arRunView(run: WorkflowRun, looks?: readonly WorkflowRun[]): ArRunView | null;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArStepDeclaration, type ArStepHandler, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type Cadence, type CadenceRound, CadenceRoundSchema, CadenceSchema, type CadenceTrigger, CadenceTriggerSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type IntegrateRequest, type IntegrateResult, IntegrateResultSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, RatchetKindSchema, RatchetMoveSchema, type RatchetRequest, type Reeval, ReevalSchema, ReevalVerdictSchema, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, SnapshotCutSchema, type SnapshotLog, SnapshotLogSchema, type SnapshotRequest, SnapshotResultSchema, type SnapshotSettings, SnapshotSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, SyncGateAnswerSchema, type SyncRequest, type SyncResult, SyncResultSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cadence, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, snapshotLog, toIdea, zeroToleranceHit };
+export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArReevalView, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArSnapshotView, type ArStepDeclaration, type ArStepHandler, type ArSyncView, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type Cadence, type CadenceRound, CadenceRoundSchema, CadenceSchema, type CadenceTrigger, CadenceTriggerSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type IntegrateRequest, type IntegrateResult, IntegrateResultSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, RatchetKindSchema, RatchetMoveSchema, type RatchetRequest, type Reeval, ReevalSchema, ReevalVerdictSchema, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, SnapshotCutSchema, type SnapshotLog, SnapshotLogSchema, type SnapshotRequest, SnapshotResultSchema, type SnapshotSettings, SnapshotSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, SyncGateAnswerSchema, type SyncRequest, type SyncResult, SyncResultSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cadence, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, snapshotLog, toIdea, zeroToleranceHit };

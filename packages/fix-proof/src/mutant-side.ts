@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { FixProofConfig } from "./config.js";
-import { git, messageOf, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
+import { git, messageOf, planDiffOnly, RunError, withContext, withSpecSiblings, type Context, type Shas } from "./context.js";
 import type { SpecUnderTest } from "./mutant-classify.js";
 import type { Mutation } from "./mutation.js";
 import { normalizeRelative } from "./paths.js";
@@ -114,8 +114,10 @@ async function orRefuse<T>(refusal: Refusal, read: () => Promise<T>, anyError = 
 }
 
 async function runMutants(ctx: Context, shas: Shas, sandboxUser: string | undefined, refusal: Refusal): Promise<string> {
-  const plan = await planDiff(ctx, shas);
-  if (plan.mutations.length === 0) return encodeMutantsSkipped("no mutation spec in the diff");
+  const diffPlan = await planDiffOnly(ctx, shas);
+  if (diffPlan.plan.mutations.length === 0) return encodeMutantsSkipped("no mutation spec in the diff");
+  // Listing a spec's directory is reading the spec, so a failure there is refused on the same terms as readSpecs below.
+  const plan = await orRefuse(refusal, () => withSpecSiblings(ctx, shas.head, diffPlan), !testOnlyOf(diffPlan.plan));
   if (!testOnlyOf(plan)) {
     // The judge never reads a source diff's specs, so without this a spec no later test-only diff could run lands unread.
     await orRefuse(refusal, () => readSpecsAtHead(ctx, plan, shas.head), true);

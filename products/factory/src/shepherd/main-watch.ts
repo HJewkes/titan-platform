@@ -143,6 +143,11 @@ async function redEventSeats(book: SeatBook, repos: readonly string[], ports: Ma
   return seats;
 }
 
+/** Where a red event about `repo` with no merge behind it goes, by the red event's own route: a hand thaw's alert. */
+export function repoRedSeat(book: SeatBook, repo: string, ports: Pick<MainWatchPorts, "hubSeat" | "redSeat">): Promise<string | undefined> {
+  return redRoute(ports, repo, registeredSeat(book, repo), async () => undefined);
+}
+
 /** The seat a run registered on `repo` now records, by registration's own policy; a denied repo registers none. */
 function registeredSeat(book: SeatBook, repo: string): string | undefined {
   const lookup = lookupSeat(book, repo);
@@ -263,7 +268,7 @@ async function ownerSeat(deps: MainWatchDeps, repo: string, pr: number | undefin
 }
 
 /** The one order a red event's seat is picked in, for the send and the dead-seat alarm alike; the prefix seat is read only when needed. */
-async function redRoute(ports: MainWatchPorts, repo: string, runSeat: string | undefined, prefixSeat: () => Promise<string | undefined>): Promise<string | undefined> {
+async function redRoute(ports: Pick<MainWatchPorts, "hubSeat" | "redSeat">, repo: string, runSeat: string | undefined, prefixSeat: () => Promise<string | undefined>): Promise<string | undefined> {
   return ports.redSeat?.(repo) ?? runSeat ?? (await prefixSeat()) ?? ports.hubSeat();
 }
 

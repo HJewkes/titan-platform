@@ -29,6 +29,12 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   for (const project of config.test.projects) expect(project.test.setupFiles, project.test.name).toBeUndefined();
 });
 
+// A second setupFiles key once replaced the first, so the factory setup stopped loading and serve-bot read the real
+// home's token path. The resolved config must hold both.
+it("loads the factory test setup and the wait budget for every test", () => {
+  expect(config.test.setupFiles).toEqual(expect.arrayContaining(["products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"]));
+});
+
 // Every test runs these, so a pull request touching one must run the whole suite, not just scripts/.
 it("runs the full suite for a pull request that changes a file every test loads", () => {
   const loadedByEveryTest = [...config.test.globalSetup, ...config.test.setupFiles, "scripts/wait-budget.mjs"];

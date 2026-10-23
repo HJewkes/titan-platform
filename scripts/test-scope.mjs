@@ -27,6 +27,7 @@ const FULL_PATHS = new Set([
   "scripts/vitest-tmpdir.mjs",
   "scripts/vitest-wait-budget.mjs",
   "scripts/wait-budget.mjs",
+  "products/factory/src/test-support/vitest-setup.ts",
   "scripts/test-affected.mjs",
   "scripts/test-scope.mjs",
 ]);
