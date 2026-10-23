@@ -17,7 +17,7 @@ const CAS_ATTEMPTS = 5;
 const LIST_SETTLE_MS = 2_000;
 
 /** Waits for `ms`; tests and the await-pr step inject their own clock. */
-export type Pause = (ms: number) => Promise<void>;
+type Pause = (ms: number) => Promise<void>;
 
 const realPause: Pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -149,7 +149,8 @@ async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, run
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
   const head = files.head ?? registration.headSha ?? undefined;
-  const target = { repo: registration.repo, pr: registration.pr, ...(head !== undefined && { head }), ...(files.pause && { pause: files.pause }), ...(registration.base !== null && { base: registration.base }) };
+  const { repo, pr, base } = registration;
+  const target = { repo, pr, ...(head !== undefined && { head }), ...(files.pause && { pause: files.pause }), ...(base !== null && { base }) };
   const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
