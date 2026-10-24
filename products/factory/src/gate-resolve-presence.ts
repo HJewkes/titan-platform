@@ -5,7 +5,7 @@ import type { GateAuthorize, GateRecord, GateResolver } from "@titan-design/hitl
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { loadOwnerKeys } from "./owner-keys.js";
 import { ownerKeyId, signStatement } from "./owner-presence.js";
-import { verifyGatePresence, type GatePresenceStatement, type ProofInput } from "./presence-proof.js";
+import { verifyGatePresence, type ProofInput } from "./presence-proof.js";
 
 /** The channel `gate resolve` stamps on its resolvers; a confirmEvent on it must name a presence record. */
 const CLI_CHANNEL = "factory-cli";
@@ -26,8 +26,8 @@ export async function mintPresenceRecord(batches: GateBatchStore, gateId: string
   const keyId = await ownerKeyId();
   if (keyId === undefined) return { refusal: "no owner signing key could be read from the presence helper" };
   const iat = Math.floor(now() / 1000);
-  const item = { gate: gateId, payload: payload as GatePresenceStatement["items"][0]["payload"] };
-  const statement: GatePresenceStatement = { v: 1, type: "titan-factory.gate-presence", aud: hostname(), keyId, nonce: randomBytes(16).toString("hex"), iat, exp: iat + WINDOW_S, items: [item] };
+  const item = { gate: gateId, payload };
+  const statement = { v: 1, type: "titan-factory.gate-presence", aud: hostname(), keyId, nonce: randomBytes(16).toString("hex"), iat, exp: iat + WINDOW_S, items: [item] };
   const bytes = Buffer.from(JSON.stringify(statement), "utf8");
   const signature = await signStatement(bytes, reason);
   if (signature === undefined) return { refusal: "owner presence was not confirmed" };
