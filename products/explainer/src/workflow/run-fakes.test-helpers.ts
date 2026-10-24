@@ -130,7 +130,7 @@ export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
   return { exec, calls };
 }
 
-export const FAKE_DURATION_S = 200;
+const FAKE_DURATION_S = 200;
 
 /** ffprobe and ffmpeg on the fake render's text MP4: a fixed duration, and a "frame" naming its time and the video's hash. */
 export function fakeMedia(durationS = FAKE_DURATION_S): MediaExec & { frames: number[] } {

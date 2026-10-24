@@ -11,14 +11,15 @@ import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
 import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
-import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
+import { stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
 import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
 import type { MediaExec } from "./sheets-stage.js";
-import { STAGE_VERSIONS, stageSpec, VariantSchema, type VideoRef } from "./stage-spec.js";
+import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
+import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
@@ -101,7 +102,6 @@ export function openState(dataDir: string): Db {
   return db;
 }
 
-const planOf = (run: WorkflowRun): RunPlan => RunPlanSchema.parse(JSON.parse(run.params.plan ?? "{}"));
 
 function latestRun(store: WorkflowRunStore): WorkflowRun | undefined {
   const runs = store.listByStatus(["completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
@@ -192,38 +192,10 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings };
 }
 
-/** A run's video: its plan's, else its base run's, else (the first run of a video) its own id. */
-function videoIdOf(runs: WorkflowRunStore, run: WorkflowRun, seen = new Set<string>()): string {
-  const plan = planOf(run);
-  if (plan.videoId) return plan.videoId;
-  const base = plan.baseRunId && !seen.has(plan.baseRunId) ? runs.get(plan.baseRunId) : undefined;
-  return base ? videoIdOf(runs, base, seen.add(run.id)) : run.id;
-}
-
 function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageName): WorkflowRun {
   const base = id ? runs.get(id) : latestRun(runs);
   if (base?.workflowName === VIDEO_WORKFLOW) return base;
   throw new Error(id ? `no ${VIDEO_WORKFLOW} run ${id}` : `no earlier ${VIDEO_WORKFLOW} run to start --from ${from} on; pass --base`);
-}
-
-const videoRuns = (runs: WorkflowRunStore): WorkflowRun[] =>
-  runs.listByStatus(["running", "paused", "recovery_required", "completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
-
-const runsOfVideo = (runs: WorkflowRunStore, videoId: string): WorkflowRun[] =>
-  videoRuns(runs).filter((run) => videoIdOf(runs, run) === videoId).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-
-/** A video and every run of it, oldest first, as the sheets stage's sidecar lists them. */
-export function videoRef(runs: WorkflowRunStore, videoId: string): VideoRef {
-  const runIds = runsOfVideo(runs, videoId).map((run) => run.id);
-  if (runIds.length === 0) throw new Error(`no ${VIDEO_WORKFLOW} run belongs to video ${videoId}`);
-  return { id: videoId, runIds };
-}
-
-/** The video `runId` makes, with every run of it, the run itself included. */
-export function runVideoRef(runs: WorkflowRunStore, runId: string): VideoRef {
-  const run = runs.get(runId);
-  if (!run) throw new Error(`no ${VIDEO_WORKFLOW} run ${runId}`);
-  return videoRef(runs, videoIdOf(runs, run));
 }
 
 /** Every other run of the same video, oldest first: the video's cost is the sum over them (owner answer Q2 B). */
