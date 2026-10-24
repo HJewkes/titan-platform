@@ -723,3 +723,31 @@ new stage key.
 - **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
   chose. It is skipped with a note until a `slots` artifact exists; template fill (TP-2614 D3) will write one.
   `word-budget` fails on any beat or block over its cap.
+
+### Audio library
+
+`explainer audio` keeps a local library of licensed background beds (`bgm`) and sound effects (`sfx`) for the
+mix stage. The repo ships code and synthetic test tones only, never a music or SFX file. The library lives under
+the per-user data dir as `<dataDir>/audio-library/`; `--audio-library <dir>` or `EXPLAINER_AUDIO_LIBRARY`
+moves it.
+
+- `originals/<sha256>.<ext>` keeps each file as received, for provenance.
+- `wav/<sha256>.wav` is that file normalised once at import by ffmpeg to 48 kHz mono PCM16, so the mix only reads
+  WAV. The name is the original's sha.
+- `ledger.jsonl` holds one `explainer.audio-ledger/v1` entry per asset (`LedgerEntrySchema`): id, kind, both shas,
+  source, licence, attribution, creator, title, retrieval time, duration, loudness measured by ffmpeg `ebur128`,
+  tags, a bed's loop points, an SFX's `anchorS` (where its hit lands) and a generated asset's generator, seed and
+  params. It is append-only; re-importing a file the ledger already holds is a no-op.
+
+Import accepts only `CC0-1.0`, `CC-BY-4.0` and `generated-own` (`ALLOWED_LICENCES`). It refuses NC, ND, SA and
+any unknown licence, a CC BY file with no attribution line, an id already used by another file, and a silent file.
+
+- `explainer audio import <file> --id <id> --kind bgm|sfx --licence <id> --source-kind <kind> --source-name <name>
+  [--source-url] [--attribution] [--creator] [--title] [--tags a,b] [--anchor-s <s>] [--loop]` adds one file.
+- `explainer audio gen --kind bgm --seed <n> [--duration-s <s>]` or `--kind sfx --name click|pop|whoosh|chime|riser
+  --seed <n>` makes a clip with the procedural generator and imports it as `generated-own`. A bed is a seeded
+  four-chord pad of additive sines that loops cleanly; each SFX records its `anchorS`. One seed always makes the
+  same file.
+- `explainer audio list` prints id, kind, licence, seconds, integrated LUFS and tags.
+
+ffmpeg must be on `PATH` for import and gen.

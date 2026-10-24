@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a non-allowlisted licence passes the refusal",
+      "file": "products/explainer/src/audio/ledger-schema.ts",
+      "find": "if (!(ALLOWED_LICENCES as readonly string[]).includes(licence)) {",
+      "replace": "if (licence.startsWith(\"NONE\")) {",
+      "kills": [
+        "importAudio refuses a non-commercial licence, naming it"
+      ]
+    },
+    {
+      "name": "a re-import of a known sha is not deduplicated",
+      "file": "products/explainer/src/audio/library.ts",
+      "find": "  if (same) return same;",
+      "replace": "  if (same) return undefined;",
+      "kills": [
+        "importAudio adds no ledger line when the same file is imported again"
+      ]
+    },
+    {
+      "name": "CC BY no longer needs an attribution",
+      "file": "products/explainer/src/audio/ledger-schema.ts",
+      "find": "if (ATTRIBUTION_LICENCES.has(licence) && !attribution?.trim()) {",
+      "replace": "if (false) {",
+      "kills": [
+        "importAudio refuses a CC BY file with no attribution"
+      ]
+    }
+  ]
+}

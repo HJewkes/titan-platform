@@ -1497,6 +1497,11 @@ every stage but export is its own `explainer.<stage>` child workflow behind a st
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+For music and SFX, `explainer audio import|gen|list` (`runAudioCli`) keeps a local audio library under the data dir (`audioLibraryDir`, `libraryPaths`), and with ffmpeg it is the only audio code that touches the filesystem.
+`importAudio` adds one file: the original, a 48 kHz mono WAV (`normaliseToWav`) and an `ebur128` loudness (`measureLoudness`), skipping a sha already held.
+`importAudio` throws `ImportRefused` for any licence outside `ALLOWED_LICENCES` (CC0-1.0, CC-BY-4.0, generated-own) or a CC BY file with no attribution (`licenceRefusal`, `ATTRIBUTION_LICENCES`).
+`LedgerEntrySchema` validates one `explainer.audio-ledger/v1` line and `readLedger` reads the append-only `ledger.jsonl`.
+`generateBed` makes a seeded pad bed that loops cleanly, and `generateSfx` a seeded click, pop, whoosh, chime or riser (`SFX_NAMES`) with its `anchorS`, both pure and `generated-own`.
 
 Key exports:
 
