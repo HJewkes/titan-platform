@@ -21,6 +21,7 @@ import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./re
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { orderCommand, statusOrder, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
@@ -245,7 +246,7 @@ const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>(
 });
 
 /** `stackFrozen` is read by agent-chat, which stacks no new child on a parent past its fix-round limit. */
-export type StatusRow = WatchRow & { stackFrozen: boolean };
+export type StatusRow = WatchRow & StatusOrder & { stackFrozen: boolean };
 
 interface StatusArgs {
   repo?: string;
@@ -268,7 +269,7 @@ const statusCommand = defineCommand<StatusArgs, StatusRow[], FactoryContext>({
   description: "One row per shepherded PR whose run has not finished, optionally narrowed to a repo or a PR (which lists its finished runs too): phase, head, next action, blockers, and whether new stacking on it is frozen; all lists every finished run as well",
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional(), all: z.boolean().optional() }),
   result: z.custom<StatusRow[]>(),
-  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...row, stackFrozen: stackFrozen(run) })),
+  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...row, ...statusOrder(servicesOf(ctx).mergeOrder, row), stackFrozen: stackFrozen(run) })),
 });
 
 const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
@@ -373,6 +374,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.repair-stop": repairStopCommand,
   "shepherd.freeze": repoFreezeCommand,
   "shepherd.thaw": thawCommand,
+  "shepherd.order": orderCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
