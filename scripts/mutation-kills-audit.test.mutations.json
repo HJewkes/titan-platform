@@ -9,6 +9,7 @@
       "kills": [
         "specProblem refuses a mutation name over fix-proof's length cap, naming the file and the mutation",
         "specProblem refuses a sidecar holding more mutants than fix-proof's cap",
+        "specProblem refuses text that is not JSON instead of throwing",
         "the audit command fails a sidecar fix-proof refuses and still reports its kill problems"
       ]
     },
