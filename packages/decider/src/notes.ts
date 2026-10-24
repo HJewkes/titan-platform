@@ -90,12 +90,16 @@ function noteRow(note: Note): LedgerRowWire {
   };
 }
 
+function isMissing(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
 async function listDirs(root: string): Promise<string[]> {
   try {
     const entries = await readdir(root, { withFileTypes: true });
     return entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name).sort();
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (isMissing(err)) return [];
     throw err;
   }
 }
@@ -104,7 +108,7 @@ async function listNoteFiles(notesDir: string): Promise<string[]> {
   try {
     return (await readdir(notesDir)).filter((name) => name.endsWith(".md")).sort();
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (isMissing(err)) return [];
     throw err;
   }
 }
