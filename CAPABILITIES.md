@@ -1416,6 +1416,9 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `deriveEvalView` derives the view evals read from it, and
 `migrateTourV0` lifts a spike tour to v1.
 `emptyStageRuns` fails a beat whose stage area holds no non-decor content box for more than 3 s of measured moments.
+`contentFillFindings` fails a beat whose settled element boxes span less than 60 % of the frame width.
+`cutCells` cuts beat-aware contact-sheet stills from beat bounds, measured cue times and beat kind (or the page's marks), stable when a beat is lengthened.
+`explainer sheets` (`writeContactSheets`) tiles those stills, each with a label strip, into one PNG per chapter.
 `scriptSha` names a script by its canonical-JSON sha, and
 `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`.
 For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and
