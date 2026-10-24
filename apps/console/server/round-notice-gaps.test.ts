@@ -62,6 +62,8 @@ describe("missed round-notice rows in the inbox", () => {
 
   it("shows no row when only the live send failed and the sweep's retry reached the seat", async () => {
     await listeners(fails("no live session")).afterRoundSubmit(ROUND, { status: "submitted" });
+    expect(await rows()).toEqual([]);
+
     await listeners(delivers).sweep();
 
     expect(sent).toEqual([SEAT]);
