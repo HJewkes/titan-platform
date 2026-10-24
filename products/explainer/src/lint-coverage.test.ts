@@ -51,7 +51,7 @@ describe("Q-E21: every merged PR is named or counted under its lane", () => {
   // Mutation: dropping the check that the total is said lets a bare rollup citation count a lane.
   it("fails a lane whose rollup is cited but whose total is neither said nor shown", () => {
     const silent: BeatSpec = ["l1", "lanes", "Alpha shipped widget sizing and more.", [pr(11), "lane/alpha/rollup"]];
-    const shown: BeatSpec = [...silent.slice(0, 4), ["3 merged"]] as BeatSpec;
+    const shown: BeatSpec = [silent[0], silent[1], silent[2], silent[3], ["3 merged"]];
 
     expect(q21(daily([silent, BETA_NAMED, GAMMA_NAMED]), MANIFEST)).toMatchObject({ pass: false, value: 1 });
     expect(q21(daily([shown, BETA_NAMED, GAMMA_NAMED]), MANIFEST)).toMatchObject({ pass: true });

@@ -28,7 +28,9 @@ const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly stri
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
-const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = { script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links"] };
+const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
+  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links"],
+};
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
 export const VariantSchema = z.object({

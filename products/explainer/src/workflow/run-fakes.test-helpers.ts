@@ -146,7 +146,8 @@ const LEAD_LINE = /^- (\S+): ([a-z0-9-]+) \(emphasis targets: ([^)]+)\)/gm;
 function withLeadChapters(script: ScriptV1, ids: readonly string[]): ScriptV1 {
   if (ids.length !== script.chapters.length || ids.every((id) => script.chapters.some((chapter) => chapter.id === id))) return script;
   const renamed = new Map(script.chapters.map((chapter, i) => [chapter.id, ids[i]!]));
-  return { ...script, chapters: script.chapters.map((chapter) => ({ ...chapter, id: renamed.get(chapter.id)! })), beats: script.beats.map((beat) => ({ ...beat, chapter: renamed.get(beat.chapter)! })) };
+  const chapters = script.chapters.map((chapter) => ({ ...chapter, id: renamed.get(chapter.id)! }));
+  return { ...script, chapters, beats: script.beats.map((beat) => ({ ...beat, chapter: renamed.get(beat.chapter)! })) };
 }
 
 /** `script` with each lead beat the prompt lists on its chapter's first beat, cued once per target on a word it speaks. */

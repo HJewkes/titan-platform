@@ -14,7 +14,7 @@ export const SLOWDOWN_PREFIX = "slow/";
 export const PRIORITY_PREFIX = "next/";
 
 /** The slice of a daily gather's `coverage.json` (lane-rollup.ts `Coverage`) the coverage check reads. */
-export const CoverageSchema = z.object({
+const CoverageSchema = z.object({
   merged: z.number().int().nonnegative(),
   lanes: z.array(z.object({ id: z.string(), label: z.string(), rollup: z.string(), merged: z.number().int().nonnegative(), named: z.array(z.string()) })),
   prs: z.array(z.object({ pr: z.string(), lane: z.string(), thread: z.string(), named: z.boolean() })),
