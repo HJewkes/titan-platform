@@ -1,5 +1,0 @@
----
-"@titan-design/factory": patch
----
-
-Shepherd stops retrying a no-verdict panel round that repeats the last one at the same head (TP-3910). When round 2 at an unchanged head records the same panel outcome with the same seats missing, and no member of either round failed to start or waited out its deadline, Shepherd dispatches no further reviewer. It takes the TP-3796 path instead: it records `D7/no-verdict-diagnosis` and spawns the diagnosis planner, then waits for a new head. The rounds are compared from the recorded `sh-review-panel` outcome and each member's dispatch and await steps; no transcript is read. A seat that no member was dispatched to fill, such as the unplanned tests seat, compares as `unplanned`. A round where a member failed to start or timed out, or whose missing seats differ, is still retried as before. A run recorded before this change that reviewed the repeated head again replays that review. `GATE_DEMOTIONS.neverVerdictDiagnosis` turns off both diagnosis routes.

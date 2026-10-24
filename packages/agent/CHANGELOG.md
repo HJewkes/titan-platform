@@ -1,5 +1,17 @@
 # @titan-design/agent
 
+## 0.7.0
+
+### Minor Changes
+
+- ff061ba: Codex app-server client: `CodexAppServer` now exposes `pid`, the spawned process id (also its process group id). The client, its types and its error classes (`startCodexAppServer`, `CodexSteerPreconditionError`, `CodexAppServerRpcError`, `CodexAppServerExitedError`) are exported from the package entry point.
+- 5e34e3d: Add `startCodexAppServer`, a typed client for `codex app-server` over stdio JSON-RPC: the initialize handshake, `threadStart`/`threadResume`, `turnStart` and `turnSteer`, turn and thread-status events, and exit handling that rejects pending calls. A steer that finds no matching active turn rejects with `CodexSteerPreconditionError`, so callers can fall back to `turnStart`.
+- 869014a: `AgentUsage` gains an optional `cacheCreation` with the 5m and 1h cache write token split, read from the result's raw `usage.cache_creation`. It is absent when the harness gave no split.
+
+### Patch Changes
+
+- 4ea511b: The claude-print harness now passes `--disable-slash-commands`, so a one-turn call loads no skills or commands and a prompt that opens with `/` is read as text.
+
 ## 0.6.2
 
 ### Patch Changes

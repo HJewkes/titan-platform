@@ -1,5 +1,31 @@
 # @titan-design/review-panel
 
+## 0.9.0
+
+### Minor Changes
+
+- c18be57: Scope a fix-round re-review brief to the fix diff (TP-3735): `ReviewerBriefInput.scope` (`ReviewScope`: `sinceHead`, `paths`, `hunks`, `mergedBase`), given with earlier findings, swaps `gh pr diff` for `git diff <sinceHead> <head> -- <paths>`, lists the fix's line ranges, makes the `Earlier findings:` checklist required with a `- partly fixed:` option, and adds the unchanged-line rule (`Important:` plus `Class:`), the no-repeat rule and the callers rule. A scope that fails `usableScope` (shell-active path, short sha, over `MAX_SCOPE_PATHS`, no open finding) leaves the brief full; with no scope every brief is byte-identical. `shapeBrief` drops `scope`, so panel members keep the full diff. Exports `IMPORTANT_TAG` and `CLASS_TAG`.
+- 44038c9: Shepherd no longer asks the owner to merge a fix-first-runaway or no-progress head (D8, `GATE_DEMOTIONS.fixFirstRunaway`, on by default). One fresh reviewer gets the run's FIX_FIRST trail as a convergence review: its MERGE takes the normal land path, and its FIX_FIRST sends the repo's seat (or the hub seat) a `fix-first-planner` notice while the run waits for a new head. A moved head re-arms the review. The reviewer brief gains `convergence`, which asks for a `Convergence:` section tagging each open finding Important, Nit or Pre-existing.
+- 7d3b5fb: Add the `scope_untagged` and `repeated_finding` refusals (TP-3735 S5) and export their `ScopeRefusal` type. Their correction prompt tells a scoped fix-round FIX_FIRST which rule it broke (an out-of-range item with no `Important:` and `Class:` line, or a restated earlier finding) and that its reply stands as written, within `MAX_CORRECTION_PROMPT_CHARS`.
+- 481f3e4: The panel aggregate counts a vacuous fix-proof that `provedByMutants` proves as good, as Shepherd's fix-proof judge already did, so it no longer adds an unplanned blocking tests seat that left every round `no-verdict`. `PanelVerdict` gains `fixProofShortfall`, set when that unplanned tests seat is the only blocking member missing; when that proof is vacuous or test-less, Shepherd sends the head back as its own NO_REPRO instead of retrying a fresh reviewer, and an owner's waiver of it now clears the seat on a test-only head that proceeds.
+- 52dc7f3: A reviewer verdict correction now quotes the line that made the verdict malformed (TP-3798). `session-read` exports `refusedLines(text, refusal)`, which returns the non-canonical `Verdict:` lines (for `multiple_blocks`) or labelled CI-policy lines (for `ci_policy_malformed`); the reading itself is unchanged and still fails closed. `review-panel` records them as `malformed.quotes`, and `correctionPrompt` takes `quotes`, shows up to three of them cut to 120 characters inside `MAX_CORRECTION_PROMPT_CHARS`, and asks the reviewer to reword or remove them. `CI_POLICY_RULE` now says no other line may start with "CI policy" or "Verdict", markdown headings such as `**CI policy:**` included.
+- 12afa80: `planPanel` caps premium seats by price class: `fable-reviewer` joins `bd-reviewer` in `DEFAULT_SONNET_FOR`, so a Fable member takes the one premium seat and is priced at premium points. A `ShapeRule` with `uncapped: true` keeps its premium profile beside the capped seat (headroom still lowers it). `PanelPolicy.installed` lets the caller say which profiles exist; a premium member lowered to one that does not throws `UninstalledProfileError` at plan time. Because `aggregate` reads the same default table, a g10 correctness member at `fable-reviewer` now counts as premium for `satisfiesG10`.
+- 7012bf0: Shepherd's fix-proof gate takes CI as the proof for a PR whose diff is only `.github/workflows/**` (changesets and the repo's declared generated files may ride along), since no unit test can cover a workflow edit (TP-3861). `sh-fix-proof` then reads the base branch's required checks from check-runs instead of the fix-proof run: it records a `workflow-ci` read citing each required check's newest run at the merge base and at the head. The read passes when a required check concluded failure at the merge base and every required check concluded success at the head; otherwise the review ends as NO_REPRO carrying the read. A passed read reaches the reviewer as `workflowCiProof`, a new `ReviewerBriefInput` field, and the brief names CI as the proof and tells the reviewer not to ask for a unit test; the tests panel member reads it in place of the missing-result line. A mixed diff keeps the fix-proof run path unchanged.
+
+### Patch Changes
+
+- c15f0dc: Add `shepherd.gateReset.noReproProceed` (off by default): a test-only PR whose diff the classifier reads as tests alone goes to review on a vacuous or test-less fix-proof, recorded as unverified `no-repro-test-only`; the reviewer brief names it.
+- 801f9c4: A test-only head that proceeds on its vacuous fix-proof no longer dead-ends under the review panel (TP-4058). Shepherd plans a fresh, blocking tests member for it, right after a g10-adversary hold's member, instead of leaving aggregate's unplanned tests seat empty and sending the head back as the proof's NO_REPRO. The tests member's brief asks, for each changed test, whether it would fail without the change it covers. Its MERGE lets the panel merge with no waiver; its silence is still no verdict, and its FIX_FIRST goes to the fixer. A diff that also changes source still ends as NO_REPRO, and an intent recorded before this change keeps the old NO_REPRO.
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [661a027]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [2451aa9]
+  - @titan-design/fix-proof@0.8.1
+  - @titan-design/session-read@0.17.0
+
 ## 0.8.1
 
 ### Patch Changes

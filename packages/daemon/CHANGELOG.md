@@ -1,5 +1,18 @@
 # @titan-design/daemon
 
+## 0.9.0
+
+### Minor Changes
+
+- 1ac0fa2: `startDaemon` takes `contentOrigin: { port, mountRoutes }`: a read-only origin on its own port for untrusted content, such as a built Storybook shown in an iframe. It serves only the product's routes, answers every method but GET and HEAD with 405, and has no `/rpc`, `/events`, `/health`, `/mcp` or `/auth/*`. It binds loopback and, with `remote`, the remote address behind the same TLS pair, port-bound Host check and auth gate, so the main listener's session cookie authenticates there with no sign-in route of its own. Every listener binds or none does; `handle.contentPort` reports the port. The new `containedFile(root, pathname)` resolves a URL path to a real file under a root chosen per request, refusing `..`, encoded separators and symlinks that leave the root, and returns the file's content type for `fileResponse`.
+- 24f1577: Add `trackSecretFile(file, parse)`: the tracked, stat-checked secret file reader (symlink, not-regular, owner, mode refusals; re-read on change) for any secret shape. The caller injects the path and the parser; a parser's error text is never copied into the refusal. `trackTokenFile` is now `trackSecretFile(file, parseBase64Secret)`. Also exports `SecretRejection`, `SecretParser` and `parseBase64Secret`.
+
+### Patch Changes
+
+- Updated dependencies [b6ce883]
+- Updated dependencies [b6ce883]
+  - @titan-design/registry@0.6.0
+
 ## 0.8.0
 
 ### Minor Changes

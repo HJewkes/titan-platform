@@ -1,5 +1,22 @@
 # @titan-design/workflow
 
+## 0.14.0
+
+### Minor Changes
+
+- 869014a: `StepUsage` gains optional `cacheReadTokens`, `cacheWrite5mTokens`, `cacheWrite1hTokens` and `model`. `agentRunner` fills them from the run's usage, and `addUsage` and `usageFromMeasurements` carry them. Absent stays absent.
+- 4a2495f: Capability context: `WorkflowRuntimeOptions.capabilities` and `ctx.capability(name)` give step bodies an opaque handle whose declared secrets are refused (`CapabilityLeakError`) or redacted before they reach step output, the trace, the store or a prompt variable. The factory's guarded context forwards `capability`.
+- 0229ba6: Add `codeStep`, `codeRoute` and `codeRecordRoute`: the code-step pair a host dispatches JSON input through and records one `{ result }` record from, with an `envelope` hook for the stored record and an `errorText` hook for thrown messages.
+- 2165cec: Keep per-step telemetry. A completed dispatch's `StepResult` now records `startedAt`, `firstStartedAt` and `restarts`, and a seed's records `startedAt`; `projectRunTrace` places each attempt at its recorded start. Every `WorkflowEvent` carries `at` from the runtime clock. A `codeRecordRoute` body may return `usage` beside `result`; the route reports it as the step's usage, so `mapItems` sums and budgets it like a dispatch's. All fields are optional, so stored runs and events from earlier releases read as before; no migration is needed.
+
+### Patch Changes
+
+- Updated dependencies [ff061ba]
+- Updated dependencies [4ea511b]
+- Updated dependencies [5e34e3d]
+- Updated dependencies [869014a]
+  - @titan-design/agent@0.7.0
+
 ## 0.13.1
 
 ### Patch Changes

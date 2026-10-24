@@ -1,5 +1,33 @@
 # @titan-design/owner-queue
 
+## 0.6.0
+
+### Minor Changes
+
+- 2c20516: Add an inbox withdraw verb and auto-withdraw self-healed alarms (TP-4112). owner-queue gains a `./withdraw` subpath (`withdrawDeposit`, `restoreDeposit`, `withdrawMatching`, `readWithdrawal`): a seat withdraws only its own deposit, with `<id>.withdrawn` beside it and never an answer file, and each withdraw and restore is appended to the spool's `withdrawals.jsonl`. It also gains `alarmKey`, `collapseRepeats` and an optional `repeats` on `OwnerItem`. `titan-console inbox withdraw|restore|withdraw-matching` exposes it (refusal 65, unknown id 66); the inbox lists withdrawn deposits apart from answered ones and collapses open repeats of one alarm into the newest. A verified console update withdraws its earlier update-failure items, and a factory deploy that holds withdraws the open deploy alarms and incidents, both as `resolved`.
+- 5cd2a5a: Add `OwnerOp`, the typed target of an owner action: `ownerOpSchema` is a strict union of `resolve-gate`, `release-hold`, `merge-at-head`, `close-pr`, `factory-config-set`, `deploy-pause-clear` and `retire-agent`. An item and a deposit may carry an optional `op`. `fromDeposit` adds the `pr:<repo>#<n>@<head>` key an op implies, so a deposit about a PR merges with that PR's item at the same head; it never derives a `gate:` key. `opKeys(op)` returns those keys.
+- 20c93ed: Record who actually withdrew an inbox deposit (TP-4121). `withdrawDeposit`, `restoreDeposit` and
+  `withdrawMatching` take a required `actor`, refuse a blank one, and write it beside the asker
+  (`by`) in the `<id>.withdrawn` marker and every `withdrawals.jsonl` row. A marker from before
+  this has no `actor` and still reads. `WithdrawnItem` gains an optional `actor`, which the
+  console's inbox read model fills from the marker.
+
+  `titan-console inbox withdraw|restore|withdraw-matching` take a required `--actor <seat>`; a
+  missing one exits 65 with one line on stderr. The console updater and the factory deployer
+  record their own names as actor when they auto-withdraw resolved alarms.
+
+### Patch Changes
+
+- a5f2f40: Let `withdrawDeposit` and `restoreDeposit` take a short deposit id (TP-4122). Besides the full
+  `deposit:<32 hex>`, either takes a hex prefix of at least 8 digits, bare or after `deposit:`, that
+  starts exactly one deposit in the spool, and reports the full id. An ambiguous prefix is refused
+  with every full id it matches; no match is `unknown` with `unknown id <x>; full form is
+deposit:<32 hex>`. Only an id of another item kind (`gate:`, `round:`) is refused as not a
+  deposit. The asker, actor and answered checks run on the resolved deposit as before.
+
+  `titan-console inbox withdraw|restore` pass the id through: an ambiguous prefix exits 65 and an
+  unknown one 66.
+
 ## 0.5.0
 
 ### Minor Changes

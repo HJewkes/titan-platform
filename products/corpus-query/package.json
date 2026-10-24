@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/corpus-query",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Cheap one-line questions over a large local text corpus: deterministic index and retrieval, verified judge calls",
   "type": "module",
   "main": "./dist/index.js",

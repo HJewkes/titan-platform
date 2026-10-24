@@ -1,5 +1,0 @@
----
-"@titan-design/tool-guard": patch
----
-
-Read what a shell's script may run besides itself. Once a shell runs a script (a `-c` string, a file, or under `-s` a stdin something feeds), every substitution after it is read, since the script may run it by its positional (`bash ./run.sh <(...)`, `bash -s <(...) <<< 'bash "$1"'`), and so is every substitution a `source` or `.` passes on. A file operand after a `-c` string or a fed `-s` is read as a relayed stdin file is (`bash -c 'bash "$1"' _ ./x.sh`). bash's `--rcfile` and `--init-file` are read when the file is there. A bare `<(...)` as the whole command is read as `exec <(...)` is. `sourcedFiles` replaces `sourcedOperand` as the one reader of a sourced word: it reads bash 5.3's `source -p PATH FILE`, looking FILE up in PATH, reads zsh's file named `-p` or `-x` only when one is there, and after a first word only known at run time (`source "$D" <(...)`) reads every later word. Lines that open a descriptor also refuse a `-c` positional, an rcfile or a `source -p` file that may name it.

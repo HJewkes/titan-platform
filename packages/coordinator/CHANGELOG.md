@@ -1,5 +1,18 @@
 # @titan-design/coordinator
 
+## 0.6.0
+
+### Minor Changes
+
+- 74fe992: `EDITABLE_FIELDS` rows may carry any zod schema, not only a number: `bounds` is now optional and present on numeric rows only, and `checkEditableValue` returns an `EditableValue` (number, string or string list). Add factory rows marked `live`: `shepherd.gateReset.noReproProceed` and `heldRepair` (`off`/`on`), `twoMergeRelease` (`off`/`shadow`/`on`), `shepherd.review.adversaryProfile` (one profile name), `shepherd.review.fallbackConfigDirs` (up to 16 absolute paths) and `shepherd.review.maxConcurrent` (1..64). Add `shepherd.spawnGate.buildLoad5` beside `load5`, both still `restart`. Paths the factory writes, secrets and any other `shepherd` key stay not editable.
+
+### Patch Changes
+
+- 6889f5d: `EDITABLE_FIELDS` marks the factory rows `shepherd.spawnGate.load5` and `buildLoad5` as `live`: the factory now reads them through its reloadable config instead of once at start.
+- Updated dependencies [a20c348]
+- Updated dependencies [cb470f4]
+  - @titan-design/agent-dispatch@0.10.0
+
 ## 0.5.3
 
 ### Patch Changes
