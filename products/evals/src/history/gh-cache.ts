@@ -4,7 +4,7 @@ import { z } from "zod";
 import { excludedReason, PER_REPO_LIMIT, pinWindow, type WindowPr } from "./label-v2.js";
 
 /** Extra PRs the Python builder listed past the window, so a window pinned in the past still has 60 PRs to pick from. */
-export const WINDOW_SLACK = 40;
+const WINDOW_SLACK = 40;
 
 const nullableText = z.string().nullish();
 
@@ -31,7 +31,7 @@ const RestCommits = z.array(
   z.object({ sha: z.string(), commit: z.object({ message: z.string().nullable(), committer: z.object({ date: z.string().nullable() }) }) }),
 );
 
-export interface WindowRequest {
+interface WindowRequest {
   owner: string;
   repo: string;
   asOf: string;
@@ -43,13 +43,13 @@ export function cacheFileName(path: string): string {
 }
 
 /** Reads one cached REST response; a missing file is an error, never a fetch. */
-export function readCached<T extends z.ZodType>(cacheDir: string, path: string, schema: T): z.infer<T> {
+function readCached<T extends z.ZodType>(cacheDir: string, path: string, schema: T): z.infer<T> {
   const file = join(cacheDir, cacheFileName(path));
   if (!existsSync(file)) throw new Error(`gh-cache has no ${cacheFileName(path)} for ${path}; this reader never fetches`);
   return schema.parse(JSON.parse(readFileSync(file, "utf8")));
 }
 
-export function fromRest(item: RestPull): WindowPr {
+function fromRest(item: RestPull): WindowPr {
   const merged = item.merged_at ?? null;
   return {
     number: item.number,
@@ -86,7 +86,7 @@ function detailFields(cacheDir: string, base: string, n: number): Partial<Window
 }
 
 /** Changed files for every PR in the window; size, reviews, comments and commits only for would-be cases. */
-export function withDetails(cacheDir: string, base: string, pr: WindowPr): WindowPr {
+function withDetails(cacheDir: string, base: string, pr: WindowPr): WindowPr {
   const files = readCached(cacheDir, `${base}/pulls/${pr.number}/files?per_page=100`, RestFiles);
   const listed = { ...pr, files: files.map((f) => f.filename) };
   return excludedReason(listed) ? listed : { ...listed, ...detailFields(cacheDir, base, pr.number) };

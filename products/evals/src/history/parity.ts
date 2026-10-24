@@ -2,9 +2,9 @@ import { isDeepStrictEqual } from "node:util";
 import { labelV2, type V2Labels, type WindowPr } from "./label-v2.js";
 
 /** The label fields the Python builder compares between label versions. */
-export const LABEL_FIELDS = ["prior_attempts", "follow_up_fixes", "reverted_by", "rework_commits", "rework_count", "outcome"] as const;
+const LABEL_FIELDS = ["prior_attempts", "follow_up_fixes", "reverted_by", "rework_commits", "rework_count", "outcome"] as const;
 
-export type LabelField = (typeof LABEL_FIELDS)[number];
+type LabelField = (typeof LABEL_FIELDS)[number];
 
 export interface StoredCase {
   case_id: string;
@@ -14,14 +14,14 @@ export interface StoredCase {
 }
 
 /** Each repo's pinned window, keyed by the short repo name a case id starts with. */
-export type CachedWindow = Record<string, WindowPr[]>;
+type CachedWindow = Record<string, WindowPr[]>;
 
-export interface ParityMismatch {
+interface ParityMismatch {
   case_id: string;
   field: LabelField;
 }
 
-export interface ParityReport {
+interface ParityReport {
   cases: number;
   mismatches: ParityMismatch[];
   /** Stored cases whose PR is not in the window: an input gap, not a label mismatch. */

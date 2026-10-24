@@ -3,31 +3,31 @@
  * reproduce `cases.v2.jsonl`. Field names keep the Python snake_case so a stored case compares key for key.
  */
 
-export const FOLLOW_UP_DAYS = 14;
+const FOLLOW_UP_DAYS = 14;
 export const PER_REPO_LIMIT = 60;
 
-export const TASK_ID_RE = /\b(TP|CC|AW|C|R)-(\d+)\b/g;
-export const RELEASE_RE = /^(version packages|release v?\d|chore\(release\)|chore\(deps)/i;
-export const FIXUP_RE =
+const TASK_ID_RE = /\b(TP|CC|AW|C|R)-(\d+)\b/g;
+const RELEASE_RE = /^(version packages|release v?\d|chore\(release\)|chore\(deps)/i;
+const FIXUP_RE =
   /^(fixup!|squash!|amend!)|\b(address|apply|fix(es)?|respond to|resolve)\b.{0,24}\b(review|feedback|comments?|nits?|findings?)\b|^fix(es)? (ci|lint|format(ting)?|typecheck|types|tests?|build)\b/i;
-export const REVIEW_COMMENT_RE =
+const REVIEW_COMMENT_RE =
   /^\s*(#+\s*)?(code )?review\b|\bverdict\b|\bchanges requested\b|\brequest(ed)? changes\b|\bLGTM\b|\bmust[- ]fix\b|\bblocking\b/im;
-export const FOLLOW_UP_TITLE_RE = /^(fix|hotfix|revert|follow-?up)\b/i;
+const FOLLOW_UP_TITLE_RE = /^(fix|hotfix|revert|follow-?up)\b/i;
 
 const DAY_SECONDS = 86400;
 
-export interface PrCommit {
+interface PrCommit {
   oid: string;
   committedDate: string | null;
   messageHeadline: string;
 }
 
-export interface PrReview {
+interface PrReview {
   state: string;
   submittedAt: string | null;
 }
 
-export interface PrComment {
+interface PrComment {
   createdAt: string;
   body: string | null;
 }
@@ -55,15 +55,15 @@ export interface WindowPr {
   commits?: PrCommit[];
 }
 
-export type Outcome = "abandoned" | "accepted_first_pass" | "accepted_after_rework";
+type Outcome = "abandoned" | "accepted_first_pass" | "accepted_after_rework";
 
-export interface ReworkCommits {
+interface ReworkCommits {
   post_review_commits: number;
   fixup_commits: number;
   rework_commits: number;
 }
 
-export interface Relatives {
+interface Relatives {
   prior_attempts: number[];
   follow_up_fixes: number[];
   reverted_by: number | null;
@@ -75,7 +75,7 @@ export interface V2Labels extends ReworkCommits, Relatives {
 }
 
 /** Epoch seconds, as Python's `datetime.timestamp()`; an empty value is null and an unparseable one throws. */
-export function ts(value: string | null | undefined): number | null {
+function ts(value: string | null | undefined): number | null {
   if (!value) return null;
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) throw new Error(`not an ISO timestamp: ${value}`);
@@ -95,14 +95,14 @@ function bestBy<T>(items: T[], key: (item: T) => number, beats: (a: number, b: n
   return best;
 }
 
-export function firstReviewAt(pr: WindowPr): number | null {
+function firstReviewAt(pr: WindowPr): number | null {
   const times = (pr.reviews ?? []).map((r) => ts(r.submittedAt));
   for (const c of pr.comments ?? []) if (REVIEW_COMMENT_RE.test(c.body ?? "")) times.push(ts(c.createdAt));
   const known = times.filter((t): t is number => t !== null);
   return known.length ? Math.min(...known) : null;
 }
 
-export function reworkCommits(pr: WindowPr, reviewAt: number | null): ReworkCommits {
+function reworkCommits(pr: WindowPr, reviewAt: number | null): ReworkCommits {
   const afterReview = new Set<string>();
   const fixups = new Set<string>();
   for (const commit of pr.commits ?? []) {
@@ -121,7 +121,7 @@ export function changesRequestedRounds(pr: WindowPr): number {
   return (pr.reviews ?? []).filter((r) => r.state === "CHANGES_REQUESTED" && (ts(r.submittedAt) ?? 0) < last).length;
 }
 
-export function taskIds(pr: WindowPr): string[] {
+function taskIds(pr: WindowPr): string[] {
   if (pr.task_ids) return pr.task_ids;
   const body = Array.from(pr.body ?? "").slice(0, 2000).join("");
   const text = [pr.title ?? "", pr.headRefName ?? "", body].join(" ");
@@ -139,7 +139,7 @@ const isFollowUp = (merged: number | null, other: WindowPr): boolean => {
 };
 
 /** Label v1: earlier abandoned attempts, later follow-up fixes and reverts on the same task or branch, in this repo. */
-export function relatives(pr: WindowPr, repoPrs: WindowPr[]): Relatives {
+function relatives(pr: WindowPr, repoPrs: WindowPr[]): Relatives {
   const created = tsOf(pr.createdAt);
   const merged = ts(pr.mergedAt);
   const prior: number[] = [];
@@ -162,26 +162,26 @@ function sameTaskOverlapping(pr: WindowPr, repoPrs: WindowPr[]): WindowPr[] {
 }
 
 /** The nearest merged PR on the follow-up's task, merged before the follow-up opened, whose files overlap it. */
-export function fixedPr(followUp: WindowPr, repoPrs: WindowPr[]): WindowPr | null {
+function fixedPr(followUp: WindowPr, repoPrs: WindowPr[]): WindowPr | null {
   const opened = tsOf(followUp.createdAt);
   const candidates = sameTaskOverlapping(followUp, repoPrs).filter((o) => o.mergedAt && tsOf(o.mergedAt) < opened);
   return bestBy(candidates, (o) => tsOf(o.mergedAt ?? ""), (a, b) => a > b);
 }
 
 /** The nearest merged PR on the abandoned attempt's task, opened after the attempt, whose files overlap it. */
-export function supersedingPr(attempt: WindowPr, repoPrs: WindowPr[]): WindowPr | null {
+function supersedingPr(attempt: WindowPr, repoPrs: WindowPr[]): WindowPr | null {
   const opened = tsOf(attempt.createdAt);
   const candidates = sameTaskOverlapping(attempt, repoPrs).filter((o) => o.mergedAt && tsOf(o.createdAt) > opened);
   return bestBy(candidates, (o) => tsOf(o.createdAt), (a, b) => a < b);
 }
 
-export function attributedTo(relative: WindowPr, pr: WindowPr, target: WindowPr | null): boolean {
+function attributedTo(relative: WindowPr, pr: WindowPr, target: WindowPr | null): boolean {
   if (target !== null) return target.number === pr.number;
   return !!relative.headRefName && relative.headRefName === pr.headRefName;
 }
 
 /** Label v2: each v1 prior attempt and follow-up counts only for the one PR it is attributed to. */
-export function relativesV2(pr: WindowPr, repoPrs: WindowPr[]): Relatives {
+function relativesV2(pr: WindowPr, repoPrs: WindowPr[]): Relatives {
   const rel = relatives(pr, repoPrs);
   const byNumber = new Map(repoPrs.map((o) => [o.number, o]));
   const keep = (target: (relative: WindowPr, prs: WindowPr[]) => WindowPr | null) => (n: number) => {
@@ -195,7 +195,7 @@ export function relativesV2(pr: WindowPr, repoPrs: WindowPr[]): Relatives {
   };
 }
 
-export function outcomeLabel(pr: WindowPr, reworkCount: number, revertedBy: number | null): Outcome {
+function outcomeLabel(pr: WindowPr, reworkCount: number, revertedBy: number | null): Outcome {
   if (!pr.mergedAt || revertedBy !== null) return "abandoned";
   return reworkCount === 0 ? "accepted_first_pass" : "accepted_after_rework";
 }
@@ -215,7 +215,7 @@ export function labelV2(pr: WindowPr, repoPrs: WindowPr[]): V2Labels {
   return { ...commits, ...rel, rework_count: reworkCount, outcome: outcomeLabel(pr, reworkCount, rel.reverted_by) };
 }
 
-export function stateAt(pr: WindowPr, cutoff: number): WindowPr {
+function stateAt(pr: WindowPr, cutoff: number): WindowPr {
   if ((ts(pr.closedAt) ?? 0) <= cutoff) return pr;
   return { ...pr, state: "OPEN", mergedAt: null, closedAt: null, mergeCommit: null };
 }
