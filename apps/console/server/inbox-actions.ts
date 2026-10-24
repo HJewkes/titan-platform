@@ -196,6 +196,21 @@ function textFor(action: ConsoleAction, text: string | undefined): string | unde
 const resolvedMessage = (record: ActionRecord): string =>
   !isOpRecord(record) && record.action.kind === "resolve-gate" && record.action.decision === "await-new-head" ? "Waiting for the implementer's next pushed head; nothing merged" : "Merge approved";
 
+type OpOutcome = Extract<Outcome, { status: "accepted" | "approved" | "pr-closed" | "pause-cleared" }>;
+
+function opMessageOf(outcome: OpOutcome): string {
+  switch (outcome.status) {
+    case "accepted":
+      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
+    case "approved":
+      return "Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you";
+    case "pr-closed":
+      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
+    case "pause-cleared":
+      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
+  }
+}
+
 function messageOf(outcome: Outcome, record: ActionRecord): string {
   switch (outcome.status) {
     case "answered":
@@ -205,13 +220,10 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "resolved":
       return resolvedMessage(record);
     case "accepted":
-      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
     case "approved":
-      return "Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you";
     case "pr-closed":
-      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
     case "pause-cleared":
-      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
+      return opMessageOf(outcome);
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
     case "already":
