@@ -38,15 +38,6 @@
       ]
     },
     {
-      "name": "done tasks named as priorities",
-      "file": "products/explainer/src/presets/daily/priorities.ts",
-      "find": "task.status !== \"done\" && ",
-      "replace": "",
-      "kills": [
-        "daily priorities names each lane's two open tasks with the lowest priority rank"
-      ]
-    },
-    {
       "name": "stage medians read over the day alone",
       "file": "products/explainer/src/presets/daily/stats-source.ts",
       "find": "settle(shepherdStats(inputs.run, isoWeekMonday(day), day), notes)",

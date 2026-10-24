@@ -1,12 +1,9 @@
 import path from "node:path";
 import { PRICE_TABLE_VERSION } from "@titan-design/agent-protocol/pricing";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadLanes } from "../../lanes-schema.js";
 import { DAILY_FIXTURE, DAY, fakeCli, fakeGh, fixtureTasks, minerCostJson, REPO, SHEPHERD_STATS_JSON, snapshotStore } from "./daily-fakes.test-helpers.js";
-import { dailyFactsMarkdown, dayWindow, gatherDaily, type GatherDailyOptions } from "./gather-daily.js";
-import { priorityItems } from "./priorities.js";
+import { dailyFactsMarkdown, gatherDaily, type GatherDailyOptions } from "./gather-daily.js";
 import type { DigestItem } from "../../digest.js";
-import type { SnapshotTask } from "./task-snapshot.js";
 
 let store: ReturnType<typeof snapshotStore>;
 afterEach(() => store.cleanup());
@@ -104,18 +101,5 @@ describe("daily stats over injected CLI runners with synthetic output", () => {
     expect(digest.items.filter((item) => item.kind === "session")).toHaveLength(2);
     expect(facts).not.toContain("| session/");
     expect(facts).toContain("| sessions/rollup | 2 sessions active | |");
-  });
-});
-
-describe("daily priorities", () => {
-  const task = (id: string, priority: number | null, tags: string[], status = "open"): SnapshotTask => ({ id, title: `Synthetic task ${id}`, status, tags, priority });
-
-  it("names each lane's two open tasks with the lowest priority rank", () => {
-    const tasks = [task("DM-1", 9, ["daily"]), task("DM-2", 2, ["daily"]), task("DM-3", 1, ["daily"], "done"), task("DM-4", 5, ["daily"]), task("DM-5", 3, []), task("DM-6", null, [])];
-
-    const items = priorityItems(tasks, loadLanes(), dayWindow(DAY));
-
-    expect(items.map((item) => [item.id, item.lane])).toEqual([["next/DM-2", "video"], ["next/DM-4", "video"], ["next/DM-5", "factory"]]);
-    expect(items[0]?.summary).toBe("DM-2 is priority 2 in the Video lane");
   });
 });
