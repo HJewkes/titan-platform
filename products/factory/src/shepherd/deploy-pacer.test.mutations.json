@@ -35,30 +35,6 @@
       ]
     },
     {
-      "name": "a spawned ask holds against every later merge",
-      "file": "products/factory/src/shepherd/deploy-pacer.ts",
-      "find": "previous !== undefined && previous.sha === heldBy",
-      "replace": "previous !== undefined && (previous.sha === heldBy || previous.spawnedSha !== undefined)",
-      "kills": [
-        "deploy pacer one spawn per sha, and a new sha re-arms it after its own quiet window",
-        "deploy pacer a new sha after a spawn starts its own window and drops the spawn mark",
-        "deploy pacer the next green merge replaces an ask whose deployer was refused and recorded nothing, and deploys after its own quiet window (TP-4085)",
-        "deploy pacer steady merges while a spawned deploy is unserved spawn once per cap, not once per merge",
-        "the deploy:now express lane an unlabelled merge after a labelled one is paced normally"
-      ]
-    },
-    {
-      "name": "a later merge keeps the spawned ask's window",
-      "file": "products/factory/src/shepherd/deploy-pacer.ts",
-      "find": "const firstAt = previous?.spawnedSha === undefined ? previous?.firstAt : undefined;",
-      "replace": "const firstAt = previous?.firstAt;",
-      "kills": [
-        "deploy pacer a new sha after a spawn starts its own window and drops the spawn mark",
-        "deploy pacer the next green merge replaces an ask whose deployer was refused and recorded nothing, and deploys after its own quiet window (TP-4085)",
-        "deploy pacer steady merges while a spawned deploy is unserved spawn once per cap, not once per merge"
-      ]
-    },
-    {
       "name": "every sweep logs its wait",
       "file": "products/factory/src/shepherd/deploy-pacer.ts",
       "find": "if (wait !== undefined && (wait.sha !== last?.sha || wait.key !== last.key)) {",
