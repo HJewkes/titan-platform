@@ -3,9 +3,9 @@
   "mutations": [
     {
       "name": "a reply with only unknown keys is rejected instead of stripped",
-      "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "if (!issues.every((issue) => issue.code === \"unrecognized_keys\")) return",
-      "replace": "if (issues.length > 0) return",
+      "file": "products/explainer/src/workflow/script-reply.ts",
+      "find": "if (!issues.every((issue) => issue.code === \"unrecognized_keys\" || issue.code === \"invalid_value\")) return undefined;",
+      "replace": "if (issues.length > 0) return undefined;",
       "kills": [
         "explainer run drops keys the schema does not allow on a beat and keeps the script, with a reported diagnostic and no retry"
       ]
