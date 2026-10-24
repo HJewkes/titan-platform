@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
@@ -73,6 +73,8 @@ describe("the knowledge graph tab", () => {
     expect(screen.getByRole("button", { name: /^Cap the backoff, Note, 1 hop/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Tune the relay backoff, Session, 2 hops/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Cap the backoff to OR-7, mentions/ })).toBeTruthy();
+    const legend = within(screen.getByRole("list", { name: "Legend" })).getAllByRole("listitem").map((item) => item.textContent);
+    expect(legend).toEqual(["Task", "Session", "Note", "mentions", "touched"]);
   });
 
   it("opens a pressed node's record", async () => {

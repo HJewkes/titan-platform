@@ -87,8 +87,8 @@ function EgoPlot({ ego }: { ego: Ego }): ReactNode {
         nodes={ego.nodes.map((node) => ({ id: node.ref, label: node.label, kind: node.kind, description: node.ref }))}
         edges={ego.edges.map((edge) => ({ source: edge.source, target: edge.target, kind: edge.kind }))}
         layout={egoLayout({ focusId: ego.center, hops: ego.depth })}
-        nodeKinds={NODE_KINDS}
-        edgeKinds={EDGE_KINDS}
+        nodeKinds={NODE_KINDS.filter((kind) => ego.nodes.some((node) => node.kind === kind.id))}
+        edgeKinds={EDGE_KINDS.filter((kind) => ego.edges.some((edge) => edge.kind === kind.id))}
         showLegend
         width={plotWidth}
         height={Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, plotWidth))}
