@@ -171,9 +171,9 @@ owner decides every merge. See
   same way.
 - Declare every step id with one kind. `seed(x)` and `assisted(x)` share a memo key, so the
   host rejects a workflow that reuses an id across kinds.
-- Pass `factoryRoutes` (or `factoryRoutesFor`) to the host as the same array. Its `database`
-  tenant carries the shepherd migration and store binding; a copied array drops it, and every
-  merge then fails closed because the hold cannot read the store.
+- Pass `factoryRoutes()` (or `factoryRoutesFor(deps)`) to the host as the same routes.
+  Its `database` tenant carries the shepherd migration and store binding; a copied route list drops it, and
+  every merge then fails closed because the hold cannot read the store.
 
 ## Where it came from
 

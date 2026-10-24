@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, PR_COMMITS_CAP, PR_FILES_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import { FORCE_PUSHES_CAP } from "./force-pushes.js";
-import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
-import type { RefRead, RulesetList } from "./conditional-reads.js";
-import type { CheckRun, MergeMethod, PullRequest, PutFileRequest } from "./port.js";
+import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
+import type { OpenPrRequest } from "./pr-list.js";
+import type { CheckRun, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 import { fakeMergeIntoBranch } from "./fake-merge-into-branch.js";
 import { fakeAncestry, fakeLsRemote } from "./fake-ancestry.js";
+import { revalidateOpenPrs, revalidateRef, revalidateRulesets } from "./fake-conditional-reads.js";
 
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
 
@@ -109,9 +109,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getRef: async (_repo, branch) => record("getRef", fake.refs.get(branch) ?? null),
     createRef: async (_repo, branch, sha) => {
       record("createRef", undefined);
-      if (fake.refs.has(branch)) throw new FakeHttpError(422, "Reference already exists");
-      effects.createRef += 1;
-      fake.refs.set(branch, sha);
+      createRef(fake, branch, sha);
     },
     createCommit: async (_repo, request) => {
       const sha = nextSha("commit");
@@ -121,16 +119,10 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     updateRef: async (_repo, branch, sha) => record("updateRef", updateRef(fake, prs, branch, sha)),
     deleteRef: async (_repo, branch) => {
       record("deleteRef", undefined);
-      if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
-      effects.deleteRef += 1;
-      // An API branch delete closes the PRs based on it; only GitHub's delete-on-merge setting retargets them.
-      for (const pr of prs.values()) if (pr.state === "open" && pr.baseRef === branch) pr.state = "closed";
+      deleteRef(fake, prs, branch);
     },
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
-    getContent: async (_repo, path, ref) => {
-      const file = fake.files.get(`${ref}:${path}`);
-      return record("getContent", file ? { path, blobSha: file.blobSha, content: file.content } : null);
-    },
+    getContent: async (_repo, path, ref) => record("getContent", getContent(fake, path, ref)),
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
@@ -138,12 +130,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     revalidateRef: async (_repo, branch, etag) => record("revalidateRef", revalidateRef(fake, branch, etag)),
     revalidateRulesets: async (_repo, etag) => record("revalidateRulesets", revalidateRulesets(fake, etag)),
     createPr: async (_repo, request) => record("createPr", createPr(fake, request)),
-    getPr: async (_repo, number) => {
-      const pr = mustPr(prs, number);
-      reads.set(number, (reads.get(number) ?? 0) + 1);
-      fake.onGetPr?.(pr, reads.get(number)!);
-      return record("getPr", { ...pr });
-    },
+    getPr: async (_repo, number) => record("getPr", getPr(fake, prs, reads, number)),
     getBranchRules: async () => read("getBranchRules", () => ({ ...fake.rules, contexts: [...fake.rules.contexts] })),
     getClassicRequiredChecks: async () => read("getClassicRequiredChecks", () => ({ ...fake.classicRules, contexts: [...fake.classicRules.contexts] })),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
@@ -155,13 +142,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listCommitStatuses: async (_repo, sha) => read("listCommitStatuses", () => (fake.statuses.get(sha) ?? []).map((status) => ({ ...status }))),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? openJobStatus(runs, runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
-      const log = fake.jobLogs.get(jobId);
-      if (log === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
+      const log = mustJob(fake.jobLogs, jobId);
       return record("getJobLog", log);
     },
     getJobSteps: async (_repo, jobId) => {
-      const steps = fake.jobSteps.get(jobId);
-      if (steps === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
+      const steps = mustJob(fake.jobSteps, jobId);
       return record("getJobSteps", steps.map((one) => ({ ...one })));
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
@@ -176,54 +161,105 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getSquashSource: async (_repo, number) => record("getSquashSource", fake.squashSources.get(number) ?? { title: "", body: "", commits: [] }),
     rerunFailedJobs: async (_repo, runId) => {
       record("rerunFailedJobs", undefined);
-      const fault = fake.rerunFaults?.shift();
-      if (fault && !fault.lands) throw fault.error;
-      effects.rerunFailedJobs += 1;
-      runStatus.set(runId, "queued");
-      if (fault) throw fault.error;
+      rerunFailedJobs(fake, runId);
     },
     rerunJob: async (_repo, jobId) => {
       record("rerunJob", undefined);
-      fake.jobReruns.push(jobId);
-      const owner = [...runs.values()].flat().find((run) => run.id === jobId)?.workflowRunId;
-      if (owner !== null && owner !== undefined) runStatus.set(owner, "queued");
+      rerunJob(fake, runs, jobId);
     },
-    listPrFiles: async (_repo, number) => {
-      const all = fake.prFiles.get(number) ?? [];
-      const files = all.slice(0, PR_FILES_CAP).map((file) => ({ ...file }));
-      return record("listPrFiles", { files, changedFiles: fake.prChangedFiles.get(number) ?? all.length });
-    },
+    listPrFiles: async (_repo, number) => record("listPrFiles", listPrFiles(fake, number)),
     listPrCommits: async (_repo, number) => record("listPrCommits", (fake.prCommits.get(number) ?? [mustPr(prs, number).headSha]).slice(0, PR_COMMITS_CAP)),
-    listCommits: async (_repo, since) => {
-      const after = fake.history.filter((commit) => Date.parse(commit.committedAt) >= Date.parse(since));
-      return record("listCommits", after.sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt)).map(({ sha, message }) => ({ sha, message })));
-    },
+    listCommits: async (_repo, since) => record("listCommits", listCommits(fake, since)),
     compareAncestry: async (_repo, base, head) => read("compareAncestry", () => fakeAncestry({ commits: fake.commits, refs: fake.refs, prs }, base, head)),
-    compareFiles: async (_repo, base, head) => {
-      const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
-      const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
-      return record("compareFiles", { mergeBaseSha: input.mergeBaseSha, files: input.files.slice(0, COMPARE_FILE_CAP), truncated });
-    },
+    compareFiles: async (_repo, base, head) => record("compareFiles", compareFiles(fake, base, head)),
     getAuthenticatedLogin: async () => record("getAuthenticatedLogin", fake.actor),
     listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
     createComment: async (_repo, number, body) => {
       record("createComment", undefined);
-      const fault = fake.createCommentFaults?.shift();
-      if (fault && !fault.lands) throw fault.error;
-      const list = fake.comments.get(number) ?? [];
-      const comment = { id: 5000 + ++counter, body, author: fake.actor };
-      fake.comments.set(number, [...list, comment]);
-      if (fault) throw fault.error;
-      return { id: comment.id };
+      return createComment(fake, number, body, 5000 + ++counter);
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
-    listForcePushes: async (_repo, number) => {
-      const all = fake.forcePushes.get(number) ?? [];
-      return record("listForcePushes", { pushes: all.slice(0, FORCE_PUSHES_CAP).map((push) => ({ ...push })), more: all.length > FORCE_PUSHES_CAP });
-    },
+    listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
   };
   fake.gitExec = fakeLsRemote(prs, () => read("lsRemote", () => undefined));
   return fake;
+}
+
+function createRef(fake: FakeGitHub, branch: string, sha: string): void {
+  if (fake.refs.has(branch)) throw new FakeHttpError(422, "Reference already exists");
+  fake.effects.createRef += 1;
+  fake.refs.set(branch, sha);
+}
+
+function deleteRef(fake: FakeGitHub, prs: Map<number, PullRequest>, branch: string): void {
+  if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
+  fake.effects.deleteRef += 1;
+  // An API branch delete closes the PRs based on it; only GitHub's delete-on-merge setting retargets them.
+  for (const pr of prs.values()) if (pr.state === "open" && pr.baseRef === branch) pr.state = "closed";
+}
+
+function getContent(fake: FakeGitHub, path: string, ref: string): { path: string; blobSha: string; content: string } | null {
+  const file = fake.files.get(`${ref}:${path}`);
+  return file ? { path, blobSha: file.blobSha, content: file.content } : null;
+}
+
+function getPr(fake: FakeGitHub, prs: Map<number, PullRequest>, reads: Map<number, number>, number: number): PullRequest {
+  const pr = mustPr(prs, number);
+  const count = (reads.get(number) ?? 0) + 1;
+  reads.set(number, count);
+  fake.onGetPr?.(pr, count);
+  return { ...pr };
+}
+
+function mustJob<T>(byJob: Map<number, T>, jobId: number): T {
+  const found = byJob.get(jobId);
+  if (found === undefined) throw new FakeHttpError(404, `no job ${jobId}`);
+  return found;
+}
+
+function rerunFailedJobs(fake: FakeGitHub, runId: number): void {
+  const fault = fake.rerunFaults?.shift();
+  if (fault && !fault.lands) throw fault.error;
+  fake.effects.rerunFailedJobs += 1;
+  fake.runStatuses.set(runId, "queued");
+  if (fault) throw fault.error;
+}
+
+function rerunJob(fake: FakeGitHub, runs: Map<string, CheckRun[]>, jobId: number): void {
+  fake.jobReruns.push(jobId);
+  const owner = [...runs.values()].flat().find((run) => run.id === jobId)?.workflowRunId;
+  if (owner !== null && owner !== undefined) fake.runStatuses.set(owner, "queued");
+}
+
+function listPrFiles(fake: FakeGitHub, number: number): { files: PrFile[]; changedFiles: number } {
+  const all = fake.prFiles.get(number) ?? [];
+  const files = all.slice(0, PR_FILES_CAP).map((file) => ({ ...file }));
+  return { files, changedFiles: fake.prChangedFiles.get(number) ?? all.length };
+}
+
+function listCommits(fake: FakeGitHub, since: string): LoggedCommit[] {
+  const after = fake.history.filter((commit) => Date.parse(commit.committedAt) >= Date.parse(since));
+  return after.sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt)).map(({ sha, message }) => ({ sha, message }));
+}
+
+function compareFiles(fake: FakeGitHub, base: string, head: string): { mergeBaseSha: string; files: string[]; truncated: boolean } {
+  const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
+  const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
+  return { mergeBaseSha: input.mergeBaseSha, files: input.files.slice(0, COMPARE_FILE_CAP), truncated };
+}
+
+function createComment(fake: FakeGitHub, number: number, body: string, id: number): { id: number } {
+  const fault = fake.createCommentFaults?.shift();
+  if (fault && !fault.lands) throw fault.error;
+  const comment = { id, body, author: fake.actor };
+  fake.comments.set(number, [...(fake.comments.get(number) ?? []), comment]);
+  if (fault) throw fault.error;
+  return { id };
+}
+
+function listForcePushes(fake: FakeGitHub, number: number): { pushes: ForcePush[]; more: boolean } {
+  const all = fake.forcePushes.get(number) ?? [];
+  return { pushes: all.slice(0, FORCE_PUSHES_CAP).map((push) => ({ ...push })), more: all.length > FORCE_PUSHES_CAP };
 }
 
 /** Like GitHub, a workflow run with a job still queued or in progress has not completed; `runStatuses` overrides it. */
@@ -244,39 +280,6 @@ function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: 
   fake.createdCheckRuns.push({ id, repo, request: { ...request } });
   runs.set(request.headSha, [...(runs.get(request.headSha) ?? []), run]);
   return { id };
-}
-
-/** Like GitHub's list: rows carry no mergeable state or `behind`, so the ETag changes only with what a row shows. */
-function revalidateOpenPrs(fake: FakeGitHub, prs: Map<number, PullRequest>, etag: string | null): OpenPrList {
-  const rows = [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr, mergeableState: "unknown", behind: false }));
-  const current = etagOf(rows);
-  if (notModified(fake, etag, current)) return { notModified: true };
-  return { notModified: false, prs: rows, etag: current };
-}
-
-/** Like GitHub's 404 for a missing branch, a branch the fake lacks reads as a null sha with no ETag. */
-function revalidateRef(fake: FakeGitHub, branch: string, etag: string | null): RefRead {
-  const sha = fake.refs.get(branch);
-  if (sha === undefined) return { notModified: false, sha: null, etag: null };
-  const current = etagOf(sha);
-  if (notModified(fake, etag, current)) return { notModified: true };
-  return { notModified: false, sha, etag: current };
-}
-
-function revalidateRulesets(fake: FakeGitHub, etag: string | null): RulesetList {
-  if (fake.rulesetsFreePlan) return { notModified: false, unreadable: true };
-  const rulesets = Object.fromEntries(fake.rulesets);
-  const current = etagOf(rulesets);
-  if (notModified(fake, etag, current)) return { notModified: true };
-  return { notModified: false, unreadable: false, rulesets, etag: current };
-}
-
-const etagOf = (value: unknown): string => `W/"${createHash("sha1").update(JSON.stringify(value)).digest("hex")}"`;
-
-function notModified(fake: FakeGitHub, etag: string | null, current: string): boolean {
-  if (etag !== current) return false;
-  fake.notModified += 1;
-  return true;
 }
 
 function mustPr(prs: Map<number, PullRequest>, number: number): PullRequest {

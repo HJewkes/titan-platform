@@ -11,6 +11,8 @@ afterEach(cleanup);
 
 const COALESCE_MS = 40;
 
+const READS = ["work.portfolio", "agents.roster", "autoresearch.runs", "autoresearch.run"] as const;
+
 /** A daemon stand-in that counts calls per command and lets the test push relayed frames and stream status. */
 function countingSource(): { source: DataSource; calls: Map<string, number>; push(event: string): void; status(next: LiveStatus): void } {
   const calls = new Map<string, number>();
@@ -38,6 +40,8 @@ function Reads(): ReactNode {
   useRelayInvalidation(COALESCE_MS);
   useQuery("work.portfolio");
   useQuery("agents.roster");
+  useQuery("autoresearch.runs");
+  useQuery("autoresearch.run", { runId: "ar-0001" });
   return null;
 }
 
@@ -48,9 +52,11 @@ async function renderReads(): Promise<ReturnType<typeof countingSource>> {
       <Reads />
     </RpcProvider>,
   );
-  await waitFor(() => expect([fake.calls.get("work.portfolio"), fake.calls.get("agents.roster")]).toEqual([1, 1]));
+  await waitFor(() => expect(counts(fake.calls)).toEqual([1, 1, 1, 1]));
   return fake;
 }
+
+const counts = (calls: Map<string, number>): Array<number | undefined> => READS.map((name) => calls.get(name));
 
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -64,7 +70,19 @@ describe("useRelayInvalidation", () => {
     await waitFor(() => expect(calls.get("agents.roster")).toBe(2));
     await pause(COALESCE_MS * 3);
 
-    expect([calls.get("work.portfolio"), calls.get("agents.roster")]).toEqual([1, 2]);
+    expect(counts(calls)).toEqual([1, 2, 1, 1]);
+  });
+
+  it("coalesces a burst of factory frames into one refetch of only the autoresearch reads", async () => {
+    const { calls, push } = await renderReads();
+
+    act(() => {
+      for (let i = 0; i < 25; i++) push("factory");
+    });
+    await waitFor(() => expect(calls.get("autoresearch.run")).toBe(2));
+    await pause(COALESCE_MS * 3);
+
+    expect(counts(calls)).toEqual([1, 1, 2, 2]);
   });
 
   it("refetches once per window under a steady stream instead of waiting for it to stop", async () => {
@@ -89,6 +107,6 @@ describe("useRelayInvalidation", () => {
     act(() => status("connecting"));
     act(() => status("open"));
 
-    await waitFor(() => expect([calls.get("work.portfolio"), calls.get("agents.roster")]).toEqual([2, 2]));
+    await waitFor(() => expect(counts(calls)).toEqual([2, 2, 2, 2]));
   });
 });

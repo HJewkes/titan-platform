@@ -23,6 +23,7 @@ export const CLAUDE_CODE_PASSTHROUGH_VARS = [
   "CLAUDE_CODE_USE_VERTEX",
   "CLAUDE_CODE_USE_FOUNDRY",
   "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+  "CLAUDE_CODE_REMOTE",
 ] as const;
 
 /** Proxy settings leak from the parent shell and silently re-route the child's API traffic. */

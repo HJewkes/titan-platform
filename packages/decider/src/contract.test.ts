@@ -83,6 +83,70 @@ describe("validate", () => {
     expect(validate(replyWith({ optionIndex: null, answer: "Use a queue" }), INPUT).ok).toBe(true);
   });
 
+  // Catches: dropping applyUnlock from validate, or checking only the question.
+  it("forces escalation for a confident free-text answer that touches the unlock table", () => {
+    const reply = replyWith({ optionIndex: null, answer: "Delete the branch and force-push main", confidence: 0.99 });
+
+    const result = validate(reply, INPUT);
+
+    expect(result.ok && result.reply.escalate).toBe(true);
+    expect(result.ok && result.reply.escalateReason).toContain("unlock table (deletion)");
+  });
+
+  it.each([
+    ["merge", "Merge it now"],
+    ["publish or release", "Publish the package"],
+    ["deploy", "Deploy to staging"],
+    ["money", "Buy the larger plan"],
+    ["settings or policy edit", "Update settings.json"],
+  ])("forces escalation for a free-text answer touching %s", (row, answer) => {
+    const result = validate(replyWith({ optionIndex: null, answer }), INPUT);
+
+    expect(result.ok && result.reply.escalateReason).toContain(`(${row})`);
+  });
+
+  // Catches: passing reply.answer twice instead of input.question to checkUnlock.
+  it("forces escalation when the question itself touches the unlock table", () => {
+    const input = { ...INPUT, question: "Should this PR merge before the freeze?" };
+
+    const result = validate(replyWith({ optionIndex: null, answer: "Yes" }), input);
+
+    expect(result.ok && result.reply.escalate).toBe(true);
+  });
+
+  // Catches: treating a not_decidable category as a pass.
+  it("forces escalation for a category the decider may not answer", () => {
+    const result = validate(replyWith(), { ...INPUT, category: "merge_gate" });
+
+    expect(result.ok && result.reply.escalateReason).toContain('category "merge_gate"');
+  });
+
+  // Catches: escalating every free-text answer (an always-hit unlock check).
+  it("lets a benign free-text answer stand without escalation", () => {
+    const reply = replyWith({ optionIndex: null, answer: "Use a queue" });
+
+    expect(validate(reply, INPUT)).toEqual({ ok: true, reply });
+  });
+
+  // Catches: the unlock reason overwriting the threshold reason instead of appending.
+  it("keeps the threshold reason when the unlock table also forces escalation", () => {
+    const result = validate(replyWith({ optionIndex: null, answer: "Merge it", confidence: 0.5 }), INPUT);
+
+    expect(result.ok && result.reply.escalateReason).toMatch(/^confidence 0.5 .*; this touches the unlock table/);
+  });
+
+  // Catches: dropping answerMatchErrors, so an index can launder a different free-text answer.
+  it("rejects an answer that does not match the option at optionIndex", () => {
+    const result = validate(replyWith({ optionIndex: 0, answer: "Fixed interval" }), INPUT);
+
+    expect(result).toEqual({ ok: false, errors: [expect.stringContaining('does not match option 0 "Exponential backoff"')] });
+  });
+
+  // Catches: comparing against the wrong option (e.g. options[0] regardless of the index).
+  it("accepts an answer matching a later option at its index", () => {
+    expect(validate(replyWith({ optionIndex: 1, answer: "Fixed interval" }), INPUT).ok).toBe(true);
+  });
+
   it("returns errors instead of throwing for a malformed reply", () => {
     const result = validate({ answer: "yes", confidence: 2 }, INPUT);
 

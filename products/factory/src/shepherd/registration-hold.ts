@@ -1,7 +1,6 @@
 import { FileListTruncatedError, PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import { pathTouches } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
-import { SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
+import { shepherdPathTouches } from "./g10-class-rules.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
@@ -47,7 +46,7 @@ interface HoldFiles {
  */
 function signoffFactsOf(files: readonly PrFile[]): { touches: string[]; paths: string[] } {
   const paths = files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]));
-  return { touches: pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES), paths };
+  return { touches: shepherdPathTouches(paths), paths };
 }
 
 /** Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness reviewer instead. */
