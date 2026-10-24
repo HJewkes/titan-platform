@@ -5,6 +5,7 @@ import type * as childProcess from "node:child_process";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReviewTarget } from "@titan-design/review-panel";
+import { provablyIndependent } from "./lineage.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown } from "./review.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
@@ -136,6 +137,40 @@ describe("agentChatReviewerDispatch roster", () => {
       { name: "rv-demo-7", ...bare },
       { name: "rv-demo-8", ...bare },
     ]);
+  });
+
+  it.each([
+    ["names the agent it took over from", "rv-demo-6", { predecessor: "rv-demo-6" }],
+    ["says it took over from no one", null, { predecessor: null }],
+  ])("carries the predecessor of a row that %s", async (_scene, predecessor, expected) => {
+    const [found] = await rosterOf([{ ...row, predecessor }]);
+
+    expect(found).toMatchObject(expected);
+  });
+
+  it("reports no predecessor for a row that carries none, rather than claiming it took over from no one", async () => {
+    const roster = await rosterOf([row, { ...row, name: "rv-demo-8", predecessor: 7 }]);
+
+    expect(roster.map((agent) => "predecessor" in agent)).toEqual([false, false]);
+  });
+
+  describe("lineage proof over the roster it reads", () => {
+    const seat = (name: string, spawnedBy: string | null, over: Record<string, unknown>) => ({ ...row, name, agentId: `agent-${name}`, spawnedBy, ...over });
+    const crew = (over: Record<string, unknown>) => [seat("coord", null, over), seat("impl-a", "coord", over), seat("rv-demo-7", "coord", over)];
+
+    it("proves a reviewer independent when every row says it took over from no one", async () => {
+      const roster = await rosterOf(crew({ predecessor: null }));
+      const reviewer = roster.find((agent) => agent.name === "rv-demo-7");
+
+      expect(reviewer && provablyIndependent(reviewer, "impl-a", roster)).toBe(true);
+    });
+
+    it("cannot prove a reviewer independent from rows that carry no predecessor", async () => {
+      const roster = await rosterOf(crew({}));
+      const reviewer = roster.find((agent) => agent.name === "rv-demo-7");
+
+      expect(reviewer && provablyIndependent(reviewer, "impl-a", roster)).toBe(false);
+    });
   });
 
   it("reports no working directory for a row whose cwd is empty", async () => {
