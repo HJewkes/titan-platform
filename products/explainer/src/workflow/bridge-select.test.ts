@@ -30,7 +30,8 @@ function recordingCwds(exec: BridgeExec, cwds: string[]): BridgeExec {
 async function tts(fixture: Fixture) {
   const first = await runVideo({ spine: fixture.spine, facts: fixture.facts, to: "tts" }, fakeHost(fixture, fakeScriptModel(), fakeBridge()));
   const outputs = first.report.rows.find((row) => row.stage === "tts")?.outputs ?? {};
-  return { words: outputs.words!, audio: outputs.audio! };
+  const script = first.report.rows.find((row) => row.stage === "rewrite")?.outputs.script;
+  return { words: outputs.words!, audio: outputs.audio!, script: script! };
 }
 
 describe("a profile's named bridge", () => {

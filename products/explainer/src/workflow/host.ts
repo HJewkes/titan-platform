@@ -17,7 +17,8 @@ import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type R
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
-import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
+import type { MediaExec } from "./sheets-stage.js";
+import { STAGE_VERSIONS, stageSpec, VariantSchema, type VideoRef } from "./stage-spec.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
@@ -42,6 +43,8 @@ export interface RunHost {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The gather stage's outside world; tests pass a fake gh, task list, call graph and clone. */
   gather?: GatherDeps;
+  /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
+  media?: MediaExec;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -206,12 +209,28 @@ function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageNam
 const videoRuns = (runs: WorkflowRunStore): WorkflowRun[] =>
   runs.listByStatus(["running", "paused", "recovery_required", "completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
 
+const runsOfVideo = (runs: WorkflowRunStore, videoId: string): WorkflowRun[] =>
+  videoRuns(runs).filter((run) => videoIdOf(runs, run) === videoId).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+
+/** A video and every run of it, oldest first, as the sheets stage's sidecar lists them. */
+export function videoRef(runs: WorkflowRunStore, videoId: string): VideoRef {
+  const runIds = runsOfVideo(runs, videoId).map((run) => run.id);
+  if (runIds.length === 0) throw new Error(`no ${VIDEO_WORKFLOW} run belongs to video ${videoId}`);
+  return { id: videoId, runIds };
+}
+
+/** The video `runId` makes, with every run of it, the run itself included. */
+export function runVideoRef(runs: WorkflowRunStore, runId: string): VideoRef {
+  const run = runs.get(runId);
+  if (!run) throw new Error(`no ${VIDEO_WORKFLOW} run ${runId}`);
+  return videoRef(runs, videoIdOf(runs, run));
+}
+
 /** Every other run of the same video, oldest first: the video's cost is the sum over them (owner answer Q2 B). */
 function linkedRuns(dataDir: string, runs: WorkflowRunStore, run: WorkflowRun): { videoId: string; linked: LinkedRun[] } {
   const videoId = videoIdOf(runs, run);
-  const linked = videoRuns(runs)
-    .filter((other) => other.id !== run.id && videoIdOf(runs, other) === videoId)
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+  const linked = runsOfVideo(runs, videoId)
+    .filter((other) => other.id !== run.id)
     .map((other) => ({ runId: other.id, usd: ownUsd(allRecords(dataDir, other)) }));
   return { videoId, linked };
 }
@@ -264,9 +283,11 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
+    ...(host.media ? { media: host.media } : {}),
   });
   const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
-  const stage = { dataDir: host.dataDir, store, bridge, cache, now, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}) };
+  const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
+  const stage = { dataDir: host.dataDir, store, bridge, cache, now, video, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}) };
   const routes = plan ? [body, checks, stageRoute({ ...stage, plan })] : [body, checks];
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`]);
@@ -356,6 +377,8 @@ export interface StageRequest {
   judge?: JudgeConfig;
   rounds?: number;
   profile?: string;
+  /** The video whose runs the sheets stage's sidecar lists; absent, the child run alone. */
+  video?: string;
 }
 
 /** `explainer stage`: one stage as its own child run, through the stage cache, with no parent run. */
@@ -368,6 +391,7 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     const settings = {
       scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL, judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
       ...(request.profile ? { profile: request.profile } : {}),
+      ...(request.video ? { video: () => videoRef(new WorkflowRunStore(db), request.video!) } : {}),
     };
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,

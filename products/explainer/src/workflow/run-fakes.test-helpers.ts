@@ -14,6 +14,7 @@ import { sha256 } from "./artifacts.js";
 import { z } from "zod";
 import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
+import type { MediaExec } from "./sheets-stage.js";
 import type { TtsEngine } from "./tts-stage.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
@@ -59,11 +60,10 @@ const BRIDGE: Omit<z.input<typeof BridgeFileSchema>, "workdir" | "theater"> = {
       commands: [{ argv: ["node", "tools/render.ts", "{out.mp4}", "--workers", "{var.workers}"], timeoutS: 60 }],
       vars: { workers: "4" },
     },
-    qa: { inputs: { mp4: "out/demo.mp4" }, outputs: { qa: { path: "out/qa.json", tree: false } }, commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }], vars: {} },
-    sheets: {
+    qa: {
       inputs: { mp4: "out/demo.mp4" },
-      outputs: { sheet: { path: "out/sheet.png", tree: false } },
-      commands: [{ argv: ["sh", "tools/sheets.sh"], timeoutS: 60 }, { argv: ["node", "tools/variety.mjs"], timeoutS: 60, check: "variety", gate: false }],
+      outputs: { qa: { path: "out/qa.json", tree: false } },
+      commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }, { argv: ["node", "tools/variety.mjs"], timeoutS: 60, check: "variety", gate: false }],
       vars: {},
     },
   },
@@ -113,10 +113,6 @@ function templateBodies(options: BridgeOptions): Record<string, (req: ExecReques
       write(at(req, "out/qa.json"), JSON.stringify({ pass: !options.qaFails }));
       return options.qaFails ? { code: 1, stdout: "qa FAIL demo: 1 held errors\n" } : { code: 0, stdout: "qa PASS demo: 0 held errors, 2 moments\n" };
     },
-    "sheets.sh": (req) => {
-      write(at(req, "out/sheet.png"), `png:${sha256(readFileSync(at(req, "out/demo.mp4")))}`);
-      return { code: 0, stdout: "" };
-    },
     "variety.mjs": () => (options.varietyFails ? { code: 1, stdout: "variety WARN: 3 beats in a row share a framing\n" } : { code: 0, stdout: "variety ok\n" }),
   };
 }
@@ -132,6 +128,21 @@ export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
     return { code, stdout, stderr: code === 0 ? "" : "held errors at b1\n" };
   };
   return { exec, calls };
+}
+
+export const FAKE_DURATION_S = 200;
+
+/** ffprobe and ffmpeg on the fake render's text MP4: a fixed duration, and a "frame" naming its time and the video's hash. */
+export function fakeMedia(durationS = FAKE_DURATION_S): MediaExec & { frames: number[] } {
+  const frames: number[] = [];
+  return {
+    frames,
+    durationS: async () => durationS,
+    frame: async (mp4, atS, widthPx, out) => {
+      frames.push(atS);
+      write(out, `jpg:${widthPx}:${atS}:${sha256(readFileSync(mp4))}`);
+    },
+  };
 }
 
 export interface FakeScriptModel {
@@ -276,5 +287,5 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   let tick = Date.parse("2026-10-22T00:00:00Z");
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
-  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
+  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
 }
