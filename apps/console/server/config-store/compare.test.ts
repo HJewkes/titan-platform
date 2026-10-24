@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { invokeCommand } from "@titan-design/registry";
@@ -9,12 +9,16 @@ import { FIXTURE_LIMITS, copyFixtureTree, tempDir } from "./test-tree.js";
 
 const AT = new Date("2031-01-02T03:04:05.000Z");
 
-async function importedStore(): Promise<ConfigStoreSource & { autonomyTree: string }> {
-  const stateDir = tempDir("state");
+function writtenLimits(stateDir: string): string {
   const limitsFile = path.join(stateDir, "limits.json");
   writeFileSync(limitsFile, JSON.stringify(FIXTURE_LIMITS));
+  return limitsFile;
+}
+
+async function importedStore(): Promise<ConfigStoreSource & { autonomyTree: string }> {
+  const stateDir = tempDir("state");
   const source = { stateDir, autonomyTree: copyFixtureTree(), coordinatorFile: path.join(tempDir("cfg"), "titan-coordinator", "coordinator.json") };
-  await importRevisionZero(source, source.autonomyTree, limitsFile, AT);
+  await importRevisionZero(source, source.autonomyTree, writtenLimits(stateDir), AT);
   return source;
 }
 
@@ -68,6 +72,20 @@ describe("config import", () => {
     await expect(again).rejects.toThrow(/already has revisions/);
     const log = await readRevisionLog(revisionLogPath(source.stateDir));
     expect(log.state === "verified" && [log.revisions.length, log.head.by.class, log.head.at]).toEqual([1, "import", AT.toISOString()]);
+  });
+
+  it("writes rev 0 into a zero-byte revision log as one valid line (TP-3685)", async () => {
+    const stateDir = tempDir("state");
+    const logFile = revisionLogPath(stateDir);
+    mkdirSync(path.dirname(logFile), { recursive: true, mode: 0o700 });
+    writeFileSync(logFile, "", { mode: 0o600 });
+    const source = { stateDir, coordinatorFile: path.join(tempDir("cfg"), "titan-coordinator", "coordinator.json") };
+
+    await importRevisionZero(source, copyFixtureTree(), writtenLimits(stateDir), AT);
+
+    const log = await readRevisionLog(logFile);
+    expect(readFileSync(logFile, "utf8").split("\n")).toHaveLength(2);
+    expect(log.state === "verified" && [log.revisions.length, log.head.rev, log.head.by.class]).toEqual([1, 0, "import"]);
   });
 
   it("parses only the import and compare-tree verbs", () => {
