@@ -100,14 +100,17 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   return { reserved: true, ahead };
 }
 
-/** The PRs of the `ahead` runs still driving and not since held behind a live reservation, read again on every poll. */
+/**
+ * The PRs of the `ahead` runs still driving, still merging and not since held behind a live reservation, read again on
+ * every poll. A run that left its merge step unmerged (CI red, demoted, parked) is not waited on (TP-4103).
+ */
 async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: readonly string[], reservations: readonly Reservation[], rule: MergeOrderRule): Promise<number[]> {
   const runs = new Map(deps.order().driving().map((run) => [run.id, run]));
   const prs: number[] = [];
   for (const run of ahead.flatMap((runId) => runs.get(runId) ?? [])) {
     const pr = Number(run.params.pr);
     const headSha = stageOf(run)?.headSha;
-    if (headSha !== undefined && (await heldByOrder(deps, repo, run.id, peerPaths(deps.port, repo, pr, headSha), reservations, rule))) continue;
+    if (headSha === undefined || (await heldByOrder(deps, repo, run.id, peerPaths(deps.port, repo, pr, headSha), reservations, rule))) continue;
     prs.push(pr);
   }
   return prs;

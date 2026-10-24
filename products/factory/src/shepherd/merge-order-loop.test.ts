@@ -20,7 +20,8 @@ const Y = 2310;
 const Z = 2311;
 const CAPABILITY = "products/explainer/CAPABILITY.md";
 const FILES: Readonly<Record<number, string[]>> = { [X]: [CAPABILITY, "products/explainer/README.md"], [Y]: [CAPABILITY, "products/explainer/README.md"], [Z]: [CAPABILITY] };
-const ORDER = (enabled: boolean): MergeOrderRules => () => ({ enabled, ttlMinutes: 10_000, ignore: [".changeset/**"] });
+/** Out of reach of the fake clock, which every run's polls advance, so no wait here ends on the TTL. */
+const ORDER = (enabled: boolean): MergeOrderRules => () => ({ enabled, ttlMinutes: 1e9, ignore: [".changeset/**"] });
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const locator = partialFake<SourceTextLocator>({});
@@ -282,6 +283,25 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
     expect(loop.merged).toEqual([X, Y, Z]);
+  });
+
+  it("stops waiting on a run it let merge first once that run leaves its merge step unmerged", async () => {
+    const loop = loopWorld(true);
+    await afterY(loop);
+    const z = heldInMerge(loop, Z);
+    await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
+    shepherd(loop, X);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
+
+    const red = fakeSha("loop-z-red");
+    loop.fake.onGetPr = ((greenRuns) => (pr, reads) => (greenRuns(pr, reads), pr.headSha === red && loop.fake.setRuns(red, [successRun("validate", 3, undefined, "failure")])))(loop.fake.onGetPr!);
+    loop.fake.pushHead(Z, red);
+    await finish(loop, X);
+    loop.host.runtime.cancel(z, "ended in this test");
+
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
+    expect(loop.merged).toEqual([Y, X]);
   });
 
   it("releases the reservation when its run lands", async () => {
