@@ -124,6 +124,24 @@ describe("explainer run", () => {
     expect(draft.beats.flatMap((beat: { new_terms: string[] }) => beat.new_terms)).toContain("desk server");
   });
 
+  // Mutation: parsing the reply or building the prompt shape with ScriptSchema keeps the owner-only fields.
+  it("never shows the drafting model the owner's slot overrides, and drops them from its reply before resolve", async () => {
+    fx = fixture();
+    const script = choppy();
+    const ownerFields = { slots: { rows: [] }, tune: { pace: 2 } };
+    const withOverrides = { ...script, beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, visual: { ...beat.visual, ...ownerFields } } : beat)) };
+    const model = fakeScriptModel(script, { invalid: 1, invalidReply: withOverrides });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts[0]).not.toContain('"tune"');
+    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "11 pass, 0 gate fail, 1 reported fail" });
+    const resolveInput = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "rewrite").outputs.script!), "utf8"));
+    expect(resolveInput.beats[0].visual).not.toHaveProperty("slots");
+    expect(resolveInput.beats[0].visual).not.toHaveProperty("tune");
+  });
+
   it("names an unknown key in the schema retry when the reply has other faults too, and recovers there", async () => {
     fx = fixture();
     const script = choppy();
