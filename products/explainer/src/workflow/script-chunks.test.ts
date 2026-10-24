@@ -252,7 +252,7 @@ const isPatchAsk = (prompt: string): boolean => prompt.includes('"beats" lists e
 const chapterWideCheck: L0Check = ({ script }) => [row("Q-W10", [...new Set(script.beats.filter((beat) => beat.spoken.includes("STALL")).map((beat) => beat.chapter))])];
 
 describe("beat-level chapter repair", () => {
-  // Mutation: splicing the reply's beats in place of the whole chapter (dropping the unnamed ones) fails the byte check on ch3-b.
+  // Mutation: taking the patch as the whole chapter, not splicing it in place, loses ch3-b and ch3-c.
   it("asks only for the failing beat and splices the reply in place, every other beat byte-identical", async () => {
     const fixed = beatOf("ch3-a", "ch3", "The bench tests the wick first.");
     const model = fakeModel((prompt) => (taskChapter(prompt) !== "ch3" ? passingVideo(prompt) : isRepair(prompt) ? { beats: [fixed] } : brokenCh3()));
@@ -307,7 +307,7 @@ describe("beat-level chapter repair", () => {
     expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200, cache 20 read, 8 written; 2 -> 0 failing chapter checks");
   });
 
-  // Mutation: giving the single-call repair `retry: () => true` and the patch ask sends the short spine a patch prompt.
+  // Mutation: changing the repair prompt's default ask to a patch ask fails the whole-object match here.
   it("keeps the short-script single-call repair asking for and keeping the whole object", async () => {
     const broken = wholeReply({ spoken: "The BROKEN bench skips the wick." });
     const replies = [broken, wholeReply()];
