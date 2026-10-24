@@ -96,8 +96,8 @@ export const REPLY_RULES = `- Every cue's atCue word must be a word the beat spe
 - Cite only fact ids from the facts pack, and state no number the facts pack does not hold. Where the spine has a Cites table, a beat that names an item cites the fact ids that table lists for it.
 - Set "facts_pack" to "facts.md".`;
 
-export const retryPrompt = (prompt: string, error: string): string =>
-  `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
+export const retryPrompt = (prompt: string, error: string, reply = "Reply with the whole corrected object.\n"): string =>
+  `${prompt}\n## Your previous reply was rejected\n\n${error}\n\n${reply}`;
 
 export interface Checked {
   script?: ScriptV1;
@@ -241,17 +241,19 @@ export function failureList(rows: readonly L0Result[], rules: RuleRegistry, scri
   return rows.map((row) => `- ${row.check_id}: ${rule(row)} (${where(row)})${found(row)}`).join("\n");
 }
 
-export const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string =>
-  `${prompt}\n## Your draft\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\`\n\n## Checks the draft fails\n\n${failures}\n\nFix what these checks name and keep the rest. Reply with the whole corrected object.\n`;
+export const repairPrompt = (prompt: string, draft: ScriptV1, failures: string, reply = "Reply with the whole corrected object.\n"): string =>
+  `${prompt}\n## Your draft\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\`\n\n## Checks the draft fails\n\n${failures}\n\nFix what these checks name and keep the rest. ${reply}`;
 
 /** One repair loop: what it answers, how it asks, and how a reply becomes a measured candidate. */
 export interface Rounds {
   rounds: number;
   failing: (script: ScriptV1) => L0Result[];
   prompt: (script: ScriptV1, failing: readonly L0Result[]) => string;
-  read: (outcome: StepRunOutcome, current: ScriptV1) => Checked;
+  read: (outcome: StepRunOutcome, current: ScriptV1, failing: readonly L0Result[]) => Checked;
   /** Settles a parsed reply before it is measured: the ledger stamp. */
   settle: (script: ScriptV1) => Stamped;
+  /** When a round's rejected reply gets one retry naming why, inside the same round: the reply that retry asks for. */
+  retry?: (script: ScriptV1, failing: readonly L0Result[]) => string | undefined;
 }
 
 export interface Repaired {
@@ -265,7 +267,18 @@ export interface Repaired {
   dropped?: string[];
 }
 
-/** Up to `rounds` calls, each answering the current failing rows; a reply is kept only when it fails fewer. */
+/** One round's reply, and when `loop.retry` allows it and the reply is rejected, one retry naming the rejection. */
+async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: readonly L0Result[]): Promise<{ reply: Checked; usage: StageUsage }> {
+  const prompt = loop.prompt(script, failing);
+  const outcome = await call(prompt);
+  const reply = loop.read(outcome, script, failing);
+  const ask = reply.script ? undefined : loop.retry?.(script, failing);
+  if (ask === undefined) return { reply, usage: stageUsage(outcome.usage) };
+  const again = await call(retryPrompt(prompt, reply.error ?? "", ask));
+  return { reply: loop.read(again, script, failing), usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)) };
+}
+
+/** Up to `rounds` rounds, each answering the current failing rows; a reply is kept only when it fails fewer. */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
   let { script, stamps } = start;
   let failing = loop.failing(script);
@@ -273,9 +286,8 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   let usage = NO_USAGE;
   let kept: Pick<Repaired, "stripped" | "dropped"> = {};
   for (let round = 0; round < loop.rounds && failing.length > 0; round++) {
-    const outcome = await call(loop.prompt(script, failing));
-    usage = addUsage(usage, stageUsage(outcome.usage));
-    const reply = loop.read(outcome, script);
+    const { reply, usage: spent } = await roundReply(call, loop, script, failing);
+    usage = addUsage(usage, spent);
     const next = reply.script && loop.settle(reply.script);
     const after = next ? loop.failing(next.script) : failing;
     if (next && after.length < failing.length) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];

@@ -10,6 +10,7 @@ import {
   checkedObject, draftScript, factsSection, failingErrors, failureList, REPLY_RULES, repairPrompt, repairRounds, stageUsage,
   type Call, type Checked, type Lint, type Reader, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
+import { patchTargets, patchTask, splicePatch } from "./chapter-patch.js";
 import { factPlaces, factsSlice, type FactPlaces } from "./script-facts.js";
 import { replyObject } from "./script-reply.js";
 import { StageFailure } from "./stage-failure.js";
@@ -128,8 +129,18 @@ function partFault(part: ScriptV1, id: string, joined: Joined | undefined): stri
 /** A chapter reply as a one-chapter script, checked like a whole one against that chapter's lead beat. */
 function chapterReply(outcome: StepRunOutcome, id: string, joined: Joined | undefined, plan: ScriptPlan): Checked {
   const read = readRecord(outcome);
+  return "error" in read ? read : chapterObject(read.raw, id, joined, plan);
+}
+
+/** A repair round's patch reply, spliced into the chapter it repairs and then checked like a whole chapter reply. */
+function patchReply(outcome: StepRunOutcome, chapter: ScriptV1, targets: readonly string[], joined: Joined | undefined, plan: ScriptPlan): Checked {
+  const read = readRecord(outcome);
   if ("error" in read) return read;
-  const { raw } = read;
+  const spliced = splicePatch(read.raw, chapter, targets);
+  return "error" in spliced ? spliced : chapterObject(spliced.raw, chapter.chapters[0]!.id, joined, plan);
+}
+
+function chapterObject(raw: Record<string, unknown>, id: string, joined: Joined | undefined, plan: ScriptPlan): Checked {
   if (joined) raw.video = sharedVideo(joined.header.video, raw.video);
   const refs = takeRefs(raw);
   const result = checkedObject(raw, { ...plan, leads: plan.leads.filter((lead) => lead.chapter === id) });
@@ -221,10 +232,23 @@ async function repairChapter(ctx: Chunk, prompt: string, joined: Joined | undefi
   return repairRounds(ctx.call, { script: part, stamps: [] }, {
     rounds: CHAPTER_REPAIR_ROUNDS,
     failing: (candidate) => chapterRows(ctx.lint.rows(lintScript(candidate)), scoped, lintScript(candidate), id),
-    prompt: (candidate, rows) => repairPrompt(prompt, candidate, failureList(rows, shippedRuleRegistry(), lintScript(candidate), ctx.lint)),
-    read: (outcome) => chapterReply(outcome, id, joined, ctx.plan),
+    prompt: (candidate, rows) => chapterRepairPrompt(prompt, candidate, rows, failureList(rows, shippedRuleRegistry(), lintScript(candidate), ctx.lint)),
+    read: (outcome, current, rows) => {
+      const targets = patchTargets(rows, current);
+      return targets ? patchReply(outcome, current, targets, joined, ctx.plan) : chapterReply(outcome, id, joined, ctx.plan);
+    },
     settle: (script) => ({ script, stamps: [] }),
+    retry: (current, rows) => {
+      const targets = patchTargets(rows, current);
+      return targets && patchTask(targets);
+    },
   });
+}
+
+/** The repair prompt shows the whole chapter; its reply re-emits only the named beats, or the chapter when a row names no beat. */
+function chapterRepairPrompt(prompt: string, chapter: ScriptV1, rows: readonly L0Result[], failures: string): string {
+  const targets = patchTargets(rows, chapter);
+  return targets ? repairPrompt(prompt, chapter, failures, patchTask(targets)) : repairPrompt(prompt, chapter, failures);
 }
 
 /** One chapter: its draft call and one retry, then its repair rounds on the chapter-scoped rules. */

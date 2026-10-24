@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { L0Check, L0Result } from "../eval-l0.js";
 import { chapterScopedChecks, shippedRuleRegistry } from "../rules.js";
 import { parseSpine } from "../spine-schema.js";
-import { BEAT_FUNCTIONS, CHIP_KINDS, ScriptSchema } from "../script-schema.js";
+import { BEAT_FUNCTIONS, CHIP_KINDS, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { runScriptStage, StageFailure, type ModelStageInput } from "./model-stages.js";
 import { CHUNK_OVER_CHAPTERS, isChunked } from "./script-chunks.js";
 import { SPINE } from "./run-fakes.test-helpers.js";
@@ -141,7 +141,7 @@ describe("chunked script drafting", () => {
   it("repairs a chapter-local failure in that chapter's own call and leaves every other chapter as drafted", async () => {
     const model = fakeModel((prompt) => {
       const chapter = taskChapter(prompt);
-      if (chapter === "ch3" && !isRepair(prompt)) return chapterReply("ch3", "The BROKEN bench skips the wick.");
+      if (chapter === "ch3") return isRepair(prompt) ? { beats: [beatOf("ch3-a", "ch3", "The bench tests the wick first.")] } : chapterReply("ch3", "The BROKEN bench skips the wick.");
       return chapter === "ch1" ? chapterReply("ch1", "The lantern bench tests the wick.") : chapterReply(chapter);
     });
 
@@ -236,6 +236,93 @@ describe("chunked script drafting", () => {
     expect(byChapter.get("ch3")).toEqual(["F1", "F3"]);
     expect(byChapter.get("ch5")).toEqual(["F1"]);
     expect(byChapter.get("none")).toEqual(["F1", "F2", "F3"]);
+  });
+});
+
+/** ch3's draft: its first beat fails Q-E4, its second carries a chip and a glossary-free name to prove it is left alone. */
+function brokenCh3(): Record<string, unknown> {
+  const second = { ...beatOf("ch3-b", "ch3", "So the lamp lights only when it is safe."), plannedS: 11, visual: { assertion: "The lamp waits", job: "numbers", chips: [chip("verified", "Bench log")] } };
+  return { ...chapterReply("ch3"), beats: [beatOf("ch3-a", "ch3", "The BROKEN bench skips the wick."), second, beatOf("ch3-c", "ch3", "Then the glass goes on.")] };
+}
+
+/** The script/v1 JSON of the draft a repair prompt shows. */
+const draftIn = (prompt: string): ScriptV1 => ScriptSchema.parse(JSON.parse(/## Your draft\n\n```json\n(.*)\n```/.exec(prompt)![1]!));
+const isPatchAsk = (prompt: string): boolean => prompt.includes('"beats" lists exactly the beats');
+/** Q-W10 names a chapter, not a beat: here every chapter one of whose beats speaks "STALL". */
+const chapterWideCheck: L0Check = ({ script }) => [row("Q-W10", [...new Set(script.beats.filter((beat) => beat.spoken.includes("STALL")).map((beat) => beat.chapter))])];
+
+describe("beat-level chapter repair", () => {
+  // Mutation: taking the patch as the whole chapter, not splicing it in place, loses ch3-b and ch3-c.
+  it("asks only for the failing beat and splices the reply in place, every other beat byte-identical", async () => {
+    const fixed = beatOf("ch3-a", "ch3", "The bench tests the wick first.");
+    const model = fakeModel((prompt) => (taskChapter(prompt) !== "ch3" ? passingVideo(prompt) : isRepair(prompt) ? { beats: [fixed] } : brokenCh3()));
+
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    const repair = model.prompts.find(isRepair)!;
+    expect(repair).toContain('"beats" lists exactly the beats ch3-a, in that order');
+    expect(repair).not.toContain("Reply with the whole corrected object.");
+    const drafted = draftIn(repair).beats;
+    const ch3 = script.beats.filter((beat) => beat.chapter === "ch3");
+    expect(ch3.map((beat) => beat.id)).toEqual(["ch3-a", "ch3-b", "ch3-c"]);
+    expect(ch3[0]!.spoken).toBe("The bench tests the wick first.");
+    expect(ch3.slice(1).map((beat) => JSON.stringify(beat))).toEqual(drafted.slice(1).map((beat) => JSON.stringify(beat)));
+    expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200, cache 20 read, 8 written; 1 -> 0 failing chapter checks");
+  });
+
+  // Mutation: returning undefined from `idFault` merges the extra ch3-b (or the empty patch) and the chapter reads 1 -> 0.
+  it.each([
+    ["adds a beat id", { beats: [beatOf("ch3-a", "ch3", "The bench tests the wick first."), beatOf("ch3-b", "ch3", "A new second beat.")] }, "names beats it was not asked for: ch3-b"],
+    ["drops the asked beat id", { beats: [] }, "leaves out ch3-a"],
+  ])("rejects and retries a patch that %s, never merging it", async (_case, patch, why) => {
+    const model = fakeModel((prompt) => (taskChapter(prompt) !== "ch3" ? passingVideo(prompt) : isRepair(prompt) ? patch : brokenCh3()));
+
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    const ch3Calls = model.prompts.filter((prompt) => taskChapter(prompt) === "ch3");
+    expect(ch3Calls.filter((prompt) => prompt.includes("## Your previous reply was rejected"))).toHaveLength(2);
+    const retry = ch3Calls.find((prompt) => prompt.includes("## Your previous reply was rejected"))!;
+    expect(retry).toContain(why);
+    expect(retry.slice(retry.indexOf("## Your previous reply was rejected"))).toContain('"beats" lists exactly the beats ch3-a, in that order');
+    expect(retry).not.toContain("Reply with the whole corrected object.");
+    expect(script.beats.filter((beat) => beat.chapter === "ch3").map((beat) => [beat.id, beat.spoken])).toEqual([
+      ["ch3-a", "The BROKEN bench skips the wick."],
+      ["ch3-b", "So the lamp lights only when it is safe."],
+      ["ch3-c", "Then the glass goes on."],
+    ]);
+    expect(outcome.notes).toContain("chapter ch3: 5 call(s), $0.0500, cache 50 read, 20 written; 1 -> 1 failing chapter checks");
+  });
+
+  it("falls back to the whole chapter when a failing row names the chapter rather than a beat", async () => {
+    const model = fakeModel((prompt) => {
+      if (taskChapter(prompt) !== "ch3") return passingVideo(prompt);
+      return isRepair(prompt) ? chapterReply("ch3", "The bench tests the wick first.") : chapterReply("ch3", "The STALL bench is BROKEN.");
+    });
+
+    const { script, outcome } = await runStage(spineOf(LONG), model, [...markerChecks, chapterWideCheck]);
+
+    const repairs = model.prompts.filter(isRepair);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0]).toContain("beats: ch3;");
+    expect(repairs[0]).toContain("Reply with the whole corrected object.");
+    expect(isPatchAsk(repairs[0]!)).toBe(false);
+    expect(script.beats.find((beat) => beat.id === "ch3-a")?.spoken).toBe("The bench tests the wick first.");
+    expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200, cache 20 read, 8 written; 2 -> 0 failing chapter checks");
+  });
+
+  // Mutation: changing the repair prompt's default ask to a patch ask fails the whole-object match here.
+  it("keeps the short-script single-call repair asking for and keeping the whole object", async () => {
+    const broken = wholeReply({ spoken: "The BROKEN bench skips the wick." });
+    const replies = [broken, wholeReply()];
+    const model = fakeModel(() => replies.shift() ?? wholeReply());
+
+    const { script } = await runStage(spineOf(4), model, [markerChecks[0]!]);
+
+    const repairs = model.prompts.filter(isRepair);
+    expect(repairs).toHaveLength(1);
+    expect(repairs[0]).toMatch(/Fix what these checks name and keep the rest\. Reply with the whole corrected object\.\n$/);
+    expect(isPatchAsk(repairs[0]!)).toBe(false);
+    expect(script.beats.map((beat) => beat.spoken)).toEqual(chapterIds(4).map(() => "The bench tests the wick first."));
   });
 });
 

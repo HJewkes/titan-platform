@@ -251,7 +251,12 @@ written so far (the video fields, the glossary, the names declared in `new_terms
 last beat), and that chapter's task. The whole-video round gets the whole facts pack, and L0 always reads all of it.
 The first chapter writes the video fields; a later one adds only glossary entries. Each chapter gets one schema or
 word-budget retry and up to `CHAPTER_REPAIR_ROUNDS` repair calls on the rules `rules.yaml` marks `scope: chapter`,
-measured on the chapters so far with the unwritten ones as bare entries. The chapters then join in the spine's order,
+measured on the chapters so far with the unwritten ones as bare entries. A repair round shows the whole chapter but
+asks back only the beats its failing rows name (`chapter-patch.ts`), keyed by beat id; they are spliced in place, ids
+and order kept, and the chapter's rules run again on the spliced chapter. A reply naming any other set of beats is
+rejected and retried once in the same round, never merged. A round with a row that names the chapter rather than a beat
+(Q-W3, Q-W4 or Q-W6 when the chapter lacks the beat they read, Q-W10, Q-V4 on a "Chapter ..." label) asks back the
+whole chapter as before. The chapters then join in the spine's order,
 the ledger stamp runs, and the whole script gets one repair round (`VIDEO_REPAIR_ROUNDS`) whose reply lists only the beats
 and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `unknown-words`, `word-budget`, `runtime`)
 run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
