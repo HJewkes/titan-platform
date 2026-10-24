@@ -19,6 +19,7 @@ let merged: { code: number; stdout: string };
 const run: PlannerRun = async (file, args, options) => {
   calls.push({ file, args, options });
   if (file === "gh") return { ...merged, stderr: merged.code === 0 ? "" : "gh: rate limited" };
+  if (args[1] === "spawn") writeFileSync(join(dir, "reviews", `review-${spawns().length}.md`), "# Review\n");
   return { code: 0, stdout: "", stderr: "" };
 };
 
@@ -36,6 +37,7 @@ function writeConfig(extra: Record<string, unknown> = {}, inputs: unknown[] = []
     JSON.stringify({
       cwd: dir,
       brief: join(dir, "brief.md"),
+      reviewDir: join(dir, "reviews"),
       inputs: [
         { name: "plan", file: join(dir, "plan.md"), selfWritten: true, dropSections: ["Revision log"] },
         { name: "decisions", file: join(dir, "decisions.md") },
@@ -50,8 +52,9 @@ function writeConfig(extra: Record<string, unknown> = {}, inputs: unknown[] = []
 
 async function wake(config: string, ...flags: string[]): Promise<{ code: number; out: string }> {
   let out = "";
-  const io: CliIo = { stdout: (text) => void (out += text), stderr: (text) => void (out += text), env: { XDG_STATE_HOME: join(dir, "state") } };
-  const code = await runCli(["planner", "wake", "--config", config, ...flags], io, { workflows: factoryWorkflows, routes: [], planner: { run, now: () => new Date("2026-01-02T03:00:00Z") } });
+  const io: CliIo = { stdout: (text) => void (out += text), stderr: (text) => void (out += text), env: { XDG_STATE_HOME: join(dir, "state"), TITAN_CONSOLE_INBOX_DIR: join(dir, "inbox") } };
+  const planner = { run, now: () => new Date("2026-01-02T03:00:00Z"), sleep: async () => {} };
+  const code = await runCli(["planner", "wake", "--config", config, ...flags], io, { workflows: factoryWorkflows, routes: [], planner });
   return { code, out };
 }
 
@@ -60,6 +63,7 @@ beforeEach(() => {
   calls = [];
   merged = { code: 0, stdout: "101 abc123 2026-01-01T10:00:00Z\n" };
   mkdirSync(join(dir, "tasks"));
+  mkdirSync(join(dir, "reviews"));
   fixture("brief.md", "You are the planner.\n");
   fixture("plan.md", "# Plan\n\n## 2. Priority order\n\n1. Ship the widget.\n\n## Revision log\n\n- 2026-01-01 00:00 review\n");
   fixture("decisions.md", "1. Owner 2026-01-01: ship the widget.\n");

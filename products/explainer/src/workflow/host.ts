@@ -4,6 +4,7 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
+import type { BeatWorker } from "../build/beat-worker.js";
 import type { L0Check } from "../eval-l0.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
@@ -15,12 +16,12 @@ import { stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type
 import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
-import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
+import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
 import type { MediaExec } from "./sheets-stage.js";
-import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
+import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
 import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
-import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
+import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
 
@@ -46,6 +47,8 @@ export interface RunHost {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
   media?: MediaExec;
+  /** Builds the resolve stage's custom layers; absent, custom beats are left unbuilt with a note. */
+  beatWorker?: BeatWorker;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -133,17 +136,6 @@ function reusedFromBase(base: WorkflowRun, from: StageName): { reused: StageReco
   const ran = reused.filter((record) => !record.reusedFrom);
   const artifacts = ran.reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...planOf(base).artifacts });
   return { reused, artifacts };
-}
-
-/** Each variant file is stored as an artifact, so the plan (and the stage key) holds its sha, not a path. */
-function storeVariants(request: RunRequest, store: ArtifactStore): RunPlan["variants"] {
-  const stored: RunPlan["variants"] = { ...request.variantShas };
-  for (const [stage, file] of Object.entries(request.variants ?? {})) {
-    const variant = VariantSchema.parse(JSON.parse(readFileSync(file, "utf8")));
-    if (variant.stage !== stage) throw new Error(`variant file ${path.basename(file)} is for stage ${variant.stage}, not ${stage}`);
-    stored[stage as StageName] = store.putText(readFileSync(file, "utf8"), "variant", { runId: "input", stage: "variant" });
-  }
-  return stored;
 }
 
 function checkPins(pins: Record<string, string>, store: ArtifactStore): Record<string, string> {
@@ -251,18 +243,21 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
-  const body = bodyRoute({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now,
+  const children = childRoutes({
+    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(host.beatWorker ? { worker: host.beatWorker } : {}),
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
     ...(host.media ? { media: host.media } : {}),
   });
-  const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
+  const builder = host.beatWorker ? { builder: host.beatWorker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
-  const stage = { dataDir: host.dataDir, store, bridge, cache, now, video, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}) };
-  const routes = plan ? [body, checks, stageRoute({ ...stage, plan })] : [body, checks];
+  const stage = {
+    dataDir: host.dataDir, store, bridge, cache, now, video, ...builder,
+    ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
+  };
+  const routes = plan ? [...children, stageRoute({ ...stage, plan })] : children;
   const runner = routedRunner(routes);
-  for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`]);
+  for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), childStepIds(stage));
   if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
   const gates = new SqliteGateStore(db, { migrate: false });
   const runtime = new WorkflowRuntime({ db, gates, runner, leaseMs: host.leaseMs ?? DEFAULT_LEASE_MS, ...(host.onEvent ? { onEvent: host.onEvent } : {}) });
@@ -368,6 +363,7 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,
       remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}),
+      ...(host.beatWorker ? { builder: host.beatWorker.builder } : {}),
       ...(variantSha ? { variant: { sha: variantSha, value: VariantSchema.parse(JSON.parse(rt.store.readText(variantSha))) } } : {}),
     });
     return await runStageCached(rt.cache, spec);

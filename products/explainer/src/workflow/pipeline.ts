@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, unlinkSync } from "node:
 import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
+import type { BuilderRef } from "../build/beat-worker.js";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { exportReflection, type ReflectionConfig } from "../reflection-export.js";
 import { parseScript } from "../script-load.js";
@@ -98,6 +99,8 @@ export interface StageDeps {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The video a parent run makes, with its runs, for the sheets stage's sidecar. */
   video?: (runId: string) => VideoRef;
+  /** The resolve stage's custom-layer builder, which goes into its key. */
+  builder?: BuilderRef;
   /** Where the script's reflection chapter lands once export has run; absent means it lands nowhere. */
   reflection?: ReflectionConfig;
   now?: () => Date;
@@ -166,6 +169,7 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date, run
   const spec = stageSpec({
     stage, artifacts: input.artifacts, settings: { ...deps.plan, ...(deps.video ? { video: () => deps.video!(runId) } : {}) }, sample: deps.plan.samples[stage] ?? 0,
     remainingUsd: input.remainingUsd, bridge: deps.bridge, ...(variant ? { variant } : {}), ...(deps.stylePacks ? { stylePacks: deps.stylePacks } : {}),
+    ...(deps.builder ? { builder: deps.builder } : {}),
   });
   return runStageCached(deps.cache, spec);
 }

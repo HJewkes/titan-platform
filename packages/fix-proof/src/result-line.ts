@@ -19,7 +19,10 @@ export interface FixProofResult {
   /** True when format dropped entries to fit the 4 KB line. */
   truncated: boolean;
   error?: string;
-  /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+  /**
+   * The mutation check, present for a diff of test material alone that adds or changes a mutation spec, and as an error
+   * beside an `error` verdict for a source diff whose spec has a kill naming no test at head.
+   */
   mutants?: MutantsResult;
 }
 

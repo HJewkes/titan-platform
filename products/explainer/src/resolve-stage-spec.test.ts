@@ -9,7 +9,7 @@ describe("resolve stage spec", () => {
   const spec = (artifacts: Record<string, string>) => stageSpec({ stage: "resolve", artifacts, settings, sample: 0, remainingUsd: 1, bridge: () => { throw new Error("no bridge"); } });
 
   it("keys on the script, on the doctrine, and on a code artifact only when the run has one", () => {
-    const bare = spec({ script: "a".repeat(64), facts: "f".repeat(64) });
+    const bare = spec({ script: "a".repeat(64), draft: "d".repeat(64) });
     const withCode = spec({ script: "a".repeat(64), code: "c".repeat(64) });
 
     expect(bare.inputs).toEqual({ script: "a".repeat(64) });
@@ -28,6 +28,16 @@ describe("resolve stage spec", () => {
 
     expect(linked.inputs).toEqual({ script: "a".repeat(64), "chapter-links": "l".repeat(64) });
     expect(linked.key).not.toBe(bare.key);
+  });
+
+  it("keys on the facts and on a pinned custom-layers tree, which its custom-layer packets and builds read", () => {
+    const bare = spec({ script: "a".repeat(64) });
+    const withFacts = spec({ script: "a".repeat(64), facts: "f".repeat(64) });
+    const pinned = spec({ script: "a".repeat(64), "custom-layers": "t".repeat(64) });
+
+    expect(withFacts.inputs).toEqual({ script: "a".repeat(64), facts: "f".repeat(64) });
+    expect(withFacts.key).not.toBe(bare.key);
+    expect(pinned.key).not.toBe(bare.key);
   });
 
   it("fails before the stage starts when no script exists", () => {
