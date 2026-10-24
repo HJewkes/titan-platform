@@ -1,4 +1,5 @@
 import { build, type Plugin } from "esbuild";
+import { z } from "zod";
 
 /** The only modules a custom layer may import: React and the react-ui motion primitives the page provides. */
 export const LAYER_IMPORT_ALLOWLIST: readonly string[] = ["react", "react/jsx-runtime", "@titan-design/react-ui/motion"];
@@ -30,8 +31,12 @@ export async function compileLayer(module: string, allowed: readonly string[] = 
   }
 }
 
+const BuildFailureSchema = z.object({
+  errors: z.array(z.object({ text: z.string(), location: z.object({ line: z.number(), column: z.number() }).nullish() })).min(1),
+});
+
 function compileError(error: unknown): string {
-  const errors = (error as { errors?: { text: string; location?: { line: number; column: number } | null }[] }).errors;
-  if (!errors?.length) return error instanceof Error ? error.message : String(error);
-  return errors.map(({ text, location }) => (location ? `layer.tsx:${location.line}:${location.column}: ${text}` : text)).join("; ");
+  const failure = BuildFailureSchema.safeParse(error);
+  if (!failure.success) return error instanceof Error ? error.message : String(error);
+  return failure.data.errors.map(({ text, location }) => (location ? `layer.tsx:${location.line}:${location.column}: ${text}` : text)).join("; ");
 }

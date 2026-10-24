@@ -1,17 +1,18 @@
 import { readFileSync } from "node:fs";
-import type { AgentRunConfig, AgentRunResult, AgentUsage, runAgent } from "@titan-design/agent";
+import type { AgentFailure, AgentInit, AgentRunConfig, AgentRunResult, AgentUsage, runAgent } from "@titan-design/agent";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { loadDoctrine } from "../doctrine-load.js";
 import { findPromptLeaks } from "../doctrine-slice.js";
 import { loadRuleRegistry } from "../rules.js";
 import type { BeatWorker } from "./beat-worker.js";
 import { beatWorkerFor, claudePrintWorker, CUSTOM_LAYER_PROMPT, LayerOutputSchema, type LayerOutput } from "./claude-print-worker.js";
-import type { BuiltLayerPacket } from "./layer-packet.js";
+import type { BuiltLayerPacket, LayerPacket } from "./layer-packet.js";
 
 // Synthetic: an invented parcel desk packet, a fake runAgent and a made-up session id; no live model call.
 const BASE = "You build one custom layer for one beat of a parcel-desk explainer.";
 const PACKET_JSON = `${JSON.stringify({ beat_id: "b1", spoken: "The desk holds each scan." })}\n`;
-const PACKET = { packet: { beat_id: "b1" }, json: PACKET_JSON, bytes: PACKET_JSON.length } as unknown as BuiltLayerPacket;
+const PACKET: BuiltLayerPacket = { packet: partialFake<LayerPacket>({ beat_id: "b1" }), json: PACKET_JSON, bytes: PACKET_JSON.length };
 const OUTPUT: LayerOutput = { module: `export default function Layer() {\n  return <div id="desk-card" />;\n}\n`, anchors: ["B2:E5"], elements: ["desk-card"] };
 const AT = new Date("2026-10-24T00:00:00Z");
 
@@ -22,22 +23,24 @@ const modelUsage = (model: string, tokens: { input: number; output: number; cach
   },
 });
 
-/** A runAgent that records each config and answers with `result`. */
-function fakeRunAgent(result: AgentRunResult<LayerOutput>) {
-  const configs: AgentRunConfig<LayerOutput>[] = [];
-  const run = (async (config: AgentRunConfig<LayerOutput>) => {
+type Reply = { modelUsage: AgentUsage["modelUsage"] } | { failure: AgentFailure };
+
+/** A runAgent that records each config and answers `OUTPUT` with a reported total cost of $9.99, or fails. */
+function fakeRunAgent(reply: Reply) {
+  const configs: AgentRunConfig<unknown>[] = [];
+  const run: typeof runAgent = async <T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
     configs.push(config);
-    return result;
-  }) as typeof runAgent;
+    if ("failure" in reply) return { ok: false, failure: reply.failure };
+    const usage = { totalCostUsd: 9.99, modelUsage: reply.modelUsage, turns: 1, durationMs: 10 };
+    return { ok: true, output: config.outputSchema!.parse(OUTPUT), sessionId: "session-fake-1", init: partialFake<AgentInit>(), usage };
+  };
   return { configs, run };
 }
 
-const succeeded = (usage: AgentUsage["modelUsage"]): AgentRunResult<LayerOutput> => ({
-  ok: true, output: OUTPUT, sessionId: "session-fake-1", init: {} as never, usage: { totalCostUsd: 9.99, modelUsage: usage, turns: 1, durationMs: 10 },
-});
+const succeeded = (modelUsage: AgentUsage["modelUsage"]): Reply => ({ modelUsage });
 
-const worker = (result: AgentRunResult<LayerOutput>) => {
-  const fake = fakeRunAgent(result);
+const worker = (reply: Reply) => {
+  const fake = fakeRunAgent(reply);
   return { ...fake, worker: claudePrintWorker({ runAgent: fake.run, basePrompt: BASE, cwd: "/tmp", now: () => AT }) };
 };
 
@@ -89,7 +92,7 @@ describe("claudePrintWorker", () => {
   });
 
   it("throws naming the beat and the failure when the call fails", async () => {
-    const { worker: claude } = worker({ ok: false, failure: { kind: "schema_invalid", reason: "structured output did not match" } as never });
+    const { worker: claude } = worker({ failure: partialFake<AgentFailure>({ kind: "schema_invalid", reason: "structured output did not match" }) });
 
     await expect(claude.build(PACKET, {})).rejects.toThrow("b1: claude-print schema_invalid: structured output did not match");
   });

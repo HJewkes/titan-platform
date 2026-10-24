@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { resolveClaudeBin, runAgent, type AgentUsage } from "@titan-design/agent";
 import { priceRequest } from "@titan-design/agent-protocol/pricing";
-import { z } from "zod";
+import type { z } from "zod";
 import { DEFAULT_DOCTRINE_DIR } from "../doctrine-load.js";
 import { sha256 } from "../workflow/artifacts.js";
 import type { StageUsage } from "../workflow/records.js";
