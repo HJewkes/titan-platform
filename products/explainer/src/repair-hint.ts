@@ -1,10 +1,11 @@
 import type { L0Result } from "./eval-l0.js";
 import type { GatheredFact } from "./lint-claims.js";
+import type { CoverageManifest } from "./lint-coverage.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
 
 /** What a failing L0 row found, in words a script repair can act on; undefined when the row alone says enough. */
-export type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], spine?: SpineV1) => string | undefined;
+export type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], spine?: SpineV1, coverage?: CoverageManifest) => string | undefined;
 
 export const percent = (share: number): string => `${Math.round(share * 100)} %`;
 export const listed = (ids: readonly string[]): string => (ids.length ? ids.join(", ") : "none");

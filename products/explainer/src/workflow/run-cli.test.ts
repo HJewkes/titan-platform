@@ -119,10 +119,12 @@ describe("explainer stage and run variants CLI", () => {
   });
 });
 
+const GOAL_WALK_BLOCKS = ["bottom-line", "goals", "lanes", "ships", "side-quests", "stats", "reflection", "ask"];
+
 /** choppy()'s beats spread in order over goal-walk's eight chapters, so each chapter has a first beat to carry its lead. */
 function overGoalWalk(): ScriptV1 {
   const script = choppy();
-  const chapters = Array.from({ length: 8 }, (_, i) => ({ id: `ch${i + 1}`, label: `ch${i + 1} · Lane ${i + 1}?`, question: `Lane ${i + 1}?` }));
+  const chapters = GOAL_WALK_BLOCKS.map((id, i) => ({ id, label: `${id} · Lane ${i + 1}?`, question: `Lane ${i + 1}?` }));
   const beats = script.beats.map((beat, i) => ({ ...beat, chapter: chapters[Math.floor((i * chapters.length) / script.beats.length)]!.id }));
   return { ...script, chapters, beats };
 }
@@ -146,5 +148,21 @@ describe("explainer run --from gather --type daily-overview", () => {
     const row = (stage: string) => report.rows.find((r) => r.stage === stage)!;
     expect(row("audition").outputs.spine).toBeDefined();
     expect(row("script").outputs.draft).toBeDefined();
+  });
+
+  // Mutation: dropping the gather's coverage output leaves the script prompt without the lanes it must name or count.
+  it("hands the script the gather's coverage manifest as a prompt section", async () => {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks() };
+    const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
+    const writer = fakeScriptModel(overGoalWalk(), { followLeads: true });
+
+    await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
+      host: fakeHost(fx, fakeBriefModels(writer), fakeBridge()), gather, out: () => undefined, err: () => undefined,
+    });
+
+    expect(writer.prompts[0]).toContain("## Coverage (coverage.json)");
+    expect(writer.prompts[0]).toMatch(/^- .+ merged, counted by lane\/[a-z-]+\/rollup; name: /m);
   });
 });

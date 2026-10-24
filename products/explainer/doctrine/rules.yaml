@@ -530,3 +530,17 @@ rules:
     owner_support: for
     note: "A count passes when a cited fact holds the number or when that many cited facts carry its noun and state. Ordinals, durations, years and indexes are not claims (NOT_A_CLAIM). Without gathered facts the row is a passing warning that says it did not run; the checker lives in src/lint-claims.ts."
     l0: { severity: error, status: implemented, checks: ["Q-E20"], scope: chapter }
+  - id: Q-E21
+    rule: "Every merged pull request in the window is named or counted under its lane"
+    fields: [beats.fact_ids, beats.chapter, beats.spoken, beats.visual.labels]
+    related: [Q-E20]
+    owner_support: for
+    note: "Reads a daily gather's coverage.json. A lane passes when every one of its merged PRs is cited, or when a beat of the lanes chapter cites the lane's rollup fact and says or shows its merged total; Q-E20 checks that the total is right. Every PR of a named thread must be cited somewhere. Not chapter-scoped: a named PR may be cited in the ships chapter. Without a manifest (any other profile) the row is a passing warning that says it did not run; the checker lives in src/lint-coverage.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-E21"] }
+  - id: Q-E22
+    rule: "Every reflection beat cites the slowdown fact it answers, or the priority fact it names"
+    fields: [beats.fact_ids, beats.chapter]
+    related: [Q-E21]
+    owner_support: for
+    note: "Each proposal in the daily's reflection chapter cites a slow/ fact, and a priority beat a next/ fact, so the proposals filed into the self-improvement loop carry their evidence. Runs only when the facts hold a slow/ fact and the script has a reflection chapter; otherwise a passing warning. The checker lives in src/lint-coverage.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-E22"], scope: chapter }

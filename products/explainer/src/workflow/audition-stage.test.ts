@@ -185,7 +185,7 @@ describe("audition sampling, scoring and pick", () => {
     const { result, record } = await audition("repo-argument", REPO_FACTS);
 
     const pick = record.candidates.find((c: { id: string }) => c.id === record.pick.candidate);
-    expect(record.pick.chapters).toEqual(pick.spine.blocks.map((b: { id: string }, i: number) => ({ chapter: `ch${i + 1}`, block: b.id })));
+    expect(record.pick.chapters).toEqual(pick.spine.blocks.map((b: { id: string }) => ({ chapter: b.id, block: b.id })));
     for (const c of record.candidates) {
       expect(c.skipped.map((s: { dim: string }) => s.dim)).toEqual(["J12"]);
       expect(c.rubric.dims.map((d: { dim: string }) => d.dim)).toEqual(["J8", "J9", "J10", "J11"]);

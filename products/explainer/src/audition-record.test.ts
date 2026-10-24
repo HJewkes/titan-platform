@@ -50,10 +50,10 @@ describe("audition record", () => {
 
   it("maps each script chapter to the profile block it plays, in spine order", () => {
     expect(chapterBlocks(SPINE, profile)).toEqual([
-      { chapter: "ch1", block: "situation" },
-      { chapter: "ch2", block: "complication" },
-      { chapter: "ch3", block: "resolution" },
-      { chapter: "ch4", block: null },
+      { chapter: "situation", block: "situation" },
+      { chapter: "complication", block: "complication" },
+      { chapter: "resolution", block: "resolution" },
+      { chapter: "coda", block: null },
     ]);
   });
 });

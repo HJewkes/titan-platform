@@ -28,8 +28,8 @@ describe("an audition pick read as a story spine", () => {
       [2, "proof", "What shows it holds?", "A scan writes one ledger row."],
     ]);
     expect(spine.chapters).toEqual([
-      { chapter: "ch1", question: "What does the change do?", rows: ["§3.1"], beat: "verdict-card" },
-      { chapter: "ch2", question: "What shows it holds?", rows: ["§3.2"], beat: "proof" },
+      { chapter: "summary", question: "What does the change do?", rows: ["§3.1"], beat: "verdict-card" },
+      { chapter: "proof", question: "What shows it holds?", rows: ["§3.2"], beat: "proof" },
     ]);
   });
 
@@ -41,9 +41,9 @@ describe("an audition pick read as a story spine", () => {
     const spine = parseSpine(pickSpine("pr-overview-scqa", PICK, FACTS));
 
     expect(spine.ledger.map(({ item, definedIn, reusedIn }) => [item, definedIn, reusedIn])).toEqual([
-      ["F1", "ch1", []],
-      ["F2", "ch1", ["ch2"]],
-      ["F3", "ch2", []],
+      ["F1", "summary", []],
+      ["F2", "summary", ["proof"]],
+      ["F3", "proof", []],
     ]);
   });
 
@@ -62,9 +62,9 @@ describe("an audition pick read as a story spine", () => {
     const spine = parseSpine(markdown);
 
     expect(spine.ledger.map(({ item, definedIn, reusedIn }) => [item, definedIn, reusedIn])).toEqual([
-      ["DM-7", "ch1", ["ch2"]],
-      ["PR 412", "ch1", []],
-      ["F3", "ch2", []],
+      ["DM-7", "summary", ["proof"]],
+      ["PR 412", "summary", []],
+      ["F3", "proof", []],
     ]);
     expect(markdown).toContain("| DM-7 | task/DM-7/opened, task/DM-7/owner-gated |");
   });
