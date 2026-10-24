@@ -6,7 +6,7 @@ import { z } from "zod";
 import { factoryMigrations, openFactoryHost, type FactoryHost } from "../host.js";
 import { SHEPHERD_MIGRATIONS, factoryRoutesFor } from "../workflows.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
-import { mergeOrderGuard } from "./merge-order-guard.js";
+import { mergeOrderGuard, type OrderWaits } from "./merge-order-guard.js";
 import { MergeOrder, fileRules, type MergeOrderRule, type MergeOrderRules } from "./merge-order.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
@@ -63,6 +63,21 @@ function reasonFor(r: Rig, options: { rules?: MergeOrderRules; pr?: number; base
 describe("the merge-order guard", () => {
   it("holds a PR that changes a reserved path behind the reserving PR", async () => {
     expect(await reasonFor(rig())).toBe(`merge order: waiting behind #2301 (${SHARED})`);
+  });
+
+  it("records the wait it reads for status, and drops it once the PR may merge", async () => {
+    const r = rig();
+    const waits: OrderWaits = new Map();
+    const guard = mergeOrderGuard({ order: () => r.order, registrations: () => r.store, rules: ON, now: () => r.clock.now, waits });
+    const read = () => guard.reason(r.port, REPO, 2310, "main", HEADS[2310], "topic-2310");
+
+    await read();
+    const during = [...waits.entries()];
+    r.fake.pr(2301).merged = true;
+    await read();
+
+    expect(during).toEqual([["run-y", { repo: REPO, pr: 2310, behind: 2301, reason: `merge order: waiting behind #2301 (${SHARED})` }]]);
+    expect([...waits.entries()]).toEqual([]);
   });
 
   it("lets a PR with no reserved path through", async () => {

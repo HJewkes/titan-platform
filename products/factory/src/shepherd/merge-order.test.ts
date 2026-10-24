@@ -1,8 +1,9 @@
-import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowStatus } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { factoryMigrations } from "../host.js";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
+import { eventsSince } from "./events.js";
 import { MergeOrder, blockers, fileRules, overlapping, type MergeOrderRule, type Reservation } from "./merge-order.js";
 
 const REPO = "hjewkes/titan-platform";
@@ -66,11 +67,13 @@ describe("which reservations a PR waits behind", () => {
 });
 
 describe("the merge-order store", () => {
-  function store(): { order: MergeOrder; runs: WorkflowRunStore } {
+  function store(): { order: MergeOrder; runs: WorkflowRunStore; db: Db } {
     const db = openDatabase(":memory:");
     runMigrations(db, [...factoryMigrations(), ...SHEPHERD_MIGRATIONS]);
-    return { order: new MergeOrder(db), runs: new WorkflowRunStore(db) };
+    return { order: new MergeOrder(db), runs: new WorkflowRunStore(db), db };
   }
+
+  const orderEvents = (db: Db) => eventsSince(db).filter((event) => event.kind.startsWith("order-")).map(({ kind, runId, pr, actor, at }) => ({ kind, runId, pr, actor, at }));
 
   const run = (id: string, status: WorkflowStatus) => ({ id, workflowName: "shepherd-pr", params: { repo: REPO }, status, currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: minutes(0), completedAt: null, error: null });
 
@@ -82,6 +85,26 @@ describe("the merge-order store", () => {
     expect(order.list("HJewkes/Titan-Platform")).toEqual([{ ...reservation("run-x", 2301, ["README.md", "src/x.ts"]), headSha: "head-2301b" }]);
     expect(order.release(REPO, "run-x", { at: minutes(1) })).toBe(true);
     expect(order.release(REPO, "run-x", { at: minutes(1) })).toBe(false);
+    expect(order.list(REPO)).toEqual([]);
+  });
+
+  it("logs the reservation and its release on the reserving run's timeline", () => {
+    const { order, db } = store();
+    order.reserve(reservation("run-x", 2301, ["README.md"]));
+    order.release(REPO, "run-x", { at: minutes(9) });
+
+    expect(orderEvents(db)).toEqual([
+      { kind: "order-reserve", runId: "run-x", pr: 2301, actor: "shepherd", at: minutes(0) },
+      { kind: "order-release", runId: "run-x", pr: 2301, actor: "shepherd", at: minutes(9) },
+    ]);
+  });
+
+  it("expires a reservation once: a second expiry of it ends nothing and logs nothing", () => {
+    const { order, db } = store();
+    order.reserve(reservation("run-x", 2301, ["README.md"]));
+
+    expect([order.expire(REPO, "run-x", minutes(0), minutes(121)), order.expire(REPO, "run-x", minutes(0), minutes(122))]).toEqual([true, false]);
+    expect(orderEvents(db).filter((event) => event.kind === "order-expired").map((event) => event.at)).toEqual([minutes(121)]);
     expect(order.list(REPO)).toEqual([]);
   });
 

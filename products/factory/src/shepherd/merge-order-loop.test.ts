@@ -21,7 +21,7 @@ const Z = 2311;
 const CAPABILITY = "products/explainer/CAPABILITY.md";
 const FILES: Readonly<Record<number, string[]>> = { [X]: [CAPABILITY, "products/explainer/README.md"], [Y]: [CAPABILITY, "products/explainer/README.md"], [Z]: [CAPABILITY] };
 /** Out of reach of the fake clock, which every run's polls advance, so no wait here ends on the TTL. */
-const ORDER = (enabled: boolean): MergeOrderRules => () => ({ enabled, ttlMinutes: 1e9, ignore: [".changeset/**"] });
+const ORDER = (enabled: boolean, ttlMinutes = 1e9): MergeOrderRules => () => ({ enabled, ttlMinutes, ignore: [".changeset/**"] });
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const locator = partialFake<SourceTextLocator>({});
@@ -51,6 +51,10 @@ interface Loop {
   duringWake: () => Promise<void>;
   /** Runs before Z's review; the scenario holds Z there until X's conflict is under way. */
   beforeZReview: () => Promise<void>;
+  /** Moves the clock every run reads, as a long fix round would. */
+  advance: (ms: number) => void;
+  /** Every seat message, as `seat: text`. */
+  told: string[];
 }
 
 const merges: ShepherdPhases["review"] = (ctx, request) =>
@@ -100,7 +104,7 @@ function fixerWake(loop: () => Loop, absorbed: Set<number>): ShepherdPhases["wak
   };
 }
 
-function loopWorld(enabled: boolean): Loop {
+function loopWorld(enabled: boolean, ttlMinutes?: number): Loop {
   const absorbed = new Set<number>();
   const late: { loop?: Loop } = {};
   const merged: number[] = [];
@@ -114,12 +118,15 @@ function loopWorld(enabled: boolean): Loop {
   };
   const store = shepherdStoreRef();
   const port = landingPort(fake);
-  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: tick, holdPollMs: 1, registry: async () => "trusted" as const, mergeOrderRules: ORDER(enabled), park: async () => ({ lines: [] }) });
+  const told: string[] = [];
+  const exitNotice = { seatFor: () => "demo-seat", lastReport: async () => undefined, send: async (seat: string, text: string) => void told.push(`${seat}: ${text}`) };
+  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: tick, holdPollMs: 1, registry: async () => "trusted" as const, mergeOrderRules: ORDER(enabled, ttlMinutes), park: async () => ({ lines: [] }), exitNotice });
   const review: ShepherdPhases["review"] = async (ctx, request) => (request.pr === Z && (await late.loop!.beforeZReview()), merges(ctx, request));
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake: fixerWake(() => late.loop!, absorbed) })], routes, gatePollMs: 5 });
   hosts.push(host);
   const noop = async () => undefined;
-  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop });
+  const advance = (ms: number) => void (clock += ms);
+  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop, advance, told });
 }
 
 function shepherd(loop: Loop, pr: number): string {
@@ -132,6 +139,8 @@ function shepherd(loop: Loop, pr: number): string {
 const currentStep = (loop: Loop, pr: number): string | null | undefined => loop.host.runtime.status(loop.runs.get(pr)!)?.currentStep;
 const results = (loop: Loop, pr: number, family: string): unknown[] =>
   Object.entries(loop.host.runtime.status(loop.runs.get(pr)!)!.stepResults).filter(([id]) => id.startsWith(family)).map(([, step]) => (step.data as { result?: unknown } | undefined)?.result);
+
+const orderEvents = (loop: Loop, runId: string): string[] => loop.store.eventsOf(runId).map((event) => event.kind).filter((kind) => kind.startsWith("order-"));
 
 async function finish(loop: Loop, ...prs: number[]): Promise<void> {
   await Promise.all(prs.map((pr) => loop.host.runtime.wait(loop.runs.get(pr)!)));
@@ -319,5 +328,20 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     expect(during).toEqual([[x]]);
     expect(loop.merged).toEqual([Y, X]);
     expect(loop.order.list(REPO)).toEqual([]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release"]);
+  });
+
+  it("logs the expiry once and tells the seat once when the reservation outlives its TTL", async () => {
+    const loop = loopWorld(true, 60);
+    loop.duringWake = async () => loop.advance(2 * 60 * 60_000);
+    await afterY(loop);
+
+    const x = shepherd(loop, X);
+    await finish(loop, X);
+
+    expect(loop.merged).toEqual([Y, X]);
+    expect(results(loop, X, "sh-order-expire")).toEqual([{ expired: true, ttlMinutes: 60 }]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-expired"]);
+    expect(loop.told).toEqual([expect.stringMatching(/^demo-seat: Shepherd: hjewkes\/titan-platform#2301 .*merge order: its reservation passed the 60 min TTL/)]);
   });
 });
