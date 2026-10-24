@@ -13,6 +13,8 @@ cache blobs, plus forward-only migrations. [`locator`](/reference/locator) point
 range in a source file, so the FTS index never copies text.
 [`cluster`](/reference/cluster) and [`embed`](/reference/embed) are the other two
 domain-free primitives: Drain template mining and embeddings with a hash fallback.
+[`md-chunk`](/reference/md-chunk) splits markdown into byte ranges that read back to the
+exact source bytes, so chunks can be indexed through a locator instead of copied.
 [`retrieval`](/reference/retrieval) fuses FTS, vector, and graph retrievers over them.
 The [retrieval eval](/guides/retrieval-eval) product scores candidate retrievers against
 labels mined from transcripts, so a retrieval change can be measured.

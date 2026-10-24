@@ -24,7 +24,8 @@
           "packages/anthropic-account",
           "packages/test-kit",
           "packages/owner-proof",
-          "packages/openai-account"
+          "packages/openai-account",
+          "packages/md-chunk"
         ],
         "1": [
           "packages/retrieval",
@@ -106,7 +107,8 @@
           "packages/anthropic-account",
           "packages/test-kit",
           "packages/owner-proof",
-          "packages/openai-account"
+          "packages/openai-account",
+          "packages/md-chunk"
         ],
         [
           "packages/retrieval",
