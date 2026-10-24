@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -6,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { captureFrames, startEncoder } from "@titan-design/frame-capture";
+import { captureFrames } from "@titan-design/frame-capture";
 import { build } from "vite";
 import { parseTimeline } from "./timeline.js";
 
@@ -67,29 +66,18 @@ export async function servePage(pageDir: string, slowMs: number): Promise<PageSe
   };
 }
 
-function silentWav(dir: string, durationS: number): string {
-  const wav = join(dir, "silence.wav");
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", String(durationS), wav]);
-  return wav;
-}
-
 export interface Render {
-  mp4: Buffer;
   frames: Buffer[];
   pageDurationS: number;
 }
 
-/** Captures the page at FPS on one worker and encodes it over silence, as the render command will. */
-export async function renderMp4(url: string): Promise<Render> {
-  const dir = mkdtempSync(join(tmpdir(), "explainer-render-"));
+/** Captures the page at FPS on one worker, as the render command does before it hands the frames to the encoder. */
+export async function renderFrames(url: string): Promise<Render> {
   const frames: Buffer[] = [];
   const result = await captureFrames({ url, fps: FPS, ...STAGE, workers: 1 }, async (i, png) => {
     frames[i] = png;
   });
-  const encoder = startEncoder(join(dir, "out.mp4"), FPS, silentWav(dir, result.pageDurationS));
-  for (const png of frames) await encoder.write(png);
-  await encoder.finish();
-  return { mp4: readFileSync(join(dir, "out.mp4")), frames, pageDurationS: result.pageDurationS };
+  return { frames, pageDurationS: result.pageDurationS };
 }
 
 export function fixtureDurationS(name: string): number {
