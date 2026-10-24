@@ -1,7 +1,7 @@
 {
   "durationS": 2.5,
   "beats": [
-    { "id": "b1", "kind": "title", "startS": 0, "durationS": 1, "slots": { "title": "How a request finds its handler", "subtitle": "A synthetic walkthrough" } },
+    { "id": "b1", "kind": "hook", "startS": 0, "durationS": 1, "slots": { "line": "How a request finds its handler", "cards": [{ "id": "walkthrough", "text": "A synthetic walkthrough" }] } },
     {
       "id": "b2",
       "kind": "catalogue",

@@ -10,7 +10,7 @@ const TimelineBeatSchema = z.object({
   slots: z.unknown(),
 });
 
-export const TimelineSchema = z
+const TimelineSchema = z
   .object({
     durationS: z.number().positive(),
     /** Set when timings are planned rather than spoken; the page stamps such a render DRAFT. */

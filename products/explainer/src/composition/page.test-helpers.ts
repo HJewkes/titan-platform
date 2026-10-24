@@ -20,7 +20,7 @@ const TYPES: Record<string, string> = {
 };
 
 export const STAGE = { width: 1920, height: 1080 };
-export const FPS = 10;
+const FPS = 10;
 
 /** One production build of the page into a fresh temp dir. */
 export async function buildPage(): Promise<string> {
