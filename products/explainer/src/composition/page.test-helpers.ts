@@ -8,6 +8,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureFrames, startEncoder } from "@titan-design/frame-capture";
 import { build } from "vite";
+import { parseTimeline } from "./timeline.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const FIXTURES = join(HERE, "fixtures");
@@ -34,6 +35,11 @@ export interface PageServer {
   close(): Promise<void>;
 }
 
+function tcpAddress(address: AddressInfo | string | null): AddressInfo {
+  if (address === null || typeof address === "string") throw new Error(`page server is not on a TCP port: ${String(address)}`);
+  return address;
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Loopback HTTP over the built page, with the fixture timelines at /timelines/ and, held back by `slowMs`, at /slow/. */
@@ -51,7 +57,7 @@ export async function servePage(pageDir: string, slowMs: number): Promise<PageSe
       );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
+  const { port } = tcpAddress(server.address());
   return {
     url: (page, timeline) => `http://127.0.0.1:${port}/${page}${timeline ? `?timeline=${timeline}` : ""}`,
     close: () => {
@@ -87,5 +93,5 @@ export async function renderMp4(url: string): Promise<Render> {
 }
 
 export function fixtureDurationS(name: string): number {
-  return (JSON.parse(readFileSync(join(FIXTURES, name), "utf8")) as { durationS: number }).durationS;
+  return parseTimeline(JSON.parse(readFileSync(join(FIXTURES, name), "utf8"))).durationS;
 }

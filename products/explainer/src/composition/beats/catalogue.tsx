@@ -43,7 +43,7 @@ function usePhraseBox(): [RefObject<HTMLDivElement | null>, AnnotationBox | unde
   useLayoutEffect(() => {
     const w = ref.current?.offsetWidth ?? 0;
     const h = ref.current?.offsetHeight ?? 0;
-    if (w !== box?.w || h !== box?.h) setBox({ x: 0, y: 0, w, h });
+    if (!box || w !== box.w || h !== box.h) setBox({ x: 0, y: 0, w, h });
   });
   return [ref, box];
 }

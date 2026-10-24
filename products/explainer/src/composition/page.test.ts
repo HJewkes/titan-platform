@@ -89,9 +89,9 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
       });
 
       const shown = await page.evaluate(() => ({
-        fileCard: document.body.textContent?.includes("lib/cache/store.ts") === true,
+        fileCard: document.body.textContent.includes("lib/cache/store.ts"),
         schemaCard: document.querySelector('[aria-label="Cache entry table"]') !== null,
-        annotate: document.body.textContent?.includes("entries expire") === true && document.querySelector('[data-testid="catalogue-annotate"] svg path') !== null,
+        annotate: document.body.textContent.includes("entries expire") && document.querySelector('[data-testid="catalogue-annotate"] svg path') !== null,
       }));
 
       assert.deepEqual(shown, { fileCard: true, schemaCard: true, annotate: true });

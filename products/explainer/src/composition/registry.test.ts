@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import fixture from "./fixtures/fixture.timeline.json" with { type: "json" };
+import { CatalogueSlots } from "./beats/catalogue.js";
 import { resolveBeat } from "./registry.js";
 import { parseTimeline, timelineUrl } from "./timeline.js";
 
@@ -19,8 +20,7 @@ describe("the composition page's beat registry", () => {
 
   test("a catalogue beat missing a required slot is rejected", () => {
     const [, catalogue] = parseTimeline(fixture).beats;
-    const slots = { ...(catalogue?.slots as Record<string, unknown>) };
-    delete slots.schemaLabel;
+    const slots = { ...CatalogueSlots.parse(catalogue?.slots), schemaLabel: undefined };
 
     assert.throws(() => resolveBeat("catalogue").slots.parse(slots), /schemaLabel/);
   });
