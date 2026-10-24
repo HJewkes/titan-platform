@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -41,6 +41,20 @@ describe("explainer run --facts-from gatherDaily", () => {
     expect(existsSync(path.join(fx.dataDir, "runs"))).toBe(false);
   });
 
+  it("turns the --decisions log's entries stamped inside the day into decision facts", async () => {
+    fx = fixture();
+    const decisions = path.join(fx.dataDir, "decisions.md");
+    writeFileSync(decisions, ["500. Owner 2026-03-10 ~22:0xZ: \"Order the spare scanners\".", "501. Owner 2026-03-11 ~09:1xZ: \"Open the desk at seven\".", ""].join("\n"));
+    const { run, err } = cli();
+
+    const code = await run(...DAILY, "--type", "daily-overview", "--decisions", decisions, "--dry-run");
+    const facts = readFileSync(path.join(fx.dataDir, "gather", "daily-overview", DAY, "facts.md"), "utf8");
+
+    expect(code, err.join("")).toBe(0);
+    expect(facts).toContain("| decision/501 | decision · Open the desk at seven | P1 |");
+    expect(facts).not.toContain("decision/500");
+  });
+
   it("refuses a type whose profile does not take facts from gatherDaily", async () => {
     fx = fixture();
     const { run, err } = cli();
@@ -74,6 +88,28 @@ describe("explainer run --from gather", () => {
     expect(ran).toEqual(["gather", "audition"]);
     expect(readFileSync(path.join(fx.dataDir, "artifacts", gather.outputs.facts), "utf8")).toBe(readFileSync(path.join(fx.dataDir, "gather", "daily-overview", DAY, "facts.md"), "utf8"));
     expect(gather.outputs.code).toBeUndefined();
+  });
+
+  it("gathers again when the --lanes file changes, and hits the cache when it does not", async () => {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    const lanes = path.join(fx.dataDir, "lanes.yaml");
+    cpSync(DEFAULT_LANES_FILE, lanes);
+    const { run, out } = cli();
+    const gatherStatus = async () => {
+      out.length = 0;
+      await run(...DAILY, "--type", "daily-overview", "--lanes", lanes, "--from", "gather", "--to", "gather");
+      const report = JSON.parse(readFileSync(path.join(path.dirname(out.join("").match(/report: (\S+)/)![1]!), "run-report.json"), "utf8"));
+      return report.rows.find((r: { stage: string }) => r.stage === "gather").status;
+    };
+
+    const first = await gatherStatus();
+    const unchanged = await gatherStatus();
+    writeFileSync(lanes, readFileSync(lanes, "utf8").replace("label: Factory", "label: Platform"));
+    const edited = await gatherStatus();
+
+    expect([first, unchanged, edited]).toEqual(["ran", "cached", "ran"]);
+    expect(readFileSync(path.join(fx.dataDir, "gather", "daily-overview", DAY, "facts.md"), "utf8")).toContain("| lane/factory/rollup | factory lane · rollup · Platform: 2 merged");
   });
 
   it("refuses a run from gather with no --facts-from", async () => {

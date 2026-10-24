@@ -8,7 +8,7 @@ const DigestItemSchema = z.object({
   // Stable across runs: derived from the source (repo and PR number, commit sha, task id), never a timestamp.
   id: z.string().min(1),
   /** `rollup` is derived from the other items: a lane, goal, ship or day total the script cites. */
-  kind: z.enum(["commit", "pull-request", "task", "session", "rollup"]),
+  kind: z.enum(["commit", "pull-request", "task", "session", "decision", "rollup"]),
   title: z.string().min(1),
   at: z.iso.datetime({ offset: true }),
   repo: z.string().min(1).optional(),
