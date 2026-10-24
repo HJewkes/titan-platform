@@ -162,6 +162,25 @@ describe("one fixture per bash.merge spelling", () => {
     });
   });
 
+  describe("a readHead that throws reads as an unknown protected head", () => {
+    const throwing: ClassifyContext = {
+      home: HOME,
+      readLink: () => null,
+      readHead: () => {
+        throw new Error("EACCES");
+      },
+      readScript: () => null,
+    };
+    const run = (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, throwing);
+
+    it.each([
+      ["git push origin HEAD", "bash.merge.git-push-protected"],
+      ["git merge x", "bash.merge.git-merge-protected"],
+    ])("%s", (command, spelling) => {
+      expect(run(command)).toEqual([expect.objectContaining({ action: "merge", spelling, subject: { branch: "unknown" } })]);
+    });
+  });
+
   it("finds a merge chained after other commands and inside a subshell", () => {
     expect(spellings(bash("pnpm test && (gh pr merge 4 --squash)"))).toEqual(["bash.merge.gh-pr-merge"]);
   });
