@@ -121,6 +121,16 @@ is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lint
 `writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
 `stage-empty-checks.ts` (`emptyStageRuns`) fails a beat whose stage rect holds no content box (decor excluded) for more than
 `MAX_EMPTY_STAGE_SECONDS` (3 s) of sampled moments; the host's measure step feeds it one `StageMoment` per beat and time.
+`content-fill.ts` (`contentFillFindings`) fails a beat whose settled element boxes, unioned, span less than
+`MIN_CONTENT_FILL` (60 %) of the frame width: the gate for beats styled at 720p and pinned left on a 1080p stage.
+
+`contact-sheet.ts` (`cutCells`) cuts contact-sheet stills from data the render already writes: `render.json` beat bounds,
+the cue gate's measured cue times and each beat's component. A title is cut at its held end, an outro before its exit,
+an additive beat (list, stat, compare) once at its settled last frame, a question swapped for rows before and after,
+a code walk at its whole view and then each focus step, and a chart at each highlight. A page that publishes
+`__titanMotion` marks is cut one cell per mark instead. Cells are never dropped by pixels.
+`explainer sheets` (`writeContactSheets`) extracts each still through ffmpeg with a label strip under it and tiles one
+`sheet-<chapter>.png` per chapter, plus `cells.json`; `--fill` also runs the content-fill gate. It replaces `sheets.sh`.
 
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
