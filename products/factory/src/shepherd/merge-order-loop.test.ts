@@ -287,8 +287,10 @@ describe("TP-4098 slice C: the #2301 loop", () => {
 
   it("stops waiting on a run it let merge first once that run leaves its merge step unmerged", async () => {
     const loop = loopWorld(true);
+    const zAtWake: (string | undefined)[] = [];
     await afterY(loop);
     const z = heldInMerge(loop, Z);
+    loop.duringWake = async () => void zAtWake.push(loop.host.runtime.status(z)?.status);
     await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
     shepherd(loop, X);
     await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
@@ -299,6 +301,7 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     await finish(loop, X);
     loop.host.runtime.cancel(z, "ended in this test");
 
+    expect(zAtWake).toEqual(["running"]);
     expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
     expect(loop.merged).toEqual([Y, X]);
