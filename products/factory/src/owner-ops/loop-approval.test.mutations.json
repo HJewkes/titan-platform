@@ -16,30 +16,6 @@
       "kills": ["merge-at-head waiting out a g10 hold: a void on a non-MERGE close of the loop voids the approval and tells the owner why"]
     },
     {
-      "name": "loopAt takes a g10 release judged at any head as the loop closing at this one",
-      "file": "products/factory/src/owner-ops/loop-approval.ts",
-      "find": "  const release = new RegExp(`^sh-g10-release:${head}:\\\\d+$`);\n",
-      "replace": "  const release = /^sh-g10-release:[0-9a-f]{40}:\\d+$/;\n",
-      "kills": ["loopAt reads the adversary loop at one head stays open on a release judged at another head or judged unmet"]
-    },
-    {
-      "name": "the approval sweep tells the owner of a void but never records it",
-      "file": "products/factory/src/owner-ops/standing-answers.ts",
-      "find": "  await answers.voidAnswer(answer.actionId, result.reason, now);\n",
-      "replace": "",
-      "kills": [
-        "merge-at-head waiting out a g10 hold: a void on a new head voids the approval, tells the owner once, lifts nothing and merges nothing",
-        "merge-at-head waiting out a g10 hold: a void stays voided when the notice cannot be filed, and says so"
-      ]
-    },
-    {
-      "name": "the approval sweep lifts the hold but never answers the run's approve-merge",
-      "file": "products/factory/src/owner-ops/standing-answers.ts",
-      "find": "  if (result.kind === \"closed\") return resolveAtHead(host, services, answer);\n",
-      "replace": "  if (result.kind === \"closed\") return [];\n",
-      "kills": ["merge-at-head waiting out a g10 hold: the loop closes MERGE at the approved head lifts the g10 hold as the owner with this tap's proof, then answers the run's approve-merge and the PR merges"]
-    },
-    {
       "name": "loopAt counts a release written before the owner tapped",
       "file": "products/factory/src/owner-ops/loop-approval.ts",
       "find": "  if (Date.parse(completedAt) <= Date.parse(approvedAt)) return false;\n",

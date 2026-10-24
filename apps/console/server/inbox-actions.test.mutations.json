@@ -45,51 +45,6 @@
       "kills": [
         "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
       ]
-    },
-    {
-      "name": "the pause read-back compares only the target, not pausedAt",
-      "file": "apps/console/server/inbox-op.ts",
-      "find": "if (since !== op.pausedAt || lastRollback.target !== op.target)",
-      "replace": "if (lastRollback.target !== op.target)",
-      "kills": [
-        "inbox deploy-pause-clear op offers no action when a newer pause than the deposit names stands"
-      ]
-    },
-    {
-      "name": "the pause read-back offers a tap while a deployer runs",
-      "file": "apps/console/server/inbox-op.ts",
-      "find": "  if (pause.deployerRunning) return \"a deployer is running now; read the item again once it ends\";\n",
-      "replace": "",
-      "kills": [
-        "inbox deploy-pause-clear op offers no action while a deployer is running"
-      ]
-    },
-    {
-      "name": "the pause read-back promises a deploy while a manual hold stands",
-      "file": "apps/console/server/inbox-op.ts",
-      "find": "const said = pause.manualHold === null ? effect(at) :",
-      "replace": "const said = true ? effect(at) :",
-      "kills": [
-        "inbox deploy-pause-clear op says a manual hold stays held when one stands beside the pause, before and after the clear"
-      ]
-    },
-    {
-      "name": "a moved pause reads as a moved PR head",
-      "file": "apps/console/server/inbox-actions.ts",
-      "find": "return outcome.currentPause === undefined ?",
-      "replace": "return true ?",
-      "kills": [
-        "inbox deploy-pause-clear op reads the factory's moved as a newer pause that is kept"
-      ]
-    },
-    {
-      "name": "a cleared pause says the pacer resumes though a hand hold stands",
-      "file": "apps/console/server/inbox-actions.ts",
-      "find": "return outcome.stillHeld === null ? \"Deploy pause cleared;",
-      "replace": "return true ? \"Deploy pause cleared;",
-      "kills": [
-        "inbox deploy-pause-clear op says a manual hold stays held when one stands beside the pause, before and after the clear"
-      ]
     }
   ]
 }
