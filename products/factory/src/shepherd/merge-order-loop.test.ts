@@ -159,7 +159,7 @@ function heldInMerge(loop: Loop, pr: number): string {
  * holds the rest. It is a bare running run that never merges Y; a held one would order nothing (TP-4133).
  */
 function reserveAhead(loop: Loop, ahead: string): string {
-  const since = "2026-10-23T10:00:00.000Z";
+  const since = "2026-10-23T09:59:00.000Z";
   const r = "run-r-stand-in";
   new WorkflowRunStore(loop.host.db).create({ id: r, workflowName: "stand-in", params: { repo: REPO }, status: "running", currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: since, completedAt: null, error: null });
   loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths: [CAPABILITY], ahead: [ahead], since, reason: "R waits on X" });
