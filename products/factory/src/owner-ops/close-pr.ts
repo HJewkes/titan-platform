@@ -5,7 +5,7 @@ import type { OpRead } from "../console-action/record.js";
 import type { FactoryHost } from "../host.js";
 import { endRunsGoneElsewhere } from "../shepherd/gone-elsewhere.js";
 import type { ShepherdServices } from "../shepherd/services.js";
-import type { LedgerEntry, OwnerOpsLedger } from "./ledger.js";
+import type { LedgerLine, OwnerOpsLedger } from "./ledger.js";
 
 type ClosePr = Extract<OwnerOp, { kind: "close-pr" }>;
 
@@ -33,13 +33,13 @@ export async function closePr(actionId: string, { op }: OpRead, deps: ClosePrDep
   return { outcome: "pr-closed", closedHead: op.headSha };
 }
 
-const closedByThis = (entry: LedgerEntry): boolean => entry.phase === "done" && "closedHead" in entry.result;
+const closedByThis = (entry: LedgerLine): boolean => entry.phase === "done" && entry.result !== undefined && "closedHead" in entry.result;
 
 /**
  * `runLogged` appends this call's own `started` before the effect runs, so an earlier call that crashed between its
  * `started` and its `done` shows as a second unmatched `started`.
  */
-function interrupted(history: LedgerEntry[]): boolean {
+function interrupted(history: LedgerLine[]): boolean {
   const started = history.filter((entry) => entry.phase === "started").length;
   return started - (history.length - started) > 1;
 }
