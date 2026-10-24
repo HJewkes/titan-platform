@@ -12,13 +12,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_BASE = "origin/main";
 const LOC_RULE_ID = "max-file-loc";
 const SOURCE_EXT = /\.(?:[cm]?[jt]sx?)$/;
-const TEST_OR_FIXTURE = /(?:\.test\.|\.spec\.|\.test-helpers\.|\/fixtures?\/|\/__fixtures__\/)/;
+// The roots scripts/dag-check-self.mjs indexes; files elsewhere never reach the CI rule.
+const GRAPH_ROOT = /^(?:packages|products|apps)\//;
+const CODE_GRAPH_ENTRY = join(ROOT, "packages/code-graph/dist/index.js");
 const VITEST_TIMEOUT_SECONDS = 600;
 const VITEST_HEAP_MB = 4096;
 
-/** The graph indexes only packages/ and products/, so the LOC rule applies to those source files alone. */
-export function isLocChecked(path) {
-  return /^(?:packages|products)\//.test(path) && SOURCE_EXT.test(path) && !TEST_OR_FIXTURE.test(path);
+/** In the CI rule's scope: a graph-indexed source file whose code-graph role the rule does not exempt. */
+export function isLocChecked(path, rule, roleOf) {
+  return GRAPH_ROOT.test(path) && SOURCE_EXT.test(path) && !rule.excludeRoles.has(roleOf(path));
 }
 
 /** Non-blank line count, the same measure the code-graph `loc` metric uses. */
@@ -26,17 +28,29 @@ export function countLoc(content) {
   return content.split("\n").filter((line) => line.trim() !== "").length;
 }
 
-/** Threshold and excludes come from the CI rule itself so the two cannot drift. */
+/** Threshold, excludes and exempt roles come from the CI rule itself so the two cannot drift. */
 export function locRuleFrom(checkConfig) {
   const rule = checkConfig.rules.find((r) => r.id === LOC_RULE_ID);
   if (!rule) throw new Error(`${LOC_RULE_ID} not found in .codewatch/check.json`);
-  return { max: rule.max, exclude: new Set(rule.exclude ?? []) };
+  return { max: rule.max, exclude: new Set(rule.exclude ?? []), excludeRoles: new Set(rule.excludeRoles ?? []) };
+}
+
+/**
+ * The role CI's indexer gives a file, from code-graph's own classifier. Configured role globs would need
+ * code-graph's unexported matcher, so a repo that adds .codewatch/roles.json fails here instead of drifting.
+ */
+export function roleClassifier(graph, root) {
+  if (Object.keys(graph.loadRoleGlobs(root)).length > 0) {
+    throw new Error(".codewatch/roles.json globs are not applied by verify:changed; teach it roleGlobMatcher first");
+  }
+  const generated = graph.loadGeneratedPatterns(root);
+  return (path) => graph.classifyRole(path, { isGenerated: graph.isGeneratedFile(path, generated) });
 }
 
 /** Files over the cap; `readContent` maps a path to its content, or null when the file is gone. */
-export function locViolations(changed, rule, readContent) {
+export function locViolations(changed, rule, readContent, roleOf) {
   return changed
-    .filter((path) => isLocChecked(path) && !rule.exclude.has(path))
+    .filter((path) => isLocChecked(path, rule, roleOf) && !rule.exclude.has(path))
     .flatMap((path) => {
       const content = readContent(path);
       const loc = content === null ? 0 : countLoc(content);
@@ -66,19 +80,18 @@ export function relatedTestArgs(changed) {
 }
 
 /** Ordered commands after the in-process LOC check; each is argv for spawnSync with optional env. */
-export function planCommands({ base, changed, hasTypecheckScript }) {
+export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) {
   const commands = [{ label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] }];
   for (const dir of typecheckDirs(changed, hasTypecheckScript)) {
     commands.push({ label: `tsc ${dir}`, cmd: "pnpm", args: ["--dir", dir, "run", "typecheck"] });
   }
   const related = relatedTestArgs(changed);
   if (related) {
-    commands.push({
-      label: "vitest related",
-      cmd: "timeout",
-      args: [String(VITEST_TIMEOUT_SECONDS), "pnpm", "exec", "vitest", ...related],
-      env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` },
-    });
+    const vitest = ["pnpm", "exec", "vitest", ...related];
+    // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
+    const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
+    const label = hasTimeout ? "vitest related" : "vitest related (no timeout command, unbounded)";
+    commands.push({ label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` } });
   }
   return commands;
 }
@@ -99,14 +112,22 @@ function hasTypecheckScript(dir) {
   return existsSync(manifest) && Boolean(JSON.parse(readFileSync(manifest, "utf8")).scripts?.typecheck);
 }
 
-function main() {
+const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
+
+async function overLoc(changed) {
+  if (!existsSync(CODE_GRAPH_ENTRY)) throw new Error(`${CODE_GRAPH_ENTRY} not found; run pnpm build first`);
+  const roleOf = roleClassifier(await import(CODE_GRAPH_ENTRY), ROOT);
+  const rule = locRuleFrom(JSON.parse(readFileSync(join(ROOT, ".codewatch/check.json"), "utf8")));
+  return locViolations(changed, rule, (path) => readFileSync(join(ROOT, path), "utf8"), roleOf);
+}
+
+async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const rule = locRuleFrom(JSON.parse(readFileSync(join(ROOT, ".codewatch/check.json"), "utf8")));
-  const over = locViolations(changed, rule, (path) => readFileSync(join(ROOT, path), "utf8"));
+  const over = await overLoc(changed);
   for (const v of over) console.error(`verify:changed: ${v.path} has ${v.loc} lines, max ${v.max}`);
   let failed = over.length > 0;
-  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript })) {
+  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout() })) {
     console.log(`verify:changed: ${label}`);
     const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
     if (result.status !== 0) {
@@ -118,10 +139,8 @@ function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error(`error: ${err.message}`);
     process.exitCode = 1;
-  }
+  });
 }
