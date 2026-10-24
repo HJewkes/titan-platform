@@ -259,9 +259,22 @@ workflow, keyed by `packetKey` = sha256 of the packet and the builder (`{ id, ve
 by beat id alone, so a replay reuses every build whose packet is unchanged. The `custom-layers` tree holds one
 `<beat>.tsx` per layer and a `layers.json` with each layer's anchors and element ids. A pinned `custom-layers` tree, or
 a script with no custom beats, runs no builds. The builder is part of the resolve key, so a new base prompt rebuilds
-every layer. The host's `beatWorker` builds the layers; with none configured the custom beats are left unbuilt and
-noted. The only worker ids are `claude-print` and `agent-chat`; there is no fork runner. Any build that fails fails
-the stage.
+every layer. The host's `beatWorker` builds the layers. When the host sets none, the default is the claude-print
+worker (`claudePrintWorker`), as long as a `claude` binary is on this host (`CLAUDE_BIN` or `PATH`). With no worker
+(`beatWorker: null`, or no binary), the custom beats are left unbuilt and noted, and the run goes on. The only worker
+ids are `claude-print` and `agent-chat`; there is no fork runner. Any build that fails fails the stage.
+
+The claude-print worker makes one tool-less `claude -p` call per packet. It uses sonnet, with
+`doctrine/builders/custom-layer.md` as `--system-prompt` and the packet JSON as the prompt. The answer must match
+`LayerOutputSchema` (module, anchors, element ids), with one turn and a $0.50 cap. Spend is priced from each model's
+tokens at the price table, never from the reported `total_cost_usd`. A model the table lacks marks the spend unknown.
+Every build then goes through the compile gate (`compileLayer`): an esbuild TSX bundle that refuses any import except
+`react`, `react/jsx-runtime` and `@titan-design/react-ui/motion`. A build that fails the gate is marked
+`needsRepair` with esbuild's error, and the stage fails with that error. A build that passes is stored by packet key in
+a cross-run build cache (`LayerBuildCache`, `<dataDir>/layer-builds/<key>` naming the build's artifact sha). So when a
+script or facts edit makes a new resolve run, a beat whose packet did not change reuses its build at no cost. The
+in-run `mapItems` memo cannot do this, because it lasts only for one child run. A build that fails the gate is never
+cached.
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same

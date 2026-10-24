@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import path from "node:path";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import type { Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRuntime, type StepRoute } from "@titan-design/workflow";
@@ -7,7 +9,7 @@ import type { BeatWorker, BuilderRef, LayerBuild } from "../build/beat-worker.js
 import { resolveScript, visual } from "../resolve-fixtures.test-helpers.js";
 import { ArtifactStore } from "./artifacts.js";
 import { DEFAULT_JUDGE, openState, runOneStage } from "./host.js";
-import { CUSTOM_LAYERS, layerRoutes } from "./layer-build.js";
+import { CUSTOM_LAYERS, LAYER_BUILDS_DIR, layerRoutes } from "./layer-build.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 import { CHECKS_STEP, childRecord, childWorkflow } from "./stage-cache.js";
 import { stageSpec } from "./stage-spec.js";
@@ -155,6 +157,8 @@ describe("custom-layer builds across a crash", () => {
     const runId = first.start(childWorkflow("resolve"), { spec: JSON.stringify(spec) });
     await vi.waitFor(() => expect(first.status(runId)?.activeSteps[`${CHECKS_STEP}:resolve`]).toBeDefined());
     first.shutdown();
+    // Without the cross-run build cache, only the run's own item memo can spare the second worker.
+    rmSync(path.join(fx.dataDir, LAYER_BUILDS_DIR), { recursive: true, force: true });
     const after = countingWorker();
     const { runtime: second } = resolveRuntime(db, after.worker, checksRoute({ dataDir: fx.dataDir, store: new ArtifactStore(fx.dataDir, db), evalChecks: [] }));
 

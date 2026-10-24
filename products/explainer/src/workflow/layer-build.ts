@@ -22,7 +22,7 @@ const TREE_STEP = "layer-tree";
 const STAGE = "resolve";
 export const CUSTOM_LAYERS = "custom-layers";
 /** Under the data dir: the cross-run build cache's pointers, by packet key. */
-const LAYER_BUILDS_DIR = "layer-builds";
+export const LAYER_BUILDS_DIR = "layer-builds";
 const BUILD_CONCURRENCY = 4;
 // The same input variable `codeStep` uses: an item step needs the whole StepResult, usage included, for the budget.
 const INPUT_VAR = "CODE_STEP_INPUT";
