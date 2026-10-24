@@ -191,7 +191,7 @@ describe("bulk owner rows", () => {
   it("adds nothing to samples, agreed, baseline or missedRedirects", () => {
     const base = sampleSet(2, 1);
     const withBulk = withPredictions([
-      ...base.rows.map((r): [LedgerRow, Prediction] => [r, r.prediction as Prediction]),
+      ...base.rows.map((r): [LedgerRow, Prediction] => [r, r.prediction]),
       [bulkRow(), predict(RECOMMENDED)],
       [bulkRow(), predict(OTHER, true)],
     ]);
