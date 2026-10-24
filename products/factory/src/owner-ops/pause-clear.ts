@@ -41,11 +41,13 @@ export async function clearPause(actionId: string, { op }: OpRead, deps: PauseCl
   }
 }
 
-const clearedByThis = (entry: LedgerLine): boolean => entry.phase === "done" && entry.result !== undefined && "clearedPause" in entry.result;
+const NO_PAUSE = "no failure pause stands; deploys were not paused by a rollback, or it was cleared elsewhere";
+
+const clearedByThis =(entry: LedgerLine): boolean => entry.phase === "done" && entry.result !== undefined && "clearedPause" in entry.result;
 
 function clearUnderLock(op: PauseClear, { stateDir, ports }: DeployState, clearedBefore: boolean): Outcome {
   const state = readDeployPause(ports, stateDir);
-  if (!state.paused) return clearedBefore ? { outcome: "already", clearedPause: op.pausedAt } : { outcome: "gone", reason: "no failure pause stands; deploys were not paused by a rollback, or it was cleared elsewhere" };
+  if (!state.paused) return clearedBefore ? { outcome: "already", clearedPause: op.pausedAt } : { outcome: "gone", reason: NO_PAUSE };
   if (state.pause === undefined) return refused("mismatch", "the deploy pause file does not parse, so it cannot be matched to this pause; clear it on the terminal");
   if (!samePause(state.pause, op)) return { outcome: "moved", currentPause: state.pause.pausedAt };
   ports.remove(deployPausePath(stateDir));

@@ -253,6 +253,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const { proofs, start, notify, ingress, passStamp, bot, reconciler } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
+  const deployStateDir = options.deployStateDir ?? factoryStateDir(process.env);
   return {
     registry: createFactoryRegistry(log),
     createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
@@ -263,7 +264,8 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
     health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot(), reconciler: reconciler() }),
-    mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), deployStateDir: options.deployStateDir ?? factoryStateDir(process.env), log }),
+    mountRoutes: (app) =>
+      mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), deployStateDir, log }),
     logger: options.logger,
   };
 }
