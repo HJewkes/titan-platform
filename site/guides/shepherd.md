@@ -1443,7 +1443,10 @@ wait. A repeat at the same head keeps the first row and its time.
 
 **Who waits.** Every other registered run whose pull request changes one of the reserved
 paths waits in its merge step, like any hold, until the reserving pull request merges or
-closes, its run stops driving, or the reservation passes its TTL. Paths listed in
+closes, its run stops driving, or the reservation passes its TTL. While a person holds the
+reserving run (an owner hold, or a g10 or other gating hold no reviewer has satisfied), its
+reservation orders nothing, so a held run never parks its peers until the TTL (TP-4133); it
+orders them again once the hold lifts. Paths listed in
 `generated-paths.json` and the rule's `ignore` globs (`.changeset/**`) never count. A run
 that cannot read its own changed paths waits behind every live reservation, bounded by the
 TTL. Two reservations that overlap land in the order they were taken.
@@ -1471,7 +1474,9 @@ cycle. The hold reason names the reserving pull request and the shared paths:
 merge order: waiting behind #2301 (products/explainer/CAPABILITY.md)
 ```
 
-`shepherd status` shows that reason as the waiting row's next action. The reserving row
+`shepherd status` shows that reason as the waiting row's next action, and a waiting merge past
+the phase limit names it in its stall flag too. The waiting run's `shepherd timeline` gets one
+`order-wait` event each time it starts waiting behind a reservation. The reserving row
 carries its reservation, with its state and the pull requests waiting behind it:
 
 ```
@@ -1484,7 +1489,7 @@ lists the pull requests it waited behind. `shepherd timeline` lists the reservin
 `"enabled": true` in `merge-order.json` are ordered: titan-platform today.
 
 **Reading and clearing by hand.** `titan-factory shepherd order [owner/repo]` lists every
-reservation with its age, its state (`live`, `expired`, `not driving` or `rule off`), the
+reservation with its age, its state (`live`, `expired`, `not driving`, `held` or `rule off`), the
 pull requests it let land first, the earlier reservations it waits behind, and the pull
 requests waiting behind it. It reads the database and serve's memory only, never GitHub.
 
