@@ -199,8 +199,10 @@ async function sources(): Promise<InboxSources> {
 const ownerContext = (auth: RequestAuth = SESSION, ownerWrites = true): ConsoleContext => ({ warnings: [], format: "json", surface: "http", auth, ownerWrites });
 
 interface Harness {
-  prepare(itemId: string): Promise<JsonEnvelope<unknown>>;
+  prepare(itemId: string, decision?: string): Promise<JsonEnvelope<unknown>>;
   act(itemId: string, confirm: string, ctx?: ConsoleContext, text?: string): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
+  /** The act for a second tap: `decision` rides with the confirm, as the page sends it. */
+  actOn(itemId: string, decision: string, confirm: string): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
 }
 
 interface HarnessOptions {
@@ -213,8 +215,9 @@ async function harness(client: OwnerActionClient, options: HarnessOptions = {}):
   const { decisionLog, answerer } = options;
   const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(decisionLog && { decisionLog }), ...(answerer && { answerer }) });
   return {
-    prepare: async (itemId) => (await invokeCommand(commands["inbox.prepare"], { itemId }, ownerContext())).envelope,
+    prepare: async (itemId, decision) => (await invokeCommand(commands["inbox.prepare"], { itemId, ...(decision !== undefined && { decision }) }, ownerContext())).envelope,
     act: (itemId, confirm, ctx = ownerContext(), text) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }) }, ctx),
+    actOn: (itemId, decision, confirm) => invokeCommand(commands["inbox.act"], { itemId, decision, confirm }, ownerContext()),
   };
 }
 
@@ -290,6 +293,68 @@ describe("inbox.act", () => {
     expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, message: "Waiting for the implementer's next pushed head; nothing merged" } });
     expect(JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8"))).toMatchObject({ action: { kind: "resolve-gate", stepId: "sh-sent-back", decision: "await-new-head" } });
     expect(calls[0]![1]).toMatchObject({ text: "await-new-head" });
+  });
+
+  describe("a waivable sh-sent-back gate", () => {
+    const sentBackId = `${RUN_PLAIN}/sh-sent-back`;
+    const itemId = `gate:${sentBackId}`;
+    const sentBackItem = (offered: { id: string; label: string }[]) => {
+      items = [{ ...gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), id: itemId, sources: [{ system: "hitl", ref: sentBackId }], options: offered }];
+    };
+    const WAIT = { id: "await-new-head", label: "Wait for a new head" };
+    const ABANDON = { id: "abandon", label: "Abandon the PR" };
+    const WAIVE = { id: "waive-proof", label: "Waive the fix-proof at this head" };
+
+    it("waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone", async () => {
+      sentBackItem([WAIT, ABANDON, WAIVE]);
+      const factorySpy = spyFactory();
+      const { log, calls } = spyLog();
+      const { prepare, actOn } = await harness(factorySpy.client, { decisionLog: log });
+      const prepared = ready(await prepare(itemId, "waive-proof"));
+
+      const { envelope } = await actOn(itemId, "waive-proof", prepared.confirm);
+
+      expect(prepared.readBack).toMatchObject({ gateId: sentBackId, headSha: HEAD, effect: `Skip the fix-proof requirement for ${REPO}#1 at 1234567 only, so Shepherd reviews this head. This tap merges nothing: the merge still needs your Approve merge tap, and a new push asks again` });
+      expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, message: "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge" } });
+      const record = JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8"));
+      expect(record.action).toEqual({ kind: "resolve-gate", gateId: sentBackId, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "waive-proof" });
+      expect(factorySpy.posts).toEqual([prepared.confirm]);
+      expect(calls[0]![1]).toMatchObject({ text: "waive-proof" });
+    });
+
+    it("keeps await-new-head as the item's own tap beside the waiver", async () => {
+      sentBackItem([WAIT, ABANDON, WAIVE]);
+      const { prepare, act } = await harness(spyFactory().client);
+      const prepared = ready(await prepare(itemId));
+
+      const { envelope } = await act(itemId, prepared.confirm);
+
+      expect(prepared.action).toMatchObject({ decision: "await-new-head", alternatives: ["waive-proof"] });
+      expect(envelope).toMatchObject({ ok: true, data: { message: "Waiting for the implementer's next pushed head; nothing merged" } });
+      expect(JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8")).action).not.toHaveProperty("alternatives");
+    });
+
+    it("offers no waive-proof tap on a sent-back gate whose options lack it", async () => {
+      sentBackItem([WAIT, ABANDON]);
+      const { prepare } = await harness(spyFactory().client);
+
+      const envelope = await prepare(itemId, "waive-proof");
+
+      expect(envelope).toMatchObject({ ok: true, data: { status: "no-action", reason: "this item offers no waive-proof tap" } });
+    });
+
+    it("refuses a waive-proof act on the confirm of an await-new-head read-back, and writes no record", async () => {
+      sentBackItem([WAIT, ABANDON, WAIVE]);
+      const factorySpy = spyFactory();
+      const { prepare, actOn } = await harness(factorySpy.client);
+      const { confirm } = ready(await prepare(itemId));
+
+      const { envelope } = await actOn(itemId, "waive-proof", confirm);
+
+      expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
+      expect(factorySpy.posts).toEqual([]);
+      expect(await records()).toEqual([]);
+    });
   });
 
   it("refuses a bearer credential with 403 and writes no record", async () => {
