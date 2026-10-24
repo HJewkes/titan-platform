@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import { SPEECH_BANDS, type SpeechBand } from "../beat-schema.js";
+import { BuilderRefSchema, type BuilderRef } from "../build/beat-worker.js";
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import { canonicalJson } from "../eval-store.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
@@ -7,19 +10,19 @@ import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { loadSpeechBands } from "../speech-bands.js";
 import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../style-pack-load.js";
 import type { StylePack } from "../style-pack-schema.js";
-import { sha256 } from "./artifacts.js";
+import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
-import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from "./records.js";
+import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type StageName } from "./records.js";
 
 /**
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "pp8", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
@@ -29,7 +32,7 @@ const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly stri
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
-  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links"],
+  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -40,6 +43,19 @@ export const VariantSchema = z.object({
   params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 export type Variant = z.infer<typeof VariantSchema>;
+
+type VariantShas = Partial<Record<StageName, string>>;
+
+/** Each variant file is stored as an artifact, so the plan (and the stage key) holds its sha, not a path. */
+export function storeVariants(request: { variants?: VariantShas; variantShas?: VariantShas }, store: ArtifactStore): VariantShas {
+  const stored: VariantShas = { ...request.variantShas };
+  for (const [stage, file] of Object.entries(request.variants ?? {})) {
+    const variant = VariantSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+    if (variant.stage !== stage) throw new Error(`variant file ${path.basename(file)} is for stage ${variant.stage}, not ${stage}`);
+    stored[stage as StageName] = store.putText(readFileSync(file, "utf8"), "variant", { runId: "input", stage: "variant" });
+  }
+  return stored;
+}
 
 const ScriptParamsSchema = z.strictObject({ model: z.string().min(1).optional() });
 const RewriteParamsSchema = z.strictObject({ model: z.string().min(1).optional(), rounds: z.number().int().min(1).max(MAX_REWRITE_ROUNDS).optional() });
@@ -70,6 +86,8 @@ export const StageConfigSchema = z.object({
   rates: z.record(z.enum(SPEECH_BANDS), z.number()).optional(),
   /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
   stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
+  /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
+  builder: BuilderRefSchema.optional(),
 });
 export type StageConfig = z.infer<typeof StageConfigSchema>;
 
@@ -165,6 +183,8 @@ export interface SpecRequest {
   bridge: () => BridgeFile;
   /** The style packs a render variant's `stylePack` param picks from; the shipped ones by default. */
   stylePacks?: () => ReadonlyMap<string, StylePack>;
+  /** The beat worker's builder, which only the resolve stage's key carries; absent, custom beats stay unbuilt. */
+  builder?: BuilderRef;
 }
 
 let shipped: ReadonlyMap<string, StylePack> | undefined;
@@ -211,6 +231,7 @@ export function stageSpec(request: SpecRequest): StageSpec {
     ...(variant ? { variant: { name: variant.value.name, sha: variant.sha } } : {}),
     ...settings,
     ...(style ? { stylePack: style.stylePack, vars: { ...settings.vars, ...style.vars } } : {}),
+    ...(stage === "resolve" && request.builder ? { builder: request.builder } : {}),
   };
   const keyed = { stage, inputs, config, sample: request.sample };
   return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd };

@@ -252,6 +252,12 @@ const ScriptShape = z
 /** `script/v1`: one two-track script, a narration track and a visual track per beat. */
 export const ScriptSchema = ScriptShape.superRefine(checkReferences);
 
+// Owner-only fields: a drafting model never sees them, and a reply naming them loses them as unknown keys.
+const DraftBeatSchema = ScriptBeatSchema.extend({ visual: ScriptVisualSchema.omit({ slots: true, tune: true }) });
+
+/** `script/v1` as the script-drafting model is shown it and its reply is parsed: without the owner's slot overrides. */
+export const DraftScriptSchema = ScriptShape.extend({ beats: z.array(DraftBeatSchema).min(1) }).superRefine(checkReferences);
+
 export type ScriptV1 = z.infer<typeof ScriptSchema>;
 export type ScriptChapter = ScriptV1["chapters"][number];
 export type ScriptVisual = ScriptBeat["visual"];

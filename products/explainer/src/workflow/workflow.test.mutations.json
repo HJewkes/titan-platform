@@ -27,6 +27,15 @@
       "kills": [
         "explainer run puts a word the voice cannot say into the repair round with its split, and keeps the respelled reply"
       ]
+    },
+    {
+      "name": "the drafting model's schema keeps the owner-only fields",
+      "file": "products/explainer/src/script-schema.ts",
+      "find": "visual: ScriptVisualSchema.omit({ slots: true, tune: true })",
+      "replace": "visual: ScriptVisualSchema",
+      "kills": [
+        "explainer run never shows the drafting model the owner's slot overrides, and drops them from its reply before resolve"
+      ]
     }
   ]
 }
