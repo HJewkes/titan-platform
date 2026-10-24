@@ -148,7 +148,7 @@ function conflictList(conflict: Conflict): string {
 const REGENERATE = "run `pnpm capabilities` and `pnpm docs:reference`, commit the regenerated files and push";
 
 /** Workers cannot force-push, so a history rewrite strands the fix; the recipe names the one path that pushes plainly. */
-const MERGE_RECIPE = "Merge the base branch from origin: `git fetch origin`, `git merge origin/<base>`, resolve, commit and push with a plain `git push`. Never rewrite history or force-push.";
+const MERGE_RECIPE = "Merge the base branch from origin: `git fetch origin`, `git merge origin/<base>`, resolve, commit and push with a plain `git push`.";
 
 function conflictReason(input: WakeFacts, conflict: Conflict): string {
   const intro = `Head ${input.headSha} conflicts with its base branch, named in the fence below. ${MERGE_RECIPE}`;
@@ -280,10 +280,13 @@ async function withReviewComments(port: GitHubPort, input: WakeFacts, wake: { re
 /** Seats merged main into PRs to re-run flaky CI or stay current, resetting reviews; Shepherd owns the land-time merge-up (TP-2080). */
 const BASE_IS_SHEPHERDS = "Do not merge the base branch to re-run CI or to bring the PR up to date: Shepherd re-runs flaky checks and merges the base itself at land time. Push only your fix.";
 
-/** Why the agent is woken, and the data that shows it, fenced; `testRule` is the fixer rule for the host serve runs on. */
+/** Workers cannot force-push, so a rebased or reset branch strands the round: its plain push is refused and the retry exits with no new head. */
+export const NO_REWRITE_RULE = "Never rebase or reset a pushed branch. To take an updated base or a sibling PR, `git merge` it and push a new commit with a plain `git push`. A refused push means merge, not retry.";
+
+/** Why the agent is woken, and the data that shows it, fenced; `testRule` is the fixer rule for the host serve runs on. Every wake kind passes here, so the history rule is appended once. */
 export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest, testRule: string = MAC_SUITE_RULES.fixer): Promise<{ reason: string; payload: string }> {
   const wake = await wakeBody(port, input, pr);
-  return { ...wake, reason: `${wake.reason}\n\n${testRule}` };
+  return { ...wake, reason: `${wake.reason}\n\n${NO_REWRITE_RULE}\n\n${testRule}` };
 }
 
 async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {

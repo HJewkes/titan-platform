@@ -35,8 +35,9 @@ const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-cas
 const Seconds = z.number().int().nonnegative();
 const Band = z.tuple([Seconds, Seconds]);
 
+/** `labels` is how the block's beats write `visual.labels` so the host bridge's views fire; the script prompt carries it. */
 const BlockSchema = z
-  .object({ id: Kebab, goal: z.string().min(1), seconds: Band, beats: z.array(Kebab).min(1), require: z.array(Kebab).optional() })
+  .object({ id: Kebab, goal: z.string().min(1), seconds: Band, beats: z.array(Kebab).min(1), require: z.array(Kebab).optional(), labels: z.string().min(1).optional() })
   .strict();
 
 /** One heuristic row: a registered structure, and the profile's own wording of its fit question. */
