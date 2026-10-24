@@ -36,7 +36,17 @@ interface BoundaryLinks {
   ratio: number;
   unlinked: string[];
   /** The connective that opens more than its share of linked boundaries, with its count, if one does. */
-  overused?: { word: string; count: number; linked: number };
+  overused?: Overuse;
+}
+
+export interface Overuse {
+  word: string;
+  count: number;
+  linked: number;
+  /** The linked beats it opens, in script order. */
+  beats: string[];
+  /** How many linked beats each connective opens. */
+  counts: ReadonlyMap<string, number>;
 }
 
 /** Q-F1's measurement: body-to-body boundaries inside a chapter link by a connective or a shared entity. */
@@ -54,7 +64,8 @@ export function boundaryLinks(beats: readonly ScriptBeat[]): BoundaryLinks {
     if (word) counts.set(word, (counts.get(word) ?? 0) + 1);
   }
   const [word, count] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
-  const overused = linked.length >= 3 && count / linked.length > MAX_CONNECTIVE_SHARE ? { word, count, linked: linked.length } : undefined;
+  const opened = linked.filter(({ beat }) => connectiveOf(beat) === word).map(({ beat }) => beat.id);
+  const overused = linked.length >= 3 && count / linked.length > MAX_CONNECTIVE_SHARE ? { word, count, linked: linked.length, beats: opened, counts } : undefined;
   const ratio = boundaries.length ? linked.length / boundaries.length : 1;
   const unlinked = boundaries.filter((b) => !linked.includes(b)).map(({ beat }) => beat.id);
   return { ratio, unlinked, ...(overused ? { overused } : {}) };

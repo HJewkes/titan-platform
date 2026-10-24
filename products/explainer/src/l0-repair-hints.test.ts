@@ -44,6 +44,23 @@ describe("repair hints for rows whose value says too little", () => {
     expect(hintFor(tour(beats), "Q-F1")).toMatch(/"so" opens \d+ of \d+ linked beats, past the 40 % one connective may carry/);
   });
 
+  // Mutation: dropping connectorEdits' cap slice, or telling the beats to link by a shared word, leaves Q-F1 failing.
+  it("Q-F1 names the connector_in to set on each beat past the cap, and those edits pass the check", () => {
+    const therefore = (id: string) => withBeat(id, { extra: { connector_in: "therefore" } }).find((spec) => spec[0] === id)!;
+    const beats = GOOD_BEATS.map((spec) => (["w2", "w3", "k2", "k3"].includes(spec[0]) ? therefore(spec[0]) : spec));
+
+    const hint = hintFor(tour(beats), "Q-F1")!;
+    const edits = [...hint.matchAll(/set connector_in to "(\w+)" on (\w+)/g)].map(([, connector, id]) => [id!, connector!] as const);
+    const edited = beats.map((spec): BeatSpec => {
+      const connector = edits.find(([id]) => id === spec[0])?.[1];
+      return connector ? [spec[0], spec[1], spec[2], spec[3], { ...spec[4], connector_in: connector }] : spec;
+    });
+
+    expect(hint).toContain('"therefore" opens 4 of 7 linked beats, past the 40 % one connective may carry: w2, w3, k2, k3');
+    expect(edits).toEqual([["k2", "but"], ["k3", "so"]]);
+    expect(runL0(tour(edited), undefined, [flowCheck]).find((r) => r.check_id === "Q-F1")?.pass).toBe(true);
+  });
+
   it("Q-F3 quotes the anchor and lists the HOW beats that never name it", () => {
     const script = tour(GOOD_BEATS, { running_example: { scenario: "Parcel P-7 arrives late", anchor: "parcel p-7" } });
 
@@ -88,9 +105,9 @@ describe("repair hints for rows whose value says too little", () => {
     expect(repairHint(row, script, facts)).toMatch(/^claims the gathered facts do not back are among w2 "3 open PRs" \(the cited facts count 1 .*pr\/acme\/desk#4\/opened.*\)\. Name only/);
   });
 
-  it("gives no hint for a row whose beats and value already say what to fix", () => {
+  it("Q-F11 names the long outro and its word count against the cap", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 
-    expect(hintFor(script, "Q-F11")).toBeUndefined();
+    expect(hintFor(script, "Q-F11")).toMatch(/; the last beat c2 says 14 words \(at most 8\)$/);
   });
 });

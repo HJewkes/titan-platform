@@ -68,8 +68,11 @@ function mixedLists(beats: readonly PaceBeat[], ledger: Ledger, contrast: Readon
 
 const quoted = (labels: readonly string[]): string => labels.map((label) => `"${label}"`).join(", ");
 
+const pinAnchor = (script: ScriptV1, beatId: string, text: string): string | undefined =>
+  script.beats.find((b) => b.id === beatId)?.visual.map_state?.pins?.find((pin) => pin.text === text)?.anchor;
+
 /** What one failing beat shows that Q-E17 rejects: items the ledger does not list, and items it defines later. */
-function beatFindings(beat: PaceBeat, at: number, beats: readonly PaceBeat[], ledger: Ledger): string[] {
+function beatFindings(script: ScriptV1, beat: PaceBeat, at: number, beats: readonly PaceBeat[], ledger: Ledger): string[] {
   const position = positions(beats);
   const available = [...ledger.values()].filter((entry) => (position.get(entry.definedIn) ?? Infinity) <= at).map((entry) => entry.item);
   const unlisted = beat.newItems.filter((item) => !entryOf(ledger, item));
@@ -78,11 +81,13 @@ function beatFindings(beat: PaceBeat, at: number, beats: readonly PaceBeat[], le
     return entry && (position.get(entry.definedIn) ?? Infinity) > at ? [{ item, entry }] : [];
   });
   const found: string[] = [];
-  if (unlisted.length > 0) {
-    const handles = available.length > 0 ? quoted(available) : "none yet";
-    const sources = [...new Set(unlisted.map((i) => i.source))].join("/");
-    found.push(`${beat.id} shows ${quoted(unlisted.map((i) => i.label))} (${sources}), not in the spine ledger; name a ledger item the chapter may use (${handles}) or drop it`);
+  const handles = available.length > 0 ? quoted(available) : "none yet";
+  const [pins, others] = [unlisted.filter((i) => i.source === "pin"), unlisted.filter((i) => i.source !== "pin")];
+  if (others.length > 0) {
+    const sources = [...new Set(others.map((i) => i.source))].join("/");
+    found.push(`${beat.id} shows ${quoted(others.map((i) => i.label))} (${sources}), not in the spine ledger; name a ledger item the chapter may use (${handles}) or drop it`);
   }
+  pins.forEach((pin) => found.push(`${beat.id}'s map pin on "${pinAnchor(script, beat.id, pin.label)}" reads "${pin.label}", not in the spine ledger; set that pin's text to a ledger item the chapter may use (${handles}) or remove the pin`));
   late.forEach(({ item, entry }) => found.push(`${beat.id} shows "${item.label}" before ${entry.definedIn}, where the ledger defines it; move it to ${entry.definedIn} or drop it`));
   return found;
 }
@@ -97,7 +102,7 @@ export function ledgerHint(script: ScriptV1, failing: readonly string[], spine: 
   }
   const ledger = ledgerOf(spine);
   const named = new Set(failing);
-  const found = beats.flatMap((beat, at) => (named.has(beat.id) ? beatFindings(beat, at, beats, ledger) : []));
+  const found = beats.flatMap((beat, at) => (named.has(beat.id) ? beatFindings(script, beat, at, beats, ledger) : []));
   return found.length > 0 ? found.join("; ") : undefined;
 }
 

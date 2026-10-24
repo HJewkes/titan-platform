@@ -8,10 +8,11 @@ import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { stampLedgerTerms, type Stamped } from "../ledger-stamp.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
-import { rewriteScript } from "../rewrite-pass.js";
+import { rewriteScript, spellScript } from "../rewrite-pass.js";
 import { parseScript } from "../script-load.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
+import { unknownWordsRow, type Tokens } from "../unknown-words.js";
 import { COMPANION_FILE, companionChapters, renderCompanion, reviewFacts, type ChapterLinks } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry } from "../rules.js";
@@ -23,6 +24,7 @@ import {
 import { StageFailure } from "./stage-failure.js";
 import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
+import { doctrineG2p } from "./voice-g2p.js";
 
 export { stageUsage } from "./script-draft.js";
 export { StageFailure } from "./stage-failure.js";
@@ -69,6 +71,8 @@ export interface ScriptStageDeps {
   runnerFor?: RunnerFor;
   /** The L0 checks the repair call answers; all of them by default. */
   l0Checks?: readonly L0Check[];
+  /** The g2p the repair's unknown-words row reads; the doctrine voice's by default. */
+  g2p?: Tokens;
   signal?: AbortSignal;
 }
 
@@ -144,7 +148,9 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const call = scriptCall(input, deps);
   const facts = claimFacts(factsText);
   const l0Checks = withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts);
-  const lint: Lint = { rows: (script) => runL0(script, undefined, l0Checks, undefined, spine), spine, ...(facts ? { facts } : {}) };
+  const g2p = deps.g2p ?? doctrineG2p();
+  const rows = (script: ScriptV1) => [...runL0(script, undefined, l0Checks, undefined, spine), unknownWordsRow(g2p, spellScript(script))];
+  const lint: Lint = { rows, spine, g2p, ...(facts ? { facts } : {}) };
   const sections = promptSections(spineText, factsText, plan);
   const written = isChunked(spine)
     ? await chunkedScript({ call, sections, plan, lint, capUsd: input.remainingUsd })

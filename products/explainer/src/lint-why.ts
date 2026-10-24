@@ -57,7 +57,8 @@ function startTimes(script: ScriptV1): Map<string, number> {
 let structures: ReadonlyMap<string, NarrativeStructure> | undefined;
 
 /** The functions whose beats may voice the stake: the script's structure declares them, and STAKE alone otherwise. */
-function stakeFunctions(structure: string | undefined): readonly ScriptBeat["function"][] {
+/** The beat functions that may voice the stake for Q-W1: the structure's `stakeFunctions`, else STAKE. */
+export function stakeFunctions(structure: string | undefined): readonly ScriptBeat["function"][] {
   if (structure === undefined) return ["STAKE"];
   structures ??= loadStructures();
   return structures.get(structure)?.stakeFunctions ?? ["STAKE"];

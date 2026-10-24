@@ -146,12 +146,13 @@ describe("Q-E17 on a ledger item named too early, or a pin the ledger does not l
     expect(repairHint(row, script, undefined, spineOf(LEDGER))).toBe('h1 shows "PR 101" before ch2, where the ledger defines it; move it to ch2 or drop it');
   });
 
-  it("names each unledgered pin, its beat, and the ledger handles that chapter may use", () => {
+  // Mutation: folding pins back into the generic "name a ledger item" line drops the anchor and the pin-text edit.
+  it("names each unledgered pin by its anchor, and says to set the pin's text to a ledger handle or remove it", () => {
     const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server.", { ...pinned("Times out at 10 s on slow CI") }));
     const row = q17(script, spineOf(LEDGER));
 
     expect(repairHint(row, script, undefined, spineOf(LEDGER))).toBe(
-      'w1 shows "Times out at 10 s on slow CI" (pin), not in the spine ledger; name a ledger item the chapter may use ("PR 101", "TP-7", "TP-9") or drop it',
+      `w1's map pin on "desk" reads "Times out at 10 s on slow CI", not in the spine ledger; set that pin's text to a ledger item the chapter may use ("PR 101", "TP-7", "TP-9") or remove the pin`,
     );
   });
 

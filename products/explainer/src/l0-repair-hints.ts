@@ -1,22 +1,39 @@
 import type { L0Result } from "./eval-l0.js";
 import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lint-claims.js";
-import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
+import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
-import type { ScriptV1 } from "./script-schema.js";
+import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
+import { listed, percent, type Hint } from "./repair-hint.js";
+import { FLOW_HINTS } from "./repair-hints-flow.js";
+import { VOICE_HINTS } from "./repair-hints-voice.js";
+import { WHY_HINTS } from "./repair-hints-why.js";
 
-type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], spine?: SpineV1) => string | undefined;
+// The beats past the cap each get the least-used connector the cap still allows; with none left, a shared word links.
+function connectorEdits({ word, linked, beats, counts }: Overuse): string[] {
+  const cap = Math.floor(MAX_CONNECTIVE_SHARE * linked);
+  const tally = new Map(CONNECTORS.filter((c) => c !== word).map((c) => [c, counts.get(c) ?? 0]));
+  return beats.slice(cap).map((id) => {
+    const least = [...tally].sort((a, b) => a[1] - b[1])[0];
+    if (!least || least[1] >= cap) return `on ${id} remove connector_in and open on a word the beat before ends on`;
+    const [pick, used] = least;
+    tally.set(pick, used + 1);
+    return `set connector_in to "${pick}" on ${id}`;
+  });
+}
 
-const percent = (share: number): string => `${Math.round(share * 100)} %`;
-const listed = (ids: readonly string[]): string => (ids.length ? ids.join(", ") : "none");
+function overuseHint(overused: Overuse): string {
+  const { word, count, linked, beats } = overused;
+  return `"${word}" opens ${count} of ${linked} linked beats, past the ${percent(MAX_CONNECTIVE_SHARE)} one connective may carry: ${beats.join(", ")}. The check counts a beat's connector_in before its spoken words, so ${connectorEdits(overused).join(", ")}`;
+}
 
 function linkHint(script: ScriptV1): string {
   const { ratio, unlinked, overused } = boundaryLinks(script.beats);
   const parts = [`${percent(ratio)} of in-chapter boundaries link (needs ${percent(MIN_LINKED)}); unlinked: ${listed(unlinked)}`];
-  if (overused) parts.push(`"${overused.word}" opens ${overused.count} of ${overused.linked} linked beats, past the ${percent(MAX_CONNECTIVE_SHARE)} one connective may carry; link the others by a shared word instead`);
+  if (overused) parts.push(overuseHint(overused));
   return parts.join("; ");
 }
 
@@ -58,6 +75,9 @@ function claimsHint(script: ScriptV1, row: L0Result, facts?: readonly GatheredFa
 }
 
 const HINTS: Readonly<Record<string, Hint>> = {
+  ...WHY_HINTS,
+  ...VOICE_HINTS,
+  ...FLOW_HINTS,
   "Q-F1": linkHint,
   "Q-F3": threadHint,
   "Q-F4": (script) => thesisDefects(script).join("; "),
@@ -68,6 +88,9 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,
 };
+
+/** The check ids with a repair hint of their own. */
+export const HINTED_CHECKS: ReadonlySet<string> = new Set(Object.keys(HINTS));
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
 export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1): string | undefined =>
