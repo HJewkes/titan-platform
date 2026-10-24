@@ -7,7 +7,7 @@
       "find": "    if (scope === 'workspace') return workspace.ensure(budgetMs);\n",
       "replace": "",
       "kills": [
-        "context.related freshness in the daemon related does not start a transcript pass"
+        "context.related in the daemon related does not start a transcript pass"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "ensureFresh(RELATED_FRESH_BUDGET_MS, 'workspace')",
       "replace": "ensureFresh(RELATED_FRESH_BUDGET_MS, 'transcripts')",
       "kills": [
-        "context.related freshness in the daemon related does not start a transcript pass"
+        "context.related in the daemon related does not start a transcript pass"
       ]
     }
   ]

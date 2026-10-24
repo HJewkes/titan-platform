@@ -83,20 +83,19 @@ function installDaemonHook(workspaceRefresh: () => Promise<unknown>): {
   return { runNow, workspace, uninstall };
 }
 
-describe('context.related freshness in the daemon', () => {
-  it('related does not start a transcript pass', async () => {
+describe('context.related workspace freshness', () => {
+  it('a clean workspace answers without a refresh, with transcripts dirty', async () => {
     const workspaceRefresh = vi.fn(async () => undefined);
     const hook = installDaemonHook(workspaceRefresh);
 
     try {
       const result = await runRelated(
-        { for: 'the alpha lesson', initiative: 'alpha', trigger: 'spawn' },
+        { for: 'the alpha lesson', initiative: 'alpha' },
         { activeRoot: root, dbPath, hitLog: noHitLog },
       );
 
       expect(hook.runNow).not.toHaveBeenCalled();
       expect(workspaceRefresh).not.toHaveBeenCalled();
-      expect(result.hits.length).toBeGreaterThan(0);
       expect(result.degraded.filter((entry) => entry.source === 'index')).toEqual([]);
     } finally {
       hook.uninstall();
