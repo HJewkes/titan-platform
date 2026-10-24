@@ -207,6 +207,7 @@ describe("chunked script drafting", () => {
 
     const prefix = model.systems[0]!;
     expect(model.systems).toEqual(model.prompts.map(() => prefix));
+    expect(prefix).toContain("## Rules for the script stage");
     expect(prefix).toContain("## Story spine (spine.md)");
     expect(prefix).toContain("## The script/v1 JSON Schema");
     expect(prefix).not.toContain("## Facts pack");
