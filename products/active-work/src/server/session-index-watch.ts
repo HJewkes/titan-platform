@@ -15,9 +15,11 @@ import { watchTree, type TreeWatcher } from '@titan-design/daemon';
 import { watchChangedPaths } from '../session-index/watch-paths.js';
 import { createDirtySet, type DirtySet, type DrainedDirtySet } from '../session-index/dirty-set.js';
 import { transcriptsFromDirty } from '../session-index/delta-pass.js';
-import { indexFreshness } from '../session-index/freshness.js';
+import { indexFreshness, type Freshness } from '../session-index/freshness.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
+import { getActiveRoot } from '../utils/paths.js';
 import { readerGate } from '../session-index/reader-gate.js';
 import {
   readRefreshLockHolder,
@@ -30,6 +32,7 @@ import {
   DEFAULT_GATE_RECHECK_MS,
   DEFAULT_MIN_INTERVAL_MS,
   RefreshScheduler,
+  withinBudget,
   type PassKind,
   type SchedulerStatus,
 } from '../session-index/scheduler.js';
@@ -296,13 +299,97 @@ function createScheduler(
   );
 }
 
+export interface WorkspaceFreshness {
+  /** The active root changed; the next workspace reader catches the index up first. */
+  markDirty(): void;
+  /** Fresh at once when nothing changed; otherwise waits on a workspace-only refresh within `budgetMs`. */
+  ensure(budgetMs: number): Promise<Freshness>;
+  /** Settles once no workspace refresh is running. */
+  idle(): Promise<void>;
+}
+
+/**
+ * Freshness for readers of workspace documents (TP-4139). `refresh` indexes the
+ * workspace half alone, so such a reader never waits on transcript work. A
+ * change that lands while a refresh runs gets a follow-up refresh.
+ */
+export function createWorkspaceFreshness(refresh: () => Promise<unknown>): WorkspaceFreshness {
+  let dirty = false;
+  let inFlight: Promise<boolean> | null = null;
+  const start = (): Promise<boolean> => {
+    dirty = false;
+    const run = refresh().then(
+      () => true,
+      () => {
+        dirty = true;
+        return false;
+      },
+    );
+    inFlight = run.finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
+  };
+  const catchUp = async (): Promise<boolean> => {
+    const ok = inFlight ? await inFlight : true;
+    // Another reader may have started the follow-up while this one waited.
+    if (inFlight) return inFlight;
+    return dirty ? start() : ok;
+  };
+  return {
+    markDirty: () => {
+      dirty = true;
+    },
+    ensure: (budgetMs) =>
+      !dirty && !inFlight ? Promise.resolve('fresh') : withinBudget(catchUp, budgetMs),
+    idle: async () => {
+      await inFlight;
+    },
+  };
+}
+
 /** Readers refresh before they read; nothing to index and nothing running means already fresh. */
-function installFreshness(scheduler: RefreshScheduler, dirty: DirtySet): () => void {
-  return indexFreshness.install((budgetMs) =>
-    dirty.size === 0 && !scheduler.status().running
+export function installFreshness(
+  scheduler: Pick<RefreshScheduler, 'runNow' | 'status'>,
+  dirty: DirtySet,
+  workspace: WorkspaceFreshness,
+): () => void {
+  return indexFreshness.install((budgetMs, scope) => {
+    if (scope === 'workspace') return workspace.ensure(budgetMs);
+    return dirty.size === 0 && !scheduler.status().running
       ? Promise.resolve('fresh')
-      : scheduler.runNow(budgetMs),
-  );
+      : scheduler.runNow(budgetMs);
+  });
+}
+
+/** Short: marking dirty costs nothing, and a reader soon after a write should see it. */
+const WORKSPACE_DEBOUNCE_MS = 200;
+
+/** A missing active root is an ordinary state: the startup full pass indexes it once it exists. */
+function watchWorkspace(
+  root: string,
+  workspace: WorkspaceFreshness,
+  log: WatchLogger,
+): TreeWatcher | null {
+  if (!existsSync(root)) return null;
+  try {
+    return watchTree(root, () => workspace.markDirty(), {
+      debounceMs: WORKSPACE_DEBOUNCE_MS,
+      onError: (err) => log.warn({ err, root }, 'workspace watcher error'),
+    });
+  } catch (err) {
+    log.warn({ err, root }, 'workspace watcher unavailable; related reads the last pass');
+    return null;
+  }
+}
+
+/** The workspace half alone; fails at once on a held lock, since a reader is waiting on it. */
+function workspaceRefresh(graph: WorkspaceGraph, signal: AbortSignal): () => Promise<unknown> {
+  return () =>
+    withRefreshLock(() => refreshWorkspace(graph, { activeRoot: getActiveRoot() }), {
+      retries: 0,
+      signal,
+    });
 }
 
 export function startSessionIndexWatch(
@@ -326,13 +413,16 @@ export function startSessionIndexWatch(
   const abort = new AbortController();
   const runner = passRunner(graph, dirty, log, abort.signal);
   const scheduler = createScheduler(runner, dirty, log, abort.signal);
-  const uninstall = installFreshness(scheduler, dirty);
+  const workspace = createWorkspaceFreshness(workspaceRefresh(graph, abort.signal));
+  const uninstall = installFreshness(scheduler, dirty, workspace);
 
   // The watcher only records what changed; a reader or the poll runs the pass.
   const watchers = claudeTranscriptRoots().flatMap(({ root }) => {
     const watcher = watchRoot(root, () => {}, log, dirty);
     return watcher ? [watcher] : [];
   });
+  const workspaceWatcher = watchWorkspace(getActiveRoot(), workspace, log);
+  if (workspaceWatcher) watchers.push(workspaceWatcher);
 
   const startPoll = options.startPoll ?? startIntervalPoll;
   const stopPoll = startPoll(
@@ -351,7 +441,7 @@ export function startSessionIndexWatch(
       abort.abort(new Error('session index watcher closed'));
       stopPoll();
       for (const watcher of watchers) watcher.close();
-      await scheduler.close();
+      await Promise.all([scheduler.close(), workspace.idle()]);
       graph.db.close();
     },
   };
