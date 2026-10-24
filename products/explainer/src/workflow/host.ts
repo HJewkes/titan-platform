@@ -4,7 +4,7 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
-import type { BeatWorker, BuilderRef } from "../build/beat-worker.js";
+import type { BeatWorker } from "../build/beat-worker.js";
 import { beatWorkerFor } from "../build/claude-print-worker.js";
 import type { L0Check } from "../eval-l0.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
@@ -242,9 +242,8 @@ export interface Runtime {
   runtime: WorkflowRuntime;
   store: ArtifactStore;
   cache: CacheDeps;
-  bridge: () => BridgeFile;
-  /** The beat worker's builder, which keys the resolve stage; absent, custom beats are left unbuilt with a note. */
-  builder?: BuilderRef;
+  /** `builder`: the beat worker's, which keys the resolve stage; absent, custom beats are left unbuilt with a note. */
+  bridge: () => BridgeFile; builder?: BeatWorker["builder"];
 }
 
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
