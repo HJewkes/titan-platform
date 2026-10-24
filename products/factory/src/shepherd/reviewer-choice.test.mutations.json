@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the standing reviewer is proven over the live roster, without the retired generations",
+      "name": "the standing reviewer is proven over the live roster, without retired rows",
       "file": "products/factory/src/shepherd/reviewer-choice.ts",
       "find": "return resumable && provablyIndependent(agent, registration.implementer, lineage) ? agent : undefined;",
       "replace": "return resumable && provablyIndependent(agent, registration.implementer, { rows: roster, complete: true }) ? agent : undefined;",

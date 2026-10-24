@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the hold proves independence over the live roster, without the retired generations",
+      "name": "the hold proves independence over the live roster, without retired generations",
       "file": "products/factory/src/shepherd/hold.ts",
       "find": "const lineage = deps.lineage ? await deps.lineage().catch(unreadLineage(repo, pr)) : { rows: roster, complete: true };",
       "replace": "const lineage = { rows: roster, complete: true };",
