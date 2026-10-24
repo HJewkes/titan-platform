@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,10 +11,10 @@ import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./
 let fx: Fixture;
 afterEach(() => fx.cleanup());
 
-function cli(model: Parameters<typeof fakeHost>[1] = fakeScriptModel()) {
+function cli(model: Parameters<typeof fakeHost>[1] = fakeScriptModel(), gatherOverrides: { lanesFile?: string } = {}) {
   const out: string[] = [];
   const err: string[] = [];
-  const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), lanesFile: DEFAULT_LANES_FILE };
+  const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), lanesFile: DEFAULT_LANES_FILE, ...gatherOverrides };
   const host = fakeHost(fx, model, fakeBridge());
   const run = (...argv: string[]) => runRunCli(["run", ...argv, "--data-dir", fx.dataDir], { host, gather, out: (t) => out.push(t), err: (t) => err.push(t) });
   return { run, out, err };
@@ -53,6 +53,23 @@ describe("explainer run --facts-from gatherDaily", () => {
     expect(code, err.join("")).toBe(0);
     expect(facts).toContain("| decision/501 | decision · Open the desk at seven | P1 |");
     expect(facts).not.toContain("decision/500");
+  });
+
+  it("reads the lanes file kept under --data-dir over the doctrine default", async () => {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    mkdirSync(path.join(fx.dataDir, "daily"), { recursive: true });
+    const lanes = readFileSync(DEFAULT_LANES_FILE, "utf8").replace("fallback: factory", "fallback: solo").replace(/^lanes:\n[\s\S]*$/m, "lanes:\n  - id: solo\n    label: Solo\n");
+    writeFileSync(path.join(fx.dataDir, "daily", "lanes.yaml"), lanes);
+    const { run, out, err } = cli(fakeScriptModel(), { lanesFile: undefined });
+
+    const code = await run(...DAILY, "--type", "daily-overview", "--dry-run");
+    const facts = readFileSync(path.join(fx.dataDir, "gather", "daily-overview", DAY, "facts.md"), "utf8");
+
+    expect(code, err.join("")).toBe(0);
+    expect(out.join("")).toContain("gathered");
+    expect(facts).toContain("| lane/solo/rollup | solo lane · rollup · Solo: 2 merged");
+    expect(facts).not.toContain("lane/factory/rollup");
   });
 
   it("refuses a type whose profile does not take facts from gatherDaily", async () => {

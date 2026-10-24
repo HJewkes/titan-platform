@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { appDirs } from "@titan-design/app-paths";
 import { execGh, type GhExec } from "@titan-design/github";
 import { claudeTranscriptRoots } from "@titan-design/session-read";
 import { z } from "zod";
@@ -48,7 +47,7 @@ export interface GatherDeps {
   prGh?: GhRun;
   callEdges?: CallEdgeReader;
   readAt?: ReadAt;
-  /** The daily lanes rule file a request without `--lanes` reads; else the host's `daily/lanes.yaml`, else the doctrine default. */
+  /** The daily lanes rule file a request without `--lanes` reads; else the data dir's `daily/lanes.yaml`, else the doctrine default. */
   lanesFile?: string;
 }
 
@@ -67,7 +66,7 @@ interface Gathered {
 
 async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gatherDaily" }>, dataDir: string, deps: GatherDeps): Promise<Gathered> {
   const transcriptRoots = request.transcripts.length > 0 ? request.transcripts : claudeTranscriptRoots().map((root) => root.root);
-  const lanesFile = request.lanes ?? deps.lanesFile ?? defaultLanesFile();
+  const lanesFile = request.lanes ?? deps.lanesFile ?? lanesFileFor(dataDir);
   if (request.lanes && request.lanesSha) readChecked(request.lanes, request.lanesSha);
   const decisions = request.decisions && request.decisionsSha ? readChecked(request.decisions, request.decisionsSha) : undefined;
   const { digest, notes, coverage } = await gatherDaily({
@@ -78,8 +77,6 @@ async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gath
   const files = await writeDailyGather(path.join(dataDir, "gather", request.type, request.day), digest, coverage);
   return { type: request.type, facts: files.facts, factsText: readFileSync(files.facts, "utf8"), items: digest.items.length, notes, record: files.digest };
 }
-
-const defaultLanesFile = () => lanesFileFor(appDirs("explainer").data);
 
 function readChecked(file: string, sha: string): string {
   const text = readFileSync(file, "utf8");
@@ -138,7 +135,7 @@ export interface GatherFlags {
   article?: string;
   claims?: string;
   label?: string;
-  /** The daily lanes rule file (default: the host's `daily/lanes.yaml`, else the doctrine default). */
+  /** The daily lanes rule file (default: the data dir's `daily/lanes.yaml`, else the doctrine default). */
   lanes?: string;
   /** The owner's decisions log; with none, the daily has no decision facts. */
   decisions?: string;
@@ -155,16 +152,19 @@ function articleRequest(flags: GatherFlags, type: string, day: string): DayGathe
   return { adapter: "gatherArticle", type, day, article: flags.article, articleSha: shaOf(flags.article), claims: flags.claims, claimsSha: shaOf(flags.claims), label };
 }
 
-function dailyRequest(flags: GatherFlags, type: string, day: string): DayGatherRequest {
-  const lanes = path.resolve(flags.lanes ?? defaultLanesFile());
+function dailyRequest(flags: GatherFlags, type: string, day: string, dataDir: string): DayGatherRequest {
+  const lanes = path.resolve(flags.lanes ?? lanesFileFor(dataDir));
   const decisions = flags.decisions ? { decisions: path.resolve(flags.decisions), decisionsSha: shaOf(flags.decisions) } : {};
   return { adapter: "gatherDaily", type, day, repos: flags.repo, transcripts: flags.transcripts, initiative: flags.initiative, lanes, lanesSha: shaOf(lanes), ...decisions };
 }
 
-/** The gather request `explainer run --facts-from` makes: what the gather stage, or a gather before the run, reads. */
-export function gatherRequest(flags: GatherFlags): DayGatherRequest {
+/**
+ * The gather request `explainer run --facts-from` makes: what the gather stage, or a gather before the run, reads.
+ * A daily request names its lanes file, `dataDir`'s own when `--lanes` names none, so the file's sha is in the key.
+ */
+export function gatherRequest(flags: GatherFlags, dataDir: string): DayGatherRequest {
   if (!flags.type) throw new Error(`--facts-from ${flags.factsFrom} needs --type, the video type whose facts it gathers`);
   const day = flags.day ?? new Date().toISOString().slice(0, 10);
   if (flags.factsFrom === "gatherArticle") return articleRequest(flags, flags.type, day);
-  return dailyRequest(flags, flags.type, day);
+  return dailyRequest(flags, flags.type, day, dataDir);
 }

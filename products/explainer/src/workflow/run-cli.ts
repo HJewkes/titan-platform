@@ -133,9 +133,10 @@ interface RunInputs {
 async function inputsFor(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<RunInputs> {
   if (!flags.factsFrom) return flags.facts ? { facts: flags.facts } : {};
   const lanes = flags.lanes ?? deps.gather?.lanesFile;
-  const request = gatherRequest({ ...flags, factsFrom: flags.factsFrom, ...(lanes ? { lanes } : {}) });
+  const { dataDir } = hostFor(flags, deps);
+  const request = gatherRequest({ ...flags, factsFrom: flags.factsFrom, ...(lanes ? { lanes } : {}) }, dataDir);
   if (flags.from === "gather") return { gather: request };
-  const gathered = await gatherFacts(request, hostFor(flags, deps).dataDir, deps.gather);
+  const gathered = await gatherFacts(request, dataDir, deps.gather);
   io.out(`gathered ${gathered.items} facts for ${gathered.type} ${request.day}: ${gathered.facts}${gathered.record ? ` (record ${gathered.record})` : ""}\n`);
   for (const note of gathered.notes) io.err(`note: ${note}\n`);
   return { facts: gathered.facts };
@@ -149,7 +150,7 @@ function addGatherOptions(command: Command): Command {
     .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable)", collect, [])
     .option("--transcripts <dir>", "a Claude Code transcript root for gatherDaily (repeatable; default: every local profile)", collect, [])
     .option("--initiative <slug>", "the active-work initiative gatherDaily snapshots, read-only", "titan-platform")
-    .option("--lanes <file>", "the lanes rule file gatherDaily places merged PRs with (default: the host's daily/lanes.yaml, else the doctrine default)")
+    .option("--lanes <file>", "the lanes rule file gatherDaily places merged PRs with (default: daily/lanes.yaml under the data dir, else the doctrine default)")
     .option("--decisions <file>", "the owner's decisions log; gatherDaily turns its entries stamped inside the day into decision facts")
     .option("--article <path>", "the article or paper as markdown, for gatherArticle")
     .option("--claims <path>", "a JSON array of proposed claims, each with its verbatim quote, for gatherArticle")

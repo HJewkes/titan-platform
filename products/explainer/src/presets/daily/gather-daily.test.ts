@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DigestSchema } from "../../digest.js";
+import { parseFacts } from "../../material-facts.js";
 import { DAILY_FIXTURE, DAY, fakeGh, fixtureTasks, REPO, snapshotStore } from "./daily-fakes.test-helpers.js";
 import { dailyFactsMarkdown, dayWindow, gatherDaily, writeDailyGather, type GatherDailyOptions } from "./gather-daily.js";
 
@@ -92,6 +93,14 @@ describe("daily facts pack", () => {
     const item = { id: "pr/a/b#1/merged", kind: "pull-request" as const, title: "Add cache", at: "2026-03-11T15:00:00.000Z", change: "merged", outcome: "Adds a cache.", priority: "P1" };
 
     expect(dailyFactsMarkdown({ ...dayWindow(DAY), items: [item] })).toContain("| pr/a/b#1/merged | pull-request merged · Add cache · Adds a cache. | P1 |");
+  });
+
+  it("reads back a merged PR whose title holds a pipe with its full claim and P1 priority", () => {
+    const item = { id: "pr/a/b#2/merged", kind: "pull-request" as const, title: "Split a | b", at: "2026-03-11T15:00:00.000Z", change: "merged", outcome: "Keeps a|b whole.", priority: "P1" };
+
+    const { facts } = parseFacts(dailyFactsMarkdown({ ...dayWindow(DAY), items: [item] }));
+
+    expect(facts).toEqual([{ id: "pr/a/b#2/merged", text: "pull-request merged · Split a | b · Keeps a|b whole.", priority: "P1" }]);
   });
 
   it("rejects a day the calendar does not have", () => {
