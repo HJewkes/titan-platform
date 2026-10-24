@@ -2,45 +2,65 @@ import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import { holdClassOf } from "../shepherd/g10-release.js";
+import { TWO_MERGE_RULE, holdClassOf } from "../shepherd/g10-release.js";
 import { LIVE } from "../shepherd/gone-elsewhere.js";
 import { releaseAtHead } from "../shepherd/release-head.js";
 import type { Registration } from "../shepherd/store.js";
 import type { ShepherdServices } from "../shepherd/services.js";
 import type { StandingAnswer } from "./standing-answers.js";
 
-const G10_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
+export const G10_HOLDS = ["g10-review", "g10-adversary"] as const;
+export type G10Hold = (typeof G10_HOLDS)[number];
 const SUMMARY_MAX = 200;
 
+const isG10Hold = (holdClass: string | undefined): holdClass is G10Hold => G10_HOLDS.some((each) => each === holdClass);
+
 /** The g10 class the run is held under now, if any; the approval waits out only a g10 hold. */
-export const g10HoldOf = (registration: Pick<Registration, "held" | "holdReason"> | undefined): string | undefined => {
+export const g10HoldOf = (registration: Pick<Registration, "held" | "holdReason"> | undefined): G10Hold | undefined => {
   const holdClass = registration?.held ? holdClassOf(registration.holdReason) : undefined;
-  return holdClass !== undefined && G10_CLASSES.has(holdClass) ? holdClass : undefined;
+  return isG10Hold(holdClass) ? holdClass : undefined;
 };
+
+/** The g10 hold the owner saw at the tap, and when they tapped: the only hold, and the only release records, the approval waits for. */
+export interface WaitsOut {
+  holdClass: G10Hold;
+  approvedAt: string;
+}
 
 export type LoopState = { state: "merge" } | { state: "fix-first"; stepId: string } | { state: "open" };
 /** Reads the loop's state on one run at one head; serve reads the run's own records through `loopAt`. */
-export type LoopRead = (runId: string, head: string) => LoopState;
+export type LoopRead = (runId: string, head: string, waitsOut: WaitsOut) => LoopState;
 
 const StepData = z.looseObject({ result: z.looseObject({}) });
+type ReleaseResult = z.infer<typeof StepData>["result"];
 const at = (prefix: string, head: string) => new RegExp(`^${prefix}:${head}(:\\d+)?$`);
 
 /**
- * What the adversary loop said at exactly `head`, from the Shepherd run's own records. A FIX_FIRST from the panel's aggregate
- * or the correctness reviewer closes it non-MERGE. Shepherd's g10 release step closes it MERGE once it judged the hold met
- * there: it released the hold itself, or, in shadow, would have. Anything else is still open.
+ * A g10-review release is one MERGE and carries no rule; only the two-MERGE release judges a g10-adversary hold. A release written
+ * before the tap judged a hold the owner never waited on, so it never counts.
  */
-export function loopAt(run: Pick<WorkflowRun, "stepResults">, head: string): LoopState {
+function judgedWaitedHold(result: ReleaseResult, completedAt: string, { holdClass, approvedAt }: WaitsOut): boolean {
+  if (Date.parse(completedAt) <= Date.parse(approvedAt)) return false;
+  if ((holdClass === "g10-adversary") !== (result.rule === TWO_MERGE_RULE)) return false;
+  return result.released === true || result.wouldRelease === true;
+}
+
+/**
+ * What the adversary loop said at exactly `head`, from the Shepherd run's own records. A FIX_FIRST from the panel's aggregate
+ * or the correctness reviewer closes it non-MERGE. Shepherd's g10 release step closes it MERGE once, after the tap, it judged
+ * the waited-out hold met there: it released the hold itself, or, in shadow, would have. Anything else is still open.
+ */
+export function loopAt(run: Pick<WorkflowRun, "stepResults">, head: string, waitsOut: WaitsOut): LoopState {
   const panel = at("sh-review-panel", head);
   const correctness = at("sh-await-verdict", head);
   const release = new RegExp(`^sh-g10-release:${head}:\\d+$`);
   let merged = false;
-  for (const { stepId, data } of Object.values(run.stepResults)) {
+  for (const { stepId, data, completedAt } of Object.values(run.stepResults)) {
     const parsed = StepData.safeParse(data);
     if (!parsed.success) continue;
     const { result } = parsed.data;
     if ((panel.test(stepId) && result.outcome === "FIX_FIRST") || (correctness.test(stepId) && result.verdict === "FIX_FIRST")) return { state: "fix-first", stepId };
-    if (release.test(stepId) && (result.released === true || result.wouldRelease === true)) merged = true;
+    if (release.test(stepId) && judgedWaitedHold(result, completedAt, waitsOut)) merged = true;
   }
   return merged ? { state: "merge" } : { state: "open" };
 }
@@ -59,9 +79,9 @@ interface LoopDeps {
   loopRead?: LoopRead;
 }
 
-const runLoop = (host: FactoryHost): LoopRead => (runId, head) => {
+const runLoop = (host: FactoryHost): LoopRead => (runId, head, waitsOut) => {
   const run = host.runtime.status(runId);
-  return run === undefined ? { state: "open" } : loopAt(run, head);
+  return run === undefined ? { state: "open" } : loopAt(run, head, waitsOut);
 };
 
 const short = (sha: string): string => sha.slice(0, 7);
@@ -69,22 +89,30 @@ const short = (sha: string): string => sha.slice(0, 7);
 /** The release event's actor, as `ownerRelease` writes it, so the record that lifted the hold can be read back. */
 const approvalActor = (confirmEvent: string): string => `owner-remote:titan-console proof ${confirmEvent}`;
 
+interface Waiting {
+  answer: StandingAnswer;
+  waitsOut: WaitsOut;
+  /** The run's g10 class now; a different class than the owner saw is a hold they never approved past. */
+  holdNow: G10Hold | undefined;
+}
+
 /**
  * Why the owner's approval no longer stands, or the loop's state when it still does. The head is GitHub's, read now: a push
  * since the tap voids the approval even when the loop at the confirmed head later closes MERGE.
  */
-async function standing(answer: StandingAnswer, { host, services, now, loopRead = runLoop(host) }: LoopDeps): Promise<{ void: string } | { loop: LoopState } | undefined> {
+async function standing({ answer, waitsOut, holdNow }: Waiting, { host, services, now, loopRead = runLoop(host) }: LoopDeps): Promise<{ void: string } | { loop: LoopState } | undefined> {
   if (Date.parse(answer.expiresAt) <= now.getTime()) return { void: `it expired at ${answer.expiresAt} before the adversary loop closed` };
   const pull = await services.port.getPr(answer.repo, answer.pr);
   if (pull.state !== "open") return undefined;
   if (pull.headSha !== answer.headSha) return { void: `the PR moved to a new head ${short(pull.headSha)} after you approved ${short(answer.headSha)}` };
-  const loop = loopRead(answer.runId, answer.headSha);
+  if (holdNow !== undefined && holdNow !== waitsOut.holdClass) return { void: `the hold changed from ${waitsOut.holdClass} to ${holdNow} after you approved` };
+  const loop = loopRead(answer.runId, answer.headSha, waitsOut);
   if (loop.state === "fix-first") return { void: `the adversary loop closed without a MERGE at ${short(answer.headSha)} (${loop.stepId} said FIX_FIRST)` };
   return { loop };
 }
 
 /**
- * One pass over an approval that waits out a g10 hold. It voids on a new head, a non-MERGE close or expiry. Once the loop closes
+ * One pass over an approval that waits out a g10 hold. It voids on a new head, a changed hold class, a non-MERGE close or expiry. Once the loop closes
  * MERGE at the confirmed head it lifts the g10 hold as the owner, and Shepherd's run goes on to merge from there. A run that
  * has ended, or a PR no longer open, needs nothing.
  */
@@ -92,14 +120,15 @@ export async function sweepLoopApproval(answer: StandingAnswer, deps: LoopDeps):
   const { actionId, runId } = answer;
   const registration = deps.services.store.get().byRun(runId);
   if (registration === undefined || !LIVE.has(deps.host.runtime.status(runId)?.status ?? "")) return undefined;
-  const read = await standing(answer, deps).catch((error: unknown) => ({ unread: error instanceof Error ? error.message : String(error) }));
+  if (answer.waitsOut === undefined) return { kind: "voided", actionId, runId, reason: "it names no g10 hold it waits out" };
+  const holdNow = g10HoldOf(registration);
+  const read = await standing({ answer, waitsOut: answer.waitsOut, holdNow }, deps).catch((error: unknown) => ({ unread: error instanceof Error ? error.message : String(error) }));
   if (read === undefined) return undefined;
   if ("unread" in read) return { kind: "pending", actionId, runId, reason: `${answer.repo}#${answer.pr} could not be read: ${read.unread}` };
   if ("void" in read) return { kind: "voided", actionId, runId, reason: read.void };
   if (read.loop.state === "open") return { kind: "pending", actionId, runId, reason: `the adversary loop has not closed at ${answer.headSha}` };
-  const holdClass = g10HoldOf(registration);
-  if (holdClass === undefined) return { kind: "closed", actionId, runId };
-  return released(answer, holdClass, deps);
+  if (holdNow === undefined) return { kind: "closed", actionId, runId };
+  return released(answer, holdNow, deps);
 }
 
 /** Shepherd re-reads the head and the hold inside the release; a refusal leaves the approval standing for the next pass. */

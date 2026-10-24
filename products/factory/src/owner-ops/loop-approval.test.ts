@@ -7,8 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Outcome } from "../console-action/outcome.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LAND_WORKFLOW } from "../registry.js";
+import { TWO_MERGE_RULE } from "../shepherd/g10-release.js";
 import { callCommand, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
-import { loopAt, type LoopState } from "./loop-approval.js";
+import { loopAt, type LoopState, type WaitsOut } from "./loop-approval.js";
 import { mergeAtHead } from "./merge-at-head.js";
 import { standingAnswers, sweepStandingAnswers, type StandingAnswers } from "./standing-answers.js";
 
@@ -115,6 +116,18 @@ describe("merge-at-head waiting out a g10 hold: the loop closes MERGE at the app
 });
 
 describe("merge-at-head waiting out a g10 hold: a void", () => {
+  it("on a hold escalated to another g10 class after the tap voids the approval and lifts nothing", async () => {
+    const w = await heldWorld("g10-review: synthetic single review");
+    await w.tap();
+    w.fixture.routes.shepherd!.store.get().hold(w.runId, "g10-adversary: synthetic escalation", undefined, { actor: "seat" });
+
+    const swept = await w.sweep({ state: "merge" });
+
+    expect(swept).toEqual([{ kind: "voided", actionId: "act-1", runId: w.runId, reason: "the hold changed from g10-review to g10-adversary after you approved" }]);
+    expect(releases(w)).toEqual([]);
+    expect(w.fixture.fake.effects.merge).toBe(0);
+  });
+
   it("on a new head voids the approval, tells the owner once, lifts nothing and merges nothing", async () => {
     const w = await heldWorld();
     await w.tap();
@@ -167,33 +180,53 @@ describe("merge-at-head waiting out a g10 hold: a void", () => {
   });
 });
 
-const result = (stepId: string, payload: Record<string, unknown>): StepResult => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt: "2026-10-18T12:00:00.000Z", data: { result: payload } });
+const result = (stepId: string, payload: Record<string, unknown>, completedAt = "2026-10-18T12:00:00.000Z"): StepResult => ({ stepId, iteration: 0, agentId: null, signal: null, completedAt, data: { result: payload } });
 const runOf = (...results: StepResult[]) => ({ stepResults: Object.fromEntries(results.map((each) => [each.stepId, each])) });
+
+const TAPPED_AT = "2026-10-18T11:00:00.000Z";
+const ADVERSARY: WaitsOut = { holdClass: "g10-adversary", approvedAt: TAPPED_AT };
+const REVIEW: WaitsOut = { holdClass: "g10-review", approvedAt: TAPPED_AT };
+const twoMerge = (payload: Record<string, unknown>) => ({ ...payload, rule: TWO_MERGE_RULE });
 
 describe("loopAt reads the adversary loop at one head", () => {
   it("is open with no record at the head", () => {
-    expect(loopAt(runOf(), H)).toEqual({ state: "open" });
+    expect(loopAt(runOf(), H, ADVERSARY)).toEqual({ state: "open" });
   });
 
-  it("closes MERGE once Shepherd's g10 release judged the hold met at the head, released or in shadow", () => {
-    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, { released: false, wouldRelease: true })), H)).toEqual({ state: "merge" });
-    expect(loopAt(runOf(result(`sh-g10-release:${H}:1`, { released: true })), H)).toEqual({ state: "merge" });
+  it("closes MERGE once Shepherd's two-MERGE release judged a g10-adversary hold met at the head, released or in shadow", () => {
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, twoMerge({ released: false, wouldRelease: true }))), H, ADVERSARY)).toEqual({ state: "merge" });
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:1`, twoMerge({ released: true }))), H, ADVERSARY)).toEqual({ state: "merge" });
+  });
+
+  it("closes MERGE on a g10-review hold once its single-MERGE release judged it met", () => {
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, { released: true })), H, REVIEW)).toEqual({ state: "merge" });
+  });
+
+  it("never takes a single-MERGE release as the adversary loop's MERGE, nor a two-MERGE release as a review's", () => {
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:1`, { released: true })), H, ADVERSARY)).toEqual({ state: "open" });
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:1`, twoMerge({ released: true }))), H, REVIEW)).toEqual({ state: "open" });
+  });
+
+  it("ignores a release written before the owner tapped", () => {
+    const before = result(`sh-g10-release:${H}:0`, twoMerge({ released: true }), "2026-10-18T10:59:59.000Z");
+
+    expect(loopAt(runOf(before), H, ADVERSARY)).toEqual({ state: "open" });
   });
 
   it("stays open on a release judged at another head or judged unmet", () => {
-    expect(loopAt(runOf(result(`sh-g10-release:${H2}:0`, { wouldRelease: true })), H)).toEqual({ state: "open" });
-    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, { released: false })), H)).toEqual({ state: "open" });
+    expect(loopAt(runOf(result(`sh-g10-release:${H2}:0`, twoMerge({ wouldRelease: true }))), H, ADVERSARY)).toEqual({ state: "open" });
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, twoMerge({ released: false }))), H, ADVERSARY)).toEqual({ state: "open" });
   });
 
   it("closes non-MERGE on the panel's or the correctness reviewer's FIX_FIRST at the head, even beside a release", () => {
     const panel = result(`sh-review-panel:${H}`, { outcome: "FIX_FIRST" });
     const correctness = result(`sh-await-verdict:${H}`, { kind: "verdict", verdict: "FIX_FIRST" });
 
-    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, { wouldRelease: true }), panel), H)).toEqual({ state: "fix-first", stepId: panel.stepId });
-    expect(loopAt(runOf(correctness), H)).toEqual({ state: "fix-first", stepId: correctness.stepId });
+    expect(loopAt(runOf(result(`sh-g10-release:${H}:0`, twoMerge({ wouldRelease: true })), panel), H, ADVERSARY)).toEqual({ state: "fix-first", stepId: panel.stepId });
+    expect(loopAt(runOf(correctness), H, ADVERSARY)).toEqual({ state: "fix-first", stepId: correctness.stepId });
   });
 
   it("ignores a FIX_FIRST at another head", () => {
-    expect(loopAt(runOf(result(`sh-review-panel:${H2}`, { outcome: "FIX_FIRST" })), H)).toEqual({ state: "open" });
+    expect(loopAt(runOf(result(`sh-review-panel:${H2}`, { outcome: "FIX_FIRST" })), H, ADVERSARY)).toEqual({ state: "open" });
   });
 });

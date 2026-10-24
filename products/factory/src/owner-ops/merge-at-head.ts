@@ -56,8 +56,9 @@ export async function mergeAtHead(actionId: string, { op, confirmEvent }: OpRead
  */
 async function approveAfterLoop(answer: Omit<StandingAnswer, "runId">, deps: MergeAtHeadDeps): Promise<Outcome> {
   const registration = deps.services.store.get().byPr(answer.repo, answer.pr);
-  if (registration === undefined || g10HoldOf(registration) === undefined) return refused("class", `${answer.repo}#${answer.pr} holds no g10 hold, so there is no adversary loop to wait for`);
-  await deps.answers.add({ ...answer, runId: registration.runId });
+  const holdClass = g10HoldOf(registration);
+  if (registration === undefined || holdClass === undefined) return refused("class", `${answer.repo}#${answer.pr} holds no g10 hold, so there is no adversary loop to wait for`);
+  await deps.answers.add({ ...answer, runId: registration.runId, waitsOut: { holdClass, approvedAt: new Date(deps.now()).toISOString() } });
   return { outcome: "approved", runId: registration.runId };
 }
 

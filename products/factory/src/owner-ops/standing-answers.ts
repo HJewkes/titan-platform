@@ -11,7 +11,7 @@ import { frozenFor } from "../shepherd/freeze.js";
 import { LIVE, endRunsGoneElsewhere } from "../shepherd/gone-elsewhere.js";
 import type { ShepherdServices } from "../shepherd/services.js";
 import { startSweep, type Sweep } from "../sweep.js";
-import { sweepLoopApproval, voidNotice, type LoopRead, type LoopResult } from "./loop-approval.js";
+import { G10_HOLDS, sweepLoopApproval, voidNotice, type LoopRead, type LoopResult } from "./loop-approval.js";
 
 const STANDING_ANSWERS = "standing-answers.jsonl";
 const STANDING_SWEEP_MS = 60_000;
@@ -31,6 +31,8 @@ const StandingAnswerSchema = z.strictObject({
   expiresAt: z.iso.datetime(),
   /** Set when the owner approved a g10-held PR to merge only once its adversary loop closes MERGE; `runId` is then the Shepherd run. */
   waitFor: z.enum(MERGE_WAITS).optional(),
+  /** Set with `waitFor`: the g10 hold the owner saw and when they tapped, so no other hold's verdict, or an earlier one, merges it. */
+  waitsOut: z.strictObject({ holdClass: z.enum(G10_HOLDS), approvedAt: z.iso.datetime() }).optional(),
 });
 /** Appended when an approval stops standing; the answer's own line is never rewritten. */
 const VoidSchema = z.strictObject({ actionId: z.string(), voided: z.string(), at: z.iso.datetime() });

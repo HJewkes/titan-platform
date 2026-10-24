@@ -401,10 +401,12 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
   "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the
   hold. "Approve; merge when the loop closes" prepares and acts with `waitFor: "adversary-loop"`:
-  the owner's approval stands at the head shown, the run stays held, and once the adversary loop
-  closes MERGE at that head the factory lifts the hold as the owner and answers the run's
-  approve-merge, so Shepherd merges by itself. A new head, a non-MERGE close or 24 hours voids the
-  approval, and the factory files an inbox item, "Merge approval voided", saying why.
+  the owner's approval stands at the head and g10 hold shown, the run stays held, and once the
+  adversary loop closes MERGE at that head the factory lifts the hold as the owner and answers the
+  run's approve-merge, so Shepherd merges by itself. Only a g10 release Shepherd writes after the tap
+  counts, and for a `g10-adversary` hold only one under the two-MERGE rule. A new head, a hold
+  escalated to another g10 class, a non-MERGE close or 24 hours voids the approval, and the factory
+  files an inbox item, "Merge approval voided", saying why.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
