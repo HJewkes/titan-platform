@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rollup citation counts its lane whether or not the total is said",
+      "file": "products/explainer/src/lint-coverage.ts",
+      "find": "beat.fact_ids.includes(rollup) && beatSays(beat, merged)",
+      "replace": "beat.fact_ids.includes(rollup)",
+      "kills": [
+        "Q-E21: every merged PR is named or counted under its lane fails a lane whose rollup is cited but whose total is neither said nor shown"
+      ]
+    },
+    {
+      "name": "a rollup cited in any chapter counts its lane",
+      "file": "products/explainer/src/lint-coverage.ts",
+      "find": "beat.chapter === LANES_CHAPTER && beat.fact_ids.includes(rollup)",
+      "replace": "beat.fact_ids.includes(rollup)",
+      "kills": [
+        "Q-E21: every merged PR is named or counted under its lane does not count a lane whose rollup is cited outside the lanes chapter"
+      ]
+    },
+    {
+      "name": "a lane left out yields no hint line",
+      "file": "products/explainer/src/repair-hints-coverage.ts",
+      "find": "const lines = coverageFindings(script, coverage).map(findingLine);",
+      "replace": "const lines = coverageFindings(script, coverage).filter((f) => f.kind === \"named\").map(findingLine);",
+      "kills": [
+        "the Q-E21 repair hint names the left-out lane's rollup fact and total, and the named PR no beat cites"
+      ]
+    },
+    {
+      "name": "a reflection beat citing any fact passes Q-E22",
+      "file": "products/explainer/src/lint-coverage.ts",
+      "find": "!beat.fact_ids.some((id) => id.startsWith(SLOWDOWN_PREFIX) || id.startsWith(PRIORITY_PREFIX))",
+      "replace": "beat.fact_ids.length === 0",
+      "kills": [
+        "Q-E22: each reflection proposal cites the slowdown it answers fails a proposal that cites no slowdown fact, and its hint names the beat and the slowdowns to cite"
+      ]
+    }
+  ]
+}

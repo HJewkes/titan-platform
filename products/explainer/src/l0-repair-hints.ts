@@ -1,5 +1,6 @@
 import type { L0Result } from "./eval-l0.js";
 import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lint-claims.js";
+import type { CoverageManifest } from "./lint-coverage.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
@@ -8,6 +9,7 @@ import { THREAD_SHARE } from "./lint-why.js";
 import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
 import { listed, percent, type Hint } from "./repair-hint.js";
+import { COVERAGE_HINTS } from "./repair-hints-coverage.js";
 import { FLOW_HINTS } from "./repair-hints-flow.js";
 import { VOICE_HINTS } from "./repair-hints-voice.js";
 import { WHY_HINTS } from "./repair-hints-why.js";
@@ -78,6 +80,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   ...WHY_HINTS,
   ...VOICE_HINTS,
   ...FLOW_HINTS,
+  ...COVERAGE_HINTS,
   "Q-F1": linkHint,
   "Q-F3": threadHint,
   "Q-F4": (script) => thesisDefects(script).join("; "),
@@ -93,5 +96,5 @@ const HINTS: Readonly<Record<string, Hint>> = {
 export const HINTED_CHECKS: ReadonlySet<string> = new Set(Object.keys(HINTS));
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
-export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1): string | undefined =>
-  HINTS[row.check_id]?.(script, row, facts, spine);
+export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1, coverage?: CoverageManifest): string | undefined =>
+  HINTS[row.check_id]?.(script, row, facts, spine, coverage);

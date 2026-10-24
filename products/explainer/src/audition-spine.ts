@@ -32,8 +32,8 @@ function citations(spine: SpineCandidate): Map<string, Cited> {
     if (!seen.chapters.includes(chapter)) seen.chapters.push(chapter);
     cited.set(spokenHandle(fact), seen);
   };
-  cite(spine.hook.fact, "ch1");
-  spine.blocks.forEach((block, i) => block.facts.forEach((fact) => cite(fact, `ch${i + 1}`)));
+  cite(spine.hook.fact, spine.blocks[0]!.id);
+  spine.blocks.forEach((block) => block.facts.forEach((fact) => cite(fact, block.id)));
   return cited;
 }
 
@@ -45,6 +45,7 @@ const citeRows = (cited: Map<string, Cited>): string[][] => [...cited].map(([han
 /**
  * The audition pick as a `spine/v1` story spine (spine-schema.ts), for a profile whose spine comes from its audition:
  * block n is journey step n and chapter n, its question the step and the chapter question, its first fact the why.
+ * A chapter takes its block's id, so a later step can find a block's chapter (the daily's reflection) by name.
  * Each block stands as its own part and names its lead beat in §8. The ledger lists every cited fact by the handle a
  * script speaks for it, at the chapter that first cites it; the unnumbered Cites table keeps the fact ids to cite.
  */
@@ -52,7 +53,7 @@ export function pickSpine(id: string, spine: SpineCandidate, facts: readonly Mat
   const text = new Map(facts.map((fact) => [fact.id, fact.text]));
   const journey = spine.blocks.map((block, i) => [String(i + 1), block.id, block.question, text.get(block.facts[0]!) ?? block.facts[0]!, "—", "—"]);
   const parts = spine.blocks.map((block, i) => [block.id, String(i + 1), "—", "—"]);
-  const chapters = spine.blocks.map((block, i) => [`ch${i + 1}`, block.question, `§3.${i + 1}`, block.beat]);
+  const chapters = spine.blocks.map((block, i) => [block.id, block.question, `§3.${i + 1}`, block.beat]);
   const cited = citations(spine);
   return [
     `# Story spine: ${id}`,

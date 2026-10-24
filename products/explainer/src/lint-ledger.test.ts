@@ -153,8 +153,8 @@ describe("a spine made from an audition pick", () => {
   const script = (first: string[], second: string[]) =>
     ScriptSchema.parse(scriptWith({}, {
       profile: "daily-overview",
-      chapters: [{ id: "ch1", label: "The bottom line", question: "What needs the owner?" }, { id: "ch2", label: "What shipped", question: "What shipped?" }],
-      beats: [beat("b1", "ch1", first), beat("b2", "ch2", second)],
+      chapters: [{ id: "bottom-line", label: "The bottom line", question: "What needs the owner?" }, { id: "situation", label: "What shipped", question: "What shipped?" }],
+      beats: [beat("b1", "bottom-line", first), beat("b2", "situation", second)],
     }));
   const qE17 = (s: ReturnType<typeof script>) => runL0(s, undefined, [ledgerCheck], undefined, spine).find((r) => r.check_id === "Q-E17");
 

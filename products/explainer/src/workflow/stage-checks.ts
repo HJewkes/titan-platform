@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { loadBeatSpecs } from "../beat-load.js";
 import { claimFacts, withClaimFacts } from "../claim-facts.js";
+import { parseCoverage, withCoverage } from "../lint-coverage.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { JudgeConfig, JudgeHarness } from "../eval-harness.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
@@ -51,9 +52,12 @@ function rowsVerdict(rows: readonly L0Result[]): Verdict {
   return { pass: failed.length === 0, detail: `${rows.length} rows; failed: ${failed.join(", ") || "none"}` };
 }
 
-/** The L0 checks, with Q-E20 reading the stage's gathered facts when it has them. */
-const l0With = (input: CheckInput): readonly L0Check[] =>
-  input.artifacts.facts === undefined ? input.l0Checks : withClaimFacts(input.l0Checks, claimFacts(text(input, "facts")));
+/** The L0 checks, with Q-E20 and Q-E22 reading the stage's gathered facts, and Q-E21 its coverage manifest, when it has them. */
+function l0With(input: CheckInput): readonly L0Check[] {
+  const facts = input.artifacts.facts === undefined ? undefined : claimFacts(text(input, "facts"));
+  const coverage = input.artifacts.coverage === undefined ? undefined : parseCoverage(text(input, "coverage"));
+  return withCoverage(withClaimFacts(input.l0Checks, facts), coverage, facts);
+}
 
 const l0Draft = (input: CheckInput): L0Result[] =>
   runL0(script(input, "draft"), undefined, l0With(input), undefined, parseSpine(text(input, "spine")));

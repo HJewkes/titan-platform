@@ -60,6 +60,8 @@ interface Gathered {
   record?: string;
   /** `{ files }` at the gathered head, for a gather that reads a repo: resolve checks code citations against it. */
   code?: string;
+  /** A daily gather's `coverage.json` text, when it had lanes: Q-E21 checks the script against it. */
+  coverage?: string;
 }
 
 async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gatherDaily" }>, dataDir: string, deps: GatherDeps): Promise<Gathered> {
@@ -70,7 +72,8 @@ async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gath
     snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks, lanes,
   });
   const files = await writeDailyGather(path.join(dataDir, "gather", request.type, request.day), digest, coverage);
-  return { type: request.type, facts: files.facts, factsText: readFileSync(files.facts, "utf8"), items: digest.items.length, notes, record: files.digest };
+  const covered = files.coverage ? { coverage: readFileSync(files.coverage, "utf8") } : {};
+  return { type: request.type, facts: files.facts, factsText: readFileSync(files.facts, "utf8"), items: digest.items.length, notes, record: files.digest, ...covered };
 }
 
 function readChecked(file: string, sha: string): string {
