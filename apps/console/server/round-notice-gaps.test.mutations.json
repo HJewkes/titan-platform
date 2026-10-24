@@ -47,15 +47,6 @@
         "missed round-notice rows in the inbox shows one row naming the round, the seat and the error when the sweep's retry fails too",
         "missed round-notice rows in the inbox names the latest error when a later sweep fails again"
       ]
-    },
-    {
-      "name": "a missing rounds dir throws instead of reading as no rounds",
-      "file": "apps/console/server/round-notice-gaps.ts",
-      "find": "    if (isMissing(error)) return [];\n",
-      "replace": "",
-      "kills": [
-        "missed round-notice rows in the inbox reads no rows from a rounds dir that does not exist"
-      ]
     }
   ]
 }

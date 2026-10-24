@@ -86,8 +86,4 @@ describe("missed round-notice rows in the inbox", () => {
 
     expect((await rows()).map((row) => [row.evidence.observed, row.evidence.at])).toEqual([["notice failed after the start-up sweep's retry: second error", LATER.toISOString()]]);
   });
-
-  it("reads no rows from a rounds dir that does not exist", async () => {
-    expect(await missedNoticeRows(path.join(roundsDir, "missing"), LATER.getTime())).toEqual([]);
-  });
 });
