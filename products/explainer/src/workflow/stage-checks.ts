@@ -11,7 +11,7 @@ import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
 import { readEmphasisInput, wordBudgetVerdict } from "../resolve-stage.js";
-import { draftRuntime, draftWordBudget } from "../script-budget.js";
+import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
@@ -148,6 +148,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "unknown-words", gate: true, reads: ["draft"], run: knownWords },
     { name: "word-budget", gate: true, reads: ["draft"], run: (input) => draftWordBudget(script(input, "draft")) },
     { name: "runtime", gate: true, reads: ["draft"], run: (input) => draftRuntime(script(input, "draft")) },
+    { name: "beat-length", gate: true, reads: ["draft"], run: (input) => draftBeatLengths(script(input, "draft")) },
   ],
   rewrite: [
     { name: "no-new-l0-error", gate: true, reads: ["draft", "script"], run: noNewL0Error },

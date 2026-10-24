@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BEAT_FUNCTIONS } from "./script-schema.js";
 
 const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-case name");
 const Seconds = z.number().int().nonnegative();
@@ -42,6 +43,8 @@ export const NarrativeStructureSchema = z
     hook: z.string().min(1),
     ending: z.string().min(1),
     spine: z.array(SpineSectionSchema).min(1),
+    /** The beat functions that may voice the stake for Q-W1; absent means STAKE alone. scqa's bottom line comes first and carries it. */
+    stakeFunctions: z.array(z.enum(BEAT_FUNCTIONS)).min(1).optional(),
   })
   .strict();
 

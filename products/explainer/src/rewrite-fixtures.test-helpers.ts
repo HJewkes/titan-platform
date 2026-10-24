@@ -75,9 +75,10 @@ export function choppy(extra: Record<string, Record<string, unknown>> = {}): Scr
 type ReplyBeat = { id: string; spoken: string; labels_added: string[] };
 export type Rewriter = (id: string, prompt: string) => ReplyBeat | undefined;
 
+/** A continuation beat the fake script model split off (`h1-2`) repeats its first part's words, so it takes that rewrite too. */
 export const compliant: Rewriter = (id) => {
-  const rewrite = REWRITES.get(id)!;
-  return { id, spoken: rewrite.after, labels_added: rewrite.labels ?? [] };
+  const rewrite = REWRITES.get(id) ?? REWRITES.get(id.replace(/-\d+$/, ""));
+  return rewrite && { id, spoken: rewrite.after, labels_added: rewrite.labels ?? [] };
 };
 
 export const promptBeatIds = (prompt: string): string[] => [...prompt.matchAll(/^## (\S+)$/gm)].map((m) => m[1]!);

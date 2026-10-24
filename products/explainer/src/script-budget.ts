@@ -1,6 +1,8 @@
 import { loadBeatSpecs } from "./beat-load.js";
 import type { BeatSpec } from "./beat-schema.js";
 import type { LeadBeat } from "./lead-beats.js";
+import { BEAT_SECONDS } from "./lint-flow.js";
+import { bodyBeats } from "./lint-text.js";
 import { loadProfiles, profileFor } from "./profile-load.js";
 import type { TypeProfile } from "./profile-schema.js";
 import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
@@ -59,31 +61,68 @@ export function draftWordBudget(draft: Draft): { pass: boolean; detail: string }
   return { pass: faults.length === 0, detail: faults.length === 0 ? "every beat and block within its cap" : `over: ${faults.join("; ")}` };
 }
 
-/** Everything the plan check fails the draft on: each over-budget beat or block, then the runtime. */
+const [MIN_BEAT_S, MAX_BEAT_S] = BEAT_SECONDS;
+
+/** The fewest beats a chapter of `chapterS` seconds splits into, each within Q-F8's longest beat. */
+export const beatsFor = (chapterS: number): number => Math.max(1, Math.ceil(chapterS / MAX_BEAT_S));
+
+const chapterSeconds = (draft: Draft, chapter: string): number =>
+  draft.beats.filter((beat) => beat.chapter === chapter).reduce((sum, beat) => sum + beat.plannedS, 0);
+
+function beatLengthText(draft: Draft, { id, chapter, plannedS }: Draft["beats"][number]): string {
+  const band = `${id} (${chapter}) plans ${plannedS} s; a beat runs ${MIN_BEAT_S}-${MAX_BEAT_S} s`;
+  if (plannedS < MIN_BEAT_S) return `${band}, so lengthen it or merge it into a neighbour`;
+  const seconds = chapterSeconds(draft, chapter);
+  return `${band}, so ${chapter}'s ${seconds} s splits into at least ${beatsFor(seconds)} beats`;
+}
+
+/** One line per beat Q-F8 holds to its seconds band (the close and chapter-open questions are exempt) and outside it. */
+const beatLengthFaults = (draft: Draft): string[] =>
+  bodyBeats(draft.beats)
+    .filter((beat) => beat.plannedS < MIN_BEAT_S || beat.plannedS > MAX_BEAT_S)
+    .map((beat) => beatLengthText(draft, beat));
+
+/** The draft's beat lengths as a gate verdict, so the plan retry splits a long beat before L0's Q-F8 fails it. */
+export function draftBeatLengths(draft: Draft): { pass: boolean; detail: string } {
+  const faults = beatLengthFaults(draft);
+  return { pass: faults.length === 0, detail: faults.length === 0 ? `every beat within ${MIN_BEAT_S}-${MAX_BEAT_S} s` : `out of band: ${faults.join("; ")}` };
+}
+
+/** Everything the plan check fails the draft on: each over-budget beat or block, each beat out of Q-F8's band, then the runtime. */
 export function planFaults(draft: Draft): string[] {
   const runtime = draftRuntime(draft);
-  return [...wordBudgetFaults(draft), ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`])];
+  return [...wordBudgetFaults(draft), ...beatLengthFaults(draft).map((fault) => `beat length: ${fault}`), ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`])];
 }
 
 /**
  * The retry's hint. The fix is more plannedS, not fewer words: measured drafts sat under the runtime floor with every
  * beat over its cap, so cutting words would only widen the runtime gap. Seconds the words do not fill are dead air,
- * which the pace and stage-empty checks fail, so the words grow with the slot.
+ * which the pace and stage-empty checks fail, so the words grow with the slot. Raising plannedS alone left one
+ * 35-45 s beat per chapter, which Q-F8 fails, so the seconds go to more beats, not longer ones.
  */
 export const planHint = (faults: readonly string[]): string =>
-  `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise each beat's plannedS until its words fit under its cap and the beats sum to the profile's target runtime, then write each beat's spoken text close to its new cap, so no slot is left silent.`;
+  `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise plannedS until each beat's words fit under its cap and the beats sum to the profile's target runtime, but keep every beat other than the close within ${MIN_BEAT_S}-${MAX_BEAT_S} s: split a longer beat into continuation beats in the same chapter, one idea each. Then write each beat's spoken text close to its new cap, so no slot is left silent.`;
 
 const capLine = ({ chapter, spec }: LeadBeat, wordsPerS: number): string =>
   `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down`;
 
-/** The prompt's word caps and runtime: each lead beat's rate, the band table for the rest, and the profile's runtime. */
+/** The prompt's beat plan: Q-F8's band, each chapter's fewest beats at an even share of the target, and the lead-beat split. */
+function beatPlan(leads: readonly LeadBeat[], targetS: number): string {
+  const perChapter = leads.length > 0 ? targetS / leads.length : targetS;
+  const counts = leads.map(({ chapter }) => `${chapter} ${beatsFor(perChapter)}`).join(", ");
+  const total = Math.max(beatsFor(targetS), leads.length * beatsFor(perChapter));
+  const split = counts ? ` At about ${Math.round(perChapter)} s a chapter that is at least: ${counts}.` : "";
+  return `One idea per beat: every beat but the close plans ${MIN_BEAT_S}-${MAX_BEAT_S} s, so a chapter of chapterS seconds holds ceil(chapterS / ${MAX_BEAT_S}) beats or more.${split} Plan at least ${total} beats in all. A chapter's first beat carries its lead beat spec; each later beat in the chapter is a continuation beat with its own id, one function, its own plannedS and its own cues, and keeps the chapter's "visual.beat", listing in "visual.labels" only the items it adds.`;
+}
+
+/** The prompt's word caps, runtime and beat plan: each lead beat's rate, the band table for the rest, and the profile's runtime. */
 export function budgetSection(leads: readonly LeadBeat[], profile: string): string {
   const bands = loadSpeechBands();
   const table = Object.entries(bands).map(([band, { wordsPerS }]) => `${band} ${wordsPerS}`).join(", ");
   const lines = leads.map((lead) => capLine(lead, bands[lead.spec.speech.band].wordsPerS));
   const { runtime } = profileFor(loadProfiles(), profile);
-  return `## Word caps and runtime
+  return `## Word caps, runtime and beats
 
-The beats' plannedS sum to about ${runtime.targetS} s, and never below ${runtime.minS} s or above ${runtime.maxS} s. A beat speaks at most plannedS times its beat spec's words per second, rounded down, and close to that cap, since seconds the words do not fill are silent. Words per second by speech band: ${table}.
+The beats' plannedS sum to about ${runtime.targetS} s, and never below ${runtime.minS} s or above ${runtime.maxS} s. ${beatPlan(leads, runtime.targetS)} A beat speaks at most plannedS times its beat spec's words per second, rounded down, and close to that cap, since seconds the words do not fill are silent. Words per second by speech band: ${table}.
 ${lines.join("\n")}`;
 }
