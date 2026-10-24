@@ -3,7 +3,7 @@ import type { BeatSpec } from "./beat-schema.js";
 import type { LeadBeat } from "./lead-beats.js";
 import { BEAT_SECONDS } from "./lint-flow.js";
 import { bodyBeats } from "./lint-text.js";
-import { loadProfiles, profileFor } from "./profile-load.js";
+import { loadProfiles, profileFor, type ProfileSet } from "./profile-load.js";
 import type { TypeProfile } from "./profile-schema.js";
 import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
 import { overBudget, scriptBudgets, type BudgetRow } from "./resolve-budget.js";
@@ -106,12 +106,27 @@ export const planHint = (faults: readonly string[]): string =>
 const capLine = ({ chapter, spec }: LeadBeat, wordsPerS: number): string =>
   `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down`;
 
-/** The prompt's beat plan: Q-F8's band, each chapter's fewest beats at an even share of the target, and the lead-beat split. */
-function beatPlan(leads: readonly LeadBeat[], targetS: number): string {
-  const perChapter = leads.length > 0 ? targetS / leads.length : targetS;
-  const counts = leads.map(({ chapter }) => `${chapter} ${beatsFor(perChapter)}`).join(", ");
-  const total = Math.max(beatsFor(targetS), leads.length * beatsFor(perChapter));
-  const split = counts ? ` At about ${Math.round(perChapter)} s a chapter that is at least: ${counts}.` : "";
+/**
+ * Each lead's share of the target. A fixed profile's chapters are its macro's blocks in order, so they take the
+ * structure's block shares and a long block gets more beats than the ask; any other plan splits the target evenly.
+ */
+function chapterShares(leads: readonly LeadBeat[], set: ProfileSet, profile: TypeProfile): number[] {
+  const even = leads.map(() => 1 / leads.length);
+  const { structure } = profile;
+  if (structure.order !== "fixed" || leads.length !== structure.blocks.length) return even;
+  const shares = new Map(set.structures.get(structure.macro)?.blocks.map((block) => [block.id, block.share]));
+  const weights = structure.blocks.map((block) => shares.get(block.id));
+  if (weights.some((weight) => weight === undefined)) return even;
+  const sum = weights.reduce((total: number, weight) => total + weight!, 0);
+  return weights.map((weight) => weight! / sum);
+}
+
+/** The prompt's beat plan: Q-F8's band, each chapter's fewest beats at its share of the target, and the lead-beat split. */
+function beatPlan(leads: readonly LeadBeat[], targetS: number, shares: readonly number[]): string {
+  const seconds = leads.map((_, i) => targetS * shares[i]!);
+  const counts = leads.map(({ chapter }, i) => `${chapter} ${beatsFor(seconds[i]!)} (${Math.round(seconds[i]!)} s)`).join(", ");
+  const total = Math.max(beatsFor(targetS), seconds.reduce((sum, chapterS) => sum + beatsFor(chapterS), 0));
+  const split = counts ? ` At each chapter's share of the target that is at least: ${counts}.` : "";
   return `One idea per beat: every beat but the close plans ${MIN_BEAT_S}-${MAX_BEAT_S} s, so a chapter of chapterS seconds holds ceil(chapterS / ${MAX_BEAT_S}) beats or more.${split} Plan at least ${total} beats in all. A chapter's first beat carries its lead beat spec; each later beat in the chapter is a continuation beat with its own id, one function, its own plannedS and its own cues, and keeps the chapter's "visual.beat", listing in "visual.labels" only the items it adds.`;
 }
 
@@ -120,9 +135,11 @@ export function budgetSection(leads: readonly LeadBeat[], profile: string): stri
   const bands = loadSpeechBands();
   const table = Object.entries(bands).map(([band, { wordsPerS }]) => `${band} ${wordsPerS}`).join(", ");
   const lines = leads.map((lead) => capLine(lead, bands[lead.spec.speech.band].wordsPerS));
-  const { runtime } = profileFor(loadProfiles(), profile);
+  const set = loadProfiles();
+  const type = profileFor(set, profile);
+  const { runtime } = type;
   return `## Word caps, runtime and beats
 
-The beats' plannedS sum to about ${runtime.targetS} s, and never below ${runtime.minS} s or above ${runtime.maxS} s. ${beatPlan(leads, runtime.targetS)} A beat speaks at most plannedS times its beat spec's words per second, rounded down, and close to that cap, since seconds the words do not fill are silent. Words per second by speech band: ${table}.
+The beats' plannedS sum to about ${runtime.targetS} s, and never below ${runtime.minS} s or above ${runtime.maxS} s. ${beatPlan(leads, runtime.targetS, chapterShares(leads, set, type))} A beat speaks at most plannedS times its beat spec's words per second, rounded down, and close to that cap, since seconds the words do not fill are silent. Words per second by speech band: ${table}.
 ${lines.join("\n")}`;
 }
