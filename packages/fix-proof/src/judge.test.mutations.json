@@ -2,21 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "coverage counts a self-contained carried test as uncovered again",
-      "file": "packages/fix-proof/src/mutant-classify.ts",
-      "find": " && !needsNoSpec.has(test)",
-      "replace": "",
-      "kills": [
-        "judge with mutation specs a changed test file with no spec of its own a changed test under a carried test-support path needs no spec, since no mutation may target its helpers"
-      ]
-    },
-    {
-      "name": "the judge exempts a carried test by its path alone",
+      "name": "the judge lets a source diff's stale kills through",
       "file": "packages/fix-proof/src/judge.ts",
-      "find": "if (await loadsOnlyCarried(test, read, isCarried)) exempt.add(test);",
-      "replace": "if (isCarried(test)) exempt.add(test);",
+      "find": "unmatched.length > 0 ?",
+      "replace": "unmatched.length > 99 ?",
       "kills": [
-        "judge with mutation specs a changed test file with no spec of its own a changed carried test that imports non-carried source still needs a spec, since a mutation may target that source"
+        "judge with mutation specs a source diff whose spec kills tests the head no longer has three stale kills turn a reproduced verdict into an error naming each kill"
       ]
     }
   ]
