@@ -1,0 +1,86 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dense chapter keeps its items",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "c.failure === null && c.density <= maxDensity",
+      "replace": "c.failure === null",
+      "kills": [
+        "explainer eval calibrate queue under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items"
+      ]
+    },
+    {
+      "name": "a script at the threshold loses its rubric items",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "listener.density <= maxDensity",
+      "replace": "listener.density < maxDensity",
+      "kills": [
+        "explainer eval calibrate queue under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items"
+      ]
+    },
+    {
+      "name": "a dense script keeps its rubric items",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "  if (!source.screen.script) return [];\n",
+      "replace": "",
+      "kills": [
+        "explainer eval calibrate queue under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items"
+      ]
+    },
+    {
+      "name": "a dense chapter keeps its cold items",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": ".filter((r) => source.screen.chapter(r.chapter ?? \"\"))",
+      "replace": "",
+      "kills": [
+        "explainer eval calibrate queue under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items"
+      ]
+    },
+    {
+      "name": "a dense chapter keeps its l1 items",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": " && source.screen.chapter(source.beats[index.get(r.beat!)!]!.chapter)",
+      "replace": "",
+      "kills": [
+        "explainer eval calibrate queue under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items"
+      ]
+    },
+    {
+      "name": "a case without a listener result is not refused by name",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "if (!entry.listener) throw",
+      "replace": "if (entry.listener === \"\") throw",
+      "kills": [
+        "explainer eval calibrate queue refuses --max-density when a case has no listener result, naming the case"
+      ]
+    },
+    {
+      "name": "the round number is always 1",
+      "file": "products/explainer/src/calibration-round.ts",
+      "find": "round: options.round,",
+      "replace": "round: 1,",
+      "kills": [
+        "explainer eval calibrate queue orders the clearest video first, then the pairs, and writes the round number and minutes per kind of item"
+      ]
+    },
+    {
+      "name": "a pair takes as long as a verdict",
+      "file": "products/explainer/src/calibration-round.ts",
+      "find": "pair: 2 }",
+      "replace": "pair: 1.25 }",
+      "kills": [
+        "explainer eval calibrate queue orders the clearest video first, then the pairs, and writes the round number and minutes per kind of item"
+      ]
+    },
+    {
+      "name": "a bench row's eval_version is dropped",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "evalVersion: r.eval_version ?? \"\"",
+      "replace": "evalVersion: \"\"",
+      "kills": [
+        "explainer eval calibrate queue queues each question once, from the judge's own latest verdict, and names the config and run it came from"
+      ]
+    }
+  ]
+}

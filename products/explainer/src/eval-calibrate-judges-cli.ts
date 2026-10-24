@@ -5,7 +5,7 @@ import { z } from "zod";
 import { auditionOutputs } from "./calibration-auditions.js";
 import { agreement, labelsFromFeedback, promotionRefusal, type AgreementRecord } from "./calibration-agreement.js";
 import { buildQueue, CALIBRATION_JUDGES, QUEUE_SIZE, QueueKeySchema, type JudgedOutput, type KeyEntry, type QueueKey } from "./calibration-queue.js";
-import { calibrationRound, MINUTES_PER_ITEM, type RoundCase } from "./calibration-round.js";
+import { calibrationRound, roundMinutes, type RoundCase } from "./calibration-round.js";
 import { judgedOutputs, ManifestSchema } from "./calibration-sources.js";
 
 const EXIT = { OK: 0, USAGE: 2 } as const;
@@ -30,15 +30,19 @@ const countBy = (values: readonly string[]): Record<string, number> =>
 
 const PAIR_CONTEXT = "Each question shows two storyboards for one video: the opening line and the question each part answers, with its length.";
 
-interface QueueFlags { roundDir: string; key: string; unit: string; size: string; seed: string }
+interface QueueFlags { roundDir: string; key: string; unit: string; size: string; seed: string; round: string; maxDensity?: string }
+
+const positiveInt = z.coerce.number().int().positive();
 
 function writeQueue(manifestPath: string, flags: QueueFlags): void {
   const roundFile = join(flags.roundDir, "round.json");
   if (existsSync(roundFile) || existsSync(flags.key)) throw new Error(`${roundFile} or ${flags.key} already exists; a published round is never rewritten`);
   const manifest = ManifestSchema.parse(readJson(manifestPath));
-  const read = manifest.cases.map((entry) => ({ entry, ...judgedOutputs(entry) }));
+  const maxDensity = flags.maxDensity === undefined ? undefined : z.coerce.number().nonnegative().parse(flags.maxDensity);
+  const read = manifest.cases.map((entry) => ({ entry, ...judgedOutputs(entry, maxDensity) }));
+  const clarity = new Map(read.flatMap((r) => (r.density === undefined ? [] : [[r.entry.case, r.density] as const])));
   const outputs: JudgedOutput[] = [...read.flatMap((r) => r.outputs), ...manifest.auditions.flatMap((entry) => auditionOutputs(entry, flags.seed))];
-  const queue = buildQueue(outputs, z.coerce.number().int().positive().parse(flags.size), flags.seed);
+  const queue = buildQueue(outputs, positiveInt.parse(flags.size), flags.seed, clarity);
   if (queue.items.length === 0) throw new Error("no judged outputs outside the holdout; run the judges first");
   const cases = new Map<string, RoundCase>([
     ...manifest.auditions.map((a) => [a.case, { title: a.title, script: PAIR_CONTEXT }] as const),
@@ -46,8 +50,8 @@ function writeQueue(manifestPath: string, flags: QueueFlags): void {
   ]);
   const key: QueueKey = { schema: "calibration-key/v1", round: flags.unit, entries: queue.key };
   writeJson(flags.key, key);
-  writeJson(roundFile, calibrationRound(queue, { unit: flags.unit, cases }));
-  const minutes = Math.round(queue.items.length * MINUTES_PER_ITEM);
+  writeJson(roundFile, calibrationRound(queue, { unit: flags.unit, round: positiveInt.parse(flags.round), cases }));
+  const minutes = roundMinutes(queue.items);
   const by = (field: (k: KeyEntry) => string) => countBy(queue.key.map(field));
   const mix = { by_judge: by((k) => k.judge), by_video_type: by((k) => k.videoType), judge_verdicts: by((k) => `${k.judge}:${k.pass ? "pass" : "fail"}`) };
   console.log(JSON.stringify({ round: roundFile, items: queue.items.length, minutes, ...mix }));
@@ -57,11 +61,13 @@ export const queueCommand = (onResult: (code: number) => void): Command =>
   new Command("queue")
     .description("Build the blind judge-calibration queue from judged benches and write it as an owner console round")
     .argument("<manifest>", "calibration-manifest/v1 JSON naming each case's script, bench, video type and split")
-    .requiredOption("--round-dir <dir>", "console round directory to write round.json into")
+    .requiredOption("--round-dir <dir>", "staging directory for round.json; file it with `titan-console decisions file`")
     .requiredOption("--key <file>", "where the hidden answer key goes; keep it outside the round directory")
     .requiredOption("--unit <id>", "the round's unit id")
     .option("--size <n>", "items in the queue", String(QUEUE_SIZE))
     .option("--seed <seed>", "fixes which outputs are drawn and their order", "tp-4012")
+    .option("--round <n>", "the round's number within its unit", "1")
+    .option("--max-density <q>", "keep only chapters a listener asks at most this many questions a sentence about; needs each case's listener result")
     .exitOverride()
     .action((manifest: string, flags: QueueFlags) => guarded("queue", onResult, () => writeQueue(manifest, flags)));
 

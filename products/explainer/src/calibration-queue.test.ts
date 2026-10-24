@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildQueue, type CalibrationJudge, type JudgedOutput } from "./calibration-queue.js";
+import { buildQueue, QueueKeySchema, type CalibrationJudge, type JudgedOutput } from "./calibration-queue.js";
 
 const output = (judge: CalibrationJudge, n: number, over: Partial<JudgedOutput> = {}): JudgedOutput => ({
   case: "explainer-eval/a", videoType: "repo-tour", split: "dev", ownerNamed: false,
-  judge, kind: "verdict", target: `${judge}-${n}`, question: `question ${judge} ${n}`, excerpt: `excerpt ${n}`, pass: n % 2 === 0, configId: "cfg", run: "1", ...over,
+  judge, kind: "verdict", target: `${judge}-${n}`, question: `question ${judge} ${n}`, excerpt: `excerpt ${n}`, pass: n % 2 === 0, configId: "cfg", run: "1", evalVersion: `ev-${judge}`, ...over,
 });
 
 const many = (judge: CalibrationJudge, count: number, over: Partial<JudgedOutput> = {}): JudgedOutput[] =>
@@ -78,6 +78,27 @@ describe("buildQueue", () => {
     const { key } = buildQueue([...agreeing, ...pair(99, true, false), ...many("cold", 20), ...many("l1", 20), ...many("cold-rubric", 20)], 20);
 
     expect(key.filter((k) => k.target === "p99").map((k) => k.judge)).toEqual(["audition-code", "audition-rubric"]);
+  });
+
+  it("puts the clearest video first, then the pairs, then the other videos from clearest to least clear", () => {
+    const at = (name: string) => ({ case: `explainer-eval/${name}` });
+    const outputs = [
+      ...many("cold", 3, at("dense")), ...many("cold", 3, at("clear")), ...many("l1", 3, at("middling")), ...many("l1", 3, at("unscreened")),
+      output("audition-code", 0, { ...at("pairs"), kind: "pair", group: "p0" }),
+    ];
+    const clarity = new Map([["explainer-eval/dense", 3], ["explainer-eval/clear", 1], ["explainer-eval/middling", 2]]);
+
+    const { items } = buildQueue(outputs, 20, "s1", clarity);
+
+    expect([...new Set(items.map((i) => i.case.split("/")[1]))]).toEqual(["clear", "pairs", "middling", "dense", "unscreened"]);
+  });
+
+  it("keys each entry with its judge's eval_version, and still reads a round-1 key that has none", () => {
+    const { key } = buildQueue(many("cold", 2), 20);
+
+    expect(key.map((k) => k.evalVersion)).toEqual(["ev-cold", "ev-cold"]);
+    const roundOne = { schema: "calibration-key/v1", round: "r1", entries: [{ id: "q01", judge: "cold", case: "c", videoType: "repo-tour", target: "t", pass: true, configId: "", run: "1" }] };
+    expect(QueueKeySchema.parse(roundOne).entries[0]!.evalVersion).toBeUndefined();
   });
 
   it("is reproducible for a seed and reshuffles for another", () => {

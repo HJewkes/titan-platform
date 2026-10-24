@@ -34,6 +34,7 @@ type Candidate = z.infer<typeof CandidateSchema>;
 const RecordSchema = z.looseObject({
   schema: z.literal("audition/v1"),
   profile: z.looseObject({ type: z.string(), version: z.string() }),
+  rules: z.looseObject({ pick: z.string() }),
   candidates: z.array(CandidateSchema),
   pick: z.looseObject({ candidate: z.string() }),
   runnerUp: z.looseObject({ candidate: z.string() }),
@@ -73,6 +74,7 @@ const candidateOf = (record: z.infer<typeof RecordSchema>, id: string, path: str
 /**
  * The pick against its runner-up as one owner question with a key entry per picker: audition-code prefers the pick,
  * and audition-rubric the side with the higher J8 to J11 sum, giving no entry on a tie. The seed sets which side is A.
+ * The code picker has no eval_version of its own, so the pick rule's text stands for it.
  */
 export function auditionOutputs(entry: AuditionEntry, seed: string): JudgedOutput[] {
   const record = readRecord(entry.record);
@@ -87,6 +89,7 @@ export function auditionOutputs(entry: AuditionEntry, seed: string): JudgedOutpu
     target, question: PAIR_QUESTION, excerpt: `${storyboard("A", a)}\n\n${storyboard("B", b)}`, configId: `${record.profile.type}@${record.profile.version}`, run: sha,
   };
   const sums = rubricSums(a, b);
-  const rubric = sums && sums[0] !== sums[1] ? [{ ...shared, judge: "audition-rubric" as const, pass: sums[0] > sums[1] }] : [];
-  return [{ ...shared, judge: "audition-code", pass: pickIsA }, ...rubric];
+  const rubric = sums && sums[0] !== sums[1] ? [{ ...shared, judge: "audition-rubric" as const, pass: sums[0] > sums[1], evalVersion: a.rubric!.eval_version }] : [];
+  const codeVersion = createHash("sha256").update(record.rules.pick).digest("hex").slice(0, 12);
+  return [{ ...shared, judge: "audition-code", pass: pickIsA, evalVersion: codeVersion }, ...rubric];
 }

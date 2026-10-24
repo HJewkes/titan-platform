@@ -26,7 +26,7 @@ export function auditionEntry(dir: string, name: string, pick: Scores | null, ru
   const record = join(dir, `${name}.json`);
   const candidates = [candidate(`${name}-p`, pick), candidate(`${name}-r`, runnerUp)];
   writeFileSync(record, JSON.stringify({
-    schema: "audition/v1", profile: { type: "repo-tour", version: "0.4.0", runtimeS: 90 }, candidates,
+    schema: "audition/v1", rules: { pick: "highest total" }, profile: { type: "repo-tour", version: "0.4.0", runtimeS: 90 }, candidates,
     pick: { candidate: `${name}-p`, structure: "shape-p", system: null, total: 0.913 }, runnerUp: { candidate: `${name}-r`, structure: "shape-r", system: null, total: 0.9 },
   }));
   return { case: "explainer-eval/pairs", title: "Storyboard pairs", video_type: "repo-tour", split: "dev", owner_named: false, record };

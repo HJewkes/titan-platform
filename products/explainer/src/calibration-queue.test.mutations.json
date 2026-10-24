@@ -18,6 +18,33 @@
       "kills": [
         "buildQueue gives pairs the pickers disagree on a slot even when agreeing pairs far outnumber them"
       ]
+    },
+    {
+      "name": "pairs go before the clearest video",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "return [...(first === undefined ? [] : [first]), ...cases.filter(isPair), ...rest];",
+      "replace": "return [...cases.filter(isPair), ...(first === undefined ? [] : [first]), ...rest];",
+      "kills": [
+        "buildQueue puts the clearest video first, then the pairs, then the other videos from clearest to least clear"
+      ]
+    },
+    {
+      "name": "the least clear video goes first",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "rank(a) - rank(b)",
+      "replace": "rank(b) - rank(a)",
+      "kills": [
+        "buildQueue puts the clearest video first, then the pairs, then the other videos from clearest to least clear"
+      ]
+    },
+    {
+      "name": "the key drops the eval_version",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "run: o.run, evalVersion: o.evalVersion });",
+      "replace": "run: o.run });",
+      "kills": [
+        "buildQueue keys each entry with its judge's eval_version, and still reads a round-1 key that has none"
+      ]
     }
   ]
 }

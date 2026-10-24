@@ -14,13 +14,15 @@ let dir: string;
 let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
-const SCORE = ["config_id", "run", "script_sha", "chapter", "kind", "beat", "item", "dim", "score", "void_reason"] as const;
+const SCORE = ["config_id", "eval_version", "run", "script_sha", "chapter", "kind", "beat", "item", "dim", "score", "void_reason"] as const;
 type Score = Partial<Record<(typeof SCORE)[number], string>>;
 const SCRIPT = tour();
 const BEATS = SCRIPT.beats.slice(0, 6);
 
+const VERSION_OF: Record<string, string> = { "cold-scores.tsv": "ev-cold", "cold-rubric-scores.tsv": "ev-rubric", "beat-scores.tsv": "ev-l1" };
+
 const tsv = (bench: string, file: string, rows: Score[]): void =>
-  appendTsv(join(bench, "evals", file), SCORE, rows.map((r) => ({ void_reason: "", ...r })));
+  appendTsv(join(bench, "evals", file), SCORE, rows.map((r) => ({ void_reason: "", eval_version: VERSION_OF[file], ...r })));
 
 const CODE_ZEROS = { "bare-item": "named only in a list", "skipped-item": "not answered", "failed-item": "call failed: timeout" };
 
@@ -44,9 +46,23 @@ function bench(name: string): { script: string; bench: string } {
   return { script, bench: root };
 }
 
-function manifest(extra: Record<string, unknown> = {}): string {
-  const entry = (name: string, split: string, videoType: string) => ({
+/** A listener result over the bench script's chapters; `dense` chapters get 3 questions a sentence, the rest 1. */
+function listener(name: string, density: number, dense: readonly string[] = []): string {
+  const chapters = [...new Set(BEATS.map((b) => b.chapter))].map((chapter) => ({
+    chapter, sentences: [], questions: 0, density: dense.includes(chapter) ? 3 : 1, untagged: 0, asked: [],
+    flags: { list_spread: [], terms_before_setup: [], fragments: [] }, failure: null,
+  }));
+  const path = join(dir, `listener-${name}.json`);
+  writeFileSync(path, JSON.stringify({ eval_version: "ev-listener", judge: "fake", chapters, questions: 0, sentences: 0, density, failures: [], spend: { usd: 0, tokensIn: 0, tokensOut: 0 } }));
+  return path;
+}
+
+type Listeners = Partial<Record<"tour" | "held" | "digest", string>>;
+
+function manifest(extra: Record<string, unknown> = {}, listeners: Listeners = {}): string {
+  const entry = (name: keyof Listeners, split: string, videoType: string) => ({
     case: `explainer-eval/${name}`, title: `Video ${name}`, video_type: videoType, split, owner_named: false, ...bench(name),
+    ...(listeners[name] ? { listener: listeners[name] } : {}),
   });
   const path = join(dir, "manifest.json");
   writeFileSync(path, JSON.stringify({ schema: "calibration-manifest/v1", cases: [entry("tour", "dev", "repo-tour"), entry("held", "holdout", "repo-tour"), entry("digest", "dev", "status")], ...extra }));
@@ -85,7 +101,7 @@ describe("explainer eval calibrate queue", () => {
     expect(key.entries.some((e) => e.case.endsWith("held"))).toBe(false);
     expect(round.questions.filter((q) => "recommendation" in q)).toEqual([]);
     expect(JSON.stringify(round)).not.toMatch(/cold-rubric|"judge"|"pass"/);
-    expect(JSON.parse(printed())).toMatchObject({ items: 20, minutes: 35 });
+    expect(JSON.parse(printed())).toMatchObject({ items: 20, minutes: 25 });
   });
 
   it("queues each question once, from the judge's own latest verdict, and names the config and run it came from", async () => {
@@ -98,6 +114,7 @@ describe("explainer eval calibrate queue", () => {
     expect(entries.some((e) => e.judge === "cold" && e.target.endsWith("item-0") && !e.pass)).toBe(true);
     expect(entries.filter((e) => e.judge === "cold").map((e) => e.run)).toEqual(entries.filter((e) => e.judge === "cold").map(() => "3"));
     expect(new Set(entries.filter((e) => e.judge === "cold-rubric").map((e) => e.configId))).toEqual(new Set(["cfg-new"]));
+    expect(new Set(entries.map((e) => `${e.judge} ${e.evalVersion}`))).toEqual(new Set(["cold ev-cold", "cold-rubric ev-rubric", "l1 ev-l1"]));
   });
 
   it("queues an invariant item's what-why and invariant verdicts as two questions, each in the words the viewer was asked", async () => {
@@ -122,6 +139,44 @@ describe("explainer eval calibrate queue", () => {
     expect(ids).toHaveLength(2);
     expect(pairs).toHaveLength(4);
     for (const id of ids) expect(round.questions.find((q) => q.id === id)?.options).toEqual([`A (${id})`, `B (${id})`, `Can't tell (${id})`]);
+  });
+
+  it("under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items", async () => {
+    const listeners = { tour: listener("tour", 2.7, ["ch1"]), held: listener("held", 1), digest: listener("digest", 2.5) };
+
+    expect(await queueFrom(manifest({}, listeners), "--size", "200", "--max-density", "2.5")).toBe(0);
+
+    const entries = readKey().entries;
+    const denseBeats = BEATS.filter((b) => b.chapter === "ch1").map((b) => b.id);
+    const tour = entries.filter((e) => e.case.endsWith("tour"));
+    expect(tour.filter((e) => denseBeats.includes(e.target.split(" · ")[0]!))).toEqual([]);
+    expect(new Set(tour.map((e) => e.judge))).toEqual(new Set(["cold", "l1"]));
+    expect(entries.some((e) => e.case.endsWith("digest") && e.judge === "cold-rubric")).toBe(true);
+    expect(entries.some((e) => e.case.endsWith("digest") && denseBeats.includes(e.target.split(" · ")[0]!))).toBe(true);
+  });
+
+  it("refuses --max-density when a case has no listener result, naming the case", async () => {
+    const listeners = { tour: listener("tour", 1), held: listener("held", 1) };
+
+    expect(await queueFrom(manifest({}, listeners), "--max-density", "2.5")).toBe(2);
+
+    expect(String(error.mock.calls[0]?.[0])).toMatch(/explainer-eval\/digest: --max-density needs the case's listener result/);
+  });
+
+  it("orders the clearest video first, then the pairs, and writes the round number and minutes per kind of item", async () => {
+    const listeners = { tour: listener("tour", 1), held: listener("held", 1), digest: listener("digest", 2) };
+    const auditions = [auditionEntry(dir, "one", { J8: 4 }, { J8: 2 }), auditionEntry(dir, "two", { J8: 2 }, { J8: 4 })];
+
+    expect(await queueFrom(manifest({ auditions }, listeners), "--max-density", "2.5", "--round", "2")).toBe(0);
+
+    const round = z.looseObject({ round: z.number(), variants: z.array(z.unknown()), sections: z.array(z.object({ title: z.string() }).loose()), questions: z.array(z.looseObject({})) })
+      .parse(readJson(join(dir, "round", "round.json")));
+    expect(round.sections.map((s) => s.title)).toEqual(["Video tour", "Storyboard pairs", "Video digest"]);
+    expect(round.round).toBe(2);
+    expect(JSON.parse(printed())).toMatchObject({ items: 20, minutes: Math.round(18 * 1.25 + 2 * 2) });
+    expect(readFileSync(join(dir, "round", "round.json")).length).toBeLessThan(1024 * 1024);
+    expect(round.variants).toEqual([]);
+    expect(round.questions.filter((q) => "merge" in q)).toEqual([]);
   });
 
   it("refuses to overwrite a round that is already published", async () => {

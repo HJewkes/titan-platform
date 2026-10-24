@@ -40,6 +40,8 @@ export interface JudgedOutput extends CaseRef {
   /** The judge config and run the verdict came from, so an agreement names what it calibrated. */
   configId: string;
   run: string;
+  /** The judge's eval_version, so agreement pools only labels of one version of the judge. */
+  evalVersion: string;
 }
 
 /** What the owner sees: no judge, no verdict. */
@@ -61,6 +63,8 @@ const KeyEntrySchema = z
     pass: z.boolean(),
     configId: z.string(),
     run: z.string(),
+    /** Absent from round-1 keys, which predate it. */
+    evalVersion: z.string().optional(),
   })
   .strict();
 export type KeyEntry = z.infer<typeof KeyEntrySchema>;
@@ -124,13 +128,29 @@ function roundRobin(groups: readonly Unit[][], size: number): Unit[] {
 const eligible = (output: CaseRef): boolean => output.split !== "holdout" && !output.ownerNamed;
 
 const keyEntry = (id: string, o: JudgedOutput): KeyEntry =>
-  ({ id, judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run });
+  ({ id, judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run, evalVersion: o.evalVersion });
 
-/** Grouped by case so the owner reads one video at a time; the seed fixes the order within a case. */
-export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012"): CalibrationQueue {
+const caseOf = (u: Unit) => u[0]!.case;
+
+/**
+ * Clearest first, so an owner who stops early has labelled the most readable material: the clearest video, then the
+ * pairs, which are short and score two judges each, then the other videos from clearest to least clear.
+ */
+function caseOrder(picked: readonly Unit[], clarity: ReadonlyMap<string, number>): string[] {
+  const cases = [...new Set(picked.map(caseOf))].sort();
+  const isPair = (c: string) => picked.some((u) => caseOf(u) === c && u[0]!.kind === "pair");
+  const rank = (c: string) => clarity.get(c) ?? Number.POSITIVE_INFINITY;
+  const [first, ...rest] = cases.filter((c) => !isPair(c)).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return [...(first === undefined ? [] : [first]), ...cases.filter(isPair), ...rest];
+}
+
+/**
+ * Grouped by case so the owner reads one video at a time; the seed fixes the order within a case. `clarity` ranks
+ * cases, lower being easier to follow; an unranked case goes after every ranked one.
+ */
+export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012", clarity: ReadonlyMap<string, number> = new Map()): CalibrationQueue {
   const picked = roundRobin(perJudge(units(outputs.filter(eligible)), seed), size);
-  const caseOf = (u: Unit) => u[0]!.case;
-  const ordered = [...new Set(picked.map(caseOf))].sort().flatMap((c) => shuffled(picked.filter((u) => caseOf(u) === c), seed));
+  const ordered = caseOrder(picked, clarity).flatMap((c) => shuffled(picked.filter((u) => caseOf(u) === c), seed));
   const id = (i: number): string => `q${String(i + 1).padStart(2, "0")}`;
   return {
     items: ordered.map((u, i) => ({ id: id(i), case: caseOf(u), kind: u[0]!.kind, question: u[0]!.question, excerpt: u[0]!.excerpt })),
