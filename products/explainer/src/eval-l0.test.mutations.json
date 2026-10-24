@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the variety lints are not registered at L0",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "  varietyScriptCheck,\n",
+      "replace": "",
+      "kills": [
+        "script-only variety lints at L0 reports a stock hook as a warning row that never fails the script"
+      ]
+    }
+  ]
+}
