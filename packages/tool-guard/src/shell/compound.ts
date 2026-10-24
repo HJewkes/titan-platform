@@ -6,7 +6,7 @@ import type { LexState, RegexScan, Token } from "./tokens.js";
 /** The word before a compound assignment's `(`; quotes are already removed from the value. */
 const ASSIGNMENT_HEAD_RE = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/s;
 /** Words after which the next word is still in command position, so a `[[` there opens a conditional. */
-const COMMAND_PREFIXES = new Set(["if", "then", "elif", "else", "do", "while", "until", "!", "{", "time", "coproc"]);
+export const COMMAND_PREFIXES = new Set(["if", "then", "elif", "else", "do", "while", "until", "!", "{", "time", "coproc"]);
 /** Characters bash may read, with extglob on or in some `[[ ]]`, as opening a pattern when glued to a `(`. */
 const EXTGLOB_PREFIXES = "?*+@!";
 /** Words that open a compound command, the only body bash accepts after a function header. */

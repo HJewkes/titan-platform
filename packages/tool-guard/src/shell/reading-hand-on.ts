@@ -1,9 +1,11 @@
 import { copyGroupState, groupStdin } from "./group-stdin.js";
+import { copyVars } from "./line-writes.js";
 import type { OpToken, RedirectToken, WordToken } from "./lexer.js";
 import { namedFdReadings } from "./named-fd.js";
 import { nextShellStdin, nextStdin } from "./piped-stdin.js";
 import type { Unwrapped } from "./unwrap.js";
 import { ReadingLimitError } from "./unsure-readings.js";
+import { CommandRebindingError, compoundStoresRebinding } from "./command-rebinding.js";
 import { trackCompound, type Vars } from "./vars.js";
 
 /** A command's readings: one, or each shell's of its `{name}` redirects, zsh's first and dash's second. */
@@ -86,7 +88,7 @@ export function continuesChain(held: ChainOf, chain: ChainOf): boolean {
  * `observe` hears what each of those scopes' variables store.
  */
 export function forkWalk<W extends Linked & { stack: Array<W["scope"]> }>(w: W, scope: W["scope"], observe: (fork: W, vars: Vars) => void): W {
-  const fork: W = { ...w, scope, chain: splitChain(splitFrom.get(w.chain) ?? w.chain), stack: w.stack.map((outer) => ({ ...outer, vars: new Map(outer.vars) })) };
+  const fork: W = { ...w, scope, chain: splitChain(splitFrom.get(w.chain) ?? w.chain), stack: w.stack.map((outer) => ({ ...outer, vars: copyVars(outer.vars) })) };
   for (const vars of [scope.vars, ...fork.stack.map((outer) => outer.vars)]) observe(fork, vars);
   copyGroupState(w, fork);
   return fork;
@@ -131,6 +133,7 @@ export function endCommand(w: Linked, token: OpToken, words: WordToken[], redire
   w.prev = token.value;
   if (token.value !== "|" && token.value !== "|&") w.negated = false;
   if (token.value !== "&&") w.chain = { start: token.value };
+  if (compoundStoresRebinding(token, w.scope.vars)) throw new CommandRebindingError();
   trackCompound(token, w.scope.vars);
   enter(token.value);
 }

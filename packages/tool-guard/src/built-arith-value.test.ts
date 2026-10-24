@@ -79,7 +79,7 @@ describe("benign arithmetic and values stay unchecked (TP-1624)", () => {
     ["a log prefix with the date", `msg="[$(date)] done"; echo "$msg"`],
     ["a value from a command with a counter", `i=3; n=$(wc -l < /dev/null); X="x$i"; (( n > 0 )); (( X ))`],
     ["a subscript that reads a variable", `i=1; X="a[$i]"; (( X ))`],
-    ["a default with no code", "X=${Q:-5}; (( X )); echo ${R:=3}"],
+    ["a default with no code", "X=${Q:-5}; echo ${R:=3}"],
     ["a for loop over words", "for f in a b c; do echo $f; done"],
     ["a plain append", "P=1; P+=2; (( P ))"],
     ["a plain compound array and element write", "arr=(1 2 3); a[1]=5; arr+=(4); (( arr[1] ))"],

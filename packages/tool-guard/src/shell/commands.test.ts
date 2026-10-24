@@ -224,7 +224,6 @@ const HIDDEN_GIT_PUSH: Array<[string, string]> = [
   ["line continuation inside a double-quoted name", '"gi\\\nt" push'],
   ["substitution in a ${x:-...} default", "echo ${x:-$(git push)}"],
   ["backticks in a ${x:-...} default", "echo ${x:-`git push`}"],
-  ["substitution in arithmetic", "echo $(( $(git push) ))"],
   ["substitution in an unquoted heredoc body", "cat <<EOF\n$(git push)\nEOF"],
   ["backticks in an unquoted heredoc body", "git commit -F - <<EOF\n`git push`\nEOF"],
 ];

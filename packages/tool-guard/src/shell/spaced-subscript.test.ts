@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { CommandRebindingError } from "./command-rebinding.js";
 import { ParseError } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
@@ -57,15 +58,20 @@ describe("a subscript assignment with blanks inside the brackets", () => {
   it.each([
     ["a $( ) holding ]", "Y[ $(echo ]) ]=x git push origin HEAD:main"],
     ["a backtick span holding ]", "Y[ `echo ]` ]=x git push origin HEAD:main"],
-    ["a ${ } holding ]", "Y[ ${Z:-]} ]=x git push origin HEAD:main"],
     ["a nested $( $( ] ) )", "Y[ $( $( ] ) ) ]=x git push origin HEAD:main"],
     ["a $( ) holding a nested subscript", "Y[ $( A[ ) ]=1 ) ]=x git push origin HEAD:main"],
     ["a backtick span holding a nested subscript", "Y[ `A[ ) ]=1` ]=x git push origin HEAD:main"],
+  ])("does not hide a push behind a subscript holding %s", (_how, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["a ${ } holding ]", "Y[ ${Z:-]} ]=x git push origin HEAD:main"],
     ["a ${ } holding a nested subscript", "Y[ ${A[ } ]} ]=x git push origin HEAD:main"],
     ["a ${ } holding two nested subscripts", "Y[ ${A[ ${B[ } ]} ]} ]=x git push origin HEAD:main"],
     ["a ${ } holding a $( ) with a nested subscript", "Y[ ${Z:-$( A[ ) ]=1 )} ]=x git push origin HEAD:main"],
-  ])("does not hide a push behind a subscript holding %s", (_how, command) => {
-    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  ])("refuses a push behind a subscript holding %s, since a run-time subscript is math", (_how, command) => {
+    expect(() => spellings(command)).toThrow(CommandRebindingError);
   });
 
   it.each([

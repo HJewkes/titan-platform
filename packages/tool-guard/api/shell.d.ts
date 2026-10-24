@@ -18,6 +18,8 @@ interface WordToken {
     value: string;
     dynamic: boolean;
     quoted: boolean;
+    /** Index in `value` where the first quoted or escaped part begins; set by the lexer, absent on a word it did not read. */
+    quotedAt?: number;
     /** Quotes or escapes split the word, or `$'...'` decoded it: `~/".x"`, `.n''x`, `.n\x`. */
     spliced: boolean;
     computed: boolean;
@@ -194,6 +196,8 @@ interface ExtractOptions {
     onScript?: (text: string) => void;
     /** The text is the Bash tool's own line, run by bash or zsh, where `((x))` may be arithmetic; off, it reads as nested subshells that run `x`. */
     arithmetic?: boolean;
+    /** The text is a script the line runs, whose environment and positional parameters the line may have set. */
+    scriptText?: boolean;
 }
 
 /**

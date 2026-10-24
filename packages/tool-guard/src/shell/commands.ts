@@ -10,10 +10,10 @@ import { emitReadings, endCommand, forkWalk, type Emission } from "./reading-han
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed } from "./case-script.js";
 import { aliasCommands, type AliasTable } from "./alias-words.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, copyVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { AliasDefinitionError, definesAlias } from "./alias-definitions.js";
-import { CommandRebindingError, rebindsCommand } from "./command-rebinding.js";
+import { CommandRebindingError, compoundStoresRebinding, rebindsCommand, storesRebindingByMath } from "./command-rebinding.js";
 import { prefixHomeUnsafe, prefixOutlives, prefixPath } from "./path-entries.js";
 import { isPathName } from "./path-writes.js";
 import { cutReading } from "./piped-nul.js";
@@ -32,6 +32,7 @@ import type { ValueMarks } from "./value-marks.js";
 import { ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 import { arithmeticSpanEnd, splitsClose } from "./arith-span.js";
+import { noteLineWrites, startingVars, withShellArguments } from "./math-trust.js";
 import type { Chain, ExtractOptions, SimpleCommand, Wrapping } from "./command-types.js";
 
 export type { Chain, ExtractOptions, SimpleCommand, Wrapping } from "./command-types.js";
@@ -83,7 +84,7 @@ interface Walk {
  */
 export function extractCommands(src: string, options: ExtractOptions = {}): SimpleCommand[] {
   const out: SimpleCommand[] = [];
-  const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
+  const scope = { dir: options.cwd ?? null, vars: startingVars(options.scriptText === true), wrapping: [] };
   const foldCase = options.foldCase === true;
   const unsure = lineBudget(src, options);
   const w: Walk = {
@@ -114,7 +115,7 @@ function finishMarks(marks: ValueMarks, options: ExtractOptions): void {
 
 function walk(tokens: Token[], w: Walk): void {
   if (w.depth > MAX_DEPTH) throw new ParseError("nesting too deep");
-  walkFrom(noteSureCommands(normalizeDeclarations(tokens)), 0, w);
+  walkFrom(noteLineWrites(noteSureCommands(normalizeDeclarations(tokens)), w.scope.vars), 0, w);
 }
 
 /** A command whose `{name}` readings leave different scopes has the rest of its list walked again in each, after this walk. */
@@ -179,6 +180,7 @@ function arithmeticEnd(list: Token[], at: number, words: WordToken[], w: Walk): 
   if (end < 0 || token?.type !== "op") return -1;
   noteValues(token, words, w);
   noteValues(null, list.slice(at + 2, end - 1).filter((t) => t.type === "word"), w);
+  if (compoundStoresRebinding(token, w.scope.vars)) throw new CommandRebindingError();
   trackCompound(token, w.scope.vars);
   return end;
 }
@@ -230,7 +232,7 @@ function underPrefix(inner: Walk, ownPath: boolean): Walk {
 function scope(op: string, w: Walk): void {
   if (op === "(") {
     w.stack.push(w.scope);
-    w.scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping: [...w.scope.wrapping, "subshell"] };
+    w.scope = { dir: w.scope.dir, vars: copyVars(w.scope.vars), wrapping: [...w.scope.wrapping, "subshell"] };
     observed(w);
   }
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
@@ -247,6 +249,7 @@ function emitReading(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Wa
   const runs = caseNamed(words);
   const cut = cutReading(words);
   const aliased = aliasCommands(words, w.aliases);
+  if (storesRebindingByMath(words, redirects, w.scope.vars)) throw new CommandRebindingError();
   w.walked = new Set();
   const pattern = rawWords.length === 1 && rawWords[0]?.casePattern === true;
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : []), ...aliased.runs]) run(cmd, redirects, w, next, pattern);
@@ -261,7 +264,7 @@ function walkAdded(runs: Unwrapped[], redirects: RedirectToken[], w: Walk, next:
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, pattern = false): void {
-  if (rebindsCommand(raw)) throw new CommandRebindingError();
+  if (rebindsCommand(raw, w.scope.vars)) throw new CommandRebindingError();
   if (!pattern && definesAlias(raw)) throw new AliasDefinitionError();
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
@@ -301,7 +304,7 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
 
 /** A walk on a copy of the scope, so a `cd` or an assignment in a reading on it moves nothing; its commands decide as main's do. */
 function besideWalk(w: Walk): Walk {
-  return observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
+  return observed({ ...w, scope: { ...w.scope, vars: copyVars(w.scope.vars) } });
 }
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
@@ -341,6 +344,6 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[], held: Descrip
     // A shell's arguments and input become its positional parameters and what its `read` stores.
     if (script.wrap !== "eval") w.marks.opaque = true;
     // A nested shell's text keeps the nested-subshell reading and never joins a `[[`: which shell reads it is not known (it may be dash, or the runner's name may be rebound).
-    walk(tokenizeLine(text, false), { ...underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath), arithmetic: false });
+    walk(tokenizeLine(text, false), withShellArguments({ ...underPrefix(child(w, [...wrapping, script.wrap], descriptors), ownPath), arithmetic: false }, script.wrap));
   }
 }

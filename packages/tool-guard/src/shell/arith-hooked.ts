@@ -1,6 +1,7 @@
 import { bindsComputedName } from "./computed-binding.js";
 import type { HandedText } from "./computed-binding.js";
 import { assignedInMath, mentionedIn } from "./hooked-names.js";
+import { mathPlaces } from "./math-places.js";
 import type { RedirectToken, WordToken } from "./lexer.js";
 import type { Unwrapped } from "./unwrap.js";
 
@@ -15,6 +16,11 @@ const SUBSCRIPTED_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*\[.*\]\+?=/s;
 /** bash `${x:offset}`: a colon after the name that opens no `:-`, `:=`, `:+`, `:?` or zsh `:#` operator. */
 const SUBSTRING_AT_RE = /\$\{[!#]?(?:[A-Za-z_][A-Za-z0-9_]*|[@*]|\d+):(?![-=+?#])/y;
 const NAME_CHAR_RE = /[A-Za-z0-9_]/;
+
+/** Whether the builtin reads every argument as math: `let 'x=1'`, `shift "$n"`, `return 'PS4=1'`. */
+export function evaluatesArgsAsMath(name: string): boolean {
+  return name === "let" || MATH_ARG_BUILTINS.has(name);
+}
 
 /**
  * The hooked parameter an arithmetic expression mentions. bash and zsh assign inside one (`MODULE_PATH = 1`,
@@ -39,6 +45,8 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
     const hooked = assignedInMath(text);
     if (hooked !== null) return hooked;
   }
+  const placed = mathPlaces(words, redirects).find((place) => mentionedIn(place.text) !== null);
+  if (placed !== undefined) return mentionedIn(placed.text);
   const computed = handed.find(bindsComputedName);
   if (computed !== undefined) return computed.text;
   const named = [...words.filter((w) => !w.dynamic && SUBSCRIPTED_ASSIGNMENT_RE.test(w.value)), ...slots];
@@ -53,7 +61,7 @@ export function arithmeticHookedIn(cmd: Unwrapped, words: WordToken[], slots: Wo
 /** Texts the command evaluates whole as arithmetic. */
 function wholeExpressions({ name, args }: Unwrapped): string[] {
   const values = args.map((a) => a.value);
-  if (name === "let" || (name !== null && MATH_ARG_BUILTINS.has(name))) return values;
+  if (name !== null && evaluatesArgsAsMath(name)) return values;
   if (name === "[[" && values.some((v) => NUMERIC_TEST_RE.test(v))) return values;
   const integer = name === "integer" || name === "float" || (name !== null && INTEGER_DECLARERS.has(name) && values.some((v) => INTEGER_OPTION_RE.test(v)));
   return integer ? values.flatMap((v) => (v.includes("=") ? [v.slice(v.indexOf("=") + 1)] : [])) : [];

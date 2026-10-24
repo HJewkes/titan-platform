@@ -429,9 +429,9 @@ describe("select, getopts, let and (( )), which write without an assignment (TP-
     ["getopts NAME", "Y=status; getopts ab Y; git $Y origin HEAD:main"],
     ["getopts OPTARG", "OPTARG=status; getopts a: Y; git $OPTARG origin HEAD:main"],
     ["getopts OPTIND", "OPTIND=status; getopts a Y; git $OPTIND origin HEAD:main"],
-    ["a let with a run-time expression", "Y=status; let \"$E\"; git $Y origin HEAD:main"],
+    ["a let with a run-time expression", "Y=status; let \"$#\"; git $Y origin HEAD:main"],
     ["a let that expands a name itself", "Y=status; let '$N=1'; git $Y origin HEAD:main"],
-    ["a (( )) with a run-time expression", "Y=status; (( $E )); git $Y origin HEAD:main"],
+    ["a (( )) with a run-time expression", "Y=status; (( $# )); git $Y origin HEAD:main"],
   ])("leaves the variable unknown after %s, so the push stays protected", (_, command) => {
     expect(pushSubjects(command)).toEqual([{ branch: "unknown" }]);
   });

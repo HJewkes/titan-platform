@@ -1,15 +1,21 @@
+import { evaluatesArgsAsMath } from "./arith-hooked.js";
+import { fdVariableStores, operandsStore, placesStore, scopeNames, storeReader, textStores } from "./arith-stores.js";
+import { mathPlaces } from "./math-places.js";
 import { splitCluster } from "./cluster.js";
 import { HOOKED_WRITERS, writesProtectedParam } from "./hooked-params.js";
 import { nameSlots } from "./name-slots.js";
-import type { WordToken } from "./lexer.js";
+import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import { REBINDING, REBINDING_SET } from "./rebinding-names.js";
+import { expandWord, lookup } from "./vars.js";
+import type { Vars } from "./vars.js";
+import { compoundBody } from "./writers.js";
 import { expandsInStoreOptions, STORE_OPTION_BUILTINS } from "./store-option-zone.js";
 import { ReadingLimitError } from "./unsure-readings.js";
 import type { Unwrapped } from "./unwrap.js";
 import { WRITER_SPECS } from "./writer-specs.js";
 
-/** Parameters whose stores bind a command name, or a `~name`, to something the guard never reads as that name. */
-const REBINDING = ["commands", "BASH_CMDS", "functions", "dis_functions", "nameddirs"];
-const REBINDING_SET = new Set(REBINDING);
+const REBINDING_STORE = storeReader(REBINDING_SET);
+
 /** An expansion that assigns: `${commands[y]::=/x}`, `${functions[y]:=x}`, bash `${BASH_CMDS[y]=/x}`; a read has no `=`. */
 const ASSIGNING_EXPANSION_RE = new RegExp(`\\$\\{[^}]*?\\b(?:${REBINDING.join("|")})(?:\\[[^\\]]*\\])?:{0,2}=`);
 /** An expansion that assigns whatever parameter another one names: bash `${!n=/x}`, zsh `${(P)n::=/x}`. */
@@ -41,13 +47,39 @@ export class CommandRebindingError extends ReadingLimitError {
  * is only known at run time, or goes through a nameref or an indirect expansion, may be one, so it counts too. Listing,
  * looking up, resetting or removing a binding (`hash git`, `hash -r`, `unhash y`) falls back to the PATH lookup the guard reads.
  */
-export function rebindsCommand(cmd: Unwrapped): boolean {
+export function rebindsCommand(cmd: Unwrapped, vars: Vars = new Map()): boolean {
   if (cmd.name === "hash" && hashBinds(cmd.args)) return true;
   if (cmd.assigned.some(([name]) => REBINDING_SET.has(name))) return true;
+  if (cmd.name !== null && evaluatesArgsAsMath(cmd.name) && operandsStore(cmd.args, REBINDING_STORE, scopeNames(vars))) return true;
   if (cmd.name !== null && expandsInStoreOptions(cmd.name, cmd.args)) return true;
   if (cmd.name !== null && STORE_BUILTINS.has(cmd.name) && storesRebinding(cmd, cmd.name)) return true;
   const texts = [...cmd.args.filter((a) => a.dynamic).map((a) => a.value), ...cmd.assigned.map(([, value]) => value ?? "")];
   return texts.some((text) => ASSIGNING_EXPANSION_RE.test(text) || INDIRECT_ASSIGNING_RE.test(text));
+}
+
+/**
+ * Whether a command's words store into a rebinding parameter through math, which the shell evaluates apart from any
+ * builtin that names the parameter: the places `mathPlaces` lists, and a descriptor variable (`{BASH_CMDS[y]}>f`).
+ * A run-time piece in those places may expand to `commands[y]=0` unless it can only yield a number or trusted text
+ * (`math-pieces.ts`), and a name, bare or `$name`, is followed to every text the line writes there (`math-trust.ts`).
+ */
+export function storesRebindingByMath(words: WordToken[], redirects: RedirectToken[], vars: Vars): boolean {
+  return placesStore(mathPlaces(words, redirects), REBINDING_STORE, scopeNames(vars)) || fdVariableStores(redirects, REBINDING_SET);
+}
+
+/**
+ * Whether the `(( ))` an operator opens stores into a rebinding parameter. It reads the body as one text, since the
+ * lexer splits it into words (`(( commands[y] = 0 ))`) and reads a `<` or `>` as a redirect (`(( i < $e ))`).
+ */
+export function compoundStoresRebinding(op: Token, vars: Vars): boolean {
+  const expand = (w: WordToken) => expandWord(w, (name) => lookup(vars, null, name)).value;
+  const body = compoundBody(op) ?? [];
+  if (body.some((t) => t.type === "subs")) return true;
+  const text = body.map((t) => {
+    if (t.type === "redirect") return `${t.fd ?? ""}${t.op}${t.target ? expand(t.target) : ""}`;
+    return t.type === "word" ? expand(t) : t.type === "op" ? t.value : "";
+  });
+  return textStores(text.join(" "), REBINDING_STORE, scopeNames(vars));
 }
 
 /** An operand holding `=`, an option cluster holding bash's `p`, or a word that may expand to either. */

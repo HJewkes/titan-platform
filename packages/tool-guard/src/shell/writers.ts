@@ -1,5 +1,6 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment, Vars } from "./vars.js";
+import { isNumeric } from "./numeric-names.js";
 import { nameOperandEvaluates, wordsEvaluateArithmetic } from "./arith-words.js";
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -32,7 +33,7 @@ function runTimeExpression(w: WordToken): boolean {
   return w.dynamic || /[$`]/.test(w.value);
 }
 
-function writtenNames(expression: string): string[] {
+export function writtenNames(expression: string): string[] {
   return [...expression.matchAll(NAME_RE)]
     .filter((m) => WRITTEN_AFTER_RE.test(expression.slice(m.index + m[0].length)) || WRITTEN_BEFORE_RE.test(expression.slice(0, m.index)))
     .map((m) => m[0]);
@@ -40,6 +41,9 @@ function writtenNames(expression: string): string[] {
 
 /** The tokens inside each `(( ))`, keyed by its first `(`. */
 const compounds = new WeakMap<Token, Token[]>();
+
+/** The tokens inside the `(( ))` an operator opens, or undefined when it opens none. */
+export const compoundBody = (op: Token): Token[] | undefined => compounds.get(op);
 
 /**
  * Notes each `(( ))`, which the lexer reads as two parentheses. `( (a) )` reads the same, so a write found
@@ -144,7 +148,7 @@ function compoundText(t: Token, expand: (w: WordToken) => WordToken): string {
 }
 
 /** The text inside each `$(( ))` and `$[ ]` of a word, which write in the current shell wherever the word sits. */
-function expansionBodies(value: string): string[] {
+export function expansionBodies(value: string): string[] {
   const bodies: string[] = [];
   for (const [open, close] of [["$((", "("], ["$[", "["]] as const) {
     for (let at = value.indexOf(open); at >= 0; at = value.indexOf(open, at + open.length)) {
@@ -180,6 +184,7 @@ function arithmeticWrites(expressions: string[], vars: Vars): Assignment[] | nul
     for (const name of text.matchAll(NAME_RE)) {
       if (seen.has(name[0]) || !vars.has(name[0])) continue;
       seen.add(name[0]);
+      if (isNumeric(vars, name[0])) continue;
       const value = vars.get(name[0]) ?? null;
       if (value === null) return null;
       pending.push(value);

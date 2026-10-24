@@ -23,6 +23,16 @@ async function handled(command: string): Promise<"deny" | "pass"> {
   return stdout === "" ? "pass" : "deny";
 }
 
+/**
+ * A run-time piece in math that may print text, or a math text too long to read, is refused as a possible store into
+ * `commands[y]` once the reading reaches it; that reason shows the reading got there.
+ */
+async function rebinds(command: string): Promise<boolean> {
+  const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
+  const { stdout } = await handle(input, {}, port);
+  return /does not follow a command name the line rebinds/.test(stdout);
+}
+
 // zsh reads `$(( … ))` as `$( ( … ) )` when a quote in the body holds a paren, so it runs the body as a command.
 describe("a quoted paren in $(( ))", () => {
   it.each([
@@ -64,13 +74,26 @@ describe("a quoted paren in $(( ))", () => {
   }
 
   it.each([
-    ["at the limit", 4, "pass"],
     ["past the limit", 5, "deny"],
     ["far past the limit", 24, "deny"],
   ] as const)("reads quoted-paren arithmetic nested %s (%i deep) in bounded time and %ss it", async (_name, depth, verdict) => {
     let body = `x${" + 1".repeat(1000)}`;
     for (let i = 0; i < depth; i++) body = `$(( '(' ${body} ))`;
     expect(await countedVerdict(`echo ${body}`, verdict === "pass" ? AT_LIMIT_WORK_PER_CHAR : REFUSED_WORK_PER_CHAR)).toBe(verdict);
+  });
+
+  it("reads quoted-paren arithmetic nested at the limit (4 deep) in bounded time and refuses its oversize math as a store", async () => {
+    let body = `x${" + 1".repeat(1000)}`;
+    for (let i = 0; i < 4; i++) body = `$(( '(' ${body} ))`;
+    const started = Date.now();
+    expect(await rebinds(`echo ${body}`)).toBe(true);
+    expect(Date.now() - started).toBeLessThan(BOUNDED_MS);
+  });
+
+  it("passes quoted-paren arithmetic nested at the limit when its math is short", async () => {
+    let body = "x + 1";
+    for (let i = 0; i < 4; i++) body = `$(( '(' ${body} ))`;
+    expect(await handled(`echo ${body}`)).toBe("pass");
   });
 
   // A heredoc body, a backquote or a quoted span is lexed with trials of its own, which must not restart the count.
@@ -90,14 +113,20 @@ describe("a quoted paren in $(( ))", () => {
     expect(await countedVerdict(`echo ${body}`)).toBe("deny");
   });
 
+  it("reads quoted-paren arithmetic nested through double quotes at the limit", async () => {
+    let body = "true";
+    for (let i = 0; i < 4; i++) body = throughQuotes(body);
+    expect(await handled(`echo ${body}`)).toBe("pass");
+  });
+
+  // `cat` and `echo` may print any text into the math, so the reading that reaches them refuses it as a store.
   it.each([
     ["a heredoc", throughHeredoc],
     ["a backquote", throughBackquote],
-    ["double quotes", throughQuotes],
-  ] as const)("reads quoted-paren arithmetic nested through %s at the limit", async (_name, wrap) => {
+  ] as const)("reads quoted-paren arithmetic nested through %s at the limit and refuses its substitution", async (_name, wrap) => {
     let body = "true";
     for (let i = 0; i < 4; i++) body = wrap(body, i);
-    expect(await handled(`echo ${body}`)).toBe("pass");
+    expect(await rebinds(`echo ${body}`)).toBe(true);
   });
 });
 
@@ -108,12 +137,15 @@ describe("plain spans and words in a $(( )) body", () => {
     ["a command substitution with a redirect", "echo $(( $(wc -l < f) - $n ))"],
     ["a backquote", "echo $(( `date +%s` - $start ))"],
     ["nested arithmetic", "echo $(( $(( a + 1 )) * $b ))"],
-    ["arithmetic nested in a command substitution", "echo $(( $(echo $(( a + 1 ))) * $b ))"],
     ["a defaulted name", "echo $(( ${start:-0} - $n ))"],
     ["an array length", "echo $(( ${#files[@]} * 2 ))"],
     ["a base number", "echo $(( 16#ff ))"],
   ])("passes %s", async (_name, command) => {
     expect(await handled(command)).toBe("pass");
+  });
+
+  it("refuses arithmetic nested in a command substitution, since `echo` may print a store", async () => {
+    expect(await rebinds("echo $(( $(echo $(( a + 1 ))) * $b ))")).toBe(true);
   });
 
   it.each([
@@ -132,7 +164,8 @@ const PUNCTUATION = [...Array.from({ length: 95 }, (_, i) => String.fromCharCode
 
 describe("a punctuation character in a $(( )) body", () => {
   it.each(PUNCTUATION.map((c) => [c]))("%s decides the reading as the safe set says", async (c) => {
-    const verdict = SAFE.has(c) ? "pass" : "deny";
+    // A lone `$` keeps the math reading, but no rule reads what it expands to, so it is refused as a store.
+    const verdict = SAFE.has(c) && c !== "$" ? "pass" : "deny";
     expect(await handled(`echo $(( git push origin HEAD:main ${c} ))`)).toBe(verdict);
     expect(await handled(`echo $(( ( git push origin HEAD:main ${c} ) ))`)).toBe(verdict);
   });

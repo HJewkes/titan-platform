@@ -1,4 +1,4 @@
-import { countersLines } from "./common-lines.counters.js";
+import { countersLines, countersRefused } from "./common-lines.counters.js";
 import { exitCodesLines } from "./common-lines.exit-codes.js";
 import { installLines } from "./common-lines.install.js";
 import { scriptPathsLines } from "./common-lines.script-paths.js";
@@ -32,6 +32,17 @@ export const COMMON_LINES: readonly CommonLine[] = [
   ...installLines,
   ...scriptPathsLines,
 ];
+
+/** A line main allowed that a decided rule now refuses, and the rule's reason. */
+export interface RefusedLine extends CommonLine {
+  readonly why: string;
+}
+
+/**
+ * Lines moved off `COMMON_LINES` by a decision to refuse them, not by a change that happened to: each is asserted to
+ * be refused, so a later change that allows one again fails here.
+ */
+export const REFUSED_COMMON_LINES: readonly RefusedLine[] = [...countersRefused];
 
 /** Files the rows run: path (relative to the temp home) to contents. `app` is the working directory. */
 export const COMMON_LINE_FIXTURES: Readonly<
