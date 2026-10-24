@@ -45,5 +45,5 @@ export function splicePatch(reply: Record<string, unknown>, chapter: ScriptV1, t
   const known = new Set(chapter.video.glossary.map((entry) => entry.name.toLowerCase()));
   const added = (Array.isArray(reply.glossary) ? reply.glossary : []).filter((entry) => !(isRecord(entry) && typeof entry.name === "string" && known.has(entry.name.toLowerCase())));
   const video = { ...chapter.video, glossary: [...chapter.video.glossary, ...added] };
-  return { raw: structuredClone({ ...chapter, video, beats }) as Record<string, unknown> };
+  return { raw: structuredClone({ ...chapter, video, beats }) };
 }
