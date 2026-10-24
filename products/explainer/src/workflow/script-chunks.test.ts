@@ -253,12 +253,14 @@ const isRetry = (prompt: string): boolean => prompt.includes("## Your previous r
 describe("out-of-enum values in a script reply", () => {
   // Mutation: making `enumFix` return undefined for a list item sends ch3 to the retry, which fails on the same chips.
   it("drops a chapter's chips whose kind is outside the enum, keeps its beats, and names each dropped chip in a note", async () => {
-    const badChips = { ...chapterReply("ch3") };
-    const [a, b] = badChips.beats as ReturnType<typeof beatOf>[];
-    badChips.beats = [
-      { ...a!, visual: { ...a!.visual, chips: [chip("rumor", "Heard at the bench"), chip("verified", "Bench log")] } },
-      { ...b!, visual: { ...b!.visual, chips: [chip("guess", "Maybe six hours")] } },
-    ];
+    const [a, b] = [beatOf("ch3-a", "ch3", "The bench tests the wick first."), beatOf("ch3-b", "ch3", "So the lamp lights only when it is safe.")];
+    const badChips = {
+      ...chapterReply("ch3"),
+      beats: [
+        { ...a, visual: { ...a.visual, chips: [chip("rumor", "Heard at the bench"), chip("verified", "Bench log")] } },
+        { ...b, visual: { ...b.visual, chips: [chip("guess", "Maybe six hours")] } },
+      ],
+    };
     const model = fakeModel((prompt) => (taskChapter(prompt) === "ch3" ? badChips : passingVideo(prompt)));
 
     const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);

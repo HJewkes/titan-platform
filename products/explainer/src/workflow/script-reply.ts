@@ -27,7 +27,7 @@ function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): st
   });
 }
 
-const shown = (value: unknown): string => (JSON.stringify(value) ?? String(value)).slice(0, 80);
+const shown = (value: unknown): string => (value === undefined ? "nothing" : JSON.stringify(value)).slice(0, 80);
 
 /** An out-of-enum value, the value the reply gave, and the values the schema allows, so a retry can pick one. */
 function enumText(issue: z.core.$ZodIssueInvalidValue, raw: unknown, where = issue.path.join(".") || "(root)"): string {
@@ -72,8 +72,8 @@ function enumFix(schema: z.core.$ZodType, raw: unknown, path: readonly PropertyK
   if (omittable(schemaAt(schema, path)) && isObject(owner) && !Array.isArray(owner)) return { owner, key: path.at(-1)! };
   const at = listAt(path);
   if (at < 0 || at < path.length - 2) return undefined;
-  const list = valueAt(raw, path.slice(0, at));
-  return omittable(schemaAt(schema, path.slice(0, at))) && Array.isArray(list) ? { list, index: path[at] as number } : undefined;
+  const [list, index] = [valueAt(raw, path.slice(0, at)), path[at]];
+  return omittable(schemaAt(schema, path.slice(0, at))) && Array.isArray(list) && typeof index === "number" ? { list, index } : undefined;
 }
 
 /** Drops each fix's key or item; a list's items go last first, so an earlier index still names its item. */
