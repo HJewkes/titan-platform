@@ -90,8 +90,7 @@ describe("explainer run", () => {
   // Mutation: returning the issue text for an unrecognized-keys-only reply (no strip) fails the stage after the retry.
   it("drops keys the schema does not allow on a beat and keeps the script, with a reported diagnostic and no retry", async () => {
     fx = fixture();
-    const plain = choppy();
-    const script = { ...plain, video: { ...plain.video, glossary: [{ name: "desk server", job: "the part every scan passes" }] } };
+    const script = choppy();
     const withExtras = { ...script, beats: script.beats.map((beat, i) => (i < 2 ? { ...beat, chips: ["extra"], cues: [] } : beat)) };
     const model = fakeScriptModel(script, { invalid: 1, invalidReply: withExtras });
 
