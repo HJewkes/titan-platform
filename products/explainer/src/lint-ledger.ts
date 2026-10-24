@@ -1,6 +1,7 @@
 import { ODD_ONE_OUT_MIN_ITEMS } from "./eval-cold.js";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
+import type { ScriptV1 } from "./script-schema.js";
 import { fromScriptV1, labelKey, type PaceBeat, type PaceItem } from "./pace-items.js";
 import { contrastBeats, type SpineLedgerRow, type SpineV1 } from "./spine-schema.js";
 
@@ -63,6 +64,41 @@ function mixedLists(beats: readonly PaceBeat[], ledger: Ledger, contrast: Readon
       return entries.length >= ODD_ONE_OUT_MIN_ITEMS && kinds.size > 1;
     })
     .map((b) => b.id);
+}
+
+const quoted = (labels: readonly string[]): string => labels.map((label) => `"${label}"`).join(", ");
+
+/** What one failing beat shows that Q-E17 rejects: items the ledger does not list, and items it defines later. */
+function beatFindings(beat: PaceBeat, at: number, beats: readonly PaceBeat[], ledger: Ledger): string[] {
+  const position = positions(beats);
+  const available = [...ledger.values()].filter((entry) => (position.get(entry.definedIn) ?? Infinity) <= at).map((entry) => entry.item);
+  const unlisted = beat.newItems.filter((item) => !entryOf(ledger, item));
+  const late = beat.newItems.flatMap((item) => {
+    const entry = entryOf(ledger, item);
+    return entry && (position.get(entry.definedIn) ?? Infinity) > at ? [{ item, entry }] : [];
+  });
+  const found: string[] = [];
+  if (unlisted.length > 0) {
+    const handles = available.length > 0 ? quoted(available) : "none yet";
+    const sources = [...new Set(unlisted.map((i) => i.source))].join("/");
+    found.push(`${beat.id} shows ${quoted(unlisted.map((i) => i.label))} (${sources}), not in the spine ledger; name a ledger item the chapter may use (${handles}) or drop it`);
+  }
+  late.forEach(({ item, entry }) => found.push(`${beat.id} shows "${item.label}" before ${entry.definedIn}, where the ledger defines it; move it to ${entry.definedIn} or drop it`));
+  return found;
+}
+
+/** The repair hint for a failing Q-E17 row: each offending item, its beat, and the ledger handles that beat may use. */
+export function ledgerHint(script: ScriptV1, failing: readonly string[], spine: SpineV1): string | undefined {
+  let beats: PaceBeat[];
+  try {
+    beats = fromScriptV1(script);
+  } catch {
+    return undefined;
+  }
+  const ledger = ledgerOf(spine);
+  const named = new Set(failing);
+  const found = beats.flatMap((beat, at) => (named.has(beat.id) ? beatFindings(beat, at, beats, ledger) : []));
+  return found.length > 0 ? found.join("; ") : undefined;
 }
 
 const row = (check_id: string, beats: readonly string[], pass = beats.length === 0): L0Result =>
