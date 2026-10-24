@@ -11,7 +11,7 @@ import { nodeMorningHoldPorts, syncMorningHold, type MorningHoldAction } from ".
 import { morningQueuesDir } from "./needs/morning-source.js";
 import type { CommandResult } from "./service-control.js";
 import { runCommand } from "./service-ports.js";
-import { DEPLOY_NOW_LABEL, nodeWantedStore, PACER_SWEEP_MS, pacerStatus, pacerTick, readWanted, type DeployPacerOptions, type ExpressProbe } from "./shepherd/deploy-pacer.js";
+import { DEPLOY_NOW_LABEL, nodeWantedStore, PACER_SWEEP_MS, pacerStatus, pacerTick, readWanted, withWaiting, type DeployPacerOptions, type ExpressProbe, type PacerMemo } from "./shepherd/deploy-pacer.js";
 import { failureOf } from "./shepherd/error-class.js";
 import { deployPacerPorts } from "./shepherd/redeploy.js";
 import { startSweep, type Sweep } from "./sweep.js";
@@ -105,6 +105,17 @@ function morningHoldStep(queuesDir: string | undefined, stateDir: string, now: (
   };
 }
 
+/** Keyed by the options object serve hands both the sweep and `/health`, so the two share the last wait with no new serve option. */
+const memos = new WeakMap<DeployPacerOptions, PacerMemo>();
+
+function memoOf(options: DeployPacerOptions): PacerMemo {
+  const known = memos.get(options);
+  if (known !== undefined) return known;
+  const memo: PacerMemo = {};
+  memos.set(options, memo);
+  return memo;
+}
+
 /** The first tick is not awaited, so a record a restart already answered clears soon after start without holding it up. */
 export function startDeployPacer(options: DeployPacerOptions | undefined, service: ServiceView, log: Logger): Sweep | undefined {
   if (options === undefined) return undefined;
@@ -126,6 +137,7 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
       paused: () => readDeployHolds(pauseReadPorts, stateDir).held,
       spawn,
       log: (line) => log.info({}, line),
+      waits: memoOf(options),
     });
   };
   const sweep = startSweep(tick, options.sweepMs ?? PACER_SWEEP_MS, "deploy pacer", log);
@@ -136,7 +148,7 @@ export function startDeployPacer(options: DeployPacerOptions | undefined, servic
 /** Absent without a pacer, so a serve that does not pace deploys reports nothing it does not do. */
 export function deployPendingHealth(options: DeployPacerOptions | undefined): { deployPending?: ReturnType<typeof pacerStatus> } {
   if (options === undefined) return {};
-  return { deployPending: pacerStatus(readWanted(options.stateDir, options.store ?? nodeWantedStore)) };
+  return { deployPending: withWaiting(pacerStatus(readWanted(options.stateDir, options.store ?? nodeWantedStore)), memoOf(options).wait) };
 }
 
 /** The same bin and state dir `workflows.ts` gives Shepherd's redeploy step, so the queue and the sweep share one record. */
