@@ -11,6 +11,8 @@ const Id = z.string().min(1);
 const Slice = z.string().regex(/^(SQ\d+|TP-\d+)$/, "expected the owning slice or task, e.g. SQ3 or TP-2988");
 
 const L0Pending = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("pending"), owner: Slice, partial: z.array(Id).default([]) }).strict();
+/** Where a rule's check measures: `chapter` reads each chapter's own beats, `video` (also when absent) the whole script. */
+export const RULE_SCOPES = ["chapter", "video"] as const;
 const L0Implemented = z
   .object({
     severity: z.enum(["error", "warning"]),
@@ -18,6 +20,7 @@ const L0Implemented = z
     checks: z.array(Id).min(1),
     structures: z.array(Id).min(1).optional(),
     except_profiles: z.array(Id).min(1).optional(),
+    scope: z.enum(RULE_SCOPES).optional(),
   })
   .strict();
 const JudgePending = z.object({ layer: z.enum(["L1", "L2"]), status: z.literal("pending"), owner: Slice }).strict();
@@ -113,6 +116,10 @@ const scopedAway = (l0: ImplementedL0, { structure, profile }: ScriptScope): boo
 export function checksScopedAway(registry: RuleRegistry, script: ScriptScope): Set<string> {
   return new Set(registry.rules.flatMap(({ l0 }) => (l0?.status === "implemented" && scopedAway(l0, script) ? l0.checks : [])));
 }
+
+/** The check ids of chapter-scoped rules: a chapter's verdict on them does not depend on the chapters after it. */
+export const chapterScopedChecks = (registry: RuleRegistry): Set<string> =>
+  new Set(registry.rules.flatMap(({ l0 }) => (l0?.status === "implemented" && l0.scope === "chapter" ? l0.checks : [])));
 
 export const checkType = (rule: Rule): CheckType => (rule.l0 && rule.judge ? "L0+J" : rule.l0 ? "L0" : "J");
 

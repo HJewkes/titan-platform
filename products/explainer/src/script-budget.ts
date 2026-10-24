@@ -33,7 +33,7 @@ const overText = (row: BudgetRow): string =>
   `${row.scope === "block" ? "block " : ""}${row.id} ${row.words}/${row.cap} words (${row.seconds} s at ${row.wordsPerS} w/s; ${row.words} words need ${secondsFor(row)} s)`;
 
 /** One line per beat or block over its cap, naming words/cap. */
-const wordBudgetFaults = (draft: Draft): string[] => overBudget(draftBudgets(draft)).map(overText);
+export const wordBudgetFaults = (draft: Draft): string[] => overBudget(draftBudgets(draft)).map(overText);
 
 const plannedTotal = (draft: Draft): number => draft.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
 
