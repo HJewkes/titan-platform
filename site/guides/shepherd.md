@@ -1226,7 +1226,8 @@ goes missing when it is off.
 - Async resolver factories that return `Promise<GateResolver>` (TP-4064).
 - Owner-identity checks supplied by composition roots: the `presence` that `cli.ts` and `bin.ts`
   pass, `serve.ts`'s `ownerKeys`, and a `QueueMirror` composer's `ownerUserId` (TP-4067). The
-  CLI's owner-presence proof is also an unverifiable UUID (TP-4066).
+  CLI's gate presence proof is now an owner-signed ledger record the gate store checks (TP-4066);
+  `shepherd owner-release` still stores the helper's bare UUID.
 - Edits to `gate-resolve-sites.test.ts` or its mutations sidecar alone, which are test-exempt
   (TP-4065).
 

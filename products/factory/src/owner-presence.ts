@@ -173,7 +173,7 @@ export async function confirmOwner(reason: string): Promise<string | undefined> 
  * (no dialog). Returns undefined on a missing key, a non-zero exit, the same helper path refusals
  * or output that is not 16 lowercase hex, so a caller can refuse before asking for presence.
  */
-export async function ownerKeyId(options: ConfirmOptions = {}): Promise<string | undefined> {
+export async function ownerKeyId(options: ConfirmOptions = presenceEdge): Promise<string | undefined> {
   const helper = checkedHelper(options)
   if (helper === undefined) return undefined
   try {
@@ -198,7 +198,7 @@ function isDerSignature(text: string): boolean {
  * session or output that is not a DER signature. The verifier, not this function, decides
  * whether the signature is the owner's.
  */
-export async function signStatement(statement: Uint8Array, reason: string, options: ConfirmOptions = {}): Promise<string | undefined> {
+export async function signStatement(statement: Uint8Array, reason: string, options: ConfirmOptions = presenceEdge): Promise<string | undefined> {
   const helper = checkedHelper(options)
   if (helper === undefined) return undefined
   try {
