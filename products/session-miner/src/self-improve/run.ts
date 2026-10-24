@@ -14,7 +14,7 @@ import {
   type StepRunOutcome,
   type WorkflowRun,
 } from "@titan-design/workflow";
-import { DAILY_WORKFLOW, SUMMARY_FILE, dailyWorkflow, listChunks, promptPath, type DailySummary } from "./daily.js";
+import { DAILY_WORKFLOW, DailySummarySchema, SUMMARY_FILE, dailyWorkflow, listChunks, promptPath, type DailySummary } from "./daily.js";
 import { PROMPT_FAMILIES, type PromptFamily } from "./families.js";
 
 /** The process boundary: each family's calls go through the runner it returns. Tests pass a fake. */
@@ -139,5 +139,5 @@ export async function runSelfImproveDaily(input: DailyOptions, host: DailyHost):
 
 function readSummary(outDir: string): DailySummary | undefined {
   const file = path.join(outDir, SUMMARY_FILE);
-  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as DailySummary) : undefined;
+  return existsSync(file) ? DailySummarySchema.parse(JSON.parse(readFileSync(file, "utf8"))) : undefined;
 }

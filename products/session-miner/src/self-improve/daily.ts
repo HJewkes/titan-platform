@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { mapItems, type MapResult, type WorkflowContext, type WorkflowFn } from "@titan-design/workflow";
+import { z } from "zod";
 import type { PromptFamily } from "./families.js";
 
 export const DAILY_WORKFLOW = "self-improve-daily";
@@ -24,14 +25,18 @@ interface ClassifyItem {
   hash: string;
 }
 
-export interface DailySummary {
-  rows: Record<string, number>;
-  unparsed: Record<string, number>;
-  cost: Record<string, number>;
-  skipped: { chunk: string; reason: string }[];
-  failed: { chunk: string; error: string }[];
-  spentUsd: number;
-}
+const perFamily = z.record(z.string(), z.number());
+
+export const DailySummarySchema = z.object({
+  rows: perFamily,
+  unparsed: perFamily,
+  cost: perFamily,
+  skipped: z.array(z.object({ chunk: z.string(), reason: z.string() })),
+  failed: z.array(z.object({ chunk: z.string(), error: z.string() })),
+  spentUsd: z.number(),
+});
+
+export type DailySummary = z.infer<typeof DailySummarySchema>;
 
 interface FamilyOutcome {
   family: PromptFamily;
