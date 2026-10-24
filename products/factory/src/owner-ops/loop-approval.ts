@@ -52,7 +52,7 @@ export type LoopResult =
   | { kind: "voided"; actionId: string; runId: string; reason: string }
   | { kind: "pending"; actionId: string; runId: string; reason: string };
 
-export interface LoopDeps {
+interface LoopDeps {
   host: FactoryHost;
   services: ShepherdServices;
   now: Date;
@@ -67,7 +67,7 @@ const runLoop = (host: FactoryHost): LoopRead => (runId, head) => {
 const short = (sha: string): string => sha.slice(0, 7);
 
 /** The release event's actor, as `ownerRelease` writes it, so the record that lifted the hold can be read back. */
-export const approvalActor = (confirmEvent: string): string => `owner-remote:titan-console proof ${confirmEvent}`;
+const approvalActor = (confirmEvent: string): string => `owner-remote:titan-console proof ${confirmEvent}`;
 
 /**
  * Why the owner's approval no longer stands, or the loop's state when it still does. The head is GitHub's, read now: a push

@@ -41,7 +41,7 @@ const EFFECT: Partial<Record<OwnerOpKind, (at: string) => string>> = {
 const short = (sha: string): string => sha.slice(0, 7);
 
 const G10_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
-export const isG10Hold = (hold: { class: string } | undefined): boolean => hold !== undefined && G10_CLASSES.has(hold.class);
+const isG10Hold = (hold: { class: string } | undefined): boolean => hold !== undefined && G10_CLASSES.has(hold.class);
 
 const PAST_HOLD = "; the g10 hold is skipped, with whatever verdicts it still waits for";
 const afterLoop = (at: string): string =>
