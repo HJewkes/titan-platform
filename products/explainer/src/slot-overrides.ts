@@ -16,7 +16,7 @@ export function withSlotOverrides(visual: Visual, generated: unknown): unknown {
 }
 
 /** What the gate needs of a resolved beat: the spec it chose and the layer that draws it. */
-export interface ChosenBeat {
+interface ChosenBeat {
   id: string;
   beat: string;
   layer: string;
