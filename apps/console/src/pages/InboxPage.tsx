@@ -70,7 +70,13 @@ const VERB: Record<InboxAction["kind"], string> = {
 
 const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "close-pr": "Close PR" };
 
-const verbOf = (action: InboxAction): string => (action.kind === "owner-op" ? (OP_VERB[action.op.kind] ?? VERB[action.kind]) : VERB[action.kind]);
+/** A sent-back tap only waits for the implementer's next head, so it never reads as a merge. */
+const GATE_VERB: Record<Extract<InboxAction, { kind: "resolve-gate" }>["decision"], string> = { merge: VERB["resolve-gate"], "await-new-head": "Wait for new head" };
+
+function verbOf(action: InboxAction): string {
+  if (action.kind === "owner-op") return OP_VERB[action.op.kind] ?? VERB[action.kind];
+  return action.kind === "resolve-gate" ? GATE_VERB[action.decision] : VERB[action.kind];
+}
 
 /** Navigation stays a link; a write the console does not take yet is shown as its terminal command. */
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";

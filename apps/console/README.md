@@ -845,10 +845,16 @@ Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and
 behind look the same in the item.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
-`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
-owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a `hold-release` of a
-`g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers `no-action` with its
-reason.
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
+`owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
+`hold-release` of a `g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers
+`no-action` with its reason.
+
+Each gate step's tap gives one decision, held as data in `inbox-view.ts` and mirrored by the factory's
+`CONSOLE_STEPS`: `merge` on approve-merge, and `await-new-head` on sh-sent-back. The sent-back tap reads "Wait for
+new head": the run waits for the implementer's next pushed head, and nothing merges. It never offers `abandon` or
+`waive-proof`, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
+record asking any other decision, or one the gate's own schema does not offer, as 403 `class`.
 
 1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
@@ -865,7 +871,7 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 
 | Factory answer | Owner sees |
 | --- | --- |
-| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
