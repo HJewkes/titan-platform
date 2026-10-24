@@ -5,11 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import contextRelatedCmd, { runRelated } from '../../src/commands/context-related.js';
 import type { HitLogEntry, HitLogWriter } from '../../src/search/hit-log.js';
+import { installFreshness } from '../../src/server/session-index-watch.js';
 import {
   createWorkspaceFreshness,
-  installFreshness,
   type WorkspaceFreshness,
-} from '../../src/server/session-index-watch.js';
+} from '../../src/server/workspace-freshness.js';
 import { createDirtySet } from '../../src/session-index/dirty-set.js';
 import type { Freshness } from '../../src/session-index/freshness.js';
 import { refreshInto, scaffold, writeFile } from '../workspace-index/fixture.js';

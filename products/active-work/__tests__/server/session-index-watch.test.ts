@@ -3,11 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  createWorkspaceFreshness,
-  installFreshness,
-  startSessionIndexWatch,
-} from '../../src/server/session-index-watch.js';
+import { installFreshness, startSessionIndexWatch } from '../../src/server/session-index-watch.js';
+import { createWorkspaceFreshness } from '../../src/server/workspace-freshness.js';
 import { indexFreshness } from '../../src/session-index/freshness.js';
 import { withRefreshLock } from '../../src/session-index/refresh.js';
 import type * as MachinePressureModule from '../../src/utils/machine-pressure.js';

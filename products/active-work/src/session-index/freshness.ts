@@ -14,7 +14,7 @@ export type { Freshness } from './scheduler.js';
  * What the reader reads. Session data needs the transcripts caught up; a reader
  * of workspace documents only needs the workspace half, never a transcript pass (TP-4139).
  */
-export type FreshnessScope = 'transcripts' | 'workspace';
+type FreshnessScope ='transcripts' | 'workspace';
 
 export type EnsureFresh = (budgetMs: number, scope: FreshnessScope) => Promise<Freshness>;
 
