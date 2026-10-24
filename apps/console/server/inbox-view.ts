@@ -160,13 +160,19 @@ function holdOpAction(item: OwnerItem, op: Extract<OwnerOp, { kind: "release-hol
   return holdAction(row, holdClass);
 }
 
+/** A merge-at-head on a held PR shows the hold, so the page can offer a g10 hold's second tap: approve now, merge once the loop closes. */
+function mergeHold(op: OwnerOp, row: WatchRow | undefined): Pick<Derived, "hold"> {
+  if (op.kind !== "merge-at-head" || row?.held == null) return {};
+  return { hold: { class: holdClassOf(row.held.reason) ?? "unclassed", reason: row.held.reason } };
+}
+
 /** A deposit's op names a target; the action comes from the live row, or for an allowlisted kind from the factory's preview at the tap. */
 function depositDerived(item: OwnerItem, row: WatchRow | undefined): Derived {
   const { op } = item;
   if (op === undefined) return { action: terminal("a deposit is agent-written, so the console offers it no write; run its command", item.command) };
   if (op.kind === "resolve-gate") return hitlDerived(item, op.gateId, row);
   if (op.kind === "release-hold") return { action: holdOpAction(item, op, row) };
-  if (CONSOLE_OPS.has(op.kind)) return { action: { kind: "owner-op", op } };
+  if (CONSOLE_OPS.has(op.kind)) return { action: { kind: "owner-op", op }, ...mergeHold(op, row) };
   return { action: terminal(`a ${op.kind} op has no console tap yet; run its command`, item.command) };
 }
 
@@ -217,7 +223,7 @@ function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchR
   if (source.system === "hitl") return rowOfRun(source.ref, rows);
   if (source.system !== "deposit" || item.op === undefined) return undefined;
   if (item.op.kind === "resolve-gate") return rowOfRun(item.op.gateId, rows);
-  return item.op.kind === "release-hold" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
+  return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
 }
 
 function inboxItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): InboxItem {

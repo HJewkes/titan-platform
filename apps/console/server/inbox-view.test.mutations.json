@@ -2,6 +2,15 @@
   "v": 1,
   "mutations": [
     {
+      "name": "a merge-at-head deposit never joins its PR's live row",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "item.op.kind === \"release-hold\" || item.op.kind === \"merge-at-head\" ? rowOfPr",
+      "replace": "item.op.kind === \"release-hold\" ? rowOfPr",
+      "kills": [
+        "a deposit's typed op shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge"
+      ]
+    },
+    {
       "name": "a deploy-pause-clear deposit gets no console tap",
       "file": "apps/console/server/inbox-view.ts",
       "find": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\"]);",

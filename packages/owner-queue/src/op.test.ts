@@ -11,6 +11,7 @@ const OPS: OwnerOp[] = [
   { kind: "resolve-gate", gateId: "g-1", headSha: HEAD, decision: "merge" },
   { kind: "release-hold", repo: "acme/widgets", pr: 7, headSha: HEAD, holdClass: "g10" },
   { kind: "merge-at-head", repo: "acme/widgets", pr: 7, headSha: HEAD },
+  { kind: "merge-at-head", repo: "acme/widgets", pr: 7, headSha: HEAD, waitFor: "adversary-loop" },
   { kind: "close-pr", repo: "acme/widgets", pr: 7, headSha: HEAD },
   { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on", expectFrom: "off" },
   { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" },
