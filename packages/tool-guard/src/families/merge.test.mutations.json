@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a tags/ or v<digit> segment anywhere in a destination reads as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.|v\\d)/;",
+      "replace": "const TAG_REF_RE = /(?:(?:refs\\/)?tags\\/.|v\\d)/;",
+      "kills": [
+        "normal work classifies nothing git push to a branch whose name holds tags/"
+      ]
+    }
+  ]
+}
