@@ -239,6 +239,12 @@ describe("a declarer behind a zsh precommand modifier runs in this shell, as one
   });
 });
 
+describe("a tag push from a protected branch", () => {
+  it("reads git push --tags on main as the tag push only, not an implicit push of main", () => {
+    expect(spellings(bash("git push origin --tags", "main"))).toEqual(["bash.release.git-push-tag"]);
+  });
+});
+
 describe("normal work classifies nothing", () => {
   it.each([
     ["git merge origin/main on main", "git merge origin/main", "main"],
@@ -252,7 +258,6 @@ describe("normal work classifies nothing", () => {
     ["git push -u origin HEAD on a feature branch", "git push -u origin HEAD", "feat/x"],
     ["git push with no refspec on a feature branch", "git push", "feat/x"],
     ["git push on a detached head", "git push", null],
-    ["git push --tags on main", "git push origin --tags", "main"],
     ["gh pr merge --disable-auto", "gh pr merge 12 --disable-auto", "feat/x"],
     ["gh pr view and gh pr create", "gh pr view 12 && gh pr create --base main --fill", "feat/x"],
     ["a GET of a PR's merge status", "gh api repos/o/r/pulls/12/merge", "feat/x"],
