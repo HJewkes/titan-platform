@@ -31,8 +31,8 @@
     {
       "name": "the single-call repair asks for a patch",
       "file": "products/explainer/src/workflow/script-draft.ts",
-      "find": "reply = \"Reply with the whole corrected object.\\n\"",
-      "replace": "reply = \"Reply with one JSON object and nothing else: \\\"beats\\\" lists exactly the beats you change.\\n\"",
+      "find": "failures: string, reply = \"Reply with the whole corrected object.\\n\"",
+      "replace": "failures: string, reply = \"Reply with one JSON object and nothing else: \\\"beats\\\" lists exactly the beats you change.\\n\"",
       "kills": [
         "beat-level chapter repair keeps the short-script single-call repair asking for and keeping the whole object"
       ]
