@@ -1502,11 +1502,11 @@ Key exports:
 
 - `storyboard`: `StoryboardSchema`, `beatNumber`
 - `digest`: `DigestSchema`
+- `lanes-schema`: `LanesFileSchema`, `lanesFileFor`, `loadLanes`
 - `lexicon`: `LexiconSchema`, `lexiconEntriesFor`
 - `packet`: `buildPacket`
 - `attribute`: `attributeFindings`
-- `map-state`: `MapBeatSchema`, `MapLayoutSchema`, `MapStateSchema`, `VisualSchema`
-- `cues`: `cueResolverFromWords`
+- `map-state`: `MapBeatSchema`, `MapLayoutSchema`
 - More in `products/explainer/src/index.ts`
 
 <a id="cap-factory"></a>

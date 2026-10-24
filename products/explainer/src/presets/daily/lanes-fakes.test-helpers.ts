@@ -3,7 +3,7 @@ import { LanesFileSchema, type LanesFile } from "../../lanes-schema.js";
 import type { SnapshotTask } from "./task-snapshot.js";
 
 /** Synthetic only: an invented widgets shop with three lanes. */
-export const WIDGETS = "acme/widgets";
+const WIDGETS = "acme/widgets";
 export const WINDOW = { since: "2030-01-02T00:00:00.000Z", until: "2030-01-03T00:00:00.000Z" };
 
 export function widgetLanes(overrides: Partial<LanesFile> = {}): LanesFile {
