@@ -13,32 +13,41 @@
       ]
     },
     {
-      "name": "a queued land run shows as not landed",
+      "name": "a queued land run or a standing approval shows as not landed",
       "file": "apps/console/src/pages/TapSheet.tsx",
-      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"already\"]);",
-      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"already\"]);",
-      "kills": ["the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"]
+      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"approved\", \"pr-closed\", \"already\"]);",
+      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"pr-closed\", \"already\"]);",
+      "kills": [
+        "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed",
+        "the inbox page, acting from the console offers a g10-held merge-at-head both taps, and the approve-and-wait tap prepares and acts with the wait and lands as approved"
+      ]
     },
     {
       "name": "the op read-back drops who proposed it",
       "file": "apps/console/src/pages/InboxReadBack.tsx",
       "find": "{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}",
       "replace": "{`Proposed: ${readBack.proposal}`}",
-      "kills": ["the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"]
+      "kills": [
+        "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"
+      ]
     },
     {
       "name": "the act is sent without the prepared confirm",
       "file": "apps/console/src/pages/TapSheet.tsx",
       "find": "{ ...JSON.parse(argsKey), confirm: prepared.confirm }",
       "replace": "{ ...JSON.parse(argsKey) }",
-      "kills": ["the inbox page, acting from the console sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again"]
+      "kills": [
+        "the inbox page, acting from the console sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again"
+      ]
     },
     {
       "name": "the live next state names the state instead of the run's detail",
       "file": "apps/console/src/pages/TapSheet.tsx",
       "find": "{`Now: ${sheet.acted.next.detail}`}",
       "replace": "{`Now: ${sheet.acted.next.state}`}",
-      "kills": ["the inbox page, acting from the console shows the run's live next state under a landed outcome"]
+      "kills": [
+        "the inbox page, acting from the console shows the run's live next state under a landed outcome"
+      ]
     }
   ]
 }
