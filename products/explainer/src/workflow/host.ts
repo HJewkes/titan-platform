@@ -2,8 +2,9 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
+import { routedRunner, WorkflowRunStore, type RoutedRunner, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
+import type { BeatWorker } from "../build/beat-worker.js";
 import type { L0Check } from "../eval-l0.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
@@ -18,6 +19,7 @@ import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
 import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
+import { LAYER_STEP_IDS, layerRoutes } from "./layer-build.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
@@ -42,6 +44,8 @@ export interface RunHost {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The gather stage's outside world; tests pass a fake gh, task list, call graph and clone. */
   gather?: GatherDeps;
+  /** Builds the resolve stage's custom layers; absent, custom beats are left unbuilt with a note. */
+  beatWorker?: BeatWorker;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -252,6 +256,14 @@ export interface Runtime {
   bridge: () => BridgeFile;
 }
 
+function assertStageRoutes(runner: RoutedRunner, plan: RunPlan | undefined): void {
+  for (const stage of CACHED_STAGES) {
+    const extra = stage === "resolve" ? LAYER_STEP_IDS : [];
+    runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`, ...extra]);
+  }
+  if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
+}
+
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
@@ -266,11 +278,15 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
   });
   const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
-  const stage = { dataDir: host.dataDir, store, bridge, cache, now, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}) };
-  const routes = plan ? [body, checks, stageRoute({ ...stage, plan })] : [body, checks];
+  const builder = host.beatWorker ? { builder: host.beatWorker.builder } : {};
+  const stage = {
+    dataDir: host.dataDir, store, bridge, cache, now, ...builder,
+    ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
+  };
+  const layers = layerRoutes({ dataDir: host.dataDir, store, ...(host.beatWorker ? { worker: host.beatWorker } : {}), ...(host.signal ? { signal: host.signal } : {}) });
+  const routes = plan ? [body, checks, ...layers, stageRoute({ ...stage, plan })] : [body, checks, ...layers];
   const runner = routedRunner(routes);
-  for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`]);
-  if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
+  assertStageRoutes(runner, plan);
   const gates = new SqliteGateStore(db, { migrate: false });
   const runtime = new WorkflowRuntime({ db, gates, runner, leaseMs: host.leaseMs ?? DEFAULT_LEASE_MS, ...(host.onEvent ? { onEvent: host.onEvent } : {}) });
   late.runtime = runtime;
@@ -372,6 +388,7 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,
       remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}),
+      ...(host.beatWorker ? { builder: host.beatWorker.builder } : {}),
       ...(variantSha ? { variant: { sha: variantSha, value: VariantSchema.parse(JSON.parse(rt.store.readText(variantSha))) } } : {}),
     });
     return await runStageCached(rt.cache, spec);

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { codeRecordRoute, codeStep, type StepRoute, type StepUsage, type WorkflowFn } from "@titan-design/workflow";
+import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import { runResolveStage } from "../resolve-stage.js";
@@ -7,8 +7,9 @@ import type { ArtifactStore } from "./artifacts.js";
 import { runAuditionStage } from "./audition-stage.js";
 import { runGatherStage } from "./gather-stage.js";
 import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
+import { buildCustomLayers } from "./layer-build.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
-import { addUsage, isBridgeStage, NO_USAGE, StageRecordSchema, type StageName, type StageOutcome, type StageRecord, type StageUsage } from "./records.js";
+import { addUsage, isBridgeStage, NO_USAGE, StageRecordSchema, stepUsage, type StageName, type StageOutcome, type StageRecord } from "./records.js";
 import type { GatherDeps } from "./run-gather.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
@@ -33,11 +34,12 @@ interface BodyDeps {
   gather?: GatherDeps;
 }
 
-/** One `explainer.<stage>` run: the stage body on the spec it was started with, then the stage's checks over its artifacts. */
+/** One `explainer.<stage>` run: the stage body on the spec it was started with, resolve's custom-layer builds, then the stage's checks over its artifacts. */
 export const stageWorkflow = (): WorkflowFn => async (ctx) => {
   const spec = StageSpecSchema.parse(JSON.parse(ctx.param("spec") ?? "{}"));
   const body = await codeStep(ctx, `${BODY_STEP}:${spec.stage}`, spec, StageRecordSchema);
-  await codeStep(ctx, `${CHECKS_STEP}:${spec.stage}`, { spec, body }, StageRecordSchema);
+  const built = spec.stage === "resolve" ? await buildCustomLayers(ctx, spec, body) : body;
+  await codeStep(ctx, `${CHECKS_STEP}:${spec.stage}`, { spec, body: built }, StageRecordSchema);
 };
 
 async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -103,11 +105,6 @@ export function failedRecord(stage: StageName, startedAt: Date, endedAt: Date, e
   const spent = error instanceof StageFailure ? { usage: error.usage, retries: error.retries, checks: [...error.checks] } : {};
   return stageRecord(stage, startedAt, endedAt, { outputs: {}, checks: [], ...spent, notes: [error instanceof Error ? error.message : String(error)] });
 }
-
-const stepUsage = (usage: StageUsage): StepUsage => ({
-  costUsd: usage.usd, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, cacheReadTokens: usage.cacheReadTokens,
-  ...(usage.costUnknown ? { costUnknown: true as const } : {}),
-});
 
 /** The route for every child's `body:<stage>` step. A failed body leaves its record in the child's `failed/<stage>.json`. */
 export function bodyRoute(deps: BodyDeps): StepRoute {

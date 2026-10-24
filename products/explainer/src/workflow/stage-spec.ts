@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SPEECH_BANDS, type SpeechBand } from "../beat-schema.js";
+import { BuilderRefSchema, type BuilderRef } from "../build/beat-worker.js";
 import { JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import { canonicalJson } from "../eval-store.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
@@ -19,7 +20,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "pp7", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c1", tts: "p6b", render: "x4", qa: "x4", sheets: "x4",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
@@ -29,7 +30,7 @@ const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly stri
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
-  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links"],
+  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -70,6 +71,8 @@ export const StageConfigSchema = z.object({
   rates: z.record(z.enum(SPEECH_BANDS), z.number()).optional(),
   /** The render variant's style pack, by content hash, so an edit to the pack's file misses the cache. */
   stylePack: z.object({ id: z.string(), sha: z.string() }).optional(),
+  /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
+  builder: BuilderRefSchema.optional(),
 });
 export type StageConfig = z.infer<typeof StageConfigSchema>;
 
@@ -165,6 +168,8 @@ export interface SpecRequest {
   bridge: () => BridgeFile;
   /** The style packs a render variant's `stylePack` param picks from; the shipped ones by default. */
   stylePacks?: () => ReadonlyMap<string, StylePack>;
+  /** The beat worker's builder, which only the resolve stage's key carries; absent, custom beats stay unbuilt. */
+  builder?: BuilderRef;
 }
 
 let shipped: ReadonlyMap<string, StylePack> | undefined;
@@ -211,6 +216,7 @@ export function stageSpec(request: SpecRequest): StageSpec {
     ...(variant ? { variant: { name: variant.value.name, sha: variant.sha } } : {}),
     ...settings,
     ...(style ? { stylePack: style.stylePack, vars: { ...settings.vars, ...style.vars } } : {}),
+    ...(stage === "resolve" && request.builder ? { builder: request.builder } : {}),
   };
   const keyed = { stage, inputs, config, sample: request.sample };
   return { ...keyed, key: stageKey(keyed), remainingUsd: request.remainingUsd };
