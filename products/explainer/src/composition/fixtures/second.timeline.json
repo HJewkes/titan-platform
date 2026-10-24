@@ -1,0 +1,4 @@
+{
+  "durationS": 1,
+  "beats": [{ "id": "only", "kind": "title", "startS": 0, "durationS": 1, "slots": { "title": "A second timeline" } }]
+}

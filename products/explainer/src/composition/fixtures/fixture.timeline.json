@@ -1,0 +1,24 @@
+{
+  "durationS": 2.5,
+  "beats": [
+    { "id": "b1", "kind": "title", "startS": 0, "durationS": 1, "slots": { "title": "How a request finds its handler", "subtitle": "A synthetic walkthrough" } },
+    {
+      "id": "b2",
+      "kind": "catalogue",
+      "startS": 1,
+      "durationS": 1.5,
+      "slots": {
+        "file": { "path": "src/router/match.ts", "loc": 212, "fanIn": 6, "fanOut": 3 },
+        "schemaLabel": "Route and handler tables",
+        "schema": {
+          "tables": [
+            { "id": "route", "name": "route", "fields": [{ "id": "id", "name": "id", "type": "int", "key": "primary" }, { "id": "path", "name": "path", "type": "text" }, { "id": "handler", "name": "handler_id", "type": "int", "key": "foreign" }] },
+            { "id": "handler", "name": "handler", "fields": [{ "id": "id", "name": "id", "type": "int", "key": "primary" }, { "id": "name", "name": "name", "type": "text" }] }
+          ],
+          "relations": [{ "id": "r1", "from": { "table": "route", "field": "handler" }, "to": { "table": "handler", "field": "id" } }]
+        },
+        "annotate": { "text": "first match wins", "kind": "underline" }
+      }
+    }
+  ]
+}
