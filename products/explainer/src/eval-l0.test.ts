@@ -26,3 +26,27 @@ describe("L0 rules scoped by structure", () => {
     expect(rowsFor().map((r) => r.check_id).sort()).toEqual([...SCOPED].sort());
   });
 });
+
+// The fixture voices no simplifications, so every script held to Q-F12 fails it.
+const limitsRowsFor = (structure: string) =>
+  runL0(ScriptSchema.parse({ ...scriptWith(), structure }), undefined, L0_CHECKS).filter((r) => r.check_id === "Q-F12");
+
+describe("Q-F12 voiced limits, scoped away from the daily briefing", () => {
+  it("emits no voiced-limits row for an scqa script", () => {
+    const rows = limitsRowsFor("scqa");
+
+    expect(rows).toEqual([]);
+  });
+
+  it("still holds a design-journey script to voiced limits", () => {
+    const rows = limitsRowsFor("design-journey");
+
+    expect(rows.map((r) => r.pass)).toEqual([false]);
+  });
+
+  it("still holds an scqa-c4 script to voiced limits", () => {
+    const rows = limitsRowsFor("scqa-c4");
+
+    expect(rows.map((r) => r.pass)).toEqual([false]);
+  });
+});
