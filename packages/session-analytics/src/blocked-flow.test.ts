@@ -144,6 +144,12 @@ describe("parseDenials", () => {
     expect(parseDenials([result("t9", denied("Git Destructive"))], "seat-a")).toMatchObject([{ tool: "unknown", action: "tool:unknown", toolUseId: "t9" }]);
   });
 
+  it("does not count a refusal result that carries no call id", () => {
+    const orphan = JSON.stringify({ timestamp: "2026-09-10T10:00:05Z", message: { content: [{ type: "tool_result", is_error: true, content: denied("Git Destructive") }] } });
+
+    expect(parseDenials([call("t1", "Bash", { command: "git push --force" }), orphan], "seat-a")).toEqual([]);
+  });
+
   it("does not count a tool result that only quotes the refusal text", () => {
     const lines = [call("t1", "Bash", { command: "grep classifier log" }), result("t1", `log.md:3: ${denied("Git Destructive")}`)];
 
