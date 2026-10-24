@@ -131,7 +131,8 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
 function registerOrderVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("order [repo] [ref]", "every merge-order reservation, or only owner/repo's; `order clear owner/repo#N --reason <text>` ends one by hand, logged with the caller")
     .option("--reason <text>", "with clear: why the reservation is ended by hand")
-    .action((what: string | undefined, ref: string | undefined, opts: ShepherdOpts & { reason?: string }) => runShepherd(verbs, "shepherd.order", () => orderArgs(what, ref, opts.reason, verbs), opts));
+    .action((what: string | undefined, ref: string | undefined, opts: ShepherdOpts & { reason?: string }) =>
+      runShepherd(verbs, "shepherd.order", () => orderArgs(what, ref, opts.reason, verbs), opts));
 }
 
 /** `order clear <ref>` is the break-glass write; any other first word is the repo to list. */

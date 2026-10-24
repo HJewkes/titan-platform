@@ -147,7 +147,8 @@ function formatRows(rows: WatchRow[]): string {
 
 /** A row holding a merge-order reservation says so after its blockers. */
 function formatStatus(rows: StatusRow[]): string {
-  const reserved = ({ mergeOrder }: StatusRow): string => (mergeOrder ? ` [merge order: reserved ${mergeOrder.paths.length} path(s) since ${mergeOrder.since}, ${mergeOrder.state}${waitingText(mergeOrder.waiting)}]` : "");
+  const reserved = ({ mergeOrder: held }: StatusRow): string =>
+    held ? ` [merge order: reserved ${held.paths.length} path(s) since ${held.since}, ${held.state}${waitingText(held.waiting)}]` : "";
   return rows.length === 0 ? "no shepherded PRs\n" : `${rows.map((row) => `${rowLine(row)}${reserved(row)}`).join("\n")}\n`;
 }
 

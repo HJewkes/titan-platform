@@ -9,7 +9,7 @@ interface RunLookup {
 }
 
 /** The merge-order wait a run's merge step read last; kept in serve's memory, for `shepherd status` and `shepherd order`. */
-export interface OrderWait {
+interface OrderWait {
   repo: string;
   pr: number;
   behind: number;

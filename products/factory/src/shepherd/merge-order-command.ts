@@ -7,9 +7,10 @@ import { PrArg, RepoArg, coded } from "./register-args.js";
 import type { MergeOrderServices } from "./services.js";
 import type { WatchRow } from "./view.js";
 
+const ClearReason = z.string().trim().min(1, "a clear needs a non-empty --reason").max(500);
 const OrderArgs = z.discriminatedUnion("action", [
   z.object({ action: z.literal("list"), repo: RepoArg.optional() }),
-  z.object({ action: z.literal("clear"), repo: RepoArg, pr: PrArg, reason: z.string().trim().min(1, "a clear needs a non-empty --reason").max(500), actor: z.string().min(1).max(100).default("unknown") }),
+  z.object({ action: z.literal("clear"), repo: RepoArg, pr: PrArg, reason: ClearReason, actor: z.string().min(1).max(100).default("unknown") }),
 ]);
 type OrderArgs = z.infer<typeof OrderArgs>;
 
@@ -53,7 +54,7 @@ function stateOf(services: MergeOrderServices, reservation: Reservation): OrderS
 }
 
 /** Reads the store and serve's memory only, never GitHub, so a seat can run it in a loop. */
-export function orderRows(services: MergeOrderServices, reservations: readonly Reservation[]): OrderRow[] {
+function orderRows(services: MergeOrderServices, reservations: readonly Reservation[]): OrderRow[] {
   const order = services.order();
   const now = services.now();
   const prOfRun = new Map(order.driving().map((run) => [run.id, Number(run.params.pr)]));

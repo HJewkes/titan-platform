@@ -54,7 +54,7 @@ const fromRow = (row: z.infer<typeof Row>): Reservation => ({
 const DRIVING: ReadonlySet<WorkflowStatus> = new Set(["running", "cancelling"]);
 
 /** Who ended a reservation and why: the run itself when it ends, or a seat's break-glass `shepherd order clear`. */
-export interface OrderRelease {
+interface OrderRelease {
   at: string;
   actor?: string;
   reason?: string;
