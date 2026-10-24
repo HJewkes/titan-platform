@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { BridgeFileSchema, type BridgeExec } from "./bridge.js";
+import { BridgeFileSchema, readBridgeFile, type BridgeExec } from "./bridge.js";
 import { resumeVideo, runVideo } from "./host.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
@@ -102,5 +102,19 @@ describe("--theater", () => {
     expect(resumed.status, resumed.error).toBe("completed");
     expect(existsSync(path.join(scratch, "demo.mp4"))).toBe(true);
     expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(false);
+  });
+});
+
+describe("a host bridge after the sheets port", () => {
+  it("refuses a host file that still bridges sheets, naming the block to delete", () => {
+    fx = fixture();
+    const file = path.join(fx.dataDir, "bridge.json");
+    const bridge = JSON.parse(readFileSync(file, "utf8")) as { stages: Record<string, unknown> };
+    const stale = { ...bridge, stages: { ...bridge.stages, sheets: { inputs: { mp4: "out/demo.mp4" }, outputs: {}, commands: [{ argv: ["bash", "sheets.sh"] }] } } };
+    writeFileSync(file, JSON.stringify(stale));
+
+    const read = () => readBridgeFile(fx!.dataDir);
+
+    expect(read).toThrow(/still has a "sheets" block, but sheets runs in TypeScript now.*delete it/);
   });
 });

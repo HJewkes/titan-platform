@@ -20,6 +20,7 @@ interface StageFlags {
   judge?: string;
   rounds: number;
   profile?: string;
+  video?: string;
   json?: boolean;
   samples?: number;
   maxUsd?: number;
@@ -64,6 +65,7 @@ function stageCommand(deps: RunCliDeps, { out, err }: Io, onSampled: (code: numb
     .option("--judge <file>", "model config JSON for the rewrite stage")
     .addOption(new Option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`).argParser(rounds).default(MAX_REWRITE_ROUNDS))
     .option("--profile <type>", "the video type whose profile the audition stage reads")
+    .option("--video <id>", "the video whose runs the sheets stage's sidecar lists; the child run alone by default")
     .option("--json", "print the stage record JSON"))
     .exitOverride()
     .action(async (stage: CachedStage, flags: StageFlags) => {
@@ -72,6 +74,7 @@ function stageCommand(deps: RunCliDeps, { out, err }: Io, onSampled: (code: numb
       const record = await runOneStage({
         stage, inputs: flags.in, sample: flags.sample, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, rounds: flags.rounds,
         ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}), ...(flags.profile ? { profile: flags.profile } : {}),
+        ...(flags.video ? { video: flags.video } : {}),
       }, hostFor(flags, deps)).catch((error: unknown) => {
         // A failed gate still has verdicts; a caller scoring checks reads them from the record, exit code 1 or not.
         if (flags.json && error instanceof ChildStageFailure && error.record) out(`${JSON.stringify(error.record, null, 2)}\n`);
