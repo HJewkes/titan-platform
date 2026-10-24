@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a failing CLI fails the gather",
+      "file": "products/explainer/src/presets/daily/stats-source.ts",
+      "find": "    notes.push(error instanceof Error ? error.message : String(error));\n    return undefined;",
+      "replace": "    throw error;",
+      "kills": [
+        "daily stats over injected CLI runners with synthetic output turns a failing CLI into a note and missing facts, and the gather still completes"
+      ]
+    },
+    {
+      "name": "cost per PR divides by every PR item, opened included",
+      "file": "products/explainer/src/presets/daily/gather-daily.ts",
+      "find": "const merged = prs.items.filter((item) => item.change === \"merged\").length;",
+      "replace": "const merged = prs.items.length;",
+      "kills": [
+        "daily stats over injected CLI runners with synthetic output states the day's spend, its split by account, and cost per merged PR"
+      ]
+    },
+    {
+      "name": "session rows stay in facts.md",
+      "file": "products/explainer/src/presets/daily/gather-daily.ts",
+      "find": "const rows = digest.items.filter((item) => item.kind !== \"session\").map((item) => {",
+      "replace": "const rows = digest.items.map((item) => {",
+      "kills": [
+        "daily stats over injected CLI runners with synthetic output leaves session rows out of facts.md, keeping them in the digest behind one rollup row"
+      ]
+    },
+    {
+      "name": "a stale price table goes unsaid",
+      "file": "products/explainer/src/presets/daily/stats-source.ts",
+      "find": "return version === current ?",
+      "replace": "return version !== null ?",
+      "kills": [
+        "daily stats over injected CLI runners with synthetic output says when an older price table priced the spend, in the fact and in a note"
+      ]
+    },
+    {
+      "name": "done tasks named as priorities",
+      "file": "products/explainer/src/presets/daily/priorities.ts",
+      "find": "task.status !== \"done\" && ",
+      "replace": "",
+      "kills": [
+        "daily priorities names each lane's two open tasks with the lowest priority rank"
+      ]
+    }
+  ]
+}

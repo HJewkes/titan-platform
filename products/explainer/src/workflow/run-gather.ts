@@ -9,6 +9,7 @@ import { lanesFileFor, loadLanes } from "../lanes-schema.js";
 import { gatherArticle, writeArticleGather } from "../presets/article/gather-article.js";
 import { activeWorkTasks } from "../presets/daily/active-work-tasks.js";
 import { gatherDaily, writeDailyGather } from "../presets/daily/gather-daily.js";
+import { execCli, type CliRun } from "../presets/daily/stats-source.js";
 import type { SnapshotTask } from "../presets/daily/task-snapshot.js";
 import type { CallEdgeReader } from "../presets/pr-overview/call-edges.js";
 import { gatherPr, writeGather } from "../presets/pr-overview/gather.js";
@@ -49,6 +50,8 @@ export interface GatherDeps {
   readAt?: ReadAt;
   /** The daily lanes rule file a request without `--lanes` reads; else the data dir's `daily/lanes.yaml`, else the doctrine default. */
   lanesFile?: string;
+  /** The local CLIs the daily's stats read (`active-work`, `titan-factory`). */
+  cli?: CliRun;
 }
 
 interface Gathered {
@@ -72,7 +75,7 @@ async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gath
   const { digest, notes, coverage } = await gatherDaily({
     day: request.day, repos: request.repos, transcriptRoots, initiative: request.initiative,
     snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks, lanes: loadLanes(lanesFile),
-    ...(decisions === undefined ? {} : { decisions }),
+    cli: deps.cli ?? execCli, ...(decisions === undefined ? {} : { decisions }),
   });
   const files = await writeDailyGather(path.join(dataDir, "gather", request.type, request.day), digest, coverage);
   return { type: request.type, facts: files.facts, factsText: readFileSync(files.facts, "utf8"), items: digest.items.length, notes, record: files.digest };
