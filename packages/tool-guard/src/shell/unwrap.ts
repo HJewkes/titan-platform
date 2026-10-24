@@ -6,6 +6,7 @@ import type { WordToken } from "./lexer.js";
 import { basename } from "./path.js";
 import { canonicalShell } from "./shell-names.js";
 import { EnvSplitError } from "./unsure-readings.js";
+import { movedTo, ranIn, runDirWord } from "./run-dir.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions, spellOption } from "./wrapper-long.js";
@@ -148,6 +149,8 @@ export interface Unwrapped {
   unsure?: WordToken[];
   /** Names `exec -a`, `env -a`/`--argv0` or an `ARGV0=` prefix run the command under; null where one is only known at run time. */
   argv0?: Array<string | null>;
+  /** The directory a wrapper or runner option starts the command in (`env -C d`), null when it is only known at run time (`pnpm --filter p`). */
+  runDir?: WordToken | null;
 }
 
 /**
@@ -168,6 +171,7 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   let negated = false;
   const argv0: Array<string | null> = [];
   let wrapped = false;
+  let runDir: WordToken | null | undefined;
   let i = 0;
   while (i < words.length) {
     const w = words[i] as WordToken;
@@ -182,7 +186,8 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
     } else if (!w.dynamic && commandName(w.value) === "env") {
       const walked = walkEnv(words, i + 1, assigned, ENV_WALK);
       if (walked === null) throw new EnvSplitError();
-      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt) };
+      runDir = walked.options.reduce((dir, options) => movedTo(dir, runDirWord("env", options, ENV)), runDir);
+      if (walked.ambiguousAt !== undefined) return { ...command(walked.words, walked.envAt, assigned), script: ambiguousReadings(walked.words, walked.envAt, walked.ambiguousAt), ...ranIn(runDir) };
       ({ words, end: i } = walked);
       wrapped = true;
       argv0.push(...walked.argv0);
@@ -193,14 +198,16 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
       words = spelled;
       const start = wrapperSpec(w.value) ? i + 1 : runnerEnd(words, i);
       const spec = wrapperSpec(w.value) ?? PACKAGE_OPTS;
+      const optionsEnd = skipWrapper(words, start, spec);
+      if (optionsEnd >= 0) runDir = movedTo(runDir, wrapperRunDir(commandName(w.value), words, i, start, optionsEnd));
       wrapped ||= !BUILTIN_RUNNERS.has(commandName(w.value));
       const script =
         runnerShellScript(words, i, start) ?? wrapperScript(words, start, spec) ?? joinedScript(words, start, spec);
       if (script !== null) {
         const named = [...argv0Values(commandName(w.value), words.slice(start)), ...splitStringArgv0(commandName(w.value), script), ...assignedArgv0(assigned)];
-        return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script, ...(named.length > 0 ? { argv0: named } : {}) };
+        return { name: commandName(w.value), path: w.value, args: words.slice(i + 1), assigned, script, ...(named.length > 0 ? { argv0: named } : {}), ...ranIn(runDir) };
       }
-      i = skipWrapper(words, start, spec);
+      i = optionsEnd;
       if (i < 0) return null;
       argv0.push(...argv0Values(commandName(w.value), words.slice(start, i)));
       loose.push(...words.slice(i - (spec.positionals ?? 0), i).filter((p) => p.dynamic));
@@ -213,7 +220,15 @@ export function unwrap(words: WordToken[]): Unwrapped | null {
   argv0.push(...assignedArgv0(assigned));
   const named = argv0.length > 0 ? { argv0 } : {};
   const bare = cmd.name === null && !wrapped && cmd.args.length > 0 ? { runtimeHead: true as const } : {};
-  return { ...cmd, ...named, ...bare, ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+  return { ...cmd, ...named, ...bare, ...ranIn(runDir), ...(xargs ? { xargs } : {}), ...(negated ? { negated } : {}), ...(unsure ? { unsure } : {}) };
+}
+
+/** The directory a wrapper's options, or a runner's global options before its subcommand, start the command in. */
+function wrapperRunDir(name: string, words: WordToken[], i: number, start: number, optionsEnd: number): WordToken | null | undefined {
+  const spec = wrapperSpec(name);
+  if (spec) return runDirWord(name, words.slice(start, optionsEnd), spec);
+  const runner = Object.hasOwn(RUNNERS, name) ? RUNNERS[name] : undefined;
+  return runner && runDirWord(name, words.slice(i + 1, start - 1), { values: runner.values });
 }
 
 function command(words: WordToken[], i: number, assigned: Unwrapped["assigned"]): Unwrapped {

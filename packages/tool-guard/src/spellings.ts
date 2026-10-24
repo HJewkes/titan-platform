@@ -62,6 +62,7 @@ export const SPELLINGS = {
   "bash.config.git-hooks": config(),
   "bash.config.git-config-hookspath": config(),
   "bash.config.claude-cli": config(),
+  "bash.config.console-owner-auth": config(),
   "bash.config.mention": config(),
   "bash.merge.gh-pr-merge": merge(),
   "bash.merge.gh-api-merge": merge(),

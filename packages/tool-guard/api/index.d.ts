@@ -53,6 +53,12 @@ interface GuardedPath {
     except?: readonly string[];
     /** Concrete paths the pattern covers, for testing a glob or a directory; required when `pattern` has a wildcard. */
     samples?: readonly string[];
+    /**
+     * Relative tails distinctive to this entry, as globs (`titan-coordinator/**`, `lan.token`): a path whose base is only
+     * known at run time matches the entry when it ends in one. An entry without them is never matched that way, since a
+     * common name (`config.json`, `CLAUDE.md`) under an unknown directory is far more often not the guarded one.
+     */
+    tails?: readonly string[];
 }
 interface GuardedList {
     paths: readonly GuardedPath[];
@@ -160,6 +166,7 @@ declare const SPELLINGS: {
     readonly "bash.config.git-hooks": SpellingRow;
     readonly "bash.config.git-config-hookspath": SpellingRow;
     readonly "bash.config.claude-cli": SpellingRow;
+    readonly "bash.config.console-owner-auth": SpellingRow;
     readonly "bash.config.mention": SpellingRow;
     readonly "bash.merge.gh-pr-merge": SpellingRow;
     readonly "bash.merge.gh-api-merge": SpellingRow;

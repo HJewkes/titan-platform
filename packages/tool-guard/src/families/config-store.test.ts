@@ -1,0 +1,395 @@
+import { describe, expect, it } from "vitest";
+import { nodeContext } from "../context.js";
+import type { ReadFs } from "../context.js";
+import { decide } from "../decide.js";
+import { handle } from "../hook.js";
+import type { HookPort } from "../hook.js";
+
+const HOME = "/home/you";
+const REPO = "/home/you/projects/app";
+const DOC = "~/.config/titan-coordinator/coordinator.json";
+const ts = new Date("2026-01-02T03:04:05.000Z");
+
+/** The console's installed bin, a node script, is the only file on this filesystem, beside a link to its CLI script. */
+const BIN = "/home/you/.local/bin/titan-console";
+const LINKS: Record<string, string> = {
+  [BIN]: BIN,
+  [`${REPO}/c.js`]: `${REPO}/apps/console/dist/cli.js`,
+};
+const binOnlyFs: ReadFs = {
+  realpath: (p) => {
+    const real = LINKS[p];
+    if (real !== undefined) return real;
+    throw new Error("ENOENT");
+  },
+  readHead: (p) => {
+    if (p === BIN) return "#!/usr/bin/env node\nimport './cli.js';\n";
+    throw new Error("ENOENT");
+  },
+  isFile: (p) => p === BIN,
+};
+
+const port: HookPort = { context: nodeContext(HOME, binOnlyFs), now: () => ts, loadDecide: async () => decide };
+interface Verdict {
+  decision: string | null;
+  action: string | null;
+}
+
+async function hook(toolName: string, toolInput: Record<string, unknown>, cwd: string | null = REPO): Promise<Verdict> {
+  const stdin = JSON.stringify({ tool_name: toolName, session_id: "sess-1", tool_use_id: "tu-1", cwd, tool_input: toolInput });
+  const { stdout, log } = await handle(stdin, { CLAUDE_AGENT_ID: "impl-7" }, port);
+  if (stdout === "") return { decision: null, action: null };
+  const decision = /"permissionDecision":"(\w+)"/.exec(stdout)?.[1] ?? "unparsed";
+  return { decision, action: log[0]?.split("\t")[3] ?? null };
+}
+
+const REFUSED: Verdict = { decision: "deny", action: "authority-config" };
+const PASSES: Verdict = { decision: null, action: null };
+
+const bash = (command: string) => hook("Bash", { command });
+
+describe("an agent session writing the fleet config store", () => {
+  it.each([
+    ["sed -i", `sed -i 's/"implementers": 6/"implementers": 60/' ${DOC}`],
+    ["a truncating redirect", `echo '{}' > ${DOC}`],
+    ["an appending redirect", `echo '{}' >> ${DOC}`],
+    ["tee", `jq '.seats' /tmp/new.json | tee ${DOC}`],
+    ["cp onto the file", `cp /tmp/new.json ${DOC}`],
+    ["cp into the directory", "cp /tmp/coordinator.json ~/.config/titan-coordinator/"],
+    ["mv onto the file", `mv /tmp/new.json ${DOC}`],
+    ["python -c open(..., 'w')", `python3 -c "open('/home/you/.config/titan-coordinator/coordinator.json', 'w').write('{}')"`],
+    ["a quoted path", `echo '{}' > "${HOME}/.config/titan-coordinator/coordinator.json"`],
+    ["a $HOME path", "echo '{}' > $HOME/.config/titan-coordinator/coordinator.json"],
+    ["a ${HOME} path", "echo '{}' > \"${HOME}/.config/titan-coordinator/coordinator.json\""],
+    ["a ~ path", "echo '{}' > ~/.config/titan-coordinator/coordinator.json"],
+    ["cd then a relative path", "cd ~/.config/titan-coordinator && echo '{}' > coordinator.json"],
+    ["cd .. then a relative path", "cd ~/.config && sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["the macOS config directory", "echo '{}' > ~/Library/Preferences/titan-coordinator/coordinator.json"],
+    ["a new file beside the document", "echo x > ~/.config/titan-coordinator/coordinator.json.tmp"],
+    ["the console LAN secret", "echo new > ~/.local/state/titan-console/lan.token"],
+    ["an owner action record", "cp /tmp/forged.json ~/.local/state/titan-console/owner-actions/a9.json"],
+    ["the config revision log", "echo '{}' >> ~/.local/state/titan-console/config/log.jsonl"],
+    ["removing the revision log", "rm -rf ~/.local/state/titan-console/config"],
+    ["removing the state dir", "rm -rf ~/.local/state/titan-console"],
+    ["removing the state dir by a trailing-slash path", "rm -rf ~/.local/state/titan-console/"],
+    ["moving the state dir away", "mv ~/.local/state/titan-console /tmp/old-console"],
+    ["moving a forged dir over it", "mv /tmp/forged ~/.local/state/titan-console"],
+    ["copying a forged dir over it", "cp -r /tmp/forged ~/.local/state/titan-console"],
+    ["syncing a forged dir over it", "rsync -a --delete /tmp/forged/ ~/.local/state/titan-console/"],
+    ["linking a forged dir over it", "ln -sfn /tmp/forged ~/.local/state/titan-console"],
+    ["locking the owner out of it", "chmod 000 ~/.local/state/titan-console"],
+    ["hard-linking the document", "ln ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["hard-linking it with -f", "ln -f ~/.config/titan-coordinator/coordinator.json /tmp/h"],
+    ["hard-linking the LAN secret", "ln ~/.local/state/titan-console/lan.token ~/t"],
+    ["hard-linking through cp -l", "cp -l ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["hard-linking through cp --link", "cp --link ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["hard-linking a tree through cp -al", "cp -al ~/.local/state/titan-console/config /tmp/c"],
+    ["hard-linking the Claude settings", "ln ~/.claude/settings.json ~/s"],
+    ["ln with -s after --, which is a file name", "ln -- ~/.config/titan-coordinator/coordinator.json -s"],
+    ["ln -f with -s after --", "ln -f -- ~/.local/state/titan-console/lan.token -s"],
+    ["ln with a file named -s right after --", "ln -- -s ~/.config/titan-coordinator/coordinator.json ~/links/"],
+    ["ln with -s after an operand, a file to BSD ln", "ln ~/.config/titan-coordinator/coordinator.json -s"],
+    ["ln whose -s is the -S suffix value", "ln -S -s ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["ln whose -s is the -t target directory", "ln -t -s ~/.config/titan-coordinator/coordinator.json"],
+    ["cp whose -l comes before --", "cp -l -- ~/.config/titan-coordinator/coordinator.json ~/h"],
+    ["a redirect whose runner moves only the command", "cd ~/.config/titan-coordinator && pnpm -C /tmp exec node a.js > coordinator.json"],
+  ])("refuses %s", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["Write", "/home/you/.config/titan-coordinator/coordinator.json"],
+    ["Edit", "/home/you/.config/titan-coordinator/coordinator.json"],
+    ["MultiEdit", "/home/you/Library/Preferences/titan-coordinator/coordinator.json"],
+    ["Write", "/home/you/.local/state/titan-console/owner-actions/a1.json"],
+    ["Edit", "/home/you/.local/state/titan-console/config/log.jsonl"],
+    ["Write", "/home/you/.local/state/titan-console/lan.token"],
+  ])("refuses a %s of %s", async (toolName, filePath) => {
+    expect(await hook(toolName, { file_path: filePath, content: "{}" })).toEqual(REFUSED);
+  });
+});
+
+describe("an agent session minting or resetting the owner's console login", () => {
+  it.each([
+    "titan-console login-link",
+    "titan-console token rotate",
+    "env titan-console login-link",
+    "command titan-console login-link",
+    "env -i PATH=/usr/bin titan-console token rotate",
+    "npx titan-console login-link",
+    "pnpm exec titan-console token rotate",
+    "nohup titan-console login-link",
+    "'titan-console' login-link",
+    'titan-console "$VERB"',
+    'titan-console token "$VERB"',
+    "node apps/console/dist/cli.js login-link",
+    "tsx apps/console/server/cli.ts token rotate",
+    "node node_modules/titan-console/dist/cli.js login-link",
+    "V=login-link; titan-console $V",
+    "C=titan-console; $C login-link",
+    "bash -c 'titan-console login-link'",
+    "sh -c \"titan-console token rotate\"",
+    "echo titan-console login-link | sh",
+    "xargs titan-console <<< login-link",
+    "titan-console config import ./autonomy",
+    "titan-console config import ./autonomy --limits limits.json",
+    "env titan-console config import ./autonomy",
+    "command titan-console config import ./autonomy",
+    "npx titan-console config import ./autonomy",
+    "pnpm exec titan-console config import ./autonomy",
+    "nohup titan-console config import ./autonomy",
+    "'titan-console' config 'import' ./autonomy",
+    'titan-console config "$VERB" ./autonomy',
+    "node apps/console/dist/cli.js config import ./autonomy",
+    "tsx apps/console/server/cli.ts config import ./autonomy",
+    "bash -c 'titan-console config import ./autonomy'",
+    'sh -c "titan-console config import ./autonomy"',
+    'titan-console "token rotate"',
+    'titan-console "token  rotate"',
+    'node apps/console/dist/cli.js "token rotate"',
+    'titan-console "config import" ./autonomy',
+    'titan-console " login-link"',
+    "cd apps/console && tsx server/cli.ts login-link",
+    "cd apps/console && node dist/cli.js login-link",
+    "cd apps/console/dist && node cli.js token rotate",
+    "cd apps && node ./console/dist/cli.js login-link",
+    'cd "$D" && node dist/cli.js login-link',
+    "node c.js login-link",
+    "node apps/console/dist/cli login-link",
+    "tsx apps/console/server/cli token rotate",
+    "cd apps/console && node dist/cli login-link",
+    "node -r ./apps/console/dist/cli.js - login-link",
+    "node --require ./apps/console/dist/cli - login-link",
+    "node --import=./apps/console/dist/cli.js x.js token rotate",
+    "node -r ./apps/console/dist/cli.js -- x.js login-link",
+    "node -r ./apps/console/dist/cli.js -- -r login-link",
+    "node - login-link < apps/console/dist/cli.js",
+    `node -e "import('./apps/console/dist/cli.js')" x login-link`,
+    "node --redirect-warnings /tmp/w -r ./apps/console/dist/cli.js -e 0 x login-link",
+    "node --unhandled-rejections strict -r ./apps/console/dist/cli.js -e 0 x login-link",
+    "node --report-dir /tmp/r -r ./apps/console/dist/cli.js -e 0 x login-link",
+    "node --report-dir /tmp/r --require=./apps/console/dist/cli.js x.js token rotate",
+    `node --redirect-warnings /tmp/w --eval "import('./apps/console/dist/cli.js')" x login-link`,
+    "pnpm --filter titan-console exec node dist/cli.js login-link",
+    "pnpm -F titan-console exec tsx server/cli.ts login-link",
+    "pnpm -C apps/console exec node dist/cli.js login-link",
+    "pnpm --dir apps/console exec node dist/cli.js token rotate",
+    "pnpm --dir=apps/console exec node dist/cli.js login-link",
+    "pnpm -r exec node dist/cli.js login-link",
+    'pnpm --filter "$P" exec node dist/cli.js login-link',
+    "npm -C apps/console exec node dist/cli.js login-link",
+    "npm --prefix apps/console exec -- node dist/cli.js login-link",
+    "npm -w titan-console exec -- tsx server/cli.ts config import ./autonomy",
+    "yarn --cwd apps/console exec node dist/cli.js login-link",
+    "bun --cwd apps/console x tsx server/cli.ts login-link",
+    "env -C apps/console node dist/cli.js login-link",
+    "env --chdir=apps/console tsx server/cli.ts login-link",
+    "sudo -D /home/you/projects/app/apps/console node dist/cli.js login-link",
+  ])("refuses %s", async (command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it("refuses the installed bin run by path, since its node #! line is one the guard cannot follow", async () => {
+    expect((await bash(`${BIN} login-link`)).decision).toBe("deny");
+  });
+});
+
+describe("a write whose subject is only resolved indirectly", () => {
+  it.each([
+    ["env -C then sh -c", `env -C ~/.config/titan-coordinator sh -c 'echo "{}" > coordinator.json'`],
+    ["env --chdir= then bash -c", `env --chdir=/home/you/.config/titan-coordinator bash -c 'echo "{}" > coordinator.json'`],
+    ["env -C then tee", "env -C ~/.config/titan-coordinator tee coordinator.json < /tmp/new.json"],
+    ["env -C then sed -i", "env -C ~/.config/titan-coordinator sed -i s/6/60/ coordinator.json"],
+    ["env -C then cp", "env -C ~/.config/titan-coordinator cp /tmp/new.json coordinator.json"],
+    ["env -C then rm of the revision log", "env -C ~/.local/state/titan-console rm -rf config"],
+    ["sudo -D then sh -c", `sudo -D ~/.config/titan-coordinator sh -c 'echo "{}" > coordinator.json'`],
+    ["pnpm -C exec sh -c", `pnpm -C ~/.config/titan-coordinator exec sh -c 'echo "{}" > coordinator.json'`],
+    ["env -C to a dir only known at run time", `env -C "$D" sh -c 'echo x > coordinator.json'`],
+    ["cd to a dir only known at run time", `cd "$D" && echo '{}' > coordinator.json`],
+    ["cd to an unknown dir, the Claude settings", `cd "$D" && echo '{}' > settings.json`],
+    ["a path after a command substitution", `echo '{}' > "$(echo ~)/.config/titan-coordinator/coordinator.json"`],
+    ["the env -C dir of the Claude settings", "env -C ~/.claude sh -c 'echo {} > settings.json'"],
+  ])("refuses %s (finding 1)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["env -u taking C/tmp as its value", "cd ~/.config/titan-coordinator && env -uC/tmp sh -c 'echo x > coordinator.json'"],
+    ["env -u taking -C/tmp as its value", "cd ~/.config/titan-coordinator && env -u -C/tmp sh -c 'echo x > coordinator.json'"],
+    ["sudo -p taking D/tmp as its value", "cd ~/.config/titan-coordinator && sudo -pD/tmp sh -c 'echo x > coordinator.json'"],
+    ["sudo -p taking -D/tmp as its value", "cd ~/.config/titan-coordinator && sudo -p -D/tmp sh -c 'echo x > coordinator.json'"],
+    ["env -u taking Cx as its value", "cd ~/.config && env -uCx sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["env -a taking Cx as its value", "cd ~/.config && env -aCx sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["sudo -u taking Dx as its value", "cd ~/.config && sudo -uDx sed -i s/6/60/ titan-coordinator/coordinator.json"],
+    ["a second env's -C", "env env -C ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+    ["a second env's -C after an assignment", "env FOO=1 env -C ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+    ["an env -S string's -C", `env -S '-C /home/you/.config/titan-coordinator sh -c "echo x > coordinator.json"'`],
+    ["an abbreviated --chdir", "env --ch ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+    ["an abbreviated sudo --chdir", "sudo --chd ~/.config/titan-coordinator sh -c 'echo {} > coordinator.json'"],
+  ])("refuses %s, the run directory as the wrapper's own parser reads it", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["cp -s of the document, then a redirect", `cp -s ${DOC} ~/v.json && echo '{}' > ~/v.json`],
+    ["cp -rs of the directory, then a redirect", "cp -rs ~/.config/titan-coordinator ~/tc && echo '{}' > ~/tc/coordinator.json"],
+    ["cp --symbolic-link, then sed -i", `cp --symbolic-link ${DOC} ~/v.json && sed -i s/6/60/ ~/v.json`],
+    ["cp -s to a path only known at run time", `cp -s ${DOC} "$L"`],
+  ])("refuses %s, a link cp makes", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["a file under the coordinator dir", `cd "$D" && echo '{}' > titan-coordinator/state.json`],
+    ["the LAN secret", `cd "$D" && echo new > lan.token`],
+    ["the console's revision log", `cd "$D" && rm -rf titan-console/config`],
+    ["the Claude settings by a glob", `cd "$D" && rm .claude/settings*.json`],
+  ])("refuses %s under a dir only known at run time", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    "echo '{}' > .config/titan-coordinator/coordinator.json",
+    "echo '{}' > .claude/settings.json",
+    "rm -rf .local/state/titan-console/config",
+  ])("refuses %s with no cwd on the event", async (command) => {
+    expect(await hook("Bash", { command }, null)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["a dir link then a redirect", "ln -s ~/.config/titan-coordinator ~/tc2 && echo '{}' > ~/tc2/coordinator.json"],
+    ["a file link then a redirect", "ln -s ~/.config/titan-coordinator/coordinator.json ~/v2.json && echo '{}' > ~/v2.json"],
+    ["a dir link; then a redirect", "ln -s ~/.config/titan-coordinator ~/tc2; echo '{}' > ~/tc2/coordinator.json"],
+    ["a dir link then sed -i", "ln -s ~/.config/titan-coordinator ~/tc2 && sed -i s/6/60/ ~/tc2/coordinator.json"],
+    ["a dir link; then cp", "ln -s ~/.config/titan-coordinator ~/tc2; cp /tmp/new.json ~/tc2/coordinator.json"],
+    ["a state dir link then the LAN secret", "ln -s ~/.local/state/titan-console ~/cs && echo new > ~/cs/lan.token"],
+    ["a link to the Claude dir then its settings", "ln -s ~/.claude ~/cl && echo '{}' > ~/cl/settings.json"],
+    ["a link into a directory, then a cd through it", "ln -s ~/.config/titan-coordinator ~/links/ && cd ~/links/titan-coordinator && echo x > coordinator.json"],
+    ["a link at a path only known at run time", `ln -s ~/.config/titan-coordinator "$L"`],
+  ])("refuses %s (finding 2)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    "$C login-link",
+    '"$C" login-link',
+    "${C} login-link",
+    "$C token rotate",
+    "$C config import ./autonomy",
+    "$(echo titan-console) login-link",
+    "node $PWD/apps/console/dist/cli.js login-link",
+    'node "$(pwd)/apps/console/dist/cli.js" login-link',
+    "S=$PWD/apps/console/dist/cli.js; node $S login-link",
+    "node $(ls apps/console/dist/cli.js) login-link",
+    "cd apps/console && node $PWD/dist/cli.js login-link",
+    "node $X login-link",
+    "node $X token rotate",
+    "tsx $X login-link",
+  ])("refuses %s, an unknown program given an owner verb (finding 3)", async (command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["a brace list under the state dir", "rm -rf ~/.local/state/titan-console/{lan.token,config}"],
+    ["a brace list under the Claude dir", "rm -rf ~/.claude/{settings.json,x}"],
+    ["a globbed destination directory", "cp /tmp/new.json ~/.config/titan-coordi*/"],
+  ])("refuses %s (finding 4)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    ["find -delete by name from a parent", "find ~/.local/state -name lan.token -delete"],
+    ["find -exec cp by name from a parent", "find ~/.config -name coordinator.json -exec cp /tmp/new.json {} \\;"],
+    ["find -exec sh -c by name from a parent", `find ~/.config -name coordinator.json -exec sh -c 'echo {} > "$1"' _ {} \\;`],
+    ["find -delete by name from home", "find ~ -name settings.json -delete"],
+  ])("refuses %s (finding 5)", async (_form, command) => {
+    expect(await bash(command)).toEqual(REFUSED);
+  });
+
+  it.each([
+    "ln -s ~/.config/titan-coordinator ~/tc2 && cat ~/tc2/coordinator.json",
+    `cd "$D" && echo x > notes.md`,
+    'echo x > "$OUT/report.txt"',
+    "node $S build",
+    '"$EDITOR" README.md',
+    "find . -name '*.tmp' -delete",
+    "find ~/.config -name coordinator.json",
+    "find ~/.config -name coordinator.json -exec cat {} \\;",
+    "env -C /tmp sh -c 'echo x > coordinator.json'",
+    "env -C ~/.config/titan-coordinator cat coordinator.json",
+    "cd ~/.config/titan-coordinator && env -C /tmp sh -c 'echo x > coordinator.json'",
+    "rm -rf {a,b}/dist",
+    "cp x.json /tmp/out*/",
+    'echo \'{}\' > "$OUT/config.json"',
+    `cd "$WT" && sed -i s/a/b/ CLAUDE.md`,
+    'cd "$(git rev-parse --show-toplevel)" && git config user.email x',
+    "pnpm --filter x exec vitest run config",
+    `cd "$D" && echo x > pre-push`,
+    `cd "$D" && echo x > titan-console/inbox/deposits/x.json`,
+    "env -uC sh -c 'echo x > notes.md'",
+    "sudo -pD/tmp sh -c 'echo x > coordinator.json'",
+    "env -C /tmp env -C x sh -c 'echo x > coordinator.json'",
+    "cp -s /tmp/a.json ~/b.json && echo '{}' > ~/b.json",
+    `cp ${DOC} ~/v.json && echo '{}' > ~/v.json`,
+  ])("still passes %s", async (command) => {
+    expect(await bash(command)).toEqual(PASSES);
+  });
+});
+
+describe("what keeps passing", () => {
+  it.each([
+    `cat ${DOC}`,
+    `grep -n implementers ${DOC}`,
+    `jq '.seats' ${DOC}`,
+    `jq . < ${DOC}`,
+    `cp ${DOC} /tmp/coordinator-copy.json`,
+    `diff ${DOC} /tmp/coordinator-copy.json`,
+    "ls ~/.local/state/titan-console/owner-actions",
+    "cat ~/.local/state/titan-console/config/log.jsonl",
+    "titan-console",
+    "titan-console --help",
+    "titan-console inbox file -",
+    "titan-console rounds import ./round-7 --json",
+    "titan-console rounds withdraw r-3 --reason closed",
+    "titan-console token",
+    "titan-console config compare-tree",
+    "env titan-console config compare-tree",
+    "node apps/console/dist/cli.js config compare-tree",
+    "titan-console config",
+    'titan-console "rounds import" ./round-7',
+    "cd apps/console && node dist/cli.js rounds import ./round-7",
+    "node dist/cli.js login-link",
+    "node scripts/cli.ts token rotate",
+    "node apps/console/dist/cli.js rounds import ./round-7",
+    "grep -rn login-link apps/console/server",
+    "echo x > ~/.local/state/titan-console/rounds/r-1/note.txt",
+    "echo x > ~/.config/titan-coordinator-notes.md",
+    "ln -s -- ~/.config/titan-coordinator/coordinator.json ~/view.json",
+    "ln --symbolic ~/.config/titan-coordinator/coordinator.json ~/view.json",
+    "ln -fs ~/.config/titan-coordinator/coordinator.json ~/view.json",
+    "cp -- ~/.config/titan-coordinator/coordinator.json -l",
+    "node -r ./scripts/setup.js scripts/run.js login-link",
+    "node --import tsx scripts/build.ts token rotate",
+    "node -r ./apps/console/dist/cli.js",
+    "node --redirect-warnings /tmp/w -r ./scripts/setup.js -e 0 x login-link",
+    `node -e "console.log(1)" login-link`,
+    "node apps/console/dist/cli rounds import ./round-7",
+    "ls ~/.local/state/titan-console",
+    "cd ~/.local/state/titan-console && ls rounds",
+    "mkdir -p ~/.local/state/titan-console/rounds/r-2",
+    "cp -r ./round-7 ~/.local/state/titan-console/rounds/",
+    "cat ~/.local/state/titan-console/rounds/r-1/frame.json",
+    "ln -s ~/.config/titan-coordinator/coordinator.json ~/view.json",
+    "ln -sf ~/.config/titan-coordinator/coordinator.json /tmp/view.json",
+    "pnpm --filter titan-console exec node dist/cli.js rounds import ./round-7",
+    "pnpm -C apps/console exec node dist/cli.js --help",
+    "pnpm --filter app exec node scripts/build.js login",
+    "env -C apps/console node dist/cli.js rounds withdraw r-3 --reason closed",
+  ])("%s", async (command) => {
+    expect(await bash(command)).toEqual(PASSES);
+  });
+
+  it("allows a Read of the materialized document", async () => {
+    expect(await hook("Read", { file_path: "/home/you/.config/titan-coordinator/coordinator.json" })).toEqual(PASSES);
+  });
+});

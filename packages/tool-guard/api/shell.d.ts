@@ -165,6 +165,11 @@ interface SimpleCommand {
     pathChanged?: true;
     /** Set on a command only an added xargs reading runs; it may add actions but never fails the line or moves its state. */
     added?: true;
+    /**
+     * Where a wrapper option starts the command (`env -C d`), null when only known at run time (`pnpm --filter p exec`).
+     * Its arguments and any shell text it runs resolve from here; `dir` still holds for its own redirects.
+     */
+    runDir?: string | null;
     /** What its descriptors held before its own redirects, when a command that runs it set them up (`bash -c bash < f`). */
     inherited?: Descriptors;
 }

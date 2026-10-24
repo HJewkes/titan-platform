@@ -1,3 +1,4 @@
+import { CONFIG_STORE_PATHS } from "./families/config-store.js";
 import { resolveFrom } from "./shell/path.js";
 
 /**
@@ -12,6 +13,12 @@ export interface GuardedPath {
   except?: readonly string[];
   /** Concrete paths the pattern covers, for testing a glob or a directory; required when `pattern` has a wildcard. */
   samples?: readonly string[];
+  /**
+   * Relative tails distinctive to this entry, as globs (`titan-coordinator/**`, `lan.token`): a path whose base is only
+   * known at run time matches the entry when it ends in one. An entry without them is never matched that way, since a
+   * common name (`config.json`, `CLAUDE.md`) under an unknown directory is far more often not the guarded one.
+   */
+  tails?: readonly string[];
 }
 
 export interface GuardedList {
@@ -72,39 +79,53 @@ const CONFIG: GuardedList = {
       id: "any:.claude/settings",
       pattern: "**/.claude/settings*.json",
       samples: [".claude/settings.json", ".claude/settings.local.json"],
+      // A bare settings file is kept too: `cd "$D"` may be into `.claude` itself.
+      tails: ["settings*.json"],
     },
-    { id: "any:.claude/hooks", pattern: "**/.claude/hooks/**", samples: [".claude/hooks/guard.sh"] },
+    { id: "any:.claude/hooks", pattern: "**/.claude/hooks/**", samples: [".claude/hooks/guard.sh"], tails: [".claude/hooks/**"] },
     {
       id: "home:.claude-profiles/settings",
       pattern: "~/.claude-profiles/*/settings*.json",
       samples: ["~/.claude-profiles/work/settings.json"],
+      tails: [".claude-profiles/*/settings*.json"],
     },
-    { id: "home:.claude.json", pattern: "~/.claude.json" },
-    { id: "managed-settings:macos", pattern: "/Library/Application Support/ClaudeCode/managed-settings.json" },
-    { id: "managed-settings:linux", pattern: "/etc/claude-code/managed-settings.json" },
-    { id: "home:.claude/CLAUDE.md", pattern: "~/.claude/CLAUDE.md" },
+    { id: "home:.claude.json", pattern: "~/.claude.json", tails: [".claude.json"] },
+    {
+      id: "managed-settings:macos",
+      pattern: "/Library/Application Support/ClaudeCode/managed-settings.json",
+      tails: ["managed-settings.json"],
+    },
+    { id: "managed-settings:linux", pattern: "/etc/claude-code/managed-settings.json", tails: ["managed-settings.json"] },
+    { id: "home:.claude/CLAUDE.md", pattern: "~/.claude/CLAUDE.md", tails: [".claude/CLAUDE.md"] },
     { id: "home:CLAUDE.md", pattern: "~/CLAUDE.md" },
-    { id: "home:.agent-chat/config.json", pattern: "~/.agent-chat/config.json" },
-    { id: "home:.agent-chat/profiles", pattern: "~/.agent-chat/profiles/**", samples: ["~/.agent-chat/profiles/work.json"] },
-    { id: "any:.git/hooks", pattern: "**/.git/hooks/**", samples: [".git/hooks/pre-push"] },
-    { id: "home:egress-terms", pattern: "~/.config/titan-egress/private-terms" },
-    { id: "home:.config/gh/config.yml", pattern: "~/.config/gh/config.yml" },
+    { id: "home:.agent-chat/config.json", pattern: "~/.agent-chat/config.json", tails: [".agent-chat/config.json"] },
+    {
+      id: "home:.agent-chat/profiles",
+      pattern: "~/.agent-chat/profiles/**",
+      samples: ["~/.agent-chat/profiles/work.json"],
+      tails: [".agent-chat/profiles/**"],
+    },
+    { id: "any:.git/hooks", pattern: "**/.git/hooks/**", samples: [".git/hooks/pre-push"], tails: [".git/hooks/**"] },
+    { id: "home:egress-terms", pattern: "~/.config/titan-egress/private-terms", tails: ["titan-egress/private-terms"] },
+    { id: "home:.config/gh/config.yml", pattern: "~/.config/gh/config.yml", tails: ["gh/config.yml"] },
     {
       id: "home:tool-guard-state",
       pattern: "~/.local/state/titan-tool-guard/**",
       samples: ["~/.local/state/titan-tool-guard/guard.log"],
+      tails: ["titan-tool-guard/**"],
     },
     // An http client's rc file sets a later request's method and URL, out of sight of that call (TP-2850).
-    { id: "any:.curlrc", pattern: "**/.curlrc", samples: ["~/.curlrc"] },
-    { id: "any:curlrc", pattern: "**/curlrc", samples: ["~/.config/curlrc"] },
-    { id: "any:_curlrc", pattern: "**/_curlrc", samples: ["~/_curlrc"] },
-    { id: "any:.wgetrc", pattern: "**/.wgetrc", samples: ["~/.wgetrc"] },
-    { id: "any:wgetrc", pattern: "**/wgetrc", samples: ["/etc/wgetrc", "~/.config/wget/wgetrc"] },
-    { id: "any:.wget2rc", pattern: "**/.wget2rc", samples: ["~/.wget2rc"] },
-    { id: "any:wget2rc", pattern: "**/wget2rc", samples: ["~/.config/wget/wget2rc"] },
-    { id: "any:httpie/config.json", pattern: "**/httpie/config.json", samples: ["~/.config/httpie/config.json"] },
-    { id: "any:.httpie/config.json", pattern: "**/.httpie/config.json", samples: ["~/.httpie/config.json"] },
-    { id: "any:xh/config.json", pattern: "**/xh/config.json", samples: ["~/.config/xh/config.json"] },
+    { id: "any:.curlrc", pattern: "**/.curlrc", samples: ["~/.curlrc"], tails: [".curlrc"] },
+    { id: "any:curlrc", pattern: "**/curlrc", samples: ["~/.config/curlrc"], tails: ["curlrc"] },
+    { id: "any:_curlrc", pattern: "**/_curlrc", samples: ["~/_curlrc"], tails: ["_curlrc"] },
+    { id: "any:.wgetrc", pattern: "**/.wgetrc", samples: ["~/.wgetrc"], tails: [".wgetrc"] },
+    { id: "any:wgetrc", pattern: "**/wgetrc", samples: ["/etc/wgetrc", "~/.config/wget/wgetrc"], tails: ["wgetrc"] },
+    { id: "any:.wget2rc", pattern: "**/.wget2rc", samples: ["~/.wget2rc"], tails: [".wget2rc"] },
+    { id: "any:wget2rc", pattern: "**/wget2rc", samples: ["~/.config/wget/wget2rc"], tails: ["wget2rc"] },
+    { id: "any:httpie/config.json", pattern: "**/httpie/config.json", samples: ["~/.config/httpie/config.json"], tails: ["httpie/config.json"] },
+    { id: "any:.httpie/config.json", pattern: "**/.httpie/config.json", samples: ["~/.httpie/config.json"], tails: [".httpie/config.json"] },
+    { id: "any:xh/config.json", pattern: "**/xh/config.json", samples: ["~/.config/xh/config.json"], tails: ["xh/config.json"] },
+    ...CONFIG_STORE_PATHS,
   ],
   basenames: [],
 };
@@ -158,6 +179,52 @@ export function containsGuarded(dir: string, list: GuardedList, home: string): G
   return list.paths.find((entry) => samplesOf(entry, home, null).some((s) => s.startsWith(prefix))) ?? null;
 }
 
+/**
+ * The first entry a relative `tail` under some unknown directory may name: one with a tail of its own that `tail` ends in.
+ * Leading `./` and `../` steps are dropped, since the base they move from is unknown. A globbed `tail` matches a tail it
+ * could expand to.
+ */
+export function matchUnplaced(tail: string, list: GuardedList): GuardedPath | null {
+  const rest = tail.replace(/^(?:\.{0,2}\/+)+/, "").replace(/\/+$/, "");
+  if (rest === "" || rest === "." || rest === "..") return null;
+  const asGlob = hasGlob(rest) ? compiled(`(?:^|/)${globSource(rest)}(?:/|$)`, MATCH_ANY) : null;
+  return list.paths.find((entry) => (entry.tails ?? []).some((t) => endsIn(rest, t) || asGlob?.test(t) === true)) ?? null;
+}
+
+/** Compiled entry tails; every relative path a script writes under an unknown directory is tested against each. */
+const TAIL_CACHE = new Map<string, RegExp>();
+
+function endsIn(path: string, tail: string): boolean {
+  let re = TAIL_CACHE.get(tail);
+  if (re === undefined) {
+    re = compiled(`(?:^|/)${globSource(tail)}$`, MATCH_ANY);
+    TAIL_CACHE.set(tail, re);
+  }
+  return re.test(path);
+}
+
+const BRACE_LIST_RE = /\{([^{}]*,[^{}]*)\}/;
+const BRACE_GROUP_RE = /\{[^{}]*\}/g;
+/** Past this many words a brace list is matched as a glob over its alternatives instead. */
+const MAX_BRACE_WORDS = 64;
+
+/** The words a brace list such as `d/{a,b}` expands to; a sequence or a list past the cap reads as a `*` glob. */
+export function braceExpansions(value: string): string[] {
+  let words = [value];
+  while (words.some((w) => BRACE_LIST_RE.test(w))) {
+    words = words.flatMap(expandFirstList);
+    if (words.length > MAX_BRACE_WORDS) return [value.replace(BRACE_GROUP_RE, "*")];
+  }
+  return words.map((w) => (/\{[^{}]*\.\.[^{}]*\}/.test(w) ? w.replace(BRACE_GROUP_RE, "*") : w));
+}
+
+function expandFirstList(word: string): string[] {
+  const list = BRACE_LIST_RE.exec(word);
+  if (list === null) return [word];
+  const [before, after] = [word.slice(0, list.index), word.slice(list.index + list[0].length)];
+  return (list[1] ?? "").split(",").map((alternative) => before + alternative + after);
+}
+
 function covers(entry: GuardedPath, path: string, home: string): boolean {
   // Uncompilable configured patterns fail closed: a pattern covers, an exception does not except.
   if (!patternRegExp(entry.pattern, home, MATCH_ANY).test(path)) return false;
@@ -203,6 +270,10 @@ function absoluteGlob(pattern: string, home: string): string {
 
 /** Never throws: `onFail` is the safe reading for the call site if the source still does not compile. */
 function globRegExp(glob: string, onFail: RegExp): RegExp {
+  return compiled(`^${globSource(glob)}$`, onFail);
+}
+
+function globSource(glob: string): string {
   let src = "";
   // Found once: searching for each `[`'s close would read to the end per unterminated `[`, quadratic in them (TP-4051).
   const lastClose = glob.lastIndexOf("]");
@@ -211,8 +282,12 @@ function globRegExp(glob: string, onFail: RegExp): RegExp {
     src += piece;
     i += width;
   }
+  return src;
+}
+
+function compiled(src: string, onFail: RegExp): RegExp {
   try {
-    return new RegExp(`^${src}$`);
+    return new RegExp(src);
   } catch {
     return onFail;
   }
@@ -223,7 +298,7 @@ function globPiece(glob: string, i: number, lastClose: number): [string, number]
   const rest = glob.slice(i);
   if (rest.startsWith("/**/")) return ["(?:/.*)?/", 4];
   if (rest === "/**") return ["(?:/.*)?", 3];
-  const c = glob[i] as string;
+  const c = glob.charAt(i);
   if (c === "*") return ["[^/]*", 1];
   if (c === "?") return ["[^/]", 1];
   if (c === "[") {
@@ -242,7 +317,7 @@ function bracketClass(glob: string, i: number, lastClose: number): [string, numb
   const body = glob.slice(start, end);
   let members = "";
   for (let n = 0; n < body.length; n++) {
-    const lo = body[n] as string;
+    const lo = body.charAt(n);
     const hi = body[n + 2];
     if (body[n + 1] === "-" && hi !== undefined && lo <= hi) {
       members += `${classChar(lo)}-${classChar(hi)}`;

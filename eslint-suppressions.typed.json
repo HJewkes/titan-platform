@@ -2358,11 +2358,6 @@
       "count": 3
     }
   },
-  "packages/tool-guard/src/paths.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/tool-guard/src/scripts.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2

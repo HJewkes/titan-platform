@@ -1,5 +1,5 @@
 /** The part of a wrapper's option spec that decides how a short cluster splits. */
-interface ClusterSpec {
+export interface ClusterSpec {
   /** Options, with their dash, that take a value. */
   values?: string[];
   /** Short options, without the dash, whose value is optional and only ever attached. */

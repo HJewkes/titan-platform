@@ -24,6 +24,8 @@ interface EnvWalk {
   envAt: number;
   argv0: Array<string | null>;
   negated: boolean;
+  /** Each env's own option words with their values, spelled out, one list per env the walk read, outermost first. */
+  options: WordToken[][];
   ambiguousAt?: number;
 }
 
@@ -40,6 +42,7 @@ interface Walk {
   changed: boolean;
   negated: boolean;
   envAt: number;
+  options: WordToken[][];
   syntax: EnvWalkSyntax;
 }
 
@@ -52,7 +55,7 @@ interface Walk {
  * once per env would make `env -S env -S …` quadratic. Null when a `-S` string's words cannot be known.
  */
 export function walkEnv(words: WordToken[], start: number, assigned: Assignment[], syntax: EnvWalkSyntax): EnvWalk | null {
-  const walk: Walk = { stack: [{ words, at: start }], read: [], argv0: [], changed: false, negated: false, envAt: start - 1, syntax };
+  const walk: Walk = { stack: [{ words, at: start }], read: [], argv0: [], changed: false, negated: false, envAt: start - 1, options: [[]], syntax };
   let options = readOptions(walk);
   for (let w = peek(walk.stack); options === "read" && w !== undefined; w = peek(walk.stack)) {
     const assignment = parseAssignment(w);
@@ -61,6 +64,7 @@ export function walkEnv(words: WordToken[], start: number, assigned: Assignment[
     else if (!w.dynamic && syntax.runsEnv(w)) {
       walk.envAt = start + walk.read.length;
       walk.read.push(w);
+      walk.options.push([]);
       take(walk.stack);
       options = readOptions(walk);
       continue;
@@ -72,7 +76,8 @@ export function walkEnv(words: WordToken[], start: number, assigned: Assignment[
     take(walk.stack);
   }
   if (options === null) return null;
-  return { ...lineWords(walk, words, start), envAt: walk.envAt, argv0: walk.argv0, negated: walk.negated, ...(options === "ambiguous" ? { ambiguousAt: start + walk.read.length } : {}) };
+  const ambiguous = options === "ambiguous" ? { ambiguousAt: start + walk.read.length } : {};
+  return { ...lineWords(walk, words, start), envAt: walk.envAt, argv0: walk.argv0, negated: walk.negated, options: walk.options, ...ambiguous };
 }
 
 /** One run of env's options, as a pass of env's own option parser reads it, up to its first other word or a `--`. */
@@ -98,6 +103,7 @@ function readOptions(walk: Walk): "read" | "ambiguous" | null {
     }
     if (value === "--") break;
   }
+  walk.options.at(-1)?.push(...run);
   for (const name of argv0Values("env", run)) walk.argv0.push(name);
   return "read";
 }
