@@ -65,7 +65,7 @@ const HARDWARE_STEP = /device|hardware/;
 const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
-const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head"]);
+const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "close-pr"]);
 /**
  * TP-3918: a gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
  * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot

@@ -2,8 +2,8 @@
  * The client of titan-factory's `POST /owner/console-action`: the body names an action id, and the factory reads what to do from
  * the console's own record file `<actionsDir>/<id>.json`. The console depends on the factory only across this HTTP call, so the
  * response shapes are pinned here, not imported: `resolved` and `already` for a gate, `released` and `already` for an owner-asked
- * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, and `moved`,
- * `gone` and `refused` for any of them.
+ * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, `pr-closed`
+ * and `already` (each with the closed head) for a `close-pr` op, and `moved`, `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -14,7 +14,8 @@ export type ActionOutcome =
   | { status: "resolved"; gateId: string }
   | { status: "released"; runId: string; stillHeld: string | null }
   | { status: "accepted"; runId: string }
-  | { status: "already"; gateId?: string; runId?: string }
+  | { status: "pr-closed"; closedHead: string }
+  | { status: "already"; gateId?: string; runId?: string; closedHead?: string }
   | { status: "moved"; currentHead: string | null }
   | { status: "gone"; reason: string }
   | { status: "refused"; reason: string; detail?: string }
@@ -32,6 +33,7 @@ const routeBody = z.looseObject({
   runId: z.string().optional(),
   stillHeld: z.string().nullable().optional(),
   currentHead: z.string().nullable().optional(),
+  closedHead: z.string().optional(),
   reason: z.string().optional(),
   detail: z.string().optional(),
   error: z.string().optional(),
@@ -41,11 +43,12 @@ type RouteBody = z.infer<typeof routeBody>;
 
 const unreachable = (detail: string): Unreachable => ({ status: "unreachable", detail });
 
-function settledOutcome({ outcome, gateId, runId, stillHeld }: RouteBody): ActionOutcome | undefined {
+function settledOutcome({ outcome, gateId, runId, stillHeld, closedHead }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
   if (outcome === "accepted" && runId) return { status: "accepted", runId };
-  if (outcome === "already" && (gateId || runId)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }) };
+  if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
+  if (outcome === "already" && (gateId || runId || closedHead)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }), ...(closedHead && { closedHead }) };
   return undefined;
 }
 
