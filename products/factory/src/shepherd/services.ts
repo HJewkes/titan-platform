@@ -4,6 +4,7 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { ReadTimer } from "./bounded.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import type { GhGateway } from "./gh-gateway-port.js";
+import type { MergeOrder, MergeOrderRules, OrderWaits } from "./merge-order.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
 import type { ReviewSlots } from "./review-slots.js";
@@ -39,6 +40,15 @@ export interface ShepherdServices extends SnapshotServices {
   visualDelivery?: VisualDeliveryWatch;
   /** Where `shepherd thaw` alerts, by the main CI watch's red-event route; absent means each thaw only logs its alert. */
   thawAlert?: ThawAlertPorts;
+  /** Merge-order reservations and the waits the merge guard read last; absent means `shepherd order` refuses and status shows neither. */
+  mergeOrder?: MergeOrderServices;
+}
+
+export interface MergeOrderServices {
+  order: () => MergeOrder;
+  rules: MergeOrderRules;
+  waits: OrderWaits;
+  now: () => number;
 }
 
 /** The main CI watch's ports, described by shape here so this file stays a leaf. */

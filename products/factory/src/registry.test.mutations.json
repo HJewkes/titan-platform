@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "shepherd order is never surfaced as a command",
+      "file": "products/factory/src/shepherd/commands.ts",
+      "find": "  \"shepherd.order\": orderCommand,\n",
+      "replace": "",
+      "kills": [
+        "factory registry surfaces the factory, shepherd, needs and autoresearch commands as MCP tools, with no prefix doubling and no resolve tool"
+      ]
+    }
+  ]
+}
