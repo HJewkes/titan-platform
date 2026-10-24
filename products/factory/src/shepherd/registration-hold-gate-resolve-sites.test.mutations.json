@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the closure check and its sidecar leave the held test files",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "[\"gate-resolve-sites.test.ts\", \"gate-resolve-sites.test.mutations.json\"].map",
+      "replace": "([] as string[]).map",
+      "kills": [
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only gate-resolve-sites.test.ts g10-adversary",
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only its mutation sidecar g10-adversary"
+      ]
+    }
+  ]
+}
