@@ -26,7 +26,8 @@ import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { spawnFacts } from "./spawn-facts.js";
 import { withReviewerProfile, type TwoMergeMode } from "./g10-release.js";
-import { chooseReviewer } from "./reviewer-choice.js";
+import { chooseReviewer, lineageFor } from "./reviewer-choice.js";
+import type { Lineage } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import { fixFirstCount } from "./wake-brief.js";
@@ -170,6 +171,8 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
+  /** Every generation, retired ones included, that proves a reviewer independent; absent means the dispatch's roster stands for it. */
+  lineage?: () => Promise<Lineage>;
   /** Questions chosen by code for this PR and added to the reviewer brief. */
   questions?: (target: ReviewTarget) => Promise<readonly string[]>;
   /** The head's codewatch report questions, which go ahead of `questions`; absent, or undefined for a target, records nothing. */
@@ -240,7 +243,8 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   if ("kind" in roster) return roster;
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
-  const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, input.fresh), () => chooseReviewer(input, registration, roster, true));
+  const lineage = await lineageFor(wired.lineage, registration, roster);
+  const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, lineage, input.fresh), () => chooseReviewer(input, registration, roster, lineage, true));
   if ("exhausted" in billed) return { kind: "none", reason: "every review account is exhausted", exhausted: billed.exhausted };
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
   const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }), ...scopeModeOf(wired.scopedRereview), ...scopeCheckModeOf(wired.scopeCheck) };
