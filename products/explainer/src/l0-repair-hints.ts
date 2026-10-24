@@ -7,11 +7,10 @@ import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
-
-type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], spine?: SpineV1) => string | undefined;
-
-const percent = (share: number): string => `${Math.round(share * 100)} %`;
-const listed = (ids: readonly string[]): string => (ids.length ? ids.join(", ") : "none");
+import { listed, percent, type Hint } from "./repair-hint.js";
+import { FLOW_HINTS } from "./repair-hints-flow.js";
+import { VOICE_HINTS } from "./repair-hints-voice.js";
+import { WHY_HINTS } from "./repair-hints-why.js";
 
 // The beats past the cap each get the least-used connector the cap still allows; with none left, a shared word links.
 function connectorEdits({ word, linked, beats, counts }: Overuse): string[] {
@@ -76,6 +75,9 @@ function claimsHint(script: ScriptV1, row: L0Result, facts?: readonly GatheredFa
 }
 
 const HINTS: Readonly<Record<string, Hint>> = {
+  ...WHY_HINTS,
+  ...VOICE_HINTS,
+  ...FLOW_HINTS,
   "Q-F1": linkHint,
   "Q-F3": threadHint,
   "Q-F4": (script) => thesisDefects(script).join("; "),
@@ -86,6 +88,9 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,
 };
+
+/** The check ids with a repair hint of their own. */
+export const HINTED_CHECKS: ReadonlySet<string> = new Set(Object.keys(HINTS));
 
 /** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
 export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1): string | undefined =>

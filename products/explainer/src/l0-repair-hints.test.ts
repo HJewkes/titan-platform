@@ -105,9 +105,9 @@ describe("repair hints for rows whose value says too little", () => {
     expect(repairHint(row, script, facts)).toMatch(/^claims the gathered facts do not back are among w2 "3 open PRs" \(the cited facts count 1 .*pr\/acme\/desk#4\/opened.*\)\. Name only/);
   });
 
-  it("gives no hint for a row whose beats and value already say what to fix", () => {
+  it("Q-F11 names the long outro and its word count against the cap", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 
-    expect(hintFor(script, "Q-F11")).toBeUndefined();
+    expect(hintFor(script, "Q-F11")).toMatch(/; the last beat c2 says 14 words \(at most 8\)$/);
   });
 });
