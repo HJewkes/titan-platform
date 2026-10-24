@@ -7,7 +7,7 @@ import { layout } from "./map-fixtures.test-helpers.js";
 import {
   DEFAULT_RULES_PATH,
   checkType,
-  checksOutsideStructure,
+  checksScopedAway,
   loadRuleRegistry,
   parseRuleRegistry,
   resolveRule,
@@ -38,26 +38,43 @@ const rule = (overrides: Partial<Rule> = {}): Rule => ({
 });
 const registryText = (...rules: Rule[]): string => stringify({ schema: "rules/v1", rules });
 
+const KNOWN = { structures: new Set(["design-journey"]), profiles: new Set(["daily-overview", "repo-tour"]) };
+
 describe("L0 rules scoped by structure", () => {
   const scoped = (structures: string[]): string =>
     registryText(rule({ l0: { severity: "error", status: "implemented", checks: ["Q-V1"], structures } }));
 
   it("accepts a structures list that names registered structures", () => {
-    const parsed = parseRuleRegistry(scoped(["design-journey"]), new Set(["design-journey"]));
+    const parsed = parseRuleRegistry(scoped(["design-journey"]), KNOWN);
 
     expect(parsed.rules[0]?.l0).toMatchObject({ structures: ["design-journey"] });
   });
 
   // Mutation: skipping the registered-structure check lets the typo through and fails this.
   it("refuses a structure id the structure registry does not hold", () => {
-    expect(() => parseRuleRegistry(scoped(["design-jorney"]), new Set(["design-journey"]))).toThrow(/Q-V1: unknown structure design-jorney/);
+    expect(() => parseRuleRegistry(scoped(["design-jorney"]), KNOWN)).toThrow(/Q-V1: unknown structure design-jorney/);
+  });
+
+  // Mutation: skipping the registered-profile check lets the typo through and fails this.
+  it("refuses an exempt profile the type registry does not hold", () => {
+    const text = registryText(rule({ l0: { severity: "error", status: "implemented", checks: ["Q-V1"], except_profiles: ["daily-overveiw"] } }));
+
+    expect(() => parseRuleRegistry(text, KNOWN)).toThrow(/Q-V1: unknown profile daily-overveiw/);
+  });
+
+  it("keeps a rule exempting one profile on a structure registered after it", () => {
+    const text = registryText(rule({ l0: { severity: "error", status: "implemented", checks: ["Q-V1"], except_profiles: ["daily-overview"] } }));
+    const parsed = parseRuleRegistry(text, KNOWN);
+
+    expect(checksScopedAway(parsed, { structure: "brand-new-structure", profile: "repo-tour" }).size).toBe(0);
+    expect([...checksScopedAway(parsed, { structure: "brand-new-structure", profile: "daily-overview" })]).toEqual(["Q-V1"]);
   });
 
   it("scopes Q-W8, Q-F3, Q-F4 and Q-F5 to design-journey in the shipped registry", () => {
-    const outside = checksOutsideStructure(registry, "scqa");
+    const outside = checksScopedAway(registry, { structure: "scqa", profile: "pr-overview" });
 
     expect(["Q-W8", "Q-F3", "Q-F4", "Q-F5", "Q-E15"].every((id) => outside.has(id))).toBe(true);
-    expect(checksOutsideStructure(registry, undefined).size).toBe(0);
+    expect(checksScopedAway(registry, { profile: "pr-overview" }).size).toBe(0);
   });
 });
 
