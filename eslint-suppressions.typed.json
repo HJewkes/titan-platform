@@ -69,11 +69,6 @@
       "count": 4
     }
   },
-  "apps/console/server/events-relay.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "apps/console/server/events-relay.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
