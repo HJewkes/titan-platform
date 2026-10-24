@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the center counts as a shown neighbour",
+      "file": "apps/console/src/pages/KnowledgeGraph.tsx",
+      "find": "const shown = ego.nodes.length - 1;",
+      "replace": "const shown = ego.nodes.length;",
+      "kills": [
+        "the knowledge graph tab asks for a record when the ego has no neighbours",
+        "the knowledge graph tab captions how many neighbours a cap hit shows"
+      ]
+    },
+    {
+      "name": "the mention-only fallback shows no warning",
+      "file": "apps/console/src/pages/KnowledgeGraph.tsx",
+      "find": "ego.sources.fallback === \"mentions\"",
+      "replace": "ego.sources.fallback === undefined",
+      "kills": ["the knowledge graph tab warns that only mention links show when the session graph is absent"]
+    },
+    {
+      "name": "the tab asks for a depth-1 ego",
+      "file": "apps/console/src/pages/KnowledgeGraph.tsx",
+      "find": "const EGO_DEPTH = 2;",
+      "replace": "const EGO_DEPTH = 1;",
+      "kills": ["the knowledge graph tab draws the depth-2 ego around a task with its nodes and edges"]
+    },
+    {
+      "name": "pressing a node does not follow its ref",
+      "file": "apps/console/src/pages/KnowledgeGraph.tsx",
+      "find": "if (selection?.type === \"node\") followRef(selection.id);",
+      "replace": "if (selection?.type === \"edge\") followRef(selection.id);",
+      "kills": ["the knowledge graph tab opens a pressed node's record"]
+    },
+    {
+      "name": "the record's Graph tab keeps no query",
+      "file": "apps/console/src/pages/KnowledgeRecordPage.tsx",
+      "find": "...(index === 1 ? { query: \"tab=graph\" } : {})",
+      "replace": "...(index === 0 ? { query: \"tab=graph\" } : {})",
+      "kills": ["the knowledge graph tab switches a record to its graph through the query string"]
+    }
+  ]
+}
