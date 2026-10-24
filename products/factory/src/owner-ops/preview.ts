@@ -4,11 +4,15 @@ import type { GateStatus } from "@titan-design/hitl";
 import { ownerOpSchema, type OwnerOp, type OwnerOpKind } from "@titan-design/owner-queue";
 import { EXIT, defineCommand } from "@titan-design/registry";
 import { z } from "zod";
+import { factoryStateDir } from "../config.js";
 import { landGate } from "../coordinator-evidence.js";
+import { deployPausedHealth, runningDeployer } from "../deploy-pause.js";
+import { systemPauseClearPorts } from "../deploy-ports.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { opAuthority } from "./authority.js";
+import { manualHoldReason, type PauseClearPorts } from "./pause-clear.js";
 
 interface PrPreview {
   repo: string;
@@ -31,11 +35,15 @@ interface GatePreview {
   asks?: { repo: string; pr: number; head: string };
 }
 
+/** The failure pause as `/health` reads it, whether a deployer holds the lock now, and the manual hold the op never clears. */
+type PausePreview = ReturnType<typeof deployPausedHealth> & { deployerRunning: boolean; manualHold: string | null };
+
 export interface OpPreview {
   kind: OwnerOpKind;
   authority: Decision;
   pr?: PrPreview;
   gate?: GatePreview;
+  pause?: PausePreview;
 }
 
 type PrOp = Extract<OwnerOp, { repo: string; pr: number }>;
@@ -48,6 +56,7 @@ const isPrOp = (op: OwnerOp): op is PrOp => "pr" in op;
 async function previewOp(op: OwnerOp, ctx: FactoryContext): Promise<OpPreview> {
   const base = { kind: op.kind, authority: opAuthority(op) };
   if (op.kind === "resolve-gate") return { ...base, gate: gatePreview(ctx.host, op.gateId) };
+  if (op.kind === "deploy-pause-clear") return { ...base, pause: pausePreview(systemPauseClearPorts(), factoryStateDir(process.env)) };
   if (!isPrOp(op)) return base;
   if (ctx.shepherd === undefined) throw Object.assign(new Error(`previewing a ${op.kind} op needs the shepherd routes`), { code: EXIT.UNAVAILABLE });
   return { ...base, pr: await prPreview(ctx.shepherd.port, ctx.shepherd.store.get(), op) };
@@ -73,6 +82,11 @@ async function prPreview(port: GitHubPort, store: ShepherdStore, { repo, pr }: P
   };
 }
 
+/** Read without the lock, as `/health` reads it: the clear itself re-checks under the lock. */
+function pausePreview(ports: PauseClearPorts, stateDir: string): PausePreview {
+  return { ...deployPausedHealth(ports, stateDir), deployerRunning: runningDeployer(ports, stateDir) !== undefined, manualHold: manualHoldReason(ports, stateDir) };
+}
+
 function gatePreview(host: FactoryHost, gateId: string): GatePreview {
   const gate = host.gates.get(gateId);
   if (gate === undefined) return { gateId, status: "missing" };
@@ -82,7 +96,7 @@ function gatePreview(host: FactoryHost, gateId: string): GatePreview {
 
 export const ownerOpPreview = defineCommand<{ op: OwnerOp }, OpPreview, FactoryContext>({
   name: "owner-op.preview",
-  description: "The live read-back for one typed owner op: its authority decision for owner-remote and the PR or gate it names, as GitHub, Shepherd and the gate store say now; reads only",
+  description: "The live read-back for one typed owner op: its authority decision for owner-remote and the PR, gate or deploy pause it names, as GitHub, Shepherd, the gate store and the deployer's state say now; reads only",
   args: z.object({ op: ownerOpSchema }),
   result: z.custom<OpPreview>(),
   run: async ({ op }, ctx) => previewOp(op, ctx),

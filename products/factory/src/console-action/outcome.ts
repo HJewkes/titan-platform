@@ -3,7 +3,7 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable";
+type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "deploying";
 export type Outcome =
   | { outcome: "resolved"; gateId: string }
   | { outcome: "already"; gateId: string }
@@ -16,7 +16,12 @@ export type Outcome =
   /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
   | { outcome: "pr-closed"; closedHead: string }
   | { outcome: "already"; closedHead: string }
+  /** A deploy-pause-clear tap removed the failure pause it named; a manual hold, never cleared by the op, may still stand. */
+  | { outcome: "pause-cleared"; clearedPause: string; stillHeld: string | null }
+  | { outcome: "already"; clearedPause: string }
   | { outcome: "moved"; currentHead: string | undefined }
+  /** A newer failure pause than the one the record names stands, and stays. */
+  | { outcome: "moved"; currentPause: string }
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
 
@@ -49,6 +54,7 @@ export function statusOf(outcome: Outcome): Status {
     case "accepted":
     case "approved":
     case "pr-closed":
+    case "pause-cleared":
     case "already":
       return 200;
     case "moved":
@@ -56,6 +62,13 @@ export function statusOf(outcome: Outcome): Status {
     case "gone":
       return 410;
     case "refused":
-      return outcome.reason === "github-unreadable" ? 503 : outcome.reason === "class" || outcome.reason === "resolver" ? 403 : 422;
+      return refusalStatus(outcome.reason);
   }
+}
+
+/** A running deployer is a conflict that passes, so a later tap may land; a record or class fault never will. */
+function refusalStatus(reason: RefusalCode): Status {
+  if (reason === "github-unreadable") return 503;
+  if (reason === "deploying") return 409;
+  return reason === "class" || reason === "resolver" ? 403 : 422;
 }
