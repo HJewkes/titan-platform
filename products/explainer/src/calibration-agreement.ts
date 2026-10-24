@@ -1,8 +1,12 @@
 import { z } from "zod";
-import { AGREEMENT_BAR, CALIBRATION_JUDGES, MIN_LABELS_PER_JUDGE, type CalibrationJudge, type KeyEntry } from "./calibration-queue.js";
+import { AGREEMENT_BAR, CALIBRATION_JUDGES, MIN_LABELS_PER_JUDGE, type CalibrationJudge, type ItemKind, type KeyEntry } from "./calibration-queue.js";
 
-const LABEL_OPTIONS = { yes: "Yes", no: "No", unsure: "Can't tell" } as const;
-export type OwnerLabel = keyof typeof LABEL_OPTIONS;
+/** A pair's "A" is a yes, since a pair entry passes when its judge prefers A. */
+const LABEL_OPTIONS = {
+  verdict: { yes: "Yes", no: "No", unsure: "Can't tell" },
+  pair: { yes: "A", no: "B", unsure: "Can't tell" },
+} as const;
+export type OwnerLabel = keyof (typeof LABEL_OPTIONS)["verdict"];
 
 const FeedbackSchema = z.object({
   schema: z.literal("titan-review/feedback@1"),
@@ -12,13 +16,15 @@ const FeedbackSchema = z.object({
 export const OWNER_LABELS: readonly OwnerLabel[] = ["yes", "no", "unsure"];
 
 /** The console refuses an option text that two questions share, so each option names its item. */
-export const optionText = (label: OwnerLabel, item: string): string => `${LABEL_OPTIONS[label]} (${item})`;
+export const optionText = (label: OwnerLabel, item: string, kind: ItemKind = "verdict"): string => `${LABEL_OPTIONS[kind][label]} (${item})`;
+
+const KINDS: readonly ItemKind[] = ["verdict", "pair"];
 
 /** The owner's labels from a round's feedback.json; a question left blank or answered off the options is unlabelled. */
 export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
   const answers = FeedbackSchema.parse(feedback).answers;
   return new Map(answers.flatMap((a) => {
-    const label = OWNER_LABELS.find((l) => a.pick === optionText(l, a.questionId));
+    const label = OWNER_LABELS.find((l) => KINDS.some((kind) => a.pick === optionText(l, a.questionId, kind)));
     return label ? [[a.questionId, label] as const] : [];
   }));
 }

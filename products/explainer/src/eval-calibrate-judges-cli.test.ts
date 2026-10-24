@@ -7,6 +7,7 @@ import { AgreementRecordSchema } from "./calibration-agreement.js";
 import { QueueKeySchema, type QueueKey } from "./calibration-queue.js";
 import { runEvalCli } from "./eval-cli.js";
 import { appendTsv, scriptSha } from "./eval-store.js";
+import { auditionEntry } from "./calibration-fakes.test-helpers.js";
 import { tour } from "./voice-flow-fixtures.test-helpers.js";
 
 let dir: string;
@@ -43,12 +44,12 @@ function bench(name: string): { script: string; bench: string } {
   return { script, bench: root };
 }
 
-function manifest(): string {
+function manifest(extra: Record<string, unknown> = {}): string {
   const entry = (name: string, split: string, videoType: string) => ({
     case: `explainer-eval/${name}`, title: `Video ${name}`, video_type: videoType, split, owner_named: false, ...bench(name),
   });
   const path = join(dir, "manifest.json");
-  writeFileSync(path, JSON.stringify({ schema: "calibration-manifest/v1", cases: [entry("tour", "dev", "repo-tour"), entry("held", "holdout", "repo-tour"), entry("digest", "dev", "status")] }));
+  writeFileSync(path, JSON.stringify({ schema: "calibration-manifest/v1", cases: [entry("tour", "dev", "repo-tour"), entry("held", "holdout", "repo-tour"), entry("digest", "dev", "status")], ...extra }));
   return path;
 }
 
@@ -64,8 +65,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
-const queue = (...extra: string[]) =>
-  runEvalCli(["eval", "calibrate", "queue", manifest(), "--round-dir", join(dir, "round"), "--key", join(dir, "key.json"), "--unit", "judge-cal-r1", ...extra]);
+const queue = (...extra: string[]) => queueFrom(manifest(), ...extra);
+const queueFrom = (path: string, ...extra: string[]) =>
+  runEvalCli(["eval", "calibrate", "queue", path, "--round-dir", join(dir, "round"), "--key", join(dir, "key.json"), "--unit", "judge-cal-r1", ...extra]);
 
 describe("explainer eval calibrate queue", () => {
   it("writes a blind round of 20 items mixed across judges and video types, with the holdout left out", async () => {
@@ -107,6 +109,19 @@ describe("explainer eval calibrate queue", () => {
     expect(asked.map((e) => [e.target.split(" · ")[1], e.pass]).sort()).toEqual([["invariant", false], ["what-why", true]]);
     expect(asked.map((e) => prompt.get(e.id)!).filter((p) => p.includes("must always hold"))).toHaveLength(1);
     expect(asked.map((e) => prompt.get(e.id)!).filter((p) => p.includes('What is "item-1"'))).toHaveLength(1);
+  });
+
+  it("asks each audition's pick against its runner-up once, as A or B, scored for both pickers", async () => {
+    const auditions = [auditionEntry(dir, "one", { J8: 4 }, { J8: 2 }), auditionEntry(dir, "two", { J8: 2 }, { J8: 4 })];
+
+    expect(await queueFrom(manifest({ auditions }))).toBe(0);
+
+    const round = z.object({ questions: z.array(z.looseObject({ id: z.string(), options: z.array(z.string()) })) }).parse(readJson(join(dir, "round", "round.json")));
+    const pairs = readKey().entries.filter((e) => e.judge.startsWith("audition-"));
+    const ids = [...new Set(pairs.map((e) => e.id))];
+    expect(ids).toHaveLength(2);
+    expect(pairs).toHaveLength(4);
+    for (const id of ids) expect(round.questions.find((q) => q.id === id)?.options).toEqual([`A (${id})`, `B (${id})`, `Can't tell (${id})`]);
   });
 
   it("refuses to overwrite a round that is already published", async () => {

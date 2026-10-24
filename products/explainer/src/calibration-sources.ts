@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { AuditionEntrySchema } from "./calibration-auditions.js";
 import type { CaseRef, JudgedOutput } from "./calibration-queue.js";
 import { codeDecidedZero, COLD_QUESTION_TEXT } from "./eval-cold.js";
 import { paceInput } from "./eval-pace-cli.js";
@@ -21,6 +22,8 @@ export const ManifestSchema = z.object({
     /** The reader the judges ran with: a spike-era script fails strict script/v1. */
     format: z.enum(["spike", "v1"]).default("v1"),
   }).strict()).min(1),
+  /** Audition records whose pick and runner-up the owner compares as a pair. */
+  auditions: z.array(AuditionEntrySchema).default([]),
 }).strict();
 type Manifest = z.infer<typeof ManifestSchema>;
 type ManifestCase = Manifest["cases"][number];
@@ -85,6 +88,7 @@ function coldOutputs(source: Source): JudgedOutput[] {
     return [{
       ...source.ref,
       judge: "cold" as const,
+      kind: "verdict" as const,
       target: `${r.beat} · ${r.kind} · ${r.item}`,
       question: `A first-time viewer hears only this chapter, then is asked: ${text(r.item!)} Does the chapter answer it?`,
       excerpt: `[${r.chapter}] ${spokenOf(source.beats.filter((b) => b.chapter === r.chapter))}`,
@@ -98,6 +102,7 @@ function rubricOutputs(source: Source): JudgedOutput[] {
   return rows(source, "cold-rubric-scores.tsv").filter((r) => RUBRIC_QUESTIONS[r.dim!]).map((r) => ({
     ...source.ref,
     judge: "cold-rubric",
+    kind: "verdict",
     target: `script · ${r.dim}`,
     question: `Whole video. ${RUBRIC_QUESTIONS[r.dim!]}`,
     excerpt: "(judge the whole script shown at the top of this section)",
@@ -113,7 +118,7 @@ function beatOutputs(source: Source): JudgedOutput[] {
     const beat = source.beats[at]!;
     const previous = r.dim === "B3" && at > 0 ? `Previous beat: ${source.beats[at - 1]!.spoken}\n\n` : "";
     const excerpt = `${previous}This beat: ${beat.spoken}${screenOf(beat)}`;
-    return { ...source.ref, judge: "l1", target: `${r.beat} · ${r.dim}`, question: BEAT_QUESTIONS[r.dim!]!, excerpt, pass: r.score === "1", ...origin(r) };
+    return { ...source.ref, judge: "l1", kind: "verdict", target: `${r.beat} · ${r.dim}`, question: BEAT_QUESTIONS[r.dim!]!, excerpt, pass: r.score === "1", ...origin(r) };
   });
 }
 

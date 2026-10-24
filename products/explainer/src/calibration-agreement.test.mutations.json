@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pair's A or B is not read as a label",
+      "file": "products/explainer/src/calibration-agreement.ts",
+      "find": "const KINDS: readonly ItemKind[] = [\"verdict\", \"pair\"];",
+      "replace": "const KINDS: readonly ItemKind[] = [\"verdict\"];",
+      "kills": [
+        "labelsFromFeedback reads a pair's A as yes and B as no, dropping a pick that names another item"
+      ]
+    }
+  ]
+}

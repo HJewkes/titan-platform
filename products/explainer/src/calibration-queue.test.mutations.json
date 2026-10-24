@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pair's pickers are asked separately",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "o.group === undefined ?",
+      "replace": "true ?",
+      "kills": [
+        "buildQueue asks a pair once, keeping an entry per picker under the question's id"
+      ]
+    },
+    {
+      "name": "a pair's bucket ignores the rubric picker",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "u.map((o) => String(o.pass)).join(\",\")",
+      "replace": "String(u[0]!.pass)",
+      "kills": [
+        "buildQueue gives pairs the pickers disagree on a slot even when agreeing pairs far outnumber them"
+      ]
+    }
+  ]
+}

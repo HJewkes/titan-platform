@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the code picker prefers the runner-up",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "judge: \"audition-code\", pass: pickIsA",
+      "replace": "judge: \"audition-code\", pass: !pickIsA",
+      "kills": [
+        "auditionOutputs makes the pick and runner-up one pair question, with the code picker preferring the pick's side"
+      ]
+    },
+    {
+      "name": "the rubric picker prefers the lower sum",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "pass: sums[0] > sums[1]",
+      "replace": "pass: sums[0] < sums[1]",
+      "kills": [
+        "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
+      ]
+    },
+    {
+      "name": "J12 counts toward the rubric sum",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "RUBRIC_DIMS.includes(d.dim) && ",
+      "replace": "",
+      "kills": [
+        "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
+      ]
+    },
+    {
+      "name": "a voided row counts as a score",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "d.verdict.score !== null",
+      "replace": "true",
+      "kills": [
+        "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
+      ]
+    },
+    {
+      "name": "a rubric tie still yields an entry",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "sums && sums[0] !== sums[1]",
+      "replace": "sums",
+      "kills": [
+        "auditionOutputs gives no rubric entry on a tie or when a side has no rubric"
+      ]
+    },
+    {
+      "name": "the pick is always A",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "% 2 === 0;",
+      "replace": "% 1 === 0;",
+      "kills": [
+        "auditionOutputs fixes the A/B order for a seed and puts the pick on both sides across pairs"
+      ]
+    },
+    {
+      "name": "the storyboard names its candidate",
+      "file": "products/explainer/src/calibration-auditions.ts",
+      "find": "[`Storyboard ${side}`",
+      "replace": "[`Storyboard ${side} ${candidate.id}`",
+      "kills": [
+        "auditionOutputs shows the owner both storyboards without a structure, system, candidate id or score"
+      ]
+    }
+  ]
+}

@@ -21,7 +21,7 @@ const question = (item: QueueItem) => ({
   kind: "pick-one" as const,
   required: false,
   prompt: `${item.question}\n\n${item.excerpt}`,
-  options: OWNER_LABELS.map((label) => optionText(label, item.id)),
+  options: OWNER_LABELS.map((label) => optionText(label, item.id, item.kind)),
   signsOff: `your label for item ${item.id}`,
 });
 
@@ -31,7 +31,9 @@ function section(caseId: string, items: readonly QueueItem[], video: RoundCase |
     title: video?.title ?? caseId,
     questionIds: items.map((item) => item.id),
     variantKeys: [],
-    deciding: "Yes or No to each question, from the excerpt (or the script below for whole-video questions). Can't tell when it does not settle it.",
+    deciding: items.every((item) => item.kind === "pair")
+      ? "A or B for each pair of storyboards. Can't tell when neither is the better video."
+      : "Yes or No to each question, from the excerpt (or the script below for whole-video questions). Can't tell when it does not settle it.",
     changed: "Nothing ships from this round; your labels only score the judges, whose own answers stay hidden.",
     context: video?.script ?? "(script not attached)",
   };

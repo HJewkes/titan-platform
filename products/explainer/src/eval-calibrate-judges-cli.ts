@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
+import { auditionOutputs } from "./calibration-auditions.js";
 import { agreement, labelsFromFeedback, promotionRefusal, type AgreementRecord } from "./calibration-agreement.js";
 import { buildQueue, CALIBRATION_JUDGES, QUEUE_SIZE, QueueKeySchema, type JudgedOutput, type KeyEntry, type QueueKey } from "./calibration-queue.js";
 import { calibrationRound, MINUTES_PER_ITEM, type RoundCase } from "./calibration-round.js";
@@ -27,6 +28,8 @@ function guarded(name: string, onResult: (code: number) => void, body: () => voi
 const countBy = (values: readonly string[]): Record<string, number> =>
   Object.fromEntries([...new Set(values)].sort().map((v) => [v, values.filter((x) => x === v).length]));
 
+const PAIR_CONTEXT = "Each question shows two storyboards for one video: the opening line and the question each part answers, with its length.";
+
 interface QueueFlags { roundDir: string; key: string; unit: string; size: string; seed: string }
 
 function writeQueue(manifestPath: string, flags: QueueFlags): void {
@@ -34,10 +37,13 @@ function writeQueue(manifestPath: string, flags: QueueFlags): void {
   if (existsSync(roundFile) || existsSync(flags.key)) throw new Error(`${roundFile} or ${flags.key} already exists; a published round is never rewritten`);
   const manifest = ManifestSchema.parse(readJson(manifestPath));
   const read = manifest.cases.map((entry) => ({ entry, ...judgedOutputs(entry) }));
-  const outputs: JudgedOutput[] = read.flatMap((r) => r.outputs);
+  const outputs: JudgedOutput[] = [...read.flatMap((r) => r.outputs), ...manifest.auditions.flatMap((entry) => auditionOutputs(entry, flags.seed))];
   const queue = buildQueue(outputs, z.coerce.number().int().positive().parse(flags.size), flags.seed);
   if (queue.items.length === 0) throw new Error("no judged outputs outside the holdout; run the judges first");
-  const cases = new Map<string, RoundCase>(read.map((r) => [r.entry.case, { title: r.entry.title, script: r.script }]));
+  const cases = new Map<string, RoundCase>([
+    ...manifest.auditions.map((a) => [a.case, { title: a.title, script: PAIR_CONTEXT }] as const),
+    ...read.map((r) => [r.entry.case, { title: r.entry.title, script: r.script }] as const),
+  ]);
   const key: QueueKey = { schema: "calibration-key/v1", round: flags.unit, entries: queue.key };
   writeJson(flags.key, key);
   writeJson(roundFile, calibrationRound(queue, { unit: flags.unit, cases }));

@@ -16,6 +16,14 @@ describe("labelsFromFeedback", () => {
 
     expect([...labelsFromFeedback(feedback)]).toEqual([["q01", "yes"], ["q02", "no"], ["q03", "unsure"]]);
   });
+
+  it("reads a pair's A as yes and B as no, dropping a pick that names another item", () => {
+    const feedback = { schema: "titan-review/feedback@1", answers: [
+      { questionId: "q07", pick: "A (q07)" }, { questionId: "q08", pick: "B (q08)" }, { questionId: "q09", pick: "Can't tell (q09)" }, { questionId: "q10", pick: "A (q07)" },
+    ] };
+
+    expect([...labelsFromFeedback(feedback)]).toEqual([["q07", "yes"], ["q08", "no"], ["q09", "unsure"]]);
+  });
 });
 
 describe("agreement", () => {
@@ -28,6 +36,17 @@ describe("agreement", () => {
     expect(cold).toEqual({ judge: "cold", items: 4, labelled: 3, unsure: 1, agreed: 2, agreement: 2 / 3, fail_recall: 1 / 2 });
     expect(rubric).toMatchObject({ judge: "cold-rubric", items: 0, labelled: 0, agreement: null, fail_recall: null });
     expect(l1).toMatchObject({ agreement: 1, fail_recall: null });
+  });
+});
+
+describe("agreement over pairs", () => {
+  it("counts one pair label for both pickers in it", () => {
+    const key = [entry("q1", "audition-code", true), entry("q1", "audition-rubric", false)];
+
+    const rows = agreement(key, new Map<string, OwnerLabel>([["q1", "no"]]));
+
+    expect(rows.find((r) => r.judge === "audition-code")).toMatchObject({ labelled: 1, agreed: 0 });
+    expect(rows.find((r) => r.judge === "audition-rubric")).toMatchObject({ labelled: 1, agreed: 1, fail_recall: 1 });
   });
 });
 

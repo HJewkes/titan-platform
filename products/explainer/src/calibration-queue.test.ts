@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildQueue, CALIBRATION_JUDGES, type CalibrationJudge, type JudgedOutput } from "./calibration-queue.js";
+import { buildQueue, type CalibrationJudge, type JudgedOutput } from "./calibration-queue.js";
 
 const output = (judge: CalibrationJudge, n: number, over: Partial<JudgedOutput> = {}): JudgedOutput => ({
   case: "explainer-eval/a", videoType: "repo-tour", split: "dev", ownerNamed: false,
-  judge, target: `${judge}-${n}`, question: `question ${judge} ${n}`, excerpt: `excerpt ${n}`, pass: n % 2 === 0, configId: "cfg", run: "1", ...over,
+  judge, kind: "verdict", target: `${judge}-${n}`, question: `question ${judge} ${n}`, excerpt: `excerpt ${n}`, pass: n % 2 === 0, configId: "cfg", run: "1", ...over,
 });
 
 const many = (judge: CalibrationJudge, count: number, over: Partial<JudgedOutput> = {}): JudgedOutput[] =>
@@ -21,7 +21,7 @@ describe("buildQueue", () => {
   it("draws about evenly across judges even when one judge has eight times the outputs", () => {
     const { key } = buildQueue(pool(), 20);
 
-    const perJudge = CALIBRATION_JUDGES.map((judge) => key.filter((k) => k.judge === judge).length);
+    const perJudge = (["cold", "cold-rubric", "l1"] as const).map((judge) => key.filter((k) => k.judge === judge).length);
     expect(perJudge.reduce((a, b) => a + b)).toBe(20);
     expect(Math.min(...perJudge)).toBeGreaterThanOrEqual(5);
   });
@@ -46,7 +46,7 @@ describe("buildQueue", () => {
   it("hides the judge and its verdict from the items the owner sees, keeping them in the key by id", () => {
     const { items, key } = buildQueue(pool(), 20);
 
-    for (const item of items) expect(Object.keys(item).sort()).toEqual(["case", "excerpt", "id", "question"]);
+    for (const item of items) expect(Object.keys(item).sort()).toEqual(["case", "excerpt", "id", "kind", "question"]);
     expect(items.map((i) => i.id)).toEqual(key.map((k) => k.id));
     expect(items[0]!.id).toBe("q01");
   });
@@ -56,6 +56,28 @@ describe("buildQueue", () => {
 
     const cases = items.map((i) => i.case);
     expect(cases).toEqual([...cases].sort());
+  });
+
+  it("asks a pair once, keeping an entry per picker under the question's id", () => {
+    const pair = (judge: CalibrationJudge, pass: boolean) => output(judge, 0, { case: "explainer-eval/pairs", kind: "pair", group: "p1", target: "p1", pass });
+
+    const { items, key } = buildQueue([pair("audition-code", true), pair("audition-rubric", false), ...many("cold", 3)], 20);
+
+    const asked = items.filter((i) => i.kind === "pair");
+    expect(asked).toHaveLength(1);
+    expect(key.filter((k) => k.id === asked[0]!.id).map((k) => [k.judge, k.pass])).toEqual([["audition-code", true], ["audition-rubric", false]]);
+  });
+
+  it("gives pairs the pickers disagree on a slot even when agreeing pairs far outnumber them", () => {
+    const pair = (n: number, code: boolean, rubric: boolean) => [
+      output("audition-code", n, { kind: "pair", group: `p${n}`, target: `p${n}`, pass: code }),
+      output("audition-rubric", n, { kind: "pair", group: `p${n}`, target: `p${n}`, pass: rubric }),
+    ];
+    const agreeing = Array.from({ length: 12 }, (_, n) => pair(n, n % 2 === 0, n % 2 === 0)).flat();
+
+    const { key } = buildQueue([...agreeing, ...pair(99, true, false), ...many("cold", 20), ...many("l1", 20), ...many("cold-rubric", 20)], 20);
+
+    expect(key.filter((k) => k.target === "p99").map((k) => k.judge)).toEqual(["audition-code", "audition-rubric"]);
   });
 
   it("is reproducible for a seed and reshuffles for another", () => {
