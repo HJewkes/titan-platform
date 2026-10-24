@@ -186,6 +186,17 @@ describe("chunked script drafting", () => {
     expect(failure.usage.usd).toBe(2);
   });
 
+  it("names each finished chapter's spend and cache tokens when a later chapter's reply never parses", async () => {
+    const model = fakeModel((prompt) => (taskChapter(prompt) === "ch3" ? { chapters: [] } : passingVideo(prompt)));
+
+    const failure = await runStage(spineOf(LONG), model, markerChecks).catch((error: unknown) => error);
+
+    if (!(failure instanceof StageFailure)) throw new Error("expected a StageFailure");
+    expect(failure.message).toContain("script: chapter ch3:");
+    expect(failure.message).toContain("after chapter ch1: 1 call(s), $0.0100, cache 10 read, 4 written; 0 -> 0 failing chapter checks; chapter ch2:");
+    expect(failure.message).toContain("chapter ch3 so far: 2 call(s), $0.0200, cache 20 read, 8 written");
+  });
+
   it("keeps a short spine on the single-call path", async () => {
     const whole = { ...chapterReply("ch1"), chapters: chapterIds(4).map((id) => ({ id, label: id, question: `Why does part ${id} matter?` })), beats: chapterIds(4).map((id) => beatOf(`${id}-a`, id, "The bench tests the wick first.")) };
     const model = fakeModel(() => whole);

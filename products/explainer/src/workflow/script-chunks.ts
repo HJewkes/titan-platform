@@ -302,28 +302,45 @@ function spendSince(now: StageUsage, then: StageUsage): string {
  * cache and each later call, made after it, reads them back instead of writing them again.
  */
 export async function chunkedScript(context: ChunkContext): Promise<Written> {
-  let at = "the first chapter";
-  const notes: string[] = [];
-  const call = context.callFor(context.shared.join("\n\n") + "\n");
-  // A stopped run keeps no notes, so the stop names what each finished chapter spent and fixed.
-  const meter = metered(call, context.capUsd, () => (notes.length > 0 ? `${at}, after ${notes.join("; ")}` : at));
+  const progress: Progress = { at: "the first chapter", notes: [], start: NO_USAGE };
+  const meter = metered(context.callFor(context.shared.join("\n\n") + "\n"), context.capUsd, () => progress.at);
   const { facts, plan, lint } = context;
   const ctx: Chunk = { facts, plan, lint, places: factPlaces(context.spineText, lint.spine, facts), call: meter.call, spent: meter.spent };
+  try {
+    return await writeAll(ctx, progress);
+  } catch (error) {
+    throw withNotes(error, progress, meter.spent());
+  }
+}
+
+/** Where the chunked path is, and a note per part it finished. */
+interface Progress {
+  at: string;
+  notes: string[];
+  start: StageUsage;
+}
+
+async function writeAll(ctx: Chunk, progress: Progress): Promise<Written> {
   let joined: Joined | undefined;
   const chapters: ChapterResult[] = [];
   for (const [index, row] of ctx.lint.spine.chapters.entries()) {
-    at = `chapter ${row.chapter}`;
-    const start = meter.spent();
+    [progress.at, progress.start] = [`chapter ${row.chapter}`, ctx.spent()];
     const result = await writeChapter(ctx, joined, index);
-    notes.push(`chapter ${row.chapter}: ${spendSince(meter.spent(), start)}; ${result.before} -> ${result.after} failing chapter checks`);
+    progress.notes.push(`chapter ${row.chapter}: ${spendSince(ctx.spent(), progress.start)}; ${result.before} -> ${result.after} failing chapter checks`);
     chapters.push(result);
     joined = result.joined;
   }
-  at = "the whole-video repair";
-  const start = meter.spent();
+  [progress.at, progress.start] = ["the whole-video repair", ctx.spent()];
   const video = await repairVideo(ctx, joinedScript(ctx, joined!));
-  notes.push(`whole video: ${spendSince(meter.spent(), start)}; ${video.before} -> ${video.after} failing error checks`);
-  return written(chapters, video, meter.spent(), notes);
+  progress.notes.push(`whole video: ${spendSince(ctx.spent(), progress.start)}; ${video.before} -> ${video.after} failing error checks`);
+  return written(chapters, video, ctx.spent(), progress.notes);
+}
+
+/** A failed run keeps no notes, so its failure names what each finished part, and the one it stopped in, spent and fixed. */
+function withNotes(error: unknown, progress: Progress, spent: StageUsage): unknown {
+  if (!(error instanceof StageFailure)) return error;
+  const parts = [...progress.notes, `${progress.at} so far: ${spendSince(spent, progress.start)}`];
+  return new StageFailure(`${error.message}; after ${parts.join("; ")}`, error.usage, error.retries, error.checks);
 }
 
 function written(chapters: readonly ChapterResult[], video: Repaired, usage: StageUsage, notes: string[]): Written {
