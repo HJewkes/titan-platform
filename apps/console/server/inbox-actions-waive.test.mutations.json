@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the record carries the item's other taps",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "return { kind, gateId, runId, stepId, repo, pr, headSha, decision };",
+      "replace": "return action;",
+      "kills": [
+        "inbox.act on a waivable sh-sent-back gate waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone",
+        "inbox.act on a waivable sh-sent-back gate keeps await-new-head as the item's own tap beside the waiver"
+      ]
+    },
+    {
+      "name": "a decision the item does not offer is taken",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "return decision === action.decision || action.alternatives?.includes(decision) ? { ...action, decision } : undefined;",
+      "replace": "return { ...action, decision };",
+      "kills": [
+        "inbox.act on a waivable sh-sent-back gate offers no waive-proof tap on a sent-back gate whose options lack it"
+      ]
+    },
+    {
+      "name": "the waiver reads back as a wait",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "GATE_EFFECT[decision](at)",
+      "replace": "GATE_EFFECT[\"await-new-head\"](at)",
+      "kills": [
+        "inbox.act on a waivable sh-sent-back gate waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone"
+      ]
+    },
+    {
+      "name": "a waiver's outcome reads as a merge",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "RESOLVED_MESSAGE[record.action.decision]",
+      "replace": "RESOLVED_MESSAGE.merge",
+      "kills": [
+        "inbox.act on a waivable sh-sent-back gate waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone",
+        "inbox.act on a waivable sh-sent-back gate keeps await-new-head as the item's own tap beside the waiver"
+      ]
+    }
+  ]
+}

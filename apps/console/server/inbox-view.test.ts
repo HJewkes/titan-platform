@@ -323,6 +323,25 @@ describe("actionFor", () => {
     expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head" });
   });
 
+  it("taps a waivable sh-sent-back gate with await-new-head and offers waive-proof as its second tap, never abandon", () => {
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+      { id: "waive-proof", label: "Waive the fix-proof" },
+    ];
+    const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
+
+    const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
+
+    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head", alternatives: ["waive-proof"] });
+  });
+
+  it("offers no waiver on a sent-back gate whose item lists no options, leaving that check to the factory", () => {
+    const { action } = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), row(RUN_PLAIN, 1));
+
+    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head" });
+  });
+
   it("keeps an sh-sent-back gate whose options lack await-new-head on the terminal", () => {
     const offered = [
       { id: "abandon", label: "Abandon the PR" },

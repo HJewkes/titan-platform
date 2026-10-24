@@ -25,7 +25,7 @@ import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { nextStateOf, type NextState } from "./inbox-next.js";
 import { opReadBackOf, postedOp, type OpAction, type OpReadBack } from "./inbox-op.js";
-import { readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
+import { CONSOLE_DECISION_IDS, readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
@@ -34,6 +34,7 @@ export const ACTIONS_OFF = "inbox actions are off";
 const ACTOR = { class: "owner-remote", id: "titan-console", channel: "console:inbox" } as const;
 const MAX_ANSWER = 8000;
 const CHANGED = "the item changed since it was read; read it again before confirming";
+const DECISION = z.enum(CONSOLE_DECISION_IDS).optional();
 
 type InboxAction = InboxItem["action"];
 type PostedAction = Extract<InboxAction, { kind: "resolve-gate" | "owner-release" }>;
@@ -98,7 +99,7 @@ const isConsoleAction = (action: InboxAction, answerer: BrokerAnswerer | undefin
 const short = (sha: string | null): string => (sha === null ? "an unknown head" : sha.slice(0, 7));
 
 /** The read-back is in the digest, so a verdict recorded between the read and the tap refuses the stale confirm. */
-const itemDigest = (item: InboxItem, readAt: string, readBack: ReadBack): string => digestOf([item.id, item.action, item.hold ?? null, readBack, readAt]);
+const itemDigest = (item: InboxItem, action: InboxAction, readAt: string, readBack: ReadBack): string => digestOf([item.id, action, item.hold ?? null, readBack, readAt]);
 
 function chatReadBackOf(item: InboxItem, action: ChatAction): ChatReadBack {
   const options = item.options?.map(({ id, label }) => ({ id, label }));
@@ -121,8 +122,30 @@ async function readBackOf(sources: InboxSources, item: InboxItem, action: Consol
   return { ...prBaseOf(item, action), gateId: action.gateId, effect: gateEffect(action.decision, at) };
 }
 
-const gateEffect = (decision: ConsoleDecision, at: string): string =>
-  decision === "merge" ? `Approve the merge of ${at}` : `Wait for the implementer's next pushed head on ${at}; nothing merges`;
+const GATE_EFFECT: Record<ConsoleDecision, (at: string) => string> = {
+  merge: (at) => `Approve the merge of ${at}`,
+  "await-new-head": (at) => `Wait for the implementer's next pushed head on ${at}; nothing merges`,
+  "waive-proof": (at) => `Skip the fix-proof requirement for ${at} only, so Shepherd reviews this head. This tap merges nothing: the merge still needs your Approve merge tap, and a new push asks again`,
+};
+
+const gateEffect = (decision: ConsoleDecision, at: string): string => GATE_EFFECT[decision](at);
+
+/**
+ * The tap the owner chose: the item's own action, or its gate answered with a second decision the item offers. Undefined
+ * when the item offers no such tap.
+ */
+function chosenAction(action: InboxAction, decision: ConsoleDecision | undefined): InboxAction | undefined {
+  if (decision === undefined) return action;
+  if (action.kind !== "resolve-gate") return undefined;
+  return decision === action.decision || action.alternatives?.includes(decision) ? { ...action, decision } : undefined;
+}
+
+/** The factory reads a strict action, so the record names the one decision given and none of the item's other taps. */
+function postedAction(action: Exclude<ConsoleAction, OpAction>): Exclude<ConsoleAction, OpAction> {
+  if (action.kind !== "resolve-gate") return action;
+  const { kind, gateId, runId, stepId, repo, pr, headSha, decision } = action;
+  return { kind, gateId, runId, stepId, repo, pr, headSha, decision };
+}
 
 function noActionReason(action: InboxAction): string {
   if (action.kind === "terminal") return action.reason;
@@ -136,13 +159,14 @@ async function liveItem(sources: InboxSources, itemId: string): Promise<{ item: 
   return item === undefined ? refuse(`no inbox item ${itemId}; it may have been answered, read the inbox again`) : { item, readAt: list.readAt };
 }
 
-async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, itemId: string): Promise<PrepareResult> {
+async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, { itemId, decision }: Choice): Promise<PrepareResult> {
   const { item, readAt } = await liveItem(ctx.sources, itemId);
-  const { action } = item;
+  const action = chosenAction(item.action, decision);
+  if (action === undefined) return { status: "no-action", itemId, action: item.action, reason: `this item offers no ${decision} tap` };
   if (!isConsoleAction(action, ctx.options.answerer)) return { status: "no-action", itemId, action, reason: noActionReason(action) };
   const readBack = await readBackOf(ctx.sources, item, action);
   if (typeof readBack === "string") return { status: "no-action", itemId, action, reason: readBack };
-  const confirm = itemDigest(item, readAt, readBack);
+  const confirm = itemDigest(item, action, readAt, readBack);
   const expiresAt = ctx.now() + CONFIRM_TTL_MS;
   store.remember(confirm, { key: itemId, readAt, expiresAt });
   return { status: "ready", itemId, action, readBack, readAt, confirm, expiresAt: new Date(expiresAt).toISOString() };
@@ -164,12 +188,12 @@ interface ActContext {
 /** A fresh tap re-reads the item and writes its record; the digest must still match what the owner was shown. */
 async function writeItemRecord(ctx: ActContext, file: string, tap: Tap, prepared: Prepared): Promise<void> {
   const { item } = await liveItem(ctx.sources, prepared.key);
-  const { action } = item;
-  if (!isConsoleAction(action, ctx.options.answerer)) return refuse(CHANGED);
+  const action = chosenAction(item.action, tap.decision);
+  if (action === undefined || !isConsoleAction(action, ctx.options.answerer)) return refuse(CHANGED);
   const readBack = await readBackOf(ctx.sources, item, action);
-  if (typeof readBack === "string" || itemDigest(item, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
+  if (typeof readBack === "string" || itemDigest(item, action, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
-  const target = action.kind === "owner-op" && "proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action };
+  const target = action.kind === "owner-op" ? ("proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action }) : { action: postedAction(action) };
   const record = { itemId: item.id, ...target, readBack, ...(text !== undefined && { text }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
   await writeRecord(ctx.options.actionsDir, file, record);
 }
@@ -192,8 +216,13 @@ function textFor(action: ConsoleAction, text: string | undefined): string | unde
 }
 
 /** A resolved sent-back gate merged nothing, so its tap must not read as a merge. */
-const resolvedMessage = (record: ActionRecord): string =>
-  !isOpRecord(record) && record.action.kind === "resolve-gate" && record.action.decision === "await-new-head" ? "Waiting for the implementer's next pushed head; nothing merged" : "Merge approved";
+const RESOLVED_MESSAGE: Record<ConsoleDecision, string> = {
+  merge: "Merge approved",
+  "await-new-head": "Waiting for the implementer's next pushed head; nothing merged",
+  "waive-proof": "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge",
+};
+
+const resolvedMessage = (record: ActionRecord): string => (!isOpRecord(record) && record.action.kind === "resolve-gate" ? RESOLVED_MESSAGE[record.action.decision] : RESOLVED_MESSAGE.merge);
 
 function messageOf(outcome: Outcome, record: ActionRecord): string {
   switch (outcome.status) {
@@ -258,8 +287,13 @@ function dispatch(ctx: ActContext, file: string, confirm: string, record: Action
   return answerer.answer(action.msgId, record.text);
 }
 
-interface Tap {
+/** Which tap on an item: its own action, or with `decision` a second tap its gate offers. */
+interface Choice {
   itemId: string;
+  decision?: ConsoleDecision;
+}
+
+interface Tap extends Choice {
   confirm: string;
   text?: string;
 }
@@ -295,17 +329,17 @@ export function inboxActionCommands(sources: InboxSources, options: InboxActionO
     "inbox.prepare": readCommand({
       name: "inbox.prepare",
       description: "Re-read one inbox item and return the read-back of what its tap does, with a confirm digest valid five minutes",
-      args: z.strictObject({ itemId: z.string().min(1).max(512) }),
+      args: z.strictObject({ itemId: z.string().min(1).max(512), decision: DECISION }),
       result: z.custom<PrepareResult>(),
-      run: ({ itemId }) => {
+      run: (choice) => {
         assertOn(options);
-        return prepare({ options, sources, now }, store, itemId);
+        return prepare({ options, sources, now }, store, choice);
       },
     }),
     "inbox.act": ownerWriteCommand({
       name: "inbox.act",
       description: "Do what a prepared inbox item's read-back said: write its action record once and post it to the factory, an answer to the broker, or a g10 release to Shepherd",
-      args: z.strictObject({ itemId: z.string().min(1).max(512), confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional() }),
+      args: z.strictObject({ itemId: z.string().min(1).max(512), decision: DECISION, confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional() }),
       result: z.custom<ActResult>(),
       ownerWrite: true,
       run: (args, ctx) => {
