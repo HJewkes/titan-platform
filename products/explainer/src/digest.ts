@@ -1,9 +1,14 @@
 import { z } from "zod";
 
+/** A merged PR serves a lane goal, is a side quest (upkeep, flakes, red main), or is neither. */
+export const LANE_ROLES = ["goal", "side-quest", "other"] as const;
+export type LaneRole = (typeof LANE_ROLES)[number];
+
 const DigestItemSchema = z.object({
   // Stable across runs: derived from the source (repo and PR number, commit sha, task id), never a timestamp.
   id: z.string().min(1),
-  kind: z.enum(["commit", "pull-request", "task", "session"]),
+  /** `rollup` is derived from the other items: a lane, goal, ship or day total the script cites. */
+  kind: z.enum(["commit", "pull-request", "task", "session", "rollup"]),
   title: z.string().min(1),
   at: z.iso.datetime({ offset: true }),
   repo: z.string().min(1).optional(),
@@ -21,6 +26,10 @@ const DigestItemSchema = z.object({
   size: z.number().int().nonnegative().optional(),
   /** `P1` makes the item an anchor the audition must place. */
   priority: z.string().min(1).optional(),
+  /** The lane a merged PR or rollup belongs to, its role there, and the lane goal it served. */
+  lane: z.string().min(1).optional(),
+  role: z.enum(LANE_ROLES).optional(),
+  goal: z.string().min(1).optional(),
 });
 
 export type DigestItem = z.infer<typeof DigestItemSchema>;
