@@ -181,6 +181,7 @@ declare const SPELLINGS: {
     readonly "bash.release.gh-workflow-run": SpellingRow;
     readonly "bash.release.wrangler-deploy": SpellingRow;
     readonly "bash.release.version-packages-merge": SpellingRow;
+    readonly "bash.release.git-push-tag": SpellingRow;
     readonly "bash.egress.gh-gist": SpellingRow;
     readonly "bash.egress.curl-upload": SpellingRow;
     readonly "bash.egress.wget-upload": SpellingRow;
