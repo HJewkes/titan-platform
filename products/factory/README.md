@@ -68,10 +68,14 @@ run `titan-factory service uninstall` there first.
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
 an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
-login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog
-resolves as `owner-terminal` and stores the helper's proof id as `confirmEvent`. A cancelled dialog,
-a missing helper or output that is not a UUID resolves as `coordinator`, named by `AGENT_CHAT_NAME`,
-which hitl refuses, so the command exits 1 and the gate stays pending. The command exits 2 without a
+login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. The dialog signs a
+`titan-factory.gate-presence` statement for that gate and answer with the owner's Secure Enclave key.
+The command verifies it against `/etc/titan-factory/owner-keys`, records it in the gate batch ledger
+and resolves as `owner-terminal` with `confirmEvent: "gate-batch:<id>"`. The gate store's `authorize`
+admits that record once, for that gate only, after re-checking its signature, so a made-up
+`confirmEvent` on channel `factory-cli` is refused. A cancelled dialog, a missing helper or key, or a
+signature the key ring does not verify resolves as `coordinator`, named by `AGENT_CHAT_NAME`, which
+hitl refuses, so the command exits 1, prints why, and the gate stays pending. The command exits 2 without a
 dialog when the gate id, `decision` or `headSha` has an unexpected shape, so no field can break or
 hide a line of the dialog. A repeat of an answered resolve exits 0 before any dialog. A shell with no
 agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` does not count, because

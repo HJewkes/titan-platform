@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "gate resolve drops the presence record from the owner resolver",
+      "file": "products/factory/src/gate-resolve.ts",
+      "find": "  return { resolver: { ...ownerTerminal(), confirmEvent: minted.confirmEvent }, presenceBatch: minted.batchId };\n",
+      "replace": "  return { resolver: ownerTerminal(), presenceBatch: minted.batchId };\n",
+      "kills": [
+        "gate resolve with owner presence the stored resolver names the owner-signed presence record, which the resolve spent"
+      ]
+    }
+  ]
+}
