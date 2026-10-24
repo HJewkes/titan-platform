@@ -26,12 +26,12 @@ export interface WatchPorts {
   now: () => number;
 }
 
-export interface WatchPolicy {
+interface WatchPolicy {
   noFileAfterMinutes: number;
   pollSeconds: number;
 }
 
-export type WatchOutcome =
+type WatchOutcome =
   | { kind: "wrote"; name: string }
   | { kind: "exited" | "timeout"; transcriptPath?: string; apiError?: ApiError };
 
@@ -70,7 +70,7 @@ const ApiErrorLine = z.object({
 });
 
 /** The newest transcript line flagged `isApiErrorMessage`, read as its text, error code and reset time. */
-export function lastApiError(transcript: string): ApiError | undefined {
+function lastApiError(transcript: string): ApiError | undefined {
   const lines = transcript.split("\n");
   for (let index = lines.length - 1; index >= 0; index--) {
     const parsed = ApiErrorLine.safeParse(parseJson(lines[index]!));

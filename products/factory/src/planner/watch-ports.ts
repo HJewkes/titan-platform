@@ -10,7 +10,7 @@ const RosterRow = z.object({ name: z.string(), presence: z.string(), transcriptP
 const GONE = new Set(["exited", "deregistered"]);
 
 /** The review dir's files, without the brief when it sits there too; a missing dir reads as empty. */
-export function reviewLister(config: PlannerConfig): () => ReviewFile[] {
+function reviewLister(config: PlannerConfig): () => ReviewFile[] {
   const brief = resolve(config.brief);
   return () => {
     let names: string[];
@@ -28,7 +28,7 @@ export function reviewLister(config: PlannerConfig): () => ReviewFile[] {
 }
 
 /** The planner's row on `agent ls --json`: no row is a planner that has gone, an unreadable roster says nothing. */
-export function plannerPresence(config: PlannerConfig, run: PlannerRun): () => Promise<PlannerPresence> {
+function plannerPresence(config: PlannerConfig, run: PlannerRun): () => Promise<PlannerPresence> {
   return async () => {
     const listed = await run(config.agentChat, ["agent", "ls", "--json"]);
     if (listed.code !== 0) return { state: "unknown" };
@@ -44,7 +44,7 @@ export function plannerPresence(config: PlannerConfig, run: PlannerRun): () => P
   };
 }
 
-export function readTranscript(path: string): string | undefined {
+function readTranscript(path: string): string | undefined {
   try {
     return readFileSync(path, "utf8");
   } catch {

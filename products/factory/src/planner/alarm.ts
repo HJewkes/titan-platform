@@ -7,7 +7,7 @@ export const PLANNER_ALARM_KEYS = ["planner-alarm"] as const;
 
 const RERUN_COMMAND = "systemctl --user start factory-planner-wake.service";
 
-export interface PlannerAlarm {
+interface PlannerAlarm {
   name: string;
   reason: "exited" | "timeout";
   spawnedAt: string;
