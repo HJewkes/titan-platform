@@ -83,7 +83,7 @@ async function prPreview(port: GitHubPort, store: ShepherdStore, { repo, pr }: P
 }
 
 /** Read without the lock, as `/health` reads it: the clear itself re-checks under the lock. */
-export function pausePreview(ports: PauseClearPorts, stateDir: string): PausePreview {
+function pausePreview(ports: PauseClearPorts, stateDir: string): PausePreview {
   return { ...deployPausedHealth(ports, stateDir), deployerRunning: runningDeployer(ports, stateDir) !== undefined, manualHold: manualHoldReason(ports, stateDir) };
 }
 
