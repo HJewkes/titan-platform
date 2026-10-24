@@ -13,7 +13,7 @@
     {
       "name": "fittedFrom may name an undeclared statistic",
       "file": "products/explainer/src/sim/sim-load.ts",
-      "find": "spec.fittedFrom.filter((stat) => !(stat in spec.statistics))",
+      "find": "spec.fittedFrom.filter((stat) => !Object.hasOwn(spec.statistics, stat))",
       "replace": "spec.fittedFrom.filter(() => false)",
       "kills": [
         "loadSims names the file when fittedFrom lists a statistic the file does not declare"
