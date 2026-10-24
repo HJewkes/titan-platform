@@ -1,8 +1,10 @@
+import { existsSync, readFileSync } from "node:fs";
 import type { RoutedRunner, WorkflowStatus } from "@titan-design/workflow";
 import type { BehindMain } from "./behind-main.js";
 import type { BotHealth } from "./bot-identity.js";
 import { factoryStateDir } from "./config.js";
 import { deployPendingHealth } from "./deploy-pacer-sweep.js";
+import { deployHeldHealth, deployPausedHealth } from "./deploy-pause.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import type { GateNotifyWatch } from "./gate-notify-sweep.js";
@@ -20,6 +22,8 @@ import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { divergedPrClosed, divergedRestarts, type DivergedRestart } from "./shepherd/diverged-sweep.js";
 import { isReplayDiverged } from "./shepherd/restart.js";
 import { visualDeliveryHealth } from "./shepherd/visual-delivery-sweep.js";
+
+const fsPauseReads = { exists: existsSync, readFile: (path: string) => readFileSync(path, "utf8") };
 
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 
@@ -50,6 +54,7 @@ interface HealthInputs {
 
 export function serveHealth(host: FactoryHost, options: HealthOptions, inputs: HealthInputs): Record<string, unknown> {
   const { github, build, routeFor, ownerKeys, start, notify, ingress, passStamp, bot, reconciler } = inputs;
+  const deployStateDir = options.deployStateDir ?? factoryStateDir(process.env);
   return {
     ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd), divergedPrClosed(options.routes.shepherd), divergedRestarts(options.routes.shepherd)),
     github: github.status(),
@@ -59,7 +64,9 @@ export function serveHealth(host: FactoryHost, options: HealthOptions, inputs: H
     ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
     build: { sha: build.sha, behindMain: build.status() },
     ...(options.routes.config && { config: options.routes.config.stamp() }),
-    lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
+    lastDeploy: readLastDeploy(deployStateDir),
+    deployPaused: deployPausedHealth(fsPauseReads, deployStateDir),
+    deployHeld: deployHeldHealth(fsPauseReads, deployStateDir),
     ...(options.deployWatch && { deploy: options.deployWatch.status() }),
     ...(options.routes.shepherd?.reviewSlots && { reviewSlots: options.routes.shepherd.reviewSlots() }),
     ...deployPendingHealth(options.deployPacer),

@@ -5,6 +5,7 @@ import { useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open, parseRoute } from "../router.js";
 import { openExternal } from "./homeLinks.js";
+import { NudgeSection } from "./InboxNudges.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { TapSheet, type TapCommands } from "./TapSheet.js";
 
@@ -67,9 +68,15 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head" };
+const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "close-pr": "Close PR" };
 
-const verbOf = (action: InboxAction): string => (action.kind === "owner-op" ? (OP_VERB[action.op.kind] ?? VERB[action.kind]) : VERB[action.kind]);
+/** A sent-back tap only waits for the implementer's next head, so it never reads as a merge. */
+const GATE_VERB: Record<Extract<InboxAction, { kind: "resolve-gate" }>["decision"], string> = { merge: VERB["resolve-gate"], "await-new-head": "Wait for new head" };
+
+function verbOf(action: InboxAction): string {
+  if (action.kind === "owner-op") return OP_VERB[action.op.kind] ?? VERB[action.kind];
+  return action.kind === "resolve-gate" ? GATE_VERB[action.decision] : VERB[action.kind];
+}
 
 /** Navigation stays a link; a write the console does not take yet is shown as its terminal command. */
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
@@ -87,13 +94,15 @@ export function InboxPage(): ReactNode {
   const inbox = useQuery("inbox.list");
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
-  const { items, gaps, fyiCount, derived } = inbox.data;
+  // A snapshot exported before TP-4044 carries no nudges.
+  const { items, gaps, fyiCount, derived, nudges = [] } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
   const planning = items.filter((item) => item.section === "planning");
   return (
     <VStack gap={6}>
       <GapBanners gaps={gaps} />
-      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0} gapped={gaps.length > 0} />
+      {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
+      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
       {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
       {planning.length > 0 ? <PlanningSection items={planning} /> : null}
       <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the probe skips the ancestry check",
+      "file": "products/factory/src/shepherd/review-scope.ts",
+      "find": "  if (!(await isAncestor(git, dir, sinceHead, head, signal))) return full(`${head} does not contain ${sinceHead}, so it is a rebase, not a fix on top`);\n",
+      "replace": "",
+      "kills": [
+        "reviewScope reads a rebase of the reviewed head as a full review"
+      ]
+    },
+    {
+      "name": "the fix diff runs from the reviewed head instead of its merge with the base",
+      "file": "products/factory/src/shepherd/review-scope.ts",
+      "find": "await fixDiff(git, dir, mergeTree, head, signal)",
+      "replace": "await fixDiff(git, dir, sinceHead, head, signal)",
+      "kills": [
+        "reviewScope leaves out main's files when the fixer merged main before the fix"
+      ]
+    },
+    {
+      "name": "the line cap refuses a diff at the cap",
+      "file": "products/factory/src/shepherd/review-scope.ts",
+      "find": "if (changedLines > SCOPE_MAX_LINES)",
+      "replace": "if (changedLines >= SCOPE_MAX_LINES)",
+      "kills": [
+        "reviewScope scopes a fix of exactly 400 changed lines"
+      ]
+    },
+    {
+      "name": "the path safety check is skipped",
+      "file": "products/factory/src/shepherd/review-scope.ts",
+      "find": "if (files.some((file) => unsafePath(file.path)))",
+      "replace": "if (false)",
+      "kills": [
+        "reviewScope reads a fix whose path holds a shell-active character as a full review, without echoing the path"
+      ]
+    },
+    {
+      "name": "a hunk header with no count reads as a pure deletion",
+      "file": "products/factory/src/shepherd/review-scope.ts",
+      "find": "count: match[2] === undefined ? 1 : Number(match[2])",
+      "replace": "count: Number(match[2] ?? 0)",
+      "kills": [
+        "reviewScope scopes a fix commit on top of the reviewed head to that file's changed ranges"
+      ]
+    }
+  ]
+}

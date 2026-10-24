@@ -273,6 +273,25 @@ describe("inbox.act", () => {
     expect(calls[0]![1]).toMatchObject({ text: "merge", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
   });
 
+  it("waits for a new head on an sh-sent-back gate: the read-back, record, message and log all say await-new-head, not merge", async () => {
+    const sentBackId = `${RUN_PLAIN}/sh-sent-back`;
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+    ];
+    items = [{ ...gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), id: `gate:${sentBackId}`, sources: [{ system: "hitl", ref: sentBackId }], options: offered }];
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const prepared = ready(await prepare(`gate:${sentBackId}`));
+
+    const { envelope } = await act(`gate:${sentBackId}`, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ gateId: sentBackId, effect: `Wait for the implementer's next pushed head on ${REPO}#1 at 1234567; nothing merges` });
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, message: "Waiting for the implementer's next pushed head; nothing merged" } });
+    expect(JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8"))).toMatchObject({ action: { kind: "resolve-gate", stepId: "sh-sent-back", decision: "await-new-head" } });
+    expect(calls[0]![1]).toMatchObject({ text: "await-new-head" });
+  });
+
   it("refuses a bearer credential with 403 and writes no record", async () => {
     const factorySpy = spyFactory();
     const { prepare, act } = await harness(factorySpy.client);
@@ -626,6 +645,29 @@ describe("inbox owner-op", () => {
     const { prepare } = await harness(opFactory().client);
 
     expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: `${REPO}#7 is merged on GitHub, so there is nothing to act on` } });
+  });
+
+  it("closes a deposit's close-pr at the previewed head, keeping the branch, and reads the PR closed next", async () => {
+    const op = { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD } as const;
+    await writeDeposit(path.join(dir, "deposits"), { depositId: "op-close-1", asker: ASKER, kind: "do", door: "one-way", summary: "Close the stale fixture PR", context: "", keys: [], command: "titan-factory shepherd waiting", op });
+    const closeId = depositItemId(ASKER, "op-close-1");
+    preview = (target) => openPreview(target, NEW_HEAD);
+    const posted: unknown[] = [];
+    const client: OwnerActionClient = {
+      post: async (actionId) => {
+        posted.push(opRecordShape.parse(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8"))));
+        preview = (target) => ({ ...openPreview(target, NEW_HEAD), pr: { ...openPreview(target, NEW_HEAD).pr, state: "closed", head: undefined } });
+        return { status: "pr-closed", closedHead: NEW_HEAD };
+      },
+    };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(closeId));
+    const { envelope } = await act(closeId, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ headSha: NEW_HEAD, effect: `Close ${REPO}#7 at abcdef1 on GitHub; the branch is kept and reopen is one click` });
+    expect(posted).toEqual([{ op: { ...op, headSha: NEW_HEAD } }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "pr-closed" }, message: "PR closed at abcdef1; its branch is kept", next: { state: "closed" } } });
   });
 
   it("offers no action for an op the authority table denies the console", async () => {

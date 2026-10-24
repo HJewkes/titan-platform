@@ -47,7 +47,7 @@ export {
   reviewerBrief,
   validOwnerPicks,
 } from "./reviewer-brief.js";
-export type { CiCheckRow, EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput } from "./reviewer-brief.js";
+export type { CiCheckRow, EarlierFinding, MalformedRefusal, OwnerPick, ReviewerBriefInput, ScopeRefusal } from "./reviewer-brief.js";
 export { USAGE_LIMIT_REASON, acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 export type { AcceptedVerdict, AwaitVerdictResult } from "./accept-verdict.js";
 export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
@@ -84,6 +84,8 @@ export type { AggregateInput, MemberResult } from "./aggregate.js";
 export { OVERLAY_SHAPES, SHAPE_BRIEFS, shapeBrief } from "./briefs/shape-brief.js";
 export type { OverlayShape, ShapeBrief, ShapeBriefInput } from "./briefs/shape-brief.js";
 export type { FixProofUnverified, WorkflowCiInput, WorkflowCiProof } from "./briefs/tests.js";
+export { CLASS_TAG, IMPORTANT_TAG, MAX_SCOPE_PATHS, usableScope } from "./briefs/scoped-rereview.js";
+export type { ReviewScope, ScopeHunk } from "./briefs/scoped-rereview.js";
 export { PROBES_HEADING, hasProbesLine } from "./briefs/adversary.js";
 export type { AdversaryHoldContext } from "./briefs/adversary.js";
 export { SPAWN_REFUSED_REASON, memberName, reviewPullRequest } from "./review-pull-request.js";

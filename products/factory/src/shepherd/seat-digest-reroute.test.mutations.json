@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rerouted digest carries every finished run, with no window",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    return finishedAt(input) <= since;",
+      "replace": "    return false;",
+      "kills": [
+        "a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059) lists only the finished runs inside the window, not the dead seat's whole backlog",
+        "a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059) starts the window at the dead seat's last digest when that is under 24 h ago"
+      ]
+    },
+    {
+      "name": "the sweep's routes never say a run was rerouted",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "  return { seatOf, unsendable, reroutedFrom };",
+      "replace": "  return { seatOf, unsendable, reroutedFrom: undefined };",
+      "kills": [
+        "a rerouted digest through the sweep serve runs (TP-4059) settles the retired seat's run that finished before the window, telling the fallback nothing"
+      ]
+    },
+    {
+      "name": "the window applies to a live seat's digest too",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    if (origin === undefined) return false;",
+      "replace": "    if (origin === undefined && input === null) return false;",
+      "kills": [
+        "a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059) sends a live seat's digest exactly as before, with no window"
+      ]
+    },
+    {
+      "name": "rows outside the window are skipped but never settled",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "      if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);\n",
+      "replace": "",
+      "kills": [
+        "a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059) settles the old rows, so a second sweep neither sends nor reads them again"
+      ]
+    },
+    {
+      "name": "the window ignores the dead seat's last digest",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    const since = lastTold !== undefined && lastTold > floor ? lastTold : floor;",
+      "replace": "    const since = floor;",
+      "kills": [
+        "a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059) starts the window at the dead seat's last digest when that is under 24 h ago"
+      ]
+    }
+  ]
+}

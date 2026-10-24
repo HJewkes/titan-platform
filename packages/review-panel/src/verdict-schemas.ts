@@ -65,6 +65,8 @@ export const MALFORMED_REFUSALS: Record<MalformedRefusal, true> = {
   wrong_target: true,
   ci_policy_malformed: true,
   probes_missing: true,
+  scope_untagged: true,
+  repeated_finding: true,
 };
 
 const Refusal = z.string().refine((value): value is MalformedRefusal => Object.hasOwn(MALFORMED_REFUSALS, value), "a malformed refusal");

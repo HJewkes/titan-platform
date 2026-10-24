@@ -189,6 +189,7 @@ graph TD
   activeWork --> sessionRead
   activeWork --> storeSqlite
   corpusQuery --> agent
+  corpusQuery --> agentProtocol
   corpusQuery --> appPaths
   corpusQuery --> evidence
   corpusQuery --> hitl
@@ -207,13 +208,22 @@ graph TD
   evals --> workflow
   explainer --> agent
   explainer --> agentProtocol
+  explainer --> appPaths
+  explainer --> codeGraph
+  explainer --> codeRead
   explainer --> evidence
+  explainer --> github
   explainer --> graphLayout
+  explainer --> hitl
+  explainer --> ownerQueue
   explainer --> pm
+  explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
   explainer --> speechTts
   explainer --> speechVet
+  explainer --> storeSqlite
+  explainer --> workflow
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths

@@ -19,8 +19,10 @@ This package is the pure core of that gate. It adds three primitives:
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
   deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
-  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
-  true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
+  (`mutations`) and every path that is not test material (`source`). Given `headFiles`, the
+  paths at head beside those specs, it also plans each spec's one sibling test unless the PR
+  deletes it, so a diff that changes only a spec runs the test its mutants are judged on.
+  `testOnlyOf(plan)` is true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
   also count as `source`. `testOnlyReading(plan)` names why a diff is not test-only: `source`,
   `deletes-tests` or `no-tests`.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
@@ -28,7 +30,8 @@ This package is the pure core of that gate. It adds three primitives:
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
   log line of at most 4 KB, for a CI job to print and Shepherd to read.
 - `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
-  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head. Shepherd's gate and the reviewer brief read
+  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
+  skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
   a test-only diff's proof with it.
 
 ## When to reach for it
@@ -202,7 +205,14 @@ Duplicate names pair up by occurrence.
 | `passes-on-base` | passed | passed |
 | `new-api` | suite load error, or a failure naming a missing symbol | passed |
 | `fails-on-head` | anything | failed |
-| `not-run` | skipped or absent | passed, or head skipped it |
+| `not-run` | skipped or absent | passed, or head skipped a test base passed |
+
+A test head declines to run (`skip`, `skipIf`, `todo`) is left out of the classification and
+the counts, unless base passed it. It ran nowhere and claims nothing, so it neither reproduces
+nor blocks a mutant proof. Skipping a test base passed removes a check, so that test stays
+`not-run`. vitest also reports tests a throwing hook skipped as `skipped`, so a skip inside a
+file vitest marks failed is never read as deliberate and stays `not-run` too. A line from a
+runner before this rule counts every head skip as `not-run`, which only refuses a proof.
 
 A missing symbol is a failure containing `is not a function`, `is not a constructor`,
 `Cannot find module`, `does not provide an export` or `Failed to load url`. vitest does not
@@ -285,7 +295,19 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
     because vitest reports those as a plain `Error`.
 - **Coverage.** A killed spec proves only the test file beside it. The judge lists every
   changed test file (`plan.tests`) that no spec in the diff sits beside as
-  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A line from a judge
+  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. One kind of changed
+  test is left out: a test matching the config's `carry` globs (such as one under
+  `test-support/`) whose runtime imports, followed through every carried file they reach,
+  load only carried files, vitest and an allow-list of builtins that cannot start a process, a
+  worker or evaluated source (`fs`, `path`, `url`, `assert` and the like). `checkMutation`
+  refuses a carried file as a target, so a spec could reach such a test only through a file it
+  reads. A carried test needs a spec if anywhere in that closure it loads non-carried source,
+  another package, `child_process`, `worker_threads`, `vm` or any unlisted builtin, a relative
+  import the judge cannot resolve at head, or runs code outside the import graph (a computed
+  `import()`, `eval`, `new Function`, `vi.importActual`). Type-only imports are ignored, as the
+  test never loads them. The rule assumes a carried test reads files through `fs` only to judge
+  tests or carried files; one that asserts on the text of non-carried source would be exempt
+  although a spec could cover it. A line from a judge
   before this check has no `uncovered` list, and `provedByMutants` reads it as unproved. A
   diff that deletes a test or renames one out of the tests is not test-only
   (`testOnlyReading`), so the judge attaches no `mutants` to it at all.

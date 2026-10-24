@@ -1,0 +1,16 @@
+{
+  "h2": {
+    "figures": [
+      {
+        "id": "held",
+        "value": 12,
+        "label": "parcels held"
+      },
+      {
+        "id": "sent-back",
+        "value": 3,
+        "label": "sent back"
+      }
+    ]
+  }
+}

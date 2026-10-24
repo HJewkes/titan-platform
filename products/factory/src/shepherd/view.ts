@@ -7,6 +7,7 @@ import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
+import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { NONE_KINDS, liveLastNone } from "./none-reason.js";
@@ -184,6 +185,10 @@ function admissionWait({ repo, pr }: Registration): string | undefined {
   return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
 }
 
+/** sh-cleanup can wait an hour per part on agents to exit, long after main CI was read, so it must not read as a main CI wait. */
+const cleanupWait = (run: WorkflowRun, phase: Phase): string | undefined =>
+  phase === "post-merge" && run.currentStep !== null && stepIdMatches("sh-cleanup", run.currentStep) ? "cleaning up after the merge: head branch, task and agents" : undefined;
+
 const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
 
 /** While a head waits for its PR to be retargeted, the refused base is the next action. */
@@ -272,7 +277,7 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = ciWaitHead(run.currentStep, registration.repo, registration.pr) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
@@ -287,7 +292,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),

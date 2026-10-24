@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { AncestryProbe } from "../build-ancestry.js";
 import type { DeployRecord } from "../deploy.js";
+import type { WatchIntent } from "../deploy-watch-window.js";
 import { failureOf } from "./error-class.js";
 
 export const DEPLOY_WANTED = "deploy-wanted.json";
@@ -12,6 +13,8 @@ export const DEPLOY_QUIET_MS = 15 * 60_000;
 export const DEPLOY_MAX_WAIT_MS = 90 * 60_000;
 /** Longer than a deployer's own worst case (45 min drain, install, build, watch), so a live deployer is never asked twice. */
 export const DEPLOY_STALE_SPAWN_MS = 2 * 60 * 60_000;
+/** Past the window end, longer than the watch can run on (10 min of unavailable reads, three slow misses, the rollback restart), so only a deployer that died is outwaited. */
+export const DEPLOY_WATCH_GRACE_MS = 30 * 60_000;
 /** How often serve runs `pacerTick`. */
 export const PACER_SWEEP_MS = 60_000;
 /** The owner's express lane (TP-2338): a merged PR with this label skips the quiet window, and nothing else. */
@@ -39,7 +42,7 @@ type PaceDecision =
   | { kind: "idle" }
   | { kind: "clear"; why: string }
   | { kind: "wait"; why: string; until?: number }
-  | { kind: "spawn"; sha: string; stale?: boolean; express?: boolean };
+  | { kind: "spawn"; sha: string; stale?: boolean; express?: boolean; main?: boolean };
 
 interface PaceInput {
   wanted: DeployWanted | undefined;
@@ -48,6 +51,8 @@ interface PaceInput {
   /** The running build descends from the wanted sha, so a later commit deployed by hand already answered it. */
   runningHoldsWanted?: boolean;
   lastDeploy?: DeployRecord | undefined;
+  /** deploy-window.json: the open or last health watch, so a build still being watched does not answer an ask before a rollback can undo it. */
+  deployWindow?: WatchIntent | undefined;
   busy: number;
   /** TP-2268's rollback pause: the deployer would refuse, so nothing is spawned until a person clears it. */
   paused: boolean;
@@ -78,9 +83,42 @@ function recorded(wanted: DeployWanted, lastDeploy: DeployRecord | undefined): b
   return ms(lastDeploy.at) >= ms(wanted.spawnedAt ?? wanted.firstAt);
 }
 
-/** A deployer that refused, answered "already deployed" or died writes no deploy.json; it is asked once more, then the record is dropped until the next merge. */
+/** A rollback recorded after the spawn answered that deployer: it was the ask's containing deploy that rolled back, not the ask itself. */
+function rolledBackSinceSpawn(wanted: DeployWanted, lastDeploy: DeployRecord | undefined): boolean {
+  return lastDeploy?.outcome === "rolled-back" && ms(lastDeploy.at) >= ms(wanted.spawnedAt ?? wanted.firstAt);
+}
+
+/**
+ * Why the running build's deploy is still in its health watch, or undefined once it has passed.
+ * The deployer writes deploy.json only after the watch, so a window for the running build with no record of it means the watch, and a possible rollback, are still ahead.
+ * No window for the running build means no deployer put it there, so a build started by hand answers as before.
+ * A deployer that died mid-watch never writes its record, so past `DEPLOY_WATCH_GRACE_MS` after the window the running build answers as it did before the watch existed.
+ */
+function inWatch({ runningSha, lastDeploy, deployWindow, now }: PaceInput): string | undefined {
+  if (deployWindow?.sha !== runningSha) return undefined;
+  if (lastDeploy?.target !== runningSha) return now < deployWindow.windowEnd + DEPLOY_WATCH_GRACE_MS ? `the deploy of ${runningSha} is still in its health watch` : undefined;
+  return now < deployWindow.windowEnd ? `the health watch of ${runningSha} runs until ${iso(deployWindow.windowEnd)}` : undefined;
+}
+
+/** A build left running by a rollback that failed answers nothing, so the ask goes on to the pause and spawn rules. */
+function heldRule(wanted: DeployWanted, input: PaceInput): PaceDecision | undefined {
+  const runsWanted = wanted.sha === input.runningSha;
+  if (!runsWanted && input.runningHoldsWanted !== true) return undefined;
+  if (input.lastDeploy?.target === input.runningSha && input.lastDeploy.outcome === "rolled-back") return undefined;
+  const why = inWatch(input);
+  if (why !== undefined) return { kind: "wait", why };
+  return { kind: "clear", why: runsWanted ? `the service runs ${wanted.sha}` : `the service runs ${input.runningSha}, which contains ${wanted.sha}` };
+}
+
+/**
+ * A deployer that refused, answered "already deployed" or died writes no deploy.json; it is asked once more, then the record is dropped until the next merge.
+ * After a rollback the ask itself would be refused: the rollback restores dist only, so the checkout's main stays at the rolled-back sha, already past the ask.
+ * The one re-ask is for origin/main instead, which deploys a newer main and is held by the deployer while main is still the rolled-back sha.
+ * It is marked as the respawn, so a held re-ask is dropped after the stale timeout rather than asked again.
+ */
 function spawnedRule(wanted: DeployWanted, input: PaceInput): PaceDecision | undefined {
   if (wanted.spawnedSha !== wanted.sha) return undefined;
+  if (rolledBackSinceSpawn(wanted, input.lastDeploy)) return { kind: "spawn", sha: wanted.sha, main: true };
   const staleAt = ms(wanted.spawnedAt ?? wanted.firstAt) + input.staleSpawnMs;
   if (input.now < staleAt) return { kind: "wait", why: `deployer already started for ${wanted.sha}`, until: staleAt };
   if (wanted.respawned === true) return { kind: "clear", why: `two deployers for ${wanted.sha} recorded nothing; the next merge re-arms it` };
@@ -91,8 +129,8 @@ function spawnedRule(wanted: DeployWanted, input: PaceInput): PaceDecision | und
 export function paceDecision(input: PaceInput): PaceDecision {
   const { wanted, now, busy, quietMs, maxWaitMs } = input;
   if (wanted === undefined) return { kind: "idle" };
-  if (wanted.sha === input.runningSha) return { kind: "clear", why: `the service runs ${wanted.sha}` };
-  if (input.runningHoldsWanted === true) return { kind: "clear", why: `the service runs ${input.runningSha}, which contains ${wanted.sha}` };
+  const held = heldRule(wanted, input);
+  if (held !== undefined) return held;
   if (recorded(wanted, input.lastDeploy)) return { kind: "clear", why: `deploy.json records ${input.lastDeploy?.outcome} for ${wanted.sha}` };
   if (input.paused) return { kind: "wait", why: "deploys are paused; titan-factory service pause --clear lifts it" };
   const spawned = spawnedRule(wanted, input);
@@ -178,11 +216,13 @@ interface PacerDeps {
   /** Whether the running build descends from `sha`, settled before the tick since git is async; absent means only an equal sha counts. */
   runningHolds?: (sha: string) => boolean;
   lastDeploy: () => DeployRecord | undefined;
+  /** Absent means no window is known, so the running build answers as soon as it holds the ask. */
+  deployWindow?: () => WatchIntent | undefined;
   busy: () => number;
   paused: () => boolean;
   /** Whether `sha` carries `DEPLOY_NOW_LABEL`, settled before the tick; absent means every sha is paced. */
   express?: (sha: string) => boolean;
-  spawn: (sha: string) => { pid?: number | undefined };
+  spawn: DeploySpawn;
   quietMs?: number;
   maxWaitMs?: number;
   staleSpawnMs?: number;
@@ -205,6 +245,7 @@ function decide(deps: PacerDeps): { wanted: DeployWanted | undefined; decision: 
     runningSha: deps.runningSha(),
     runningHoldsWanted: deps.runningHolds?.(wanted.sha) ?? false,
     lastDeploy: deps.lastDeploy(),
+    deployWindow: deps.deployWindow?.(),
     busy: deps.busy(),
     paused: deps.paused(),
     express: deps.express?.(wanted.sha) ?? false,
@@ -222,17 +263,21 @@ function act(deps: PacerDeps, wanted: DeployWanted, decision: PaceDecision): voi
     deps.log(`deploy pacer: cleared ${wanted.sha}: ${decision.why}`);
   }
   if (decision.kind !== "spawn") return;
-  writeWanted(deps.stateDir, deps.store, { ...wanted, spawnedSha: decision.sha, spawnedAt: iso(deps.now()), ...(decision.stale && { respawned: true }) });
+  writeWanted(deps.stateDir, deps.store, { ...wanted, spawnedSha: decision.sha, spawnedAt: iso(deps.now()), ...((decision.stale === true || decision.main === true) && { respawned: true }) });
   if (decision.stale) deps.log(`deploy pacer: the deployer for ${decision.sha} recorded nothing by ${wanted.spawnedAt}; asking once more`);
   if (decision.express) deps.log(`deploy pacer: ${decision.sha} carries ${DEPLOY_NOW_LABEL}; skipping the quiet window`);
-  const { pid } = deps.spawn(decision.sha);
-  deps.log(pid === undefined ? `deploy pacer: the deployer for ${decision.sha} did not start` : `deploy pacer: deployer pid ${pid} deploys ${decision.sha}`);
+  const { pid } = decision.main === true ? deps.spawn(decision.sha, { main: true }) : deps.spawn(decision.sha);
+  const what = decision.main === true ? `origin/main for ${decision.sha}, whose containing deploy rolled back` : decision.sha;
+  deps.log(pid === undefined ? `deploy pacer: the deployer for ${what} did not start` : `deploy pacer: deployer pid ${pid} deploys ${what}`);
 }
+
+/** `main` asks the deployer for origin/main in place of the sha, which then only names the ask. */
+export type DeploySpawn = (sha: string, options?: { main?: boolean }) => { pid?: number | undefined };
 
 /** What serve needs to run the sweep; `deployPacerPorts` builds it from the same deployer Shepherd's redeploy step uses. */
 export interface DeployPacerOptions {
   stateDir: string;
-  spawn: (sha: string) => { pid?: number | undefined };
+  spawn: DeploySpawn;
   /** Lets the sweep clear a wanted sha the running build already descends from. */
   isAncestor?: AncestryProbe;
   /** Lets a `DEPLOY_NOW_LABEL` merge skip the quiet window; absent means every merge is paced. */

@@ -16,6 +16,7 @@ from disk; plan, audio, assembly and render land in later slices.
 | `lexicon.json` | `LexiconSchema`: written term to spoken form |
 | `review-bundle.json` | `ReviewBundleSchema` (`review-bundle/v1`): repo pin, label, coverage, licenses, per-file sha256, fact counts |
 | `facts.jsonl` | `ExplainerFactSchema`: one fact per line, with its source, kind, evidence spans, verified level and license safety |
+| `structure.json` | `StructureSchema` (`structure/v1`): snapshot, repo-map levels with box summaries and a focus graph, file centrality, reading order, entry points, call paths, edge sources |
 
 `gatherReview` (`src/presets/repo-explainer/`) reads a repo review's README, SUMMARY,
 `licenses.tsv`, ledger, `synthesis/final/` TSVs and digests into a bundle and its facts,
@@ -23,7 +24,63 @@ including the tour kinds (what-it-is, entry-point, read-first, should-not, integ
 capability). It checks every precondition before deciding, and refuses with all the coded
 diagnostics it found (`E-LABEL`, `E-UNREAD`, `E-PIN`, `E-CLONE`, `E-TOPICS`, `E-COLUMNS`, and
 the rest in `GATHER_CODES`) instead of throwing. A `repo-argument` gather with no pain fact
-warns `W-NO-PAIN`. `fixtures/review-whiteboard/` is a trimmed real review the tests gather.
+warns `W-NO-PAIN`. Two optional files add facts: `explainer-skim.json` (the skill's
+quote-checked docs skim) gives `skim` facts of kinds what-it-is, pain, actor, job, entry-point
+and should-not, and `structural/graph-report.json` (codewatch `graph report --json` over a
+lifetime index) gives `history` facts of kinds hotspot and silo. A review without them warns
+`W-NO-SKIM` or `W-NO-HISTORY`; a report that is not lifetime or not at the pin warns
+`W-HISTORY-PIN` and yields no history facts. `fixtures/review-whiteboard/` is a trimmed real
+review the tests gather; its author identities are removed.
+
+`enrichStructure` is the structure stage after gather. It opens the review's
+`structural/graph.db` when that holds a snapshot at the pin (copied first, so the review stays
+read-only), else indexes the clone with `@titan-design/code-graph` (`W-INDEX-PIN` when the
+review db was taken at another commit). It returns a `structure/v1` and the facts with
+`centrality` (rank-based, 1 for the most central file), `reading_rank`, `module` and
+`shape_hints.graph`, all from `@titan-design/code-read`'s centrality lens; a cited code path
+outside the index is `W-UNRESOLVED` and leaves the fact's centrality null. Call paths run from
+the README entry files, then from unimported root files for a target those miss, to each P1/P2
+topic's cited symbol: one search per target through code-graph's `findCallPath` over the
+snapshot's edges (what `snapshotCallPath` reads). They become `MapFlow`s on the
+`@titan-design/graph-layout` `emitRepoMap` levels; a target no entry reaches is
+`W-NO-CALL-PATH`. Protocol edges come from code-graph's `extractProtocolEdges`; with none
+declared the stage warns `W-NO-PROTOCOL` (code-graph's `no-protocol-source`) and the container
+arrows read "imports only". An index that cannot be opened or built is `E-INDEX` and no
+structure; an empty one is `W-NO-INDEX`. `fixtures/structure-ts/` is the synthetic repo the
+tests index.
+
+`gatherDaily` (`src/presets/daily/`) is the `daily-overview` facts adapter. For one UTC day it reads PRs opened
+and merged in each `--repo` (`gh pr list`), the top-level Claude Code sessions active in the window (`session-read`;
+subagent sidechains are left out), and the day's task deltas from `readTaskSnapshot`. That reader lists an
+initiative's tasks read-only (`active-work task list <slug> --status all`), stores the day as a `task-snapshot/v1`
+under `<data dir>/task-snapshots/`, and reports each task whose board column (done, owner-gated, blocked, or its
+status) changed against the latest earlier snapshot as `opened`, `closed`, `moved` or `owner-gated`. With no earlier
+snapshot it reports only what the task dates show. Every digest id comes from its source (`pr/<repo>#<n>/<change>`,
+`session/<id>`, `task/<id>/<change>`), never a clock, and items are sorted by id. `fixtures/daily/` is synthetic.
+
+`gatherArticle` (`src/presets/article/`) is the `paper-summary` profile's gather stage. It
+reads an article or paper as markdown text, kept in a directory of its own because the source
+is untrusted, and a list of proposed claims (from a model pass or a hand edit). It writes
+`facts.jsonl` (`ArticleFactSchema`) and `rejected.json`:
+
+- A claim or number is kept only when its quote is verbatim in the text, at most
+  `QUOTE_MAX_WORDS` (25) words, and, for a number, states the value. A failing claim is kept
+  in `rejected.json` with its reason.
+- Each captioned figure or table (`Figure 2: ...`, `Table 1: ...`) whose data the text carries
+  as a markdown table becomes a `figure/<id>` fact with its series, ready to re-plot. A figure
+  held only as an image is noted `W-FIGURE-NO-DATA`; a table of text is noted `W-TABLE-TEXT`.
+
+`paperPublishEligibility` (`src/article-checks.ts`) runs the profile's `publish.checks` over a
+paper video's `beats.json` against those facts. `figures-replotted-from-data` fails any image
+in a beat's slots, a `replot` whose `source.ref` is not a figure fact id or whose points are
+not that figure's data, and any other beat citing a figure fact. `quotes-short` fails any
+quote over the limit in the slots, the narration or the on-screen text. A check it does not
+know fails the video.
+
+Passing makes a video eligible to publish, nothing more. Publishing third-party text and
+figures needs the owner's explicit ask for that one video (owner Q4 B). No code here
+publishes, and eligibility never triggers a publish. `fixtures/article/demo/` is a synthetic
+paper the tests gather.
 
 `video_type` and each beat's `type` are open kebab-case strings on purpose. The doctrine
 registry under `products/explainer/doctrine/` now names the allowed beats, video types and
@@ -45,9 +102,25 @@ focus boxes that keeps them above the 83 % caption line.
 
 `script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
 (`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema
-unchanged. Every cue must be a word the beat speaks. `deriveEvalView` computes the view the
+unchanged. Every cue must be a word the beat speaks. The optional profile fields (`visual.layer`,
+`framing`, `anchors`, `scene`, a cue's `untilCue`, the script's `structure` and `signature_layer`)
+leave a legacy script parsing; `script-load.ts` (`parseScript`) also rejects a `structure` the
+registry lacks. `deriveEvalView` computes the view the
 evals read (`nodes_shown`, `you_are_here`, `state_changes`), and `migrateTourV0` lifts a
 spike tour to v1, writing `TODO:` for fields the spike never had.
+
+`anchor-grid.ts` is the frame as a 6×6 grid of named anchors: columns `A` to `F` left to right,
+rows `1` to `6` top to bottom, so `A1` is the top left. A script's `visual.anchors` and a
+template's slots (`placeSlots`) name cells or `B2:E5` ranges; `anchorsForBox` maps a pixel box to
+the cells it overlaps. `occupancy-table.ts` builds one table per settled mark, mapping each
+occupied anchor to the element ids on it. The DOM's `[data-el]` boxes place template beats. A
+custom layer that declares anchors adds `custom-layer` on them, and an undeclared custom layer
+(or a mark with no DOM elements) falls back to the frame's pixel 6×6 ink coverage, so line art
+is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lints read
+(`collisions`, `emptySpace`), and `anchorFindings` reports QA findings by beat, mark and anchor.
+`writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
+`stage-empty-checks.ts` (`emptyStageRuns`) fails a beat whose stage rect holds no content box (decor excluded) for more than
+`MAX_EMPTY_STAGE_SECONDS` (3 s) of sampled moments; the host's measure step feeds it one `StageMoment` per beat and time.
 
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
@@ -89,7 +162,7 @@ Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over 
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
+[--layout <layout.json>] [--timing <words.json>] [--facts <facts>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
 (`L0_CHECKS`: the map, why, evidence, voice, flow, pace, heteronym and visual-kind lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
@@ -110,8 +183,8 @@ and map_state `map`/`old`/`new` as the optional fields `ScriptSchema` admits. Th
 not the migrated form. More than two `video.invariants` no longer fail the parse: `Q-W6:invariant-cap` warns instead.
 
 `explainer guide plan [--stage plan|script] [--spine <spine.md>]` (default `plan`) prints the planner guide v0 as markdown: the
-intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rules, and the story-spine template
-(`doctrine/guides/spine-template.md`: problem, one task's journey, architecture, constraints, item ledger, cut list,
+intro (`doctrine/guides/planner-v0.md`), the stage's `sliceForStage` prompt rules for a `design-journey` video, and that
+structure's story-spine template (`doctrine/structures/design-journey.yaml`: problem, one task's journey, architecture, constraints, item ledger, cut list,
 chapter order). Code-enforced rules never appear, so the thresholds a lint checks (the cap on new items in a beat,
 the digest gap) reach the planner only as L0 failures. With `--spine` (or `guidePlan`'s `spine` dep) the guide ends with the spine's rows and ledger per act (chapter). It exits 2 on an unknown stage.
 
@@ -134,7 +207,7 @@ usage or an input or judge config that does not parse. Run `explainer eval smoke
 `explainer rewrite measure <script.json...> --judge <judge.json> --out-dir <dir> [--samples 3] [--format spike|v1]
 [--rounds 1|2] [--speech-vet] [--max-usd <usd>] [--report-only <input:row>]` measures the pass over model noise: one
 run cannot tell a 1σ gain from a lucky draw. It runs the pass `--samples` times on each input, sample by sample, and
-scores each output with L0. Under `<dir>/<input>/` it writes `before.l0.json` and, per sample, `s<k>.rewrite.json`,
+scores each output with L0 as `eval l0` does (under `--speech-vet`, Q-V9 reads the vetter's verdicts). Under `<dir>/<input>/` it writes `before.l0.json` and, per sample, `s<k>.rewrite.json`,
 `s<k>.report.json` and `s<k>.l0.json`. `summarizeMeasure` then reports, per input and target row, the mean, the sample
 sd and n, whether the mean is in band and closer to it than before, and whether it is decided: further from the band
 edge than its one-sided 90% t interval. Per row it reports the mean over inputs, σ (one sample's sd pooled over the
@@ -142,8 +215,285 @@ inputs) and the verdict under the revised done-when: every input closer, and the
 1σ of it. A `--report-only` cell still counts toward its row's mean, but its input need not move closer. Results go to
 `<dir>/measure.json` and `<dir>/table.md`. Each run prints one JSON line with its spend and the running total, and a
 last line gives the verdict. `--max-usd` stops before a run whose cost, estimated as the dearest run so far, would take
-the total past the cap. A run already in `<dir>` is reused and its spend counted, so a stopped measure can be resumed.
+the total past the cap. A run already in `<dir>` is reused and its spend counted (its L0 is re-scored, at no cost), so a stopped measure can be resumed.
 Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
+
+### `explainer run`: one video end to end
+
+`explainer run [--spine <spine.md> --facts <facts.md>] [--from <stage>] [--to <stage>] [--base <runId>]
+[--pin <name=sha>]... [--variant <stage=file>]... [--sample <stage=k>]... [--video <id>] [--budget-usd 20]
+[--script-model sonnet] [--judge <judge.json>] [--rounds 1|2] [--listener-questions] [--listener-threshold <q>]
+[--data-dir <dir>]` makes one video as an
+`explainer-video` run on `@titan-design/workflow` (`src/workflow/`, the corpus-query host pattern). The data dir
+(default: the per-user data dir) holds `state.sqlite3`, the content-addressed artifact store `artifacts/<sha256>`
+(a directory is stored as a tree of file shas), one `runs/<runId>/` directory per run, and the bridge host file
+`bridge.json`. Each stage is one code step of the parent, in this order; every stage but `export` runs as its own
+`explainer.<stage>` child workflow behind the stage cache (below):
+
+| Stage | Path | Inputs → outputs |
+|---|---|---|
+| `gather` | in-process: the profile's gather body (`gatherDaily`, `gatherPr` or `gatherArticle`) on the run's gather request, which is the stage's key, written into its gather directory as well. A `gatherPr` gather refuses a head other than the one the gate named, and also stores `code` (`{ files }`, each changed file the head still has) for resolve's code citations. Optional: a run takes it only when it starts there, with `--from gather --facts-from <adapter>` (the type's profile, and so the audition's, by default); re-gathering the same request needs `--sample gather=<k>` | (the outside world) → facts, code |
+| `audition` | in-process: the material map and the fit predicates, then one sampling call for k spines, code scores, the reported-only cold-viewer rubric per candidate, and the pick (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map, audition, and spine for a profile with `spine: { from: audition-pick }` |
+| `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
+| `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
+| `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
+| `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them) → resolved |
+| `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
+| `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
+| `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
+
+**Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
+call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
+bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt
+cache and each later call reads it. The prompt then holds that chapter's facts slice (`script-facts.ts`: the rows the
+facts table's Beats column or the spine's Cites table places in this chapter, plus every row placed nowhere), what is
+written so far (the video fields, the glossary, the names declared in `new_terms`, the beats' planned seconds and the
+last beat), and that chapter's task. The whole-video round gets the whole facts pack, and L0 always reads all of it.
+The first chapter writes the video fields; a later one adds only glossary entries. Each chapter gets one schema or
+word-budget retry and up to `CHAPTER_REPAIR_ROUNDS` repair calls on the rules `rules.yaml` marks `scope: chapter`,
+measured on the chapters so far with the unwritten ones as bare entries. A repair round shows the whole chapter but
+asks back only the beats its failing rows name (`chapter-patch.ts`), keyed by beat id; they are spliced in place, ids
+and order kept, and the chapter's rules run again on the spliced chapter. A reply naming any other set of beats is
+rejected and retried once in the same round, never merged. A round with a row that names the chapter rather than a beat
+(Q-W3, Q-W4 or Q-W6 when the chapter lacks the beat they read, Q-W10, Q-V4 on a "Chapter ..." label) asks back the
+whole chapter as before. The chapters then join in the spine's order,
+the ledger stamp runs, and the whole script gets one repair round (`VIDEO_REPAIR_ROUNDS`) whose reply lists only the beats
+and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `unknown-words`, `word-budget`, `runtime`)
+run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
+dollars and prompt-cache tokens read and written, and the path stops itself at the run's spend cap between calls.
+
+**The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
+script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`
+(`explainer.chapter-links/v1`: the doc's name and sha, and per chapter its section, `href` and the anchor of each fact
+it cites). The doc holds every gathered fact, one section per repo-tour block in the tour's order, anchored by the
+block id. A chapter's blocks come from its spine §8 row (`§3.n` names journey row n, whose step is the block) or, with
+no row, block n for chapter n; a chapter that merges blocks links the first. The doc depends only on the facts, so the
+tour and its review-digest cut over one review link the same bytes. The script stage is the first that holds both the
+facts and the chapters, and later stages keep the chapter ids, so resolve can fill a `companion-link` card from the
+links. A chapter that plays no tour block links the contents (`W-CHAPTER-UNMAPPED`), and a review with no SUMMARY
+facts warns `W-NO-SUMMARY`; both land in the stage's notes. Resolve fills each `companion-link` beat's `slots`
+(`title`, `section`, `href`) from its chapter's link, and notes a card whose chapter has none (TP-4107). Export
+links `companion` as exactly `companion.md` in the theater folder, never `<stem><suffix>`, whether or not
+`bridge.json` lists it, so the relative `companion.md#<anchor>` hrefs resolve beside the video.
+
+**The tts stage (TP-2615).** Each beat's `spoken` text is voiced by speech-tts Kokoro (Kokoro-82M at fp32 over
+speech-g2p misaki English, on the host's speech runtime) with `unknownWords: "fail"`, so a word with no phonemes
+fails the stage before any audio is made. The voice and its rate are the run profile's voice band (`--profile`); a
+tts variant may set `voice` and `rate`, and a run with no profile speaks as `af_heart` at 1. Each beat speaks at its
+beat type's speech band (TP-2670): the stage reads the band from the `resolved` artifact and its words a minute from
+`doctrine/speech-bands.yaml` (story 195, concept 175, code 160, takeaways 180, held 175), times the voice rate.
+speech-tts `calibrateSpeed` steps Kokoro's speed until the measured articulation rate (pauses of 0.25 s or more not
+counted) is within 5 wpm, as the bridge's `gen_audio.py` did, and truing reads the calibrated take. The engine's own word
+times are re-timed against the script words (the port of the template's `realign.py`: number words meet digits,
+hyphenated words meet their parts, and `HOMOPHONES` in `src/lexicon.ts` maps a heard spelling to the script's word;
+an unmatched run shares the gap between its neighbours). A beat lasts `max(plannedS, 0.3 s lead + speech + 0.6 s
+tail)`, rounded up to a whole frame at 30 fps, and its WAV starts with the lead's silence. The stage writes the
+`audio` tree (`<beat>.wav`), `words.json` (`explainer.words/v1`: per beat `startS`, `durationS`, `words` and `heard`
+relative to the beat start, and `absolute`, every word on the video timeline) and `voice.json` (`explainer.voice/v2`:
+provider, engine build, voice, rate and where they came from, and per beat its band, target words a minute, the speed
+found and the rate measured). Takes are cached per beat in `<dataDir>/tts-takes/` under
+`sha(spoken, voice, words a minute, engine version)`, so a re-voiced script synthesizes only the beats whose text or band changed and
+keeps the others' audio byte for byte. A host `bridge.json` that still has a `tts` block is refused: delete it, and
+move any command it ran besides TTS (a sample builder) to the start of `render`.
+
+The bridge is temporary: it runs today's template commands, Python included, from a host file kept outside the repo,
+so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
+(`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
+the commands run), `outputs` (name → path, `tree: true` for a directory) and `commands` (`argv`, optional `cwd`,
+`env`, `timeoutS`, `check`, which records the command's verdict, and `gate`, `true` by default; a `check` command
+with `gate: false` is reported only, so its non-zero exit records a failed verdict and the commands after it still
+run), plus `vars`, the defaults for `{var.<name>}`
+tokens a stage variant may set. `{workdir}`, `{in.<name>}` and `{out.<name>}` expand to absolute paths. `theater`
+names the folder, the file stem and the suffix per artifact for `export`; `--theater <dir>` links into another folder
+instead. A type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads
+`bridges/<name>.json` from the per-user explainer data dir, whatever `--data-dir` says, so one host bridge serves
+every run of the type with no per-run copy. A bridged stage's `inputs` are also its
+cache key: declare every artifact its commands read (the MP4 for `qa` and `sheets`), or a new render will hit an old
+QA entry.
+
+**Checks as stage steps.** Each `explainer.<stage>` child run is two code steps: the body, then `checks:<stage>`,
+which runs the stage's deterministic checks from the workflow plan's §5.1 over its input and output artifacts. Every
+verdict carries `gate`: a failed gate check fails the stage (and the run) and its record, verdicts included, lands in
+`failed/<stage>.json`; a reported check only shows in the report. A check whose artifact the stage did not produce is
+skipped with a note.
+
+| Stage | Gate | Reported |
+|---|---|---|
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
+| `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
+
+**Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
+chapter of the draft once, with nothing before it, and lists every question the chapter raises and leaves
+unanswered, each tagged with the sentence (`S1`, `S2`, ...) that raised it. Its verdict gives the questions and
+sentences per chapter and the density (questions a sentence), and counts three flags that code, not the listener,
+decides: a list spread over two or more sentences (the listener's lists, and any list a "Then ..." sentence carries
+on), a term asked about, placed at the first sentence that speaks it, and fragments (the listener's, and any sentence
+of three words or fewer). It calls a model, so it runs only under `--listener-questions`, on the `--judge` model, and
+its spend is the script stage's. It is reported, never a gate: with no threshold it passes on any density, and
+`--listener-threshold <q>` reports red a chapter above `q` questions a sentence. A cached script stage keeps the checks
+it ran with; use `--sample script=<k>` to run the check on a draft already made. `explainer eval listener` runs the
+same exercise on a script file.
+| `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
+| `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
+| `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
+
+The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
+speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism
+(TP-2992), the QA sweep gates (TP-2610, TP-2669, TP-2998), and the variety lints (PP-9). Each becomes a row of
+`STAGE_CHECKS` in `src/workflow/stage-checks.ts`, or a `check` command while its stage is bridged. The judges stay
+reported only until the owner labels about 20 items to calibrate them (owner answer Q6 A).
+
+The checks are also the `products/evals/units/explainer-*` suites. Scoring them over cases into a scorecard waits on
+TP-690; until then `explainer stage <name> --json` prints a stage's record with its verdicts, even when a gate failed
+(exit 1), which is what a check engine reads.
+
+**Stage cache.** A stage's key is `sha(stage, definition version, config, the input shas it reads, sample)`. The
+config is the run's settings for that stage (script model; judge and rounds; for a bridged stage its whole
+`bridge.json` block and `vars`) with the stage variant's params laid over them. Outputs are never keyed: Kokoro TTS
+does not reproduce its audio byte for byte, so a stage downstream of TTS keys on the shas TTS actually wrote. The
+`explainer_stage_runs` table in `state.sqlite3` maps a key to its child run, status and outputs. A finished key
+returns its outputs at no cost (status `cached` in the report). A key whose child is still running, here or orphaned
+by a crash, is adopted rather than started twice; the row is committed with the child's run row. A failed key starts
+a fresh child.
+
+A variant file (`explainer.variant/v1`: `stage`, `name`, `params`) sets `model` for `script`, `model` and `rounds`
+for `rewrite`, and any declared `vars` for a bridged stage; `--variant render=w8.json` reruns render and whatever
+reads its outputs. A render variant may also set `stylePack` to a pack in `doctrine/style-packs/`: the pack's
+content hash joins the render key (an edit to the pack's file misses the cache), and the bridge gets `{var.stylePack}`,
+`{var.styleTheme}` (`dark` or `light`) and `{var.styleCss}` (`--pack-<slot>: var(--<token>);` per slot). No other
+stage takes a pack, so a new pack reruns render and never TTS. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
+`--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
+the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
+
+`explainer stage <name> --in <name=sha>... [--variant <file>] [--sample k] [--profile <type>] [--json] [--data-dir <dir>]`
+runs one stage from stored artifacts through the same cache, with no parent run, and prints whether it hit, its
+child run, key, spend, output shas, check verdicts and notes. Exit 0 when it finished, 1 when it failed, 2 on usage.
+
+**Material map** (`audition`, plan §A.3 step 1). `parseFacts` reads a facts pack: JSON lines of gather facts, or the
+rows of every markdown table whose header has an `Id` column. A cue lexicon (`material-cues.ts`) marks each fact as
+material: claims, tensions, changes, quantities, time series, mechanisms, flows and parallel items. One rule per
+`vocabulary.yaml` signal (`material-signals.ts`) says whether it holds and which facts carry it; a signal no rule can
+read without judgement (`elegant-idea`) is listed in `gaps`, never sent to a model. Each registered structure's fit
+predicate is scored on the signals and the profile's `runtime.targetS`, with one reason per term; a predicate whose
+outcome turns on a gap is `undecided`. `candidates` are the structures that fit and that the profile allows (its
+fixed macro, or its heuristic rows, macros and fallback). The stage key covers the facts sha, the profile's version
+and content hash, and a hash over the structure registry, so a doctrine edit is a new key; a body whose doctrine no
+longer matches its key refuses. `material-map.json` holds fact ids and cue words, not the facts' text.
+
+**Audition** (plan §A.3 steps 2 to 5). After the map, the stage builds a pool of structures and samples one spine
+for each slot of it, in one call to the run's script model (`SAMPLE_CALL_USD` caps the call):
+- **Pool** (`audition-pool.ts`). Every candidate, in the profile's heuristic order. When fewer than the profile's
+  `audition.k` fit, allowed structures that are `undecided` top the pool up: an undecided structure is never a
+  candidate on its own, only fills a slot after every fitting one, and counts each gap term as half met in its fit
+  score. With **0 candidates** the profile's fixed macro (or a heuristic profile's `fallback`) leads the pool, and
+  `audition.json` records `fallback` with the reason (which allowed structures did not fit, and which fit but are
+  not allowed). A pool shorter than k is cycled, each repeat under the next beat system the profile binds to that
+  structure, so a fixed tour samples k spines under different systems.
+- **Sampling** (`audition-sample.ts`). Verbalized sampling: the call returns one spine per slot, each with a stated
+  likelihood, its ABT or SCQA sentence, hook fact, block questions with fact ids and lead beat, the payoff block,
+  the signature layer and its cuts. A reply that names an unknown fact, a block out of order, a beat or coverage
+  item the profile does not list, or the wrong slot is retried once with its issues, then fails the stage with its
+  spend recorded; nothing is adopted unscored.
+- **Scores** (`audition-score.ts`), each 0 to 1. Fit: the share of the predicate's terms met. Coverage reads only
+  the fact ids the hook and blocks cite, never the spine's own `covers` tags: the share of anchor facts placed (the
+  pack's P1 facts, or with none marked, the facts behind the holding signals the structure's fit reads), averaged
+  with the share of coverage items a cited fact evidences by cue (`COVERAGE_CUES`), over the items some fact in the
+  pack evidences. A block with a `maxItems` cap in its structure (countdown: five) earns anchor credit for its first
+  `maxItems` anchor facts only, and the candidate's `findings` in `audition.json` and the stage notes name the excess.
+  Tension: stake by 15 %, complication by 25 %, a re-hook, payoff by 40 %. The re-hook check scales
+  each block to the profile's target runtime and holds it to the profile's `reHookS` ceiling, or to the block's own
+  band when the profile bands it longer: supports (60 to 120 s) and countdown (90 to 150 s) are runs of items, each
+  its own re-hook. Range: distinct lead beats over blocks, until the resolver (PP-6) can say what it would draw.
+  Freshness: the profile's must-vary `structure` and `signature-layer` against the series window; 1 until the PP-9
+  fingerprint records the series (TP-4019). The cold-viewer rubric (J8 to J12) runs on every candidate's hook,
+  signature layer and block questions and is recorded only. Only the signature layer goes on screen, so J12 (visual
+  consistency) is skipped with a reason in `skipped` while a storyboard has fewer than two quotable visuals.
+- **Pick.** The agent picks with no owner gate: the highest code total, ties to the higher stated likelihood, then
+  the earlier slot. `audition.json` (`audition/v1`) keeps every candidate with its spine and scores, the pick, the
+  runner-up and the margin, and the stage notes name the pick and the runner-up for the render notes. `pick.chapters`
+  maps script chapter n to the profile block that block n of the picked spine plays (null when the profile names no
+  such block), so per-block word caps can apply downstream. The stage
+  stops at the storyboard: it writes no script and renders nothing. A profile that declares `spine: { from:
+  audition-pick }` (pr-overview) also gets `spine`, the pick as a `spine/v1` story spine (`pickSpine`): block n is
+  journey step n and chapter n, and the ledger lists each cited fact by id; a run through the script then needs no
+  `--spine`. A gate check, `audition-scored`, fails the stage
+  if fewer than k candidates carry code scores. The stage key adds the sampling model and the judge.
+
+**Samples and the noise floor (TP-4034).** A model stage's output varies run to run as much as a tuning round moves
+it (TP-3878), so one sample decides nothing. `script` and `rewrite` take samples; each scores its script (the draft;
+for rewrite the rewritten script, with the input draft as the before) on the five Q-V11 target rows and reports
+through `summarizeMeasure`: per cell the mean, sample sd and n, and per row σ, one sample's noise pooled over cases.
+
+- `explainer stage <script|rewrite> --in ... --samples n [--sample k] [--max-usd <usd>]` runs sample indices `k` to
+  `k + n - 1`, each a cached run of its own, so a repeat measure reuses what it has. A sample whose stage failed a
+  gate still counts (its script exists); one that made no script is listed and left out. Exit 1 when a sample made
+  no script or `--max-usd` stopped the measure.
+- `explainer aa-floor --stage <s> --cases <dir|file...> [--split dev] [--samples 3] [--unit-dir <dir>] [--out <file>]`
+  runs the champion against itself: arm A on sample indices 0 to n-1, arm B on n to 2n-1, over the case split
+  (`products/evals/units/explainer-<stage>/cases`, `dev` by default). σ per row is pooled within each arm. With
+  `--unit-dir` it writes the floor to the unit's `notes.md` (a marked section a new floor replaces) and
+  `aa-floor.json`, stamped with the stage version it measured.
+- `explainer ab --stage <s> --variants <a> <b> --cases <dir|file...> [--samples 3] [--floor <aa-floor.json|unit dir>]`
+  runs both arms (`champion` names the run's own settings) and judges each row's B minus A: within 2σ is `noise`
+  however it points; past it, `win` or `loss` when B's mean sits nearer or further from the band than A's, `shift`
+  when both are equally near (both in band). σ comes from `--floor`, else from the arms' own pooled σ (`unknown`
+  with one sample and no floor).
+
+All three take the stage settings of `explainer stage` and `--max-usd`, which stops before a run the dearest run so
+far says would pass it, with one cap over both arms.
+
+Every stage record holds its own `startedAt`, `endedAt`, usage (usd, tokens in, out and cache read, calls), retries,
+checks and output shas. `--from <stage>` reuses the base run's records for the stages before it at no cost. A run
+with a base belongs to the base run's video (`--video` names one outright); a run ends when the MP4 reaches the
+theater, and a follow-up run from stored artifacts joins the same video. A stage with no input fails at once, naming the missing artifact. `--budget-usd` is a high
+runaway backstop: once model spend reaches it, the run stops before the next stage, writes `stop.json` naming that
+stage, and fails. `explainer run resume <runId> [--budget-usd <usd>]` drives a crashed run on, or starts a run linked
+to a stopped or failed one from the stage it did not finish. `explainer run report <runId> [--json]` writes
+`run-report.md` and `run-report.json` into the run directory: per stage the wall time and its share, usd and its share,
+tokens, calls, retries, whether it was reused (a cache hit), check counts (pass, gate fail, reported fail) and
+output shas, with each bridged stage marked, a "Checks" table with every verdict, its role and its detail, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
+stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
+`--facts-from gatherDaily --type daily-overview [--day <YYYY-MM-DD>] [--repo <owner/name>]... [--transcripts <dir>]...
+[--initiative <slug>]` replaces `--facts`: the adapter writes `digest.json` and `facts.md` under
+`<data dir>/gather/<type>/<day>/`, and the run starts from that facts pack. `--facts-from gatherArticle --type
+paper-summary --article <path> --claims <path> [--label <text>]` writes `facts.jsonl` and `rejected.json` there
+instead; the article and claims are keyed by content, and a file edited after the run was planned fails the gather.
+The type's profile must list the adapter in `inputs.adapters`. With `--from gather` the gather runs as the run's
+first stage; from any later stage it runs before the run. `--dry-run` gathers (or, from `gather`, names the adapter),
+prints the plan and stops before any stage.
+`run` writes the report itself when it ends. Exit 0 on a completed run, 1 on
+a stopped or failed one, 2 on usage.
+
+### `explainer pr`: PR videos
+
+`gatherPr` (`src/presets/pr-overview/`) is the pr-overview profile's gather stage body (`inputs.adapters:
+[gatherPr]`). `explainer pr gather <owner/repo#N> --clone <dir> --out <dir>` runs it on request. It reads the PR
+through two `gh pr` calls (`view --json` and `diff`), and indexes the head commit's tree with code-graph from the
+clone's git objects, so the clone needs the commit (`git fetch origin pull/N/head`) but no checkout of it. It writes
+`facts.jsonl` (`PrFactSchema`, sorted by kind then id) and `gather.json` (outcome and diagnostics):
+
+| Kind | Id | Feeds |
+|---|---|---|
+| `pr` | `pr` | `summary`: title, linked task, head sha |
+| `change` | `change:<path>` | `changes`: status, +/- counts, head-side hunk line spans |
+| `finding` | `finding:<sha256(origin, body)[:12]>` | `shortcomings`: each review or comment with a body, and its `Verdict:` |
+| `call` | `call:<from>-><to>` | `interactions`, the sequence slot: calls between two different changed files |
+
+Ids come from content, never position, so two gathers of one head write the same bytes and a new comment renumbers
+nothing. Refusals (`PR_GATHER_CODES`, no `facts.jsonl`): `E-PR-REF`, `E-PR-READ`, `E-EMPTY-DIFF`, `E-LINKED-TASK`
+(no task id in the title, body or branch: the profile's `linked-task` precondition), `E-CALLGRAPH` (the clone cannot
+index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and still gather.
+
+`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--through audition|script] [--json] [--data-dir <dir>]` is the only
+automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
+only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+Every other PR, seat gates and other owner holds included, is on request only. A start writes
+`<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`), then
+runs an `explainer-video` run from `gather` to `audition` (`briefRunStart`). `--through script` opts in to the script as well, planned on the spine the audition writes from its pick, at about $1 more a head; it is off by default while most champion scripts still fail L0 (TP-4095), so most such runs would pay to end `refused`: the gather stage writes `facts.jsonl` and
+`gather.json` into the same directory, and `run.json` names the run, its status and each stage's status. A directory
+that already holds `brief.json` is `already`, so a repeated sweep starts each head once. Right before each start the
+sweep reads the gates again, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
+run it by hand, or from whatever the owner wires. Exit 0, or 1 when a start was refused.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
 [--rules <registry>] [--bench <dir>] [--parent <sha>]` runs only the pace lints (`paceCheck`'s
@@ -177,12 +527,27 @@ that shows a new item the ledger lacks, or first shows an item whose defining be
 script order. A script whose profile is in `SPINE_PROFILES` (`design-explainer`) fails Q-E17 without a
 spine; any other profile passes both rows when it has none.
 
-`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 (FB1)
+`spineCheck` (`src/lint-spine.ts`) adds two error rows, and only when a spine is supplied. Q-E15 runs
+only for a script whose `structure` is `design-journey` or that names none, as a legacy script does. Q-E15 (FB1)
 fails a chapter whose §8 row cites a §4 architecture row before the first chapter that cites a §3
 journey row, and a journey step whose "why" is empty; chapters are ordered by position in §8, never by
 id. Q-E18 (FB6) fails an invariant (a §3 invariant column or `video.invariants`) that no §4 row states a
 mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script> --spine <spine.md>`
-reads the spine for all of these; without `--spine` a rule claiming Q-E15 or Q-E18 is not a ghost.
+reads the spine for all of these; without `--spine`, or for Q-E15 under another structure, a rule claiming the
+skipped check is not a ghost.
+
+`claimsCheckWith(facts)` (`src/lint-claims.ts`) runs Q-E20 over gathered facts of any profile. It reads each beat's
+spoken line, headline, labels and chips, with spelled numbers read as digits ("PD-three hundred ten" is PD-310).
+A pull request (`PR 12`, `#12`, `owner/repo#12`, or a short repo such as `ac#12`) or a task id must appear in some
+fact's id or fields. A count, a number with a known noun or a state ("three open PRs", "79 merged"), must equal a
+value in a fact the beat cites, or the number of cited facts that carry its noun and state; a beat that cites
+none reads every fact. Ordinals and durations never read as counts; `NOT_A_CLAIM` skips an index ("chapter 2
+merged"), a year after "in" or "since", and a pronoun "one" ("which one merged"). Each
+unbacked claim is a `claimFindings` row naming the beat, the claim and the nearest fact, and the error row fails
+those beats. The registered `claimsCheck` has no facts, so it emits a passing Q-E20 warning that says the check
+did not run. Every L0 call site swaps it for `claimsCheckWith` over the gathered facts (`src/claim-facts.ts`): the
+script, rewrite and eval stages read the run's `facts` artifact, and `eval l0 --facts` reads a daily `digest.json`
+or a facts pack. The script stage's repair hint then names the nearest fact for each unbacked claim.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set
@@ -195,6 +560,34 @@ prints precision and recall per check, and the owner-named recall: the share of 
 beats that fail at least one error-severity row. Borderline labels count as neither a hit nor
 a false positive, a flagged beat with no label is reported as unlabelled, and a check no row
 carries is "not run", not zero.
+
+**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, and L1's
+beat dimensions) stay reported only until the owner's labels show they agree with the owner.
+
+- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--size 20]
+  [--seed <s>]` reads a `calibration-manifest/v1` file. For each case the file gives its script, the bench the
+  judges wrote to, its video type, split and owner-named flag, and `format` (`v1`, or `spike` for a spike-era
+  script). Keep the manifest outside this repo, because it names private scripts.
+- The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
+  than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
+  last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
+  no question:
+  - cold probe: does the chapter answer the question the viewer was asked about an item, in that kind's own
+    words (what-why, invariant or term), with a score above 0? An `inv` item gives two questions.
+  - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
+  - L1: does the beat pass a B dimension?
+- It drops holdout and owner-named cases. Judges take turns, so each gets an even share of the queue; within a
+  judge, its video types and verdicts also take turns.
+- It writes `round.json`, a questions-only console round with one section per video. A section shows the script
+  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones. The round shows no judge
+  name, verdict or recommendation. The verdicts go to the answer key, which is kept outside the round directory.
+  The command never overwrites an existing round or key.
+- `explainer eval calibrate agreement --key <key.json> --feedback <round>/feedback.json [--record <file>]
+  [--format table|json]` reads the owner's labels from the console's `feedback.json`. For each judge it prints the
+  labelled and can't-tell counts, the agreement (the share of labelled items where owner and judge agree), and the
+  recall on the items the owner failed. `--record` writes the `judge-agreement/v1` record.
+- `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
+  agreement below 0.8. The evals units test checks that every judge check stays `reported`.
 
 L1 and L2 are the model-judged layers. The judge is configuration, never a constant: a JSON
 file names `provider` (`claude-print`, the Claude CLI's own login, or `codex`, a cached
@@ -258,6 +651,11 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   invariant, or no §4 part whose mechanism keeps it, fails with no model call, and a chapter of
   only such seats makes no call and has no canary row. Spine runs get their own eval_version; runs
   without `--spine` keep theirs.
+- `explainer eval listener <script.json> --judge <judge.json> [--format spike|v1] [--threshold <q>] [--out
+  <result.json>]` runs the listener-questions exercise (eval id `L1-listener`, above) on a script file, one call a
+  chapter, and prints one line: questions, sentences and density, overall and per chapter, with each chapter's
+  questions per sentence and flags. `--out` writes the whole `ListenerResultSchema` result, every question with its
+  sentence. It exits 1 when a chapter is above `--threshold` or a call fails.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
 
@@ -266,3 +664,62 @@ A verdict with no quote, or a quote not in that beat's text on that track, is vo
 scores 0 (L2, cold). Every beat call ends with one known-bad canary beat, and every viewer call
 asks about a component that does not exist. A run whose judge passes a canary, or whose call
 fails, is untrusted: its rows are still written, and the command exits 1.
+
+### Emphasis mapping and the target gate
+
+A script beat's `visual.cues` are its emphasis cues. Each one maps a spoken span, `atCue` to `untilCue`, to
+`target`: the id of one element in the beat. The optional `visual.beat` names the beat spec, and the spec's
+`emphasis.targets` lists the slot lists whose item ids a cue may name. How the element is emphasised (pointer,
+highlight, trace, scale, colour, camera) is the template's choice from the spec's `treatments`. This package adds no
+pointer layer and no default treatment.
+
+- `emphasisCues(beat)` lists each cue's word range and target. `targetsForSpan(beat, span, timings?)` maps a word
+  range, or a time range through the beat's word timings, to the targets whose cues overlap it.
+- `emphasisTargetGate({ beats, specs, slots, layout?, marks? })` is the resolve stage's gate. It fails a cue when:
+  - its beat names no spec (`no-beat-spec`), or the beat's slots fail the spec (`bad-slots`);
+  - the target names no element (`no-element`), or names more than one, such as a node and an edge that share an id
+    (`ambiguous`);
+  - once laid out, the element's box is missing or not wholly inside the frame (`off-frame`);
+  - given the mark frames either side of the step, the step changes under 2 % of the target's box. A pixel counts as
+    changed when a channel moves by more than 8 levels (`unchanged`; `changedShare`, `emphasisStepChanges`).
+- `emphasisGateVerdict` gives the result as a stage check's `{ pass, detail }`. The `resolve` stage registers it as
+  its `emphasis-target` gate (below).
+
+Stubbed: the mark frames come from beat-aware marks (TP-3000), which are not built yet. The rule takes two decoded
+RGBA frames and the target box, and its tests use synthetic frames. `fixtures/emphasis/` holds a synthetic script,
+slots and layout.
+
+### The resolve stage
+
+`explainer.resolve` (workflow plan §2.3 stage 6, profiles plan slice 6) runs after `eval` and before `tts`. It reads
+the rewritten `script` and, when a pin or an earlier stage supplies them, `code` (`{ "files": { path: text } }`, the
+cited files at the video's sha), `slots` (template slots by beat id) and `layout` (element boxes). Its config pins the
+beat specs, profiles, pinned router, speech bands and resolver rows by content hash, so a doctrine or table edit is a
+new stage key.
+
+- **Resolver tables** (`resolve-tables.ts`). Each beat's key is `{function, job, content, route}`: `content` is
+  `code`, `map`, `items` or `statement`, read off the visual track, and `route` is the visual-router type its `kind`
+  names, or `none`. `RESOLVE_ROWS` is ordered, most specific first, and the first matching row picks
+  `{beat, framing, layer}`. `FRAMING_ANCHORS` gives the anchors. The beat spec gives the component and speech band. An
+  authored `visual.beat`, `framing`, `layer` or `anchors` overrides the row. No row matches everything. A HOW
+  beat's `code-proof` with no excerpt resolves to `proof` at the code band (TP-4093); one with an excerpt is a
+  `code-walk`.
+- **Refusals** (`resolve-beat.ts`, `resolve-citation.ts`) are coded and listed together in one `ResolveError`, before
+  the stage stores anything:
+  - `E-RESOLVE-NO-ROW`: no row matches. There is no list fallback.
+  - `E-RESOLVE-JOB-UNSET`: the job is still a placeholder.
+  - `E-RESOLVE-UNKNOWN-BEAT`: the beat spec is not in the registry.
+  - `E-RESOLVE-STILL-MOTION`: a `cast-in-motion` beat is not on a custom layer.
+  - `E-RESOLVE-CITATION`: a code beat cites a missing file, a range past the end of the file or a highlight outside
+    its range, or the run has no `code` artifact. This is evidence's `verifyRange`, the quote-free half of
+    `verifyCitation`.
+- **Word budget** (`resolve-budget.ts`). A beat holds `floor(plannedS × rate)` words at its beat type's speech band:
+  story 3.2, concept 2.8, code 2.3, takeaways 2.8 and held 1.5 words a second (TP-2670), read from
+  `doctrine/speech-bands.yaml`, which also joins the resolve stage's doctrine sha. A chapter whose id names a
+  profile block is also held to that block's longest airtime at the fastest rate its beat types allow. Other
+  chapters are listed in a note and not capped.
+- **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,
+  layer and anchors, plus every budget row.
+- **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
+  chose. It is skipped with a note until a `slots` artifact exists; template fill (TP-2614 D3) will write one.
+  `word-budget` fails on any beat or block over its cap.

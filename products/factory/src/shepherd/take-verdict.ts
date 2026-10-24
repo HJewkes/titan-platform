@@ -15,6 +15,7 @@ import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { publishReview } from "./publish-review.js";
 import { Awaited } from "./review-schemas.js";
 import { dispatchedNone } from "./review-stop.js";
+import { enforceScope, type ScopeRound } from "./scope-check-round.js";
 
 /** A timed-out reviewer that has not exited is read once more under this step. */
 export const LATE_VERDICT_STEP = "sh-late-verdict";
@@ -88,16 +89,17 @@ function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: AwaitedRe
  * A dispatched reviewer that missed the wait is read once more, so a late MERGE is a MERGE, not a no-facts gate, and a malformed
  * final message gets one correction turn. A reviewer stopped by its account's usage limit, read on time, late or as the
  * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer. An own MERGE a seat WAIT held
- * has its verdict already, so it is neither read late nor corrected.
+ * has its verdict already, so it is neither read late nor corrected. A scoped fix round's FIX_FIRST is checked against its scope.
  */
-export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
+export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, scope?: ScopeRound): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
   if (heldOnTime) return { held: await heldOnTime };
   if (heldMergeOf(onTime)) return { awaited: onTime };
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   const correction = { ownerBrief: asksOwnerBrief(ctx), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
-  const awaited = dispatchedReviewer && !("external" in awaiting) && !heldMergeOf(late) ? await correctOnce(ctx, awaiting, late, correction) : late;
+  const corrected = dispatchedReviewer && !("external" in awaiting) && !heldMergeOf(late) ? await correctOnce(ctx, awaiting, late, correction) : late;
+  const awaited = scope && !("external" in awaiting) ? await enforceScope(ctx, awaiting, corrected, { ...scope, ownerBrief: correction.ownerBrief }) : corrected;
   const heldLate = limitHeld(ctx, target, awaited, dispatchedReviewer, account);
   return heldLate ? { held: await heldLate } : { awaited };
 }
@@ -107,8 +109,8 @@ export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, aw
  * Shepherd dispatched has its CI-unread-only FIX_FIRST taken as no verdict, since only its brief carries Shepherd's CI read. The caller
  * passes the round's fix-proof standing: an empty one reads as verified and drops `proofUnverified` from the MERGE.
  */
-export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding): Promise<Verdict> {
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
+export async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, standing: ProofStanding, scope?: ScopeRound): Promise<Verdict> {
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
   if ("held" in taken) return taken.held;
   const verdict = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing);
   return dispatchedReviewer && !("external" in awaiting) ? ciUnreadAsNone(ctx, target.head, verdict) : verdict;

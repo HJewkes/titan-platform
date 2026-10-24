@@ -3958,11 +3958,6 @@
       "count": 1
     }
   },
-  "products/factory/src/workflows.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
   "products/factory/src/workflows/await-head.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

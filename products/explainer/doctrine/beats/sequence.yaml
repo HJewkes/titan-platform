@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: sequence
+summary: "Who calls whom, in order: actors, lifelines and messages."
+role: explain
+component: { name: SequenceDiagram, maturity: doc }
+slots: sequence
+speech: { band: concept }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [actors, messages], treatments: [trace, highlight] }
+recipe: "Use only when interactions are the point, such as a changed call path. Two to six actors; messages appear in order as they are said."

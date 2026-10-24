@@ -167,17 +167,50 @@ describe("judge with mutation specs", () => {
     expect(provedByMutants(result)).toBe(true);
   });
 
+  describe("a diff that changes only the spec beside an unchanged test", () => {
+    const judgeSpecOnly = async (baseFiles: Record<string, string>, mutants: string) => {
+      const repo = makeRepo({}, undefined, baseFiles);
+      const head = repo.commit({ [SPEC]: specText(), ".changeset/x.md": "---\n---\n" });
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: reports(mutants) }));
+    };
+
+    it("runs the sibling test and judges the spec's mutants", async () => {
+      const result = await judgeSpecOnly({ "src/math.test.ts": VACUOUS_TEST }, killedMutants);
+
+      expect(result.verdict).toBe("vacuous");
+      expect(result.tests).toMatchObject([{ file: "src/math.test.ts", name: "adds zero" }]);
+      expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }], uncovered: [] });
+      expect(provedByMutants(result)).toBe(true);
+    });
+
+    it("a surviving mutant leaves the spec-only diff unproved", async () => {
+      const survived = encodeMutantsReport({ baseline: zeroReport("passed"), runs: [{ spec: SPEC, name: "zero", built: true, report: zeroReport("passed") }] });
+
+      const result = await judgeSpecOnly({ "src/math.test.ts": VACUOUS_TEST }, survived);
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", results: [{ spec: SPEC, name: "zero", outcome: "survived" }] });
+      expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("with no sibling test at head stays a no-tests verdict with no mutants", async () => {
+      const result = await judgeSpecOnly({}, killedMutants);
+
+      expect(result.verdict).toBe("no-tests");
+      expect(result.mutants).toBeUndefined();
+    });
+  });
+
   describe("a changed test file with no spec of its own", () => {
     const GUARD = "src/guard.test.ts";
     const guardTest = (body: string) => `test("denies", () => { ${body} });\n`;
-    const bothPassed = (): string => {
+    const allPassed = (others: readonly string[]): string => {
       const file = (name: string, test: string) => ({ name, status: "passed", assertionResults: [{ fullName: test, status: "passed", failureMessages: [] }] });
-      return encodeReport({ testResults: [file("src/math.test.ts", "adds zero"), file(GUARD, "denies")] });
+      return encodeReport({ testResults: [file("src/math.test.ts", "adds zero"), ...others.map((other) => file(other, "denies"))] });
     };
-    const judgeOver = async (baseFiles: Record<string, string>, headFiles: Record<string, string>) => {
+    const judgeOver = async (baseFiles: Record<string, string>, headFiles: Record<string, string>, others: readonly string[] = [GUARD]) => {
       const repo = makeRepo({}, undefined, baseFiles);
       const head = repo.commit(headFiles);
-      const passed = bothPassed();
+      const passed = allPassed(others);
       return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: { base: passed, baseRerun: passed, head: passed, mutants: killedMutants } }));
     };
 
@@ -197,6 +230,31 @@ describe("judge with mutation specs", () => {
 
       expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [GUARD] });
       expect(provedByMutants(result)).toBe(false);
+    });
+
+    it("a changed test under a carried test-support path needs no spec, since no mutation may target its helpers", async () => {
+      const SUPPORT = "pkg/src/test-support/x.test.ts";
+
+      const result = await judgeOver({}, { "src/math.test.ts": VACUOUS_TEST, [SUPPORT]: guardTest("expect(1).toBe(1);"), [SPEC]: specText() }, [SUPPORT]);
+
+      expect(result.mutants).toEqual({ verdict: "killed", results: [{ spec: SPEC, name: "zero", outcome: "killed" }], uncovered: [] });
+    });
+
+    it("a changed carried test that imports non-carried source still needs a spec, since a mutation may target that source", async () => {
+      const PROBE = "pkg/src/test-support/z.test.ts";
+      const probe = `import { foo } from "../foo.js";\n${guardTest("expect(foo).toBe(1);")}`;
+
+      const result = await judgeOver({ "pkg/src/foo.ts": "export const foo = 1;\n" }, { "src/math.test.ts": VACUOUS_TEST, [PROBE]: probe, [SPEC]: specText() }, [PROBE]);
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [PROBE] });
+    });
+
+    it("a changed test outside the carry paths with no spec stays uncovered", async () => {
+      const PLAIN = "pkg/src/y.test.ts";
+
+      const result = await judgeOver({}, { "src/math.test.ts": VACUOUS_TEST, [PLAIN]: guardTest("expect(1).toBe(1);"), [SPEC]: specText() }, [PLAIN]);
+
+      expect(result.mutants).toMatchObject({ verdict: "not-killed", uncovered: [PLAIN] });
     });
   });
 

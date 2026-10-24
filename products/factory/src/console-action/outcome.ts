@@ -11,6 +11,9 @@ export type Outcome =
   | { outcome: "already"; runId: string }
   /** A merge-at-head tap started (or found) the land run its standing answer waits on. */
   | { outcome: "accepted"; runId: string }
+  /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
+  | { outcome: "pr-closed"; closedHead: string }
+  | { outcome: "already"; closedHead: string }
   | { outcome: "moved"; currentHead: string | undefined }
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
@@ -42,6 +45,7 @@ export function statusOf(outcome: Outcome): Status {
     case "resolved":
     case "released":
     case "accepted":
+    case "pr-closed":
     case "already":
       return 200;
     case "moved":

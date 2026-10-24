@@ -291,7 +291,8 @@ async function runRound({ script, rows, refused }: RoundInput, round: number, de
 
 const sum = (calls: readonly RewriteCall[], key: "usd" | "tokensIn" | "tokensOut"): number => calls.reduce((total, call) => total + call[key], 0);
 
-const spellScript = (script: ScriptV1): ScriptV1 => ScriptSchema.parse({ ...script, beats: script.beats.map(spellSpokenNumbers) });
+/** The script with its digits spelled as the voice reads them; the like-for-like baseline for a rewrite gate. */
+export const spellScript = (script: ScriptV1): ScriptV1 => ScriptSchema.parse({ ...script, beats: script.beats.map(spellSpokenNumbers) });
 
 /** Every beat was spelled on the way in, so this changes nothing unless a path let digits through. */
 const safetyNetSpelling = spellScript;

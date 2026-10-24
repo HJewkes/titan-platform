@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the number match accepts a prefix of a longer number",
+      "file": "products/explainer/src/presets/article/quotes.ts",
+      "find": "(?![\\\\d]|\\\\.\\\\d)",
+      "replace": "",
+      "kills": [
+        "claim checks finds a number only as a whole number in the quote, with thousands separators"
+      ]
+    },
+    {
+      "name": "thousands separators are not removed",
+      "file": "products/explainer/src/presets/article/quotes.ts",
+      "find": ".replace(/(\\d),(\\d{3})/g, \"$1$2\");",
+      "replace": ";",
+      "kills": [
+        "claim checks finds a number only as a whole number in the quote, with thousands separators"
+      ]
+    },
+    {
+      "name": "whitespace is not normalised",
+      "file": "products/explainer/src/presets/article/quotes.ts",
+      "find": "    .replace(/\\s+/g, \" \")\n",
+      "replace": "",
+      "kills": [
+        "claim checks matches a quote across line breaks and typographic quotes, but not a changed word"
+      ]
+    }
+  ]
+}

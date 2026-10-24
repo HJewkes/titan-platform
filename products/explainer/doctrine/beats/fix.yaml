@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: fix
+summary: "The change that fixes an issue, as a small diff."
+role: evidence
+component: { name: CodeViewer, maturity: doc }
+slots: fix
+speech: { band: code }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [lines], treatments: [highlight] }
+recipe: "Show the smallest diff that fixes the named issue: removed lines, then added lines. Name the issue it fixes."

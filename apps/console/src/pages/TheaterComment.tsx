@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Alert, Button, ButtonText, HStack, Input, VStack } from "@titan-design/react-ui";
+import { Alert, Button, ButtonText, HStack, Input, Radio, RadioGroup, VStack } from "@titan-design/react-ui";
 import { useInvalidate } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 
 type Verdict = "ship" | "needs-changes";
-type NoteInput = { atS: number } & ({ kind: "comment"; text: string } | { kind: "verdict"; verdict: Verdict });
+export type NoteAbout = "content" | "video";
+type NoteInput = { atS: number } & ({ kind: "comment"; about: NoteAbout; text: string } | { kind: "verdict"; verdict: Verdict });
 type VideoRef = RefObject<HTMLVideoElement | null>;
 
 export function formatAt(seconds: number): string {
@@ -78,6 +79,7 @@ function useNoteBar(videoId: string, videoRef: VideoRef) {
   const frameTime = usePresentedTime(videoRef);
   const [draftAt, setDraftAt] = useState<number | null>(null);
   const [text, setText] = useState("");
+  const [about, setAbout] = useState<NoteAbout>("content");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const deliver = async (input: NoteInput): Promise<boolean> => {
@@ -92,17 +94,18 @@ function useNoteBar(videoId: string, videoRef: VideoRef) {
     setDraftAt(frameTime());
   };
   const submitComment = async (atS: number): Promise<void> => {
-    if (!(await deliver({ kind: "comment", atS, text }))) return;
+    if (!(await deliver({ kind: "comment", about, atS, text }))) return;
     setDraftAt(null);
     setText("");
+    setAbout("content");
   };
   const markVerdict = (verdict: Verdict): void => void deliver({ kind: "verdict", atS: frameTime(), verdict });
-  return { available, draftAt, setDraftAt, text, setText, sending, error, startComment, submitComment, markVerdict };
+  return { available, draftAt, setDraftAt, text, setText, about, setAbout, sending, error, startComment, submitComment, markVerdict };
 }
 
 /** Pause-to-comment and the verdict buttons; a fixed bar along the bottom of a phone, inline on a wider screen. */
 export function TheaterComment({ videoId, videoRef }: { videoId: string; videoRef: VideoRef }): ReactNode {
-  const { available, draftAt, setDraftAt, text, setText, sending, error, startComment, submitComment, markVerdict } = useNoteBar(videoId, videoRef);
+  const { available, draftAt, setDraftAt, text, setText, about, setAbout, sending, error, startComment, submitComment, markVerdict } = useNoteBar(videoId, videoRef);
   const playhead = usePlayhead(videoRef);
   if (!available) return null;
   return (
@@ -110,7 +113,9 @@ export function TheaterComment({ videoId, videoRef }: { videoId: string; videoRe
       <div aria-hidden className="h-32 md:hidden" />
       <VStack gap={2} className="fixed inset-x-0 bottom-0 z-10 border-t border-divider bg-surface-base p-3 md:static md:max-w-3xl md:border-0 md:p-0" testID="theater-comment-bar">
         {error === null ? null : <Alert status="warning" message={error} testID="theater-comment-error" />}
-        {draftAt === null ? null : <Draft atS={draftAt} text={text} onText={setText} sending={sending} onSend={() => void submitComment(draftAt)} onCancel={() => setDraftAt(null)} />}
+        {draftAt === null ? null : (
+          <Draft atS={draftAt} text={text} onText={setText} about={about} onAbout={setAbout} sending={sending} onSend={() => void submitComment(draftAt)} onCancel={() => setDraftAt(null)} />
+        )}
         <HStack gap={2} wrap>
           <Button onPress={startComment} isDisabled={sending || draftAt !== null} testID="theater-comment-start">
             <ButtonText>{`Comment at ${formatAt(playhead)}`}</ButtonText>
@@ -131,14 +136,33 @@ interface DraftProps {
   atS: number;
   text: string;
   onText: (text: string) => void;
+  about: NoteAbout;
+  onAbout: (about: NoteAbout) => void;
   sending: boolean;
   onSend: () => void;
   onCancel: () => void;
 }
 
-function Draft({ atS, text, onText, sending, onSend, onCancel }: DraftProps): ReactNode {
+const ABOUT_LABELS: Record<NoteAbout, string> = { content: "About the content", video: "About the video" };
+
+/** Content comments go to the seat that owns the work; video comments go to video-coord, about how the system made it. */
+function AboutToggle({ about, onAbout }: { about: NoteAbout; onAbout: (about: NoteAbout) => void }): ReactNode {
+  return (
+    <RadioGroup value={about} onChange={(value) => onAbout(value === "video" ? "video" : "content")} orientation="horizontal" label="This comment is" testID="theater-comment-about">
+      <Radio value="content" aria-checked={about === "content"}>
+        {ABOUT_LABELS.content}
+      </Radio>
+      <Radio value="video" aria-checked={about === "video"}>
+        {ABOUT_LABELS.video}
+      </Radio>
+    </RadioGroup>
+  );
+}
+
+function Draft({ atS, text, onText, about, onAbout, sending, onSend, onCancel }: DraftProps): ReactNode {
   return (
     <VStack gap={2}>
+      <AboutToggle about={about} onAbout={onAbout} />
       <Input multiline numberOfLines={3} autoFocus label={`Comment at ${formatAt(atS)}`} accessibilityLabel="Comment text" value={text} onChangeText={onText} testID="theater-comment-text" />
       <HStack gap={2}>
         <Button onPress={onSend} isDisabled={sending || text.trim() === ""} testID="theater-comment-send">

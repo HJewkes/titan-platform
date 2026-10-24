@@ -1,83 +1,19 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
-import { fakeGitHub, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened, outsideActions, spaceUpdates } from "../test-support/land.js";
-import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
-import { configuredExitNotice, singleSeat } from "./exit-notice.js";
-import type { ShepherdPhases, Verdict } from "./phases.js";
-import { OWNER_GATE_POLICY } from "./policy.js";
-import { shepherdPrWorkflow } from "./pr.js";
-import { sweepSeatDigests, type SeatState } from "./seat-digest.js";
+import { describe, expect, it } from "vitest";
+import { REPO, gateId, gateOpened } from "../test-support/land.js";
+import { BOOK, REPO_SEAT, agentRow, digestSweep, liveRow, redRun, retiredRow, seatOf, startRed, type RedWorld } from "../test-support/registrant-routing.js";
+import type { NoticeFallbacks } from "./exit-notice.js";
 import type { SeatBook } from "./seats.js";
-import { shepherdStoreRef, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 
-const REPO_SEAT = "demo-coord";
-const seatOf = (name: string): SeatBook["seats"][number] => ({ name, remotes: [REPO], paths: {}, grants: [] });
-const BOOK: SeatBook = { seats: [seatOf(REPO_SEAT)], denied: [] };
-const GONE = "no agent of impl-a's lineage is on the roster, so no checkout is known to start a successor in";
-const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
-
-function agentRow(name: string, spawnedBy: string): AgentRow {
-  return { name, agentId: `${name}-id`, state: "exited", presence: "exited", status: "finished", profile: "implementer", surface: "headless", cwd: "/work", sessionId: "", spawnedBy, generation: 1 };
+/** What the run's sh-seat-notice step recorded. */
+function noticeRecord(world: RedWorld): unknown {
+  const run = world.host.runtime.status(world.runId)!;
+  const notice = Object.values(run.stepResults).find((result) => result.stepId.startsWith("sh-seat-notice"));
+  return (notice?.data as { result?: unknown } | undefined)?.result;
 }
 
-/** The agent-chat the production ports talk to: a fixed roster, and every message's recipient. */
-function agentChat(roster: readonly AgentRow[] = []) {
-  const told: string[] = [];
-  return { told, roster: async () => roster, message: async (name: string) => void told.push(name) };
-}
-
-const merge = (headSha: string): Verdict => ({ kind: "MERGE", headSha, evidence: {} });
-const unwoken: ShepherdPhases = { wake: async () => ({ kind: "unhandled", reason: GONE }), review: async (_ctx, request) => merge(request.headSha) };
-const redAtH1 = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, pr.headSha === H1 ? "failure" : "success")), successRun("dag-check", 2)]));
-
-/** `successor` registers first on a run that died, which Shepherd restarts as this one; the successor then registers the PR again. */
-type Registrant = Pick<RegistrationInput, "registrant"> & { successor?: string };
-
-function register(store: ShepherdStoreRef, runId: string, { registrant, successor }: Registrant): void {
-  const first = successor === undefined ? runId : `${runId}-died`;
-  store.get().register({ repo: REPO, pr: 1, runId: first, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, registrant });
-  if (successor === undefined) return;
-  store.get().repoint(first, runId);
-  store.get().update(runId, { task: "demo/1", implementer: successor, registrant: successor, policy: OWNER_GATE_POLICY });
-}
-
-/** A run red at H1 that no fixer takes, so Shepherd tries the ci-failed seat notice through the production ports. */
-function startRed(registered: Registrant, roster?: readonly AgentRow[], book = BOOK) {
-  const fake = fakeGitHub();
-  redAtH1(fake);
-  let clock = 0;
-  spaceUpdates(fake, (ms) => void (clock += ms));
-  const store = shepherdStoreRef();
-  const notices = agentChat(roster);
-  const exitNotice = configuredExitNotice(() => book, notices, undefined, store);
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(unwoken)], routes, gatePollMs: 5 });
-  hosts.push(host);
-  fake.addPr({ headSha: H1 });
-  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
-  register(store, runId, registered);
-  return { host, store, fake, runId, notices, book };
-}
-
-/** A red run whose seat notice was sent, so it waits for a new head. */
-async function redRun(registered: Registrant, roster?: readonly AgentRow[]) {
-  const world = startRed(registered, roster);
-  await vi.waitFor(() => expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^await-new-head/));
-  return world;
-}
-
-/** One digest sweep as serve runs it, over the same store and the production roster port. */
-async function digestSeats(world: ReturnType<typeof startRed>, roster?: readonly AgentRow[]): Promise<string[]> {
-  const digests = agentChat(roster);
-  const states = new Map<string, SeatState>();
-  const services = { store: world.store, port: githubPort(world.fake.wire), seats: () => world.book };
-  const ports = { seatLookup: () => (repo: string) => singleSeat(world.book, repo), roster: digests.roster, send: (seat: string) => digests.message(seat) };
-  await sweepSeatDigests(world.host, services, ports, { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) });
-  return digests.told;
+async function digestSeats(world: RedWorld, roster?: readonly AgentRow[]): Promise<string[]> {
+  return (await digestSweep(world, roster)).told;
 }
 
 describe("Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653)", () => {
@@ -112,11 +48,47 @@ describe("Shepherd's seat notice and digest follow the run's registrant, not the
     expect(await digestSeats(world, roster)).toEqual(["tp-operator"]);
   });
 
-  it("a run with no registrant sends its seat notice and digest to the repo's seat, as before", async () => {
+  it("a run with no registrant sends its seat notice and digest to the repo's live seat, as before", async () => {
     const world = await redRun({});
 
     expect(world.notices.told).toEqual([REPO_SEAT]);
+    expect(noticeRecord(world)).toMatchObject({ sent: true, seat: REPO_SEAT, detail: `told ${REPO_SEAT}` });
     expect(await digestSeats(world)).toEqual([REPO_SEAT]);
+  });
+
+  it("a run whose non-fixer registrant has retired sends its seat notice and digest to the repo's seat (TP-3958)", async () => {
+    const roster = [retiredRow("tp-operator")];
+    const world = await redRun({ registrant: "tp-operator" }, roster);
+
+    expect(world.notices.told).toEqual([REPO_SEAT]);
+    expect(await digestSeats(world, roster)).toEqual([REPO_SEAT]);
+  });
+});
+
+describe("a seat notice for a seat with no live session goes to a configured fallback (TP-3958)", () => {
+  const FALLBACKS: NoticeFallbacks = { redSeat: { repos: { [REPO.toUpperCase()]: "red-coord" }, fallback: "red-fallback" }, hubSeat: "hub-coord" };
+
+  it("a retired repo seat's notice goes to the repo's red seat, and the record names the fallback", async () => {
+    const world = await redRun({}, [retiredRow(REPO_SEAT), liveRow("red-coord"), liveRow("hub-coord")], FALLBACKS);
+
+    expect(world.notices.told).toEqual(["red-coord"]);
+    expect(noticeRecord(world)).toMatchObject({ sent: true, seat: "red-coord", detail: `told red-coord (${REPO_SEAT} holds no live session, so shepherd.redSeat.repos red-coord was told)` });
+  });
+
+  it("skips fallbacks with no live session, down to the hub seat", async () => {
+    const world = await redRun({}, [retiredRow(REPO_SEAT), retiredRow("red-coord"), liveRow("hub-coord")], FALLBACKS);
+
+    expect(world.notices.told).toEqual(["hub-coord"]);
+    expect(noticeRecord(world)).toMatchObject({ detail: `told hub-coord (${REPO_SEAT} holds no live session, so shepherd.hubSeat hub-coord was told)` });
+  });
+
+  it("opens the owner gate, naming why, when neither the seat nor any fallback holds a live session", async () => {
+    const world = startRed({}, [retiredRow(REPO_SEAT)], BOOK, FALLBACKS);
+
+    await gateOpened(world.host, gateId(world.runId, "ci-failed"));
+
+    expect(world.notices.told).toEqual([]);
+    expect(noticeRecord(world)).toMatchObject({ sent: false, seat: REPO_SEAT, detail: `${REPO_SEAT} holds no live session and no fallback seat does` });
   });
 });
 

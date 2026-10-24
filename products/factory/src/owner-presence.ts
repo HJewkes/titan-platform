@@ -111,12 +111,26 @@ function escapeOne(char: string): string {
 /** Control bytes would redraw or hide what the owner reads in the dialog. */
 const escapeReason = (reason: string): string => reason.replace(CONTROL_OR_BACKSLASH, escapeOne)
 
-interface ConfirmOptions {
+/** The OS edge the helper is found, checked and run through; every field defaults to the real machine. */
+export interface ConfirmOptions {
   run?: HelperRunner
   helperPaths?: readonly string[]
   stat?: StatPort
   getuid?: () => number | undefined
   report?: (line: string) => void
+}
+
+let presenceEdge: ConfirmOptions = {}
+
+/**
+ * Swaps the OS edge confirmOwner runs through, until the returned reset puts the real machine back. Only `test-support/owner-edges.ts`
+ * calls it (owner-identity-seams.test.ts checks), so no production deps object can choose who counts as the owner.
+ */
+export function setOwnerPresenceEdge(edge: ConfirmOptions): () => void {
+  presenceEdge = edge
+  return () => {
+    presenceEdge = {}
+  }
 }
 
 /** The checked helper path, or undefined after reporting why presence fails closed. */
@@ -142,7 +156,8 @@ function checkedHelper({ helperPaths = helperSearchOrder(), stat = defaultStat, 
  * lstat before each run. There is no environment fallback: an agent can set any variable,
  * but cannot satisfy the dialog.
  */
-export async function confirmOwner(reason: string, options: ConfirmOptions = {}): Promise<string | undefined> {
+export async function confirmOwner(reason: string): Promise<string | undefined> {
+  const options = presenceEdge
   const helper = checkedHelper(options)
   if (helper === undefined) return undefined
   try {

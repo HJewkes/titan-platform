@@ -1,6 +1,7 @@
 import { relativeToRoot } from "./paths.js";
 
-export type TestStatus = "passed" | "failed" | "other";
+/** `skipped` is a test the file chose not to run (`skip`, `skipIf`, `todo`) in a file that did not fail; anything else unrun is `other`. */
+export type TestStatus = "passed" | "failed" | "skipped" | "other";
 
 export interface TestRun {
   name: string;
@@ -32,26 +33,34 @@ function testName(result: UnknownRecord): string | null {
   return [...(ancestors as string[]), result.title].join(" ");
 }
 
-function readTest(result: unknown): TestRun | null {
+const DECLINED: ReadonlySet<unknown> = new Set(["skipped", "todo"]);
+
+// vitest also reports a test skipped because a hook threw as `skipped`, so a skip inside a failed file is never taken as deliberate.
+function statusOf(result: UnknownRecord, fileFailed: boolean): TestStatus {
+  if (result.status === "passed" || result.status === "failed") return result.status;
+  return !fileFailed && DECLINED.has(result.status) ? "skipped" : "other";
+}
+
+function readTest(result: unknown, fileFailed: boolean): TestRun | null {
   if (!isRecord(result)) return null;
   const name = testName(result);
   if (name === null) return null;
-  const status: TestStatus = result.status === "passed" ? "passed" : result.status === "failed" ? "failed" : "other";
+  const status = statusOf(result, fileFailed);
   const messages = Array.isArray(result.failureMessages) ? result.failureMessages : [];
   return { name, status, failures: messages.filter((message): message is string => typeof message === "string") };
 }
 
 function readFile(fileResult: UnknownRecord): FileRun {
   const raw = Array.isArray(fileResult.assertionResults) ? fileResult.assertionResults : [];
+  const failed = fileResult.status === "failed";
   const tests = new Map<string, TestRun>();
   const seen = new Map<string, number>();
-  for (const test of raw.map(readTest)) {
+  for (const test of raw.map((result) => readTest(result, failed))) {
     if (test === null) continue;
     const occurrence = seen.get(test.name) ?? 0;
     seen.set(test.name, occurrence + 1);
     tests.set(`${test.name}\u0000${occurrence}`, test);
   }
-  const failed = fileResult.status === "failed";
   const allSkipped = tests.size > 0 && [...tests.values()].every((test) => test.status === "other");
   return { loadError: failed && tests.size === 0, hookError: failed && allSkipped, tests };
 }

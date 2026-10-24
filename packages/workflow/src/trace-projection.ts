@@ -54,7 +54,7 @@ function resultAttempts(run: WorkflowRun, result: StepResult, sources: RunTraceS
   const final = finalFields(result, sources);
   const ledger = slot.stepKind === "dispatch" ? ledgerAttempts(run, slot, sources, final) : [];
   if (ledger.length > 0) return ledger;
-  return [attemptRecord(run, slot, result.completedAt, { ...final, outcome: "succeeded", completedAt: result.completedAt, ...usageField(result.usage) })];
+  return [attemptRecord(run, slot, result.startedAt ?? result.completedAt, { ...final, outcome: "succeeded", completedAt: result.completedAt, ...usageField(result.usage) })];
 }
 
 /** Results from before 0.5 carry no operation; only a dispatch has a runner id, and only a seed has output without one. */

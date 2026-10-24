@@ -6,6 +6,7 @@ import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
+import { ownClosure } from "./checkout-closure.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
@@ -111,8 +112,6 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   gateNotify?: GateNotifyOptions;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
-  /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
-  ownerKeys?: () => OwnerKeys;
   /** Replaces the bot identity read from the code-fixed `BOT_TOKEN_PATH`; tests inject it. No flag or config reaches this. */
   bot?: () => BotIdentity;
   /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
@@ -232,7 +231,7 @@ async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptio
 
 /** Keys are read once at start, so /health and the route always agree; installing or rotating a key means a restart. */
 function ownerProofs(options: FactoryServerOptions): OwnerProofs {
-  return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
+  return { keys: loadOwnerKeys(), aud: options.aud ?? hostname() };
 }
 
 type ServeExtras = Pick<DaemonExtras, "notify" | "ingress" | "passStamp" | "bot" | "reconciler">;
@@ -270,7 +269,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
 
 function buildHealth(options: FactoryServerOptions): BuildHealth {
   const sha = options.build?.sha ?? buildSha();
-  const probe = options.build?.behindMain ?? behindMain({ sha });
+  const probe = options.build?.behindMain ?? behindMain({ sha, closure: ownClosure });
   void probe.refresh();
   return { sha, status: probe.status, refresh: probe.refresh };
 }

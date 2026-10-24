@@ -49,6 +49,11 @@ interface PlanInput {
     baseConfig?: string | null;
     /** The same file at head, used only to tell the reviewer the PR edited it. */
     headConfig?: string | null;
+    /**
+     * Paths at head beside the diff's mutation specs. A spec whose one sibling test is listed here plans that test, so a
+     * spec-only diff still runs the file its mutants are judged on; absent, no sibling is planned.
+     */
+    headFiles?: readonly string[];
 }
 interface FixProofPlan {
     /** Head paths of added or changed tests, to check out over the merge base and run. */
@@ -97,7 +102,7 @@ type TestOnlyReading = {
 };
 /**
  * Whether a diff is test-only, and if not why: it changes source (runtime paths included), it deletes a test (a rename
- * out of the tests counts), or it adds or changes no test at all (a changeset- or fixture-only diff).
+ * out of the tests counts), or it plans no test at all (a changeset- or fixture-only diff, or a spec with no sibling).
  */
 declare function testOnlyReading(plan: Pick<FixProofPlan, "source" | "tests" | "deletedTests">): TestOnlyReading;
 /** Splits a merge-base-to-head diff into tests to run, carried support files, deleted tests, mutation specs and source, using globs from the base config only. */
@@ -215,7 +220,8 @@ declare function decodeMutantsReport(text: string | undefined, options?: DecodeO
 declare const MUTANT_OUTCOMES: readonly ["killed", "overkill", "survived", "unbuilt", "load-error", "baseline", "error"];
 type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
 /**
- * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff,
+ * except a carried test that loads only carried files;
  * `error` when the specs or the report could not be read at all.
  */
 declare const MUTANT_VERDICTS: readonly ["killed", "not-killed", "error"];
@@ -231,7 +237,7 @@ interface MutantsResult {
     verdict: MutantVerdict;
     results: MutantResult[];
     /**
-     * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+     * Changed test files no spec in the diff sits beside, less carried tests that load only carried files. A killed spec proves only its own test file, so each of these is
      * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
      */
     uncovered?: string[];

@@ -1,0 +1,3 @@
+{
+  "hjewkes/titan-platform": { "enabled": true, "ttlMinutes": 120, "ignore": [".changeset/**"] }
+}

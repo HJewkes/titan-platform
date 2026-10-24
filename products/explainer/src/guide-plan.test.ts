@@ -11,6 +11,15 @@ describe("guidePlan", () => {
     expect(guide).toContain("## Rules for the plan stage");
   });
 
+  // Mutation: ignoring the structure renders design-journey's journey template for every pick.
+  it("renders the template of the structure it is given instead of design-journey's", () => {
+    const guide = guidePlan("script", { structure: "scqa" });
+
+    expect(guide).toContain("## 3. Question and answer");
+    expect(guide).toContain("## 4. Supports, by importance");
+    expect(guide).not.toContain("## 3. Journey: one task from");
+  });
+
   it("keeps code-enforced owner rules and their thresholds out of the guide", () => {
     const guide = guidePlan("plan");
 

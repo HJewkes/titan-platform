@@ -12,6 +12,7 @@ import type { CiSnapshot, FailingCheck } from "./land-ci.js";
 import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS } from "./land-update.js";
+import { rerunOrphaned } from "./land-orphan.js";
 import { CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
@@ -28,6 +29,7 @@ export const MAX_CI_CYCLES = 20;
 export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "land-rules", kind: "dispatch", orphanSafe: true },
   { id: "ci-wait", kind: "dispatch", orphanSafe: true },
+  { id: "ci-orphan-rerun", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
   { id: "update-backoff", kind: "dispatch" },
   { id: "base-check", kind: "dispatch", orphanSafe: true },
@@ -120,6 +122,9 @@ interface LandState {
   retargeted?: string;
   /** Settle waits cost no ci-wait cycle against the backstop; the settle bound ends them. */
   settles: number;
+  /** Merge steps that waited on a hold cost no cycle either: only the owner's release ends that wait, so no count may fail it (TP-4082). */
+  helds: number;
+  orphanReruns: number;
   hold: SettleHold;
 }
 
@@ -132,13 +137,17 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
   const state: LandState = {
-    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, cycle: 0, updates: 0, retries: 0,
+    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, helds: 0, orphanReruns: 0, cycle: 0, updates: 0, retries: 0,
     bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0,
     trusted: new Set(), trustedBy: "human", trustedOn: rules.base,
   };
   for (;;) {
-    if (state.cycle - state.settles >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
+    if (state.cycle - state.settles - state.helds >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: state.rules.contexts, strict: state.rules.strict }, CiSnapshotResult);
+    if (ci.orphaned?.length) {
+      await rerunOrphaned(ctx, roundId("ci-orphan-rerun", round, state.orphanReruns++), { repo: input.repo, pr: input.pr, headSha: ci.headSha, jobs: ci.orphaned });
+      continue;
+    }
     if (await rebased(ctx, input, ci, state)) continue;
     if (ci.verdict !== "behind" && retryLanded(state.bound)) restartUpdates(state.bound);
     const settled = landsAsIs(ci) ? { ...ci, verdict: "green" as const } : ci;
@@ -239,17 +248,16 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
     base: check.base,
   };
   const merge = await step(ctx, roundId("merge", state.round, state.merges++), mergeInput, MergeResultResult);
+  return afterMerge(merge, ci, check, state);
+}
+
+function afterMerge(merge: z.infer<typeof MergeResultResult>, ci: CiSnapshot, check: BaseCheck, state: LandState): LandOutcome | undefined {
   // The port answers "" for a PR merged elsewhere with no merge commit named.
   if (merge.done || merge.skipped === "merged") {
-    return {
-      kind: "merged",
-      headSha: ci.headSha,
-      mergeSha: merge.mergeSha || null,
-      ...landedOf(check, ci.headSha),
-      ...(merge.done && { own: true as const }),
-    };
+    return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null, ...landedOf(check, ci.headSha), ...(merge.done && { own: true as const }) };
   }
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
+  if (merge.skipped === "held") state.helds++;
   return undefined;
 }
 

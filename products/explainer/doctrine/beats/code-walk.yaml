@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: code-walk
+summary: "A short code excerpt with a moving focus band."
+role: evidence
+component: { name: CodeWalkBeat, maturity: spike }
+slots: code-walk
+speech: { band: code }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [lines], treatments: [highlight, pointer] }
+recipe: "Show at most ten lines from the real file; mark simplified excerpts as simplified. Move the focus band to each line as it is named. Diff mode shows added and removed lines."

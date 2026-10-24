@@ -18,7 +18,8 @@ export const MUTANT_OUTCOMES = ["killed", "overkill", "survived", "unbuilt", "lo
 export type MutantOutcome = (typeof MUTANT_OUTCOMES)[number];
 
 /**
- * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff;
+ * `killed` only when every declared mutation is killed and every changed test file has a spec of its own in the diff,
+ * except a carried test that loads only carried files;
  * `error` when the specs or the report could not be read at all.
  */
 export const MUTANT_VERDICTS = ["killed", "not-killed", "error"] as const;
@@ -36,7 +37,7 @@ export interface MutantsResult {
   verdict: MutantVerdict;
   results: MutantResult[];
   /**
-   * Changed test files no spec in the diff sits beside. A killed spec proves only its own test file, so each of these is
+   * Changed test files no spec in the diff sits beside, less carried tests that load only carried files. A killed spec proves only its own test file, so each of these is
    * unproved. Absent on a line from a judge that predates the check, which therefore proves nothing.
    */
   uncovered?: string[];
@@ -133,11 +134,18 @@ function verdictOf(results: MutantResult[]): MutantVerdict {
 /**
  * Adds the changed test files no spec covers, and demotes a `killed` verdict when there are any. Specs come only from the
  * diff, so a spec beside an unchanged test covers nothing the PR changed and cannot be borrowed for a file it did.
+ * `needsNoSpec` names the changed tests no spec could ever cover: carried tests that load only carried files (see
+ * `loadsOnlyCarried`), since no mutation may target a carried file.
  */
-export function withCoverage(result: MutantsResult, specs: readonly SpecUnderTest[], changedTests: readonly string[]): MutantsResult {
+export function withCoverage(
+  result: MutantsResult,
+  specs: readonly SpecUnderTest[],
+  changedTests: readonly string[],
+  needsNoSpec: ReadonlySet<string>,
+): MutantsResult {
   if (result.verdict === "error") return result;
   const covered = new Set(specs.map((spec) => spec.testFile));
-  const uncovered = changedTests.filter((test) => !covered.has(test)).sort();
+  const uncovered = changedTests.filter((test) => !covered.has(test) && !needsNoSpec.has(test)).sort();
   return { ...result, verdict: uncovered.length > 0 ? "not-killed" : result.verdict, uncovered };
 }
 

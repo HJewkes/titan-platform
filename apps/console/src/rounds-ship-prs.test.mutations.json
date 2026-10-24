@@ -19,6 +19,24 @@
         "a Ship round with two PRs (TP-3329) keeps a PR's Send back off until it has a note, and then holds the send",
         "frame feedback on a Ship round with two PRs (TP-3773 S6b) takes a comment on a PR's own frame as its Send back note, never one on the other PR's frame"
       ]
+    },
+    {
+      "name": "pressing a PR tab never opens its panel",
+      "file": "apps/console/src/pages/ShipTabs.tsx",
+      "find": "<Tabs index={tab} onChange={setTab}>",
+      "replace": "<Tabs index={tab} onChange={() => undefined}>",
+      "kills": [
+        "frame feedback on a Ship round with two PRs (TP-3773 S6b) turns Ship off only for the PR whose own frame is Rejected, and sends the verdict"
+      ]
+    },
+    {
+      "name": "a sent two-PR round shows the unsent Addressed ticks instead of the sent ones",
+      "file": "apps/console/src/pages/ShipPrs.tsx",
+      "find": "addressed={round.notes?.addressed ?? side.addressed}",
+      "replace": "addressed={side.addressed}",
+      "kills": [
+        "a Ship round with two PRs (TP-3329) keeps the earlier feedback once sent, with its Addressed tick locked as sent (TP-3824)"
+      ]
     }
   ]
 }

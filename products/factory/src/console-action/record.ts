@@ -19,7 +19,8 @@ const GateActionSchema = z.strictObject({
   repo: z.string().min(1).max(256),
   pr: z.number().int().positive(),
   headSha: hex(40),
-  decision: z.literal("merge"),
+  /** Any option id reads; `gate.ts` refuses one off the step's allowlist or the gate's schema as `class`, not `record`. */
+  decision: z.string().regex(/^[a-z][a-z-]{0,63}$/),
 });
 /** No resolver field: the release is always the console's owner-remote, whatever else the record says. */
 const ReleaseActionSchema = z.strictObject({

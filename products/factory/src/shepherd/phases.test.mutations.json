@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "sh-scope-check is declared but not routed",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "    scopeCheckRoute(deps.now),\n",
+      "replace": "",
+      "kills": [
+        "shepherd phase step families pins every review-phase step, sh-fix-proof through sh-scope-check, to review.ts, declared and routed there"
+      ]
+    }
+  ]
+}

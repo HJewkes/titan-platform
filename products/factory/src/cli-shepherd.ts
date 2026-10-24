@@ -109,7 +109,7 @@ function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
 }
 
-/** A coordinator's pause on a whole repo's merges, apart from the main-red freeze; neither verb touches that one. */
+/** A coordinator's pause on a whole repo's merges, apart from the main-red freeze, which only `thaw` lifts by hand. */
 function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("freeze <repo>", "freeze owner/repo so no Shepherd run merges into it until unfreeze; runs keep reviewing, and a repeat replaces the reason")
     .requiredOption("--reason <text>", "why the repo is frozen")
@@ -119,6 +119,11 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
   verb("freezes", "every repo freeze: repo, reason, who set it and since when")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
+  verb("thaw <repo>", "thaw owner/repo's red-main freeze by hand while it is still red at --red-sha; records who and why, and alerts the repo's red seat")
+    .requiredOption("--red-sha <sha>", "the full red sha of the episode being thawed")
+    .requiredOption("--reason <text>", "why main may thaw without a green")
+    .action((repo: string, opts: ShepherdOpts & { redSha: string; reason: string }) =>
+      runShepherd(verbs, "shepherd.thaw", () => ({ repo, redSha: opts.redSha, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {

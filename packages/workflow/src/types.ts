@@ -41,6 +41,12 @@ export interface StepResult<TData extends Record<string, unknown> = Record<strin
   /** Condition signal parsed from the output, e.g. `needs_revision`. */
   signal: string | null;
   completedAt: string;
+  /** When the try that produced this result started; absent on gate steps and on results written before 0.14. */
+  startedAt?: string;
+  /** When the step's first attempt started, kept across retries and restarts; absent reads as `startedAt`. */
+  firstStartedAt?: string;
+  /** How many restarts re-dispatched this step before it completed; absent reads as 0. */
+  restarts?: number;
   output?: string;
   /** Structured payload: a seed's data, a gate's resolution, or a dispatch's output parsed by its schema. */
   data?: TData;
@@ -248,7 +254,8 @@ export function workflowStepRequestKey(runId: string, stepId: string, iteration:
   return `workflow:${[runId, stepId, String(iteration), String(attempt)].map(encodeURIComponent).join(":")}`;
 }
 
-export type WorkflowEvent =
+/** `at` is when the runtime emitted the event, from its clock; absent on events recorded before 0.14. */
+export type WorkflowEvent = { at?: string } & (
   | { type: "step_started"; runId: string; stepId: string; iteration: number }
   | { type: "step_complete"; runId: string; stepId: string; iteration: number; signal: string | null }
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
@@ -258,7 +265,8 @@ export type WorkflowEvent =
   | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string; summary?: string }
   | { type: "workflow_complete"; runId: string }
   | { type: "workflow_failed"; runId: string; error: string }
-  | { type: "workflow_cancelled"; runId: string; reason: string };
+  | { type: "workflow_cancelled"; runId: string; reason: string }
+);
 
 export interface StepFailureDetail {
   /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */

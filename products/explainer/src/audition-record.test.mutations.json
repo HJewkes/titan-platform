@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the beat id goes back on screen",
+      "file": "products/explainer/src/audition-record.ts",
+      "find": "screen: [] }));",
+      "replace": "screen: [block.beat] }));",
+      "kills": [
+        "audition record shows the cold viewer only the signature layer as a visual, never a bare beat id"
+      ]
+    },
+    {
+      "name": "J12 is judged on one visual",
+      "file": "products/explainer/src/audition-record.ts",
+      "find": "shown >= 2 ?",
+      "replace": "shown >= 1 ?",
+      "kills": [
+        "audition record skips J12 with a reason when a storyboard has fewer than two quotable visuals",
+        "audition record a skipped row leaves the rubric instead of standing as a void score"
+      ]
+    },
+    {
+      "name": "a one-word screen text counts as quotable",
+      "file": "products/explainer/src/audition-record.ts",
+      "find": ".length >= MIN_QUOTE_WORDS",
+      "replace": ".length >= 1",
+      "kills": [
+        "audition record skips J12 with a reason when a storyboard has fewer than two quotable visuals"
+      ]
+    },
+    {
+      "name": "a skipped row stays in the rubric",
+      "file": "products/explainer/src/audition-record.ts",
+      "find": "dims: rubric.dims.filter((d) => !skipped.some((s) => s.dim === d.dim))",
+      "replace": "dims: rubric.dims",
+      "kills": [
+        "audition record a skipped row leaves the rubric instead of standing as a void score"
+      ]
+    },
+    {
+      "name": "chapters map blocks no profile names",
+      "file": "products/explainer/src/audition-record.ts",
+      "find": "named.has(block.id) ? block.id : null",
+      "replace": "block.id",
+      "kills": [
+        "audition record maps each script chapter to the profile block it plays, in spine order"
+      ]
+    }
+  ]
+}

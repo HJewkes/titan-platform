@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "repeated_finding is left out of the closed refusal set",
+      "file": "packages/review-panel/src/verdict-schemas.ts",
+      "find": "  repeated_finding: true,\n};",
+      "replace": "};",
+      "kills": [
+        "acceptVerdict malformed record covers every refusal the schema lists, the two Shepherd's scope check sends included"
+      ]
+    }
+  ]
+}

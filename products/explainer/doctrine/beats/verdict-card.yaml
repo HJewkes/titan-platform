@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: verdict-card
+summary: "The bottom line first: an imperative one-line summary, the call and why."
+role: open
+component: { name: VerdictChip, maturity: doc }
+slots: verdict-card
+speech: { band: story }
+durationS: [5, 9, 16]
+preset: false
+emphasis: { targets: [reasons], treatments: [highlight, scale] }
+recipe: "Lead with the verdict as one imperative line that stands alone, then the call, then one to three reasons. The viewer knows what to do before any context."

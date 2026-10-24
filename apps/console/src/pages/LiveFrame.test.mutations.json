@@ -21,22 +21,23 @@
       ]
     },
     {
-      "name": "every section is live by default, Ship-bound ones too",
+      "name": "a dead frame keeps its mount slot",
       "file": "apps/console/src/pages/LiveFrame.tsx",
-      "find": "useState(!shipBound)",
-      "replace": "useState(true)",
+      "find": "useLiveSlot(wanted && !dead, first)",
+      "replace": "useLiveSlot(wanted, first)",
       "kills": [
-        "a live story frame in a Ship-bound section shows the approved PNG with Open live, and mounts no story until asked"
+        "a live story frame hands a dead frame's slot to the next waiting frame"
       ]
     },
     {
-      "name": "a live frame's hit test takes the first box holding the point, the outermost",
+      "name": "no cap on mounted stories",
       "file": "apps/console/src/pages/live-frame.ts",
-      "find": "hitTest: (x, y) => hitBox(named, x, y)",
-      "replace": "hitTest: (x, y) => named.find((box) => x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height)?.target",
+      "find": "return at !== -1 && at < cap;",
+      "replace": "return at !== -1;",
       "kills": [
-        "a live frame's pin surface hit-tests the innermost element that has a testId, in the frame's CSS px",
-        "a live story frame keeps the story live in pin mode, places a pin on the innermost named element, and draws held pins over the story"
+        "a live story frame mounts at most 4 stories on a phone; the rest wait as their PNG",
+        "a live story frame hands a dead frame's slot to the next waiting frame",
+        "a live story frame counts the enlarged live view toward the cap, pausing the last fitted frame while it is open"
       ]
     },
     {

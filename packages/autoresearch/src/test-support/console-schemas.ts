@@ -58,6 +58,8 @@ const idea = z.object({
 
 const activeStep = z.object({ stepId: z.string(), firstStartedAt: z.string(), restarts: z.number().int().nonnegative() });
 
+const REEVAL_DECISIONS = ["kept", "rejected", "requeued"] as const;
+
 const outcome = z.object({
   verdict: z.enum(["kept", "rejected", "stopped"]),
   reason: z.string(),
@@ -80,6 +82,7 @@ const outcome = z.object({
   lane: z.number().int().positive().optional(),
   fork: z.enum(["exploit", "explore"]).optional(),
   usage: z.object({ implementUsd: z.number().nonnegative(), evalUsd: z.number().nonnegative(), microUsd: z.number().nonnegative() }).optional(),
+  reeval: z.object({ vs: z.string(), decision: z.enum(REEVAL_DECISIONS), reason: z.string() }).optional(),
 });
 
 const implementer = z.object({
@@ -92,13 +95,15 @@ const implementer = z.object({
 
 const l0Check = z.object({ name: z.string(), ok: z.boolean(), code: z.string().optional(), ms: z.number().nonnegative().optional() });
 
+const l0 = z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(l0Check).optional() });
+
 const ladder = z.object({
   idea,
   implementer: implementer.nullable().default(null),
   active: activeStep.nullable(),
   completed: z.array(z.object({ stepId: z.string(), completedAt: z.string() })),
   implementUsd: z.number().nonnegative().nullable(),
-  l0: z.object({ ok: z.boolean(), code: z.string().optional(), checks: z.array(l0Check).optional() }).nullable(),
+  l0: l0.nullable(),
   micro: z.object({ predictedDirectionMet: z.boolean() }).nullable(),
   evals: z.array(evalRun),
   outcome: outcome.nullable(),
@@ -123,6 +128,21 @@ const planner = z.object({
 
 const quotaExemptions = z.object({ bold: z.string().optional(), followup: z.string().optional() });
 
+const move = z.object({ from: z.string(), to: z.string(), kind: z.enum(["ff", "merge", "sync"]), ideaId: z.string().optional() });
+
+const reeval = z.object({
+  ideaId: z.string(),
+  from: z.string(),
+  vs: z.string(),
+  merge: z.string().nullable(),
+  conflict: z.array(z.string()).optional(),
+  l0: l0.optional(),
+  runs: z.array(evalRun),
+  delta: z.number().optional(),
+  decision: z.enum(REEVAL_DECISIONS),
+  reason: z.string(),
+});
+
 const round = z.object({
   round: z.number().int().positive(),
   queue: z.array(idea),
@@ -134,6 +154,37 @@ const round = z.object({
   selection: z.object({ picks: z.array(z.string()), draws: z.array(z.object({ id: z.string(), draw: z.number() })), plannerTopK: z.array(z.string()) }),
   ladders: z.array(ladder),
   ratchet: z.object({ from: z.string(), to: z.string() }).nullable(),
+  moves: z.array(move).default([]),
+  reevals: z.array(reeval).default([]),
+});
+
+const cadenceRound = z.union([z.number().int().positive(), z.literal("end")]);
+const snapshotTrigger = z.enum(["phase-end", "kept", "spend"]);
+const prNumber = z.number().int().positive();
+
+const snapshot = z.object({
+  k: z.number().int().positive(),
+  tag: z.string(),
+  sha: z.string(),
+  branch: z.string(),
+  pr: prNumber,
+  url: z.string().optional(),
+  trigger: snapshotTrigger,
+  round: cadenceRound,
+  logSha: z.string(),
+});
+
+const sync = z.object({
+  round: cadenceRound,
+  pr: prNumber,
+  state: z.enum(["open", "merged", "closed"]),
+  merged: z.object({ from: z.string(), to: z.string(), main: z.string() }).optional(),
+  conflict: z.array(z.string()).optional(),
+  frozen: z.array(z.string()).optional(),
+  treeChanged: z.boolean().optional(),
+  gate: z.object({ answered: z.boolean(), resolved: z.string().optional() }).optional(),
+  runs: z.array(evalRun).optional(),
+  failed: z.string().optional(),
 });
 
 const producedBy = { ideaId: z.string().optional(), round: z.number().int().positive().optional() };
@@ -181,6 +232,9 @@ export const ArRunViewSchema = z.object({
   registries,
   cells: z.array(cell),
   validator: validator.optional(),
+  snapshots: z.array(snapshot).default([]),
+  snapshotPending: z.object({ trigger: snapshotTrigger }).nullable().default(null),
+  syncs: z.array(sync).default([]),
 });
 
 export const ArRunSummarySchema = z.object({
@@ -194,4 +248,5 @@ export const ArRunSummarySchema = z.object({
   completedAt: z.string().nullable(),
   best: z.object({ head: z.string(), primary: z.number() }).nullable(),
   spend: z.number().nonnegative(),
+  openSnapshot: z.object({ k: z.number().int().positive(), pr: prNumber }).nullable().default(null),
 });

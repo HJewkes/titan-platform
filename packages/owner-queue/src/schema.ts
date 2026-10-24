@@ -113,6 +113,8 @@ export const ownerItemSchema = z.object({
   expiresAt: timestamp.optional(),
   status: z.enum(ITEM_STATUSES),
   answer: answerSchema.optional(),
+  /** How many open alarm deposits from one source this item stands for, itself included; set only by `collapseRepeats`. */
+  repeats: z.number().int().min(2).optional(),
   lint: z.array(z.string()).optional(),
 });
 

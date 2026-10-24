@@ -8,6 +8,10 @@
  * It also writes each public package's API snapshots (api-snapshots.mjs), which need a built dist/.
  * `--check` regenerates in memory and exits 1 when a committed copy is stale. `--catalog-only`
  * skips the snapshots, for version-packages, which runs in release.yml without a build.
+ * `--site` writes only the uncommitted site copy, site/guides/capabilities.md, for docs:build.
+ *
+ * Every output line comes from one input line, with no derived counts, so sources that merge
+ * cleanly give catalogs that merge cleanly.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -77,26 +81,41 @@ export function keyExports(entries, cap = KEY_EXPORT_CAP) {
   return { groups: [...groups].map(([name, names]) => ({ concern: name, names })), more: unique.length - picked.size };
 }
 
-/** The body of a CAPABILITY.md: everything but headings and comments, on one line. */
+/**
+ * The body of a CAPABILITY.md, one output line per source line, so two edits to different
+ * lines merge in the catalog exactly as they merge in the source. Headings, comments, leading
+ * and trailing blanks and doubled blanks are dropped.
+ */
 export function parseUseWhen(markdown) {
-  return markdown
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .split("\n")
-    .filter((line) => line.trim() && !line.startsWith("#"))
-    .map((line) => line.trim())
-    .join(" ");
+  const lines = [];
+  for (const raw of markdown.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("#") || (!line && !lines.at(-1))) continue;
+    lines.push(line);
+  }
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
 }
 
-function useWhenFor(entry, data) {
-  if (!entry.group) return data.external[entry.dir] ?? "";
-  const file = join(root, entry.group, entry.dir, "CAPABILITY.md");
+// A terminator inside a code span, as in `fake({ ... })`, does not end the sentence.
+const FIRST_SENTENCE = /^(?:`[^`]*`|[^`.!?]|[.!?](?!\s|$))*?[.!?](?=\s|$)/;
+
+/** Only the opening sentence goes in the quick index, so edits to later prose leave its row alone. */
+export function firstSentence(lines) {
+  const first = lines[0] ?? "";
+  return first.match(FIRST_SENTENCE)?.[0] ?? first;
+}
+
+function useWhenFor(base, entry, data) {
+  if (!entry.group) return parseUseWhen(data.external[entry.dir] ?? "");
+  const file = join(base, entry.group, entry.dir, "CAPABILITY.md");
   if (!existsSync(file)) throw new Error(`${entry.group}/${entry.dir} has no CAPABILITY.md. Say when a reader should reach for it.`);
   return parseUseWhen(readFileSync(file, "utf8"));
 }
 
-function enrich(entry, data) {
-  const index = entry.group ? join(root, entry.group, entry.dir, "src", "index.ts") : "";
-  return { ...entry, useWhen: useWhenFor(entry, data), exports: keyExports(readExports(index)) };
+function enrich(base, entry, data) {
+  const index = entry.group ? join(base, entry.group, entry.dir, "src", "index.ts") : "";
+  return { ...entry, useWhen: useWhenFor(base, entry, data), exports: keyExports(readExports(index)) };
 }
 
 const siteLinks = { reference: (dir) => `/reference/${dir}`, guide: (name) => `/guides/${name}` };
@@ -122,7 +141,7 @@ export function tableRow(cells) {
 
 function quickIndex(entries) {
   const lines = ["## Quick index", "", "| Unit | Tier | Use this when |", "| --- | --- | --- |"];
-  for (const e of byTier(entries)) lines.push(tableRow([`[\`${shortName(e)}\`](#${anchor(e)})`, e.tier, e.useWhen]));
+  for (const e of byTier(entries)) lines.push(tableRow([`[\`${shortName(e)}\`](#${anchor(e)})`, e.tier, firstSentence(e.useWhen)]));
   return [...lines, ""];
 }
 
@@ -136,8 +155,9 @@ function exportLines(entry, links) {
   const { groups, more } = entry.exports;
   if (groups.length === 0) return ["No library entry point."];
   const lines = groups.map((g) => `- \`${g.concern}\`: ${g.names.map((n) => `\`${n}\``).join(", ")}`);
+  // No count: a count changes with every added export, so two such pull requests always conflict here.
   if (more > 0) {
-    lines.push(entry.private ? `- +${more} more in \`${entry.group}/${entry.dir}/src/index.ts\`` : `- +${more} more in the [reference page](${links.reference(entry.dir)})`);
+    lines.push(entry.private ? `- More in \`${entry.group}/${entry.dir}/src/index.ts\`` : `- More in the [reference page](${links.reference(entry.dir)})`);
   }
   return lines;
 }
@@ -151,7 +171,9 @@ function unitSection(entry, links) {
     "",
     `Tier ${entry.tier}, ${distribution(entry)}. ${entry.description}`,
     "",
-    `**Use this when:** ${entry.useWhen}`,
+    "**Use this when:**",
+    "",
+    ...entry.useWhen,
     "",
     ...(entry.group ? ["Key exports:", "", ...exportLines(entry, links), ""] : []),
   ];
@@ -220,24 +242,31 @@ export function render(entries, data, links) {
   return [...header(links), ...quickIndex(entries), ...runtimeSection(data), ...gapsSection(data), ...tierSections(entries, links)].join("\n");
 }
 
-function outputs() {
-  const data = JSON.parse(readFileSync(join(root, "scripts", "capabilities-data.json"), "utf8"));
-  const entries = collect().map((e) => enrich(e, data));
-  return [
-    { path: join(root, "CAPABILITIES.md"), text: render(entries, data, repoLinks) },
-    { path: join(root, "site", "guides", "capabilities.md"), text: render(entries, data, siteLinks) },
-  ];
+/** The catalog text for the checkout at `base`. */
+export function catalogText(base = root, links = repoLinks) {
+  const data = JSON.parse(readFileSync(join(base, "scripts", "capabilities-data.json"), "utf8"));
+  return render(collect(base).map((e) => enrich(base, e, data)), data, links);
 }
 
-function plannedFiles(argv, repoRoot, catalog) {
+function outputs() {
+  return [{ path: join(root, "CAPABILITIES.md"), text: catalogText() }];
+}
+
+// The site copy is a build artifact, written by docs:build; committing it doubled every catalog conflict.
+function siteOutputs() {
+  return [{ path: join(root, "site", "guides", "capabilities.md"), text: catalogText(root, siteLinks) }];
+}
+
+function plannedFiles(argv, repoRoot, catalog, site) {
+  if (argv.includes("--site")) return site();
   return argv.includes("--catalog-only") ? catalog() : [...catalog(), ...snapshotOutputs(repoRoot)];
 }
 
-/** Writes or checks the catalog and snapshots under `repoRoot`; returns the exit code. */
-export function run(argv, { repoRoot = root, catalog = outputs, log = console.log, error = console.error } = {}) {
+/** Writes or checks the catalog and snapshots under `repoRoot` (`--site`: the site copy alone); returns the exit code. */
+export function run(argv, { repoRoot = root, catalog = outputs, site = siteOutputs, log = console.log, error = console.error } = {}) {
   let files;
   try {
-    files = plannedFiles(argv, repoRoot, catalog);
+    files = plannedFiles(argv, repoRoot, catalog, site);
   } catch (err) {
     if (!(err instanceof MissingDistError)) throw err;
     error(err.message);

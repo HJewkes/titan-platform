@@ -1,9 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { keyExports, parseExports, parseUseWhen, run, tableRow } from "./gen-capabilities.mjs";
+import { catalogText, firstSentence, keyExports, parseExports, parseUseWhen, run, tableRow } from "./gen-capabilities.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -57,14 +58,81 @@ describe("choosing the key exports", () => {
 });
 
 describe("reading a CAPABILITY.md", () => {
-  it("drops the heading and the authoring comment and joins the prose onto one line", () => {
-    const markdown = "# agent: use this when\n\n<!-- guidance for authors -->\n\nYou run one agent.\nIt needs a token.\n";
-    expect(parseUseWhen(markdown)).toBe("You run one agent. It needs a token.");
+  it("drops the heading and the authoring comment and keeps each prose line as its own line", () => {
+    const markdown = "# agent: use this when\n\n<!-- guidance for authors -->\n\nYou run one agent.\n\n\nIt needs a token.\n\n";
+    expect(parseUseWhen(markdown)).toEqual(["You run one agent.", "", "It needs a token."]);
   });
 
   it("ships in the package template so every stamped package starts with one", () => {
     const template = readFileSync(join(REPO, "templates", "package", "CAPABILITY.md"), "utf8");
-    expect(parseUseWhen(template)).toContain("__NAME__");
+    expect(parseUseWhen(template).join("\n")).toContain("__NAME__");
+  });
+
+  it("gives the quick index only the opening sentence", () => {
+    expect(firstSentence(["You run one agent. It needs a token.", "", "Later prose."])).toBe("You run one agent.");
+    expect(firstSentence(["Call `fake({ ... })` to build one. Then pass it."])).toBe("Call `fake({ ... })` to build one.");
+    expect(firstSentence(["No full stop"])).toBe("No full stop");
+  });
+});
+
+describe("merging two pull requests that change one unit", () => {
+  const INDEX = "packages/hitl/src/index.ts";
+  const CAP = "packages/hitl/CAPABILITY.md";
+  const tempDirs = [];
+  afterAll(() => tempDirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
+  function scratch() {
+    const dir = mkdtempSync(join(tmpdir(), "gen-capabilities-merge-"));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  const gates = Array.from({ length: 13 }, (_, i) => `export function gate${i}() {}`);
+  const record = "export interface GateRecord { id: string }";
+  const prose = ["You open a gate for a person.", "", "It waits for an answer.", "", "It records who answered."];
+  const BASE = { index: [...gates, record], useWhen: prose };
+  const OURS = { index: [...gates, "export function openGate() {}", record], useWhen: ["You open a gate for a person and wait on it.", ...prose.slice(1)] };
+  const THEIRS = { index: [...gates, record, "export function closeGate() {}", "export function listGates() {}"], useWhen: [...prose.slice(0, 4), "It records who answered and when."] };
+
+  function sources({ index, useWhen }) {
+    return { [INDEX]: `${index.join("\n")}\n`, [CAP]: ["# hitl: use this when", "", ...useWhen, ""].join("\n") };
+  }
+
+  function catalogOf(unitFiles) {
+    const dir = scratch();
+    const files = {
+      ".codewatch/check.json": JSON.stringify({ rules: [{ type: "layered-deps", $tiers: { 1: ["packages/hitl"] } }] }),
+      "scripts/capabilities-data.json": JSON.stringify({ runtimePaths: [], knownGaps: [], external: { "react-ui": "You build a screen." } }),
+      "packages/hitl/package.json": JSON.stringify({ name: "@titan-design/hitl", version: "1.0.0", description: "Human approval gates" }),
+      ...unitFiles,
+    };
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, file)), { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+    for (const group of ["products", "apps"]) mkdirSync(join(dir, group));
+    return catalogText(dir);
+  }
+
+  function mergeFile(base, ours, theirs) {
+    const dir = scratch();
+    const paths = Object.entries({ ours, base, theirs }).map(([name, text]) => {
+      writeFileSync(join(dir, name), text);
+      return join(dir, name);
+    });
+    const { status, stdout } = spawnSync("git", ["merge-file", "-p", ...paths], { encoding: "utf8" });
+    return { status, text: stdout };
+  }
+
+  it("adding exports and editing different CAPABILITY.md lines merges cleanly into the catalog the merged sources generate", () => {
+    const [base, ours, theirs] = [BASE, OURS, THEIRS].map(sources);
+    const mergedSources = [INDEX, CAP].map((file) => [file, mergeFile(base[file], ours[file], theirs[file])]);
+    expect(mergedSources.map(([, merged]) => merged.status)).toEqual([0, 0]);
+
+    const merged = mergeFile(catalogOf(base), catalogOf(ours), catalogOf(theirs));
+
+    expect(merged.status).toBe(0);
+    expect(merged.text).toBe(catalogOf(Object.fromEntries(mergedSources.map(([file, m]) => [file, m.text]))));
   });
 });
 

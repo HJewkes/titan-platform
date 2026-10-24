@@ -34,6 +34,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
+graphify
+https://github.com/Graphify-Labs/graphify
+
+Adapted in packages/retrieval/src/retrievers/walk.ts from graphify/serve.py
+(_bfs and _dfs: the max(50, p99 degree) hub threshold, and a non-seed hub that
+is returned but never expanded).
+
+Copyright 2026 Safi Shamsi and the Graphify contributors.
+Licensed under the Apache License, Version 2.0. Portions were contributed
+under the MIT License before the relicensing. graphify's NOTICE and the full
+Apache License 2.0 text are carried in packages/retrieval/NOTICE.
+
+--------------------------------------------------------------------------------
 anti-slop
 https://github.com/dmmulroy/anti-slop
 

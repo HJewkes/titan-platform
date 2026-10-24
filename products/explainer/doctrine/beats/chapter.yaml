@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: chapter
+summary: "A chapter card: number, title and its question."
+role: navigate
+component: { name: ChapterCard, maturity: shipped }
+slots: chapter
+speech: { band: held }
+durationS: [2, 3, 5]
+preset: true
+recipe: "Template fill: the chapter number, a short title and the question the chapter answers."

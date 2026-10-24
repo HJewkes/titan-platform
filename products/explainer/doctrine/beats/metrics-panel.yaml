@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: metrics-panel
+summary: "A small table: measure, today, target."
+role: evidence
+component: { name: ScorecardTable, maturity: spike }
+slots: metrics-panel
+speech: { band: concept }
+durationS: [6, 10, 18]
+preset: false
+emphasis: { targets: [rows], treatments: [highlight, colour] }
+recipe: "One to six rows of measure, today's value and the target. Light the row that matters most and say why."

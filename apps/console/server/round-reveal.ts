@@ -86,7 +86,7 @@ async function writeReveals(roundDir: string, reveals: readonly Reveal[]): Promi
 let writes: Promise<unknown> = Promise.resolve();
 
 /** One read-append-write at a time, so two quick reveals cannot drop each other. */
-function recordReveal(roundDir: string, questionId: string, now: Date): Promise<boolean> {
+export function recordReveal(roundDir: string, questionId: string, now: Date): Promise<boolean> {
   const next = writes.then(async () => {
     const reveals = await readReveals(roundDir);
     if (reveals.some((each) => each.questionId === questionId)) return false;

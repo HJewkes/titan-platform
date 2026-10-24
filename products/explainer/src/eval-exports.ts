@@ -63,7 +63,28 @@ export {
   type JudgeHarnessDeps,
   type JudgeReply,
 } from "./eval-harness.js";
-export { MIN_QUOTE_WORDS, evalVersion, readRubric, renderBeat, voidReason, type Evidence, type Track } from "./eval-evidence.js";
+export { MIN_QUOTE_WORDS, REPORTED_HEADING, evalVersion, readRubric, renderBeat, scriptRubricParts, voidReason, type Evidence, type Track } from "./eval-evidence.js";
+export {
+  CANARY_MAX_SCORE,
+  COLD_RUBRIC_CANARIES,
+  COLD_RUBRIC_DIMS,
+  COLD_RUBRIC_EVAL_ID,
+  SERIES_WINDOW,
+  coldRubricEvalVersion,
+  readColdRubric,
+  rubricBeatsFromPace,
+  rubricNote,
+  runColdRubric,
+  scoreCandidates,
+  seriesFromScripts,
+  type ColdRubricCanary,
+  type ColdRubricDim,
+  type ColdRubricInput,
+  type ColdRubricResult,
+  type RubricBeat,
+  type RubricCandidate,
+  type SeriesVideo,
+} from "./eval-cold-rubric.js";
 export {
   BEAT_DIMS,
   L1_CANARIES,

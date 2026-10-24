@@ -5,13 +5,16 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { isFullSha } from "@titan-design/evidence";
 import { readReviewPin } from "@titan-design/pm";
+import { EXPLAIN_REPO_DEFAULT_TYPE } from "../../profile-load.js";
 import { diag, type GatherDiagnostic } from "./diagnostics.js";
 import { digestFacts } from "./digest-facts.js";
+import { HISTORY_FILE, historyFacts } from "./history-facts.js";
 import { ExplainerFactSchema, ReviewBundleSchema, type ExplainerFact, type FactSource, type ReviewBundle } from "./schemas.js";
+import { SKIM_FILE, skimFacts } from "./skim-facts.js";
 import { entryPointFacts, readCoverage, readPin, summaryFacts, type FactOptions } from "./summary-facts.js";
 import { claimFacts, ledgerFacts, topicFacts } from "./tsv-facts.js";
 
-/** Stand-in for TP-2746's type profiles: only a repo argument needs a pain fact (decision 326). */
+/** The repo types `gatherReview` serves; only the argument profile lists the pain-fact precondition (decision 326). */
 export type GatherProfile = "repo-tour" | "repo-argument";
 
 export interface GatherOptions {
@@ -38,6 +41,8 @@ const FILES = {
   ledger: "ledger.tsv",
   claims: "synthesis/final/claims-audit.tsv",
   digests: "digests",
+  skim: SKIM_FILE,
+  history: HISTORY_FILE,
 } as const;
 
 const PERMISSIVE = new Set(["MIT", "Apache-2.0", "ISC", "CC0-1.0", "0BSD"]);
@@ -219,6 +224,18 @@ async function shapeFacts({ reader, options }: FactContext, out: GatherDiagnosti
   return facts;
 }
 
+// Both files are later additions to the review, so an older review without them still gathers.
+async function sideFacts({ reader, readme, options }: FactContext, out: GatherDiagnostic[]): Promise<ExplainerFact[]> {
+  const [skim, history] = await Promise.all([reader.read(FILES.skim), reader.read(FILES.history)]);
+  const parsed: Parsed[] = [];
+  if (skim === undefined) out.push(diag("W-NO-SKIM", `${FILES.skim} is absent; no purpose, actor or job facts from the docs skim`, FILES.skim));
+  else parsed.push(skimFacts(skim, options));
+  if (history === undefined) out.push(diag("W-NO-HISTORY", `${FILES.history} is absent; no hotspot or silo facts`, FILES.history));
+  else parsed.push(historyFacts(history, readme === undefined ? undefined : readPin(readme), options));
+  out.push(...parsed.flatMap((result) => result.diagnostics));
+  return parsed.flatMap((result) => result.facts);
+}
+
 // A parser that emits a fact the schema rejects loses that fact, not the gather.
 function validFacts(facts: ExplainerFact[], out: GatherDiagnostic[]): ExplainerFact[] {
   return facts.filter((fact) => {
@@ -229,7 +246,7 @@ function validFacts(facts: ExplainerFact[], out: GatherDiagnostic[]): ExplainerF
 }
 
 async function gatherFacts(context: FactContext, out: GatherDiagnostic[]): Promise<ExplainerFact[]> {
-  const facts = [...(await tsvFacts(context.reader, out)), ...tourFacts(context, out), ...(await shapeFacts(context, out))];
+  const facts = [...(await tsvFacts(context.reader, out)), ...tourFacts(context, out), ...(await shapeFacts(context, out)), ...(await sideFacts(context, out))];
   if (context.profile === "repo-argument" && !facts.some((fact) => fact.kind === "pain")) {
     out.push(diag("W-NO-PAIN", "no pain fact from the README, issues or discussions; open on a demonstrable anomaly instead"));
   }
@@ -251,7 +268,7 @@ function sortedRecord(record: Record<string, string>): Record<string, string> {
  * before deciding, so one refusal lists everything the operator must fix; any error means no bundle.
  */
 export async function gatherReview(options: GatherOptions): Promise<GatherResult> {
-  const profile = options.profile ?? "repo-tour";
+  const profile = options.profile ?? EXPLAIN_REPO_DEFAULT_TYPE;
   const reader = reviewReader(options.reviewDir);
   const [label, readme, summary, licensesText] = await Promise.all(
     [FILES.label, FILES.readme, FILES.summary, FILES.licenses].map((file) => reader.read(file)),

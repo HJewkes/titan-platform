@@ -4,9 +4,11 @@ Decides whether a fix pull request's new tests prove the fix: they must fail on 
 base with the non-test changes removed and pass at head. Pure functions plan and classify;
 the `fix-proof` bin does the git and vitest work.
 
-- `planFixProof({ nameStatus, baseConfig, headConfig })`: tests to run, carried support files,
+- `planFixProof({ nameStatus, baseConfig, headConfig, headFiles })`: tests to run, carried support files,
   deleted tests and overlay removals, with globs from the base config only. It also lists
-  mutation specs (`mutations`) and every non-test path (`source`); `testOnlyOf(plan)` is true
+  mutation specs (`mutations`) and every non-test path (`source`). A spec whose one sibling test
+  is in `headFiles` (paths at head beside the specs) and not deleted plans that test, so a
+  spec-only diff still has a test for its mutants; `testOnlyOf(plan)` is true
   when `source` is empty. Paths matching the config's `runtime` globs (fixtures a package
   publishes or production code reads) stay carried but also count as `source`.
   `testOnlyReading(plan)` refuses test-only with a reason: `source`, then `deletes-tests` for any
@@ -17,7 +19,8 @@ the `fix-proof` bin does the git and vitest work.
   and the merge-base check that each `find` occurs exactly once in a file that is not test material.
 - `classifyReports({ selected, base, head })`: per-test `reproduces`, `passes-on-base`,
   `new-api`, `fails-on-head` or `not-run`, and a verdict of `reproduced`, `unproven`,
-  `vacuous`, `no-tests` or `error`.
+  `vacuous`, `no-tests` or `error`. A test head skips or marks todo in a file that did not
+  fail is left out, unless base passed it.
 - `toResult`, `formatResultLine` and `parseResultLine`: one `fix-proof/v1 <json>` line of at
   most 4 KB, parsed strictly.
 - `classifyMutants(specs, decoded)`: each declared mutation is `killed` only when its rebuild
@@ -28,7 +31,10 @@ the `fix-proof` bin does the git and vitest work.
   verdict `error`, naming the spec, mutation and kill. `encodeMutantsReport` and
   `decodeMutantsReport` carry the mutants side's baseline and per-mutation runs to the judge.
 - `provedByMutants(result)`: true when a `vacuous` result's `mutants` verdict is `killed`, no
-  changed test file lacks a spec of its own (`mutants.uncovered` present and empty), no test was
+  changed test file lacks a spec of its own (`mutants.uncovered` present and empty; a changed
+  carried test whose runtime imports, followed through carried files, reach only carried files,
+  vitest and builtins that cannot start a process, worker or evaluated source needs none, since
+  no mutation may target a carried file), no test was
   deleted or renamed out of the tests, and every selected test ran and passed at head: the proof a test-only diff can give.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests

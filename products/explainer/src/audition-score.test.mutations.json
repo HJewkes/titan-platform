@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "coverage reads the covers tags again",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "items.filter((item) => evidence(item).some((id) => placed.has(id))).length",
+      "replace": "items.filter((item) => spine.blocks.some((b) => b.covers.includes(item))).length",
+      "kills": [
+        "audition code scores coverage averages P1 facts placed and the coverage items the cited facts evidence",
+        "audition code scores coverage ignores the spine's own covers tags",
+        "audition code scores with no P1 facts marked, the anchors are the facts behind the holding signals the structure's fit reads"
+      ]
+    },
+    {
+      "name": "anchors take every holding signal, not the ones the fit reads",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "row.holds === true && read.has(row.id)",
+      "replace": "row.holds === true",
+      "kills": [
+        "audition code scores with no P1 facts marked, the anchors are the facts behind the holding signals the structure's fit reads"
+      ]
+    },
+    {
+      "name": "an item no fact evidences counts as failed",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": " && evidence(item).length > 0",
+      "replace": "",
+      "kills": [
+        "audition code scores a coverage item no fact in the pack evidences is left out rather than failed"
+      ]
+    },
+    {
+      "name": "re-hook ignores the block's own band",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "Math.max(profile.pacing.reHookS[1], band?.[1] ?? 0)",
+      "replace": "profile.pacing.reHookS[1]",
+      "kills": [
+        "audition code scores a block the profile bands longer than the re-hook ceiling is held to its own band"
+      ]
+    },
+    {
+      "name": "a block's item cap earns no limit on coverage credit",
+      "file": "products/explainer/src/audition-score.ts",
+      "find": "cap === undefined ? [] : cited.slice(cap)",
+      "replace": "[]",
+      "kills": [
+        "audition code scores a block's own item cap a countdown citing seven anchors scores the same coverage as one citing five, and reports the excess"
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import type { ArDispatchStep } from "./manifest.js";
 import {
   CadenceRoundSchema,
   CadenceTriggerSchema,
+  RATCHET_MOVED,
   RatchetKindSchema,
   RegistryRowSchema,
   SnapshotLogSchema,
@@ -77,22 +78,27 @@ async function validateLook(ports: ArPorts, input: z.infer<typeof Inputs.validat
 const at = (firstStartedAt: string | undefined) => (firstStartedAt === undefined ? {} : { at: firstStartedAt });
 
 /**
- * A snapshot that fails answers `failed` rather than throwing, so the failure is recorded and a replay never cuts again
- * where the first drive went on without a snapshot. A cancelled run still throws.
+ * A snapshot or sync that fails answers `failed` rather than throwing, so the failure is recorded and a replay never
+ * repeats the port call where the first drive went on without it. A cancelled run and a moved ratchet still throw.
  */
-async function cutSnapshot(ports: ArPorts, input: SnapshotRequest, signal: AbortSignal): Promise<object> {
-  if (!ports.snapshot) return { failed: "[no-snapshot] this host has no snapshot port" };
+async function failedAnswer(call: () => Promise<object>, signal: AbortSignal): Promise<object> {
   try {
-    return await ports.snapshot(input, signal);
+    return await call();
   } catch (error) {
-    if (signal.aborted) throw error;
-    return { failed: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    if (signal.aborted || message.startsWith(RATCHET_MOVED)) throw error;
+    return { failed: message };
   }
 }
 
+async function cutSnapshot(ports: ArPorts, input: SnapshotRequest, signal: AbortSignal): Promise<object> {
+  if (!ports.snapshot) return { failed: "[no-snapshot] this host has no snapshot port" };
+  return failedAnswer(() => ports.snapshot!(input, signal), signal);
+}
+
 async function syncRatchet(ports: ArPorts, input: SyncRequest, signal: AbortSignal): Promise<object> {
-  if (!ports.sync) throw new Error("[no-sync] this host has no sync port");
-  return ports.sync(input, signal);
+  if (!ports.sync) return { failed: "[no-sync] this host has no sync port" };
+  return failedAnswer(() => ports.sync!(input, signal), signal);
 }
 
 /**

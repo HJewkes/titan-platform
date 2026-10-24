@@ -1,0 +1,49 @@
+{
+  "stage": { "width": 1920, "height": 1080 },
+  "layouts": [
+    { "beat": "b01-hook", "layer": "template", "framing": "stack" },
+    { "beat": "b02-flow", "layer": "custom", "anchors": ["B2:E5"] },
+    { "beat": "b03-sketch", "layer": "custom" },
+    { "beat": "b04-crib" }
+  ],
+  "marks": [
+    {
+      "beat": "b01-hook",
+      "t": 2.5,
+      "elements": [
+        { "id": "headline", "box": { "x": 100, "y": 60, "width": 1700, "height": 100 } },
+        { "id": "row-1", "box": { "x": 100, "y": 400, "width": 900, "height": 120 } },
+        { "id": "row-2", "box": { "x": 900, "y": 400, "width": 900, "height": 120 } }
+      ]
+    },
+    {
+      "beat": "b02-flow",
+      "t": 6,
+      "elements": [{ "id": "caption", "box": { "x": 700, "y": 950, "width": 500, "height": 60 } }]
+    },
+    {
+      "beat": "b03-sketch",
+      "t": 9.25,
+      "elements": []
+    },
+    {
+      "beat": "b04-crib",
+      "t": 12,
+      "elements": [{ "id": "crib-card", "box": { "x": 660, "y": 380, "width": 600, "height": 300 } }]
+    }
+  ],
+  "pixels": [
+    {
+      "beat": "b03-sketch",
+      "t": 9.25,
+      "coverage": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0.3, 0.4, 0, 0, 0],
+        [0, 0.2, 0.01, 0.6, 0, 0],
+        [0, 0, 0, 0.5, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    }
+  ]
+}

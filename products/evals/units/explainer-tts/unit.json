@@ -1,0 +1,125 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "explainer-tts",
+  "version": "1.0.0",
+  "title": "Voice a script and align its words",
+  "description": "Bridged until its TypeScript port lands: the host's bridge.json commands voice each beat and align its words; the checks step gates on every cue resolving to a voiced word.",
+  "input": {
+    "type": "object",
+    "required": [
+      "inputs"
+    ],
+    "properties": {
+      "inputs": {
+        "type": "object",
+        "required": [
+          "script"
+        ],
+        "properties": {
+          "script": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "files": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": [
+      "outputs",
+      "checks"
+    ],
+    "properties": {
+      "outputs": {
+        "type": "object",
+        "required": [
+          "words",
+          "audio"
+        ],
+        "properties": {
+          "words": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "audio": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "checks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "pass"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "pass": {
+              "type": "boolean"
+            },
+            "gate": {
+              "type": "boolean"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "objective": {
+    "constraints": [
+      {
+        "metric": "unresolved-cues",
+        "max": 0
+      }
+    ],
+    "noCriticalFailures": true,
+    "primary": {
+      "name": "wall_ms",
+      "direction": "minimize"
+    }
+  },
+  "acceptance": {
+    "levels": [
+      {
+        "level": 1,
+        "minCases": 10
+      },
+      {
+        "level": 2,
+        "successLowerBound": 0.7
+      },
+      {
+        "level": 3,
+        "successLowerBound": 0.85
+      },
+      {
+        "level": 4,
+        "holdDays": 14
+      }
+    ]
+  },
+  "visibility": "public"
+}

@@ -5,16 +5,20 @@ import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, L0_CHECKS, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import type { JudgeConfig, JudgeHarness } from "./eval-harness.js";
 import { itemsCommand } from "./eval-items-cli.js";
+import { listenerCommand } from "./listener-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
 import { migrateSpike } from "./migrate.js";
-import { SPINE_CHECK_IDS } from "./lint-spine.js";
+import { skippedSpineChecks } from "./lint-spine.js";
 import { MAX_SENTENCE_WORDS, vettableSentences } from "./lint-voice.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry, unimplementedL0Rules, type RuleRegistry } from "./rules.js";
-import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
+import { parseScript } from "./script-load.js";
+import type { ScriptV1 } from "./script-schema.js";
 import { parseSpine } from "./spine-schema.js";
+import { claimFacts, withClaimFacts } from "./claim-facts.js";
+import { parseCoverage, withCoverage } from "./lint-coverage.js";
 import { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVet } from "./speech-vet-gate.js";
 import { localSentenceVet } from "./speech-vet-local.js";
 import { readTiming } from "./timing.js";
@@ -31,6 +35,8 @@ interface L0Flags {
   layout?: string;
   timing?: string;
   spine?: string;
+  facts?: string;
+  coverage?: string;
   failOnGhosts?: boolean;
   speechVet?: boolean;
   format: ScriptFormat;
@@ -53,12 +59,13 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"
 
 /**
  * Check ids a rule claims that no run check emitted, one string per rule and id. The map lints
- * emit nothing without a layout, and the spine lints nothing without a spine, so those ids are not ghosts in such a run.
+ * emit nothing without a layout, and a spine lint nothing without a spine or for a structure it does not cover, so those
+ * ids are not ghosts in such a run.
  */
-function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], skipped: { layout: boolean; spine: boolean }): string[] {
+function ghostCheckIds(registry: RuleRegistry, results: readonly L0Result[], skipped: { layout: boolean; spine: ReadonlySet<string> }): string[] {
   const emitted = new Set(results.map((result) => result.check_id));
   const claimed = new Map(registry.rules.map((rule) => [rule.id, rule.l0?.status === "implemented" ? rule.l0.checks : (rule.l0?.partial ?? [])]));
-  const known = (id: string): boolean => emitted.has(id) || (skipped.layout && id.startsWith("map:")) || (skipped.spine && SPINE_CHECK_IDS.has(id));
+  const known = (id: string): boolean => emitted.has(id) || (skipped.layout && id.startsWith("map:")) || skipped.spine.has(id);
   return unimplementedL0Rules(registry, new Set([...emitted, ...[...claimed.values()].flat().filter(known)])).flatMap((ruleId) =>
     [...new Set((claimed.get(ruleId) ?? []).filter((id) => !known(id)))].map((id) => `${ruleId}: claimed check id ${id} is never emitted`),
   );
@@ -96,7 +103,7 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   const now = deps.now ?? (() => new Date());
   const started = now();
   const raw = readJson(file);
-  const script = flags.format === "spike" ? migrateSpike(raw) : ScriptSchema.parse(raw);
+  const script = flags.format === "spike" ? migrateSpike(raw) : parseScript(raw);
   const layout = flags.layout ? MapLayoutSchema.parse(readJson(flags.layout)) : undefined;
   const bench = benchLayout(flags.bench);
   const registry = readFileSync(flags.rules ?? DEFAULT_RULES_PATH);
@@ -105,13 +112,16 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   const timing = flags.timing ? readTiming(readJson(flags.timing)) : undefined;
   const spine = flags.spine ? parseSpine(readFileSync(flags.spine, "utf8")) : undefined;
   const sha = freezeScript(bench, raw, flags.parent ?? null);
-  const results = runL0(script, layout, await l0Checks(script, flags, deps), timing, spine);
+  const facts = flags.facts ? claimFacts(readFileSync(flags.facts, "utf8")) : undefined;
+  const coverage = flags.coverage ? parseCoverage(readFileSync(flags.coverage, "utf8")) : undefined;
+  const checks = withCoverage(withClaimFacts(await l0Checks(script, flags, deps), facts), coverage, facts);
+  const results = runL0(script, layout, checks, timing, spine);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
   appendTsv(bench.structure, STRUCTURE_COLUMNS, rows);
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
   const pass = l0HardPass(results);
   console.log(JSON.stringify({ script_sha: sha, rules_sha: rules, pass, checks: results.length, failed: failedChecks(results) }));
-  const ghosts = ghostCheckIds(parsed, results, { layout: layout === undefined, spine: spine === undefined });
+  const ghosts = ghostCheckIds(parsed, results, { layout: layout === undefined, spine: skippedSpineChecks(script, spine !== undefined) });
   ghosts.forEach((ghost) => console.error(`warning: ghost L0 check: ${ghost}`));
   return pass && !(flags.failOnGhosts && ghosts.length > 0);
 }
@@ -127,6 +137,8 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--layout <file>", "map layout JSON; without it the map lints are skipped")
     .option("--timing <file>", "words.json (or a durations-only extract); the pace lints read its heard durations, not plannedS")
     .option("--spine <file>", "story spine markdown (the script-method template); the spine lints Q-E15 and Q-E18 and the ledger lints read it")
+    .option("--facts <file>", "the gather's digest.json or facts pack (facts.md or facts.jsonl); without it Q-E20 reports that it did not run")
+    .option("--coverage <file>", "the daily gather's coverage.json; without it Q-E21 reports that it did not run")
     .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
     .option("--speech-vet", "vet each 26-32 word sentence with speech-vet (local Kokoro and Whisper; the first run downloads them) so Q-V9 can pass it; off by default, which keeps the 25-word cap")
@@ -150,16 +162,18 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
   const onResult = (next: number): void => {
     code = next;
   };
-  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride()
+  // Positional at every level, or a parent option such as calibrate's --format takes a subcommand's same-named flag.
+  const evalCommand = new Command("eval").description("Score scripts against the eval harness").exitOverride().enablePositionalOptions()
     .addCommand(l0Command(deps, onResult))
     .addCommand(paceCommand(deps, onResult))
     .addCommand(l1Command(deps, onResult))
     .addCommand(l2Command(deps, onResult))
     .addCommand(coldCommand(deps, onResult))
     .addCommand(itemsCommand(deps, onResult))
+    .addCommand(listenerCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult));
-  const program = new Command("explainer").exitOverride().addCommand(evalCommand);
+  const program = new Command("explainer").exitOverride().enablePositionalOptions().addCommand(evalCommand);
   try {
     await program.parseAsync([...argv], { from: "user" });
   } catch (error) {

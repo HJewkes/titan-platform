@@ -2,13 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a seat's registration sends to nobody, so the repo's seat hears it",
+      "name": "a retired non-fixer registrant still hears the run",
       "file": "products/factory/src/shepherd/registrant.ts",
-      "find": "  if (!registrant.fixer) return registrant.name;",
-      "replace": "  if (!registrant.fixer) return undefined;",
+      "find": "  if (!registrant.fixer) return holdsLiveSession(registrant.name, roster) ? registrant.name : undefined;",
+      "replace": "  if (!registrant.fixer) return registrant.name;",
       "kills": [
-        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a run tp-operator registered sends its seat notice and its digest to tp-operator only",
-        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a restarted successor run keeps the original registrant when the successor registers the PR again"
+        "Shepherd's seat notice and digest follow the run's registrant, not the repo's seat (TP-3653) a run whose non-fixer registrant has retired sends its seat notice and digest to the repo's seat (TP-3958)"
       ]
     },
     {

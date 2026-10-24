@@ -23,6 +23,19 @@ export const GATHER_CODES = {
   "W-NO-ENTRY": { severity: "warning" },
   "W-NO-PAIN": { severity: "warning", supportedFixes: ["anomaly-hook"] },
   "W-BAD-ROW": { severity: "warning" },
+  "E-INDEX": { severity: "error" },
+  "W-INDEX-PIN": { severity: "warning" },
+  "W-INDEX-SCOPE": { severity: "warning" },
+  "W-NO-INDEX": { severity: "warning" },
+  "W-UNRESOLVED": { severity: "warning" },
+  "W-NO-CALL-PATH": { severity: "warning" },
+  "W-NO-PROTOCOL": { severity: "warning" },
+  "W-NO-SKIM": { severity: "warning" },
+  "W-NO-HISTORY": { severity: "warning" },
+  "W-HISTORY-PIN": { severity: "warning" },
+  "W-NO-SUMMARY": { severity: "warning" },
+  "W-CHAPTER-UNMAPPED": { severity: "warning" },
+  "W-FACT-UNKNOWN": { severity: "warning" },
 } as const satisfies Record<string, CodeSpec>;
 
 export type GatherCode = keyof typeof GATHER_CODES;

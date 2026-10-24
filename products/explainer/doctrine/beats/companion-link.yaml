@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: companion-link
+summary: "A card pointing into the companion doc for reference kept off screen."
+role: navigate
+component: { name: ChapterCard, maturity: shipped }
+slots: companion-link
+speech: { band: held }
+durationS: [2, 4, 6]
+preset: true
+recipe: "Template fill: the companion doc section's title and link, so reference content stays off screen."

@@ -20,6 +20,7 @@ import {
   answerFileNames,
   depositFileName,
   depositFileNames,
+  withdrawnFileName,
   writeDeposit,
 } from "@titan-design/owner-queue/spool";
 import { EXIT } from "@titan-design/registry";
@@ -105,23 +106,24 @@ function parseDepositName(name: string): FiledDeposit {
   return { asker: decodedPart(stem.slice(0, separator)), depositId: decodedPart(stem.slice(separator + 1)) };
 }
 
-/** An undecodable name counts as open, so a strange file can only tighten a cap. */
-function isAnswered(present: ReadonlySet<string>, { asker, depositId }: FiledDeposit): boolean {
+/** Answered or withdrawn; an undecodable name counts as open, so a strange file can only tighten a cap. */
+function isClosed(present: ReadonlySet<string>, { asker, depositId }: FiledDeposit): boolean {
   if (asker === undefined || depositId === undefined) return false;
   try {
-    return answerFileNames(depositItemId(asker, depositId)).some((name) => present.has(name));
+    const id = depositItemId(asker, depositId);
+    return [...answerFileNames(id), withdrawnFileName(id)].some((name) => present.has(name));
   } catch {
     return false;
   }
 }
 
-/** The asker of every deposit file with no answer beside it, under either the current or the legacy name. */
+/** The asker of every deposit file with no answer or withdrawal beside it, under either the current or the legacy name. */
 function openDepositAskers(names: readonly string[]): (string | undefined)[] {
   const present = new Set(names);
   return names
     .filter((name) => !name.startsWith(".") && name.endsWith(DEPOSIT_SUFFIX) && !name.endsWith(ANSWER_SUFFIX))
     .map(parseDepositName)
-    .filter((filed) => !isAnswered(present, filed))
+    .filter((filed) => !isClosed(present, filed))
     .map((filed) => filed.asker);
 }
 

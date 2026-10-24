@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: user-flow
+summary: "One user's path through the thing, step by step."
+role: explain
+component: { name: StepRailBeat, maturity: spike }
+slots: user-flow
+speech: { band: story }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [steps], treatments: [highlight, trace] }
+recipe: "Follow one actor through two to six steps. Each step lands on its word. Keep the same actor through the beat."

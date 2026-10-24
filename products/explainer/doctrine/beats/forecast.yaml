@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: forecast
+summary: "Where a measure is heading, with p50 and p80."
+role: evidence
+component: { name: LineChart, maturity: doc }
+slots: forecast
+speech: { band: concept }
+durationS: [6, 12, 20]
+preset: false
+emphasis: { targets: [quantiles], treatments: [highlight, colour] }
+recipe: "Show the history line, then the forecast quantiles. Say the p50 and what would move it."

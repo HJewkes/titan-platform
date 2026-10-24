@@ -10,7 +10,7 @@ import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
 import { AnswerSourceProvider } from "./data/submit.js";
-import { getButton } from "./pages/get-button.test-helpers.js";
+import { getButton, getByRoleFast } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
 
 const SHIP = "ship-tile-r1";
@@ -107,7 +107,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
 const panelLabels = (key: string): string[] => within(screen.getByTestId(`montage-${key}`)).getAllByText(/^(BEFORE \(main\)|AFTER \(head\)|DIFF)$/).map((label) => label.textContent);
 const button = (label: string): HTMLElement => getButton(label);
 /** The montages sit under the Diff tab (decision 167). */
-const openDiff = (): void => void fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+const openDiff = (): void => void fireEvent.click(getByRoleFast("tab", "Diff"));
 const frameCalls = ({ calls }: Rendered) => calls.filter((call) => call.name === "rounds.frame");
 
 describe("the Ship view", { timeout: RENDER_TIMEOUT_MS }, () => {
@@ -357,10 +357,10 @@ describe("answering a Ship round with side questions", { timeout: RENDER_TIMEOUT
   it("sends every side answer with the Ship pick in one rounds.submit, in the round's question order", async () => {
     const rendered = await renderShip({ answers: true, detail: await td850() });
 
-    fireEvent.click(screen.getByRole("radio", { name: "1 Yes" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "1 Light" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "3 Wide" }));
-    fireEvent.click(screen.getByRole("radio", { name: "4 4" }));
+    fireEvent.click(getByRoleFast("radio", "1 Yes"));
+    fireEvent.click(getByRoleFast("checkbox", "1 Light"));
+    fireEvent.click(getByRoleFast("checkbox", "3 Wide"));
+    fireEvent.click(getByRoleFast("radio", "4 4"));
     fireEvent.change(screen.getByLabelText("Answer to Anything else?"), { target: { value: "Looks fine." } });
     fireEvent.click(button("Ship"));
 
@@ -380,7 +380,7 @@ describe("answering a Ship round with side questions", { timeout: RENDER_TIMEOUT
   it("sends the side answers with Send back too, and leaves unanswered optional questions out", async () => {
     const rendered = await renderShip({ answers: true, detail: await td850() });
 
-    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(getByRoleFast("radio", "2 No"));
     fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "The stripe is low." } });
     fireEvent.click(button("Send back"));
 
@@ -441,7 +441,7 @@ describe("Ship while feedback is open (TP-3741)", { timeout: RENDER_TIMEOUT_MS }
     fireEvent.click(button("Ship"));
     expect(submits(rendered)).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    fireEvent.click(getByRoleFast("checkbox", "Round 1 feedback addressed"));
     expect(screen.queryByTestId("ship-blocked")).toBeNull();
     fireEvent.click(button("Ship"));
 
@@ -467,7 +467,7 @@ describe("Ship while feedback is open (TP-3741)", { timeout: RENDER_TIMEOUT_MS }
     const questions = detail.manifest.questions.map((question) => (question.id === "badge-follow-up" && question.kind === "pick-one" ? { ...question, implemented: "Yes" } : question));
     await renderShip({ answers: true, detail: { manifest: { ...detail.manifest, questions } } });
 
-    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(getByRoleFast("radio", "2 No"));
 
     expect(blocked()).toContain('your answer to "File the badge colour as a follow-up?" differs from the implemented choice');
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
@@ -490,9 +490,9 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", { timeout: RENDER_
     await renderShip({ answers: true, detail: await implementedYes() });
 
     expect(within(stake()).getByText('Picking "No", or leaving a comment, blocks Ship and sends the PR back to the fixer.')).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(getByRoleFast("radio", "2 No"));
     expect(within(stake()).getByText("Blocks Ship")).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: "1 Yes" }));
+    fireEvent.click(getByRoleFast("radio", "1 Yes"));
     expect(within(stake()).getByText("Won't block Ship")).toBeTruthy();
     expect(within(stake()).queryByText("Blocks Ship")).toBeNull();
   });
@@ -501,7 +501,7 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", { timeout: RENDER_
     await renderShip({ answers: true });
 
     expect(within(stake()).getByText("Your answer is informational and never blocks Ship; only a comment does.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(getByRoleFast("radio", "2 No"));
     expect(within(stake()).getByText("Won't block Ship")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(`Comment on ${PROMPT}`), { target: { value: "Try the stripe's colour." } });
     expect(within(stake()).getByText("Blocks Ship")).toBeTruthy();
@@ -509,12 +509,12 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", { timeout: RENDER_
 
   it("keeps This PR answers blocking as before, and ships a commented answer marked Follow-up with the mark", async () => {
     const rendered = await renderShip({ answers: true, detail: await implementedYes() });
-    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(getByRoleFast("radio", "2 No"));
     fireEvent.change(screen.getByLabelText(`Comment on ${PROMPT}`), { target: { value: "Try the stripe's colour." } });
-    expect(within(stake()).getByRole("radio", { name: "This PR" }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRoleFast("radio", "This PR", stake()).getAttribute("aria-checked")).toBe("true");
     expect(button("Ship").getAttribute("aria-disabled")).toBe("true");
 
-    fireEvent.click(within(stake()).getByRole("radio", { name: "Follow-up" }));
+    fireEvent.click(getByRoleFast("radio", "Follow-up", stake()));
 
     expect(within(stake()).getAllByText("Follow-up")).toHaveLength(2);
     expect(within(stake()).getByText("Follow-up: never blocks Ship. Your answer is filed in the inbox as a follow-up when you send.")).toBeTruthy();
@@ -530,8 +530,8 @@ describe("what blocks Ship, per question (TP-3345, TP-3346)", { timeout: RENDER_
 
   it("sends no follow-up mark once the answer is switched back to This PR", async () => {
     const rendered = await renderShip({ answers: true });
-    fireEvent.click(within(stake()).getByRole("radio", { name: "Follow-up" }));
-    fireEvent.click(within(stake()).getByRole("radio", { name: "This PR" }));
+    fireEvent.click(getByRoleFast("radio", "Follow-up", stake()));
+    fireEvent.click(getByRoleFast("radio", "This PR", stake()));
 
     fireEvent.click(button("Ship"));
 
@@ -579,7 +579,7 @@ describe("a Ship round that shares the round answer state (TP-3766)", { timeout:
     await renderShip({ answers: true, detail: await shipFirst() });
     fireEvent.change(screen.getByLabelText("Answer to Anything else?"), { target: { value: "Looks fine." } });
     fireEvent.change(screen.getByLabelText("Comment on Anything else?"), { target: { value: "Recheck the stripe later." } });
-    fireEvent.click(within(screen.getByTestId("ship-stake-notes")).getByRole("radio", { name: "Follow-up" }));
+    fireEvent.click(getByRoleFast("radio", "Follow-up", screen.getByTestId("ship-stake-notes")));
     fireEvent.click(button("Ship"));
     await screen.findByText("Waiting for the factory");
 
@@ -598,7 +598,7 @@ describe("a Ship round that shares the round answer state (TP-3766)", { timeout:
     const rendered = await renderShip({ answers: true });
 
     fireEvent.keyDown(window, { key: "2" });
-    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRoleFast("radio", "2 No").getAttribute("aria-checked")).toBe("true");
     fireEvent.click(button("Ship"));
 
     await waitFor(() => expect(submits(rendered)).toHaveLength(1));
@@ -631,10 +631,10 @@ describe("a sent Ship round read back after a reload (TP-3767)", { timeout: REND
 
     const side = screen.getByTestId("ship-side-badge-follow-up");
     expect(side.hasAttribute("inert")).toBe(true);
-    expect(within(side).getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRoleFast("radio", "2 No", side).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("round-comment-sent-badge-follow-up").textContent).toContain("Ask design.");
     expect(screen.getByTestId("round-pick-sent-ship-tiles").textContent).toContain("Ship");
-    const addressed = within(screen.getByTestId("ship-prior-feedback")).getByRole("checkbox", { name: "Round 1 feedback addressed" });
+    const addressed = getByRoleFast("checkbox", "Round 1 feedback addressed", screen.getByTestId("ship-prior-feedback"));
     expect(addressed.getAttribute("aria-checked")).toBe("true");
     expect(screen.queryByRole("button", { name: "Ship" })).toBeNull();
   });
@@ -643,10 +643,10 @@ describe("a sent Ship round read back after a reload (TP-3767)", { timeout: REND
     await renderShip({ answers: true, detail: sent });
 
     fireEvent.keyDown(window, { key: "1" });
-    fireEvent.click(within(screen.getByTestId("ship-side-badge-follow-up")).getByRole("radio", { name: "1 Yes" }));
+    fireEvent.click(getByRoleFast("radio", "1 Yes", screen.getByTestId("ship-side-badge-follow-up")));
 
-    expect(screen.getByRole("radio", { name: "1 Yes" }).getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRoleFast("radio", "1 Yes").getAttribute("aria-checked")).toBe("false");
+    expect(getByRoleFast("radio", "2 No").getAttribute("aria-checked")).toBe("true");
   });
 });
 
@@ -695,7 +695,7 @@ describe("frame feedback on a Ship round (TP-3773 S6b)", { timeout: RENDER_TIMEO
 
     expect(within(screen.getByTestId("ship-prior-feedback")).getByText("Tile, dark (rejected): The stripe clips.")).toBeTruthy();
     expect(blocked()).toContain("your feedback from round 1 is not ticked Addressed");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Round 1 feedback addressed" }));
+    fireEvent.click(getByRoleFast("checkbox", "Round 1 feedback addressed"));
     expect(screen.queryByTestId("ship-blocked")).toBeNull();
   });
 
@@ -714,12 +714,12 @@ describe("an unsent Ship round's draft (TP-3870)", { timeout: RENDER_TIMEOUT_MS 
   const PRIOR = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
   const SIDE_COMMENT = "Comment on File the badge colour as a follow-up?";
   const stored = (): string | null => localStorage.getItem(draftKey(SHIP));
-  const addressedTick = (): HTMLElement => screen.getByRole("checkbox", { name: "Round 1 feedback addressed" });
+  const addressedTick = (): HTMLElement => getByRoleFast("checkbox", "Round 1 feedback addressed");
   const value = (label: string): string => screen.getByLabelText<HTMLTextAreaElement>(label).value;
 
   /** Answers and comments on the side question, ticks round 1 Addressed and writes the Send back note, then waits for the write. */
   async function typeDraft(): Promise<void> {
-    fireEvent.click(screen.getByRole("radio", { name: "2 No" }));
+    fireEvent.click(getByRoleFast("radio", "2 No"));
     fireEvent.change(screen.getByLabelText(SIDE_COMMENT), { target: { value: "Ask design first." } });
     fireEvent.click(addressedTick());
     fireEvent.change(screen.getByLabelText("Note for Send back"), { target: { value: "Lift the stripe." } });
@@ -733,7 +733,7 @@ describe("an unsent Ship round's draft (TP-3870)", { timeout: RENDER_TIMEOUT_MS 
 
     await renderShip({ answers: true, detail: { priorFeedback: PRIOR } });
 
-    expect(screen.getByRole("radio", { name: "2 No" }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRoleFast("radio", "2 No").getAttribute("aria-checked")).toBe("true");
     expect(value(SIDE_COMMENT)).toBe("Ask design first.");
     expect(addressedTick().getAttribute("aria-checked")).toBe("true");
     expect(value("Note for Send back")).toBe("Lift the stripe.");

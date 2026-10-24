@@ -15,15 +15,12 @@ interface ResolveIo {
   env: NodeJS.ProcessEnv;
 }
 
-/** Asks the owner to prove presence with `reason` shown; returns a proof id, or undefined when presence is not confirmed. */
-export type OwnerPresence = (reason: string) => Promise<string | undefined>;
-
 /**
  * `titan-factory gate resolve`: answers the gate the run waits on at `stepId`; a resolver refusal throws to the CLI, which exits 1.
- * `presence` and `sources` are injected only in code: no proof, runner, helper path or evidence is ever read from argv or the environment.
+ * Presence is always `confirmOwner`, and `sources` is injected only in code: no proof, runner, helper path or evidence is ever read from argv or the environment.
  * Without `sources` no coordinator evidence is read, so the resolve takes the presence path as before.
  */
-export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string, presence: OwnerPresence = confirmOwner, sources?: EvidenceSources): Promise<number> {
+export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string, sources?: EvidenceSources): Promise<number> {
   const payload = parsePayload(json);
   if (!payload) {
     io.stderr("error: --json must be a JSON object\n");
@@ -36,7 +33,7 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
   }
   const gateId = pendingGateId(host, runId, stepId);
   const evidenceFor = (resolver: GateResolver) => (sources && gateId ? readCoordinatorEvidence(host, sources, gateId, payload, resolver) : Promise.resolve(undefined));
-  const resolution = await cliResolver(io.env, gateId, payload, presence, evidenceFor);
+  const resolution = await cliResolver(io.env, gateId, payload, evidenceFor);
   if (typeof resolution === "string") {
     io.stderr(`error: ${resolution}\n`);
     return EXIT.USAGE;
@@ -84,7 +81,6 @@ async function cliResolver(
   env: NodeJS.ProcessEnv,
   gateId: string | undefined,
   payload: Record<string, unknown>,
-  presence: OwnerPresence,
   evidenceFor: (coordinator: GateResolver) => Promise<CoordinatorEvidence | undefined>,
 ): Promise<Resolution | string> {
   if (!env.AGENT_CHAT_AGENT_ID) return { resolver: ownerTerminal() };
@@ -94,7 +90,7 @@ async function cliResolver(
   if (evidence !== undefined) return { resolver: coordinator, evidence };
   const reason = presenceReason(gateId, payload);
   if (reason === undefined) return `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence`;
-  const owner = await ownerResolver(env, reason, presence);
+  const owner = await ownerResolver(env, reason);
   return { resolver: typeof owner === "string" ? coordinator : owner };
 }
 
@@ -106,10 +102,10 @@ const coordinatorOf = (id: string): GateResolver => ({ class: "coordinator", id,
  * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with a presence proof for `reason`; without one
  * it is refused. Any other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
  */
-export async function ownerResolver(env: NodeJS.ProcessEnv, reason: string, presence: OwnerPresence): Promise<GateResolver | string> {
+export async function ownerResolver(env: NodeJS.ProcessEnv, reason: string): Promise<GateResolver | string> {
   const owner = ownerTerminal();
   if (!env.AGENT_CHAT_AGENT_ID) return owner;
-  const proof = await presence(reason);
+  const proof = await confirmOwner(reason);
   if (!proof) return `owner presence was not confirmed, so ${env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID}, a shell agent-chat launched, is refused: only the owner may ${reason}`;
   return { ...owner, confirmEvent: proof };
 }

@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the outcome alert drops the act's message",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": "message={sheet.acted.message} testID={`${testID}-outcome`}",
+      "replace": "message=\"\" testID={`${testID}-outcome`}",
+      "kills": [
+        "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed",
+        "the inbox page, acting from the console sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again",
+        "the inbox page, acting from the console shows a moved head as a warning naming the new head"
+      ]
+    },
+    {
+      "name": "a queued land run shows as not landed",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"already\"]);",
+      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"already\"]);",
+      "kills": ["the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"]
+    },
+    {
+      "name": "the op read-back drops who proposed it",
+      "file": "apps/console/src/pages/InboxReadBack.tsx",
+      "find": "{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}",
+      "replace": "{`Proposed: ${readBack.proposal}`}",
+      "kills": ["the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"]
+    },
+    {
+      "name": "the act is sent without the prepared confirm",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": "{ ...JSON.parse(argsKey), confirm: prepared.confirm }",
+      "replace": "{ ...JSON.parse(argsKey) }",
+      "kills": ["the inbox page, acting from the console sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again"]
+    },
+    {
+      "name": "the live next state names the state instead of the run's detail",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": "{`Now: ${sheet.acted.next.detail}`}",
+      "replace": "{`Now: ${sheet.acted.next.state}`}",
+      "kills": ["the inbox page, acting from the console shows the run's live next state under a landed outcome"]
+    }
+  ]
+}

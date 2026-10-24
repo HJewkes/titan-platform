@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import { ghDeployNow, startDeployPacer } from "./deploy-pacer-sweep.js";
+import { deployWindowPath } from "./deploy-output.js";
 import { deployHoldPath, deployPausePath } from "./deploy-pause.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { DEPLOY_MAX_WAIT_MS, DEPLOY_NOW_LABEL, DEPLOY_QUIET_MS, nodeWantedStore, noteWanted, writeWanted, type DeployPacerOptions, type WantedStore } from "./shepherd/deploy-pacer.js";
@@ -135,6 +136,18 @@ describe("serve's deploy pacer sweep", () => {
 
     await vi.waitFor(async () => expect((await health(server)).deployPending).toBeNull());
 
+    expect(world.spawned).toEqual([]);
+  });
+
+  it("keeps a wanted sha the running build descends from while deploy-window.json shows that build still in its health watch", async () => {
+    const world = pacerWorld();
+    writeFileSync(deployWindowPath(world.stateDir), JSON.stringify({ sha: "a".repeat(40), windowEnd: T0 + DEPLOY_MAX_WAIT_MS + 2 * MIN }));
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    const server = await serve({ ...world, pacer: { ...world.pacer, isAncestor: async (ancestor) => ancestor === WANTED } });
+
+    await world.ticks(3);
+
+    expect((await health(server)).deployPending).toMatchObject({ sha: WANTED });
     expect(world.spawned).toEqual([]);
   });
 

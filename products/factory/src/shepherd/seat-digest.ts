@@ -6,11 +6,13 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
-import { fixerRegistered, registrantSeat, runLineage } from "./registrant.js";
+import { liveRoute, type ExitNoticePorts, type FallbackSeat } from "./exit-notice.js";
+import { registrantSeat, runLineage, spawnerSeat } from "./registrant.js";
 import { FINISHED_PHASES } from "./step-phase.js";
 import type { ShepherdServices } from "./services.js";
 import type { ShepherdStore } from "./store.js";
 import type { WatchRow } from "./view.js";
+import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
@@ -19,11 +21,14 @@ const SEAT_DIGEST_FILE = "seat-digest.json";
 
 /**
  * Where a digest goes: the seat book read once per sweep, naming the one seat that owns a repo, the roster that names a
- * self-registered fixer's spawner, and the send. A run in a repo no single seat owns gets no digest, whoever registered it.
+ * self-registered fixer's spawner and which seats are live, the fallbacks for a seat that is not, and the send. A run in
+ * a repo no single seat owns gets no digest, whoever registered it.
  */
 export interface SeatDigestPorts {
   seatLookup(): (repo: string) => string | undefined;
   roster?(): Promise<readonly AgentRow[]>;
+  /** The seats a digest for `repo` goes to, in order, when its seat holds no live session, as for notices. */
+  fallbackSeats?(repo: string): readonly FallbackSeat[];
   send(seat: string, text: string): Promise<void>;
 }
 
@@ -32,8 +37,11 @@ type SeatOf = (run: { repo: string; runId: string }) => string | undefined;
 
 const repoSeats = (seatFor: (repo: string) => string | undefined): SeatOf => (run) => seatFor(run.repo);
 
-/** What a seat was last told: the open items by key, and every finished run it has heard of. */
-const SeatStateSchema = z.object({ open: z.array(z.string()), finished: z.array(z.string()) });
+/** A rerouted digest never reaches further back than this, however long its seat has gone untold. */
+const REROUTE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** What a seat was last told: the open items by key, every finished run it has heard of, and when it was last sent one. */
+const SeatStateSchema = z.object({ open: z.array(z.string()), finished: z.array(z.string()), at: z.string().optional() });
 export type SeatState = z.infer<typeof SeatStateSchema>;
 
 export interface SeatDigestMemory {
@@ -89,13 +97,20 @@ function finishedItem(row: WatchRow): Item | undefined {
   return { key: row.runId, line: `- ${pr(row)} ${how}` };
 }
 
-/** Each seat's open items and finished runs, from the watch rows; a run no seat is named for is left out. */
-function seatViews(inputs: readonly DigestInput[], seatOf: SeatOf): Map<string, SeatView> {
+/**
+ * Each seat's open items and finished runs, from the watch rows; a run no seat is named for is left out. A `quiet` run is
+ * settled without a line, so the seat neither hears of it nor reads it again.
+ */
+function seatViews(inputs: readonly DigestInput[], seatOf: SeatOf, quiet: (input: DigestInput) => boolean): Map<string, SeatView> {
   const views = new Map<string, SeatView>();
   for (const input of inputs) {
     const seat = seatOf(input.row);
     if (seat === undefined) continue;
     const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [] }).get(seat)!;
+    if (quiet(input)) {
+      if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
+      continue;
+    }
     const open = gateItem(input.row) ?? seatFixItem(input);
     if (open) view.open.push(open);
     const finished = finishedItem(input.row);
@@ -122,9 +137,10 @@ function digestText(seat: string, view: SeatView, last: SeatState | undefined): 
 }
 
 /** Finished runs stay known once heard of, because a sweep reads only the finished runs its seat has not heard of. */
-const stateOf = (view: SeatView, last: SeatState | undefined): SeatState => ({
+const stateOf = (view: SeatView, last: SeatState | undefined, sentAt: string | undefined): SeatState => ({
   open: view.open.map((item) => item.key).sort(),
   finished: [...new Set([...(last?.finished ?? []), ...view.finished.map((item) => item.key), ...view.settled])].sort(),
+  at: sentAt ?? last?.at,
 });
 
 /**
@@ -147,19 +163,56 @@ export function digestReads(memory: SeatDigestMemory, seatOf: SeatOf): (run: { r
   };
 }
 
-/** One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again. */
+/** Where each run's digest goes, and why a seat neither live itself nor behind a live fallback is sent none. */
+interface DigestRoutes {
+  seatOf: SeatOf;
+  unsendable: ReadonlyMap<string, string>;
+  /** The run's own seat when its digest goes to a fallback because that seat holds no live session. */
+  reroutedFrom?: SeatOf;
+}
+
+const finishedAt = ({ row, run }: DigestInput): string => run.completedAt ?? row.phaseSince;
+
+/**
+ * A rerouted run the fallback need not hear of (TP-4059): a finished one older than its own seat's last digest or the
+ * window, so a dead seat's backlog is never replayed in one message. A run whose registrant's seat is live is never
+ * rerouted, since `registrantSeat` and `spawnerSeat` name a seat only while live and `liveRoute` keeps a live seat.
+ */
+function rerouteQuiet(routes: Partial<DigestRoutes>, memory: SeatDigestMemory, now: Date): (input: DigestInput) => boolean {
+  const floor = new Date(now.getTime() - REROUTE_WINDOW_MS).toISOString();
+  return (input) => {
+    const origin = routes.reroutedFrom?.(input.row);
+    if (origin === undefined) return false;
+    if (input.row.outcome === null && !FINISHED_PHASES.has(input.row.phase)) return false;
+    const lastTold = memory.get(origin)?.at;
+    const since = lastTold !== undefined && lastTold > floor ? lastTold : floor;
+    return finishedAt(input) <= since;
+  };
+}
+
+/**
+ * One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again, and so
+ * does a seat `unsendable` names, whose reason is its failure's cause.
+ */
 export async function sendSeatDigests(
   inputs: readonly DigestInput[],
   ports: SeatDigestPorts,
   memory: SeatDigestMemory,
-  seatOf: SeatOf = repoSeats(ports.seatLookup()),
+  routes: Partial<DigestRoutes> = {},
+  now: Date = new Date(),
 ): Promise<{ sent: string[]; failed: { seat: string; cause: string }[] }> {
   const sent: string[] = [];
   const failed: { seat: string; cause: string }[] = [];
-  for (const [seat, view] of seatViews(inputs, seatOf)) {
+  const unsendable = routes.unsendable ?? new Map<string, string>();
+  for (const [seat, view] of seatViews(inputs, routes.seatOf ?? repoSeats(ports.seatLookup()), rerouteQuiet(routes, memory, now))) {
     const last = memory.get(seat);
     const text = digestText(seat, view, last);
-    const state = stateOf(view, last);
+    const why = text === undefined ? undefined : unsendable.get(seat);
+    if (why !== undefined) {
+      failed.push({ seat, cause: why });
+      continue;
+    }
+    const state = stateOf(view, last, text === undefined ? undefined : now.toISOString());
     try {
       if (text !== undefined) await ports.send(seat, text);
       if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
@@ -171,27 +224,62 @@ export async function sendSeatDigests(
   return { sent, failed };
 }
 
+/** An unread roster routes every digest by repo seat, as before registrants were recorded; the log says why. */
+function unreadRoster(error: unknown): undefined {
+  console.error(`shepherd: seat digests go by repo seat, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  return undefined;
+}
+
 /**
- * Each run's seat: the one its lineage names (`registrantSeat`), else its repo's one seat, and none when the repo has no
- * single seat (`runSeat`). The seat book is read once, and the roster once, only when some run's own fixer registered it.
+ * Each run's seat: the one its lineage names (`registrantSeat`), else the live seat that spawned its registrant
+ * (`spawnerSeat`), else its repo's one seat, and none when the repo has no single seat (`runSeat`). The seat book is read
+ * once, and the roster once, which also says which seats are live.
  */
-async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<SeatOf> {
+async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<DigestRoutes> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
-  const roster = ports.roster && lineages.some(({ lineage }) => fixerRegistered(lineage)) ? await ports.roster().catch(() => undefined) : undefined;
-  const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster)]));
-  return (run) => {
+  const roster = ports.roster ? await ports.roster().catch(unreadRoster) : undefined;
+  const named = new Map(lineages.map(({ runId, lineage }) => [runId, registrantSeat(lineage, roster) ?? spawnerSeat(lineage, roster)]));
+  const chosen: SeatOf = (run) => {
     const seat = seatFor(run.repo);
     return seat && (named.get(run.runId) ?? seat);
   };
+  const live = roster && { live: async (seat: string) => holdsLiveSession(seat, roster) };
+  return liveSeats(store.all(), chosen, { ...live, ...(ports.fallbackSeats && { fallbackSeats: ports.fallbackSeats }) });
+}
+
+/**
+ * The live-seat routing seat notices take (tp#2252): a chosen seat with no live session hands its runs to the first live
+ * fallback, and with none live it keeps them and is recorded as unsendable. No readable roster keeps every seat.
+ */
+async function liveSeats(runs: readonly { repo: string; runId: string }[], chosen: SeatOf, ports: Pick<ExitNoticePorts, "live" | "fallbackSeats">): Promise<DigestRoutes> {
+  const routed = new Map<string, string>();
+  const unsendable = new Map<string, string>();
+  const key = (repo: string, seat: string): string => `${repo}\n${seat}`;
+  for (const run of runs) {
+    const seat = chosen(run);
+    if (seat === undefined || routed.has(key(run.repo, seat))) continue;
+    const route = await liveRoute(ports, run.repo, seat);
+    if ("none" in route) unsendable.set(seat, route.none);
+    routed.set(key(run.repo, seat), "none" in route ? seat : route.seat);
+  }
+  const seatOf: SeatOf = (run) => {
+    const seat = chosen(run);
+    return seat && (routed.get(key(run.repo, seat)) ?? seat);
+  };
+  const reroutedFrom: SeatOf = (run) => {
+    const seat = chosen(run);
+    return seat !== undefined && seatOf(run) !== seat ? seat : undefined;
+  };
+  return { seatOf, unsendable, reroutedFrom };
 }
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
-export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory): ReturnType<typeof sendSeatDigests> {
-  const seatOf = await runSeats(services.store.get(), ports);
-  const reads = digestReads(memory, seatOf);
+export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now: Date = new Date()): ReturnType<typeof sendSeatDigests> {
+  const routes = await runSeats(services.store.get(), ports);
+  const reads = digestReads(memory, routes.seatOf);
   const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration, runFinished(status)));
-  return sendSeatDigests(inputs, ports, memory, seatOf);
+  return sendSeatDigests(inputs, ports, memory, routes, now);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);

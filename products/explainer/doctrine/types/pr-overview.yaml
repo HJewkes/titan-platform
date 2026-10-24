@@ -1,0 +1,54 @@
+# PR review (video-profiles plan §B.1): the CL / CodeRabbit order inside each macro. Made on request,
+# and automatically only as the decision-brief cut for a PR waiting at the visual gate (owner Q6).
+schema: type-profile/v1
+type: pr-overview
+version: 0.4.0
+family: review-pr
+intent: "Explain one change: why it exists, what it changes grouped by purpose, what proves it, what it risks, and what the viewer should do."
+audience: { default: owner-internal, allow: [owner-internal] }
+inputs: { adapters: [gatherPr], preconditions: [linked-task] }
+runtime: { targetS: 150, minS: 90, maxS: 240, splitAboveS: 300 }
+structure:
+  order: heuristic
+  heuristic:
+    - { macro: scqa, ask: "Is the PR waiting on the viewer at a gate?" }
+    - { macro: attempt-journey, ask: "Is it a bug fix with attempts that broke along the way?" }
+    - { macro: review-saga, ask: "Did review take three or more rounds?" }
+  fallback: before-after
+  macros:
+    scqa: [summary, changes, proof, ask]
+    attempt-journey: [summary, attempt, breaks, proof, ask]
+    review-saga: [summary, rounds, changes, proof, ask]
+    before-after: [summary, problem, changes, interactions, shortcomings, proof, ask]
+  systems:
+    - { system: cl-order, macro: before-after }
+    - { system: cl-order, macro: scqa }
+    - { system: cl-order, macro: review-saga }
+    - { system: journey-of-attempts, macro: attempt-journey }
+  blocks:
+    - { id: summary, goal: "An imperative one-line summary that stands alone, with the verdict.", seconds: [10, 25], beats: [verdict-card, claim-card, hook], require: [verdict-card] }
+    - { id: problem, goal: "The problem, and why this approach.", seconds: [15, 40], beats: [claim-card, stakes, compare] }
+    - { id: changes, goal: "The changes grouped into two to four rows of related files.", seconds: [30, 70], beats: [change-group, diff-map, code-walk, frame-flow], require: [change-group] }
+    - { id: interactions, goal: "A sequence diagram, only if interactions changed.", seconds: [15, 40], beats: [sequence, info-flow] }
+    - { id: attempt, goal: "What was tried, in the code.", seconds: [20, 45], beats: [attempt, code-walk], require: [attempt] }
+    - { id: breaks, goal: "Where it broke and why.", seconds: [20, 45], beats: [issue-pin, sequence, info-flow] }
+    - { id: rounds, goal: "The review rounds and what each one caught.", seconds: [20, 50], beats: [history, finding-card] }
+    - { id: shortcomings, goal: "Shortcomings, said aloud.", seconds: [10, 30], beats: [finding-card, fix], require: [finding-card] }
+    - { id: proof, goal: "Tests or a benchmark that show it holds.", seconds: [15, 40], beats: [proof, stat, compare], require: [proof] }
+    - { id: ask, goal: "Risk or effort, then the ask.", seconds: [10, 25], beats: [metrics-panel, button], require: [button] }
+cuts:
+  - { id: decision-brief, type: decision-brief, when: "The PR waits at the visual gate: verdict, one change row, proof and the ask, in BLUF order.", runtimeS: [45, 90] }
+hook: "Stake first: the verdict and what it costs or opens, in the first sentence."
+ending: button
+styles: { allow: [mono-console, night-drafting, ember-desk] }
+voice: { id: af_sarah, rate: 1.05 }
+series:
+  mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
+  mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]
+audition: { k: 3, storyboardOnly: true }
+# The decision brief is triggered with no planner in the loop, so the audition pick is the script stage's spine.
+spine: { from: audition-pick }
+layers: { customMin: 1, templateMaxShare: 0.7, componentMaxShare: 0.3 }
+variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
+pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }
+coverage: [verdict, grouped-changes, proof, risk, ask]

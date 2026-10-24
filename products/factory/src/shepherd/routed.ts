@@ -53,6 +53,7 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
+  if (routed.verdict.kind === "MERGE") run.openFrom = run.fixFirstTrail.length;
   if (kind === "fix-first" && routed.verdict.kind === "NO_REPRO" && !recordedNoReproAsFixFirst(run.ctx)) return undefined;
   if (kind === "fix-first") {
     run.fixFirstTrail.push(routed.verdict.kind === "FIX_FIRST" ? fixFirstEntry(headSha, routed.verdict.text) : { headSha, text: "", noRepro: true });

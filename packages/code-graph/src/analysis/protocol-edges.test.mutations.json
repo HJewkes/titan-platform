@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a one-argument Map#get reads as a route",
+      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
+      "find": "const handled = call.arguments.length > 1;",
+      "replace": "const handled = true;",
+      "kills": [
+        "extractProtocolEdges over the whiteboard fixture finds every HTTP route, SSE stream and MCP tool the servers declare, and nothing in comments or Map#get"
+      ]
+    },
+    {
+      "name": "no route is ever an SSE stream",
+      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
+      "find": "const kind = SSE_MARKER.test(handlers) ? \"sse\" : \"http\";",
+      "replace": "const kind = \"http\";",
+      "kills": [
+        "extractProtocolEdges marks a route as SSE when its handler sets text/event-stream, and links an EventSource only to SSE routes"
+      ]
+    },
+    {
+      "name": "a mounted prefix never matches",
+      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
+      "find": "const mounted = want.some((s) => !isParam(s));",
+      "replace": "const mounted = false;",
+      "kills": [
+        "extractProtocolEdges matches a call that reaches a route through a mounted prefix, but not a bare parameter route"
+      ]
+    },
+    {
+      "name": "the method is never checked",
+      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
+      "find": "return call.method === null || method === \"ALL\" || method === call.method;",
+      "replace": "return true;",
+      "kills": [
+        "extractProtocolEdges matches the method: a POST call skips a GET route, an unknown method matches any, and all matches every call"
+      ]
+    },
+    {
+      "name": "callTool's object form is not read",
+      "file": "packages/code-graph/src/analysis/protocol-edges.ts",
+      "find": "const target = literalText(first) ?? literalText(objectProperty(first, \"name\"));",
+      "replace": "const target = literalText(first);",
+      "kills": [
+        "extractProtocolEdges links callTool by name in either argument form and ignores non-literal names and unknown tools"
+      ]
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import { freshReviewerBase } from "./cleanup.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
+import type { ScopeRound } from "./scope-check-round.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -96,12 +97,12 @@ function holdMemberOf(deps: Pick<ShepherdDeps, "store">, runId: string, holdMemb
  * Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none.
  * Under `on`, or for a g10-adversary hold whatever the panel says, it also names the members, so the review phase knows to run them.
  */
-export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember, profileInstalled }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
+export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles, holdMember, profileInstalled }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string; testOnlyProof?: boolean }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
   const held = holdMemberOf(deps, input.runId, holdMember);
   if ((panel === undefined || panel === "off") && held === undefined) return undefined;
   const rules = classRulesFor(roles);
   const target = { repo: input.repo, pr: input.pr, head: input.head };
-  const options = held === undefined ? {} : { holdMember: held, fullPanel: panel === "on" };
+  const options = { ...(held !== undefined && { holdMember: held, fullPanel: panel === "on" }), ...(input.testOnlyProof === true && { testsMember: true }) };
   const policy = { ...(panelPolicy ?? panelPolicyFor(roles)), ...(profileInstalled && { installed: profileInstalled }) };
   const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), policy, undefined, rules, options);
   return panel === "on" || held !== undefined ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
@@ -248,8 +249,9 @@ function panelFixFirst(head: string, verdict: PanelVerdict): Verdict {
 }
 
 /**
- * No fresh reviewer fills the unplanned tests seat. A vacuous or test-less line goes back as Shepherd's own NO_REPRO, which the
- * owner can waive and the fixer's brief explains (tp#2145); any other bad line keeps its unverified review, so this is undefined.
+ * No fresh reviewer fills the unplanned tests seat. A test-only head's intent plans a tests member (TP-4058), so this is reached by
+ * an intent recorded before that. A vacuous or test-less line goes back as Shepherd's own NO_REPRO, which the owner can waive and
+ * the fixer's brief explains (tp#2145); any other bad line keeps its unverified review, so this is undefined.
  */
 function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string | undefined): Verdict | undefined {
   return verdict.fixProofShortfall === true && line !== undefined ? noReproOfLine(line, head) : undefined;
@@ -286,10 +288,10 @@ const memberProfiles = (members: readonly DispatchedMember[]): Record<string, st
  * Every member but correctness is started before any verdict is awaited, so they review side by side; correctness keeps its
  * late read, correction turn and usage-limit hold. The recorded aggregate decides, and a panel that is not unanimous never merges.
  */
-export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding): Promise<Verdict> {
+export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase, awaiting: AwaitVerdictInput, dispatchedReviewer: AgentIdentity, account: string, standing: ProofStanding, scope?: ScopeRound): Promise<Verdict> {
   const target: ReviewTarget = { repo: base.repo, pr: base.pr, head: base.head };
   const members = await dispatchMembers(ctx, intent, base);
-  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account);
+  const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
   if ("held" in taken) return taken.held;
   const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
