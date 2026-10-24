@@ -11,7 +11,15 @@ const Id = z.string().min(1);
 const Slice = z.string().regex(/^(SQ\d+|TP-\d+)$/, "expected the owning slice or task, e.g. SQ3 or TP-2988");
 
 const L0Pending = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("pending"), owner: Slice, partial: z.array(Id).default([]) }).strict();
-const L0Implemented = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("implemented"), checks: z.array(Id).min(1), structures: z.array(Id).min(1).optional(), except_profiles: z.array(Id).min(1).optional() }).strict();
+const L0Implemented = z
+  .object({
+    severity: z.enum(["error", "warning"]),
+    status: z.literal("implemented"),
+    checks: z.array(Id).min(1),
+    structures: z.array(Id).min(1).optional(),
+    except_profiles: z.array(Id).min(1).optional(),
+  })
+  .strict();
 const JudgePending = z.object({ layer: z.enum(["L1", "L2"]), status: z.literal("pending"), owner: Slice }).strict();
 const JudgeCited = z.object({ layer: z.enum(["L1", "L2"]), status: z.literal("cited"), rubric: Id }).strict();
 
