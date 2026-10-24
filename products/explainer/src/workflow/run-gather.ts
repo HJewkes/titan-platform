@@ -22,10 +22,13 @@ export const CLI_FACT_ADAPTERS = ["gatherDaily", "gatherArticle"] as const;
 
 /**
  * What the gather stage gathers: the adapter and everything it reads, so the request is the stage's cache key. The
- * article and claims are keyed by content, and the PR by the head the gate named.
+ * article, claims, lanes rule file and decisions log are keyed by content, and the PR by the head the gate named.
  */
 export const GatherRequestSchema = z.discriminatedUnion("adapter", [
-  z.object({ adapter: z.literal("gatherDaily"), type: z.string(), day: z.string(), repos: z.array(z.string()), transcripts: z.array(z.string()), initiative: z.string() }),
+  z.object({
+    adapter: z.literal("gatherDaily"), type: z.string(), day: z.string(), repos: z.array(z.string()), transcripts: z.array(z.string()), initiative: z.string(),
+    lanes: z.string().optional(), lanesSha: z.string().optional(), decisions: z.string().optional(), decisionsSha: z.string().optional(),
+  }),
   z.object({ adapter: z.literal("gatherPr"), type: z.string(), pr: z.string(), head: z.string(), clone: z.string() }),
   z.object({ adapter: z.literal("gatherArticle"), type: z.string(), day: z.string(), article: z.string(), articleSha: z.string(), claims: z.string(), claimsSha: z.string(), label: z.string() }),
 ]);
@@ -44,7 +47,7 @@ export interface GatherDeps {
   prGh?: GhRun;
   callEdges?: CallEdgeReader;
   readAt?: ReadAt;
-  /** The daily lanes rule file; the data dir's `daily/lanes.yaml` when it keeps one, else the doctrine default. */
+  /** The daily lanes rule file a request without `--lanes` reads; else the data dir's `daily/lanes.yaml`, else the doctrine default. */
   lanesFile?: string;
 }
 
@@ -65,10 +68,13 @@ interface Gathered {
 
 async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gatherDaily" }>, dataDir: string, deps: GatherDeps): Promise<Gathered> {
   const transcriptRoots = request.transcripts.length > 0 ? request.transcripts : claudeTranscriptRoots().map((root) => root.root);
-  const lanes = loadLanes(deps.lanesFile ?? lanesFileFor(dataDir));
+  const lanesFile = request.lanes ?? deps.lanesFile ?? lanesFileFor(dataDir);
+  if (request.lanes && request.lanesSha) readChecked(request.lanes, request.lanesSha);
+  const decisions = request.decisions && request.decisionsSha ? readChecked(request.decisions, request.decisionsSha) : undefined;
   const { digest, notes, coverage } = await gatherDaily({
     day: request.day, repos: request.repos, transcriptRoots, initiative: request.initiative,
-    snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks, lanes,
+    snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks, lanes: loadLanes(lanesFile),
+    ...(decisions === undefined ? {} : { decisions }),
   });
   const files = await writeDailyGather(path.join(dataDir, "gather", request.type, request.day), digest, coverage);
   const covered = files.coverage ? { coverage: readFileSync(files.coverage, "utf8") } : {};
@@ -132,22 +138,36 @@ export interface GatherFlags {
   article?: string;
   claims?: string;
   label?: string;
+  /** The daily lanes rule file (default: the data dir's `daily/lanes.yaml`, else the doctrine default). */
+  lanes?: string;
+  /** The owner's decisions log; with none, the daily has no decision facts. */
+  decisions?: string;
 }
 
 /** A request `explainer run --facts-from` makes: each one names the day its gather directory is for. */
 type DayGatherRequest = Extract<GatherRequest, { day: string }>;
 
+const shaOf = (file: string) => sha256(readFileSync(file, "utf8"));
+
 function articleRequest(flags: GatherFlags, type: string, day: string): DayGatherRequest {
   if (!flags.article || !flags.claims) throw new Error("--facts-from gatherArticle needs --article <path> and --claims <path>");
   const label = flags.label ?? path.basename(flags.article, path.extname(flags.article));
-  const shaOf = (file: string) => sha256(readFileSync(file, "utf8"));
   return { adapter: "gatherArticle", type, day, article: flags.article, articleSha: shaOf(flags.article), claims: flags.claims, claimsSha: shaOf(flags.claims), label };
 }
 
-/** The gather request `explainer run --facts-from` makes: what the gather stage, or a gather before the run, reads. */
-export function gatherRequest(flags: GatherFlags): DayGatherRequest {
+function dailyRequest(flags: GatherFlags, type: string, day: string, dataDir: string): DayGatherRequest {
+  const lanes = path.resolve(flags.lanes ?? lanesFileFor(dataDir));
+  const decisions = flags.decisions ? { decisions: path.resolve(flags.decisions), decisionsSha: shaOf(flags.decisions) } : {};
+  return { adapter: "gatherDaily", type, day, repos: flags.repo, transcripts: flags.transcripts, initiative: flags.initiative, lanes, lanesSha: shaOf(lanes), ...decisions };
+}
+
+/**
+ * The gather request `explainer run --facts-from` makes: what the gather stage, or a gather before the run, reads.
+ * A daily request names its lanes file, `dataDir`'s own when `--lanes` names none, so the file's sha is in the key.
+ */
+export function gatherRequest(flags: GatherFlags, dataDir: string): DayGatherRequest {
   if (!flags.type) throw new Error(`--facts-from ${flags.factsFrom} needs --type, the video type whose facts it gathers`);
   const day = flags.day ?? new Date().toISOString().slice(0, 10);
   if (flags.factsFrom === "gatherArticle") return articleRequest(flags, flags.type, day);
-  return { adapter: "gatherDaily", type: flags.type, day, repos: flags.repo, transcripts: flags.transcripts, initiative: flags.initiative };
+  return dailyRequest(flags, flags.type, day, dataDir);
 }

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { GhExec } from "@titan-design/github";
 import { DigestSchema, type Digest, type DigestItem } from "../../digest.js";
 import type { LanesFile } from "../../lanes-schema.js";
+import { decisionItems } from "./decisions-source.js";
 import { pullRequestItems } from "./github-source.js";
 import { laneRollups, type Coverage } from "./lane-rollup.js";
 import { sessionItems, type DayWindow } from "./session-source.js";
@@ -21,6 +22,8 @@ export interface GatherDailyOptions {
   ownerGateTags?: Iterable<string>;
   /** The lanes rule file; with it, merged PRs carry their lane and the digest gains lane, goal, ship and day rollups. */
   lanes?: LanesFile;
+  /** The owner's decisions log as text; its entries stamped inside the window become `decision/<n>` facts. */
+  decisions?: string;
 }
 
 export interface GatherDailyResult {
@@ -48,7 +51,7 @@ function taskItem(delta: TaskDelta, initiative: string, window: DayWindow): Dige
 }
 
 /**
- * The daily briefing's facts: PRs opened and merged, sessions active, and task deltas against the latest earlier
+ * The daily briefing's facts: PRs opened and merged, owner decisions, sessions active, and task deltas against the latest earlier
  * snapshot. Every id comes from its source (repo and PR number, session id, task id with the change), and items
  * are sorted by id, so two runs over the same inputs write the same digest.
  */
@@ -57,10 +60,11 @@ export async function gatherDaily(options: GatherDailyOptions): Promise<GatherDa
   const prs = await pullRequestItems(options.gh, options.repos, options.day);
   const sessions = await sessionItems(options.transcriptRoots, window);
   const tasks = await readTaskSnapshot(options);
-  const notes = [...prs.notes, ...(tasks.previousDay ? [] : [`no task snapshot before ${options.day}; task moves are unknown, opened and closed come from task dates`])];
+  const decisions = options.decisions === undefined ? { items: [], notes: [] } : decisionItems(options.decisions, window);
+  const notes = [...prs.notes, ...decisions.notes, ...(tasks.previousDay ? [] : [`no task snapshot before ${options.day}; task moves are unknown, opened and closed come from task dates`])];
   const laned = options.lanes ? laneRollups(prs.items, tasks.snapshot.tasks, options.lanes, window) : undefined;
   const prItems = laned ? [...prs.items.filter((item) => item.change !== "merged"), ...laned.prs, ...laned.rollups] : prs.items;
-  const items = [...prItems, ...sessions, ...tasks.deltas.map((delta) => taskItem(delta, options.initiative, window))];
+  const items = [...prItems, ...decisions.items, ...sessions, ...tasks.deltas.map((delta) => taskItem(delta, options.initiative, window))];
   const digest = DigestSchema.parse({ ...window, items: items.sort((a, b) => a.id.localeCompare(b.id)) });
   return { digest, notes, ...(laned ? { coverage: laned.coverage } : {}) };
 }

@@ -1,4 +1,5 @@
 export { activeWorkTasks, parseTaskList } from "./active-work-tasks.js";
+export { decisionItems, type DecisionSourceResult } from "./decisions-source.js";
 export { dailyFactsMarkdown, dayWindow, gatherDaily, writeDailyGather, type DailyGatherFiles, type GatherDailyOptions, type GatherDailyResult } from "./gather-daily.js";
 export { PR_LIST_LIMIT, pullRequestItems, type PrSourceResult } from "./github-source.js";
 export { laneRollups, pickShips, type Coverage, type CoverageEntry, type LaneCoverage, type LaneRollupResult } from "./lane-rollup.js";
