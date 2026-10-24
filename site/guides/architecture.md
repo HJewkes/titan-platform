@@ -253,6 +253,7 @@ graph TD
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
+  sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
   sessionMiner --> pm
@@ -263,6 +264,7 @@ graph TD
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
   sessionMiner --> throughput
+  sessionMiner --> workflow
   titan --> daemon
   titan --> health
   codewatch --> codeRead
@@ -349,7 +351,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->seventeen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

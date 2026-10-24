@@ -14,7 +14,7 @@ const ROWS: Record<string, Record<string, unknown>> = {
   F3: { item: "F3", cls: "status-ping", mechanical: true, could_be_owned_by: "none", theme: "status ping" },
 };
 
-export type Answer = (input: StepRunInput, call: number) => StepRunOutcome | Promise<StepRunOutcome>;
+type Answer = (input: StepRunInput, call: number) => StepRunOutcome | Promise<StepRunOutcome>;
 
 export interface FakeClassifier {
   runnerFor: RunnerFor;
@@ -24,7 +24,7 @@ export interface FakeClassifier {
 }
 
 /** The item ids in the chunk half of a prompt. */
-export function chunkIds(prompt: string): string[] {
+function chunkIds(prompt: string): string[] {
   return [...(prompt.split("INPUT FOLLOWS.")[1] ?? "").matchAll(/\bF\d+\b/g)].map((match) => match[0]);
 }
 
