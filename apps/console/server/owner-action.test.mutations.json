@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pause-cleared with no still-held answer reads as settled",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "if (outcome === \"pause-cleared\" && clearedPause && stillHeld !== undefined)",
+      "replace": "if (outcome === \"pause-cleared\" && clearedPause)",
+      "kills": [
+        "factoryOwnerAction reads a pause-cleared with no still-held answer as unreachable, so a retry may land"
+      ]
+    },
+    {
+      "name": "an already with only the cleared pause reads as unreachable",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "(gateId || runId || closedHead || clearedPause)",
+      "replace": "(gateId || runId || closedHead)",
+      "kills": [
+        "factoryOwnerAction reads a deploy-pause-clear's answers with the pause each names"
+      ]
+    },
+    {
+      "name": "a moved drops the newer pause it names",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "currentHead: body.currentHead ?? null, ...(body.currentPause !== undefined && { currentPause: body.currentPause }) };",
+      "replace": "currentHead: body.currentHead ?? null };",
+      "kills": [
+        "factoryOwnerAction reads a deploy-pause-clear's answers with the pause each names"
+      ]
+    }
+  ]
+}

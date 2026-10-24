@@ -21,7 +21,7 @@ interface Acted {
 
 type Sheet<R> = { status: "reading" } | { status: "refused"; reason: string } | { status: "ready"; prepared: R } | { status: "acting"; prepared: R } | { status: "acted"; prepared: R; acted: Acted } | { status: "failed"; prepared?: R; error: string };
 
-const LANDED = new Set(["resolved", "released", "accepted", "pr-closed", "already"]);
+const LANDED = new Set(["resolved", "released", "accepted", "pr-closed", "pause-cleared", "already"]);
 
 const isRecord = (data: unknown): data is Record<string, unknown> => typeof data === "object" && data !== null;
 const isPrepared = <R extends TapReady>(data: unknown): data is Prepared<R> => isRecord(data) && (data.status === "ready" || data.status === "no-action");

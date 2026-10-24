@@ -21,6 +21,8 @@ export const VIDEO_FOLDER_MANIFEST = "_videos.json";
 export const MAX_META_BYTES = 64 * 1024;
 const MAX_CACHED_META = 4096;
 
+export const MAX_FINGERPRINT_BYTES = 32 * 1024;
+
 const label = z.string().trim().min(1).max(200);
 
 const folderFields = {
@@ -38,8 +40,18 @@ const folderFields = {
   owner: z.string().regex(SEAT_NAME).optional(),
 };
 
+/** Which explainer run made the video; the fingerprint is opaque here and only carried through. */
+const explainerBlock = z.strictObject({
+  videoId: label,
+  runIds: z.array(label).max(50),
+  profile: label,
+  scriptSha: label,
+  fingerprint: z.json().refine((value) => Buffer.byteLength(JSON.stringify(value)) <= MAX_FINGERPRINT_BYTES),
+});
+
 const videoFields = {
   ...folderFields,
+  explainer: explainerBlock.optional(),
   title: label.optional(),
   /** Stable across a file move, unlike the id, which hashes the path. */
   alias: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,79}$/).optional(),

@@ -168,6 +168,11 @@ function unmatchedKills(spec: SpecUnderTest, baseline: FileRun | undefined): str
   );
 }
 
+/** Every kill in `specs` naming no test in `report`, a vitest report with repo-relative paths, as one message each. */
+export function unmatchedKillsIn(specs: readonly SpecUnderTest[], report: unknown): string[] {
+  return specs.flatMap((spec) => unmatchedKills(spec, fileOf(report, spec.testFile)));
+}
+
 /**
  * Classifies every declared mutation against the mutants side's decoded report, whose test file paths are repo-relative.
  * Runs the specs do not declare are ignored, so a report cannot add evidence the specs did not ask for.
@@ -176,9 +181,9 @@ export function classifyMutants(specs: readonly SpecUnderTest[], decoded: Decode
   if (!decoded.ok) return mutantsError(decoded.reported ? decoded.error : `mutants: ${decoded.error}`);
   if (decoded.skipped !== undefined) return mutantsError(`mutants side skipped: ${decoded.skipped}`);
   const runs = new Map(decoded.runs.map((run) => [JSON.stringify([run.spec, run.name]), run]));
-  const baselines = specs.map((spec) => ({ spec, baseline: fileOf(decoded.baseline, spec.testFile) }));
-  const unmatched = baselines.flatMap(({ spec, baseline }) => unmatchedKills(spec, baseline));
+  const unmatched = unmatchedKillsIn(specs, decoded.baseline);
   if (unmatched.length > 0) return mutantsError(unmatched.join("; "));
+  const baselines = specs.map((spec) => ({ spec, baseline: fileOf(decoded.baseline, spec.testFile) }));
   const results = baselines.flatMap(({ spec, baseline }) =>
     spec.mutations.map((mutation) => classifyMutant({ spec, mutation, baseline, run: runs.get(JSON.stringify([spec.path, mutation.name])) })),
   );

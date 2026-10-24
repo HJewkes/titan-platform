@@ -8,9 +8,11 @@ import { useEvents, useInvalidate } from "./rpc.js";
 const RELAY_INVALIDATES = {
   "active-work": ["work.portfolio", "work.initiative", "work.tasks", "work.task", "graph.ego"],
   "agent-chat": ["agents.roster", "agents.graph", "agents.messages", "agents.queue"],
+  // The factory names its frames `shepherd` for every workflow run, autoresearch's too, so any of them may have moved a run.
+  factory: ["autoresearch.runs", "autoresearch.run"],
 } as const satisfies Record<RelaySource, readonly CommandName<ConsoleCommands>[]>;
 
-const ALL_RELAYED_READS = [...RELAY_INVALIDATES["active-work"], ...RELAY_INVALIDATES["agent-chat"]];
+const ALL_RELAYED_READS = Object.values(RELAY_INVALIDATES).flat();
 
 /** A burst of broker appends refetches once per window, so the refetch rate never tracks the append rate. */
 const RELAY_COALESCE_MS = 300;
