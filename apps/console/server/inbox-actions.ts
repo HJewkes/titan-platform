@@ -25,7 +25,7 @@ import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { nextStateOf, type NextState } from "./inbox-next.js";
 import { opReadBackOf, postedOp, type OpAction, type OpReadBack } from "./inbox-op.js";
-import { readInbox, type InboxItem, type InboxSources } from "./inbox-view.js";
+import { readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
@@ -118,8 +118,11 @@ async function readBackOf(sources: InboxSources, item: InboxItem, action: Consol
   if (action.kind === "hold-release") return { ...prBaseOf(item, action), ...g10Signal((await sources.shepherd.timeline(action.repo, action.pr)).entries, action) };
   const at = `${action.repo}#${action.pr} at ${short(action.headSha)}`;
   if (action.kind === "owner-release") return { ...prBaseOf(item, action), effect: `Release the owner-asked hold on ${at}` };
-  return { ...prBaseOf(item, action), gateId: action.gateId, effect: `Approve the merge of ${at}` };
+  return { ...prBaseOf(item, action), gateId: action.gateId, effect: gateEffect(action.decision, at) };
 }
+
+const gateEffect = (decision: ConsoleDecision, at: string): string =>
+  decision === "merge" ? `Approve the merge of ${at}` : `Wait for the implementer's next pushed head on ${at}; nothing merges`;
 
 function noActionReason(action: InboxAction): string {
   if (action.kind === "terminal") return action.reason;
@@ -188,14 +191,18 @@ function textFor(action: ConsoleAction, text: string | undefined): string | unde
   return trimmed || refuse("an answer needs text");
 }
 
-function messageOf(outcome: Outcome): string {
+/** A resolved sent-back gate merged nothing, so its tap must not read as a merge. */
+const resolvedMessage = (record: ActionRecord): string =>
+  !isOpRecord(record) && record.action.kind === "resolve-gate" && record.action.decision === "await-new-head" ? "Waiting for the implementer's next pushed head; nothing merged" : "Merge approved";
+
+function messageOf(outcome: Outcome, record: ActionRecord): string {
   switch (outcome.status) {
     case "answered":
       return "Answer sent";
     case "closed":
       return `Not sent; the question is closed, likely answered elsewhere: ${outcome.reason}`;
     case "resolved":
-      return "Merge approved";
+      return resolvedMessage(record);
     case "accepted":
       return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
     case "pr-closed":
@@ -228,7 +235,7 @@ async function settle(ctx: ActContext, file: string, record: ActionRecord, outco
 function answerTextOf(record: ActionRecord): string {
   if (isOpRecord(record)) return record.op.kind;
   const { action, text } = record;
-  return action.kind === "answer-chat" ? (text ?? "") : action.kind === "resolve-gate" ? "merge" : "release";
+  return action.kind === "answer-chat" ? (text ?? "") : action.kind === "resolve-gate" ? action.decision : "release";
 }
 
 /** Shepherd refuses a second release of a lifted hold, so a replay is answered from the outcome this record already settled. */
@@ -262,7 +269,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   const outcome = await dispatch(ctx, file, tap.confirm, record);
   const log = await settle(ctx, file, record, outcome);
   const next = await nextAfter(ctx.sources, record, outcome);
-  return { actionId: tap.confirm, outcome, message: messageOf(outcome), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
+  return { actionId: tap.confirm, outcome, message: messageOf(outcome, record), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
 }
 
 const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "pr-closed", "already"]);

@@ -273,6 +273,25 @@ describe("inbox.act", () => {
     expect(calls[0]![1]).toMatchObject({ text: "merge", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
   });
 
+  it("waits for a new head on an sh-sent-back gate: the read-back, record, message and log all say await-new-head, not merge", async () => {
+    const sentBackId = `${RUN_PLAIN}/sh-sent-back`;
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+    ];
+    items = [{ ...gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), id: `gate:${sentBackId}`, sources: [{ system: "hitl", ref: sentBackId }], options: offered }];
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const prepared = ready(await prepare(`gate:${sentBackId}`));
+
+    const { envelope } = await act(`gate:${sentBackId}`, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ gateId: sentBackId, effect: `Wait for the implementer's next pushed head on ${REPO}#1 at 1234567; nothing merges` });
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, message: "Waiting for the implementer's next pushed head; nothing merged" } });
+    expect(JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8"))).toMatchObject({ action: { kind: "resolve-gate", stepId: "sh-sent-back", decision: "await-new-head" } });
+    expect(calls[0]![1]).toMatchObject({ text: "await-new-head" });
+  });
+
   it("refuses a bearer credential with 403 and writes no record", async () => {
     const factorySpy = spyFactory();
     const { prepare, act } = await harness(factorySpy.client);

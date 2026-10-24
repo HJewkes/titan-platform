@@ -301,6 +301,14 @@ describe("the inbox page, acting from the console", () => {
     expect(within(ask).getByText("Answer from the console comes later; run it on the terminal for now.")).toBeTruthy();
   });
 
+  it("labels an sh-sent-back tap as a wait for a new head, never as a merge", async () => {
+    const action = { ...GATE.action, gateId: "run-gate-1/sh-sent-back", stepId: "sh-sent-back", decision: "await-new-head" as const };
+    renderInbox(inboxAnswer({ items: [{ ...GATE, action }] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    const row = await screen.findByTestId("inbox-row-gate-1");
+    expect(within(row).getByText("Wait for new head")).toBeTruthy();
+    expect(within(row).queryByText("Approve merge")).toBeNull();
+  });
+
   it("keeps Confirm disabled until the read-back loads, and Cancel sends nothing", async () => {
     const prepared = deferred();
     const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": resolved });

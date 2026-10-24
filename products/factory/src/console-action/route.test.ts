@@ -8,7 +8,7 @@ import type { GateRule } from "@titan-design/hitl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
-import { approveMergeDecision } from "../gate-brief.js";
+import { approveMergeDecision, sentBackDecision } from "../gate-brief.js";
 import { OWNER_OPS_LEDGER } from "../owner-ops/ledger.js";
 import { createFactoryRegistry } from "../registry.js";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
@@ -42,6 +42,20 @@ const mergeGate = defineWorkflow({
     const { schema } = approveMergeDecision({ repo: REPO, pr: Number(pr), headSha: H, reason: "synthetic reason", reviewedMerge: false, sendBack: false });
     const rule = ctx.param("stamp") === "owner-terminal" ? OWNER_TERMINAL_ONLY : undefined;
     await ctx.assisted("approve-merge", prompt, { schema, brief: TEST_BRIEF, ...(rule && { rule }) });
+  },
+});
+
+/** Shepherd's sent-back gate as `sentBackGate` opens it; `decisions` swaps in a schema that offers only those. */
+const sentBack = defineWorkflow({
+  name: "sent-back-gate",
+  steps: [{ id: "sh-sent-back", kind: "assisted" }],
+  run: async (ctx) => {
+    const pr = Number(ctx.param("pr")!);
+    const prompt = `Changes requested on PR #${pr} in ${REPO} at head ${H}: synthetic reason. Await a new head or abandon?`;
+    const built = sentBackDecision({ repo: REPO, pr, headSha: H, situation: "synthetic reason", waivable: ctx.param("waivable") === "true" });
+    const decisions = ctx.param("decisions")?.split(",") as [string, ...string[]] | undefined;
+    const schema = decisions ? z.object({ decision: z.enum(decisions) }) : built.schema;
+    await ctx.assisted("sh-sent-back", prompt, { schema, brief: built.brief });
   },
 });
 
@@ -87,7 +101,7 @@ async function world({ actions = true, policy, stamp }: WorldOptions = {}): Prom
   const fixture = shepherdFixture({ frozen: true, port: githubPort(github.wire) });
   const server = await startFactoryServer({
     dbPath: join(dir, "factory.sqlite3"),
-    workflows: [mergeGate, sideGate("device-confirm"), sideGate("after-stages"), landPrWorkflow()],
+    workflows: [mergeGate, sentBack, sideGate("device-confirm"), sideGate("after-stages"), landPrWorkflow()],
     routes: fixture.routes,
     resyncOnStart: false,
     now: () => NOW_MS,
@@ -291,7 +305,7 @@ describe("POST /owner/console-action", () => {
     symlinkSync(join(w.actionsDir, "elsewhere.json"), join(w.actionsDir, "linked.json"));
     mkdirSync(join(w.actionsDir, "dir.json"));
     writeFileSync(join(w.actionsDir, "big.json"), "x".repeat(MAX_ACTION_RECORD_BYTES + 1));
-    writeRecord(w, { decision: "send-back" }, "misshapen");
+    writeRecord(w, { decision: 7 }, "misshapen");
 
     const outcomes = await Promise.all(["linked", "dir", "big", "misshapen"].map(async (actionId) => reply(await post(w.server, { actionId }))));
 
@@ -338,6 +352,85 @@ describe("POST /owner/console-action", () => {
 
     const outcomes = await Promise.all(responses.map(async (res) => z.object({ outcome: z.string() }).parse(await res.json()).outcome));
     expect(outcomes.sort()).toEqual(["already", "resolved"]);
+  });
+
+  it("refuses with 403 class an approve-merge record asking abandon or send-back, leaving the gate pending", async () => {
+    const w = await world();
+    writeRecord(w, { decision: "abandon" }, "abandon");
+    writeRecord(w, { decision: "send-back" }, "send-back");
+
+    const outcomes = await Promise.all(["abandon", "send-back"].map(async (actionId) => reply(await post(w.server, { actionId }))));
+
+    expect(outcomes).toMatchObject([
+      [403, { outcome: "refused", reason: "class" }],
+      [403, { outcome: "refused", reason: "class" }],
+    ]);
+    expect(w.server.host.gates.get(w.gateId)?.status).toBe("pending");
+  });
+
+  describe("sh-sent-back", () => {
+    /** Opens a sent-back gate on the world's PR and writes the console's record for it. */
+    async function sentBackWorld(params: Record<string, string> = {}): Promise<World & { sentBackId: string; record: (action?: Record<string, unknown>, actionId?: string) => string }> {
+      const w = await world();
+      const runId = w.server.host.runtime.start("sent-back-gate", { pr: String(w.pr), ...params });
+      const sentBackId = `${runId}/sh-sent-back`;
+      await vi.waitFor(() => expect(w.server.host.gates.get(sentBackId)?.status).toBe("pending"));
+      const record = (action: Record<string, unknown> = {}, actionId = ACTION_ID) => writeRecord(w, { gateId: sentBackId, runId, stepId: "sh-sent-back", decision: "await-new-head", ...action }, actionId);
+      return { ...w, runId, sentBackId, record };
+    }
+
+    it("resolves await-new-head with the decision alone, as owner-remote from the console inbox bound to the record's sha256", async () => {
+      const w = await sentBackWorld();
+      const confirmEvent = w.record();
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toEqual([200, { outcome: "resolved", gateId: w.sentBackId }]);
+      const gate = w.server.host.gates.get(w.sentBackId);
+      expect(gate?.payload).toEqual({ decision: "await-new-head" });
+      expect(gate?.resolvedBy).toEqual({ class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent });
+    });
+
+    it("refuses with 403 class a record asking abandon, which the gate's schema offers, leaving the gate pending", async () => {
+      const w = await sentBackWorld();
+      w.record({ decision: "abandon" });
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("abandon") }]);
+      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
+    });
+
+    it("refuses with 403 class a waive-proof on a waivable gate: the console tap waives no fix-proof", async () => {
+      const w = await sentBackWorld({ waivable: "true" });
+      w.record({ decision: "waive-proof" });
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class" }]);
+      expect(w.store().proofWaivers().waivedAt(w.runId, H)).toBe(false);
+      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
+    });
+
+    it("refuses with 403 class an await-new-head the gate's own schema does not offer", async () => {
+      const w = await sentBackWorld({ decisions: "abandon" });
+      w.record();
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class" }]);
+      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
+    });
+
+    it("answers 409 moved with the gate's head when the record names another head, and leaves the gate pending", async () => {
+      const w = await sentBackWorld();
+      w.record({ headSha: H2 });
+
+      const res = await post(w.server, { actionId: ACTION_ID });
+
+      expect(await reply(res)).toEqual([409, { outcome: "moved", currentHead: H }]);
+      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
+    });
   });
 
   describe("owner-release", () => {
