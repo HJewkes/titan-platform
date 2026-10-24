@@ -162,6 +162,8 @@ declare const SPELLINGS: {
     readonly "bash.config.claude-cli": SpellingRow;
     readonly "bash.config.gh-api-ruleset": SpellingRow;
     readonly "bash.config.curl-api-ruleset": SpellingRow;
+    readonly "bash.config.gh-api-graphql-ruleset": SpellingRow;
+    readonly "bash.config.curl-graphql-ruleset": SpellingRow;
     readonly "bash.config.mention": SpellingRow;
     readonly "bash.merge.gh-pr-merge": SpellingRow;
     readonly "bash.merge.gh-api-merge": SpellingRow;

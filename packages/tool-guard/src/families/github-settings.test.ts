@@ -28,6 +28,8 @@ const RULESET_QUERIES = {
   update: 'mutation{updateRepositoryRuleset(input:{repositoryRulesetId:"RRS",enforcement:DISABLED}){ruleset{id}}}',
   delete: 'mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}',
 };
+const BS = "\\";
+const ESCAPED_DELETE = RULESET_QUERIES.delete.replace("{delete", `{${BS}u0064elete`);
 const RULESETS_READ = '{repository(owner:"o",name:"r"){rulesets(first:5){nodes{name}}}}';
 const curlBody = (query: string) => `'${JSON.stringify({ query })}'`;
 const DONE_WHEN_ROUTES = [
@@ -120,13 +122,14 @@ describe("githubSettings, a GraphQL ruleset mutation", () => {
     ["bash.config.gh-api-graphql-ruleset", `gh api graphql --raw-field 'query=${RULESET_QUERIES.delete}'`],
     ["bash.config.gh-api-graphql-ruleset", `gh api graphql -F 'query=${RULESET_QUERIES.delete} # {owner}'`],
     ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f 'query=mutation{x: ${RULESET_QUERIES.delete.slice("mutation{".length)}'`],
-    ["bash.config.gh-api-graphql-ruleset", String.raw`gh api graphql -f 'query=mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f 'query=${ESCAPED_DELETE}'`],
     ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f "query=mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:\\"$ID\\"}){clientMutationId}}"`],
     ["bash.config.gh-api-graphql-ruleset", `gh api /graphql -f query='${RULESET_QUERIES.delete}'`],
     ["bash.config.gh-api-graphql-ruleset", `gh api ${API}/graphql -f query='${RULESET_QUERIES.delete}'`],
     ["bash.config.curl-graphql-ruleset", `curl -X POST -d ${curlBody(RULESET_QUERIES.create)} ${API}/graphql`],
     ["bash.config.curl-graphql-ruleset", `curl --json ${curlBody(RULESET_QUERIES.update)} ${API}/graphql`],
     ["bash.config.curl-graphql-ruleset", `wget --post-data=${curlBody(RULESET_QUERIES.delete)} ${API}/graphql`],
+    ["bash.config.curl-graphql-ruleset", `curl -d ${curlBody(ESCAPED_DELETE)} ${API}/graphql`],
   ])("%s: %s", (spelling, command) => {
     expect(settings(bash(command))).toEqual([expect.objectContaining({ action: "authority-config", spelling, subject: RULESET })]);
   });
