@@ -16,7 +16,7 @@ type Visual = Partial<ScriptBeat["visual"]>;
 const beat = (id: string, spoken: string, visual: Visual = {}): Beat => ({
   id,
   spoken,
-  visual: { assertion: "A synthetic claim", job: "map", edge_sources: [], cues: [], chips: [], labels: [], ...visual } as ScriptBeat["visual"],
+  visual: { assertion: "A synthetic claim", job: "map", edge_sources: [], cues: [], chips: [], labels: [], ...visual },
 });
 
 const ids = (n: number, from = 1): string[] => Array.from({ length: n }, (_, i) => `b${String(i + from).padStart(2, "0")}`);
