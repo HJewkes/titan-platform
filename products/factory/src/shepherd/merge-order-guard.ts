@@ -1,10 +1,10 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { FreezeGuard } from "./freeze.js";
-import { blockers, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type OrderWaits } from "./merge-order.js";
+import { blockers, orderDriving, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type OrderWait, type OrderWaits, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 
-interface RunLookup {
+interface RunLookup extends RunHolds {
   byPr(repo: RepoSlug, pr: number): { runId: string } | undefined;
 }
 
@@ -56,14 +56,16 @@ interface GuardTarget {
 /**
  * Why `repo#pr` waits behind an earlier conflicted PR that reserved paths it also changes. It reads nothing when the
  * repo's rule is off or no reservation in the repo is live, and it never orders a release PR, a stacked PR or a PR with
- * no Shepherd run. A PR's paths are read once per head; a list that cannot be read overlaps every reservation.
+ * no Shepherd run. A PR's paths are read once per head; a list that cannot be read overlaps every reservation. A
+ * reservation whose run a person holds orders nothing while the hold lasts. Each new wait is logged as `order-wait`.
  */
 export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
   const now = deps.now ?? Date.now;
   const pathsAt = pinnedPerHead();
+  const waits: OrderWaits = deps.waits ?? new Map();
   const blockerOf = async (port: GitHubPort, { repo, runId, pr }: GuardTarget, rule: MergeOrderRule, baseRef: string, head: string | undefined): Promise<Blocker | undefined> => {
     const order = deps.order();
-    const driving = (id: string): boolean => order.isDriving(id);
+    const driving = orderDriving(order, deps.registrations());
     const reservations = order.list(repo);
     if (blockers({ repo, runId, paths: [], unread: true }, reservations, rule, now(), driving).length === 0 || baseRef !== (await port.defaultBranch(repo))) return undefined;
     for (const blocker of blockers({ repo, runId, ...(await pathsAt(port, repo, pr, head)) }, reservations, rule, now(), driving)) {
@@ -78,10 +80,20 @@ export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
       const runId = deps.registrations().byPr(repo, pr)?.runId;
       if (runId === undefined) return undefined;
       const blocker = await blockerOf(port, { repo, runId, pr }, rule, baseRef, head);
-      const reason = blocker && reasonOf(blocker);
-      if (blocker && reason) deps.waits?.set(runId, { repo: repo.toLowerCase(), pr, behind: blocker.reservation.pr, reason });
-      else deps.waits?.delete(runId);
-      return reason;
+      const wait = blocker && { repo: repo.toLowerCase(), pr, behind: blocker.reservation.pr, reason: reasonOf(blocker) };
+      recordWait(waits, runId, wait, (noted) => deps.order().noteWait(runId, noted, new Date(now()).toISOString(), head));
+      return wait?.reason;
     },
   };
+}
+
+/** A poll that reads the wait it read last logs nothing, so the timeline gains one entry per wait, not one per poll. */
+function recordWait(waits: OrderWaits, runId: string, wait: OrderWait | undefined, log: (wait: OrderWait) => void): void {
+  if (wait === undefined) {
+    waits.delete(runId);
+    return;
+  }
+  const last = waits.get(runId);
+  if (last?.behind !== wait.behind || last.reason !== wait.reason) log(wait);
+  waits.set(runId, wait);
 }
