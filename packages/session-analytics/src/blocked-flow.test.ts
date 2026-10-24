@@ -121,6 +121,29 @@ describe("parseDenials", () => {
     ]);
   });
 
+  it("counts a refusal whose call and result sit on separate lines of a mixed-session stream", () => {
+    const stamp = (line: string, sessionId: string) => JSON.stringify({ ...JSON.parse(line), sessionId });
+    const lines = [
+      stamp(call("t1", "Bash", { command: "gh pr merge 7" }), "sess-1"),
+      "{not json",
+      stamp(result("t1", denied("Merge Without Review")), "sess-2"),
+    ];
+
+    expect(parseDenials(lines, "seat-a")).toEqual([
+      { seat: "seat-a", at: "2026-09-10T10:00:05Z", reason: "Merge Without Review", action: "merge", tool: "Bash", toolUseId: "t1" },
+    ]);
+  });
+
+  it("reads a refusal whose result content is a text-part array", () => {
+    const parts = JSON.stringify({ timestamp: "2026-09-10T10:00:05Z", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: denied("Git Destructive") }] }] } });
+
+    expect(parseDenials([call("t1", "Bash", { command: "git push --delete origin x" }), parts], "seat-a")).toMatchObject([{ reason: "Git Destructive", action: "branch-delete" }]);
+  });
+
+  it("keeps a refusal with no matching call as an unknown tool", () => {
+    expect(parseDenials([result("t9", denied("Git Destructive"))], "seat-a")).toMatchObject([{ tool: "unknown", action: "tool:unknown", toolUseId: "t9" }]);
+  });
+
   it("does not count a tool result that only quotes the refusal text", () => {
     const lines = [call("t1", "Bash", { command: "grep classifier log" }), result("t1", `log.md:3: ${denied("Git Destructive")}`)];
 
