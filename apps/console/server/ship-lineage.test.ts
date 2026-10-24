@@ -79,7 +79,7 @@ describe("the Ship lineage cache", () => {
 
     await read(bindingOf(2));
 
-    expect(read.size).toBe(1);
+    expect(read.size()).toBe(1);
     await read(bindingOf(1));
     expect(port.getPr).toHaveBeenCalledTimes(3);
   });
@@ -108,7 +108,7 @@ describe("the Ship lineage cache", () => {
     await read(bindingOf(1));
 
     expect(port.getPr).toHaveBeenCalledTimes(1);
-    expect(read.size).toBe(1);
+    expect(read.size()).toBe(1);
   });
 
   it("never holds more than its cap, dropping the oldest entry first", async () => {
@@ -117,7 +117,7 @@ describe("the Ship lineage cache", () => {
 
     for (const pr of [1, 2, 3]) await read(bindingOf(pr));
 
-    expect(read.size).toBe(2);
+    expect(read.size()).toBe(2);
     await read(bindingOf(3));
     await read(bindingOf(2));
     expect(port.getPr).toHaveBeenCalledTimes(3);

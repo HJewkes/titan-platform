@@ -71,7 +71,7 @@ export async function readLineage(github: LineagePort, { repo, pr, headSha }: Me
   }
 }
 
-type SizedLineageReader = LineageReader & { readonly size: number };
+type SizedLineageReader = LineageReader & { size: () => number };
 type LineageCache = Map<string, { at: number; read: Promise<ShipLineage> }>;
 
 /** A Map iterates in insertion order and every write deletes then re-inserts, so the first entries are the oldest. */
@@ -100,5 +100,5 @@ export function shipLineageReader(options: LineageOptions = {}): SizedLineageRea
     evict(cache, at, ttlMs, maxEntries);
     return read;
   };
-  return Object.defineProperty(reader, "size", { get: () => cache.size }) as SizedLineageReader;
+  return Object.assign(reader, { size: () => cache.size });
 }
