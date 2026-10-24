@@ -111,7 +111,9 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
+then render and QA through a host bridge file of today's template commands (marked as bridged in every report row),
+then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
+`fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
 `explainer stage` runs one stage from stored shas,

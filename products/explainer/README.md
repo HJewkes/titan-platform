@@ -239,7 +239,8 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
 | `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them) → resolved |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
-| `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
+| `render`, `qa` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
+| `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-json, qa, visual when a run has them) → sidecar, poster, fingerprint |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
@@ -296,6 +297,24 @@ found and the rate measured). Takes are cached per beat in `<dataDir>/tts-takes/
 keeps the others' audio byte for byte. A host `bridge.json` that still has a `tts` block is refused: delete it, and
 move any command it ran besides TTS (a sample builder) to the start of `render`.
 
+**The sheets stage (TP-4018).** The port of the host's `write_video_meta.py`. ffprobe reads the MP4's duration and
+ffmpeg grabs a 480 px poster at `posterAtS`, 30 % in rounded to a tenth of a second. `buildSidecar` writes
+`<stem>.video.json` as `titan-console/video-meta@1` (v1 fields only: `title`, `description` = `video.promise`,
+`purpose`, `series`, `subject`, `take`, `status`, `posterAtS`, `poster` = `<stem>-poster.jpg`) and an `explainer`
+block: the video id, every run of the video oldest first, the profile, the script sha and the fingerprint. `classify`
+reads the profile first (`repo-tour`, `repo-argument` → `repo-review`; `daily-overview` → `daily`), then the script id
+as the Python did; the title is the script id less its date. A sheets variant may set `take` (`v1`) and `status`
+(`review`). The video and its run ids are part of the stage key, so a new linked run makes the sidecar again; `explainer
+stage sheets --video <id>` lists that video's runs, and with no `--video` the child run is the video's only run.
+`fingerprintOf` (`explainer.fingerprint/v1`, stored as `fingerprint`) keys each beat as
+`${component}/${slots}/${anchors}`: the resolved component name (`spec:<beat spec>` with none; with no `resolved`, the
+script's `visual.render`, else `job:<job>`), the slot count of the `slots` artifact (else `visual.labels`), and the
+anchors (the resolver's, else the script's) expanded and sorted row by row. Its video fields are the profile, the
+structure and its hook, the opening and closing beats, the chapter labels, the component, framing and function
+histograms, the close type, the signature layer, the slot-masked spoken 4-gram hashes and the skeleton; `pixel` is
+null until the beat-aware sheets land. The sidecar's copy carries the grams by hash only. A host `bridge.json` that
+still has a `sheets` block is refused: delete it, along with its `sheets.sh` and `write_video_meta.py` commands.
+
 The bridge is temporary: it runs today's template commands, Python included, from a host file kept outside the repo,
 so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
 (`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
@@ -308,7 +327,7 @@ names the folder, the file stem and the suffix per artifact for `export`; `--the
 instead. A type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads
 `bridges/<name>.json` from the per-user explainer data dir, whatever `--data-dir` says, so one host bridge serves
 every run of the type with no per-run copy. A bridged stage's `inputs` are also its
-cache key: declare every artifact its commands read (the MP4 for `qa` and `sheets`), or a new render will hit an old
+cache key: declare every artifact its commands read (the MP4 for `qa`), or a new render will hit an old
 QA entry.
 
 **Checks as stage steps.** Each `explainer.<stage>` child run is two code steps: the body, then `checks:<stage>`,
@@ -335,7 +354,7 @@ it ran with; use `--sample script=<k>` to run the check on a draft already made.
 same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
-| `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
+| `render`, `qa` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism
