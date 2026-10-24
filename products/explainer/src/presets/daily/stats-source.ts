@@ -61,8 +61,15 @@ async function readJson<T>(read: () => Promise<GhResult>, schema: z.ZodType<T>, 
 const minerCost = (run: CliRun, window: DayWindow) =>
   readJson(() => run(["active-work", "miner", "cost", "--since", window.since, "--until", window.until, "--json"]), CostSchema, "active-work miner cost").then((cost) => cost.data);
 
-const shepherdStats = (run: CliRun, day: string) =>
-  readJson(() => run(["titan-factory", "shepherd", "stats", "--from", day, "--to", day, "--json"]), ShepherdStatsSchema, "titan-factory shepherd stats");
+const shepherdStats = (run: CliRun, from: string, to: string) =>
+  readJson(() => run(["titan-factory", "shepherd", "stats", "--from", from, "--to", to, "--json"]), ShepherdStatsSchema, "titan-factory shepherd stats");
+
+// Shepherd counts a run's stage times only when its last stage ended inside the asked range, so week medians need
+// the week asked for, Monday through the day.
+export function isoWeekMonday(day: string): string {
+  const date = new Date(`${day}T00:00:00.000Z`);
+  return new Date(date.getTime() - ((date.getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
+}
 
 const mergedOn = async (gh: GhExec, repos: readonly string[], day: string) =>
   (await readJson(() => gh(["search", "prs", ...repos.flatMap((repo) => ["--repo", repo]), "--merged-at", day, "--limit", "1000", "--json", "number"]), z.array(z.unknown()), "gh search prs")).length;
@@ -148,7 +155,13 @@ async function priorPoints(inputs: StatsInputs, notes: string[]): Promise<TrendP
 export async function statsItems(inputs: StatsInputs): Promise<StatsResult> {
   const notes: string[] = [];
   const day = inputs.window.since.slice(0, 10);
-  const [today, prior, stats] = await Promise.all([settle(minerCost(inputs.run, inputs.window), notes), priorPoints(inputs, notes), settle(shepherdStats(inputs.run, day), notes)]);
+  const [today, prior, dayStats, weekStats] = await Promise.all([
+    settle(minerCost(inputs.run, inputs.window), notes),
+    priorPoints(inputs, notes),
+    settle(shepherdStats(inputs.run, day, day), notes),
+    settle(shepherdStats(inputs.run, isoWeekMonday(day), day), notes),
+  ]);
+  const stats = dayStats && { ownerFriction: dayStats.ownerFriction, stageTimes: weekStats?.stageTimes ?? [] };
   const points = [...prior, { day, merged: inputs.merged, ...(today ? { usd: today.totals.costUsd } : {}) }];
   if (today && today.priceTableVersion !== PRICE_TABLE_VERSION) notes.push(`spend is ${pricedAt(today.priceTableVersion, PRICE_TABLE_VERSION)}`);
   const items = [

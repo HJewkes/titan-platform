@@ -67,6 +67,21 @@ describe("daily stats over injected CLI runners with synthetic output", () => {
     expect(items.get("slow/owner-gated")?.title).toBe("1 task became owner-gated");
   });
 
+  it("reads stage medians over the ISO week up to the day, and owner touches over the day alone", async () => {
+    store = snapshotStore();
+    const dayOnly = JSON.stringify({ ...JSON.parse(SHEPHERD_STATS_JSON), stageTimes: [{ repo: REPO, week: "2026-W11", stages: [{ stage: "ci", runs: 1, medianMinutes: 99, p90Minutes: 99 }] }] });
+    const weekOnly = JSON.stringify({ ...JSON.parse(SHEPHERD_STATS_JSON), ownerFriction: [{ day: DAY, ownerTouches: 9, kinds: [] }] });
+    const cli = fakeCli({ "active-work miner": () => minerCostJson(20), "titan-factory shepherd": (argv) => (argv[4] === "2026-03-09" ? weekOnly : dayOnly) });
+
+    const { digest } = await gatherDaily(options({ cli }));
+    const items = byId(digest.items);
+
+    expect(cli.calls.filter((argv) => argv[0] === "titan-factory").map((argv) => argv.slice(3, 7))).toEqual(
+      expect.arrayContaining([["--from", DAY, "--to", DAY], ["--from", "2026-03-09", "--to", DAY]]));
+    expect(items.get("slow/stage/ci")?.summary).toBe(`${REPO} median 12 min, p90 30 min over 6 runs`);
+    expect(items.get("slow/owner-touches")?.title).toBe("3 owner touches on Shepherd gates");
+  });
+
   it("turns a failing CLI into a note and missing facts, and the gather still completes", async () => {
     store = snapshotStore();
     const cli = fakeCli({ "active-work miner": () => minerCostJson(20) });

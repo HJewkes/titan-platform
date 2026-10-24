@@ -45,6 +45,15 @@
       "kills": [
         "daily priorities names each lane's two open tasks with the lowest priority rank"
       ]
+    },
+    {
+      "name": "stage medians read over the day alone",
+      "file": "products/explainer/src/presets/daily/stats-source.ts",
+      "find": "settle(shepherdStats(inputs.run, isoWeekMonday(day), day), notes)",
+      "replace": "settle(shepherdStats(inputs.run, day, day), notes)",
+      "kills": [
+        "daily stats over injected CLI runners with synthetic output reads stage medians over the ISO week up to the day, and owner touches over the day alone"
+      ]
     }
   ]
 }
