@@ -7,7 +7,8 @@
       "find": "o.group === undefined ?",
       "replace": "true ?",
       "kills": [
-        "buildQueue asks a pair once, keeping an entry per picker under the question's id"
+        "buildQueue asks a pair once, keeping an entry per picker under the question's id",
+        "buildQueue gives pairs the pickers disagree on a slot even when agreeing pairs far outnumber them"
       ]
     },
     {

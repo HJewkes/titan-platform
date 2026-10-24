@@ -16,7 +16,8 @@
       "find": "const matching = earlier.filter((l) => l.entry.evalVersion !== undefined && versions.has(l.entry.evalVersion));",
       "replace": "const matching = earlier;",
       "kills": [
-        "pooledAgreement leaves out an earlier round's item at another eval_version or at none, counting it stale"
+        "pooledAgreement leaves out an earlier round's item at another eval_version or at none, counting it stale",
+        "pooledAgreement never pools two rounds that both lack an eval_version, since nothing shows they ran one version"
       ]
     },
     {
@@ -34,6 +35,7 @@
       "find": "const newest = rounds.at(-1) ?? [];",
       "replace": "const newest = rounds[0] ?? [];",
       "kills": [
+        "pooledAgreement pools a judge's labels across rounds at one eval_version, reading each round's ids against its own labels",
         "pooledAgreement leaves out an earlier round's item at another eval_version or at none, counting it stale"
       ]
     },

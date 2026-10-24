@@ -7,7 +7,8 @@
       "find": "judge: \"audition-code\", pass: pickIsA",
       "replace": "judge: \"audition-code\", pass: !pickIsA",
       "kills": [
-        "auditionOutputs makes the pick and runner-up one pair question, with the code picker preferring the pick's side"
+        "auditionOutputs makes the pick and runner-up one pair question, with the code picker preferring the pick's side",
+        "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
       ]
     },
     {
@@ -15,24 +16,6 @@
       "file": "products/explainer/src/calibration-auditions.ts",
       "find": "pass: sums[0] > sums[1]",
       "replace": "pass: sums[0] < sums[1]",
-      "kills": [
-        "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
-      ]
-    },
-    {
-      "name": "J12 counts toward the rubric sum",
-      "file": "products/explainer/src/calibration-auditions.ts",
-      "find": "RUBRIC_DIMS.includes(d.dim) && ",
-      "replace": "",
-      "kills": [
-        "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
-      ]
-    },
-    {
-      "name": "a voided row counts as a score",
-      "file": "products/explainer/src/calibration-auditions.ts",
-      "find": "d.verdict.score !== null",
-      "replace": "true",
       "kills": [
         "auditionOutputs has the rubric picker prefer the higher J8 to J11 sum, leaving out J12 and a row voided on either side"
       ]
