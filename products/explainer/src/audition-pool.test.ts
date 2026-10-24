@@ -37,6 +37,12 @@ describe("audition pool", () => {
     expect(pool.fallback?.reason).toMatch(/^0 candidates: scqa-c4 does not fit; fit but not allowed: abt, countdown, scqa, three-act$/);
   });
 
+  it("a daily with one merge still auditions goal-walk in every slot, so its pool is never empty", () => {
+    const pool = poolOf(["TP-9001 merged: the widget cache now expires stale rows."], "daily-overview");
+
+    expect(shape(pool)).toEqual(["goal-walk/bluf/fallback", "goal-walk/board-walk/fallback", "goal-walk/bluf/fallback"]);
+  });
+
   it("a heuristic profile with 0 candidates falls back to its fallback macro", () => {
     expect(profileDefault(profileFor(set, "repo-argument"))).toBe("abt");
     expect(poolOf(["The service keeps records in a table."], "repo-argument").fallback?.structure).toBe("abt");

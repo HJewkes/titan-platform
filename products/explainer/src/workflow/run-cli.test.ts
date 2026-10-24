@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { L0Check } from "../eval-l0.js";
 import { DAILY_FIXTURE, DAY, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
+import type { ScriptV1 } from "../script-schema.js";
 import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
@@ -118,6 +119,14 @@ describe("explainer stage and run variants CLI", () => {
   });
 });
 
+/** choppy()'s beats spread in order over goal-walk's eight chapters, so each chapter has a first beat to carry its lead. */
+function overGoalWalk(): ScriptV1 {
+  const script = choppy();
+  const chapters = Array.from({ length: 8 }, (_, i) => ({ id: `ch${i + 1}`, label: `ch${i + 1} · Lane ${i + 1}?`, question: `Lane ${i + 1}?` }));
+  const beats = script.beats.map((beat, i) => ({ ...beat, chapter: chapters[Math.floor((i * chapters.length) / script.beats.length)]!.id }));
+  return { ...script, chapters, beats };
+}
+
 describe("explainer run --from gather --type daily-overview", () => {
   // Mutation: dropping `spine: { from: audition-pick }` from daily-overview.yaml refuses this run for want of --spine.
   it("reaches the script stage with no --spine, on the spine the audition picked", async () => {
@@ -129,7 +138,7 @@ describe("explainer run --from gather --type daily-overview", () => {
     const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
 
     await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
-      host: fakeHost(fx, fakeBriefModels(), fakeBridge()), gather, out: (t) => out.push(t), err: (t) => err.push(t),
+      host: fakeHost(fx, fakeBriefModels(fakeScriptModel(overGoalWalk(), { followLeads: true })), fakeBridge()), gather, out: (t) => out.push(t), err: (t) => err.push(t),
     });
 
     expect(err.join("")).not.toContain("--spine");

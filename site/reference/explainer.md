@@ -262,7 +262,8 @@ capped, and no signature-layer requirement.
 `doctrine/structures/<id>.yaml` holds one `narrative-structure/v1` per structure a profile may
 pick: `design-journey`, `scqa`, `scqa-c4`, `mystery`, `three-act`, `abt`, `kishotenketsu`,
 `countdown`, `attempt-journey`, `review-saga`, `before-after`, `lab-report`, `timeline`,
-`board-walk` and `bluf`. Each states its source, a fit predicate over the material map's signals
+`board-walk`, `bluf` and `goal-walk` (the daily's fixed order: goals, lanes, ships, side quests,
+stats, reflection). Each states its source, a fit predicate over the material map's signals
 (`all`, `any`, `none`, and optional runtime bounds, with the question it encodes), blocks with
 airtime shares, a hook, an ending and its own spine sections. The agent picks the structure for
 each video and the runner-up goes in the render notes; there is no owner pick.
