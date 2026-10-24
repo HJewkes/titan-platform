@@ -46,7 +46,7 @@ type PaceDecision =
   | { kind: "spawn"; sha: string; stale?: boolean; express?: boolean; main?: boolean };
 
 /** A wait as `/health` shows it; `until` is absent for a wait with no end, such as the pause. */
-export interface PaceWait {
+interface PaceWait {
   sha: string;
   why: string;
   until?: string;

@@ -176,13 +176,15 @@ interface DeployWait {
   until: string | null;
 }
 
-const recordOf = (value: unknown): Record<string, unknown> | undefined => (typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined);
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
 function deployWaitOf(health: Record<string, unknown> | null): DeployWait | undefined {
-  const pending = recordOf(health?.deployPending);
-  const waiting = recordOf(pending?.waiting);
-  if (typeof pending?.sha !== "string" || typeof waiting?.why !== "string") return undefined;
-  return { sha: pending.sha, why: waiting.why, until: typeof waiting.until === "string" ? waiting.until : null };
+  const pending = health?.deployPending;
+  if (!isRecord(pending) || !isRecord(pending.waiting)) return undefined;
+  const { sha } = pending;
+  const { why, until } = pending.waiting;
+  if (typeof sha !== "string" || typeof why !== "string") return undefined;
+  return { sha, why, until: typeof until === "string" ? until : null };
 }
 
 /** Whatever the verdict, a deploy the pacer holds says why on the same line, so "main ahead" never reads as stuck (TP-2427). */
