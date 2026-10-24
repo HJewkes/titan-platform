@@ -50,6 +50,7 @@ titan-miner serve --port 7400                # /health, /rpc, /mcp, /events on l
 titan-miner mcp                              # MCP over stdio
 titan-miner --graph <file> graph-refresh -- active-work miner refresh   # one scheduled pass
 titan-miner --graph <file> tool-gap-weekly --notify-command <path>     # weekly tool-gap tasks and digest
+titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir>  # daily chunk classification, resumable
 ```
 
 Six options go before the command and apply to all of them:
@@ -105,7 +106,8 @@ Bash command back from its transcript and runs `<cli> --help`; it takes every sh
 
 Unless `--graph` names another file, everything is in the state directory: `index.sqlite3` holds the session graph, the Drain
 snapshot and the playbook. While `serve` runs, `daemon.pid` and `daemon.meta.json` sit
-beside it. `serve` logs to stderr. The miner only reads the corpus; the index stores byte
+beside it. `self-improve-daily` keeps its workflow runs in `self-improve-daily/state.sqlite3`,
+so a rerun over the same chunk directory resumes. `serve` logs to stderr. The miner only reads the corpus; the index stores byte
 ranges, not transcript text.
 
 `serve` exposes each command as `POST /rpc/<name>` and as an MCP tool named
@@ -127,6 +129,8 @@ the FTS orphan ratio.
 | `graph-refresh: FAILED: …`, exit 70 | the owner's refresh failed, or the graph failed `quick_check` |
 | `tool-gap-weekly: another run holds …`, exit 75 | a second weekly pass while one is running; nothing was done |
 | `tool-gap-weekly: FAILED: …`, exit 70 | a task action or the notifier failed; last week's snapshot is kept |
+| `error: no prompt file for …`, exit 64 | `self-improve-daily` found chunks for a family whose prompt is not in `--prompts`; prompts stay outside the repo |
+| `"skipped": [{ "reason": "budget" }]` from `self-improve-daily` | the next call's ceiling would have carried the run past `--max-budget-usd` |
 
 ## A refresh, package by package
 

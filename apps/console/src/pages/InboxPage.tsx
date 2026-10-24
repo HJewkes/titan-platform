@@ -68,7 +68,7 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "close-pr": "Close PR" };
+const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "close-pr": "Close PR", "deploy-pause-clear": "Clear deploy pause" };
 
 /** A sent-back tap only waits for the implementer's next head, so it never reads as a merge. */
 const GATE_VERB: Record<Extract<InboxAction, { kind: "resolve-gate" }>["decision"], string> = { merge: VERB["resolve-gate"], "await-new-head": "Wait for new head" };

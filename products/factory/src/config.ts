@@ -312,7 +312,7 @@ function parseJson(path: string, text: string): unknown {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 

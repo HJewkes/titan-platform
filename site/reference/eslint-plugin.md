@@ -29,7 +29,7 @@ To run ESLint against a style profile and get normalized diagnostics, use `style
 
 | Export | What it does |
 |---|---|
-| default export | the plugin: `meta.name` and `rules` with `max-function-lines`, `max-line-length`, `no-chained-type-assertions`, `no-commented-code`, `no-internal-module-mock` and `todo-needs-issue` |
+| default export | the plugin: `meta.name` and `rules` with `max-function-lines`, `max-line-length`, `no-chained-type-assertions`, `no-commented-code`, `no-internal-module-mock`, `no-wall-clock-motion` and `todo-needs-issue` |
 | `maxFunctionLines` | reports a function, arrow function or method with more than `max` (default 30) non-blank lines, naming it by its id, variable, key or as `anonymous function` |
 | `DEFAULT_MAX_LINES` | `30` |
 | `maxLineLength` | reports a line longer than `max` (default 200) characters unless no code token touches it (a comment line), it lies in an import or re-export declaration, or string, template, regex and JSX text tokens cover at least half its characters after the indent; opt-in, not in `recommended` |
@@ -37,7 +37,9 @@ To run ESLint against a style profile and get normalized diagnostics, use `style
 | `noChainedTypeAssertions` | reports a type assertion (`as` or `<T>`) whose operand is another type assertion, once per chain at the outermost one; a chain made only of `as const` passes |
 | `noCommentedCode` | reports a comment whose text parses as statements and carries a code signal: any statement other than an expression statement, or an expression that is an assignment, call, `new`, `await`, `++`/`--` or optional chain, or text ending in `;`. A bare `continue`, `break`, `return` or `debugger` and a lone expression without a signal (`read-only`, `100 - 75`, `a, b`, `this`) and a manual page reference such as `sudo(8)` read as prose. Consecutive whole-line `//` comments are parsed together; trailing comments never join. Leading `*` on block comment lines is stripped. JSDoc, `eslint-*`, `@ts-*`, `istanbul`/`c8`/`v8 ignore`, `prettier-ignore`, `#!` and `/// <reference` comments always pass |
 | `noInternalModuleMock` | reports `vi.mock`, `vi.doMock`, `jest.mock`, `jest.doMock` or `jest.unstable_mockModule` whose static specifier (a string, a template without expressions, or vitest's `import("…")` form) is relative, absolute, a `#` subpath, or starts with an internal prefix; option `internalPrefixes` (default `["@titan-design/"]`) replaces the prefix list |
-| `recommended` | a flat config registering the plugin as `titan` and enabling every rule except `max-line-length` at `error` |
+| `noWallClockMotion` | reports a call to `Date.now`, `performance.now`, `Math.random`, `setTimeout`, `setInterval`, `setImmediate` or `requestAnimationFrame` (bare or behind `window`, `self`, `globalThis`) in a file whose path contains an entry of option `paths` (default `["/ui/beats/", "/motion/"]`); `*.test.*`, `*.spec.*` and `__tests__/` files are never checked; opt-in, not in `recommended` |
+| `DEFAULT_MOTION_PATHS` | `["/ui/beats/", "/motion/"]` |
+| `recommended` | a flat config registering the plugin as `titan` and enabling every rule except `max-line-length` and `no-wall-clock-motion` at `error` |
 | `todoNeedsIssue` | reports each `TODO` in a comment that is not immediately followed by a tracker key (`TODO(TP-123)`, `TODO: TP-123`) or an issue number (`TODO(#123)`, `TODO #123`); a bare token must end the sentence, so `TODO UTF-8 support` is reported, as is any bare key with a standards prefix (`UTF`, `ES`, `ISO`, `RFC`, `SHA`, `MD`, `TLS`, `SSL`, `IPV`, `ECMA`, `HTTP`) |
 
 ## Example
@@ -60,7 +62,7 @@ export default [
 ];
 ```
 
-Or enable all but the opt-in `max-line-length` with `import { recommended } from "@titan-design/eslint-plugin"` and `export default [recommended]`.
+Or enable all but the opt-in `max-line-length` and `no-wall-clock-motion` with `import { recommended } from "@titan-design/eslint-plugin"` and `export default [recommended]`.
 
 ## Rules and messages
 
@@ -92,6 +94,12 @@ This comment is code. Delete it; git history keeps it. If it explains why, rewri
 
 ```text
 `vi.mock("./host.js")` mocks this repo's own code, so the test stops exercising it. Mock only external dependencies (node: builtins, third-party packages): pass the dependency in as a parameter, or use the package's own fake.
+```
+
+`no-wall-clock-motion` (for `Date.now()` in `ui/beats/`):
+
+```text
+`Date.now` reads the wall clock or an unseeded source, so a seek or a second render shows different frames. Derive motion from the beat's `t` or progress, or from a seeded generator, and never from real time.
 ```
 
 `todo-needs-issue`:

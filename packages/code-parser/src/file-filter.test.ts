@@ -12,6 +12,11 @@ describe("shouldIncludeFile", () => {
     expect(shouldIncludeFile("src/App.tsx", languages)).toBe(true);
   });
 
+  it("includes .mjs and .cjs scripts when typescript is requested", () => {
+    expect(shouldIncludeFile("scripts/gen.mjs", languages)).toBe(true);
+    expect(shouldIncludeFile("scripts/legacy.cjs", languages)).toBe(true);
+  });
+
   it("includes .py files when python is requested", () => {
     expect(shouldIncludeFile("scripts/main.py", languages)).toBe(true);
   });
@@ -91,6 +96,11 @@ describe("getLanguageFromPath", () => {
 
   it("returns typescript for .tsx", () => {
     expect(getLanguageFromPath("src/App.tsx")).toBe("typescript");
+  });
+
+  it("returns typescript for .mjs and .cjs", () => {
+    expect(getLanguageFromPath("scripts/gen.mjs")).toBe("typescript");
+    expect(getLanguageFromPath("scripts/legacy.cjs")).toBe("typescript");
   });
 
   it("returns python for .py", () => {

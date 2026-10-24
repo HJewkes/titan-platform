@@ -207,12 +207,14 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
       return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
     case "pr-closed":
       return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
+    case "pause-cleared":
+      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
     case "already":
       return "Already done by this confirmation";
     case "moved":
-      return `PR moved to ${short(outcome.currentHead)}, read again`;
+      return outcome.currentPause === undefined ? `PR moved to ${short(outcome.currentHead)}, read again` : `A deploy pause from ${outcome.currentPause} stands instead and is kept, read again`;
     case "gone":
       return `Nothing to act on: ${outcome.reason}`;
     case "refused":
@@ -272,7 +274,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   return { actionId: tap.confirm, outcome, message: messageOf(outcome, record), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
 }
 
-const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "pr-closed", "already"]);
+const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "pr-closed", "pause-cleared", "already"]);
 
 /** Only a landed tap on a PR has a next state to read; an answer to an agent has no run. */
 function nextAfter(sources: InboxSources, record: ActionRecord, outcome: Outcome): Promise<NextState | undefined> {
