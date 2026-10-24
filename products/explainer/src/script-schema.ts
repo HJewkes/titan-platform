@@ -135,6 +135,10 @@ const ScriptVisualSchema = z
     chips: z.array(z.object({ kind: z.enum(CHIP_KINDS), text: Text, fact_id: Id.optional() }).strict()).default([]),
     labels: z.array(Text).default([]),
     code: CodeRef.optional(),
+    // Owner overrides on a template beat: top-level slot fields, each replacing the generated value whole.
+    slots: z.record(z.string(), z.unknown()).optional(),
+    // Tuning constants a page kind reads; carried untouched until kinds declare a tune schema.
+    tune: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])).optional(),
   })
   .strict();
 
