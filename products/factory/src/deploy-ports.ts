@@ -1,5 +1,5 @@
 import { execFile, type ExecFileException } from "node:child_process";
-import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
@@ -9,6 +9,7 @@ import { deployWindowPath } from "./deploy-output.js";
 import type { CommandResult } from "./service-control.js";
 import { UNAVAILABLE, type Probe, type WatchIntent } from "./deploy-watch-window.js";
 import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
+import type { PauseClearPorts } from "./owner-ops/pause-clear.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const GIT_TIMEOUT_MS = 120_000;
@@ -122,6 +123,19 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     rename,
     isAlive: isProcessAlive,
   };
+}
+
+function readIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/** Only the deploy lock and the pause files: serve's console clear needs no checkout, git or pnpm. */
+export function systemPauseClearPorts(): PauseClearPorts {
+  return { pid: process.pid, exists: existsSync, readFile: readIfPresent, remove: (path) => rmSync(path, { force: true }), createExclusive, rename, isAlive: isProcessAlive };
 }
 
 /** The origin URL of `checkout`, the canonical remote a deploy clone defaults to; undefined when it has none. */
