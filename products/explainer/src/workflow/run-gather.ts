@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { appDirs } from "@titan-design/app-paths";
 import { execGh, type GhExec } from "@titan-design/github";
 import { claudeTranscriptRoots } from "@titan-design/session-read";
 import { z } from "zod";
@@ -45,7 +44,7 @@ export interface GatherDeps {
   prGh?: GhRun;
   callEdges?: CallEdgeReader;
   readAt?: ReadAt;
-  /** The daily lanes rule file; the host's `daily/lanes.yaml` when it keeps one, else the doctrine default. */
+  /** The daily lanes rule file; the data dir's `daily/lanes.yaml` when it keeps one, else the doctrine default. */
   lanesFile?: string;
 }
 
@@ -64,7 +63,7 @@ interface Gathered {
 
 async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gatherDaily" }>, dataDir: string, deps: GatherDeps): Promise<Gathered> {
   const transcriptRoots = request.transcripts.length > 0 ? request.transcripts : claudeTranscriptRoots().map((root) => root.root);
-  const lanes = loadLanes(deps.lanesFile ?? lanesFileFor(appDirs("explainer").data));
+  const lanes = loadLanes(deps.lanesFile ?? lanesFileFor(dataDir));
   const { digest, notes, coverage } = await gatherDaily({
     day: request.day, repos: request.repos, transcriptRoots, initiative: request.initiative,
     snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks, lanes,
