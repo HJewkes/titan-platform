@@ -7,11 +7,10 @@ import { AutoresearchLanesBoard } from "./AutoresearchLanesBoard.js";
 import { AutoresearchStageStrip } from "./AutoresearchStageStepper.js";
 import { shortId, signed } from "./autoresearch-format.js";
 import { STAGES, boardLadders, currentStage, ideaFromQuery, ideaRoute, stageSpans } from "./autoresearch-lanes.js";
-import { useNow, useRunPoll } from "./autoresearch-live.js";
+import { useNow } from "./autoresearch-live.js";
 
 /** Design §1.3: the current round's ideas, one card each, in the column of the stage they are in. */
 export function AutoresearchLanes({ run }: { run: ArRunView }): ReactNode {
-  useRunPoll(run.status);
   const route = useRoute();
   const onBoard = boardLadders(run);
   const now = useNow(onBoard.some((ladder) => ladder.active !== null));

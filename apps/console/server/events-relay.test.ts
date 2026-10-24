@@ -8,7 +8,7 @@ import { silentLogger, type DaemonHandle, type SseMessage } from "@titan-design/
 import { liveSource, type Subscription } from "@titan-design/rpc-client";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { MAX_FRAME_CHARS, brokerIds, startEventsRelay, type EventsRelay, type RelayTiming, type RelayUpstream } from "./events-relay.js";
+import { MAX_FRAME_CHARS, brokerIds, factoryIds, relayUpstreams, startEventsRelay, type EventsRelay, type RelayTiming, type RelayUpstream } from "./events-relay.js";
 
 const TOKEN = "synthetic-token";
 
@@ -62,6 +62,9 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 
 const brokerRow = (id: number, kind: string): string =>
   `id: ${id}\nevent: ${kind}\ndata: ${JSON.stringify({ id, ts: 1, kind, actor: "coord", target: "impl", msgId: `m${id}`, ref: "task:X-1", body: "a private body", meta: '{"note":"private meta"}' })}\n\n`;
+
+const shepherdFrame = (runId: string): string =>
+  `event: shepherd\ndata: ${JSON.stringify({ v: 1, kind: "run", repo: "example-org/example-repo", pr: 12, runId, stepId: "step-private", at: "2026-01-01T00:00:00.000Z" })}\n\n`;
 
 let dir: string;
 let tokenPath: string;
@@ -279,6 +282,78 @@ describe("the events relay", () => {
     await broker.close();
 
     await until(() => broker.openCount() === 0, 500);
+  });
+});
+
+describe("the factory relay source", () => {
+  const relays: EventsRelay[] = [];
+  afterEach(async () => {
+    await Promise.all(relays.splice(0).map((relay) => relay.close()));
+  });
+
+  function factoryAt(port: number): RelayUpstream {
+    const upstream = relayUpstreams({ ...consoleConfig(1, 1), factoryPort: port }).find(({ source }) => source === "factory");
+    if (!upstream) throw new Error("no factory upstream");
+    return upstream;
+  }
+
+  it("dials the factory's /events with no broker token and relays each frame as its run id alone", async () => {
+    const factory = await fake();
+    const relayed: SseMessage[] = [];
+    relays.push(startEventsRelay({ hub: { broadcast: (message) => relayed.push(message) }, upstreams: [factoryAt(factory.port)], logger: silentLogger }));
+    await until(() => factory.openCount() === 1);
+
+    factory.write(`event: ping\ndata: 1\n\n${shepherdFrame("run-0001")}`);
+    await until(() => relayed.length === 1);
+
+    expect(relayed.map(({ event, data }) => ({ event, data: JSON.parse(data) as unknown }))).toEqual([{ event: "factory", data: { kind: "shepherd", runId: "run-0001" } }]);
+    expect(factory.dials[0]?.headers["x-agent-chat-token"]).toBeUndefined();
+    expect(factory.dials[0]?.headers.accept).toBe("text/event-stream");
+  });
+
+  it("redials a dropped factory stream with the same doubling backoff, announcing each reopen", async () => {
+    const factory = await fake();
+    const relayed: SseMessage[] = [];
+    // Asserts the delays the relay asked for against a clock that never moves, so no stream counts as stable and load cannot stretch the result.
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      relays.push(
+        startEventsRelay({
+          hub: { broadcast: (message) => relayed.push(message) },
+          upstreams: [factoryAt(factory.port)],
+          logger: silentLogger,
+          timing: { baseDelayMs: 20, maxDelayMs: 80 },
+          now: () => 0,
+        }),
+      );
+      for (let dial = 1; dial <= 3; dial++) {
+        await until(() => factory.dials.length === dial && factory.openCount() === 1);
+        factory.drop();
+      }
+      await until(() => factory.dials.length === 4 && factory.openCount() === 1 && relayed.length === 3);
+
+      const backoffs = spy.mock.calls.map(([, ms]) => ms).filter((ms) => ms !== undefined && [10, 20, 40, 80, 160].includes(ms));
+      expect(backoffs).toEqual([40, 80, 80]);
+      expect(relayed.map(({ event, data }) => `${event}:${(JSON.parse(data) as { kind: string }).kind}`)).toEqual(["factory:reconnected", "factory:reconnected", "factory:reconnected"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("factoryIds", () => {
+  it("keeps the run id and drops the repo, PR and step", () => {
+    expect(factoryIds(JSON.stringify({ v: 1, kind: "gate", repo: "example-org/example-repo", pr: 3, runId: "0b7c2a1e-0000-4000-8000-000000000001", stepId: "s" }))).toEqual({
+      runId: "0b7c2a1e-0000-4000-8000-000000000001",
+    });
+  });
+
+  it("drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object", () => {
+    expect(factoryIds(JSON.stringify({ runId: "two words" }))).toEqual({});
+    expect(factoryIds(JSON.stringify({ runId: "../private" }))).toEqual({});
+    expect(factoryIds(JSON.stringify({ runId: 7 }))).toEqual({});
+    expect(factoryIds(JSON.stringify({ v: 1, kind: "external", at: "x" }))).toEqual({});
+    expect(factoryIds("not json")).toEqual({});
   });
 });
 
