@@ -422,8 +422,9 @@ describe("POST /owner/console-action", () => {
       expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
     });
 
-    it("answers 409 moved with the gate's head when the record names another head, and leaves the gate pending", async () => {
+    it("answers 409 moved with the gate's head when the record and GitHub name a head the gate does not ask about, and leaves the gate pending", async () => {
       const w = await sentBackWorld();
+      w.github.pushHead(w.pr, H2);
       w.record({ headSha: H2 });
 
       const res = await post(w.server, { actionId: ACTION_ID });
