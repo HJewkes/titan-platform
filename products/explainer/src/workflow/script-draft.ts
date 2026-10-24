@@ -241,17 +241,19 @@ export function failureList(rows: readonly L0Result[], rules: RuleRegistry, scri
   return rows.map((row) => `- ${row.check_id}: ${rule(row)} (${where(row)})${found(row)}`).join("\n");
 }
 
-export const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string =>
-  `${prompt}\n## Your draft\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\`\n\n## Checks the draft fails\n\n${failures}\n\nFix what these checks name and keep the rest. Reply with the whole corrected object.\n`;
+export const repairPrompt = (prompt: string, draft: ScriptV1, failures: string, reply = "Reply with the whole corrected object.\n"): string =>
+  `${prompt}\n## Your draft\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\`\n\n## Checks the draft fails\n\n${failures}\n\nFix what these checks name and keep the rest. ${reply}`;
 
 /** One repair loop: what it answers, how it asks, and how a reply becomes a measured candidate. */
 export interface Rounds {
   rounds: number;
   failing: (script: ScriptV1) => L0Result[];
   prompt: (script: ScriptV1, failing: readonly L0Result[]) => string;
-  read: (outcome: StepRunOutcome, current: ScriptV1) => Checked;
+  read: (outcome: StepRunOutcome, current: ScriptV1, failing: readonly L0Result[]) => Checked;
   /** Settles a parsed reply before it is measured: the ledger stamp. */
   settle: (script: ScriptV1) => Stamped;
+  /** Whether a round whose reply is rejected gets one retry naming why, inside the same round. */
+  retry?: (failing: readonly L0Result[]) => boolean;
 }
 
 export interface Repaired {
@@ -265,7 +267,17 @@ export interface Repaired {
   dropped?: string[];
 }
 
-/** Up to `rounds` calls, each answering the current failing rows; a reply is kept only when it fails fewer. */
+/** One round's reply, and when `loop.retry` allows it and the reply is rejected, one retry naming the rejection. */
+async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: readonly L0Result[]): Promise<{ reply: Checked; usage: StageUsage }> {
+  const prompt = loop.prompt(script, failing);
+  const outcome = await call(prompt);
+  const reply = loop.read(outcome, script, failing);
+  if (reply.script || !loop.retry?.(failing)) return { reply, usage: stageUsage(outcome.usage) };
+  const again = await call(retryPrompt(prompt, reply.error ?? ""));
+  return { reply: loop.read(again, script, failing), usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)) };
+}
+
+/** Up to `rounds` rounds, each answering the current failing rows; a reply is kept only when it fails fewer. */
 export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Promise<Repaired> {
   let { script, stamps } = start;
   let failing = loop.failing(script);
@@ -273,9 +285,8 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   let usage = NO_USAGE;
   let kept: Pick<Repaired, "stripped" | "dropped"> = {};
   for (let round = 0; round < loop.rounds && failing.length > 0; round++) {
-    const outcome = await call(loop.prompt(script, failing));
-    usage = addUsage(usage, stageUsage(outcome.usage));
-    const reply = loop.read(outcome, script);
+    const { reply, usage: spent } = await roundReply(call, loop, script, failing);
+    usage = addUsage(usage, spent);
     const next = reply.script && loop.settle(reply.script);
     const after = next ? loop.failing(next.script) : failing;
     if (next && after.length < failing.length) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];

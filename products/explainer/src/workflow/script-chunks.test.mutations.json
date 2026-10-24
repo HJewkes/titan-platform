@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the patch replaces the whole chapter instead of splicing in place",
+      "file": "products/explainer/src/workflow/chapter-patch.ts",
+      "find": "const beats = chapter.beats.map((beat) => (byId.has(beat.id) ? { ...byId.get(beat.id), id: beat.id, chapter: beat.chapter } : beat));",
+      "replace": "const beats = patch;",
+      "kills": [
+        "beat-level chapter repair asks only for the failing beat and splices the reply in place, every other beat byte-identical"
+      ]
+    },
+    {
+      "name": "a patch naming other beats, or leaving one out, is merged",
+      "file": "products/explainer/src/workflow/chapter-patch.ts",
+      "find": "if (extra.length === 0 && missing.length === 0 && !repeated) return undefined;",
+      "replace": "return undefined;",
+      "kills": [
+        "beat-level chapter repair rejects and retries a patch that adds a beat id, never merging it"
+      ]
+    },
+    {
+      "name": "a row naming the chapter still gets a beat patch",
+      "file": "products/explainer/src/workflow/chapter-patch.ts",
+      "find": "rows.some((row) => row.detail_beats.includes(id));",
+      "replace": "false;",
+      "kills": [
+        "beat-level chapter repair falls back to the whole chapter when a failing row names the chapter rather than a beat"
+      ]
+    },
+    {
+      "name": "the single-call repair asks for a patch",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "reply = \"Reply with the whole corrected object.\\n\"",
+      "replace": "reply = \"Reply with one JSON object and nothing else: \\\"beats\\\" lists exactly the beats you change.\\n\"",
+      "kills": [
+        "beat-level chapter repair keeps the short-script single-call repair asking for and keeping the whole object"
+      ]
+    }
+  ]
+}
