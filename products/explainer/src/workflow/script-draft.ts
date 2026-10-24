@@ -17,7 +17,7 @@ import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { spellScript } from "../rewrite-pass.js";
 import { UNKNOWN_WORDS_ID, UNKNOWN_WORDS_RULE, unknownWordsHint, type Tokens } from "../unknown-words.js";
-import { issueText, replyObject, stripUnknownKeys } from "./script-reply.js";
+import { issueText, repairReply, replyObject } from "./script-reply.js";
 import { addUsage, NO_USAGE, type Check, type StageUsage } from "./records.js";
 
 const cacheWrites = (usage: StepUsage): number => (usage.cacheWrite5mTokens ?? 0) + (usage.cacheWrite1hTokens ?? 0);
@@ -104,6 +104,8 @@ export interface Checked {
   error?: string;
   /** Keys the schema does not allow, dropped so the rest of the reply parses. */
   stripped?: string[];
+  /** Out-of-enum values on optional fields or list items, dropped the same way: one stage note each. */
+  dropped?: string[];
 }
 
 const planned = (script: ScriptV1, plan: ScriptPlan): ScriptV1 => ({ ...script, structure: plan.structure, ...(plan.profile ? { profile: plan.profile } : {}) });
@@ -112,7 +114,8 @@ const planned = (script: ScriptV1, plan: ScriptPlan): ScriptV1 => ({ ...script, 
  * The reply is checked here rather than through the CLI's `--json-schema`: that flag refuses the tuple keywords
  * ScriptSchema converts to, and zod refinements (unknown chapters, unspoken cues) never reach a JSON schema anyway.
  * A reply whose only faults are extra keys ("cues", "chips" on a beat) loses them rather than the whole script: the
- * schema retry was measured failing on the same keys again.
+ * schema retry was measured failing on the same keys again. So does one whose other faults are out-of-enum values on
+ * an optional field or a list item (a chip's kind); a bad required value goes to the retry, which names the allowed ones.
  */
 export function checked(outcome: StepRunOutcome, plan: ScriptPlan): Checked {
   if (!outcome.ok) return { error: outcome.error };
@@ -125,11 +128,14 @@ export function checked(outcome: StepRunOutcome, plan: ScriptPlan): Checked {
   return checkedObject(raw, plan);
 }
 
-/** A reply's object as a script: parsed, its unknown keys dropped, then its cue kinds, profile and lead-beat cues checked. */
+/**
+ * A reply's object as a script: parsed, its unknown keys and droppable bad values dropped, then its cue kinds, profile
+ * and lead-beat cues checked. A later fault also names what was dropped, since the drop may be what caused it.
+ */
 export function checkedObject(raw: unknown, plan: ScriptPlan): Checked {
   const result = parsedObject(raw, plan);
   const fault = result.script ? cueKindFault(result.script) ?? profileFault(result.script) ?? cueFault(result.script, plan) : undefined;
-  return fault ? { error: fault } : result;
+  return fault ? { error: [fault, ...(result.dropped ?? [])].join("; ") } : result;
 }
 
 // With no run profile the reply's own stands, so an invented one is caught here rather than at resolve.
@@ -163,10 +169,12 @@ function parsedObject(raw: unknown, plan: ScriptPlan): Checked {
   const parsed = ScriptSchema.safeParse(raw);
   if (parsed.success) return { script: planned(parsed.data, plan) };
   const { issues } = parsed.error;
-  if (!issues.every((issue) => issue.code === "unrecognized_keys")) return { error: issueText(issues) };
-  const stripped = stripUnknownKeys(raw, issues);
+  const first = issueText(issues, raw);
+  const repair = repairReply(ScriptSchema, raw, issues);
+  if (!repair) return { error: first };
   const again = ScriptSchema.safeParse(raw);
-  return again.success ? { script: planned(again.data, plan), stripped } : { error: issueText([...issues, ...again.error.issues]) };
+  if (!again.success) return { error: `${first}; ${issueText(again.error.issues, raw)}` };
+  return { script: planned(again.data, plan), stripped: repair.stripped, ...(repair.dropped.length > 0 ? { dropped: repair.dropped } : {}) };
 }
 
 const isSchemaFailure = (outcome: StepRunOutcome): boolean => outcome.ok || outcome.code === "schema_invalid";
@@ -252,8 +260,9 @@ export interface Repaired {
   usage: StageUsage;
   before: number;
   after: number;
-  /** The kept repair's dropped keys; absent while the start is still the script. */
+  /** The kept repair's dropped keys and values; absent while the start is still the script. */
   stripped?: string[];
+  dropped?: string[];
 }
 
 /** Up to `rounds` calls, each answering the current failing rows; a reply is kept only when it fails fewer. */
@@ -262,16 +271,16 @@ export async function repairRounds(call: Call, start: Stamped, loop: Rounds): Pr
   let failing = loop.failing(script);
   const before = failing.length;
   let usage = NO_USAGE;
-  let stripped: string[] | undefined;
+  let kept: Pick<Repaired, "stripped" | "dropped"> = {};
   for (let round = 0; round < loop.rounds && failing.length > 0; round++) {
     const outcome = await call(loop.prompt(script, failing));
     usage = addUsage(usage, stageUsage(outcome.usage));
     const reply = loop.read(outcome, script);
     const next = reply.script && loop.settle(reply.script);
     const after = next ? loop.failing(next.script) : failing;
-    if (next && after.length < failing.length) [{ script, stamps }, failing, stripped] = [next, after, reply.stripped ?? []];
+    if (next && after.length < failing.length) [{ script, stamps }, failing, kept] = [next, after, { stripped: reply.stripped ?? [], dropped: reply.dropped ?? [] }];
   }
-  return { script, stamps, usage, before, after: failing.length, ...(stripped ? { stripped } : {}) };
+  return { script, stamps, usage, before, after: failing.length, ...kept };
 }
 
 /** What a drafting path hands the stage: the script, its stamps and spend, and what it reports. */

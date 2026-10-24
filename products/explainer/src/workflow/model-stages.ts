@@ -126,7 +126,7 @@ async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Li
     retries,
     stripped: repair?.stripped ?? draft.stripped ?? [],
     checks: repair ? [repair.check] : [],
-    notes: [],
+    notes: repair?.dropped ?? draft.dropped ?? [],
   };
 }
 
