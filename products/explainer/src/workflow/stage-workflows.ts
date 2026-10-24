@@ -50,11 +50,7 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     return runGatherStage(config.gather, input, deps.dataDir, deps.gather);
   }
   if (stage === "audition") return runAuditionBody(config, input, deps);
-  if (stage === "script") {
-    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
-    if (!config.model) throw new Error("script stage spec has no model");
-    return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
-  }
+  if (stage === "script") return runScriptBody(config, input, deps);
   if (stage === "rewrite") {
     if (!config.judge || config.rounds === undefined) throw new Error("rewrite stage spec has no judge or rounds");
     return runRewriteStage(input, { judge: config.judge, rounds: config.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
@@ -73,6 +69,12 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
   });
+}
+
+function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+  if (!config.model) throw new Error("script stage spec has no model");
+  return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
 }
 
 function runAuditionBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {

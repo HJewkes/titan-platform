@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Argument, Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
-import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, runOneStage, type RunHost } from "./host.js";
+import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, runOneStage, type RunHost, type StageRequest } from "./host.js";
 import { CACHED_STAGES, type CachedStage, type StageRecord } from "./records.js";
 import { ChildStageFailure } from "./stage-cache.js";
 import { budget, dataDirOption, hostFor, rounds, sampleCount, sampleIndex, shaPair, type RunCliDeps } from "./run-cli.js";
@@ -52,6 +52,15 @@ const withSamplesOptions = (command: Command): Command => command
   .option("--samples <n>", "run sample indices --sample to --sample + n - 1; report each target row's mean and σ through summarizeMeasure (script, rewrite)", sampleCount)
   .option("--max-usd <usd>", "with --samples: stop before a run the dearest run so far says would pass this total", budget);
 
+function stageRequest(stage: CachedStage, flags: StageFlags): StageRequest {
+  const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
+  return {
+    stage, inputs: flags.in, sample: flags.sample, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, rounds: flags.rounds,
+    ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}), ...(flags.profile ? { profile: flags.profile } : {}),
+    ...(flags.video ? { video: flags.video } : {}),
+  };
+}
+
 function stageCommand(deps: RunCliDeps, { out, err }: Io, onSampled: (code: number) => void): Command {
   return withSamplesOptions(new Command("stage")
     .description("Run one stage from stored artifacts as its own child run, through the stage cache, and print its outputs and report row")
@@ -70,12 +79,7 @@ function stageCommand(deps: RunCliDeps, { out, err }: Io, onSampled: (code: numb
     .exitOverride()
     .action(async (stage: CachedStage, flags: StageFlags) => {
       if (flags.samples !== undefined) return onSampled(await stageSamples(stage, { ...flags, samples: flags.samples }, hostFor(flags, deps), { out, err }));
-      const judge = flags.judge ? JudgeConfigSchema.parse(JSON.parse(readFileSync(flags.judge, "utf8"))) : undefined;
-      const record = await runOneStage({
-        stage, inputs: flags.in, sample: flags.sample, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, rounds: flags.rounds,
-        ...(flags.variant ? { variant: flags.variant } : {}), ...(judge ? { judge } : {}), ...(flags.profile ? { profile: flags.profile } : {}),
-        ...(flags.video ? { video: flags.video } : {}),
-      }, hostFor(flags, deps)).catch((error: unknown) => {
+      const record = await runOneStage(stageRequest(stage, flags), hostFor(flags, deps)).catch((error: unknown) => {
         // A failed gate still has verdicts; a caller scoring checks reads them from the record, exit code 1 or not.
         if (flags.json && error instanceof ChildStageFailure && error.record) out(`${JSON.stringify(error.record, null, 2)}\n`);
         throw error;

@@ -287,5 +287,6 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   let tick = Date.parse("2026-10-22T00:00:00Z");
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
-  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
+  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)] };
+  return { dataDir: fx.dataDir, ...seams, now, ...extra, rewriter, rubric };
 }
