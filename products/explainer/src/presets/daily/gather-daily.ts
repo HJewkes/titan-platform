@@ -62,10 +62,10 @@ const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\s+/g, " ").t
 /** `facts.md` for the script stage: one row per digest item, its id the fact id a script cites. */
 export function dailyFactsMarkdown(digest: Digest): string {
   const rows = digest.items.map((item) => {
-    const claim = [item.change ? `${item.kind} ${item.change}` : item.kind, item.repo, item.title, item.summary].filter(Boolean).join(" · ");
-    return `| ${cell(item.id)} | ${cell(claim)} |`;
+    const claim = [item.change ? `${item.kind} ${item.change}` : item.kind, item.repo, item.title, item.outcome, item.summary].filter(Boolean).join(" · ");
+    return `| ${cell(item.id)} | ${cell(claim)} | ${cell(item.priority ?? "")} |`;
   });
-  return [`# Facts: daily ${digest.since.slice(0, 10)}`, "", "| Id | Claim |", "|---|---|", ...rows, ""].join("\n");
+  return [`# Facts: daily ${digest.since.slice(0, 10)}`, "", "| Id | Claim | Priority |", "|---|---|---|", ...rows, ""].join("\n");
 }
 
 export interface DailyGatherFiles {
