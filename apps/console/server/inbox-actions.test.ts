@@ -717,12 +717,17 @@ describe("inbox deploy-pause-clear op", () => {
     expect(envelope).not.toMatchObject({ data: { next: expect.anything() } });
   });
 
-  it("says a manual hold stays held when one stands beside the pause", async () => {
+  it("says a manual hold stays held when one stands beside the pause, before and after the clear", async () => {
     await depositPauseClear();
     pausePreview = () => pauseAnswer({ manualHold: "synthetic hand hold" });
-    const { prepare } = await harness(opFactory().client);
+    const client: OwnerActionClient = { post: async () => ({ status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "synthetic hand hold" }) };
+    const { prepare, act } = await harness(client);
 
-    expect(ready(await prepare(PAUSE_ID)).readBack).toMatchObject({ manualHold: "synthetic hand hold", effect: `Clear the deploy pause from ${PAUSED_AT} over fedcba9; deploys stay held by hand (synthetic hand hold), which this does not clear` });
+    const prepared = ready(await prepare(PAUSE_ID));
+    const { envelope } = await act(PAUSE_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ manualHold: "synthetic hand hold", effect: `Clear the deploy pause from ${PAUSED_AT} over fedcba9; deploys stay held by hand (synthetic hand hold), which this does not clear` });
+    expect(envelope).toMatchObject({ ok: true, data: { message: "Deploy pause cleared; deploys stay held by hand: synthetic hand hold" } });
   });
 
   it("offers no action when a newer pause than the deposit names stands", async () => {

@@ -53,11 +53,6 @@ describe("factoryOwnerAction", () => {
     [200, { outcome: "accepted", runId: RUN }, { status: "accepted", runId: RUN }],
     [200, { outcome: "pr-closed", closedHead: HEAD }, { status: "pr-closed", closedHead: HEAD }],
     [200, { outcome: "already", closedHead: HEAD }, { status: "already", closedHead: HEAD }],
-    [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null }, { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null }],
-    [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" }, { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" }],
-    [200, { outcome: "already", clearedPause: PAUSED_AT }, { status: "already", clearedPause: PAUSED_AT }],
-    [409, { outcome: "moved", currentPause: PAUSED_AT }, { status: "moved", currentHead: null, currentPause: PAUSED_AT }],
-    [409, { outcome: "refused", reason: "deploying", detail: "a deployer is running" }, { status: "refused", reason: "deploying", detail: "a deployer is running" }],
     [409, { outcome: "moved", currentHead: HEAD }, { status: "moved", currentHead: HEAD }],
     [410, { outcome: "gone", reason: "no gate" }, { status: "gone", reason: "no gate" }],
     [403, { outcome: "refused", reason: "resolver", detail: "owner-terminal only" }, { status: "refused", reason: "resolver", detail: "owner-terminal only" }],
@@ -68,6 +63,26 @@ describe("factoryOwnerAction", () => {
     const port = await factoryAnswering(status, body);
 
     expect(await factoryOwnerAction(port).post("a".repeat(64))).toEqual(outcome);
+  });
+
+  it("reads a deploy-pause-clear's answers with the pause each names", async () => {
+    const answers: [number, object][] = [
+      [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null }],
+      [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" }],
+      [200, { outcome: "already", clearedPause: PAUSED_AT }],
+      [409, { outcome: "moved", currentPause: PAUSED_AT }],
+      [409, { outcome: "refused", reason: "deploying", detail: "a deployer is running" }],
+    ];
+
+    const read = await Promise.all(answers.map(async ([status, body]) => factoryOwnerAction(await factoryAnswering(status, body)).post("a".repeat(64))));
+
+    expect(read).toEqual([
+      { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null },
+      { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" },
+      { status: "already", clearedPause: PAUSED_AT },
+      { status: "moved", currentHead: null, currentPause: PAUSED_AT },
+      { status: "refused", reason: "deploying", detail: "a deployer is running" },
+    ]);
   });
 
   it.each([

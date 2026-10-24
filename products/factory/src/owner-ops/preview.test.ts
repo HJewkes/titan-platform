@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { deployLockPath } from "../deploy-lock.js";
 import { deployHoldPath, deployPausePath } from "../deploy-pause.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
@@ -118,5 +119,15 @@ describe("owner-op.preview", () => {
       deployerRunning: false,
       manualHold: "synthetic hand hold",
     });
+  });
+
+  it("reads a live pid in the deploy lock as a running deployer", async () => {
+    const { preview } = world();
+    const stateDir = deployStateDir();
+    writeFileSync(deployLockPath(stateDir), String(process.pid));
+
+    const answer = await preview({ kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) });
+
+    expect(answer.ok && answer.data.pause).toMatchObject({ paused: false, deployerRunning: true, manualHold: null });
   });
 });

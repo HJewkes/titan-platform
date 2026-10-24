@@ -44,7 +44,7 @@ function PauseFacts({ readBack, readAt }: { readBack: PauseReadBack; readAt: str
       <Typography variant="mono">{`target ${readBack.target.slice(0, 7)}, rollback ${readBack.rollback}, read ${secondsSince(readAt)} s ago`}</Typography>
       {readBack.manualHold === undefined ? null : <Typography variant="caption" color="secondary">{`Manual hold stays: ${readBack.manualHold}`}</Typography>}
       <Typography variant="caption" color="secondary">{`Authority ${readBack.authority}`}</Typography>
-      <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>
+      <Proposal readBack={readBack} />
     </>
   );
 }
@@ -68,7 +68,12 @@ function OpFacts({ readBack }: { readBack: OpReadBack }): ReactNode {
   return (
     <>
       <Typography variant="caption" color="secondary">{`Into ${readBack.base}${behind}; GitHub reads it ${readBack.mergeableState}. Authority ${readBack.authority}`}</Typography>
-      <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>
+      <Proposal readBack={readBack} />
     </>
   );
+}
+
+/** The depositing agent's words, labelled as theirs and never as the factory's facts. */
+function Proposal({ readBack }: { readBack: OpReadBack | PauseReadBack }): ReactNode {
+  return <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>;
 }
