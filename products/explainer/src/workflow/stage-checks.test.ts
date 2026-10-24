@@ -206,7 +206,7 @@ describe("running a stage's checks", () => {
     expect(roles).toEqual({
       gather: [],
       audition: [],
-      script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate", "unknown-words:gate"],
+      script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate", "unknown-words:gate", "word-budget:gate", "runtime:gate"],
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
       eval: [], resolve: ["emphasis-target:gate", "word-budget:gate"], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });

@@ -16,12 +16,14 @@ import { stampLedgerTerms, type LedgerStamp, type Stamped } from "../ledger-stam
 import { paceRows } from "../lint-pace.js";
 import { CUE_KIND_ROLES, fromScriptV1, unknownCueKinds } from "../pace-items.js";
 import { rewriteScript } from "../rewrite-pass.js";
+import { budgetSection, planFaults, planHint } from "../script-budget.js";
 import { parseScript } from "../script-load.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { COMPANION_FILE, companionChapters, renderCompanion, reviewFacts, type ChapterLinks } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry, type RuleRegistry } from "../rules.js";
+import { issueText, replyObject, stripUnknownKeys } from "./script-reply.js";
 import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
 
@@ -91,7 +93,8 @@ const leadBeatSection = (leads: readonly LeadBeat[]): string[] => (leads.length 
 
 function promptFor(spine: string, facts: string, plan: ScriptPlan): string {
   const guide = guidePlan("script", { spine: parseSpine(spine), structure: plan.structure });
-  const sections = [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, ...leadBeatSection(plan.leads)];
+  const budget = plan.profile ? [budgetSection(plan.leads, plan.profile)] : [];
+  const sections = [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, ...leadBeatSection(plan.leads), ...budget];
   return [...sections, scriptShape(), SCRIPT_TASK].join("\n\n") + "\n";
 }
 
@@ -102,34 +105,6 @@ export function scriptPrompt(spine: string, facts: string): string {
 
 const retryPrompt = (prompt: string, error: string): string =>
   `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
-
-/** Enough issues to fix the reply by, few enough that a reply in the wrong shape does not flood the run error. */
-const MAX_ISSUES = 25;
-const issueText = (issues: readonly z.core.$ZodIssue[]): string => {
-  const shown = issues.slice(0, MAX_ISSUES).map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
-  return [...shown, ...(issues.length > MAX_ISSUES ? [`and ${issues.length - MAX_ISSUES} more`] : [])].join("; ");
-};
-
-/** The reply's outermost JSON object, so a reply wrapped in a code fence or a sentence still parses. */
-function replyObject(text: string): unknown {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("no JSON object");
-  return JSON.parse(text.slice(start, end + 1));
-}
-
-const isObject = (value: unknown): value is Record<PropertyKey, unknown> => typeof value === "object" && value !== null;
-
-/** Deletes, in place, each key zod reports as unrecognized, and returns its dotted path. */
-function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
-  return issues.flatMap((issue) => {
-    if (issue.code !== "unrecognized_keys") return [];
-    const owner = issue.path.reduce<unknown>((node, key) => (isObject(node) ? node[key] : undefined), raw);
-    if (!isObject(owner)) return [];
-    for (const key of issue.keys) Reflect.deleteProperty(owner, key);
-    return issue.keys.map((key) => [...issue.path, key].join("."));
-  });
-}
 
 interface Checked {
   script?: ScriptV1;
@@ -223,11 +198,23 @@ interface Draft extends Checked {
   retried: boolean;
 }
 
-/** The first call, and one retry naming the schema issues when its reply does not parse. */
+/** One retry naming each beat over resolve's word cap and the runtime; kept only when it parses and fails fewer. */
+async function planRetry(call: Call, prompt: string, plan: ScriptPlan, draft: Draft & { script: ScriptV1 }): Promise<Draft> {
+  const faults = planFaults(draft.script);
+  if (faults.length === 0) return draft;
+  const outcome = await call(retryPrompt(prompt, planHint(faults)));
+  const reply = checked(outcome, plan);
+  const better = reply.script !== undefined && planFaults(reply.script).length < faults.length;
+  return { ...(better ? reply : draft), usage: addUsage(draft.usage, stageUsage(outcome.usage)), retried: true };
+}
+
+/** The first call, and one retry: naming the schema issues when its reply does not parse, or its plan faults when it does. */
 async function draftScript(call: Call, prompt: string, plan: ScriptPlan): Promise<Draft> {
   const first = await call(prompt);
   const result = checked(first, plan);
-  if (result.script || !isSchemaFailure(first)) return { ...result, usage: stageUsage(first.usage), retried: false };
+  const usage = stageUsage(first.usage);
+  if (result.script) return planRetry(call, prompt, plan, { ...result, script: result.script, usage, retried: false });
+  if (!isSchemaFailure(first)) return { ...result, usage, retried: false };
   const second = await call(retryPrompt(prompt, result.error ?? ""));
   return { ...checked(second, plan), usage: addUsage(stageUsage(first.usage), stageUsage(second.usage)), retried: true };
 }

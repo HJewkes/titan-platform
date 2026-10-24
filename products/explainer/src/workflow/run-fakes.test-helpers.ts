@@ -7,6 +7,7 @@ import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
+import { loadProfiles } from "../profile-load.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
@@ -132,7 +133,7 @@ export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
   return { exec, calls };
 }
 
-interface FakeScriptModel {
+export interface FakeScriptModel {
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
   prompts: string[];
   budgets: number[];
@@ -153,12 +154,28 @@ function withLeadBeats(script: ScriptV1, prompt: string): ScriptV1 {
   return { ...script, beats };
 }
 
+const PROMPT_RUNTIME = /plannedS sum to about (\d+) s/;
+
+/**
+ * `script` with its beats' plannedS scaled to the runtime the prompt names, else its own profile's target; a script
+ * whose profile is unknown and a prompt naming no runtime leave it as written.
+ */
+function atTargetRuntime(script: ScriptV1, prompt: string): ScriptV1 {
+  const named = PROMPT_RUNTIME.exec(prompt)?.[1];
+  const targetS = named ? Number(named) : loadProfiles().profiles.get(script.profile)?.runtime.targetS;
+  if (targetS === undefined) return script;
+  const total = script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
+  const scale = targetS / total;
+  return { ...script, beats: script.beats.map((beat) => ({ ...beat, plannedS: Math.round(beat.plannedS * scale) })) };
+}
+
 /** The script model: answers with `script`, after `invalid` replies that fail the schema, at `usd` a call. */
 /** `invalidReply` is what each of the first `invalid` calls answers; by default the script with no chapters. */
 /** `followLeads` places the prompt's lead beats on the reply, as a model following the prompt would. */
+/** Each reply plans the prompt's target runtime unless `asWritten` keeps the script's own plannedS. */
 export function fakeScriptModel(
   script: ScriptV1 = choppy(),
-  options: { invalid?: number; invalidReply?: unknown; usd?: number; repaired?: ScriptV1; followLeads?: boolean } = {},
+  options: { invalid?: number; invalidReply?: unknown; usd?: number; repaired?: ScriptV1; followLeads?: boolean; asWritten?: boolean } = {},
 ): FakeScriptModel {
   const prompts: string[] = [];
   const budgets: number[] = [];
@@ -169,7 +186,8 @@ export function fakeScriptModel(
       prompts.push(input.prompt);
       budgets.push(runner.maxBudgetUsd);
       if (bad-- > 0) return { ok: true, output: JSON.stringify(options.invalidReply ?? { ...script, chapters: [] }), usage };
-      const answer = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      const written = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      const answer = options.asWritten ? written : atTargetRuntime(written, input.prompt);
       const reply = options.followLeads ? withLeadBeats(answer, input.prompt) : answer;
       return { ok: true, output: `Here is the script.\n\n\`\`\`json\n${JSON.stringify(reply)}\n\`\`\`\n`, usage };
     },
