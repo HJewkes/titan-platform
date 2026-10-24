@@ -9,6 +9,15 @@
       "kills": [
         "opAuthority gates close-pr, factory-config-set and deploy-pause-clear each on its own owner-remote row"
       ]
+    },
+    {
+      "name": "retire-agent maps to a class owner-remote may run",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "\"retire-agent\": \"destructive-local\",",
+      "replace": "\"retire-agent\": \"spawn\",",
+      "kills": [
+        "actOnOp refuses with class an op the authority table denies owner-remote, running no effect and logging nothing"
+      ]
     }
   ]
 }
