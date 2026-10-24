@@ -1,8 +1,7 @@
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
 import { labelKey } from "./pace-items.js";
-import { checksOutsideStructure, shippedRuleRegistry } from "./rules.js";
-import type { ScriptV1 } from "./script-schema.js";
+import { checksScopedAway, shippedRuleRegistry, type ScriptScope } from "./rules.js";
 import type { SpineV1 } from "./spine-schema.js";
 
 const JOURNEY_SECTION = 3;
@@ -75,9 +74,9 @@ export function invariantSeatRow(spine: SpineV1, videoInvariants: readonly strin
   return row("Q-E18", [...unseatedJourney(spine), ...unseatedVideo(spine, videoInvariants)]);
 }
 
-/** The check ids a run skips for this script: the spine ones without a spine, and every rule scoped away from its structure (Q-E15 among them). */
-export function skippedSpineChecks(script: Pick<ScriptV1, "structure">, hasSpine: boolean): Set<string> {
-  const scoped = checksOutsideStructure(shippedRuleRegistry(), script.structure);
+/** The check ids a run skips for this script: the spine ones without a spine, and every rule scoped away from it (Q-E15 among them). */
+export function skippedSpineChecks(script: ScriptScope, hasSpine: boolean): Set<string> {
+  const scoped = checksScopedAway(shippedRuleRegistry(), script);
   return hasSpine ? scoped : new Set([...scoped, ...SPINE_CHECK_IDS]);
 }
 

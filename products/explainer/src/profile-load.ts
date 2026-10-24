@@ -24,13 +24,17 @@ export interface ProfileSet {
  */
 export function loadProfiles(dir: string = DEFAULT_DOCTRINE_DIR): ProfileSet {
   return {
-    profiles: readYamlDir(dir, "types", TypeProfileSchema, (profile) => profile.type),
+    profiles: loadTypeProfiles(dir),
     audiences: readYamlDir(dir, "audiences", AudiencePackSchema, (pack) => pack.id),
     structures: loadStructures(dir),
     beatSystems: loadBeatSystems(dir),
     stylePacks: loadStylePacks(dir),
   };
 }
+
+/** Reads every `types/<type>.yaml` under `dir`: the video type profiles, keyed by type. */
+export const loadTypeProfiles = (dir: string = DEFAULT_DOCTRINE_DIR): Map<string, TypeProfile> =>
+  readYamlDir(dir, "types", TypeProfileSchema, (profile) => profile.type);
 
 /** Reads every `structures/<id>.yaml` under `dir`: the narrative structure registry. */
 export function loadStructures(dir: string = DEFAULT_DOCTRINE_DIR): Map<string, NarrativeStructure> {

@@ -265,12 +265,8 @@ rules:
     fields: [video.simplifications, beats.function, beats.spoken]
     aliases: [X13, TC13, R12]
     owner_support: none
-    # Every structure but scqa: the daily briefing reports a day, so it has no model simplifications to voice.
-    l0:
-      severity: error
-      status: implemented
-      checks: ["Q-F12"]
-      structures: [abt, attempt-journey, before-after, bluf, board-walk, countdown, design-journey, kishotenketsu, lab-report, mystery, review-saga, scqa-c4, three-act, timeline]
+    # The daily briefing reports a day, so it has no model simplifications to voice; other types keep the gate whatever structure they pick.
+    l0: { severity: error, status: implemented, checks: ["Q-F12"], except_profiles: [daily-overview] }
   - id: Q-F13
     rule: "demo beats: one path, at most 8 steps, a visible result per step"
     fields: [beats.mode, beats.visual.cues]
