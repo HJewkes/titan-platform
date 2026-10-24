@@ -1,23 +1,12 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { FreezeGuard } from "./freeze.js";
-import { blockers, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf } from "./merge-order.js";
+import { blockers, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type OrderWaits } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 
 interface RunLookup {
   byPr(repo: RepoSlug, pr: number): { runId: string } | undefined;
 }
-
-/** The merge-order wait a run's merge step read last; kept in serve's memory, for `shepherd status` and `shepherd order`. */
-interface OrderWait {
-  repo: string;
-  pr: number;
-  behind: number;
-  reason: string;
-}
-
-/** Keyed by run id; a merge step that reads no blocker drops its run's entry. */
-export type OrderWaits = Map<string, OrderWait>;
 
 interface MergeOrderGuardDeps {
   order: () => MergeOrder;

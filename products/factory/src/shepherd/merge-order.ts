@@ -192,3 +192,14 @@ export function blockers(self: OrderSelf, reservations: readonly Reservation[], 
     .map((reservation) => ({ reservation, shared: self.unread ? [] : overlapping(self.repo, self.paths, reservation.paths, rule) }))
     .filter((blocker) => self.unread === true || blocker.shared.length > 0);
 }
+
+/** The merge-order wait a run's merge step read last; kept in serve's memory, for `shepherd status` and `shepherd order`. */
+interface OrderWait {
+  repo: string;
+  pr: number;
+  behind: number;
+  reason: string;
+}
+
+/** Keyed by run id; a merge step that reads no blocker drops its run's entry. */
+export type OrderWaits = Map<string, OrderWait>;
