@@ -3,10 +3,10 @@
  * copies whole, so a short hex prefix names one too, bare or after `deposit:`. Eight hex digits
  * is the shortest prefix taken: shorter ones collide too easily to trust from memory.
  */
-export const DEPOSIT_PREFIX = "deposit:";
+const DEPOSIT_PREFIX = "deposit:";
 const HEX_PREFIX = /^[0-9a-f]{8,32}$/;
 
-export type DepositRef<T> = { kind: "found"; item: T } | { kind: "not-deposit" } | { kind: "ambiguous"; ids: string[] } | { kind: "unknown" };
+type DepositRef<T> = { kind: "found"; item: T } | { kind: "not-deposit" } | { kind: "ambiguous"; ids: string[] } | { kind: "unknown" };
 
 /** The one item `ref` names: by exact id, or as the only deposit id its hex prefix starts. */
 export function resolveDepositRef<T extends { id: string }>(items: readonly T[], ref: string): DepositRef<T> {
