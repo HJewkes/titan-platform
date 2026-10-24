@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { DAILY_FIXTURE, DAY, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
+import { DAILY_FIXTURE, DAY, fakeCli, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { DEFAULT_LANES_FILE } from "../lanes-schema.js";
 import { runRunCli } from "./run-cli.js";
@@ -14,7 +14,7 @@ afterEach(() => fx.cleanup());
 function cli(model: Parameters<typeof fakeHost>[1] = fakeScriptModel(), gatherOverrides: { lanesFile?: string } = {}) {
   const out: string[] = [];
   const err: string[] = [];
-  const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), lanesFile: DEFAULT_LANES_FILE, ...gatherOverrides };
+  const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), lanesFile: DEFAULT_LANES_FILE, cli: fakeCli(), ...gatherOverrides };
   const host = fakeHost(fx, model, fakeBridge());
   const run = (...argv: string[]) => runRunCli(["run", ...argv, "--data-dir", fx.dataDir], { host, gather, out: (t) => out.push(t), err: (t) => err.push(t) });
   return { run, out, err };
@@ -33,10 +33,11 @@ describe("explainer run --facts-from gatherDaily", () => {
 
     expect(code).toBe(0);
     expect(err.join("")).toBe("");
-    expect(out.join("")).toContain(`gathered 12 facts for daily-overview ${DAY}: ${facts}`);
+    expect(out.join("")).toContain(`gathered 20 facts for daily-overview ${DAY}: ${facts}`);
     expect(out.join("")).toContain(`dry run: would run script to export with facts ${facts}`);
     expect(readFileSync(facts, "utf8")).toContain("| task/DM-3/owner-gated | task owner-gated · demo · Pick a courier for overnight runs");
     expect(readFileSync(facts, "utf8")).toContain("| lane/factory/rollup | factory lane · rollup · Factory: 2 merged");
+    expect(readFileSync(facts, "utf8")).toContain("| stat/cost-per-pr | stat · $20.00 spent per merged PR");
     expect(JSON.parse(readFileSync(path.join(path.dirname(facts), "coverage.json"), "utf8"))).toMatchObject({ merged: 2 });
     expect(existsSync(path.join(fx.dataDir, "runs"))).toBe(false);
   });

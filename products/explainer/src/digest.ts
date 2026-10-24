@@ -7,8 +7,8 @@ export type LaneRole = (typeof LANE_ROLES)[number];
 const DigestItemSchema = z.object({
   // Stable across runs: derived from the source (repo and PR number, commit sha, task id), never a timestamp.
   id: z.string().min(1),
-  /** `rollup` is derived from the other items: a lane, goal, ship or day total the script cites. */
-  kind: z.enum(["commit", "pull-request", "task", "session", "decision", "rollup"]),
+  /** `rollup` is derived from the other items: a lane, goal, ship or day total the script cites. `stat` is a spend, trend or slowdown figure. */
+  kind: z.enum(["commit", "pull-request", "task", "session", "decision", "stat", "rollup"]),
   title: z.string().min(1),
   at: z.iso.datetime({ offset: true }),
   repo: z.string().min(1).optional(),

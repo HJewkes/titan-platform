@@ -4,7 +4,9 @@ export { dailyFactsMarkdown, dayWindow, gatherDaily, writeDailyGather, type Dail
 export { PR_LIST_LIMIT, pullRequestItems, type PrSourceResult } from "./github-source.js";
 export { laneRollups, pickShips, type Coverage, type CoverageEntry, type LaneCoverage, type LaneRollupResult } from "./lane-rollup.js";
 export { attributeLanes, laneOf, namedCount, rankThreads, taskIdOf, threadsOf, type LanedPr, type Thread } from "./lanes.js";
+export { PRIORITIES_PER_LANE, priorityItems } from "./priorities.js";
 export { sessionItems, type DayWindow } from "./session-source.js";
+export { execCli, slowdownItems, spendItems, statsItems, trendItem, type CliRun, type StatsInputs, type StatsResult, type TrendPoint } from "./stats-source.js";
 export {
   DEFAULT_OWNER_GATE_TAGS,
   SnapshotTaskSchema,

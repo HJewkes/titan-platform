@@ -6,7 +6,9 @@ import type { LanesFile } from "../../lanes-schema.js";
 import { decisionItems } from "./decisions-source.js";
 import { pullRequestItems } from "./github-source.js";
 import { laneRollups, type Coverage } from "./lane-rollup.js";
+import { priorityItems } from "./priorities.js";
 import { sessionItems, type DayWindow } from "./session-source.js";
+import { statsItems, type CliRun } from "./stats-source.js";
 import { readTaskSnapshot, type SnapshotTask, type TaskDelta } from "./task-snapshot.js";
 
 export interface GatherDailyOptions {
@@ -24,6 +26,8 @@ export interface GatherDailyOptions {
   lanes?: LanesFile;
   /** The owner's decisions log as text; its entries stamped inside the window become `decision/<n>` facts. */
   decisions?: string;
+  /** With a CLI runner, the digest gains spend, trend and slowdown stats; without one, it has none. */
+  cli?: CliRun;
 }
 
 export interface GatherDailyResult {
@@ -51,7 +55,8 @@ function taskItem(delta: TaskDelta, initiative: string, window: DayWindow): Dige
 }
 
 /**
- * The daily briefing's facts: PRs opened and merged, owner decisions, sessions active, and task deltas against the latest earlier
+ * The daily briefing's facts: PRs opened and merged, owner decisions, spend and slowdown stats, next priorities,
+ * sessions active, and task deltas against the latest earlier
  * snapshot. Every id comes from its source (repo and PR number, session id, task id with the change), and items
  * are sorted by id, so two runs over the same inputs write the same digest.
  */
@@ -61,24 +66,34 @@ export async function gatherDaily(options: GatherDailyOptions): Promise<GatherDa
   const sessions = await sessionItems(options.transcriptRoots, window);
   const tasks = await readTaskSnapshot(options);
   const decisions = options.decisions === undefined ? { items: [], notes: [] } : decisionItems(options.decisions, window);
-  const notes = [...prs.notes, ...decisions.notes, ...(tasks.previousDay ? [] : [`no task snapshot before ${options.day}; task moves are unknown, opened and closed come from task dates`])];
+  const merged = prs.items.filter((item) => item.change === "merged").length;
+  const ownerGated = tasks.deltas.filter((delta) => delta.change === "owner-gated").length;
+  const stats = options.cli ? await statsItems({ run: options.cli, gh: options.gh, repos: options.repos, window, merged, ownerGated }) : { items: [], notes: [] };
+  const next = options.lanes ? priorityItems(tasks.snapshot.tasks, options.lanes, window) : [];
+  const snapshotNote = tasks.previousDay ? [] : [`no task snapshot before ${options.day}; task moves are unknown, opened and closed come from task dates`];
+  const notes = [...prs.notes, ...decisions.notes, ...stats.notes, ...snapshotNote];
   const laned = options.lanes ? laneRollups(prs.items, tasks.snapshot.tasks, options.lanes, window) : undefined;
   const prItems = laned ? [...prs.items.filter((item) => item.change !== "merged"), ...laned.prs, ...laned.rollups] : prs.items;
-  const items = [...prItems, ...decisions.items, ...sessions, ...tasks.deltas.map((delta) => taskItem(delta, options.initiative, window))];
+  const items = [...prItems, ...decisions.items, ...stats.items, ...next, ...sessions, ...tasks.deltas.map((delta) => taskItem(delta, options.initiative, window))];
   const digest = DigestSchema.parse({ ...window, items: items.sort((a, b) => a.id.localeCompare(b.id)) });
   return { digest, notes, ...(laned ? { coverage: laned.coverage } : {}) };
 }
 
 const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 
-/** `facts.md` for the script stage: one row per digest item, its id the fact id a script cites. */
+/**
+ * `facts.md` for the script stage: one row per digest item, its id the fact id a script cites. Sessions stay in the
+ * digest as evidence but take one `sessions/rollup` row here: hundreds of rows a day crowded out the work itself.
+ */
 export function dailyFactsMarkdown(digest: Digest): string {
-  const rows = digest.items.map((item) => {
+  const sessions = digest.items.filter((item) => item.kind === "session").length;
+  const rollup = sessions > 0 ? [`| sessions/rollup | ${sessions} sessions active | |`] : [];
+  const rows = digest.items.filter((item) => item.kind !== "session").map((item) => {
     const lane = item.lane ? `${item.lane} lane${item.role ? ` ${item.role}` : ""}` : undefined;
     const claim = [lane, item.change ? `${item.kind} ${item.change}` : item.kind, item.repo, item.title, item.outcome, item.summary].filter(Boolean).join(" · ");
     return `| ${cell(item.id)} | ${cell(claim)} | ${cell(item.priority ?? "")} |`;
   });
-  return [`# Facts: daily ${digest.since.slice(0, 10)}`, "", "| Id | Claim | Priority |", "|---|---|---|", ...rows, ""].join("\n");
+  return [`# Facts: daily ${digest.since.slice(0, 10)}`, "", "| Id | Claim | Priority |", "|---|---|---|", ...rows, ...rollup, ""].join("\n");
 }
 
 export interface DailyGatherFiles {
