@@ -41,6 +41,8 @@ const TreeInputSchema = z.object({
   unbuilt: z.array(z.object({ beatId: z.string(), reason: z.string() })),
 });
 const PacketsInputSchema = z.object({ spec: StageSpecSchema, body: StageRecordSchema });
+// The packet step built this JSON from typed values; the check only refuses a payload that is not a packet at all.
+const LayerPacketJson = z.custom<LayerPacket>((value) => z.looseObject({ beat_id: z.string(), spoken: z.string() }).safeParse(value).success);
 
 /**
  * Resolve's custom-layer builds (workflow plan §2.3 stage 6): one `mapItems` item per `layer: "custom"` beat, keyed by
@@ -105,7 +107,7 @@ function buildRoute(deps: LayerRouteDeps): StepRoute {
     if (canonicalJson(worker.builder) !== canonicalJson(builder)) {
       throw new Error(`${beatId}: the beat worker is ${canonicalJson(worker.builder)}, but this stage was keyed on ${canonicalJson(builder)}; build a new spec`);
     }
-    const packet = { packet: JSON.parse(json) as LayerPacket, json, bytes: Buffer.byteLength(json) };
+    const packet = { packet: LayerPacketJson.parse(JSON.parse(json)), json, bytes: Buffer.byteLength(json) };
     const build = LayerBuildSchema.parse(await worker.build(packet, deps.signal ? { signal: deps.signal } : {}));
     return { result: build, usage: stepUsage(build.usage) };
   });

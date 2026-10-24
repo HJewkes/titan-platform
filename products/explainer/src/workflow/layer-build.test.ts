@@ -2,6 +2,7 @@ import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import type { Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRuntime, type StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { BeatWorker, BuilderRef, LayerBuild } from "../build/beat-worker.js";
 import { resolveScript, visual } from "../resolve-fixtures.test-helpers.js";
 import { ArtifactStore } from "./artifacts.js";
@@ -19,6 +20,7 @@ afterEach(() => fx.cleanup());
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
 const CUSTOM = { visual: visual({ layer: "custom", anchors: ["B2:E5"] }), fact_ids: ["F-1"] };
 const TEMPLATE = { visual: visual({ layer: "template" }), fact_ids: ["F-1"] };
+const TreeSchema = z.object({ entries: z.array(z.object({ path: z.string() })) });
 const FACTS = JSON.stringify({ items: [{ id: "F-1", text: "Each scan waits for a ledger entry." }] });
 
 /** A beat worker that counts its calls and answers every packet with a one-line layer at a fixed price. */
@@ -54,7 +56,7 @@ const host = (worker?: BeatWorker) => fakeHost(fx, fakeScriptModel(), fakeBridge
 function treeFiles(sha: string): string[] {
   const db = openState(fx.dataDir);
   try {
-    const tree = JSON.parse(new ArtifactStore(fx.dataDir, db).readText(sha)) as { entries: { path: string }[] };
+    const tree = TreeSchema.parse(JSON.parse(new ArtifactStore(fx.dataDir, db).readText(sha)));
     return tree.entries.map((entry) => entry.path);
   } finally {
     db.close();
