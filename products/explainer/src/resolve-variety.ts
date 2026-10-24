@@ -4,7 +4,7 @@ import { resolvedVarietyRows, type VarietyRow } from "./variety-lints.js";
 import type { CheckInput } from "./workflow/stage-checks.js";
 
 /** The resolved artifact's variety rows, held to the limits of the profile it was resolved under. */
-export function resolvedVariety(input: CheckInput): VarietyRow[] {
+function resolvedVariety(input: CheckInput): VarietyRow[] {
   const resolved = ResolvedSchema.parse(JSON.parse(input.store.readText(input.artifacts.resolved!)));
   const profiles = loadTypeProfiles();
   const profile = profiles.get(resolved.profile);

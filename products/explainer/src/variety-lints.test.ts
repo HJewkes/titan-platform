@@ -79,7 +79,7 @@ describe("script variety lints", () => {
 
   it("passes cues of two actions, and counts a map op as an action", () => {
     const twoCues = [beat("b01", "The desk reads a label.", { cues: [cue("V11", "desk")] }), beat("b02", "The ledger answers.", { cues: [cue("V6", "ledger")] })];
-    const withMap = [beat("b01", "The desk reads a label.", { cues: [cue("V11", "desk")] }), beat("b02", "The ledger answers.", { map_state: { level: "L1", reveal: [{ id: "ledger", atCue: "ledger" }] } } as Visual)];
+    const withMap = [beat("b01", "The desk reads a label.", { cues: [cue("V11", "desk")] }), beat("b02", "The ledger answers.", { map_state: { level: "components", reveal: [{ id: "ledger", atCue: "ledger" }] } })];
 
     expect(cueActionRow(twoCues).pass).toBe(true);
     expect(cueActionRow(withMap).pass).toBe(true);
