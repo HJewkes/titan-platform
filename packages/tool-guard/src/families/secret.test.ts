@@ -252,19 +252,19 @@ describe("unknowns are treated conservatively", () => {
     expect(bash("cat .env .env.local").map((a) => a.subject.pattern)).toEqual(["any:.env", "any:.env.*"]);
   });
 
-  it("treats a readLink or readScript failure as no link and no script", () => {
-    const throwing: ClassifyContext = {
-      home: HOME,
-      readLink: () => {
-        throw new Error("EACCES");
-      },
-      readHead: () => null,
-      readScript: () => {
-        throw new Error("EACCES");
-      },
+  describe("a readLink or readScript that throws reaches the caller, not a reading of no link or no script", () => {
+    const failing = new Error("EACCES");
+    const fail = () => {
+      throw failing;
     };
 
-    expect(bash("cat /tmp/x && bash /tmp/s.sh", throwing)).toEqual([]);
+    it("readLink", () => {
+      expect(() => bash("cat /tmp/x", { home: HOME, readLink: fail, readHead: () => null, readScript: () => null })).toThrow(failing);
+    });
+
+    it("readScript", () => {
+      expect(() => bash("bash /tmp/s.sh", { home: HOME, readLink: () => null, readHead: () => null, readScript: fail })).toThrow(failing);
+    });
   });
 
   it("follows a script it runs, and refuses one more level down", () => {

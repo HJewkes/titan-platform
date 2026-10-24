@@ -84,13 +84,16 @@ function curlMerge(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[]
   return [...literal, ...runTime].slice(0, 1);
 }
 
-/** Branch checked out where git runs; an unknown directory reads as `unknown`, which counts as protected. */
+/**
+ * Branch checked out where git runs; an unknown directory reads as `unknown`, which counts as protected. A port that
+ * throws has not answered, so it reads as unknown too: as no branch, a push to main would pass.
+ */
 function headOf(git: GitInvocation, ctx: ClassifyContext): string | null {
   if (git.dir === null || git.otherPaths.length > 0) return UNKNOWN;
   try {
     return ctx.readHead(git.dir);
   } catch {
-    return null;
+    return UNKNOWN;
   }
 }
 
