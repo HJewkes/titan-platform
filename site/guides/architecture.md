@@ -196,6 +196,7 @@ graph TD
   corpusQuery --> storeSqlite
   corpusQuery --> workflow
   evals --> agent
+  evals --> appPaths
   evals --> authority
   evals --> evidence
   evals --> fixProof
