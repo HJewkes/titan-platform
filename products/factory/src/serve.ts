@@ -179,7 +179,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now }, log);
+  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now, tell: options.consoleAnswers?.tellOwner }, log);
   const reconciler = startServeReconciler(options.reconciler, bot.access(), { sources: options.sources ?? DEFAULT_SOURCES, db: host.db, log, now: options.now, stamp: passStamp });
   reconcilerRef.health = reconciler.health;
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
