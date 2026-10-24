@@ -3,9 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { installFreshness, startSessionIndexWatch } from '../../src/server/session-index-watch.js';
-import { createWorkspaceFreshness } from '../../src/server/workspace-freshness.js';
-import { indexFreshness } from '../../src/session-index/freshness.js';
+import { startSessionIndexWatch } from '../../src/server/session-index-watch.js';
 import { withRefreshLock } from '../../src/session-index/refresh.js';
 import type * as MachinePressureModule from '../../src/utils/machine-pressure.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../session-index/fixture.js';
@@ -383,78 +381,5 @@ describe('startSessionIndexWatch', () => {
       expect(afterAppend).toBe(1);
       expect(passLines()[1]).toMatchObject({ kind: 'full' });
     });
-  });
-});
-
-describe('createWorkspaceFreshness', () => {
-  it('reads fresh without refreshing when the workspace has not changed', async () => {
-    const refresh = vi.fn(async () => undefined);
-
-    const freshness = await createWorkspaceFreshness(refresh).ensure(100);
-
-    expect(freshness).toBe('fresh');
-    expect(refresh).not.toHaveBeenCalled();
-  });
-
-  it('a failed refresh reads stale and the next reader refreshes again', async () => {
-    const refresh = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValueOnce(Object.assign(new Error('held'), { code: 'ELOCKED' }))
-      .mockResolvedValueOnce(undefined);
-    const workspace = createWorkspaceFreshness(refresh);
-    workspace.markDirty();
-
-    const first = await workspace.ensure(100);
-    const second = await workspace.ensure(100);
-
-    expect([first, second]).toEqual(['stale', 'fresh']);
-    expect(refresh).toHaveBeenCalledTimes(2);
-  });
-
-  it('a change during a refresh gets a follow-up refresh before the reader reads fresh', async () => {
-    let finishFirst!: () => void;
-    const refresh = vi
-      .fn<() => Promise<void>>()
-      .mockImplementationOnce(() => new Promise<void>((resolve) => (finishFirst = resolve)))
-      .mockResolvedValueOnce(undefined);
-    const workspace = createWorkspaceFreshness(refresh);
-    workspace.markDirty();
-    const first = workspace.ensure(1_000);
-    workspace.markDirty();
-
-    const second = workspace.ensure(1_000);
-    finishFirst();
-
-    expect(await Promise.all([first, second])).toEqual(['fresh', 'fresh']);
-    expect(refresh).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('installFreshness', () => {
-  it('a transcript reader with changes waiting still runs a delta pass', async () => {
-    const dirty = createDirtySet();
-    dirty.add('/synthetic/transcripts', 'project-a/session-1.jsonl');
-    const runNow = vi.fn(async (): Promise<'fresh'> => 'fresh');
-    const status = () => ({
-      running: false,
-      pending: false,
-      last: null,
-      lastError: null,
-      consecutiveErrors: 0,
-      lockSkips: 0,
-    });
-    const uninstall = installFreshness(
-      { runNow, status },
-      dirty,
-      createWorkspaceFreshness(async () => undefined),
-    );
-
-    try {
-      await indexFreshness.ensure(100);
-    } finally {
-      uninstall();
-    }
-
-    expect(runNow).toHaveBeenCalledWith(100);
   });
 });

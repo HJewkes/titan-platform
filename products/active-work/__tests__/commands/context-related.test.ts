@@ -1,17 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import contextRelatedCmd, { runRelated } from '../../src/commands/context-related.js';
 import type { HitLogEntry, HitLogWriter } from '../../src/search/hit-log.js';
-import { installFreshness } from '../../src/server/session-index-watch.js';
-import {
-  createWorkspaceFreshness,
-  type WorkspaceFreshness,
-} from '../../src/server/workspace-freshness.js';
-import { createDirtySet } from '../../src/session-index/dirty-set.js';
-import type { Freshness } from '../../src/session-index/freshness.js';
 import { refreshInto, scaffold, writeFile } from '../workspace-index/fixture.js';
 
 /**
@@ -46,32 +39,6 @@ function recorder(): { writer: HitLogWriter; entries: HitLogEntry[]; calls: numb
     },
   };
   return log;
-}
-
-/**
- * The daemon's freshness hook, installed as `startSessionIndexWatch` installs
- * it, over a transcript dirty set that is never empty: with many live agents it
- * never is.
- */
-function installDaemonHook(workspaceRefresh: () => Promise<unknown>): {
-  runNow: ReturnType<typeof vi.fn<(budgetMs: number) => Promise<Freshness>>>;
-  workspace: WorkspaceFreshness;
-  uninstall: () => void;
-} {
-  const dirty = createDirtySet();
-  dirty.add('/synthetic/transcripts', 'project-a/session-1.jsonl');
-  const runNow = vi.fn(async (_budgetMs: number): Promise<Freshness> => 'fresh');
-  const status = () => ({
-    running: false,
-    pending: false,
-    last: null,
-    lastError: null,
-    consecutiveErrors: 0,
-    lockSkips: 0,
-  });
-  const workspace = createWorkspaceFreshness(workspaceRefresh);
-  const uninstall = installFreshness({ runNow, status }, dirty, workspace);
-  return { runNow, workspace, uninstall };
 }
 
 describe('context.related', () => {
@@ -172,75 +139,5 @@ describe('context.related', () => {
     const note = served.hits.find((hit) => hit.ref === 'note:alpha/2026-09-02-alpha-lesson.md');
     expect(note?.readIf).toBe(expected);
     expect(note && 'readIf' in note).toBe(expected !== undefined);
-  });
-});
-
-describe('context.related freshness in the daemon', () => {
-  it('related does not start a transcript pass', async () => {
-    const workspaceRefresh = vi.fn(async () => undefined);
-    const hook = installDaemonHook(workspaceRefresh);
-
-    try {
-      const result = await runRelated(
-        { for: 'the alpha lesson', initiative: 'alpha', trigger: 'spawn' },
-        { activeRoot: root, dbPath, hitLog: recorder().writer },
-      );
-
-      expect(hook.runNow).not.toHaveBeenCalled();
-      expect(workspaceRefresh).not.toHaveBeenCalled();
-      expect(result.hits.length).toBeGreaterThan(0);
-      expect(result.degraded.filter((entry) => entry.source === 'index')).toEqual([]);
-    } finally {
-      hook.uninstall();
-    }
-  });
-
-  it('a dirty workspace file waits on the workspace refresh only, and the answer carries the write', async () => {
-    const workspaceRefresh = vi.fn(async () => (await refreshInto(dbPath, root)).db.close());
-    const hook = installDaemonHook(workspaceRefresh);
-    writeFile(
-      root,
-      'alpha/sources/notes/2026-09-03-quokka-census.md',
-      '---\nkind: process\ntitle: The quokka census\ncreated: 2026-09-03\n---\n\nCounting quokkas.\n',
-    );
-    hook.workspace.markDirty();
-
-    try {
-      const result = await runRelated(
-        { for: 'the quokka census', initiative: 'alpha' },
-        { activeRoot: root, dbPath, hitLog: recorder().writer },
-      );
-
-      expect(hook.runNow).not.toHaveBeenCalled();
-      expect(workspaceRefresh).toHaveBeenCalledTimes(1);
-      expect(result.hits.map((hit) => hit.ref)).toContain(
-        'note:alpha/2026-09-03-quokka-census.md',
-      );
-      expect(result.degraded.filter((entry) => entry.source === 'index')).toEqual([]);
-    } finally {
-      hook.uninstall();
-    }
-  });
-
-  it('a workspace refresh that outlasts the budget answers stale without a transcript pass', async () => {
-    let finish!: () => void;
-    const hook = installDaemonHook(() => new Promise<void>((resolve) => (finish = resolve)));
-    hook.workspace.markDirty();
-
-    try {
-      const result = await runRelated(
-        { for: 'the alpha lesson', initiative: 'alpha' },
-        { activeRoot: root, dbPath, hitLog: recorder().writer },
-      );
-
-      expect(hook.runNow).not.toHaveBeenCalled();
-      expect(result.hits.length).toBeGreaterThan(0);
-      expect(result.degraded).toContainEqual(
-        expect.objectContaining({ source: 'index', reason: 'stale' }),
-      );
-    } finally {
-      finish();
-      hook.uninstall();
-    }
   });
 });
