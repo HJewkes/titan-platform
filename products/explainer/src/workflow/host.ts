@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { routedRunner, WorkflowRunStore, type RoutedRunner, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
+import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { BeatWorker } from "../build/beat-worker.js";
 import type { L0Check } from "../eval-l0.js";
@@ -16,11 +16,10 @@ import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, vide
 import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
-import { BODY_STEP, CHECKS_STEP, childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
+import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
-import { STAGE_VERSIONS, stageSpec, VariantSchema } from "./stage-spec.js";
-import { LAYER_STEP_IDS, layerRoutes } from "./layer-build.js";
-import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
+import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
+import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
 
@@ -136,17 +135,6 @@ function reusedFromBase(base: WorkflowRun, from: StageName): { reused: StageReco
   return { reused, artifacts };
 }
 
-/** Each variant file is stored as an artifact, so the plan (and the stage key) holds its sha, not a path. */
-function storeVariants(request: RunRequest, store: ArtifactStore): RunPlan["variants"] {
-  const stored: RunPlan["variants"] = { ...request.variantShas };
-  for (const [stage, file] of Object.entries(request.variants ?? {})) {
-    const variant = VariantSchema.parse(JSON.parse(readFileSync(file, "utf8")));
-    if (variant.stage !== stage) throw new Error(`variant file ${path.basename(file)} is for stage ${variant.stage}, not ${stage}`);
-    stored[stage as StageName] = store.putText(readFileSync(file, "utf8"), "variant", { runId: "input", stage: "variant" });
-  }
-  return stored;
-}
-
 function checkPins(pins: Record<string, string>, store: ArtifactStore): Record<string, string> {
   for (const sha of Object.values(pins)) store.path(sha);
   return pins;
@@ -256,14 +244,6 @@ export interface Runtime {
   bridge: () => BridgeFile;
 }
 
-function assertStageRoutes(runner: RoutedRunner, plan: RunPlan | undefined): void {
-  for (const stage of CACHED_STAGES) {
-    const extra = stage === "resolve" ? LAYER_STEP_IDS : [];
-    runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`, ...extra]);
-  }
-  if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
-}
-
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
@@ -272,21 +252,20 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
-  const body = bodyRoute({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now,
+  const children = childRoutes({
+    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(host.beatWorker ? { worker: host.beatWorker } : {}),
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
   });
-  const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
   const builder = host.beatWorker ? { builder: host.beatWorker.builder } : {};
   const stage = {
     dataDir: host.dataDir, store, bridge, cache, now, ...builder,
     ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
   };
-  const layers = layerRoutes({ dataDir: host.dataDir, store, ...(host.beatWorker ? { worker: host.beatWorker } : {}), ...(host.signal ? { signal: host.signal } : {}) });
-  const routes = plan ? [body, checks, ...layers, stageRoute({ ...stage, plan })] : [body, checks, ...layers];
+  const routes = plan ? [...children, stageRoute({ ...stage, plan })] : children;
   const runner = routedRunner(routes);
-  assertStageRoutes(runner, plan);
+  for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), childStepIds(stage));
+  if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
   const gates = new SqliteGateStore(db, { migrate: false });
   const runtime = new WorkflowRuntime({ db, gates, runner, leaseMs: host.leaseMs ?? DEFAULT_LEASE_MS, ...(host.onEvent ? { onEvent: host.onEvent } : {}) });
   late.runtime = runtime;

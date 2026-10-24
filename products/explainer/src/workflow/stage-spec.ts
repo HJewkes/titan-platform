@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import { SPEECH_BANDS, type SpeechBand } from "../beat-schema.js";
 import { BuilderRefSchema, type BuilderRef } from "../build/beat-worker.js";
@@ -8,12 +10,12 @@ import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { loadSpeechBands } from "../speech-bands.js";
 import { loadStylePacks, stylePackCss, stylePackFor, stylePackSha } from "../style-pack-load.js";
 import type { StylePack } from "../style-pack-schema.js";
-import { sha256 } from "./artifacts.js";
+import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
-import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage } from "./records.js";
+import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type StageName } from "./records.js";
 
 /**
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
@@ -41,6 +43,19 @@ export const VariantSchema = z.object({
   params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 export type Variant = z.infer<typeof VariantSchema>;
+
+type VariantShas = Partial<Record<StageName, string>>;
+
+/** Each variant file is stored as an artifact, so the plan (and the stage key) holds its sha, not a path. */
+export function storeVariants(request: { variants?: VariantShas; variantShas?: VariantShas }, store: ArtifactStore): VariantShas {
+  const stored: VariantShas = { ...request.variantShas };
+  for (const [stage, file] of Object.entries(request.variants ?? {})) {
+    const variant = VariantSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+    if (variant.stage !== stage) throw new Error(`variant file ${path.basename(file)} is for stage ${variant.stage}, not ${stage}`);
+    stored[stage as StageName] = store.putText(readFileSync(file, "utf8"), "variant", { runId: "input", stage: "variant" });
+  }
+  return stored;
+}
 
 const ScriptParamsSchema = z.strictObject({ model: z.string().min(1).optional() });
 const RewriteParamsSchema = z.strictObject({ model: z.string().min(1).optional(), rounds: z.number().int().min(1).max(MAX_REWRITE_ROUNDS).optional() });

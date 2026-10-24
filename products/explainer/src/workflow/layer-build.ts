@@ -14,9 +14,9 @@ import { addUsage, NO_USAGE, StageRecordSchema, stepUsage, type StageRecord } fr
 import { runPaths, writeJson } from "./run-dir.js";
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 
-export const PACKETS_STEP = "layer-packets";
-export const BUILD_STEP = "build";
-export const TREE_STEP = "layer-tree";
+const PACKETS_STEP = "layer-packets";
+const BUILD_STEP = "build";
+const TREE_STEP = "layer-tree";
 const STAGE = "resolve";
 export const CUSTOM_LAYERS = "custom-layers";
 const BUILD_CONCURRENCY = 4;
@@ -89,7 +89,7 @@ function packetsFor(spec: StageSpec, body: StageRecord, store: ArtifactStore): P
   return { items, notes: [] };
 }
 
-export interface LayerRouteDeps {
+interface LayerRouteDeps {
   dataDir: string;
   store: ArtifactStore;
   /** Builds each custom layer; absent, custom beats are left unbuilt with a note. */
