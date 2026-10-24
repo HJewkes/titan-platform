@@ -27,10 +27,20 @@ const InputSchema = z
     message: "each input names exactly one of file, dir or command",
   });
 
+/** The owner's own account: a planner wake on it shares the owner's weekly cap, and every wake died on it once the cap was hit. */
+const PERSONAL_CONFIG_DIR = /(^|\/)\.claude-profiles\/personal(\/|$)/;
+
 const PlannerConfigSchema = z.object({
   name: z.string().min(1).default("factory-planner"),
   profile: z.string().min(1).default(DEFAULT_PLANNER_PROFILE),
-  configDir: z.string().optional(),
+  configDir: z
+    .string()
+    .refine((dir) => !PERSONAL_CONFIG_DIR.test(dir), { message: "is the owner's personal account; run planner wakes on the agents account" })
+    .optional(),
+  /** Where the planner writes its review; a wake that sees no new `*.md` here files an owner alarm. */
+  reviewDir: z.string().min(1),
+  noFileAfterMinutes: z.number().int().positive().default(30),
+  pollSeconds: z.number().int().positive().default(60),
   role: z.string().default("planner"),
   cwd: z.string().min(1),
   brief: z.string().min(1),
