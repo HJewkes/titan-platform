@@ -51,7 +51,7 @@ describe("provablyIndependent", () => {
 
   it("refuses a reviewer whose spawner has no stored lineage", () => {
     const reviewer = agent("rev-1", "coord");
-    const { predecessor: _absent, ...unstored } = agent("coord", null);
+    const unstored: ReviewerAgent = { name: "coord", agentId: "agent-coord", sessionId: "session-coord", presence: "live", spawnedBy: null };
     const roster = [unstored, agent("impl-a", "coord"), reviewer];
 
     expect(provablyIndependent(reviewer, "impl-a", roster)).toBe(false);
