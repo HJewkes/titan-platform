@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the run page polls the run again",
+      "file": "apps/console/src/pages/autoresearch-live.ts",
+      "find": "import { useEffect, useState } from \"react\";\n\nconst TICK_MS = 1_000;\n\n/** The clock running timers read; it ticks only while something is live, so a finished run renders once. */\nexport function useNow(ticking: boolean): number {\n  const [now, setNow] = useState(Date.now);\n",
+      "replace": "import { useEffect, useState } from \"react\";\nimport { useInvalidate } from \"../data/rpc.js\";\n\nconst TICK_MS = 1_000;\n\nexport function useNow(ticking: boolean): number {\n  const invalidate = useInvalidate();\n  useEffect(() => { const p = setInterval(() => invalidate([\"autoresearch.run\"]), 15_000); return () => clearInterval(p); }, [invalidate]);\n  const [now, setNow] = useState(Date.now);\n",
+      "kills": [
+        "the lanes board's clock never refetches a running run on a timer, leaving that to the factory's relayed frames"
+      ]
+    }
+  ]
+}
