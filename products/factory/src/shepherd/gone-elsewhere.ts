@@ -66,8 +66,11 @@ class UnreadablePr extends Error {}
 /** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a 404 on the PR means it or its repo is gone. */
 const isNotFound = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 404;
 
+/** All the gone walk reads, so an owner op that holds only the store and the port can end a run too. */
+type GoneReads =Pick<ShepherdServices, "store" | "port" | "snapshot" | "readTimer">;
+
 /** Why the run's PR is no longer Shepherd's to land, or undefined while it is open. Rejects with `UnreadablePr` when GitHub cannot be read. */
-async function goneReason(services: ShepherdServices, runId: string): Promise<string | undefined> {
+async function goneReason(services: GoneReads, runId: string): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
   const target = `${registration.repo}#${registration.pr}`;
@@ -127,7 +130,7 @@ function tryCancel(host: FactoryHost, runId: string, reason: string, options: Go
  * Ends every shepherd-pr run in scope whose PR was merged or closed elsewhere; cancelling a run cancels its pending gates.
  * The run is read again after the PR read and cancelled in that same tick, so a merge it recorded meanwhile keeps it.
  */
-export async function endRunsGoneElsewhere(host: FactoryHost, services: ShepherdServices, options: GoneOptions = {}): Promise<EndedRun[]> {
+export async function endRunsGoneElsewhere(host: FactoryHost, services: GoneReads, options: GoneOptions = {}): Promise<EndedRun[]> {
   const ended: EndedRun[] = [];
   const scope = options.scope ?? "gated";
   const runIds = candidateRuns(host, scope).map((run) => run.id).filter((runId) => !options.only || options.only.has(runId));

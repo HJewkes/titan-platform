@@ -7,7 +7,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { PrTarget } from "./gates.js";
 import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
 import { stillOpen } from "./merge-order-guard.js";
-import { blockers, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation } from "./merge-order.js";
+import { blockers, orderDriving, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
@@ -31,6 +31,8 @@ const ReleaseResult = z.looseObject({ released: z.boolean() });
 
 interface MergeOrderStepDeps {
   order: () => MergeOrder;
+  /** Whose runs a person holds, so a held reservation orders nothing (TP-4133). */
+  holds: () => RunHolds;
   rules: MergeOrderRules;
   port: GitHubPort;
   train: MergeTrainRef;
@@ -56,7 +58,7 @@ type PeerPaths = () => Promise<{ paths: string[]; unread?: string }>;
  * lets three runs wait on each other in a ring until the TTL, so a peer counts only when the guard would let it merge.
  */
 async function heldByOrder(deps: MergeOrderStepDeps, repo: RepoSlug, runId: string, read: PeerPaths, reservations: readonly Reservation[], rule: MergeOrderRule): Promise<boolean> {
-  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), (id) => deps.order().isDriving(id));
+  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), orderDriving(deps.order(), deps.holds()));
   if (live({ repo, runId, paths: [], unread: true }).length === 0) return false;
   const theirs = await read();
   for (const blocker of live({ repo, runId, paths: theirs.paths, unread: theirs.unread !== undefined })) {
@@ -124,7 +126,7 @@ async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<n
   const reservations = order.list(input.repo);
   const own = reservations.find((reservation) => reservation.runId === input.runId);
   if (!rule?.enabled || own === undefined || !withinTtl(own, rule, deps.now())) return [];
-  const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), (id) => order.isDriving(id));
+  const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()));
   const ahead = await mergingStill(deps, input.repo, own.ahead, reservations, rule);
   const open: number[] = [];
   for (const pr of [...earlier.map((blocker) => blocker.reservation.pr), ...ahead]) if (await stillOpen(deps.port, input.repo, pr)) open.push(pr);

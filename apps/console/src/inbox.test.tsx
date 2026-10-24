@@ -301,6 +301,14 @@ describe("the inbox page, acting from the console", () => {
     expect(within(ask).getByText("Answer from the console comes later; run it on the terminal for now.")).toBeTruthy();
   });
 
+  it("labels an sh-sent-back tap as a wait for a new head, never as a merge", async () => {
+    const action = { kind: "resolve-gate", gateId: "run-gate-1/sh-sent-back", runId: "run-gate-1", stepId: "sh-sent-back", repo: "example/repo", pr: 12, headSha: HEAD, decision: "await-new-head" } as const;
+    renderInbox(inboxAnswer({ items: [{ ...GATE, action }] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    const row = await screen.findByTestId("inbox-row-gate-1");
+    expect(within(row).getByText("Wait for new head")).toBeTruthy();
+    expect(within(row).queryByText("Approve merge")).toBeNull();
+  });
+
   it("keeps Confirm disabled until the read-back loads, and Cancel sends nothing", async () => {
     const prepared = deferred();
     const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": resolved });
@@ -425,6 +433,19 @@ describe("the inbox page, acting from the console", () => {
     await tapConfirm();
     const outcome = screen.getByTestId("inbox-confirm-outcome");
     expect(outcome.textContent).toContain("Merge queued: land run land-1");
+    expect(outcome.className).toContain("success");
+  });
+
+  it("taps a deposit's close-pr op as Close PR, reads back that the branch is kept, and shows the close as landed", async () => {
+    const op = item("op-2", { sources: [{ system: "deposit", ref: "fixture-agent/op-2" }], kind: "do", summary: "Close example/repo#17", action: { kind: "owner-op", op: { kind: "close-pr", repo: "example/repo", pr: 17, headSha: HEAD } } });
+    const readBack = { repo: "example/repo", pr: 17, title: "a superseded fixture", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "PRC-OR: allow", proposedBy: "fixture-agent", proposal: "Close example/repo#17", effect: "Close example/repo#17 at 0b7e2c1 on GitHub; the branch is kept and reopen is one click" };
+    const closed = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "pr-closed", closedHead: HEAD }, message: "PR closed at 0b7e2c1; its branch is kept" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-2", action: op.action, readBack })), "inbox.act": closed });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-2")).getByText("Close PR"));
+    expect(await screen.findByText("Close example/repo#17 at 0b7e2c1 on GitHub; the branch is kept and reopen is one click")).toBeTruthy();
+    await tapConfirm();
+    const outcome = screen.getByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("PR closed at 0b7e2c1; its branch is kept");
     expect(outcome.className).toContain("success");
   });
 

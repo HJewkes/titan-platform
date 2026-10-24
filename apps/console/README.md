@@ -387,9 +387,10 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 - **Typed ops.** A deposit may carry an `op` (owner-queue's `OwnerOp`) naming what a tap does
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
-  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`)
-  becomes an `owner-op` tap whose read-back comes from the factory. Any other kind stays on the
-  terminal until its factory effect lands.
+  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head` and
+  `close-pr`) becomes an `owner-op` tap whose read-back comes from the factory. Any other kind stays
+  on the terminal until its factory effect lands. A `close-pr` tap closes the PR only at the head
+  the owner was shown and keeps its branch, so reopening it is one click on GitHub.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
@@ -844,10 +845,16 @@ Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and
 behind look the same in the item.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
-`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
-owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a `hold-release` of a
-`g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers `no-action` with its
-reason.
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
+`owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
+`hold-release` of a `g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers
+`no-action` with its reason.
+
+Each gate step's tap gives one decision, held as data in `inbox-view.ts` and mirrored by the factory's
+`CONSOLE_STEPS`: `merge` on approve-merge, and `await-new-head` on sh-sent-back. The sent-back tap reads "Wait for
+new head": the run waits for the implementer's next pushed head, and nothing merges. It never offers `abandon` or
+`waive-proof`, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
+record asking any other decision, or one the gate's own schema does not offer, as 403 `class`.
 
 1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
@@ -864,16 +871,17 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 
 | Factory answer | Owner sees |
 | --- | --- |
-| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
+| 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
 | 409 `moved` | "PR moved to `abc1234`, read again" |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
 
-After a landed tap on a PR (`resolved`, `released`, `accepted` or `already`), `inbox.act` reads the PR again and
-answers `next`: `merged` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
+After a landed tap on a PR (`resolved`, `released`, `accepted`, `pr-closed` or `already`), `inbox.act` reads the PR
+again and answers `next`: `merged` or `closed` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
 Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
 sheet shows it as "Now: …" under the outcome.
 

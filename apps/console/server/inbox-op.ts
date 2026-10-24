@@ -30,6 +30,7 @@ export interface OpReadBack {
 /** Each enabled kind's effect line; a kind missing here has no `owner-op` tap (`CONSOLE_OPS`). */
 const EFFECT: Partial<Record<OwnerOpKind, (at: string) => string>> = {
   "merge-at-head": (at) => `Merge ${at} through a land run, once its required checks are green at this head`,
+  "close-pr": (at) => `Close ${at} on GitHub; the branch is kept and reopen is one click`,
 };
 
 const short = (sha: string): string => sha.slice(0, 7);

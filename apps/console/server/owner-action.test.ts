@@ -50,6 +50,8 @@ describe("factoryOwnerAction", () => {
     [200, { outcome: "released", runId: RUN, stillHeld: "g10-review: opus review at head" }, { status: "released", runId: RUN, stillHeld: "g10-review: opus review at head" }],
     [200, { outcome: "already", runId: RUN }, { status: "already", runId: RUN }],
     [200, { outcome: "accepted", runId: RUN }, { status: "accepted", runId: RUN }],
+    [200, { outcome: "pr-closed", closedHead: HEAD }, { status: "pr-closed", closedHead: HEAD }],
+    [200, { outcome: "already", closedHead: HEAD }, { status: "already", closedHead: HEAD }],
     [409, { outcome: "moved", currentHead: HEAD }, { status: "moved", currentHead: HEAD }],
     [410, { outcome: "gone", reason: "no gate" }, { status: "gone", reason: "no gate" }],
     [403, { outcome: "refused", reason: "resolver", detail: "owner-terminal only" }, { status: "refused", reason: "resolver", detail: "owner-terminal only" }],
@@ -67,6 +69,7 @@ describe("factoryOwnerAction", () => {
     ["a 500", 500, { ok: false, error: "answering the console action failed" }],
     ["a 200 with no outcome", 200, { ok: true }],
     ["an accepted with no run id", 200, { outcome: "accepted" }],
+    ["a pr-closed with no closed head", 200, { outcome: "pr-closed" }],
     ["a redirect", 302, {}],
   ])("reads %s as unreachable, so a retry may land", async (_, status, body) => {
     const port = await factoryAnswering(status, body, status === 302 ? { location: "http://127.0.0.1:1/elsewhere" } : {});
