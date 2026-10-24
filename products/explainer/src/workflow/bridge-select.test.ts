@@ -109,7 +109,7 @@ describe("a host bridge after the sheets port", () => {
   it("refuses a host file that still bridges sheets, naming the block to delete", () => {
     fx = fixture();
     const file = path.join(fx.dataDir, "bridge.json");
-    const bridge = JSON.parse(readFileSync(file, "utf8")) as { stages: Record<string, unknown> };
+    const bridge = BridgeFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
     const stale = { ...bridge, stages: { ...bridge.stages, sheets: { inputs: { mp4: "out/demo.mp4" }, outputs: {}, commands: [{ argv: ["bash", "sheets.sh"] }] } } };
     writeFileSync(file, JSON.stringify(stale));
 

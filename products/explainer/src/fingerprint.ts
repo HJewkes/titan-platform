@@ -33,7 +33,7 @@ export interface Fingerprint {
   componentHistogram: Record<string, number>;
   framingSequence: (string | null)[];
   functionMix: Record<string, number>;
-  closeKind: string | null;
+  closeKind: string;
   signatureLayer: string | null;
   /** Sorted 32-bit hashes of the spoken 4-grams with numbers and lexicon terms masked. */
   stockGrams: number[];
@@ -118,7 +118,7 @@ export function fingerprintOf(input: FingerprintInput): Fingerprint {
     hookKind: script.structure ? (input.hooks.get(script.structure) ?? null) : null,
     opening: script.beats[0]!.id, closing: script.beats.at(-1)!.id, chapterLabels,
     componentHistogram: histogram(prints.map((print) => print.component)), framingSequence: prints.map((print) => print.framing),
-    functionMix: histogram(functions), closeKind: script.video.close_type ?? null, signatureLayer: script.signature_layer?.kind ?? null,
+    functionMix: histogram(functions), closeKind: script.video.close_type, signatureLayer: script.signature_layer?.kind ?? null,
     stockGrams: stockGrams(script.beats.map((beat) => beat.spoken), input.terms),
     skeleton: { chapterLabels, beatStems: [...new Set(script.beats.map((beat) => beatStem(beat.id)))], functions },
     beats: prints.map(({ component: _component, ...print }) => print),
