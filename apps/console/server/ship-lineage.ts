@@ -41,9 +41,12 @@ interface LineageOptions {
   github?: LineagePort;
   ttlMs?: number;
   now?: () => number;
+  maxEntries?: number;
 }
 
 const LINEAGE_TTL_MS = 60_000;
+/** Each Ship round open in the console holds one entry; a long-running console must not grow past this. */
+const LINEAGE_MAX_ENTRIES = 256;
 
 export const UNWIRED_LINEAGE: ShipLineage = { known: false, reason: "no GitHub reader is wired" };
 
@@ -68,16 +71,34 @@ export async function readLineage(github: LineagePort, { repo, pr, headSha }: Me
   }
 }
 
-export function shipLineageReader(options: LineageOptions = {}): LineageReader {
+type SizedLineageReader = LineageReader & { readonly size: number };
+type LineageCache = Map<string, { at: number; read: Promise<ShipLineage> }>;
+
+/** A Map iterates in insertion order and every write deletes then re-inserts, so the first entries are the oldest. */
+function evict(cache: LineageCache, at: number, ttlMs: number, maxEntries: number): void {
+  for (const [key, entry] of cache) {
+    if (at - entry.at < ttlMs && cache.size <= maxEntries) return;
+    cache.delete(key);
+  }
+}
+
+export function shipLineageReader(options: LineageOptions = {}): SizedLineageReader {
   const github = options.github ?? githubPort(ghCliWire());
   const now = options.now ?? Date.now;
-  const cache = new Map<string, { at: number; read: Promise<ShipLineage> }>();
-  return (binding) => {
+  const ttlMs = options.ttlMs ?? LINEAGE_TTL_MS;
+  const maxEntries = options.maxEntries ?? LINEAGE_MAX_ENTRIES;
+  const cache: LineageCache = new Map();
+  const reader: LineageReader = (binding) => {
     const key = `${binding.repo}#${binding.pr}@${binding.headSha}`;
+    const at = now();
+    evict(cache, at, ttlMs, maxEntries);
     const hit = cache.get(key);
-    if (hit && now() - hit.at < (options.ttlMs ?? LINEAGE_TTL_MS)) return hit.read;
+    if (hit && at - hit.at < ttlMs) return hit.read;
     const read = readLineage(github, binding);
-    cache.set(key, { at: now(), read });
+    cache.delete(key);
+    cache.set(key, { at, read });
+    evict(cache, at, ttlMs, maxEntries);
     return read;
   };
+  return Object.defineProperty(reader, "size", { get: () => cache.size }) as SizedLineageReader;
 }

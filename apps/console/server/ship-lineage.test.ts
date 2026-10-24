@@ -64,3 +64,64 @@ describe("a Ship round's lineage", () => {
     expect(port.getPr).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("the Ship lineage cache", () => {
+  const bindingOf = (pr: number) => ({ repo: "example/tiles", pr, headSha: PROVEN });
+
+  it("drops an expired entry on the next read, even a cache hit on another binding, and never serves it", async () => {
+    let now = 0;
+    const port = github(pull());
+    const read = shipLineageReader({ github: port, now: () => now });
+    await read(bindingOf(1));
+    now = 30_000;
+    await read(bindingOf(2));
+    now = 60_000;
+
+    await read(bindingOf(2));
+
+    expect(read.size).toBe(1);
+    await read(bindingOf(1));
+    expect(port.getPr).toHaveBeenCalledTimes(3);
+  });
+
+  it("never serves an expired entry left behind a fresher one when the clock stepped back", async () => {
+    let now = 100_000;
+    const port = github(pull());
+    const read = shipLineageReader({ github: port, now: () => now });
+    await read(bindingOf(1));
+    now = 0;
+    await read(bindingOf(2));
+    now = 60_000;
+
+    await read(bindingOf(2));
+
+    expect(port.getPr).toHaveBeenCalledTimes(3);
+  });
+
+  it("still serves a fresh entry a millisecond before it expires", async () => {
+    let now = 0;
+    const port = github(pull());
+    const read = shipLineageReader({ github: port, now: () => now });
+    await read(bindingOf(1));
+    now = 59_999;
+
+    await read(bindingOf(1));
+
+    expect(port.getPr).toHaveBeenCalledTimes(1);
+    expect(read.size).toBe(1);
+  });
+
+  it("never holds more than its cap, dropping the oldest entry first", async () => {
+    const port = github(pull());
+    const read = shipLineageReader({ github: port, now: () => 0, maxEntries: 2 });
+
+    for (const pr of [1, 2, 3]) await read(bindingOf(pr));
+
+    expect(read.size).toBe(2);
+    await read(bindingOf(3));
+    await read(bindingOf(2));
+    expect(port.getPr).toHaveBeenCalledTimes(3);
+    await read(bindingOf(1));
+    expect(port.getPr).toHaveBeenCalledTimes(4);
+  });
+});
