@@ -94,6 +94,9 @@ declare const ownerCardSchema: zod.ZodObject<{
         repo: zod.ZodString;
         pr: zod.ZodNumber;
         headSha: zod.ZodString;
+        waitFor: zod.ZodOptional<zod.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
     }, zod_v4_core.$strict>, zod.ZodObject<{
         kind: zod.ZodLiteral<"close-pr">;
         repo: zod.ZodString;
@@ -191,6 +194,11 @@ declare function forAudience<T extends Pick<OwnerItem, "audience">>(items: reado
 
 declare const HOLD_CLASSES: readonly ["g10", "owner-asked"];
 /**
+ * A merge-at-head that waits out a g10 hold: the owner approves now, and the merge goes through only once the adversary
+ * loop closes with MERGE at the same head. Absent, the merge goes past the hold.
+ */
+declare const MERGE_WAITS: readonly ["adversary-loop"];
+/**
  * The typed target of an owner action. It names what to act on and is never authority: the
  * system of record re-reads every field at tap time, so a deposit that lies only gets `moved`.
  */
@@ -213,6 +221,9 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     repo: z.ZodString;
     pr: z.ZodNumber;
     headSha: z.ZodString;
+    waitFor: z.ZodOptional<z.ZodEnum<{
+        "adversary-loop": "adversary-loop";
+    }>>;
 }, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"close-pr">;
     repo: z.ZodString;
@@ -588,7 +599,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, type Principle, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, type Principle, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -666,6 +677,9 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         repo: z.ZodString;
         pr: z.ZodNumber;
         headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"close-pr">;
         repo: z.ZodString;
@@ -861,6 +875,9 @@ declare const ownerItemSchema: z.ZodObject<{
         repo: z.ZodString;
         pr: z.ZodNumber;
         headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"close-pr">;
         repo: z.ZodString;
