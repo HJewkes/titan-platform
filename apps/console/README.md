@@ -409,7 +409,7 @@ titan-console inbox withdraw-matching --as my-agent --actor my-agent --key my-al
 ```
 
 - **Ids.** `inbox file` prints the full id, `deposit:<32 hex>`. `withdraw` and `restore` also take
-  a hex prefix of at least 8 digits, bare (`18d6520b`) or as `deposit:18d6520b`, when it starts
+  a hex prefix of at least 8 digits, bare (`1a2b3c4d`) or as `deposit:1a2b3c4d`, when it starts
   exactly one deposit in the spool; the output names the full id. A prefix that starts several
   exits 65 and lists their full ids. No match exits 66 with
   `unknown id <x>; full form is deposit:<32 hex>`.

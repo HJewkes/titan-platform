@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { resolveDepositRef } from "./deposit-ref.js";
 
-const A = { id: "deposit:18d6520b0000000000000000000000aa" };
-const B = { id: "deposit:18d6520b0000000000000000000000bb" };
+const A = { id: "deposit:1a2b3c4d0000000000000000000000aa" };
+const B = { id: "deposit:1a2b3c4d0000000000000000000000bb" };
 const C = { id: "deposit:c0ffee00111111111111111111111111" };
 const ITEMS = [A, B, C];
 
@@ -21,7 +21,7 @@ describe("resolveDepositRef", () => {
   });
 
   it("lists every full id an ambiguous prefix matches", () => {
-    expect(resolveDepositRef(ITEMS, "18d6520b")).toEqual({ kind: "ambiguous", ids: [A.id, B.id] });
+    expect(resolveDepositRef(ITEMS, "1a2b3c4d")).toEqual({ kind: "ambiguous", ids: [A.id, B.id] });
   });
 
   it("reports a prefix under 8 hex digits, a non-hex ref, or no match as unknown", () => {
