@@ -32,9 +32,20 @@ function compileTerm(entry: string, line: number): RegExp {
   return new RegExp(`(?<!${WORD_CHAR})${escapeRegExp(entry)}(?!${WORD_CHAR})`, "iu");
 }
 
+const TAG = /^\[([a-z][a-z0-9-]*)\][ \t]+(\S.*)$/;
+
+/** A leading `[` always opens a tag, so a malformed one fails instead of reading as an untagged term. */
+function splitCategory(entry: string, line: number): { category?: string; term: string } {
+  if (!entry.startsWith("[")) return { term: entry };
+  const match = TAG.exec(entry);
+  if (!match) throw new TermFileError(line, "malformed category tag");
+  return { category: match[1], term: match[2] ?? "" };
+}
+
 /**
  * Parses a private term list: one term per line, `#` comments, blank lines ignored, matched
  * case-insensitively on word boundaries; a `re:` line is a regex source compiled with `iu`.
+ * A line may start with a `[category]` tag (lowercase letters, digits, hyphens) that findings report.
  */
 export function parseTerms(text: string): TermRule[] {
   const rules: TermRule[] = [];
@@ -44,10 +55,12 @@ export function parseTerms(text: string): TermRule[] {
     .forEach((raw, i) => {
       const entry = raw.trim();
       if (entry === "" || entry.startsWith("#")) return;
-      const pattern = compileTerm(entry, i + 1);
+      const { category, term } = splitCategory(entry, i + 1);
+      const pattern = compileTerm(term, i + 1);
       if (pattern.test("")) throw new TermFileError(i + 1, "matches the empty string, so it would match every line");
       rules.push({
         index: i + 1,
+        ...(category === undefined ? {} : { category }),
         matches: (candidate) => pattern.test(candidate),
         search: (candidate) => candidate.search(pattern),
       });
