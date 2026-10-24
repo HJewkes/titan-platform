@@ -7,7 +7,8 @@
       "find": "return resumable && provablyIndependent(agent, registration.implementer, lineage) ? agent : undefined;",
       "replace": "return resumable && provablyIndependent(agent, registration.implementer, { rows: roster, complete: true }) ? agent : undefined;",
       "kills": [
-        "chooseReviewer over a lineage with retired generations spawns fresh rather than resume a standing reviewer whose seat's retired first generation the implementer spawned"
+        "chooseReviewer over a lineage with retired generations spawns fresh rather than resume a standing reviewer whose seat's retired first generation the implementer spawned",
+        "lineageFor proves nothing when the lineage read fails, so no standing reviewer is resumed"
       ]
     },
     {
