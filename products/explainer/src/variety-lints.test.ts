@@ -48,6 +48,7 @@ describe("script variety lints", () => {
 
   it("passes a hook of the video's own", () => {
     expect(hookFormulaRow([beat("b01", "A courier printed a label for a parcel that never existed.")]).pass).toBe(true);
+    expect(hookFormulaRow([beat("b01", "What can a courier learn from one refused label?")]).pass).toBe(true);
   });
 
   it("passes when 30 % of beats open on a connector", () => {
