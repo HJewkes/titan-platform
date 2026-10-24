@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the audit accepts every sidecar fix-proof refuses",
+      "file": "scripts/mutation-kills-audit.mjs",
+      "find": "return parsed.ok ? null : `${path}: ${parsed.error}`;",
+      "replace": "return null;",
+      "kills": [
+        "specProblem refuses a mutation name over fix-proof's length cap, naming the file and the mutation",
+        "specProblem refuses a sidecar holding more mutants than fix-proof's cap",
+        "the audit command fails a sidecar fix-proof refuses and still reports its kill problems"
+      ]
+    },
+    {
+      "name": "the audit drops fix-proof's refusal from its problems",
+      "file": "scripts/mutation-kills-audit.mjs",
+      "find": "return [...(refused === null ? [] : [refused]), ...kills];",
+      "replace": "return kills;",
+      "kills": ["the audit command fails a sidecar fix-proof refuses and still reports its kill problems"]
+    },
+    {
+      "name": "a refused sidecar skips the kill checks",
+      "file": "scripts/mutation-kills-audit.mjs",
+      "find": "const kills = sidecar === null ? [] : killProblems(path, sidecar, base);",
+      "replace": "const kills = refused !== null || sidecar === null ? [] : killProblems(path, sidecar, base);",
+      "kills": ["the audit command fails a sidecar fix-proof refuses and still reports its kill problems"]
+    }
+  ]
+}
