@@ -15,7 +15,8 @@ describe("the composition page's beat registry", () => {
 
   test("a catalogue beat missing a required slot is rejected", () => {
     const [, catalogue] = parseTimeline(fixture).beats;
-    const { schemaLabel: _dropped, ...slots } = catalogue?.slots as Record<string, unknown>;
+    const slots = { ...(catalogue?.slots as Record<string, unknown>) };
+    delete slots.schemaLabel;
 
     assert.throws(() => resolveBeat("catalogue").slots.parse(slots), /schemaLabel/);
   });

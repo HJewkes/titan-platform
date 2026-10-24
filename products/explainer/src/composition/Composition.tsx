@@ -1,3 +1,4 @@
+import { Typography } from "@titan-design/react-ui";
 import { Beat, BeatFrame, MotionProvider, type SeekClock } from "@titan-design/react-ui/motion";
 import { resolveBeat } from "./registry.js";
 import type { Timeline, TimelineBeat } from "./timeline.js";
@@ -16,6 +17,8 @@ function TimelineBeatView({ beat }: { beat: TimelineBeat }) {
   );
 }
 
+const DRAFT_BADGE = { position: "absolute", top: 32, right: 40, zIndex: 1 } as const;
+
 /** A timeline on a seek clock: each beat resolved by kind through the registry, in its own window. */
 export function Composition({ timeline, clock }: { timeline: Timeline; clock: SeekClock }) {
   return (
@@ -23,6 +26,11 @@ export function Composition({ timeline, clock }: { timeline: Timeline; clock: Se
       {timeline.beats.map((beat) => (
         <TimelineBeatView key={beat.id} beat={beat} />
       ))}
+      {timeline.provisional ? (
+        <div style={DRAFT_BADGE} data-testid="draft-badge">
+          <Typography variant="overline" color="warning">DRAFT</Typography>
+        </div>
+      ) : null}
     </MotionProvider>
   );
 }

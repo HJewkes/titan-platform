@@ -13,6 +13,8 @@ const TimelineBeatSchema = z.object({
 export const TimelineSchema = z
   .object({
     durationS: z.number().positive(),
+    /** Set when timings are planned rather than spoken; the page stamps such a render DRAFT. */
+    provisional: z.boolean().optional(),
     beats: z.array(TimelineBeatSchema).min(1),
   })
   .refine((t) => t.beats.every((b) => b.startS + b.durationS <= t.durationS + 1e-9), {

@@ -63,6 +63,22 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     }
   });
 
+  test("a provisional timeline is stamped DRAFT and a spoken one is not", async () => {
+    const browser = await launch();
+    try {
+      const badgeOn = async (name: string) => {
+        const { page } = await openCapturePage(browser, server.url("index.html", `/timelines/${name}`), STAGE);
+        return page.evaluate(() => document.querySelector('[data-testid="draft-badge"]')?.textContent ?? null);
+      };
+
+      const badges = [await badgeOn("second.timeline.json"), await badgeOn("fixture.timeline.json")];
+
+      assert.deepEqual(badges, ["DRAFT", null]);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test("the catalogue beat renders react-ui's FileCard, SchemaCard and Annotate live", async () => {
     const browser = await launch();
     try {
