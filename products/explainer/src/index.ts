@@ -1,5 +1,6 @@
 export { StoryboardSchema, beatNumber, type Beat, type Storyboard } from "./storyboard.js";
-export { DigestSchema, type Digest, type DigestItem } from "./digest.js";
+export { DigestSchema, LANE_ROLES, type Digest, type DigestItem, type LaneRole } from "./digest.js";
+export { DEFAULT_LANES_FILE, LanesFileSchema, RANK_KEYS, lanesFileFor, loadLanes, type Lane, type LanesFile, type RankKey } from "./lanes-schema.js";
 export { LexiconSchema, lexiconEntriesFor, type Lexicon, type LexiconEntry } from "./lexicon.js";
 export {
   DEFAULT_PACKET_MAX_BYTES,

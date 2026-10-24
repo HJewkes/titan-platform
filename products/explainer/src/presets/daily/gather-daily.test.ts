@@ -36,7 +36,7 @@ describe("gatherDaily over a fake gh, fixture transcripts and a frozen task snap
 
     expect(notes).toEqual([]);
     expect(digest.items.map((item) => item.id)).toEqual([
-      `pr/${REPO}#11/merged`, `pr/${REPO}#11/opened`, `pr/${REPO}#12/opened`, `pr/${REPO}#9/merged`,
+      `pr/${REPO}#11/merged`, `pr/${REPO}#12/opened`, `pr/${REPO}#9/merged`,
       "session/s-desk-001", "session/s-desk-002",
       "task/DM-2/closed", "task/DM-3/owner-gated", "task/DM-4/moved", "task/DM-5/opened",
     ]);
@@ -50,7 +50,7 @@ describe("gatherDaily over a fake gh, fixture transcripts and a frozen task snap
     const second = await digestFile();
 
     expect(second).toBe(first);
-    expect(DigestSchema.parse(JSON.parse(first)).items).toHaveLength(10);
+    expect(DigestSchema.parse(JSON.parse(first)).items).toHaveLength(9);
   });
 
   it("leaves out a subagent sidechain and a session that ended before the day", async () => {
@@ -69,7 +69,7 @@ describe("gatherDaily over a fake gh, fixture transcripts and a frozen task snap
 
     expect(notes).toHaveLength(2);
     expect(notes[0]).toContain("gh pr list --repo example/missing (opened) failed");
-    expect(digest.items.filter((item) => item.kind === "pull-request")).toHaveLength(4);
+    expect(digest.items.filter((item) => item.kind === "pull-request")).toHaveLength(3);
   });
 
   it("notes the missing snapshot on a first day instead of guessing moves", async () => {
@@ -85,7 +85,13 @@ describe("daily facts pack", () => {
   it("writes one row per item, keyed by the item id", () => {
     const digest = { ...dayWindow(DAY), items: [{ id: "task/DM-2/closed", kind: "task" as const, title: "Draft the label | printer spec", at: "2026-03-11T15:00:00.000Z", change: "closed" }] };
 
-    expect(dailyFactsMarkdown(digest)).toContain("| task/DM-2/closed | task closed · Draft the label \\| printer spec |");
+    expect(dailyFactsMarkdown(digest)).toContain("| task/DM-2/closed | task closed · Draft the label \\| printer spec |  |");
+  });
+
+  it("gives a merged PR its outcome and a P1 priority", () => {
+    const item = { id: "pr/a/b#1/merged", kind: "pull-request" as const, title: "Add cache", at: "2026-03-11T15:00:00.000Z", change: "merged", outcome: "Adds a cache.", priority: "P1" };
+
+    expect(dailyFactsMarkdown({ ...dayWindow(DAY), items: [item] })).toContain("| pr/a/b#1/merged | pull-request merged · Add cache · Adds a cache. | P1 |");
   });
 
   it("rejects a day the calendar does not have", () => {
