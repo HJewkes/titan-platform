@@ -30,7 +30,7 @@ Before adding code:
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
-| [`md-chunk`](#cap-md-chunk) | 0 | Placeholder: replace with the situation that should send a reader to md-chunk, and name the neighbouring unit for the situations that should not. |
+| [`md-chunk`](#cap-md-chunk) | 0 | You need the structure of a markdown file as byte ranges that read back to the exact source bytes: frontmatter, headings, fences, tables and paragraphs, with fence state so a `# comment` in code is never a heading. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
@@ -399,15 +399,15 @@ Key exports:
 
 ### [`md-chunk`](https://hjewkes.github.io/titan-platform/reference/md-chunk)
 
-Tier 0, `@titan-design/md-chunk@0.0.0`. 
+Tier 0, `@titan-design/md-chunk@0.0.0`. Markdown block scanner that returns byte and line ranges
 
 **Use this when:**
 
-Placeholder: replace with the situation that should send a reader to md-chunk, and name the neighbouring unit for the situations that should not.
+You need the structure of a markdown file as byte ranges that read back to the exact source bytes: frontmatter, headings, fences, tables and paragraphs, with fence state so a `# comment` in code is never a heading. To read the bytes back later, store the range in a `locator`; to embed text, use `embed`.
 
 Key exports:
 
-No library entry point.
+- `scan`: `scanBlocks`, `Block`, `BlockKind`, `BlockRange`
 
 <a id="cap-openai-account"></a>
 

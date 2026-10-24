@@ -1,2 +1,1 @@
-// Placeholder entry for @titan-design/md-chunk (tier 0). Filled in by an untracked task.
-export {};
+export { scanBlocks, type Block, type BlockKind, type BlockRange } from "./scan.js";

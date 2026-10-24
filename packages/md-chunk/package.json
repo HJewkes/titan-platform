@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/md-chunk",
   "version": "0.0.0",
-  "description": "",
+  "description": "Markdown block scanner that returns byte and line ranges",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
