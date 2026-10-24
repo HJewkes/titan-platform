@@ -40,7 +40,7 @@ export function fakeOwnerHelper(proof: string | undefined): { reasons: string[] 
 }
 
 /** The owner's synthetic enclave key: its public half installed in a temp owner-keys dir loadOwnerKeys reads. */
-export interface FakeSigner {
+interface FakeSigner {
   /** The dialog text each `sign` run showed. */
   reasons: string[];
   /** Signs any bytes with the installed key, as a test-side forger with the owner's key would. */

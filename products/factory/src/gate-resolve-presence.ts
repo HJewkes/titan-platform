@@ -8,7 +8,7 @@ import { ownerKeyId, signStatement } from "./owner-presence.js";
 import { verifyGatePresence, type GatePresenceStatement, type ProofInput } from "./presence-proof.js";
 
 /** The channel `gate resolve` stamps on its resolvers; a confirmEvent on it must name a presence record. */
-export const CLI_CHANNEL = "factory-cli";
+const CLI_CHANNEL = "factory-cli";
 const RECORD_PREFIX = "gate-batch:";
 /** Under the verifier's 300 s cap; covers the helper's 120 s dialog timeout. */
 const WINDOW_S = 240;
@@ -58,7 +58,7 @@ function proofRefusal(proof: ProofInput, gateId: string, now: () => number, payl
  * the record is for another gate or already spent, or its stored signature no longer verifies against the owner's keys.
  * A resolver on another channel, or with no confirmEvent, is not this check's to judge.
  */
-export function presenceRefusal(batches: GateBatchStore, gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>, now: () => number = Date.now): string | undefined {
+function presenceRefusal(batches: GateBatchStore, gate: Readonly<GateRecord>, resolver: Readonly<GateResolver>, now: () => number = Date.now): string | undefined {
   const event = resolver.confirmEvent;
   if (resolver.channel !== CLI_CHANNEL || event === undefined) return undefined;
   const batchId = batchIdOf(event);
