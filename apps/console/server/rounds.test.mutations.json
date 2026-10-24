@@ -16,7 +16,9 @@
       "find": "if (!parsed.ok) return withdrawn === null ? { gap: `${id}: ${parsed.reason}` } : {};",
       "replace": "if (!parsed.ok) return {};",
       "kills": [
-        "readQueueRounds still reports a gap for an open round whose round.json does not parse"
+        "readQueueRounds still reports a gap for an open round whose round.json does not parse",
+        "readQueueRounds reads every valid round with its feedback and reports each invalid one as a gap",
+        "readQueueRounds reports a FIFO for round.json as a gap instead of hanging"
       ]
     }
   ]
