@@ -61,14 +61,19 @@ function selfMintedRecord(host: FactoryHost, gate: string): string {
 }
 
 describe("the gate store checks a gate resolve's presence proof against the ledger", () => {
-  it.each([
-    ["a bare UUID", () => randomUUID()],
-    ["an unknown ledger id", () => `gate-batch:${randomUUID()}`],
-  ])("%s is refused and the gate stays pending", async (_name, forged) => {
+  it("a bare UUID is refused and the gate stays pending", async () => {
     const { host, gates: [gate] } = await pausedGates(1);
     fakeOwnerSigner();
 
-    expect(() => host.gates.resolve(gate!, ANSWER, ownerWith(forged()))).toThrow(/names no owner-signed record/);
+    expect(() => host.gates.resolve(gate!, ANSWER, ownerWith(randomUUID()))).toThrow(/names no owner-signed record/);
+    expect(host.gates.get(gate!)?.status).toBe("pending");
+  });
+
+  it("an unknown ledger id is refused and the gate stays pending", async () => {
+    const { host, gates: [gate] } = await pausedGates(1);
+    fakeOwnerSigner();
+
+    expect(() => host.gates.resolve(gate!, ANSWER, ownerWith(`gate-batch:${randomUUID()}`))).toThrow(/names no owner-signed record/);
     expect(host.gates.get(gate!)?.status).toBe("pending");
   });
 
