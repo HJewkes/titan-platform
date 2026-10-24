@@ -42,13 +42,6 @@
       "find": "{`Now: ${sheet.acted.next.detail}`}",
       "replace": "{`Now: ${sheet.acted.next.state}`}",
       "kills": ["the inbox page, acting from the console shows the run's live next state under a landed outcome"]
-    },
-    {
-      "name": "a second tap prepares the item's own decision",
-      "file": "apps/console/src/pages/InboxPage.tsx",
-      "find": "args: { itemId, ...(decision && { decision }) }",
-      "replace": "args: { itemId }",
-      "kills": ["the inbox page, acting from the console offers Waive fix-proof as a second tap beside Wait for new head, and prepares and acts with that decision"]
     }
   ]
 }

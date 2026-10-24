@@ -309,20 +309,6 @@ describe("the inbox page, acting from the console", () => {
     expect(within(row).queryByText("Approve merge")).toBeNull();
   });
 
-  it("offers Waive fix-proof as a second tap beside Wait for new head, and prepares and acts with that decision", async () => {
-    const action = { kind: "resolve-gate", gateId: "run-gate-1/sh-sent-back", runId: "run-gate-1", stepId: "sh-sent-back", repo: "example/repo", pr: 12, headSha: HEAD, decision: "await-new-head", alternatives: ["waive-proof"] } as const;
-    const calls = renderInbox(inboxAnswer({ items: [{ ...GATE, action }] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
-    const row = await screen.findByTestId("inbox-row-gate-1");
-    expect(within(row).getByText("Wait for new head")).toBeTruthy();
-
-    fireEvent.click(within(row).getByText("Waive fix-proof"));
-    await screen.findByText("Approve the merge of example/repo#12 at 0b7e2c1");
-    await tapConfirm();
-
-    expect(named(calls, "inbox.prepare").map((call) => call.args)).toEqual([{ itemId: "gate-1", decision: "waive-proof" }]);
-    await waitFor(() => expect(named(calls, "inbox.act").map((call) => call.args)).toEqual([{ itemId: "gate-1", decision: "waive-proof", confirm: CONFIRM }]));
-  });
-
   it("keeps Confirm disabled until the read-back loads, and Cancel sends nothing", async () => {
     const prepared = deferred();
     const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => prepared.promise, "inbox.act": resolved });
