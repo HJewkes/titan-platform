@@ -1,13 +1,16 @@
 import type { WordToken } from "../shell/lexer.js";
 import { fieldKeyed, fieldValue, ghFills, literalKey, unreadable } from "./field-words.js";
 
-/** The GraphQL mutations that move a branch ref or change a branch's protection, as named in GitHub's schema. */
+/** The GraphQL mutations that move a branch ref or change a branch's protection or rulesets, as named in GitHub's schema. */
 const BRANCH_MUTATION_RE =
-  /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest|createLinkedBranch|updatePullRequestBranch|createBranchProtectionRule|updateBranchProtectionRule|deleteBranchProtectionRule)\b/g;
+  /\b(updateRefs|updateRef|createRef|deleteRef|mergeBranch|createCommitOnBranch|enqueuePullRequest|createLinkedBranch|updatePullRequestBranch|createBranchProtectionRule|updateBranchProtectionRule|deleteBranchProtectionRule|createRepositoryRuleset|updateRepositoryRuleset|deleteRepositoryRuleset)\b/g;
+/** The mutations that write a repository ruleset, the `ruleset-write` hard stop whatever branch they reach. */
+export const RULESET_MUTATIONS: ReadonlySet<string> = new Set(["createRepositoryRuleset", "updateRepositoryRuleset", "deleteRepositoryRuleset"]);
 /**
  * Their target is an opaque ref id or a PR's base or head branch, which the text cannot show. A protection rule is
  * named by an opaque rule id or matches by a `pattern` glob, so it may cover any branch, `feat/*` included, since a
- * more specific rule outranks a broader one.
+ * more specific rule outranks a broader one. A ruleset is named by an opaque id or matches by `conditions`
+ * include/exclude globs or `~DEFAULT_BRANCH`/`~ALL`, so its reach is unknowable too.
  */
 const OPAQUE_TARGET = new Set([
   "updateRef",
@@ -17,6 +20,7 @@ const OPAQUE_TARGET = new Set([
   "createBranchProtectionRule",
   "updateBranchProtectionRule",
   "deleteBranchProtectionRule",
+  ...RULESET_MUTATIONS,
 ]);
 /** Their target branch is written in the text or a variable. */
 const NAMED_TARGET = new Set(["updateRefs", "createRef", "mergeBranch", "createCommitOnBranch", "createLinkedBranch"]);

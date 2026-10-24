@@ -23,6 +23,13 @@ function bash(command: string): ClassifiedAction[] {
 const settings = (actions: ClassifiedAction[]) => actions.filter((a) => a.spelling.endsWith("-ruleset"));
 
 const METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+const RULESET_QUERIES = {
+  create: 'mutation{createRepositoryRuleset(input:{sourceId:"R",name:"n",target:BRANCH,enforcement:ACTIVE}){ruleset{id}}}',
+  update: 'mutation{updateRepositoryRuleset(input:{repositoryRulesetId:"RRS",enforcement:DISABLED}){ruleset{id}}}',
+  delete: 'mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}',
+};
+const RULESETS_READ = '{repository(owner:"o",name:"r"){rulesets(first:5){nodes{name}}}}';
+const curlBody = (query: string) => `'${JSON.stringify({ query })}'`;
 const DONE_WHEN_ROUTES = [
   ["repos/o/r/rulesets/42", "repo"],
   ["repositories/123/rulesets", "repository-id"],
@@ -33,6 +40,8 @@ describe("one fixture per GitHub settings spelling", () => {
   it.each([
     ["bash.config.gh-api-ruleset", "gh api -X DELETE repos/o/r/rulesets/42", { pattern: "github:rulesets", scope: "repo" }],
     ["bash.config.curl-api-ruleset", `curl -X PUT ${API}/orgs/o/rulesets/7`, { pattern: "github:rulesets", scope: "org" }],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f query='${RULESET_QUERIES.delete}'`, { pattern: "github:rulesets", scope: "unknown" }],
+    ["bash.config.curl-graphql-ruleset", `curl -d ${curlBody(RULESET_QUERIES.delete)} ${API}/graphql`, { pattern: "github:rulesets", scope: "unknown" }],
   ])("%s: %s", (spelling, command, subject) => {
     const actions = bash(command);
 
@@ -101,6 +110,39 @@ describe("githubSettings, a request that writes no ruleset or protection", () =>
   });
 });
 
+describe("githubSettings, a GraphQL ruleset mutation", () => {
+  const RULESET = { pattern: "github:rulesets", scope: "unknown" };
+
+  it.each([
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f query='${RULESET_QUERIES.create}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f query='${RULESET_QUERIES.update}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f query='${RULESET_QUERIES.delete}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql --raw-field 'query=${RULESET_QUERIES.delete}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -F 'query=${RULESET_QUERIES.delete} # {owner}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f 'query=mutation{x: ${RULESET_QUERIES.delete.slice("mutation{".length)}'`],
+    ["bash.config.gh-api-graphql-ruleset", String.raw`gh api graphql -f 'query=mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f "query=mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:\\"$ID\\"}){clientMutationId}}"`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api /graphql -f query='${RULESET_QUERIES.delete}'`],
+    ["bash.config.gh-api-graphql-ruleset", `gh api ${API}/graphql -f query='${RULESET_QUERIES.delete}'`],
+    ["bash.config.curl-graphql-ruleset", `curl -X POST -d ${curlBody(RULESET_QUERIES.create)} ${API}/graphql`],
+    ["bash.config.curl-graphql-ruleset", `curl --json ${curlBody(RULESET_QUERIES.update)} ${API}/graphql`],
+    ["bash.config.curl-graphql-ruleset", `wget --post-data=${curlBody(RULESET_QUERIES.delete)} ${API}/graphql`],
+  ])("%s: %s", (spelling, command) => {
+    expect(settings(bash(command))).toEqual([expect.objectContaining({ action: "authority-config", spelling, subject: RULESET })]);
+  });
+
+  it.each([
+    `gh api graphql -f query='${RULESETS_READ}'`,
+    "gh api graphql -f query='{viewer{login}}'",
+    `gh api graphql -f query='{viewer{login}}' -f note=deleteRepositoryRuleset`,
+    `gh api graphql -f 'query=${RULESET_QUERIES.delete.replace("Ruleset(", "RulesetX(")}'`,
+    `curl -d ${curlBody(RULESETS_READ)} ${API}/graphql`,
+    `curl -d ${curlBody(RULESET_QUERIES.delete)} https://example.com/graphql`,
+  ])("passes %s", (command) => {
+    expect(settings(bash(command))).toEqual([]);
+  });
+});
+
 const noFiles: ReadFs = {
   realpath: () => {
     throw new Error("ENOENT");
@@ -122,6 +164,7 @@ describe("handle: a GitHub settings write", () => {
   it.each([
     ["gh api -X DELETE repos/o/r/rulesets/42", "bash.config.gh-api-ruleset"],
     [`curl -X PUT ${API}/orgs/o/rulesets/7 -d @r.json`, "bash.config.curl-api-ruleset"],
+    [`gh api graphql -f query='${RULESET_QUERIES.delete}'`, "bash.config.gh-api-graphql-ruleset"],
   ])("denies %s", async (command, spelling) => {
     const stdout = await hook(command);
 
