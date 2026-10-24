@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the daemon hook sends a workspace reader to runNow, re-adding the transcript delta",
+      "name": "the daemon hook sends a workspace reader to runNow",
       "file": "products/active-work/src/server/session-index-watch.ts",
       "find": "    if (scope === 'workspace') return workspace.ensure(budgetMs);\n",
       "replace": "",
