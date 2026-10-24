@@ -20,8 +20,8 @@ describe("fake wire handlers", () => {
   it("deleteRef closes open PRs based on the branch and refuses a missing branch", async () => {
     const fake = fakeGitHub();
     fake.refs.set("stack", fakeSha("s"));
-    fake.addPr({ baseRef: "stack" });
-    fake.addPr({ baseRef: "main" });
+    fake.addPr({ headSha: fakeSha("p1"), baseRef: "stack" });
+    fake.addPr({ headSha: fakeSha("p2"), baseRef: "main" });
 
     await fake.wire.deleteRef(REPO, "stack");
 
@@ -43,8 +43,8 @@ describe("fake wire handlers", () => {
     const fake = fakeGitHub();
     const seen: number[] = [];
     fake.onGetPr = (_pr, count) => void seen.push(count);
-    fake.addPr({});
-    fake.addPr({});
+    fake.addPr({ headSha: fakeSha("p") });
+    fake.addPr({ headSha: fakeSha("p") });
 
     await fake.wire.getPr(REPO, 1);
     await fake.wire.getPr(REPO, 1);
@@ -159,7 +159,7 @@ describe("fake wire handlers", () => {
     expect(await fake.wire.listForcePushes(REPO, 3)).toEqual({ pushes: [], more: false });
   });
 
-  it("listCheckRuns hides superseded attempts unless filter is all, and createCheckRun stamps the App id", async () => {
+  it("createCheckRun stamps the configured App id and the run lists under both filters", async () => {
     const fake = fakeGitHub({ appId: 77 });
     const sha = fakeSha("c");
     await fake.wire.createCheckRun(REPO, { name: "n", headSha: sha, conclusion: "success" } as never);
@@ -167,6 +167,6 @@ describe("fake wire handlers", () => {
     const runs = await fake.wire.listCheckRuns(REPO, sha, "all");
     expect(runs).toHaveLength(1);
     expect(runs[0]!.appId).toBe(77);
-    expect(await fake.wire.listCheckRuns(REPO, sha, "latest")).toHaveLength(1);
+    expect(await fake.wire.listCheckRuns(REPO, sha)).toHaveLength(1);
   });
 });
