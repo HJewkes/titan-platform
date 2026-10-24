@@ -96,8 +96,8 @@ export const REPLY_RULES = `- Every cue's atCue word must be a word the beat spe
 - Cite only fact ids from the facts pack, and state no number the facts pack does not hold. Where the spine has a Cites table, a beat that names an item cites the fact ids that table lists for it.
 - Set "facts_pack" to "facts.md".`;
 
-export const retryPrompt = (prompt: string, error: string): string =>
-  `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
+export const retryPrompt = (prompt: string, error: string, reply = "Reply with the whole corrected object.\n"): string =>
+  `${prompt}\n## Your previous reply was rejected\n\n${error}\n\n${reply}`;
 
 export interface Checked {
   script?: ScriptV1;
@@ -252,8 +252,8 @@ export interface Rounds {
   read: (outcome: StepRunOutcome, current: ScriptV1, failing: readonly L0Result[]) => Checked;
   /** Settles a parsed reply before it is measured: the ledger stamp. */
   settle: (script: ScriptV1) => Stamped;
-  /** Whether a round whose reply is rejected gets one retry naming why, inside the same round. */
-  retry?: (failing: readonly L0Result[]) => boolean;
+  /** When a round's rejected reply gets one retry naming why, inside the same round: the reply that retry asks for. */
+  retry?: (script: ScriptV1, failing: readonly L0Result[]) => string | undefined;
 }
 
 export interface Repaired {
@@ -272,8 +272,9 @@ async function roundReply(call: Call, loop: Rounds, script: ScriptV1, failing: r
   const prompt = loop.prompt(script, failing);
   const outcome = await call(prompt);
   const reply = loop.read(outcome, script, failing);
-  if (reply.script || !loop.retry?.(failing)) return { reply, usage: stageUsage(outcome.usage) };
-  const again = await call(retryPrompt(prompt, reply.error ?? ""));
+  const ask = reply.script ? undefined : loop.retry?.(script, failing);
+  if (ask === undefined) return { reply, usage: stageUsage(outcome.usage) };
+  const again = await call(retryPrompt(prompt, reply.error ?? "", ask));
   return { reply: loop.read(again, script, failing), usage: addUsage(stageUsage(outcome.usage), stageUsage(again.usage)) };
 }
 

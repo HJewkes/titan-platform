@@ -7,17 +7,16 @@ import type { ScriptV1 } from "../script-schema.js";
  * the beat they read, Q-W10 always, and Q-V4 for a chapter label read as "Chapter ...". That round re-emits the chapter.
  */
 export function patchTargets(rows: readonly L0Result[], chapter: ScriptV1): string[] | undefined {
-  if (namesChapter(rows, chapter.chapters[0]!.id)) return undefined;
+  const id = chapter.chapters[0]!.id;
+  if (rows.some((row) => row.detail_beats.includes(id))) return undefined;
   const named = new Set(rows.flatMap((row) => row.detail_beats));
   const beats = chapter.beats.map((beat) => beat.id).filter((beat) => named.has(beat));
   return beats.length > 0 ? beats : undefined;
 }
 
-export const namesChapter = (rows: readonly L0Result[], id: string): boolean => rows.some((row) => row.detail_beats.includes(id));
-
 /** What a patch round asks for in place of the whole corrected chapter. */
 export const patchTask = (targets: readonly string[]): string =>
-  `Reply with one JSON object and nothing else: "beats" lists exactly the beats ${targets.join(", ")}, in that order, each one whole and keeping its id and chapter; every other beat stays as drafted and is left out. "glossary" lists only entries for names a changed beat introduces that the glossary lacks, and is left out when there are none. No other field.\n`;
+  `Reply with one JSON object and nothing else: "beats" lists exactly the beats ${targets.join(", ")}, in that order, each one whole and keeping its id and chapter; every other beat stays as drafted and is left out. No beat is added, split or removed. "glossary" lists only entries for names a changed beat introduces that the glossary lacks, and is left out when there are none. No other field.\n`;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 

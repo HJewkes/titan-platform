@@ -10,7 +10,7 @@ import {
   checkedObject, draftScript, factsSection, failingErrors, failureList, REPLY_RULES, repairPrompt, repairRounds, stageUsage,
   type Call, type Checked, type Lint, type Reader, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
-import { namesChapter, patchTargets, patchTask, splicePatch } from "./chapter-patch.js";
+import { patchTargets, patchTask, splicePatch } from "./chapter-patch.js";
 import { factPlaces, factsSlice, type FactPlaces } from "./script-facts.js";
 import { replyObject } from "./script-reply.js";
 import { StageFailure } from "./stage-failure.js";
@@ -238,7 +238,10 @@ async function repairChapter(ctx: Chunk, prompt: string, joined: Joined | undefi
       return targets ? patchReply(outcome, current, targets, joined, ctx.plan) : chapterReply(outcome, id, joined, ctx.plan);
     },
     settle: (script) => ({ script, stamps: [] }),
-    retry: (rows) => !namesChapter(rows, id),
+    retry: (current, rows) => {
+      const targets = patchTargets(rows, current);
+      return targets && patchTask(targets);
+    },
   });
 }
 

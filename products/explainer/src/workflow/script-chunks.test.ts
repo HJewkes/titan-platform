@@ -281,7 +281,10 @@ describe("beat-level chapter repair", () => {
 
     const ch3Calls = model.prompts.filter((prompt) => taskChapter(prompt) === "ch3");
     expect(ch3Calls.filter((prompt) => prompt.includes("## Your previous reply was rejected"))).toHaveLength(2);
-    expect(ch3Calls.find((prompt) => prompt.includes("## Your previous reply was rejected"))).toContain(why);
+    const retry = ch3Calls.find((prompt) => prompt.includes("## Your previous reply was rejected"))!;
+    expect(retry).toContain(why);
+    expect(retry.slice(retry.indexOf("## Your previous reply was rejected"))).toContain('"beats" lists exactly the beats ch3-a, in that order');
+    expect(retry).not.toContain("Reply with the whole corrected object.");
     expect(script.beats.filter((beat) => beat.chapter === "ch3").map((beat) => [beat.id, beat.spoken])).toEqual([
       ["ch3-a", "The BROKEN bench skips the wick."],
       ["ch3-b", "So the lamp lights only when it is safe."],

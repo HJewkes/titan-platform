@@ -22,8 +22,8 @@
     {
       "name": "a row naming the chapter still gets a beat patch",
       "file": "products/explainer/src/workflow/chapter-patch.ts",
-      "find": "rows.some((row) => row.detail_beats.includes(id));",
-      "replace": "false;",
+      "find": "if (rows.some((row) => row.detail_beats.includes(id))) return undefined;",
+      "replace": "",
       "kills": [
         "beat-level chapter repair falls back to the whole chapter when a failing row names the chapter rather than a beat"
       ]
@@ -35,6 +35,15 @@
       "replace": "reply = \"Reply with one JSON object and nothing else: \\\"beats\\\" lists exactly the beats you change.\\n\"",
       "kills": [
         "beat-level chapter repair keeps the short-script single-call repair asking for and keeping the whole object"
+      ]
+    },
+    {
+      "name": "a refused patch is retried asking for the whole object",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "retryPrompt(prompt, reply.error ?? \"\", ask)",
+      "replace": "retryPrompt(prompt, reply.error ?? \"\")",
+      "kills": [
+        "beat-level chapter repair rejects and retries a patch that adds a beat id, never merging it"
       ]
     }
   ]
