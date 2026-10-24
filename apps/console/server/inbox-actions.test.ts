@@ -34,6 +34,7 @@ const ADV_ID = `gate:${RUN_ADV}/approve-merge`;
 const OLD_HEAD = "0000000000aaaaaaaaaa0000000000aaaaaaaaaa";
 const MSG = "msg-0007";
 const CHAT_ID = `chat:${MSG}`;
+const PREAMBLE = `[Owner answer from the console inbox to chat msg ${MSG}. A chat reply is not a resolution: record the outcome durably on this item (task note, PR comment or reply) before moving on.]\n\n`;
 
 const SESSION: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
 const BEARER: RequestAuth = { credential: "bearer", issuedAt: null, peerLocal: false };
@@ -407,6 +408,18 @@ describe("inbox answer-chat", () => {
     expect(await prepare(CHAT_ID)).toMatchObject({ ok: true, data: { status: "no-action", action: { kind: "answer-chat" } } });
   });
 
+  it("sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged", async () => {
+    const broker = spyBroker();
+    const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
+    const { confirm } = ready(await prepare(CHAT_ID));
+
+    await act(CHAT_ID, confirm, undefined, "beta, and keep `[alpha]` as the alias");
+
+    expect(broker.answers).toEqual([[MSG, `${PREAMBLE}beta, and keep \`[alpha]\` as the alias`]]);
+    expect(broker.answers[0]![1]).toContain(`chat msg ${MSG}`);
+    expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ text: "beta, and keep `[alpha]` as the alias" });
+  });
+
   it("sends the owner's text to the broker, keeps it in the record and logs it as the answer", async () => {
     const broker = spyBroker();
     const factorySpy = spyFactory();
@@ -417,7 +430,7 @@ describe("inbox answer-chat", () => {
     const { envelope } = await act(CHAT_ID, confirm, undefined, "  alpha  ");
 
     expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "answered" }, message: "Answer sent" } });
-    expect(broker.answers).toEqual([[MSG, "alpha"]]);
+    expect(broker.answers).toEqual([[MSG, `${PREAMBLE}alpha`]]);
     expect(factorySpy.posts).toEqual([]);
     expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ itemId: CHAT_ID, action: { kind: "answer-chat", msgId: MSG }, text: "alpha" });
     expect(calls).toHaveLength(1);
@@ -471,8 +484,8 @@ describe("inbox answer-chat", () => {
     expect(down.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
     expect(afterDown).toEqual([`${confirm}.json`]);
     expect(broker.answers).toEqual([
-      [MSG, "alpha"],
-      [MSG, "alpha"],
+      [MSG, `${PREAMBLE}alpha`],
+      [MSG, `${PREAMBLE}alpha`],
     ]);
   });
 });

@@ -7,7 +7,8 @@
  * reposts the record it already wrote, byte for byte, so the factory recognises its own resolve and answers `already`. The
  * confirm store and the record and outcome files are the shared kernel in `owner-tap.ts`.
  *
- * An `answer-chat` tap takes the owner's text, keeps it in the same record, and posts it to the agent-chat broker instead. A g10
+ * An `answer-chat` tap takes the owner's text, keeps it in the same record, and posts it to the agent-chat broker instead, behind a fixed
+ * preamble naming the chat msg and asking for a durable outcome on it. A g10
  * `hold-release` tap reads back the verdicts Shepherd recorded (`g10-hold.ts`) and calls `shepherd.release` itself.
  *
  * An `owner-op` tap (a deposit's typed op on `CONSOLE_OPS`) reads its read-back from the factory's `owner-op.preview`
@@ -253,8 +254,12 @@ function dispatch(ctx: ActContext, file: string, confirm: string, record: Action
   if (action.kind !== "answer-chat") return ctx.options.client.post(confirm);
   const { answerer } = ctx.options;
   if (answerer === undefined || record.text === undefined) return Promise.resolve({ status: "unreachable", detail: "the broker answerer is not wired" });
-  return answerer.answer(action.msgId, record.text);
+  return answerer.answer(action.msgId, withOutcomePreamble(action.msgId, record.text));
 }
+
+/** A chat reply alone is not a resolution, so every answer asks the agent to leave a durable outcome on the item. */
+const withOutcomePreamble = (msgId: string, text: string): string =>
+  `[Owner answer from the console inbox to chat msg ${msgId}. A chat reply is not a resolution: record the outcome durably on this item (task note, PR comment or reply) before moving on.]\n\n${text}`;
 
 interface Tap {
   itemId: string;
