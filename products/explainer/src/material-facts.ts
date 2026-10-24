@@ -33,7 +33,9 @@ function parseJsonl(text: string): MaterialFact[] {
   });
 }
 
-const cells = (line: string): string[] => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+/** A row's cells, split on unescaped pipes only: a writer escapes a pipe inside a cell as `\|`. */
+const cells = (line: string): string[] =>
+  line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "").split(/(?<!\\)\|/).map((cell) => cell.replace(/\\\|/g, "|").trim());
 const isDivider = (line: string): boolean => /^\|?\s*:?-{3,}/.test(line.trim());
 
 interface Columns {
