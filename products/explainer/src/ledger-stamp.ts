@@ -13,7 +13,7 @@ export interface Stamped {
 }
 
 /** The L0 rows a stamp is measured against: the same lint the stage gates and repairs on. */
-export type StampLint = (script: ScriptV1) => readonly L0Result[];
+type StampLint = (script: ScriptV1) => readonly L0Result[];
 
 const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
