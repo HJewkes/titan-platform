@@ -9,7 +9,8 @@ import { sha256 } from "./artifacts.js";
 import { newRuntime, openState, resumeVideo, runOneStage, runVideo, writeReport } from "./host.js";
 import { compareReports } from "./report.js";
 import { runStageCached } from "./stage-cache.js";
-import { stageSpec, type RunSettings } from "./stage-spec.js";
+import { stageKey, stageSpec, type RunSettings } from "./stage-spec.js";
+import { canonicalJson } from "../eval-store.js";
 import { stylePack } from "../profile-fixtures.test-helpers.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
@@ -371,6 +372,14 @@ describe("stage key", () => {
     }).key;
 
     expect(evalKey("haiku")).not.toBe(evalKey("sonnet"));
+  });
+
+  // A gather cached under g1 has no coverage output, and reading it would turn the coverage gate into a pass.
+  it("a gather key never matches one cached before the gather made a coverage manifest", () => {
+    const spec = { stage: "gather" as const, config: {}, inputs: {}, sample: 0 };
+    const beforeCoverage = sha256(canonicalJson({ ...spec, version: "g1" }));
+
+    expect(stageKey(spec)).not.toBe(beforeCoverage);
   });
 });
 

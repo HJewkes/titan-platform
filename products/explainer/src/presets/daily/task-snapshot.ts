@@ -10,6 +10,11 @@ export const SnapshotTaskSchema = z.object({
   tags: z.array(z.string()).default([]),
   created: z.string().optional(),
   done_at: z.string().nullish(),
+  /** Hours; with severity, it ranks how consequential a day's thread of work was. */
+  estimate: z.number().nonnegative().nullish(),
+  severity: z.string().nullish(),
+  /** A rank, lowest first: the order the initiative works its open tasks in. */
+  priority: z.number().nullish(),
 });
 export type SnapshotTask = z.infer<typeof SnapshotTaskSchema>;
 

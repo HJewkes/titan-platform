@@ -13,6 +13,9 @@ export type Outcome =
   | { outcome: "accepted"; runId: string }
   | { outcome: "retired"; name: string; caveats: string[] }
   | { outcome: "already"; name: string }
+  /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
+  | { outcome: "pr-closed"; closedHead: string }
+  | { outcome: "already"; closedHead: string }
   | { outcome: "moved"; currentHead: string | undefined }
   /** The name now belongs to a different agent than the one the owner confirmed. */
   | { outcome: "moved"; currentAgentId: string }
@@ -47,6 +50,7 @@ export function statusOf(outcome: Outcome): Status {
     case "released":
     case "accepted":
     case "retired":
+    case "pr-closed":
     case "already":
       return 200;
     case "moved":

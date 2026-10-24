@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { panelFindingsText } from "./review-panel-step.js";
 import { suiteRules } from "./suite-host.js";
-import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, defectClassSection, describeWake, reviewCommentSection, successorBrief, type WakeFacts } from "./wake-brief.js";
+import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, NO_REWRITE_RULE, defectClassSection, describeWake, reviewCommentSection, successorBrief, type WakeFacts } from "./wake-brief.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -397,7 +397,7 @@ describe("conflict wake brief: how the fixer brings in the base", () => {
 
     expect(reason).toContain(RECIPE);
     expect(reason).toContain("plain `git push`");
-    expect(`${reason}\n${payload}`.toLowerCase()).not.toContain("rebase");
+    expect(`${reason}\n${payload}`.replace(NO_REWRITE_RULE, "").toLowerCase()).not.toContain("rebase");
   });
 });
 
@@ -578,5 +578,29 @@ describe("successor brief: the PR's head branch", () => {
     const fence = dataFence("head branch", headRef);
     expect(brief).toContain(fence);
     expect(brief.replace(fence, "")).not.toContain("injected");
+  });
+});
+
+describe("every wake brief: the branch history rule", () => {
+  const MERGED = fakeSha("base-merge");
+  const noRepro = { kind: "NO_REPRO", headSha: H1, result: { head: H1, mergeBase: MERGED, verdict: "vacuous", tests: [] } };
+  const cases: [string, WakeFacts][] = [
+    ["ci-red", { kind: "ci-red", repo: REPO, pr: 1, headSha: H1, payload: null }],
+    ["a first FIX_FIRST", { kind: "review", repo: REPO, pr: 1, headSha: H1, payload: { text: FINDINGS } }],
+    ["a structural FIX_FIRST", { kind: "review", repo: REPO, pr: 1, headSha: H1, payload: { text: FINDINGS }, fixFirst: 2 }],
+    ["a FIX_FIRST with no findings", { kind: "review", repo: REPO, pr: 1, headSha: H1, payload: { text: "" } }],
+    ["an owner send-back", { kind: "review", repo: REPO, pr: 1, headSha: H1, payload: { kind: "OWNER_SEND_BACK", text: "Please rename the flag." } }],
+    ["a conflict", { kind: "conflict", repo: REPO, pr: 1, headSha: H1, payload: null }],
+    ["a fix-proof NO_REPRO", { kind: "fix-proof", repo: REPO, pr: 1, headSha: H1, payload: noRepro }],
+    ["a fix-proof with an unreadable result", { kind: "fix-proof", repo: REPO, pr: 1, headSha: H1, payload: null }],
+  ];
+
+  it.each(cases)("carries the rule exactly once in %s", async (_name, facts) => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+
+    const { reason, payload } = await describeWake(githubPort(fake.wire), { ...facts, pr: pr.number }, pr);
+
+    expect(`${reason}\n${payload}`.split(NO_REWRITE_RULE)).toHaveLength(2);
   });
 });

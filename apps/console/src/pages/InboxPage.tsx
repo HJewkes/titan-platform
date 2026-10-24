@@ -68,7 +68,7 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "retire-agent": "Retire" };
+const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "retire-agent": "Retire", "close-pr": "Close PR" };
 
 const verbOf = (action: InboxAction): string => (action.kind === "owner-op" ? (OP_VERB[action.op.kind] ?? VERB[action.kind]) : VERB[action.kind]);
 

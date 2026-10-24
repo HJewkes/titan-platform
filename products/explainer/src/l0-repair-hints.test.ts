@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { repairHint } from "./l0-repair-hints.js";
+import { claimsCheckWith } from "./lint-claims.js";
 import { flowCheck } from "./lint-flow.js";
 import { headlineCheck } from "./lint-headline.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
@@ -43,6 +44,23 @@ describe("repair hints for rows whose value says too little", () => {
     expect(hintFor(tour(beats), "Q-F1")).toMatch(/"so" opens \d+ of \d+ linked beats, past the 40 % one connective may carry/);
   });
 
+  // Mutation: dropping connectorEdits' cap slice, or telling the beats to link by a shared word, leaves Q-F1 failing.
+  it("Q-F1 names the connector_in to set on each beat past the cap, and those edits pass the check", () => {
+    const therefore = (id: string) => withBeat(id, { extra: { connector_in: "therefore" } }).find((spec) => spec[0] === id)!;
+    const beats = GOOD_BEATS.map((spec) => (["w2", "w3", "k2", "k3"].includes(spec[0]) ? therefore(spec[0]) : spec));
+
+    const hint = hintFor(tour(beats), "Q-F1")!;
+    const edits = [...hint.matchAll(/set connector_in to "(\w+)" on (\w+)/g)].map(([, connector, id]) => [id!, connector!] as const);
+    const edited = beats.map((spec): BeatSpec => {
+      const connector = edits.find(([id]) => id === spec[0])?.[1];
+      return connector ? [spec[0], spec[1], spec[2], spec[3], { ...spec[4], connector_in: connector }] : spec;
+    });
+
+    expect(hint).toContain('"therefore" opens 4 of 7 linked beats, past the 40 % one connective may carry: w2, w3, k2, k3');
+    expect(edits).toEqual([["k2", "but"], ["k3", "so"]]);
+    expect(runL0(tour(edited), undefined, [flowCheck]).find((r) => r.check_id === "Q-F1")?.pass).toBe(true);
+  });
+
   it("Q-F3 quotes the anchor and lists the HOW beats that never name it", () => {
     const script = tour(GOOD_BEATS, { running_example: { scenario: "Parcel P-7 arrives late", anchor: "parcel p-7" } });
 
@@ -70,9 +88,26 @@ describe("repair hints for rows whose value says too little", () => {
     expect(hintFor(script, "Q-V13")).toBe(`headlines past the band: w2 "${headline}" (3 lines). The band shows 2 lines of about 55 characters; shorten each to fit`);
   });
 
-  it("gives no hint for a row whose beats and value already say what to fix", () => {
+  it("Q-E20 quotes the claims of each beat the gathered facts do not back", () => {
+    const script = tour(withBeat("w2", { spoken: "So three open PRs wait at the desk, and PD-three hundred ten holds them.", extra: { fact_ids: ["pr/acme/desk#4/opened"] } }));
+    const facts = [{ id: "pr/acme/desk#4/opened", change: "opened" }, { id: "task/PD-310/opened" }];
+    const row = runL0(script, undefined, [claimsCheckWith(facts)])[0]!;
+
+    expect(repairHint(row, script)).toMatch(/^claims the gathered facts do not back are among w2: "PD-310", "3 open PRs"\. Name only/);
+  });
+
+  // Mutation: ignoring the facts quotes the claim alone, with no fact for the repair to correct it by.
+  it("Q-E20 names the nearest gathered fact for each unbacked claim when it has the facts", () => {
+    const script = tour(withBeat("w2", { spoken: "So three open PRs wait at the desk today.", extra: { fact_ids: ["pr/acme/desk#4/opened"] } }));
+    const facts = [{ id: "pr/acme/desk#4/opened", change: "opened" }];
+    const row = runL0(script, undefined, [claimsCheckWith(facts)])[0]!;
+
+    expect(repairHint(row, script, facts)).toMatch(/^claims the gathered facts do not back are among w2 "3 open PRs" \(the cited facts count 1 .*pr\/acme\/desk#4\/opened.*\)\. Name only/);
+  });
+
+  it("Q-F11 names the long outro and its word count against the cap", () => {
     const script = tour(withBeat("c2", { spoken: "Check the row, then print the label for the courier at the desk today." }));
 
-    expect(hintFor(script, "Q-F11")).toBeUndefined();
+    expect(hintFor(script, "Q-F11")).toMatch(/; the last beat c2 says 14 words \(at most 8\)$/);
   });
 });

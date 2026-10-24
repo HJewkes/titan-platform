@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "MDT read as UTC",
+      "file": "products/explainer/src/presets/daily/decisions-source.ts",
+      "find": "const ZONE_OFFSET_H: Record<string, number> = { Z: 0, MDT: 6, MST: 7 };",
+      "replace": "const ZONE_OFFSET_H: Record<string, number> = { Z: 0, MDT: 0, MST: 0 };",
+      "kills": [
+        "daily decisions source over a synthetic decisions log places an MDT evening decision in the next UTC day"
+      ]
+    },
+    {
+      "name": "same time not inherited",
+      "file": "products/explainer/src/presets/daily/decisions-source.ts",
+      "find": "const at = stampOf(body) ?? (SAME.test(body.slice(0, STAMP_SPAN)) ? previous : undefined);",
+      "replace": "const at = stampOf(body);",
+      "kills": [
+        "daily decisions source over a synthetic decisions log keeps the numbered decisions stamped inside the UTC day, converting MDT and inheriting a same-time stamp"
+      ]
+    },
+    {
+      "name": "sub-items counted as decisions",
+      "file": "products/explainer/src/presets/daily/decisions-source.ts",
+      "find": "const ENTRY = /^(\\d{3,})([a-z]?)\\. (.*)$/;",
+      "replace": "const ENTRY = /^\\s*(\\d+)([a-z]?)\\. (.*)$/;",
+      "kills": [
+        "daily decisions source over a synthetic decisions log skips the undated entry with one note and never counts a sub-item or a heading"
+      ]
+    }
+  ]
+}

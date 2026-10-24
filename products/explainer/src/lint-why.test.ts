@@ -56,6 +56,31 @@ describe("why, value and thread lints", () => {
     expect(rowFor(late, "Q-W1")).toMatchObject({ pass: false, detail_beats: [], value: 1 });
   });
 
+  describe("a structure that declares its stake-carrying functions", () => {
+    /** The stake beat moved last, so only an opening VERDICT beat can voice the stake early. */
+    const verdictFirst = (structure: string, spoken: string): ScriptV1 => {
+      const good = goodScript();
+      const late = { ...good, structure, beats: [...good.beats.filter((b) => b.id !== "b2"), ...good.beats.filter((b) => b.id === "b2")] };
+      return withBeat(late, "b1", { function: "VERDICT", spoken });
+    };
+    const voiced = "You lose a day for every wrong label, three hundred a week.";
+
+    // Mutation: reading STAKE alone, whatever the structure declares, fails this.
+    it("passes scqa's opening verdict beat when it voices the stake by 15 percent", () => {
+      expect(rowFor(verdictFirst("scqa", voiced), "Q-W1")).toMatchObject({ pass: true });
+    });
+
+    it("still fails scqa's verdict beat when it voices the stake with no number or artifact", () => {
+      const row = rowFor(verdictFirst("scqa", "You lose time on every wrong label."), "Q-W1");
+
+      expect(row).toMatchObject({ pass: false, detail_beats: ["b1"] });
+    });
+
+    it("keeps design-journey's Q-W1 on STAKE beats only", () => {
+      expect(rowFor(verdictFirst("design-journey", voiced), "Q-W1")).toMatchObject({ pass: false, detail_beats: [], value: 1 });
+    });
+  });
+
   it("fails a stake beat with no number", () => {
     const script = withBeat(goodScript(), "b2", { spoken: "You lose time on every wrong label." });
 

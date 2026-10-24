@@ -44,3 +44,4 @@ export {
 } from "./occupancy-checks.js";
 export { OCCUPANCY_FILE, OccupancyFileSchema, occupancyPathFor, readOccupancy, writeOccupancy, type OccupancyFile } from "./occupancy-file.js";
 export { CLIP_TOLERANCE_PX, clippedText, type ClipBox, type MeasuredText } from "./clip-checks.js";
+export { MAX_EMPTY_STAGE_SECONDS, emptyStageRuns, type StageBox, type StageMoment } from "./stage-empty-checks.js";

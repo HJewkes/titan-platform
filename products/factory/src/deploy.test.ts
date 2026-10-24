@@ -80,6 +80,8 @@ interface MachineInit {
   writeFails?: string;
   /** The running serve ignores SIGTERM: `kickstart -k` leaves its pid in place until `launchctl kill SIGKILL`. */
   wedged?: boolean;
+  /** Withdrawing the resolved deploy alarms throws this. */
+  resolveFails?: string;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -143,6 +145,7 @@ function fakeMachine(init: MachineInit = {}) {
   let probes = 0;
   let probesSinceStart = 0;
   const incidents: DeployIncident[] = [];
+  let resolves = 0;
   const replaced = () => job.restarted && job.serving !== running;
   const git = fakeGit(state, init);
   let stuck = init.wedged ?? false;
@@ -215,6 +218,11 @@ function fakeMachine(init: MachineInit = {}) {
       return divergedAnswer(init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing, init.diverged);
     },
     incident: async (incident) => void incidents.push(incident),
+    resolveAlarms: async () => {
+      resolves += 1;
+      if (init.resolveFails !== undefined) throw new Error(init.resolveFails);
+      return 3;
+    },
     mkdir: () => undefined,
     writeFile: (path, text) => {
       if (path === init.writeFails) throw new Error(`EACCES: permission denied, open '${path}'`);
@@ -246,7 +254,7 @@ function fakeMachine(init: MachineInit = {}) {
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
   const pause = () => readDeployPause(ports, STATE);
   const holds = () => readDeployHolds(ports, STATE);
-  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
+  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock, resolves: () => resolves };
 }
 
 const REMOTE = "https://example.test/org/titan-platform.git";
@@ -928,6 +936,35 @@ describe("service deploy rollback pause", () => {
     expect(machine.elapsed()).toBeGreaterThanOrEqual(120_000);
     expect(machine.pause()).toEqual({ paused: false });
     expect(machine.incidents).toEqual([]);
+  });
+
+  it("withdraws the open deploy alarms once a deploy holds through its watch window", async () => {
+    const machine = fakeMachine();
+
+    const { code, out } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.resolves()).toBe(1);
+    expect(out).toContain("withdrew 3 resolved deploy alarm(s) from the owner inbox");
+  });
+
+  it("leaves the deploy alarms open when the restarted build rolls back", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.resolves()).toBe(0);
+  });
+
+  it("still records the deploy, and says why, when the deploy alarms cannot be withdrawn", async () => {
+    const machine = fakeMachine({ resolveFails: "EACCES: the spool is not writable" });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(err).toContain("error: could not withdraw resolved deploy alarms: EACCES: the spool is not writable");
   });
 
   it("raises one alert, stays paused and never retries when the restored build does not come back", async () => {

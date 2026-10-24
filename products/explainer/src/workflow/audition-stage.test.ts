@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { JudgeConfigSchema } from "../eval-harness.js";
+import { parseSpine } from "../spine-schema.js";
 import { sha256 } from "./artifacts.js";
 import { auditionConfig, runAuditionStage } from "./audition-stage.js";
 import { newRuntime, openState, runOneStage, runVideo } from "./host.js";
@@ -74,6 +75,20 @@ describe("audition stage", () => {
 
     const spine = result.report.rows.find((r) => r.stage === "audition")!.outputs.spine!;
     expect(readFileSync(path.join(fx.dataDir, "artifacts", spine), "utf8")).toMatch(/^# Story spine: pr-overview-scqa\n/);
+  });
+
+  it("writes the pick as the spine for daily-overview too, naming its structure and each chapter's lead beat", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ from: "audition", to: "audition", facts: factsFile().file, profile: "daily-overview" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    const spine = result.report.rows.find((r) => r.stage === "audition")!.outputs.spine;
+    expect(spine).toBeDefined();
+    const parsed = parseSpine(readFileSync(path.join(fx.dataDir, "artifacts", spine!), "utf8"));
+    expect(parsed.id).toMatch(/^daily-overview-/);
+    expect(parsed.structure).toBe(parsed.id.replace("daily-overview-", ""));
+    expect(parsed.chapters.every((chapter) => chapter.beat !== undefined)).toBe(true);
   });
 
   it("a default run from script skips the audition", async () => {
@@ -170,7 +185,7 @@ describe("audition sampling, scoring and pick", () => {
     const { result, record } = await audition("repo-argument", REPO_FACTS);
 
     const pick = record.candidates.find((c: { id: string }) => c.id === record.pick.candidate);
-    expect(record.pick.chapters).toEqual(pick.spine.blocks.map((b: { id: string }, i: number) => ({ chapter: `ch${i + 1}`, block: b.id })));
+    expect(record.pick.chapters).toEqual(pick.spine.blocks.map((b: { id: string }) => ({ chapter: b.id, block: b.id })));
     for (const c of record.candidates) {
       expect(c.skipped.map((s: { dim: string }) => s.dim)).toEqual(["J12"]);
       expect(c.rubric.dims.map((d: { dim: string }) => d.dim)).toEqual(["J8", "J9", "J10", "J11"]);

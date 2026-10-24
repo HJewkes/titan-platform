@@ -8,6 +8,7 @@ You are building a step of the explainer video pipeline and need its file contra
 `LexiconSchema` and `lexiconEntriesFor` cover pronunciations,
 `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and
 `attributeFindings` maps gate findings to the beat each names by beat number.
+`claimsCheckWith(facts)` (Q-E20) checks each pull request, task and count a script names against the gathered facts.
 Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
@@ -36,6 +37,7 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `parseScript` also rejects a `structure` the registry lacks,
 `deriveEvalView` derives the view evals read from it, and
 `migrateTourV0` lifts a spike tour to v1.
+`emptyStageRuns` fails a beat whose stage area holds no non-decor content box for more than 3 s of measured moments.
 `scriptSha` names a script by its canonical-JSON sha, and
 `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`.
 For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and

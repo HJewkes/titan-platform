@@ -49,6 +49,7 @@ export type OpReadBack = PrOpReadBack | AgentOpReadBack;
 const EFFECT: Partial<Record<OwnerOpKind, (at: string) => string>> = {
   "merge-at-head": (at) => `Merge ${at} through a land run, once its required checks are green at this head`,
   "retire-agent": (at) => `Retire ${at}: release its worktree if it holds no uncommitted or unmerged work, and free the name. Its transcript stays on disk`,
+  "close-pr": (at) => `Close ${at} on GitHub; the branch is kept and reopen is one click`,
 };
 
 const short = (sha: string): string => sha.slice(0, 7);

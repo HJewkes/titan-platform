@@ -29,6 +29,8 @@ export const StageUsageSchema = z.object({
   inputTokens: z.number(),
   outputTokens: z.number(),
   cacheReadTokens: z.number(),
+  /** Prompt-cache writes; absent where the runner reported none, as in every record made before they were kept. */
+  cacheWriteTokens: z.number().optional(),
   calls: z.number(),
   costUnknown: z.literal(true).optional(),
 });
@@ -83,6 +85,7 @@ export const addUsage = (a: StageUsage, b: StageUsage): StageUsage => ({
   inputTokens: a.inputTokens + b.inputTokens,
   outputTokens: a.outputTokens + b.outputTokens,
   cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+  ...(a.cacheWriteTokens !== undefined || b.cacheWriteTokens !== undefined ? { cacheWriteTokens: (a.cacheWriteTokens ?? 0) + (b.cacheWriteTokens ?? 0) } : {}),
   calls: a.calls + b.calls,
   ...(a.costUnknown || b.costUnknown ? { costUnknown: true as const } : {}),
 });

@@ -70,6 +70,10 @@ The new release's updater (`self-update --apply <sha>`) then:
    that text is not rewritten; a new one is written to a temp file and renamed over the old. A
    failed write is logged in the unit's journal and does not undo the update, record a failure or
    file an alarm. Nothing else writes the shim, so the first update after this change creates it.
+8. Withdraws every open update-failure item it filed earlier (asker `titan-console`, key
+   `console-update`) with reason `resolved`, since a newer sha now serves. Each lands in the
+   spool's `withdrawals.jsonl` with `titan-console` as its actor. A failed withdraw is logged and does not undo the update. An
+   unchanged, failed or rolled-back pass withdraws nothing.
 
 Every failure records `self-update.json` (`outcome`, `stage`, `target`, `served`, `why`) and files an
 owner-queue item through `@titan-design/owner-queue`'s `writeDeposit` into the console's inbox
@@ -77,7 +81,8 @@ spool (`TITAN_CONSOLE_INBOX_DIR`), the same path the factory's deploy incident u
 reads it there. The item is keyed `console-update-<sha>-<stage>`, so one broken sha files one item.
 Stages are `build` and `handoff` (from the bootstrap) and `smoke`, `restart` and `rollback` (from
 the updater). A rollback that does not answer `/health` either is filed as "CONSOLE MAY BE DOWN".
-A held sha files nothing more: its item was filed when it failed.
+A held sha files nothing more: its item was filed when it failed. Each item also carries the key
+`alarm:console-update`, so the inbox shows open failures as one item, the newest, with a repeat count.
 
 `/health` carries the served build as `build: { sha, builtAt, dirty }`, read from
 `dist/build-info.json`, which `build` writes last. The footer shows the same through

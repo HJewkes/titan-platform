@@ -376,7 +376,7 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   64 KB, measured as the spool stores it, answers 400. The body cap is three times the stored
   one because a client that writes non-ASCII as `\uXXXX` escapes sends six bytes for each
   two-byte character (U+0080 to U+07FF) and twelve for each four-byte astral one. An
-  asker with 200 open deposits, those with no answer file beside them, gets 429
+  asker with 200 open deposits, those with no answer or withdrawal beside them, gets 429
   (`EXIT.TEMPFAIL`) until one is answered, and so does every asker once the spool holds 2000
   open deposits. Deposits run one at a time, so racing calls cannot pass a cap together.
 - **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
@@ -388,14 +388,69 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
   and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head` and
-  `retire-agent`) becomes an `owner-op` tap whose read-back comes from the factory. Any other kind
-  stays on the terminal until its factory effect lands. A `retire-agent` op is offered only as a
-  plain retire. The agent must still hold the name under the op's `agentId`, its session must have
-  exited, and it must work on no live Shepherd run. A `force: true` op always stays on the terminal.
+  `retire-agent` and `close-pr`) becomes an `owner-op` tap whose read-back comes from the factory. Any
+  other kind stays on the terminal until its factory effect lands. A `retire-agent` op is offered only
+  as a plain retire. The agent must still hold the name under the op's `agentId`, its session must
+  have exited, and it must work on no live Shepherd run. A `force: true` op always stays on the
+  terminal. A `close-pr` tap closes the PR only at the head the owner was shown and keeps its branch,
+  so reopening it is one click on GitHub.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
   ```
+- **Repeat alarms.** A deposit may carry one `alarm:<source>` key (owner-queue's `alarmKey`).
+  Open deposits from one asker with the same alarm key show as one item, the newest, with
+  `repeats` set to how many there are. The rest stay in the spool, untouched.
+
+### Withdrawing a deposit
+
+A seat takes back a deposit, without an answer, from a shell on the console's machine:
+
+```sh
+titan-console inbox withdraw deposit:<32 hex> --reason obsolete --as my-agent --actor my-agent
+titan-console inbox restore deposit:<32 hex> --as my-agent --actor my-agent       # open it again
+titan-console inbox withdraw-matching --as my-agent --actor my-agent --key my-alarm --reason resolved [--dry-run]
+```
+
+- **Ids.** `inbox file` prints the full id, `deposit:<32 hex>`. `withdraw` and `restore` also take
+  a hex prefix of at least 8 digits, bare (`1a2b3c4d`) or as `deposit:1a2b3c4d`, when it starts
+  exactly one deposit in the spool; the output names the full id. A prefix that starts several
+  exits 65 and lists their full ids. No match exits 66 with
+  `unknown id <x>; full form is deposit:<32 hex>`.
+- **Its own status.** Withdrawal writes `<id>.withdrawn` beside the deposit and never an answer
+  file. The inbox lists the item under withdrawn, not open or answered, and it stops counting
+  against the open-deposit caps. A deposit the owner already answered is refused.
+- **Reasons.** `obsolete`, `resolved` or `superseded:<item id>`. A second withdraw keeps the first
+  reason and prints `already-withdrawn`.
+- **Audited.** Every withdraw and restore appends `{ op, id, reason?, by, actor, at }` to
+  `withdrawals.jsonl` in the spool: `by` is the deposit's asker and `actor` the seat that ran the
+  verb. `restore` deletes the marker; the log keeps both lines. The marker carries the actor too,
+  and the inbox read model's withdrawn entry reports it beside the reason.
+- **Actor required.** `--actor <seat>` names who runs the verb, so a seat closing items a retired
+  automation filed shows as itself, not as the automation. A missing `--actor` exits 65 with one
+  line on stderr and writes nothing.
+- **Own items only.** `--as` must equal the deposit's `asker`, checked after the id resolves. An
+  id of another item kind (a hitl `gate:`, a `round:` question) is refused as not a deposit. A
+  refusal exits 65 and an unknown id 66, each with one line on stderr. `--as` is self-declared like `asker`, so this guards against a mistake, not a
+  hostile caller who can already write the spool.
+- **Local only.** Like `rounds withdraw`, these verbs write the spool directly and are never on
+  `/rpc`, so nothing that reaches the daemon can take an item away from the owner.
+- **Auto-withdraw.** A verified console update withdraws every open `titan-console` deposit keyed
+  `console-update` (see `docs/self-update.md`). A factory deploy that holds through its watch
+  withdraws every open `titan-factory` deposit keyed `deploy-alarm` or `deploy-incident`. Both use
+  reason `resolved` and record their own name as actor. A withdrawn depositId filed again stays withdrawn until it is restored.
+
+**One-time cleanup of a spool from before auto-withdraw.** After checking that the console serves
+a current sha (`/health`) and that the factory's last deploy is `deployed`
+(`titan-factory shepherd status --json --deploy`), list, then withdraw:
+
+```sh
+titan-console inbox withdraw-matching --as titan-console --actor my-agent --key console-update --reason resolved --dry-run
+titan-console inbox withdraw-matching --as titan-factory --actor my-agent --key deploy-alarm --key deploy-incident --reason resolved --dry-run
+```
+
+Run each again without `--dry-run`. `withdraw-matching` takes `TITAN_CONSOLE_INBOX_DIR` or
+`TITAN_CONSOLE_STATE` like every other verb, so point either at a copy of the spool to rehearse.
 
 ## Filing a decision round
 
@@ -768,7 +823,8 @@ links to its own.
   An item that fails `ownerItemSchema` is a gap line naming its id; the rest are kept. Items whose
   first source is `deposit` are dropped, because the console reads its own spool.
 - **Spool.** `server/approval-items.ts` reads `TITAN_CONSOLE_INBOX_DIR`; a deposit with an answer
-  file beside it counts as answered. A deposit's `gate:` and `run:` keys are removed, so an
+  file beside it counts as answered, and one with a withdrawal marker joins the Flow's `withdrawn`
+  list. Open repeats of one `alarm:` key collapse into the newest. A deposit's `gate:` and `run:` keys are removed, so an
   agent-written deposit never takes a hitl gate's place.
 - **Rounds.** An unsent round gives one open item per question; a round with a valid
   `feedback.json` gives answered items instead, never both. A missing rounds dir is no rounds.
@@ -815,14 +871,15 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `retired` (with `name`, `caveats`) | "Retired `name`", plus agent-chat's caveats: a `retire-agent` op ran a plain retire |
+| 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
 | 409 `moved` | "PR moved to `abc1234`, read again", or, with `currentAgentId`, the name is now a different agent |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
 
-After a landed tap on a PR (`resolved`, `released`, `accepted` or `already`), `inbox.act` reads the PR again and
-answers `next`: `merged` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
+After a landed tap on a PR (`resolved`, `released`, `accepted`, `pr-closed` or `already`), `inbox.act` reads the PR
+again and answers `next`: `merged` or `closed` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
 Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
 sheet shows it as "Now: …" under the outcome.
 

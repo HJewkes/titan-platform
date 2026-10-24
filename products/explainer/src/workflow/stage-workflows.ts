@@ -50,7 +50,7 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   if (stage === "script") {
     const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
     if (!config.model) throw new Error("script stage spec has no model");
-    return runScriptStage(input, { model: config.model, ...seams });
+    return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
   }
   if (stage === "rewrite") {
     if (!config.judge || config.rounds === undefined) throw new Error("rewrite stage spec has no judge or rounds");

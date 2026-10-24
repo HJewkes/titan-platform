@@ -215,6 +215,7 @@ graph TD
   explainer --> github
   explainer --> graphLayout
   explainer --> hitl
+  explainer --> ownerQueue
   explainer --> pm
   explainer --> sessionRead
   explainer --> speechG2p

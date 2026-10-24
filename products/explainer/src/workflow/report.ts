@@ -14,6 +14,7 @@ export interface ReportRow {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cacheWriteTokens: number;
   calls: number;
   retries: number;
   /** The stage's outputs came from an earlier run instead of being made again. */
@@ -45,7 +46,10 @@ export interface RunReport {
   budgetUsd: number;
   stop?: Stop;
   runWallMs: number;
-  totals: { usd: number; wallMs: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; calls: number; retries: number; cacheHits: number; costUnknown: boolean };
+  totals: {
+    usd: number; wallMs: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number;
+    calls: number; retries: number; cacheHits: number; costUnknown: boolean;
+  };
   /** Every other run of this video, oldest first; the video's cost is this run's plus theirs (owner answer Q2 B). */
   videoId: string;
   linked: LinkedRun[];
@@ -79,7 +83,7 @@ function row(stage: StageName, record: StageRecord | undefined, failed: boolean)
   return {
     stage, status, bridged: isBridgeStage(stage),
     wallMs: record?.wallMs ?? 0, usd: usage?.usd ?? 0, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0,
-    cacheReadTokens: usage?.cacheReadTokens ?? 0, calls: usage?.calls ?? 0, retries: record?.retries ?? 0,
+    cacheReadTokens: usage?.cacheReadTokens ?? 0, cacheWriteTokens: usage?.cacheWriteTokens ?? 0, calls: usage?.calls ?? 0, retries: record?.retries ?? 0,
     cacheHit: status === "reused" || status === "cached", costUnknown: usage?.costUnknown === true,
     checks: record ? checkText(record) : "—", checkRows: record?.checks ?? [], outputs: record?.outputs ?? {},
     ...(record?.reusedFrom ? { reusedFrom: record.reusedFrom } : {}), ...(record?.childRunId ? { childRunId: record.childRunId } : {}),
@@ -91,7 +95,7 @@ function totals(rows: readonly ReportRow[]): RunReport["totals"] {
   const sum = (pick: (r: ReportRow) => number) => rows.reduce((acc, r) => acc + pick(r), 0);
   return {
     usd: sum((r) => r.usd), wallMs: sum((r) => r.wallMs), inputTokens: sum((r) => r.inputTokens), outputTokens: sum((r) => r.outputTokens),
-    cacheReadTokens: sum((r) => r.cacheReadTokens), calls: sum((r) => r.calls), retries: sum((r) => r.retries),
+    cacheReadTokens: sum((r) => r.cacheReadTokens), cacheWriteTokens: sum((r) => r.cacheWriteTokens), calls: sum((r) => r.calls), retries: sum((r) => r.retries),
     cacheHits: rows.filter((r) => r.cacheHit).length, costUnknown: rows.some((r) => r.costUnknown),
   };
 }
@@ -137,7 +141,7 @@ function header(report: RunReport): string[] {
     ...(report.stop ? [`- **Stopped at the spend cap before stage ${report.stop.stage}**: ${usd(report.stop.spentUsd)} of ${usd(report.stop.capUsd)}`] : []),
     `- Model spend this run: ${usd(t.usd)}${t.costUnknown ? " (a floor: some spend had no price)" : ""} over ${t.calls} calls, ${t.retries} retries`,
     `- Wall time: ${secs(report.runWallMs)} s for the run, ${secs(t.wallMs)} s inside stages`,
-    `- Tokens: ${t.inputTokens} in, ${t.outputTokens} out, ${t.cacheReadTokens} cache read`,
+    `- Tokens: ${t.inputTokens} in, ${t.outputTokens} out, ${t.cacheReadTokens} cache read, ${t.cacheWriteTokens} cache written`,
     `- Cache hits: ${t.cacheHits} stages reused from a base run or the stage cache`,
     `- Video ${report.videoId}: ${report.linked.length + 1} runs, total ${usd(report.videoUsd)}`,
     ...report.linked.map((r) => `  - linked run ${r.runId}: ${usd(r.usd)}`),

@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { appDirs } from "@titan-design/app-paths";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeReport, type RunHost, type RunOutcome } from "./host.js";
+import { ownerInboxDir, REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
@@ -34,8 +36,14 @@ interface RunFlags {
   article?: string;
   claims?: string;
   label?: string;
+  lanes?: string;
+  decisions?: string;
   dryRun?: boolean;
   profile?: string;
+  theater?: string;
+  reflection: ReflectionMode;
+  asker: string;
+  retroDir?: string;
   listenerQuestions?: boolean;
   listenerThreshold?: number;
 }
@@ -97,7 +105,9 @@ export function rounds(text: string): number {
 }
 
 export const dataDirOption = () => new Option("--data-dir <dir>", "run state, artifacts, run reports and the bridge host file bridge.json (default: the per-user data dir)");
-export const hostFor = (flags: { dataDir?: string }, deps: RunCliDeps): RunHost => ({ ...deps.host, dataDir: flags.dataDir ?? appDirs("explainer").data });
+/** A bridge a profile names is the host's, so it is read from the per-user data dir whatever `--data-dir` says. */
+export const hostFor = (flags: { dataDir?: string }, deps: RunCliDeps): RunHost =>
+  ({ bridgeHome: appDirs("explainer").data, ...deps.host, dataDir: flags.dataDir ?? appDirs("explainer").data });
 
 function summary(result: RunOutcome, io: Io): number {
   const t = result.report.totals;
@@ -126,9 +136,11 @@ interface RunInputs {
  */
 async function inputsFor(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<RunInputs> {
   if (!flags.factsFrom) return flags.facts ? { facts: flags.facts } : {};
-  const request = gatherRequest({ ...flags, factsFrom: flags.factsFrom });
+  const lanes = flags.lanes ?? deps.gather?.lanesFile;
+  const { dataDir } = hostFor(flags, deps);
+  const request = gatherRequest({ ...flags, factsFrom: flags.factsFrom, ...(lanes ? { lanes } : {}) }, dataDir);
   if (flags.from === "gather") return { gather: request };
-  const gathered = await gatherFacts(request, hostFor(flags, deps).dataDir, deps.gather);
+  const gathered = await gatherFacts(request, dataDir, deps.gather);
   io.out(`gathered ${gathered.items} facts for ${gathered.type} ${request.day}: ${gathered.facts}${gathered.record ? ` (record ${gathered.record})` : ""}\n`);
   for (const note of gathered.notes) io.err(`note: ${note}\n`);
   return { facts: gathered.facts };
@@ -142,6 +154,8 @@ function addGatherOptions(command: Command): Command {
     .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable)", collect, [])
     .option("--transcripts <dir>", "a Claude Code transcript root for gatherDaily (repeatable; default: every local profile)", collect, [])
     .option("--initiative <slug>", "the active-work initiative gatherDaily snapshots, read-only", "titan-platform")
+    .option("--lanes <file>", "the lanes rule file gatherDaily places merged PRs with (default: daily/lanes.yaml under the data dir, else the doctrine default)")
+    .option("--decisions <file>", "the owner's decisions log; gatherDaily turns its entries stamped inside the day into decision facts")
     .option("--article <path>", "the article or paper as markdown, for gatherArticle")
     .option("--claims <path>", "a JSON array of proposed claims, each with its verbatim quote, for gatherArticle")
     .option("--label <text>", "the source chip's label for gatherArticle (default: the article's file name)")
@@ -159,9 +173,13 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.spine ? { spine: flags.spine } : {}), ...(facts ? { facts } : {}), ...(flags.base ? { base: flags.base } : {}),
     ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
     from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
-    ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}),
-  }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}) }, flags));
+    ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}), ...(flags.theater ? { theater: path.resolve(flags.theater) } : {}),
+  }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}), reflection: deps.host?.reflection ?? reflectionFor(flags) }, flags));
   return summary(result, io);
+}
+
+function reflectionFor(flags: RunFlags): ReflectionConfig {
+  return { mode: flags.reflection, asker: flags.asker, spoolDir: ownerInboxDir(process.env), ...(flags.retroDir ? { retroDir: path.resolve(flags.retroDir) } : {}) };
 }
 
 function threshold(text: string): number {
@@ -181,7 +199,11 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .addOption(dataDirOption())
     .option("--spine <file>", "story spine markdown; required from script unless --base supplies it")
     .option("--facts <file>", "facts pack, markdown or JSON lines; required from audition or script unless --base supplies it")
-    .option("--profile <type>", "the video type whose profile the audition reads; required from audition")
+    .option("--profile <type>", "the video type whose profile the audition reads, and whose named bridge renders; required from audition")
+    .option("--theater <dir>", "the folder export links the video into, in place of the bridge's theater.dir")
+    .addOption(new Option("--reflection <mode>", "where the script's reflection chapter lands after export: one owner-queue deposit a day, a dated retro file, or nowhere").choices(REFLECTION_MODES).default("off"))
+    .option("--asker <seat>", "the seat running the pipeline, the asker of the reflection deposit", "explainer")
+    .option("--retro-dir <dir>", "where --reflection retro-file writes <day>-daily.md")
     .addOption(new Option("--from <stage>", "first stage to run; earlier stages reuse the base run's outputs").choices(STAGES).default("script"))
     .addOption(new Option("--to <stage>", "last stage to run; a run that stops before export never reaches the theater").choices(STAGES).default("export"))
     .option("--base <runId>", "the run whose outputs stand in for the stages before --from (default: the latest run, unless --pin is given)")

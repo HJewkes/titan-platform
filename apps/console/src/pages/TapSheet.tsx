@@ -21,7 +21,7 @@ interface Acted {
 
 type Sheet<R> = { status: "reading" } | { status: "refused"; reason: string } | { status: "ready"; prepared: R } | { status: "acting"; prepared: R } | { status: "acted"; prepared: R; acted: Acted } | { status: "failed"; prepared?: R; error: string };
 
-const LANDED = new Set(["resolved", "released", "accepted", "retired", "already"]);
+const LANDED = new Set(["resolved", "released", "accepted", "retired", "pr-closed", "already"]);
 
 const isRecord = (data: unknown): data is Record<string, unknown> => typeof data === "object" && data !== null;
 const isPrepared = <R extends TapReady>(data: unknown): data is Prepared<R> => isRecord(data) && (data.status === "ready" || data.status === "no-action");
@@ -101,7 +101,9 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
           <ButtonText>{done ? "Close" : "Cancel"}</ButtonText>
         </Button>
         {done ? null : (
-          <Button color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
+          // Pressable applies a changed isDisabled in a passive effect, so a press as the read-back paints would hit the
+          // stale disabled config and drop. Remounting on each status builds the responder with the live config instead.
+          <Button key={sheet.status} color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
             <ButtonText>Confirm</ButtonText>
           </Button>
         )}

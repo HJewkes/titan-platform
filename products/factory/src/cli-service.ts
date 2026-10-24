@@ -10,7 +10,7 @@ import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
 import { deployService, type DeployPorts } from "./deploy.js";
 import { clearDeployPause, describeHolds, describeManualHold, readDeployHolds, runningDeployer, writeManualHold } from "./deploy-pause.js";
 import { originOf, systemDeployPorts } from "./deploy-ports.js";
-import { configuredDeployIncident } from "./deploy-watch-ports.js";
+import { configuredDeployIncident, configuredDeployResolve } from "./deploy-watch-ports.js";
 import { morningQueuesDir } from "./needs/morning-source.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT } from "./serve.js";
@@ -136,7 +136,7 @@ export const ownCheckout = (): string => fileURLToPath(new URL("../../../", impo
 
 function deployPortsFor({ io, deps }: Verbs): { checkout: string; ports: DeployPorts } {
   const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
-  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout), incident: configuredDeployIncident(io.env) } };
+  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout), incident: configuredDeployIncident(io.env), resolveAlarms: configuredDeployResolve(io.env) } };
 }
 
 function registerServiceDeploy(service: Command, verbs: Verbs): void {

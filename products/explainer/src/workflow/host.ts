@@ -9,9 +9,9 @@ import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
-import { readBridgeFile, spawnExec, type BridgeExec } from "./bridge.js";
+import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
-import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan } from "./pipeline.js";
+import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
 import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
@@ -25,6 +25,8 @@ import type { GatherDeps, GatherRequest } from "./run-gather.js";
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
   dataDir: string;
+  /** Where a bridge the run's profile names lives, as `bridges/<name>.json`; the data dir by default. */
+  bridgeHome?: string;
   /** Model seams; tests pass fakes, production uses `agentRunner` and the judge harness. */
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
@@ -40,7 +42,7 @@ export interface RunHost {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The gather stage's outside world; tests pass a fake gh, task list, call graph and clone. */
   gather?: GatherDeps;
-  leaseMs?: number;
+  reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
   now?: () => Date;
@@ -71,6 +73,8 @@ export interface RunRequest {
   profile?: string;
   /** What the gather stage gathers; required from `gather`. */
   gather?: GatherRequest;
+  /** The folder export links into, in place of the bridge's `theater.dir`. */
+  theater?: string;
 }
 
 export interface RunOutcome {
@@ -171,7 +175,7 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
     budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
     judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
     variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
-    ...(request.gather ? { gather: request.gather } : {}),
+    ...(request.gather ? { gather: request.gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
   };
   if (from === "audition" && !profile) throw new Error("a run from audition needs --profile <type>");
   const runs = new WorkflowRunStore(db);
@@ -245,14 +249,14 @@ export interface Runtime {
   runtime: WorkflowRuntime;
   store: ArtifactStore;
   cache: CacheDeps;
-  bridge: () => ReturnType<typeof readBridgeFile>;
+  bridge: () => BridgeFile;
 }
 
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
-  let bridgeFile: ReturnType<typeof readBridgeFile> | undefined;
-  const bridge = () => (bridgeFile ??= readBridgeFile(host.dataDir));
+  let bridgeFile: BridgeFile | undefined;
+  const bridge = () => (bridgeFile ??= runBridgeFile(host.dataDir, { home: host.bridgeHome, profile: plan?.profile, theater: plan?.theater }));
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
@@ -262,8 +266,8 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
   });
   const checks = checksRoute({ dataDir: host.dataDir, store, now, ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}), ...listenerJudge(host, plan) });
-  const styles = host.stylePacks ? { stylePacks: host.stylePacks } : {};
-  const routes = plan ? [body, checks, stageRoute({ dataDir: host.dataDir, store, plan, bridge, cache, now, ...styles })] : [body, checks];
+  const stage = { dataDir: host.dataDir, store, bridge, cache, now, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}) };
+  const routes = plan ? [body, checks, stageRoute({ ...stage, plan })] : [body, checks];
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`]);
   if (plan) runner.assertRoutes(VIDEO_WORKFLOW, STAGES.map((stage) => `stage:${stage}`));
@@ -336,7 +340,7 @@ export async function resumeVideo(runId: string, host: RunHost, overrides: Pick<
   return runVideo({
     from: resumeStage(host.dataDir, run), to: plan.to, base: runId, budgetUsd: overrides.budgetUsd ?? plan.budgetUsd, scriptModel: plan.scriptModel,
     judge: plan.judge, rounds: plan.rounds, variantShas: plan.variants, samples: plan.samples, ...(plan.profile ? { profile: plan.profile } : {}),
-    ...(plan.gather ? { gather: plan.gather } : {}),
+    ...(plan.gather ? { gather: plan.gather } : {}), ...(plan.theater ? { theater: plan.theater } : {}),
   }, host);
 }
 

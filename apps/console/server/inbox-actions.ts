@@ -198,6 +198,8 @@ function messageOf(outcome: Outcome): string {
       return "Merge approved";
     case "accepted":
       return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
+    case "pr-closed":
+      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
     case "retired":
@@ -265,7 +267,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   return { actionId: tap.confirm, outcome, message: messageOf(outcome), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
 }
 
-const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "already"]);
+const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "pr-closed", "already"]);
 
 /** Only a landed tap on a PR has a next state to read; an answer to an agent has no run. */
 function nextAfter(sources: InboxSources, record: ActionRecord, outcome: Outcome): Promise<NextState | undefined> {

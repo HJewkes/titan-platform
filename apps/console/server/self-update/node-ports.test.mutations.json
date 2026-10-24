@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the updater withdraws under another actor",
+      "file": "apps/console/server/self-update/node-ports.ts",
+      "find": "actor: UPDATE_ALARM_ASKER, keys",
+      "replace": "actor: \"seat-other\", keys",
+      "kills": [
+        "the production alarm ports over a spool withdraws every open update failure the console filed as resolved, and no other asker's item"
+      ]
+    }
+  ]
+}

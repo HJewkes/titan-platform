@@ -1,22 +1,34 @@
 import { tmpdir } from "node:os";
-import { z } from "zod";
-import { agentRunner, type AgentRunnerOptions, type LegacyStepRunner, type StepRunOutcome, type StepUsage } from "@titan-design/workflow";
+import { agentRunner, type AgentRunnerOptions, type LegacyStepRunner } from "@titan-design/workflow";
 import { L0_CHECKS, l0HardPass, failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
 import { readColdRubric, rubricBeatsFromPace, rubricNote, runColdRubric } from "../eval-cold-rubric.js";
 import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval-harness.js";
 import { canonicalSha } from "../eval-store.js";
-import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
-import { repairHint } from "../l0-repair-hints.js";
+import { claimFacts, withClaimFacts } from "../claim-facts.js";
+import { stampLedgerTerms, type Stamped } from "../ledger-stamp.js";
+import { parseCoverage, withCoverage, type CoverageManifest } from "../lint-coverage.js";
 import { paceRows } from "../lint-pace.js";
-import { CUE_KIND_ROLES, fromScriptV1, unknownCueKinds } from "../pace-items.js";
-import { rewriteScript } from "../rewrite-pass.js";
+import { fromScriptV1 } from "../pace-items.js";
+import { rewriteScript, spellScript } from "../rewrite-pass.js";
 import { parseScript } from "../script-load.js";
-import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
+import type { ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
+import { unknownWordsRow, type Tokens } from "../unknown-words.js";
 import { COMPANION_FILE, companionChapters, renderCompanion, reviewFacts, type ChapterLinks } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
-import { loadRuleRegistry, type RuleRegistry } from "../rules.js";
+import { loadRuleRegistry } from "../rules.js";
+import { chunkedScript, isChunked } from "./script-chunks.js";
+import {
+  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, scriptPlan, sharedSections, wholeScript,
+  type Call, type Lint, type Repaired, type ScriptPlan, type Written,
+} from "./script-draft.js";
+import { StageFailure } from "./stage-failure.js";
+import { stampCheck } from "./stamp-check.js";
 import { addUsage, NO_USAGE, type Check, type StageOutcome, type StageUsage } from "./records.js";
+import { doctrineG2p } from "./voice-g2p.js";
+
+export { stageUsage } from "./script-draft.js";
+export { StageFailure } from "./stage-failure.js";
 
 export type RunnerFor = (options: AgentRunnerOptions) => LegacyStepRunner;
 export type HarnessFor = (config: JudgeConfig) => JudgeHarness;
@@ -40,171 +52,33 @@ const need = (input: ModelStageInput, name: string): string => {
 const readScript = (input: ModelStageInput, name: string): ScriptV1 => parseScript(JSON.parse(input.store.readText(need(input, name))));
 const putJson = (input: ModelStageInput, value: unknown, kind: string): string => input.store.putText(`${JSON.stringify(value, null, 2)}\n`, kind, input.from);
 
-export function stageUsage(usage: StepUsage | undefined): StageUsage {
-  if (!usage) return { ...NO_USAGE, calls: 1, costUnknown: true };
-  return {
-    usd: usage.costUsd,
-    inputTokens: usage.inputTokens ?? 0,
-    outputTokens: usage.outputTokens ?? 0,
-    cacheReadTokens: usage.cacheReadTokens ?? 0,
-    calls: 1,
-    ...(usage.costUnknown ? { costUnknown: true as const } : {}),
-  };
-}
-
 const SCRIPT_TASK = `## Task
 
 Write the whole script/v1 for this video as one JSON object, and reply with that object only.
 - Keep every chapter id and beat id, in the order the spine's beat plan lists them, with its function and plannedS.
-- Every cue's atCue word must be a word the beat speaks.
-- Cite only fact ids from the facts pack, and state no number the facts pack does not hold.
-- Set "facts_pack" to "facts.md".`;
+${REPLY_RULES}`;
 
-/** The guide names the fields in prose only, so the model also gets the exact shape the reply is parsed with. */
-const scriptShape = (): string => `## The script/v1 JSON Schema\n\n\`\`\`json\n${JSON.stringify(z.toJSONSchema(ScriptSchema, { io: "input", unrepresentable: "any" }))}\n\`\`\``;
+const promptFor = (sections: readonly string[]): string => [...sections, SCRIPT_TASK].join("\n\n") + "\n";
 
+/** The script call's prompt: the guide in the spine's structure, the spine, the facts and each chapter's lead beat spec. */
 export function scriptPrompt(spine: string, facts: string): string {
-  const guide = guidePlan("script", { spine: parseSpine(spine) });
-  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, scriptShape(), SCRIPT_TASK].join("\n\n") + "\n";
-}
-
-const retryPrompt = (prompt: string, error: string): string =>
-  `${prompt}\n## Your previous reply was rejected\n\n${error}\n\nReply with the whole corrected object.\n`;
-
-/** Enough issues to fix the reply by, few enough that a reply in the wrong shape does not flood the run error. */
-const MAX_ISSUES = 25;
-const issueText = (issues: readonly z.core.$ZodIssue[]): string => {
-  const shown = issues.slice(0, MAX_ISSUES).map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
-  return [...shown, ...(issues.length > MAX_ISSUES ? [`and ${issues.length - MAX_ISSUES} more`] : [])].join("; ");
-};
-
-/** The reply's outermost JSON object, so a reply wrapped in a code fence or a sentence still parses. */
-function replyObject(text: string): unknown {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("no JSON object");
-  return JSON.parse(text.slice(start, end + 1));
-}
-
-const isObject = (value: unknown): value is Record<PropertyKey, unknown> => typeof value === "object" && value !== null;
-
-/** Deletes, in place, each key zod reports as unrecognized, and returns its dotted path. */
-function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
-  return issues.flatMap((issue) => {
-    if (issue.code !== "unrecognized_keys") return [];
-    const owner = issue.path.reduce<unknown>((node, key) => (isObject(node) ? node[key] : undefined), raw);
-    if (!isObject(owner)) return [];
-    for (const key of issue.keys) Reflect.deleteProperty(owner, key);
-    return issue.keys.map((key) => [...issue.path, key].join("."));
-  });
-}
-
-interface Checked {
-  script?: ScriptV1;
-  error?: string;
-  /** Keys the schema does not allow, dropped so the rest of the reply parses. */
-  stripped?: string[];
-}
-
-// The stage planned the spine under this structure, so the script records it whatever the reply says.
-const planned = (script: ScriptV1): ScriptV1 => ({ ...script, structure: GUIDE_PLAN_STRUCTURE });
-
-/**
- * The reply is checked here rather than through the CLI's `--json-schema`: that flag refuses the tuple keywords
- * ScriptSchema converts to, and zod refinements (unknown chapters, unspoken cues) never reach a JSON schema anyway.
- * A reply whose only faults are extra keys ("cues", "chips" on a beat) loses them rather than the whole script: the
- * schema retry was measured failing on the same keys again.
- */
-function checked(outcome: StepRunOutcome): Checked {
-  const result = parsedReply(outcome);
-  const fault = result.script ? cueKindFault(result.script) : undefined;
-  return fault ? { error: fault } : result;
-}
-
-/**
- * script/v1 admits a cue target of any kind, because a beat spec assigned later reads its targets as element ids, but a
- * draft's cue targets are `kind:label`: the item track counts them by kind, so the retry names the kind and the beat.
- */
-function cueKindFault(script: ScriptV1): string | undefined {
-  const kinds = Object.keys(CUE_KIND_ROLES).join(", ");
-  const faults = script.beats.flatMap((beat, i) =>
-    unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
-  );
-  return faults.length > 0 ? faults.join("; ") : undefined;
-}
-
-function parsedReply(outcome: StepRunOutcome): Checked {
-  if (!outcome.ok) return { error: outcome.error };
-  let raw: unknown;
-  try {
-    raw = replyObject(outcome.output);
-  } catch {
-    return { error: "the reply holds no JSON object" };
-  }
-  const parsed = ScriptSchema.safeParse(raw);
-  if (parsed.success) return { script: planned(parsed.data) };
-  const { issues } = parsed.error;
-  if (!issues.every((issue) => issue.code === "unrecognized_keys")) return { error: issueText(issues) };
-  const stripped = stripUnknownKeys(raw, issues);
-  const again = ScriptSchema.safeParse(raw);
-  return again.success ? { script: planned(again.data), stripped } : { error: issueText([...issues, ...again.error.issues]) };
-}
-
-const isSchemaFailure = (outcome: StepRunOutcome): boolean => outcome.ok || outcome.code === "schema_invalid";
-
-/** A stage that failed after spending: the route records the spend before the run fails, so the report still shows it. */
-export class StageFailure extends Error {
-  constructor(message: string, readonly usage: StageUsage, readonly retries = 0, readonly checks: readonly Check[] = []) {
-    super(message);
-    this.name = "StageFailure";
-  }
+  return promptFor(promptSections(spine, facts, scriptPlan(parseSpine(spine))));
 }
 
 export interface ScriptStageDeps {
   model: string;
+  /** The run's video type, stamped on the script; a run with no profile keeps the reply's, checked against the registry. */
+  profile?: string;
   runnerFor?: RunnerFor;
   /** The L0 checks the repair call answers; all of them by default. */
   l0Checks?: readonly L0Check[];
+  /** The g2p the repair's unknown-words row reads; the doctrine voice's by default. */
+  g2p?: Tokens;
   signal?: AbortSignal;
 }
 
-type Call = (prompt: string) => Promise<StepRunOutcome>;
-
-interface Draft extends Checked {
-  usage: StageUsage;
-  retried: boolean;
-}
-
-/** The first call, and one retry naming the schema issues when its reply does not parse. */
-async function draftScript(call: Call, prompt: string): Promise<Draft> {
-  const first = await call(prompt);
-  const result = checked(first);
-  if (result.script || !isSchemaFailure(first)) return { ...result, usage: stageUsage(first.usage), retried: false };
-  const second = await call(retryPrompt(prompt, result.error ?? ""));
-  return { ...checked(second), usage: addUsage(stageUsage(first.usage), stageUsage(second.usage)), retried: true };
-}
-
-const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
-
-function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1): string {
-  const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
-  const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
-  const found = (row: L0Result) => {
-    const hint = repairHint(row, script);
-    return hint ? `\n  Found: ${hint}` : "";
-  };
-  return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})${found(row)}`).join("\n");
-}
-
-const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string =>
-  `${prompt}\n## Your draft\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\`\n\n## Checks the draft fails\n\n${failures}\n\nFix what these checks name and keep the rest. Reply with the whole corrected object.\n`;
-
-interface Repair {
-  script: ScriptV1;
-  usage: StageUsage;
+interface Repair extends Repaired {
   check: Check;
-  /** The kept repair's dropped keys; absent while the draft is still the script. */
-  stripped?: string[];
 }
 
 /** A repair answers a few rows at a time well; measured on one video, one round left half of the error rows red. */
@@ -214,23 +88,19 @@ export const MAX_REPAIR_ROUNDS = 2;
  * Up to `MAX_REPAIR_ROUNDS` calls, each answering the current script's failing error-severity L0 rows. A reply is
  * kept only when it parses and fails fewer rows, so a round never makes the script worse.
  */
-async function repairScript(call: Call, prompt: string, draft: ScriptV1, lint: (script: ScriptV1) => L0Result[]): Promise<Repair | undefined> {
-  const first = failingErrors(lint(draft)).length;
-  if (first === 0) return undefined;
+async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, lint: Lint): Promise<Repair | undefined> {
+  const failing = (script: ScriptV1) => failingErrors(lint.rows(script));
+  if (failing(draft.script).length === 0) return undefined;
   const rules = loadRuleRegistry();
-  let script = draft;
-  let failing = failingErrors(lint(draft));
-  let usage = NO_USAGE;
-  let stripped: string[] | undefined;
-  for (let round = 0; round < MAX_REPAIR_ROUNDS && failing.length > 0; round++) {
-    const outcome = await call(repairPrompt(prompt, script, failureList(failing, rules, script)));
-    usage = addUsage(usage, stageUsage(outcome.usage));
-    const reply = checked(outcome);
-    const after = reply.script ? failingErrors(lint(reply.script)) : failing;
-    if (reply.script && after.length < failing.length) [script, failing, stripped] = [reply.script, after, reply.stripped ?? []];
-  }
-  const detail = `${first} failing error checks before repair, ${failing.length} after`;
-  return { script, usage, ...(stripped ? { stripped } : {}), check: { name: "l0-repair", gate: false, pass: failing.length === 0, detail } };
+  const repaired = await repairRounds(call, draft, {
+    rounds: MAX_REPAIR_ROUNDS,
+    failing,
+    prompt: (script, rows) => repairPrompt(prompt, script, failureList(rows, rules, script, lint)),
+    read: (outcome) => checked(outcome, plan),
+    settle: (script) => stampLedgerTerms(script, lint.spine, lint.rows),
+  });
+  const detail = `${repaired.before} failing error checks before repair, ${repaired.after} after`;
+  return { ...repaired, check: { name: "l0-repair", gate: false, pass: repaired.after === 0, detail } };
 }
 
 const SHOWN_KEYS = 10;
@@ -242,25 +112,61 @@ function unknownKeysCheck(stripped: readonly string[]): Check[] {
   return [{ name: "script-unknown-keys", gate: false, pass: false, detail: `dropped ${stripped.length} key(s) the schema does not allow: ${shown}` }];
 }
 
-/** One model call from spine and facts to a script/v1 draft, one retry that names schema issues, then the L0 repair rounds. */
-export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDeps): Promise<StageOutcome> {
-  const spineText = input.store.readText(need(input, "spine"));
-  const prompt = scriptPrompt(spineText, input.store.readText(need(input, "facts")));
-  const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
-  const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults: { harness: "claude-print", model: deps.model } });
-  const signal = deps.signal ?? new AbortController().signal;
-  const call: Call = (text) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
-  const draft = await draftScript(call, prompt);
+/** The single-call path: one draft call and its one retry, the ledger stamp, then the L0 repair rounds. */
+async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Lint): Promise<Written> {
+  const draft = await draftScript(call, prompt, wholeScript(plan));
   const retries = draft.retried ? 1 : 0;
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
+  const stamped = stampLedgerTerms(draft.script, lint.spine, lint.rows);
+  const repair = await repairScript(call, prompt, plan, stamped, lint);
+  return {
+    script: repair?.script ?? stamped.script,
+    stamps: repair?.stamps ?? stamped.stamps,
+    usage: repair ? addUsage(draft.usage, repair.usage) : draft.usage,
+    retries,
+    stripped: repair?.stripped ?? draft.stripped ?? [],
+    checks: repair ? [repair.check] : [],
+    notes: repair?.dropped ?? draft.dropped ?? [],
+  };
+}
+
+/** With `system`, the CLI sends it as its own system prompt block and caches it, so calls sharing it read it back. */
+function scriptCall(input: ModelStageInput, deps: ScriptStageDeps, system?: string): Call {
+  const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
+  const defaults = { harness: "claude-print" as const, model: deps.model, ...(system === undefined ? {} : { systemPrompt: system }) };
+  const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults });
+  const signal = deps.signal ?? new AbortController().signal;
+  return (text) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
+}
+
+/** A daily gather's coverage manifest, when the run gathered one. */
+const coverageOf = (input: ModelStageInput): CoverageManifest | undefined =>
+  input.artifacts.coverage === undefined ? undefined : parseCoverage(input.store.readText(input.artifacts.coverage));
+
+/**
+ * Spine and facts to a script/v1 draft, then the L0 repair rounds: in one call with one retry, or, for a long spine,
+ * one chapter per call (script-chunks.ts).
+ */
+export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDeps): Promise<StageOutcome> {
+  const spineText = input.store.readText(need(input, "spine"));
   const spine = parseSpine(spineText);
-  const repair = await repairScript(call, prompt, draft.script, (script) => runL0(script, undefined, deps.l0Checks ?? L0_CHECKS, undefined, spine));
-  const usage = repair ? addUsage(draft.usage, repair.usage) : draft.usage;
-  const stripped = repair?.stripped ?? draft.stripped ?? [];
-  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(stripped), ...(repair ? [repair.check] : [])];
-  const script = repair?.script ?? draft.script;
-  const companion = companionOutputs(input, script, spine);
-  return { outputs: { draft: putJson(input, script, "script"), ...companion.outputs }, usage, retries, checks, notes: companion.notes };
+  const plan = scriptPlan(spine, deps.profile);
+  const factsText = input.store.readText(need(input, "facts"));
+  const facts = claimFacts(factsText);
+  const coverage = coverageOf(input);
+  const l0Checks = withCoverage(withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts), coverage, facts);
+  const g2p = deps.g2p ?? doctrineG2p();
+  const rows = (script: ScriptV1) => [...runL0(script, undefined, l0Checks, undefined, spine), unknownWordsRow(g2p, spellScript(script))];
+  const lint: Lint = { rows, spine, g2p, ...(facts ? { facts } : {}), ...(coverage ? { coverage } : {}) };
+  const callFor = (system?: string) => scriptCall(input, deps, system);
+  const shared = sharedSections(spineText, plan, coverage);
+  const written = isChunked(spine)
+    ? await chunkedScript({ callFor, shared, spineText, facts: factsText, plan, lint, capUsd: input.remainingUsd })
+    : await wholeDraft(callFor(), promptFor(promptSections(spineText, factsText, plan, coverage)), plan, lint);
+  const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(written.stripped), ...stampCheck(written.stamps), ...written.checks];
+  const companion = companionOutputs(input, written.script, spine);
+  const notes = [...written.notes, ...(companion.notes ?? [])];
+  return { outputs: { draft: putJson(input, written.script, "script"), ...companion.outputs }, usage: written.usage, retries: written.retries, checks, notes };
 }
 
 /**
@@ -327,7 +233,8 @@ async function reportColdRubric(input: ModelStageInput, script: ScriptV1, deps: 
 export async function runEvalStage(input: ModelStageInput, deps: EvalStageDeps, l0Checks: readonly L0Check[] = L0_CHECKS): Promise<StageOutcome> {
   const script = readScript(input, "script");
   const spine = parseSpine(input.store.readText(need(input, "spine")));
-  const l0 = runL0(script, undefined, l0Checks, undefined, spine);
+  const facts = input.artifacts.facts === undefined ? undefined : claimFacts(input.store.readText(input.artifacts.facts));
+  const l0 = runL0(script, undefined, withCoverage(withClaimFacts(l0Checks, facts), coverageOf(input), facts), undefined, spine);
   const pace = paceRows(fromScriptV1(script), script.video.invariants ?? []);
   const checks = [verdict("l0", l0), verdict("pace", pace)];
   const red = checks.filter((check) => !check.pass);

@@ -19,8 +19,10 @@ export interface GuideDeps {
   qRules?: RuleRegistry;
   /** Overrides the shipped `doctrine/guides` directory. */
   guidesDir?: string;
-  /** Overrides the shipped structure registry; the guide reads its `design-journey` entry. */
+  /** Overrides the shipped structure registry; the guide reads its `structure` entry. */
   structures?: ReadonlyMap<string, NarrativeStructure>;
+  /** The structure the spine was picked under; `GUIDE_PLAN_STRUCTURE` by default. */
+  structure?: string;
   /** A parsed story spine; its rows and ledger are appended per act. */
   spine?: SpineV1;
 }
@@ -53,13 +55,13 @@ function renderSpineActs(spine: SpineV1): string {
 export const GUIDE_PLAN_STRUCTURE = JOURNEY_ORDER_STRUCTURE;
 
 /**
- * The planner's markdown guide for one stage of a `design-journey` video: the intro, the
- * prompt-safe rules of `sliceForStage`, then the structure's spine template. Code-enforced rules
+ * The planner's markdown guide for one stage of a video in one structure (`design-journey` by default): the intro,
+ * the prompt-safe rules of `sliceForStage`, then the structure's spine template. Code-enforced rules
  * never appear, so no threshold a lint checks can leak into a prompt.
  */
 export function guidePlan(stage: GuideStage, deps: GuideDeps = {}): string {
   const { registry = loadDoctrine(), qRules = loadRuleRegistry(), guidesDir = DEFAULT_GUIDES_DIR, spine } = deps;
-  const structure = structureFor(deps.structures ?? loadStructures(), GUIDE_PLAN_STRUCTURE);
+  const structure = structureFor(deps.structures ?? loadStructures(), deps.structure ?? GUIDE_PLAN_STRUCTURE);
   const { prompt } = sliceForStage(registry, qRules, { stage, structure: structure.id });
   const rules = prompt.length > 0 ? prompt.map(renderRule).join("\n") : "- (none)";
   const parts = [readGuide(guidesDir, "planner-v0.md"), `## Rules for the ${stage} stage\n\n${rules}`, `## Spine template\n\n${renderSpine(structure)}`];

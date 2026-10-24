@@ -631,6 +631,29 @@ describe("inbox owner-op", () => {
     expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: `${REPO}#7 is merged on GitHub, so there is nothing to act on` } });
   });
 
+  it("closes a deposit's close-pr at the previewed head, keeping the branch, and reads the PR closed next", async () => {
+    const op = { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD } as const;
+    await writeDeposit(path.join(dir, "deposits"), { depositId: "op-close-1", asker: ASKER, kind: "do", door: "one-way", summary: "Close the stale fixture PR", context: "", keys: [], command: "titan-factory shepherd waiting", op });
+    const closeId = depositItemId(ASKER, "op-close-1");
+    preview = (target) => openPreview(target, NEW_HEAD);
+    const posted: unknown[] = [];
+    const client: OwnerActionClient = {
+      post: async (actionId) => {
+        posted.push(opRecordShape.parse(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8"))));
+        preview = (target) => ({ ...openPreview(target, NEW_HEAD), pr: { ...openPreview(target, NEW_HEAD).pr, state: "closed", head: undefined } });
+        return { status: "pr-closed", closedHead: NEW_HEAD };
+      },
+    };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(closeId));
+    const { envelope } = await act(closeId, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ headSha: NEW_HEAD, effect: `Close ${REPO}#7 at abcdef1 on GitHub; the branch is kept and reopen is one click` });
+    expect(posted).toEqual([{ op: { ...op, headSha: NEW_HEAD } }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "pr-closed" }, message: "PR closed at abcdef1; its branch is kept", next: { state: "closed" } } });
+  });
+
   it("offers no action for an op the authority table denies the console", async () => {
     await depositMergeOp();
     preview = (op) => openPreview(op, HEAD, "deny");

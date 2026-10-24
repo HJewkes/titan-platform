@@ -18,6 +18,7 @@ export const MAX_DEPOSIT_BYTES = 64 * 1024;
 const MAX_FILE_NAME_BYTES = 255;
 const DEPOSIT_SUFFIX = ".json";
 const ANSWER_SUFFIX = ".answer.json";
+const WITHDRAWN_SUFFIX = ".withdrawn";
 const answerSchema = ownerItemSchema.shape.answer.unwrap();
 
 export type WriteResult = { file: string; created: boolean };
@@ -82,6 +83,14 @@ export function depositFileName(asker: string, depositId: string): string {
 /** The answer's file name: `<id>.answer.json` beside the deposit, with the item id encoded. */
 export function answerFileName(id: string): string {
   return checkedName(rawAnswerName(id));
+}
+
+/**
+ * The withdrawal marker's file name: `<id>.withdrawn` beside the deposit. It carries no `.json`
+ * suffix, so a reader that predates withdrawal never mistakes it for a deposit.
+ */
+export function withdrawnFileName(id: string): string {
+  return checkedName(`${encodeNamePart(id)}${WITHDRAWN_SUFFIX}`);
 }
 
 /**

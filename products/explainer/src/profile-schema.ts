@@ -35,8 +35,9 @@ const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-cas
 const Seconds = z.number().int().nonnegative();
 const Band = z.tuple([Seconds, Seconds]);
 
+/** `labels` is how the block's beats write `visual.labels` so the host bridge's views fire; the script prompt carries it. */
 const BlockSchema = z
-  .object({ id: Kebab, goal: z.string().min(1), seconds: Band, beats: z.array(Kebab).min(1), require: z.array(Kebab).optional() })
+  .object({ id: Kebab, goal: z.string().min(1), seconds: Band, beats: z.array(Kebab).min(1), require: z.array(Kebab).optional(), labels: z.string().min(1).optional() })
   .strict();
 
 /** One heuristic row: a registered structure, and the profile's own wording of its fit question. */
@@ -104,6 +105,8 @@ export const TypeProfileSchema = z
     audition: z.object({ k: z.number().int().min(3), storyboardOnly: z.literal(true) }).strict(),
     /** Where the script stage's spine comes from: `audition-pick` writes one from the pick; absent, the run is given one. */
     spine: z.object({ from: z.literal("audition-pick") }).strict().optional(),
+    /** The host bridge this type renders through, `bridges/<name>.json` in the host's data dir; absent, the run data dir's `bridge.json`. */
+    bridge: Kebab.optional(),
     layers: z.object({ customMin: z.number().int().nonnegative(), templateMaxShare: Share, componentMaxShare: Share }).strict(),
     variety: z.object({ window: z.number().int().positive(), minFramings: z.number().int().positive(), ngram: z.number().int().positive(), mode: z.enum(["warn", "gate"]) }).strict(),
     pacing: z.object({ pictureChangeMaxS: z.number().positive(), staticMaxS: z.number().positive(), held: Band, reHookS: Band }).strict(),

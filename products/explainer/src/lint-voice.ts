@@ -1,6 +1,6 @@
 import type { L0Check, L0Input, L0Result } from "./eval-l0.js";
 import { countRow, maskEntities, repoEntities, ruleRow, sentencesOf, wordsOf } from "./lint-text.js";
-import type { ScriptBeat } from "./script-schema.js";
+import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
 
 // Lexicons are heuristics a judge backs up (L1 J1). Paraphrases evade them on purpose: the held-out
 // synonym list lives with the judge, never here, so a writer cannot be tuned against it.
@@ -126,3 +126,19 @@ export function voiceCheckWith(entities: readonly string[] = [], { speechClean }
 }
 
 export const voiceCheck: L0Check = voiceCheckWith();
+
+const SENTENCE_RULES: Readonly<Record<string, (text: string, entities: readonly string[]) => boolean>> = {
+  "Q-V1": (text, entities) => isProcess(text, entities),
+  "Q-V3": (text) => VERDICT.test(text),
+  "Q-V5": (text, entities) => SIGNPOST.test(text) || VERDICT.test(text) || MAKERS_WE.test(text) || isProcess(text, entities),
+  "Q-V7": (text) => BANNED.some((pattern) => pattern.test(text)),
+  "Q-V9": (text) => wordsOf(text).length > MAX_SENTENCE_WORDS,
+};
+
+/** The spoken sentences of `beats` that a sentence-level voice rule matches, so a repair hint can quote them. */
+export function offendingSentences(check_id: string, script: ScriptV1, beats: readonly ScriptBeat[]): { beat: string; text: string }[] {
+  const rule = SENTENCE_RULES[check_id];
+  if (!rule) return [];
+  const known = repoEntities(script);
+  return sentences(beats).filter(({ text }) => rule(text, known)).map(({ beat, text }) => ({ beat: beat.id, text }));
+}

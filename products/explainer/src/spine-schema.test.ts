@@ -86,4 +86,30 @@ describe("parseSpine reads the story-spine template into spine/v1", () => {
   it("names the section of a row with the wrong number of cells", () => {
     expect(() => parseSpine(spine(`${LEDGER}\n| Ledger | part | c2-3 |`))).toThrow(/§6 \(ledger\) row 3 has 3 cells, expected 4/);
   });
+
+  it("reads no structure and no chapter beats from a planner's spine that writes neither", () => {
+    const parsed = parseSpine(spine());
+
+    expect(parsed.structure).toBeUndefined();
+    expect(parsed.chapters[0]).not.toHaveProperty("beat");
+  });
+
+  it("reads a Structure line and a fourth §8 column as each chapter's lead beat, a dash as none", () => {
+    const withBoth = spine()
+      .replace("## 1. Viewer", "Structure: scqa\n\n## 1. Viewer")
+      .replace("| Ch | Question | Spine rows it covers |\n|---|---|---|", "| Ch | Question | Spine rows it covers | Beat |\n|---|---|---|---|")
+      .replace("| §3.1, §3.2 |", "| §3.1, §3.2 | verdict-card |\n| ch3 | What next? | §3.2 | — |");
+
+    const parsed = parseSpine(withBoth);
+
+    expect(parsed.structure).toBe("scqa");
+    expect(parsed.chapters).toEqual([
+      { chapter: "ch2", question: "How does a parcel get a label?", rows: ["§3.1", "§3.2"], beat: "verdict-card" },
+      { chapter: "ch3", question: "What next?", rows: ["§3.2"] },
+    ]);
+  });
+
+  it("still refuses a §8 row of five cells", () => {
+    expect(() => parseSpine(spine().replace("| §3.1, §3.2 |", "| §3.1, §3.2 | list | extra |"))).toThrow(/§8 \(chapters\) row 1 has 5 cells, expected 3 or 4/);
+  });
 });

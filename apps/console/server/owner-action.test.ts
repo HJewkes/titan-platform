@@ -52,6 +52,8 @@ describe("factoryOwnerAction", () => {
     [200, { outcome: "accepted", runId: RUN }, { status: "accepted", runId: RUN }],
     [200, { outcome: "retired", name: "item-42", caveats: ["the process had already exited"] }, { status: "retired", name: "item-42", caveats: ["the process had already exited"] }],
     [200, { outcome: "already", name: "item-42" }, { status: "already", name: "item-42" }],
+    [200, { outcome: "pr-closed", closedHead: HEAD }, { status: "pr-closed", closedHead: HEAD }],
+    [200, { outcome: "already", closedHead: HEAD }, { status: "already", closedHead: HEAD }],
     [409, { outcome: "moved", currentHead: HEAD }, { status: "moved", currentHead: HEAD }],
     [409, { outcome: "moved", currentAgentId: "77aa0011" }, { status: "moved", currentHead: null, currentAgentId: "77aa0011" }],
     [410, { outcome: "gone", reason: "no gate" }, { status: "gone", reason: "no gate" }],
@@ -72,6 +74,7 @@ describe("factoryOwnerAction", () => {
     ["an accepted with no run id", 200, { outcome: "accepted" }],
     ["a retired with no caveats list", 200, { outcome: "retired", name: "item-42" }],
     ["a 503 the factory could not reach agent-chat", 503, { outcome: "refused", reason: "agent-chat-unavailable", detail: "broker down" }],
+    ["a pr-closed with no closed head", 200, { outcome: "pr-closed" }],
     ["a redirect", 302, {}],
   ])("reads %s as unreachable, so a retry may land", async (_, status, body) => {
     const port = await factoryAnswering(status, body, status === 302 ? { location: "http://127.0.0.1:1/elsewhere" } : {});

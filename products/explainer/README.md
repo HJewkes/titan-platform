@@ -119,6 +119,8 @@ custom layer that declares anchors adds `custom-layer` on them, and an undeclare
 is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lints read
 (`collisions`, `emptySpace`), and `anchorFindings` reports QA findings by beat, mark and anchor.
 `writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
+`stage-empty-checks.ts` (`emptyStageRuns`) fails a beat whose stage rect holds no content box (decor excluded) for more than
+`MAX_EMPTY_STAGE_SECONDS` (3 s) of sampled moments; the host's measure step feeds it one `StageMoment` per beat and time.
 
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
@@ -160,7 +162,7 @@ Q-V10 (`heteronymCheck`) runs `@titan-design/speech-vet`'s heteronym table over 
 or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trusted, not verified.
 
 `explainer eval l0 <script.json> --config <id> [--rules <registry>] [--bench <dir>]
-[--layout <layout.json>] [--timing <words.json>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
+[--layout <layout.json>] [--timing <words.json>] [--facts <facts>] [--parent <sha>] [--fail-on-ghosts] [--speech-vet]` runs the deterministic L0 checks
 (`L0_CHECKS`: the map, why, evidence, voice, flow, pace, heteronym and visual-kind lints; the map lints need `--layout` and are
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
@@ -232,13 +234,33 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 |---|---|---|
 | `gather` | in-process: the profile's gather body (`gatherDaily`, `gatherPr` or `gatherArticle`) on the run's gather request, which is the stage's key, written into its gather directory as well. A `gatherPr` gather refuses a head other than the one the gate named, and also stores `code` (`{ files }`, each changed file the head still has) for resolve's code citations. Optional: a run takes it only when it starts there, with `--from gather --facts-from <adapter>` (the type's profile, and so the audition's, by default); re-gathering the same request needs `--sample gather=<k>` | (the outside world) → facts, code |
 | `audition` | in-process: the material map and the fit predicates, then one sampling call for k spines, code scores, the reported-only cold-viewer rubric per candidate, and the pick (below). Optional: a run takes it only when it starts there, with `--from audition --profile <type>` | facts → material-map, audition, and spine for a profile with `spine: { from: audition-pick }` |
-| `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow loses those keys (reported as `script-unknown-keys`), any other fault gets one retry naming the schema issues, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
+| `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
 | `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them) → resolved |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
+
+**Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
+call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
+bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt
+cache and each later call reads it. The prompt then holds that chapter's facts slice (`script-facts.ts`: the rows the
+facts table's Beats column or the spine's Cites table places in this chapter, plus every row placed nowhere), what is
+written so far (the video fields, the glossary, the names declared in `new_terms`, the beats' planned seconds and the
+last beat), and that chapter's task. The whole-video round gets the whole facts pack, and L0 always reads all of it.
+The first chapter writes the video fields; a later one adds only glossary entries. Each chapter gets one schema or
+word-budget retry and up to `CHAPTER_REPAIR_ROUNDS` repair calls on the rules `rules.yaml` marks `scope: chapter`,
+measured on the chapters so far with the unwritten ones as bare entries. A repair round shows the whole chapter but
+asks back only the beats its failing rows name (`chapter-patch.ts`), keyed by beat id; they are spliced in place, ids
+and order kept, and the chapter's rules run again on the spliced chapter. A reply naming any other set of beats is
+rejected and retried once in the same round, never merged. A round with a row that names the chapter rather than a beat
+(Q-W3, Q-W4 or Q-W6 when the chapter lacks the beat they read, Q-W10, Q-V4 on a "Chapter ..." label) asks back the
+whole chapter as before. The chapters then join in the spine's order,
+the ledger stamp runs, and the whole script gets one repair round (`VIDEO_REPAIR_ROUNDS`) whose reply lists only the beats
+and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `unknown-words`, `word-budget`, `runtime`)
+run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
+dollars and prompt-cache tokens read and written, and the path stops itself at the run's spend cap between calls.
 
 **The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
 script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`
@@ -282,7 +304,10 @@ the commands run), `outputs` (name → path, `tree: true` for a directory) and `
 with `gate: false` is reported only, so its non-zero exit records a failed verdict and the commands after it still
 run), plus `vars`, the defaults for `{var.<name>}`
 tokens a stage variant may set. `{workdir}`, `{in.<name>}` and `{out.<name>}` expand to absolute paths. `theater`
-names the folder, the file stem and the suffix per artifact for `export`. A bridged stage's `inputs` are also its
+names the folder, the file stem and the suffix per artifact for `export`; `--theater <dir>` links into another folder
+instead. A type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads
+`bridges/<name>.json` from the per-user explainer data dir, whatever `--data-dir` says, so one host bridge serves
+every run of the type with no per-run copy. A bridged stage's `inputs` are also its
 cache key: declare every artifact its commands read (the MP4 for `qa` and `sheets`), or a new render will hit an old
 QA entry.
 
@@ -294,7 +319,7 @@ skipped with a note.
 
 | Stage | Gate | Reported |
 |---|---|---|
-| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints included); `pace` (error-severity pace rows) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
 | `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
 
 **Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
@@ -309,7 +334,7 @@ its spend is the script stage's. It is reported, never a gate: with no threshold
 it ran with; use `--sample script=<k>` to run the check on a draft already made. `explainer eval listener` runs the
 same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
-| `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced | — |
+| `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render`, `qa`, `sheets` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
@@ -510,6 +535,19 @@ id. Q-E18 (FB6) fails an invariant (a §3 invariant column or `video.invariants`
 mechanism for and that has no "breaks today" fact id. `explainer eval l0 <script> --spine <spine.md>`
 reads the spine for all of these; without `--spine`, or for Q-E15 under another structure, a rule claiming the
 skipped check is not a ghost.
+
+`claimsCheckWith(facts)` (`src/lint-claims.ts`) runs Q-E20 over gathered facts of any profile. It reads each beat's
+spoken line, headline, labels and chips, with spelled numbers read as digits ("PD-three hundred ten" is PD-310).
+A pull request (`PR 12`, `#12`, `owner/repo#12`, or a short repo such as `ac#12`) or a task id must appear in some
+fact's id or fields. A count, a number with a known noun or a state ("three open PRs", "79 merged"), must equal a
+value in a fact the beat cites, or the number of cited facts that carry its noun and state; a beat that cites
+none reads every fact. Ordinals and durations never read as counts; `NOT_A_CLAIM` skips an index ("chapter 2
+merged"), a year after "in" or "since", and a pronoun "one" ("which one merged"). Each
+unbacked claim is a `claimFindings` row naming the beat, the claim and the nearest fact, and the error row fails
+those beats. The registered `claimsCheck` has no facts, so it emits a passing Q-E20 warning that says the check
+did not run. Every L0 call site swaps it for `claimsCheckWith` over the gathered facts (`src/claim-facts.ts`): the
+script, rewrite and eval stages read the run's `facts` artifact, and `eval l0 --facts` reads a daily `digest.json`
+or a facts pack. The script stage's repair hint then names the nearest fact for each unbacked claim.
 
 `explainer eval calibrate <rows...> --labels <labels.json> [--script-sha <sha>] [--format
 table|json]` scores check rows against a `labels/v1` labelled set

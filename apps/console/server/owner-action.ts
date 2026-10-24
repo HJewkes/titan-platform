@@ -3,7 +3,8 @@
  * the console's own record file `<actionsDir>/<id>.json`. The console depends on the factory only across this HTTP call, so the
  * response shapes are pinned here, not imported: `resolved` and `already` for a gate, `released` and `already` for an owner-asked
  * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, `retired` and
- * `already` for a `retire-agent` op, and `moved`, `gone` and `refused` for any of them.
+ * `already` for a `retire-agent` op, `pr-closed` and `already` (each with the closed head) for a `close-pr` op, and `moved`,
+ * `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -15,7 +16,8 @@ export type ActionOutcome =
   | { status: "released"; runId: string; stillHeld: string | null }
   | { status: "accepted"; runId: string }
   | { status: "retired"; name: string; caveats: string[] }
-  | { status: "already"; gateId?: string; runId?: string; name?: string }
+  | { status: "pr-closed"; closedHead: string }
+  | { status: "already"; gateId?: string; runId?: string; name?: string; closedHead?: string }
   | { status: "moved"; currentHead: string | null; currentAgentId?: string }
   | { status: "gone"; reason: string }
   | { status: "refused"; reason: string; detail?: string }
@@ -36,6 +38,7 @@ const routeBody = z.looseObject({
   name: z.string().optional(),
   caveats: z.array(z.string()).optional(),
   currentAgentId: z.string().optional(),
+  closedHead: z.string().optional(),
   reason: z.string().optional(),
   detail: z.string().optional(),
   error: z.string().optional(),
@@ -45,12 +48,13 @@ type RouteBody = z.infer<typeof routeBody>;
 
 const unreachable = (detail: string): Unreachable => ({ status: "unreachable", detail });
 
-function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats }: RouteBody): ActionOutcome | undefined {
+function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
   if (outcome === "accepted" && runId) return { status: "accepted", runId };
   if (outcome === "retired" && name && caveats) return { status: "retired", name, caveats };
-  if (outcome === "already" && (gateId || runId || name)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }), ...(name && { name }) };
+  if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
+  if (outcome === "already" && (gateId || runId || name || closedHead)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }), ...(name && { name }), ...(closedHead && { closedHead }) };
   return undefined;
 }
 

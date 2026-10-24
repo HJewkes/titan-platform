@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import { z } from "zod";
+import { UPDATE_ALARM_ASKER, UPDATE_ALARM_KEY } from "./alarm.js";
 import { releaseCli, withTail, type NodeRun } from "./release-smoke.js";
 import { writeShim } from "./shim.js";
 import type { CommandResult, UpdatePorts } from "./update.js";
@@ -210,6 +212,7 @@ export function nodeUpdatePorts(inboxDir: string): UpdatePorts {
     runNode: (script, args) => runNode(script, args),
     servedSha: (port, want) => pollSha(port, want),
     alarm: async (deposit) => void (await writeDeposit(inboxDir, deposit)),
+    resolveAlarms: async () => (await withdrawMatching(inboxDir, { asker: UPDATE_ALARM_ASKER, actor: UPDATE_ALARM_ASKER, keys: [UPDATE_ALARM_KEY], reason: "resolved" })).length,
     log: (line) => console.log(line),
     now: Date.now,
   };

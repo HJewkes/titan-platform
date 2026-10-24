@@ -7,7 +7,9 @@ import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
-import type { ScriptV1 } from "../script-schema.js";
+import { loadProfiles } from "../profile-load.js";
+import { beatsFor } from "../script-budget.js";
+import type { ScriptBeat, ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
 import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
@@ -132,17 +134,70 @@ export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
   return { exec, calls };
 }
 
-interface FakeScriptModel {
+export interface FakeScriptModel {
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
   prompts: string[];
   budgets: number[];
 }
 
+const LEAD_LINE = /^- (\S+): ([a-z0-9-]+) \(emphasis targets: ([^)]+)\)/gm;
+
+/** `script` with its chapters, in order, under the ids the prompt's lead beats name, as a model keeping the spine's ids would. */
+function withLeadChapters(script: ScriptV1, ids: readonly string[]): ScriptV1 {
+  if (ids.length !== script.chapters.length || ids.every((id) => script.chapters.some((chapter) => chapter.id === id))) return script;
+  const renamed = new Map(script.chapters.map((chapter, i) => [chapter.id, ids[i]!]));
+  const chapters = script.chapters.map((chapter) => ({ ...chapter, id: renamed.get(chapter.id)! }));
+  return { ...script, chapters, beats: script.beats.map((beat) => ({ ...beat, chapter: renamed.get(beat.chapter)! })) };
+}
+
+/** `script` with each lead beat the prompt lists on its chapter's first beat, cued once per target on a word it speaks. */
+function withLeadBeats(written: ScriptV1, prompt: string): ScriptV1 {
+  const leads = new Map([...prompt.matchAll(LEAD_LINE)].map(([, chapter, spec, targets]) => [chapter!, { spec: spec!, targets: targets!.split(", ") }]));
+  const script = withLeadChapters(written, [...leads.keys()]);
+  const beats = script.beats.map((beat) => {
+    const lead = leads.get(beat.chapter);
+    if (!lead || script.beats.find((b) => b.chapter === beat.chapter) !== beat) return beat;
+    const word = beat.spoken.split(/\s+/).find((w) => /^[A-Za-z]+$/.test(w))!;
+    const cues = lead.targets.map((target) => ({ action: "V6" as const, target: `${target}-1`, atCue: word }));
+    return { ...beat, visual: { ...beat.visual, beat: lead.spec, cues } };
+  });
+  return { ...script, beats };
+}
+
+const PROMPT_RUNTIME = /plannedS sum to about (\d+) s/;
+
+/**
+ * `script` with its beats' plannedS scaled to the runtime the prompt names, else its own profile's target, and each beat
+ * the scaling pushes past Q-F8's band split; a script whose profile is unknown and a prompt naming no runtime leave it as written.
+ */
+function atTargetRuntime(script: ScriptV1, prompt: string): ScriptV1 {
+  const named = PROMPT_RUNTIME.exec(prompt)?.[1];
+  const targetS = named ? Number(named) : loadProfiles().profiles.get(script.profile)?.runtime.targetS;
+  if (targetS === undefined) return script;
+  const total = script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
+  const scale = targetS / total;
+  const beats = script.beats.map((beat) => ({ ...beat, plannedS: Math.round(beat.plannedS * scale) }));
+  return { ...script, beats: beats.flatMap(splitBeat) };
+}
+
+/** A beat over Q-F8's band as the script stage's beat plan splits it: the first part keeps its id, each continuation beat repeats its words. */
+function splitBeat(beat: ScriptBeat): ScriptBeat[] {
+  const parts = beat.function === "CLOSE" ? 1 : beatsFor(beat.plannedS);
+  const each = Math.floor(beat.plannedS / parts);
+  return Array.from({ length: parts }, (_, i) => ({
+    ...beat,
+    id: i === 0 ? beat.id : `${beat.id}-${i + 1}`,
+    plannedS: i === 0 ? beat.plannedS - each * (parts - 1) : each,
+  }));
+}
+
 /** The script model: answers with `script`, after `invalid` replies that fail the schema, at `usd` a call. */
 /** `invalidReply` is what each of the first `invalid` calls answers; by default the script with no chapters. */
+/** `followLeads` places the prompt's lead beats on the reply, as a model following the prompt would. */
+/** Each reply plans the prompt's target runtime unless `asWritten` keeps the script's own plannedS. */
 export function fakeScriptModel(
   script: ScriptV1 = choppy(),
-  options: { invalid?: number; invalidReply?: unknown; usd?: number; repaired?: ScriptV1 } = {},
+  options: { invalid?: number; invalidReply?: unknown; usd?: number; repaired?: ScriptV1; followLeads?: boolean; asWritten?: boolean } = {},
 ): FakeScriptModel {
   const prompts: string[] = [];
   const budgets: number[] = [];
@@ -153,7 +208,9 @@ export function fakeScriptModel(
       prompts.push(input.prompt);
       budgets.push(runner.maxBudgetUsd);
       if (bad-- > 0) return { ok: true, output: JSON.stringify(options.invalidReply ?? { ...script, chapters: [] }), usage };
-      const reply = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      const written = options.repaired && input.prompt.includes("## Checks the draft fails") ? options.repaired : script;
+      const answer = options.asWritten ? written : atTargetRuntime(written, input.prompt);
+      const reply = options.followLeads ? withLeadBeats(answer, input.prompt) : answer;
       return { ok: true, output: `Here is the script.\n\n\`\`\`json\n${JSON.stringify(reply)}\n\`\`\`\n`, usage };
     },
   });
@@ -161,7 +218,7 @@ export function fakeScriptModel(
 }
 
 /** The decision brief's two models: the sampling call answers the audition's prompt, `script` the script stage's. */
-export function fakeBriefModels(script = fakeScriptModel()): FakeScriptModel & { script: FakeScriptModel } {
+export function fakeBriefModels(script = fakeScriptModel(choppy(), { followLeads: true })): FakeScriptModel & { script: FakeScriptModel } {
   const audition = fakeAuditionModel();
   const runnerFor = (options: AgentRunnerOptions) => {
     const sampler = audition.runnerFor(options);

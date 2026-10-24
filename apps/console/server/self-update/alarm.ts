@@ -1,4 +1,4 @@
-import type { OwnerItemDeposit } from "@titan-design/owner-queue";
+import { alarmKey, type OwnerItemDeposit } from "@titan-design/owner-queue";
 
 /** `build` and `handoff` are recorded by the bootstrap (deploy/titan-console-bootstrap.mts), the rest by the updater. */
 export const FAILURE_STAGES = ["build", "handoff", "smoke", "restart", "rollback"] as const;
@@ -11,6 +11,10 @@ interface UpdateFailure {
   serving: string;
   why: string;
 }
+
+/** Who files an update failure and the key it carries; a verified update withdraws every open deposit with both. */
+export const UPDATE_ALARM_ASKER = "titan-console";
+export const UPDATE_ALARM_KEY = "console-update";
 
 const SUMMARY_MAX = 280;
 const CONTEXT_MAX = 1500;
@@ -31,17 +35,18 @@ function lead(failure: UpdateFailure): string {
 
 /**
  * The owner-queue item the factory's deploy incident also files. Keyed on the target and stage, so the
- * timer's retries of one broken sha file one item, and a newer main sha files its own.
+ * timer's retries of one broken sha file one item, and a newer main sha files its own. The alarm key folds
+ * every open update failure into the newest one in the inbox.
  */
 export function failureDeposit(failure: UpdateFailure): OwnerItemDeposit {
   return {
     depositId: `console-update-${short(failure.target)}-${failure.stage}`,
-    asker: "titan-console",
+    asker: UPDATE_ALARM_ASKER,
     kind: "do",
     door: "two-way",
     summary: oneLine(`${failure.stage === "rollback" ? "CONSOLE MAY BE DOWN: " : ""}console update to ${short(failure.target)} failed (${failure.stage})`, SUMMARY_MAX),
     context: oneLine(`${lead(failure)} Why: ${failure.why}. The updater holds this sha until a newer main commit lands.`, CONTEXT_MAX),
     command: "journalctl --user -u titan-console-update.service -n 200",
-    keys: ["console-update"],
+    keys: [UPDATE_ALARM_KEY, alarmKey(UPDATE_ALARM_KEY)],
   };
 }

@@ -39,6 +39,10 @@ tokens[1];                   // { text: "live", tag: "VBP", phonemes: "lˈɪv", 
 misakiToIpa(phonemes);       // IPA, stress kept
 ttsTokens(tokens);           // speech-tts TtsToken[]: null phonemes become "" (Kokoro's unk)
 g2p.version;                 // "misaki-0.9.4+<16 hex>", a cache key
+
+const named = misakiEnglish({ words: { ffmpeg: "ˌɛfˌɛfˌɛmpˈɛɡ" } });
+named.tokens("Run FFmpeg.")[1]; // { text: "FFmpeg", phonemes: "ˌɛfˌɛfˌɛmpˈɛɡ", ... }
+named.version;               // the base version plus "+words.<12 hex>"
 ```
 
 ## What it deliberately does not do
@@ -53,6 +57,9 @@ g2p.version;                 // "misaki-0.9.4+<16 hex>", a cache key
 
 ## Gotchas
 
+- `words` match case-insensitively and win over everything else, golds and special cases
+  included, so a `words` entry for `the` or `live` replaces misaki's context-aware reading.
+  The phonemes are used verbatim: no stress shift for capitals and no -s, -ed or -ing stems.
 - Without a `fallback`, out-of-lexicon words read as `phonemes: null`, and a compound such as
   `file_name.txt` or `usr/local/bin` keeps only its known parts. Kokoro skips the missing
   sounds silently, so warn on `phonemes === null` before synthesis. On a 2,839-unit test

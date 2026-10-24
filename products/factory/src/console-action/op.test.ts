@@ -10,7 +10,7 @@ const CONFIRM = `action:${"d".repeat(64)}`;
 
 function memoryLedger(): OwnerOpsLedger & { entries: LedgerEntry[] } {
   const entries: LedgerEntry[] = [];
-  return { entries, append: async (entry) => void entries.push(entry) };
+  return { entries, append: async (entry) => void entries.push(entry), read: async (actionId) => entries.filter((entry) => entry.actionId === actionId) };
 }
 
 /** The effects these tests run read no context. */

@@ -1,7 +1,7 @@
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
 import { labelKey } from "./pace-items.js";
-import type { ScriptV1 } from "./script-schema.js";
+import { checksScopedAway, shippedRuleRegistry, type ScriptScope } from "./rules.js";
 import type { SpineV1 } from "./spine-schema.js";
 
 const JOURNEY_SECTION = 3;
@@ -12,9 +12,6 @@ export const SPINE_CHECK_IDS: ReadonlySet<string> = new Set(["Q-E15", "Q-E18"]);
 
 /** The structure whose journey-then-architecture order Q-E15 enforces (owner-FB1.2). */
 export const JOURNEY_ORDER_STRUCTURE = "design-journey";
-
-// A legacy script names no structure; it keeps the Q-E15 it always had.
-const journeyOrderApplies = ({ structure }: Pick<ScriptV1, "structure">): boolean => structure === undefined || structure === JOURNEY_ORDER_STRUCTURE;
 
 const row = (check_id: string, beats: readonly string[]): L0Result =>
   ruleRow(check_id, { value: beats.length, threshold: 0, pass: beats.length === 0, beats, mode: "tagged", severity: "error" });
@@ -77,15 +74,15 @@ export function invariantSeatRow(spine: SpineV1, videoInvariants: readonly strin
   return row("Q-E18", [...unseatedJourney(spine), ...unseatedVideo(spine, videoInvariants)]);
 }
 
-/** The spine check ids `spineCheck` skips for this script: all of them without a spine, and Q-E15 for another structure. */
-export function skippedSpineChecks(script: Pick<ScriptV1, "structure">, hasSpine: boolean): Set<string> {
-  if (!hasSpine) return new Set(SPINE_CHECK_IDS);
-  return new Set(journeyOrderApplies(script) ? [] : ["Q-E15"]);
+/** The check ids a run skips for this script: the spine ones without a spine, and every rule scoped away from it (Q-E15 among them). */
+export function skippedSpineChecks(script: ScriptScope, hasSpine: boolean): Set<string> {
+  const scoped = checksScopedAway(shippedRuleRegistry(), script);
+  return hasSpine ? scoped : new Set([...scoped, ...SPINE_CHECK_IDS]);
 }
 
 /** The spine order and seat lints. With no spine there is nothing to read, so no rows (unlike the ledger rows, no profile requires these). */
 export const spineCheck: L0Check = ({ script, spine }) => {
   if (!spine) return [];
   const seats = invariantSeatRow(spine, script.video.invariants ?? []);
-  return journeyOrderApplies(script) ? [journeyOrderRow(spine), seats] : [seats];
+  return [journeyOrderRow(spine), seats];
 };
