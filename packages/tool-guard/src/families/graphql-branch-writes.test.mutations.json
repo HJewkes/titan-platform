@@ -9,6 +9,33 @@
       "kills": [
         "graphqlBranchWrites cost on crafted texts reads commented id keys with work linear in their length"
       ]
+    },
+    {
+      "name": "deleteRepositoryRuleset is not a branch mutation",
+      "file": "packages/tool-guard/src/families/graphql-branch-writes.ts",
+      "find": "|updateRepositoryRuleset|deleteRepositoryRuleset)\\b/g;",
+      "replace": "|updateRepositoryRuleset)\\b/g;",
+      "kills": [
+        "graphqlBranchWrites, mutations that change rulesets reads deleteRepositoryRuleset by ruleset id as an unknown write"
+      ]
+    },
+    {
+      "name": "a mutation name may run on into a longer name",
+      "file": "packages/tool-guard/src/families/graphql-branch-writes.ts",
+      "find": "|deleteRepositoryRuleset)\\b/g;",
+      "replace": "|deleteRepositoryRuleset)/g;",
+      "kills": [
+        "graphqlBranchWrites, mutations that change rulesets reads a longer name as no mutation"
+      ]
+    },
+    {
+      "name": "a ruleset mutation's target reads as known",
+      "file": "packages/tool-guard/src/families/graphql-branch-writes.ts",
+      "find": "  \"deleteBranchProtectionRule\",\n  ...RULESET_MUTATIONS,\n]);",
+      "replace": "  \"deleteBranchProtectionRule\",\n]);",
+      "kills": [
+        "graphqlBranchWrites, mutations that change rulesets reads createRepositoryRuleset on a feature-only include as an unknown write"
+      ]
     }
   ]
 }

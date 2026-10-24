@@ -176,6 +176,33 @@ describe("graphqlBranchWrites, mutations that change branch protection", () => {
   });
 });
 
+describe("graphqlBranchWrites, mutations that change rulesets", () => {
+  const CREATE = (include: string) =>
+    `mutation{createRepositoryRuleset(input:{sourceId:"R",name:"n",target:BRANCH,enforcement:ACTIVE,conditions:{refName:{include:[${include}],exclude:[]}}}){ruleset{id}}}`;
+  const UPDATE = 'mutation{updateRepositoryRuleset(input:{repositoryRulesetId:"RRS",enforcement:DISABLED}){ruleset{id}}}';
+  const DELETE = 'mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}';
+
+  it.each([
+    ["createRepositoryRuleset", "on the default branch", CREATE('"~DEFAULT_BRANCH"'), ""],
+    ["updateRepositoryRuleset", "by ruleset id", UPDATE, ""],
+    ["deleteRepositoryRuleset", "by ruleset id", DELETE, ""],
+    ["createRepositoryRuleset", "on a feature-only include", CREATE('"refs/heads/feat/*"'), ""],
+    ["deleteRepositoryRuleset", "behind an alias", DELETE.replace("{delete", "{x: delete"), ""],
+    ["deleteRepositoryRuleset", "escaped in an --input body", `{"query":"mutation{${BS}u0064eleteRepositoryRuleset(input:{repositoryRulesetId:${BS}"RRS${BS}"}){clientMutationId}}"}`, ""],
+    ["deleteRepositoryRuleset", "in a -F query beside an {owner} fill", `${DELETE} # "{owner}"`, ""],
+  ])("reads %s %s as an unknown write", (name, _how, query, vars) => {
+    expect(read(query, vars)).toMatchObject({ mutations: [name], unknown: true });
+  });
+
+  it.each([
+    ["a longer name", 'mutation{deleteRepositoryRulesetX(input:{repositoryRulesetId:"RRS"}){clientMutationId}}', ""],
+    ["a ruleset read", '{repository(owner:"o",name:"r"){rulesets(first:5){nodes{name}}}}', ""],
+    ["a field value that only names the mutation", "{viewer{login}}", "-f note=deleteRepositoryRuleset"],
+  ])("reads %s as no mutation", (_what, query, vars) => {
+    expect(read(query, vars)).toEqual({ mutations: [], branches: [], unknown: false });
+  });
+});
+
 describe("graphqlBranchWrites, texts with no branch mutation", () => {
   it.each([
     ["a viewer read", "{viewer{login}}", false],

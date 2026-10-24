@@ -64,6 +64,8 @@ export const SPELLINGS = {
   "bash.config.claude-cli": config(),
   "bash.config.gh-api-ruleset": config(),
   "bash.config.curl-api-ruleset": config(),
+  "bash.config.gh-api-graphql-ruleset": config(),
+  "bash.config.curl-graphql-ruleset": config(),
   "bash.config.mention": config(),
   "bash.merge.gh-pr-merge": merge(),
   "bash.merge.gh-api-merge": merge(),
