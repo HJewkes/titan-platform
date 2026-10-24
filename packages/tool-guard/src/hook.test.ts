@@ -99,6 +99,25 @@ describe("handle: the deny log line", () => {
   });
 });
 
+describe("handle: a tag push is the charter's tag-move hard stop", () => {
+  it.each(["git push origin v1", "git push origin refs/tags/v1", "git push --tags", "git push --follow-tags"])("denies `%s` as a release", async (command) => {
+    const { stdout, log } = await handle(bash(command), {}, port());
+
+    expect(decisionOf(stdout)).toBe("deny");
+    expect(log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "REL-WK", "release", "bash.release.git-push-tag"]);
+  });
+
+  it.each([
+    ["git push origin feat/x", null],
+    ["git push origin HEAD:main", "bash.merge.git-push-protected"],
+  ])("keeps today's verdict for the branch push `%s`", async (command, spelling) => {
+    const { stdout, log } = await handle(bash(command), {}, port());
+
+    expect(log[0]?.split("\t")[4] ?? null).toBe(spelling);
+    expect(decisionOf(stdout)).toBe(spelling === null ? null : "deny");
+  });
+});
+
 describe("handle: failure policy", () => {
   it("passes non-JSON stdin and logs one shape error without the input", async () => {
     const raw = "not json zq-raw-" + "input";

@@ -43,6 +43,18 @@ describe("one fixture per bash.release spelling", () => {
     ["bash.release.wrangler-deploy", "pnpm exec wrangler versions deploy", "wrangler"],
     ["bash.release.wrangler-deploy", "pnpm dlx wrangler deploy --env production", "wrangler"],
     ["bash.release.version-packages-merge", "gh pr merge changeset-release/main --squash", "gh"],
+    ["bash.release.git-push-tag", "git push origin v1", "git"],
+    ["bash.release.git-push-tag", "git push origin refs/tags/v1", "git"],
+    ["bash.release.git-push-tag", "git push --tags", "git"],
+    ["bash.release.git-push-tag", "git push --follow-tags", "git"],
+    ["bash.release.git-push-tag", "git push origin tag release-candidate", "git"],
+    ["bash.release.git-push-tag", "git push origin +v1.2.0", "git"],
+    ["bash.release.git-push-tag", "git push origin :refs/tags/v1", "git"],
+    ["bash.release.git-push-tag", "git push origin --delete v1", "git"],
+    ["bash.release.git-push-tag", "git push origin HEAD:tags/stable", "git"],
+    ["bash.release.git-push-tag", "git push origin refs/tags/nightly:", "git"],
+    ["bash.release.git-push-tag", "git -c push.followTags push origin feat/x", "git"],
+    ["bash.release.git-push-tag", "git -c push.followtags=true push", "git"],
   ])("%s: %s", (spelling, command, tool) => {
     expect(bash(command)).toEqual([expect.objectContaining({ action: "release", spelling, subject: { tool } })]);
   });
@@ -72,7 +84,28 @@ describe("normal work classifies nothing", () => {
     "wrangler dev",
     "npx wrangler tail",
     "git commit -m 'npm publish after review'",
+    "git push origin feat/x",
+    "git push -u origin HEAD",
+    "git push origin vendor-fix",
+    "git push origin feat/v1:refs/heads/feat/v1",
+    "git push origin v1:feat/x",
+    "git push origin refs/heads/v2-migration",
+    "git push origin refs/tags/v1:refs/heads/feat/x",
+    "git push origin tag",
+    "git push --no-follow-tags origin feat/x",
+    "git -c push.followTags=false push origin feat/x",
+    "git tag v1",
   ])("%s", (command) => {
     expect(bash(command)).toEqual([]);
+  });
+});
+
+describe("a tag push beside a branch push", () => {
+  it("keeps the protected branch verdict next to the tag push", () => {
+    expect(bash("git push --follow-tags origin HEAD:main").map((a) => a.spelling)).toEqual(["bash.release.git-push-tag", "bash.merge.git-push-protected"]);
+  });
+
+  it("reads a v-named source sent to a protected branch as the branch push only", () => {
+    expect(bash("git push origin v1:main").map((a) => a.spelling)).toEqual(["bash.merge.git-push-protected"]);
   });
 });
