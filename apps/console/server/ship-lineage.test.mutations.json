@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a read that hits the cache sweeps no expired entry",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "    const at = now();\n    evict(cache, at, ttlMs, maxEntries);\n",
+      "replace": "    const at = now();\n",
+      "kills": [
+        "the Ship lineage cache drops an expired entry on the next read, even a cache hit on another binding, and never serves it"
+      ]
+    },
+    {
+      "name": "a write is not trimmed back to the cap",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "    cache.set(key, { at, read });\n    evict(cache, at, ttlMs, maxEntries);\n",
+      "replace": "    cache.set(key, { at, read });\n",
+      "kills": [
+        "the Ship lineage cache never holds more than its cap, dropping the oldest entry first"
+      ]
+    },
+    {
+      "name": "the cap holds one entry fewer than asked",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "cache.size <= maxEntries",
+      "replace": "cache.size < maxEntries",
+      "kills": [
+        "the Ship lineage cache never holds more than its cap, dropping the oldest entry first"
+      ]
+    },
+    {
+      "name": "the sweep keeps an entry exactly one TTL old",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "if (at - entry.at < ttlMs && cache.size <= maxEntries) return;",
+      "replace": "if (at - entry.at <= ttlMs && cache.size <= maxEntries) return;",
+      "kills": [
+        "the Ship lineage cache drops an expired entry on the next read, even a cache hit on another binding, and never serves it"
+      ]
+    },
+    {
+      "name": "a cache hit is served without its own age check",
+      "file": "apps/console/server/ship-lineage.ts",
+      "find": "if (hit && at - hit.at < ttlMs) return hit.read;",
+      "replace": "if (hit) return hit.read;",
+      "kills": [
+        "the Ship lineage cache never serves an expired entry left behind a fresher one when the clock stepped back"
+      ]
+    }
+  ]
+}
