@@ -28,8 +28,8 @@ const CASES: { name: string; facts: string[]; signals: string[]; fits: string[] 
   { name: "three parallel lints", facts: ["One lint flags long labels.", "One lint flags dark text.", "One lint flags clipped arrows."], signals: ["parallel-findings"], fits: ["countdown"] },
   { name: "a measured result", facts: ["We measured 40 ms against 55 ms."], signals: ["experiment"], fits: ["lab-report"] },
   { name: "a cascade", facts: ["The outage triggered a retry storm.", "The storm led to a full queue."], signals: ["cascade"], fits: ["timeline"] },
-  { name: "work moving on the board", facts: ["TP-1 moved to review.", "TP-2 closed.", "TP-3 merged."], signals: ["board-moved"], fits: ["board-walk"] },
-  { name: "a status report", facts: ["TP-1 is on track.", "TP-2 is on track.", "TP-3 is on track.", "TP-4 is on track.", "TP-5 is on track."], signals: ["status-report"], fits: ["bluf"] },
+  { name: "work moving on the board", facts: ["TP-1 moved to review.", "TP-2 closed.", "TP-3 merged."], signals: ["board-moved"], fits: ["board-walk", "goal-walk"] },
+  { name: "a status report", facts: ["TP-1 is on track.", "TP-2 is on track.", "TP-3 is on track.", "TP-4 is on track.", "TP-5 is on track."], signals: ["status-report"], fits: ["bluf", "goal-walk"] },
   { name: "a repo laid out", facts: ["Gizmo is a small build tool.", "Its entry point is the bin script.", "The code sits in three packages."], signals: ["repo-overview"], fits: ["scqa-c4"] },
   { name: "one task end to end", facts: ["First the client sends a request.", "Then the gateway checks the token.", "Finally the worker writes a row."], signals: ["task-journey"], fits: ["design-journey"] },
   { name: "one central problem", facts: ["Builds are slow on every laptop."], signals: ["central-problem"], fits: ["abt", "three-act"] },
@@ -130,6 +130,12 @@ describe("facts packs", () => {
     const text = "# Facts\n\n| Key | Meaning |\n|---|---|\n| S | source |\n\n| Id | Claim | Beat(s) |\n|---|---|---|\n| F01 | One claim. | b01 |\n| F02 | Two claims. | b02 |\n";
 
     expect(parseFacts(text)).toEqual({ format: "facts-md", facts: [{ id: "F01", text: "One claim." }, { id: "F02", text: "Two claims." }] });
+  });
+
+  it("keeps an escaped pipe inside its markdown cell", () => {
+    const text = "| Id | Claim | Priority |\n|---|---|---|\n| F1 | Draft the label \\| printer spec |  |\n| F2 | a \\| b | P1 |\n";
+
+    expect(parseFacts(text).facts).toEqual([{ id: "F1", text: "Draft the label | printer spec" }, { id: "F2", text: "a | b", priority: "P1" }]);
   });
 
   it("reads gather facts as JSON lines, keeping kind and priority", () => {

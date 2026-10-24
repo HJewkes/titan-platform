@@ -52,7 +52,7 @@ describe("the script stage's word-budget and runtime gates", () => {
 
     expect(words.pass).toBe(false);
     expect(words.detail).toMatch(/^over: h1 \d+\/\d+ words \(5 s at [\d.]+ w\/s; \d+ words need \d+ s\);/);
-    expect(runtime).toEqual({ pass: false, detail: "the beats plan 60 s; daily-overview runs 120-240 s, target 150 s" });
+    expect(runtime).toEqual({ pass: false, detail: "the beats plan 60 s; daily-overview runs 120-240 s, target 180 s" });
   });
 
   it("passes a draft planned to the profile's target with its words under every cap", () => {
@@ -70,14 +70,24 @@ describe("the script stage's word-budget and runtime gates", () => {
 });
 
 describe("the script stage's beat plan", () => {
-  it("asks a 150 s daily plan of four chapters for at least eight beats, two a chapter", () => {
+  it("splits the target evenly when the chapters are not the profile's fixed blocks", () => {
     const list = loadBeatSpecs().get("list")!;
     const leads = ["ch1", "ch2", "ch3", "ch4"].map((chapter) => ({ chapter, spec: list }));
 
     const section = budgetSection(leads, "daily-overview");
 
     expect(section).toContain("every beat but the close plans 6-20 s, so a chapter of chapterS seconds holds ceil(chapterS / 20) beats or more.");
-    expect(section).toContain("at least: ch1 2, ch2 2, ch3 2, ch4 2. Plan at least 8 beats in all.");
+    expect(section).toContain("at least: ch1 3 (45 s), ch2 3 (45 s), ch3 3 (45 s), ch4 3 (45 s). Plan at least 12 beats in all.");
+  });
+
+  // Mutation: an even share per chapter gives every chapter 23 s and 2 beats, so lanes gets no more beats than ask.
+  it("gives the daily's lanes chapter more beats than its ask, by goal-walk's block shares", () => {
+    const list = loadBeatSpecs().get("list")!;
+    const leads = ["ch1", "ch2", "ch3", "ch4", "ch5", "ch6", "ch7", "ch8"].map((chapter) => ({ chapter, spec: list }));
+
+    const section = budgetSection(leads, "daily-overview");
+
+    expect(section).toContain("at least: ch1 1 (13 s), ch2 1 (16 s), ch3 4 (72 s), ch4 2 (31 s), ch5 1 (9 s), ch6 1 (14 s), ch7 1 (18 s), ch8 1 (7 s). Plan at least 12 beats in all.");
   });
 
   // Mutation: dropping the beat-length faults from planFaults passes this draft to L0, where Q-F8 fails it unrepaired.
@@ -106,10 +116,10 @@ describe("the script stage's plan retry", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeBridge()));
 
     expect(result.status, result.error).toBe("completed");
-    expect(model.prompts[0]).toContain("The beats' plannedS sum to about 150 s, and never below 120 s or above 240 s.");
+    expect(model.prompts[0]).toContain("The beats' plannedS sum to about 180 s, and never below 120 s or above 240 s.");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toMatch(/The plan check failed:\n- h1 \d+\/\d+ words/);
-    expect(model.prompts[1]).toContain("- runtime: the beats plan 60 s; daily-overview runs 120-240 s, target 150 s");
+    expect(model.prompts[1]).toContain("- runtime: the beats plan 60 s; daily-overview runs 120-240 s, target 180 s");
     expect(scriptRow(result)).toMatchObject({ calls: 2, retries: 1 });
   });
 
