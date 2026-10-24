@@ -20,6 +20,8 @@ import { UNKNOWN_WORDS_ID, UNKNOWN_WORDS_RULE, unknownWordsHint, type Tokens } f
 import { issueText, replyObject, stripUnknownKeys } from "./script-reply.js";
 import { addUsage, NO_USAGE, type Check, type StageUsage } from "./records.js";
 
+const cacheWrites = (usage: StepUsage): number => (usage.cacheWrite5mTokens ?? 0) + (usage.cacheWrite1hTokens ?? 0);
+
 export function stageUsage(usage: StepUsage | undefined): StageUsage {
   if (!usage) return { ...NO_USAGE, calls: 1, costUnknown: true };
   return {
@@ -27,6 +29,7 @@ export function stageUsage(usage: StepUsage | undefined): StageUsage {
     inputTokens: usage.inputTokens ?? 0,
     outputTokens: usage.outputTokens ?? 0,
     cacheReadTokens: usage.cacheReadTokens ?? 0,
+    ...(cacheWrites(usage) > 0 ? { cacheWriteTokens: cacheWrites(usage) } : {}),
     calls: 1,
     ...(usage.costUnknown ? { costUnknown: true as const } : {}),
   };
@@ -68,16 +71,25 @@ Every merged PR of the day is named or counted under its lane. Name each thread 
 
 ${coverage.lanes.map((lane) => laneLine(lane, coverage)).join("\n")}`;
 
+/** The guide in the spine's structure and the spine, `between`, then the coverage, lead beats, budget and shape. */
+function spineSections(spine: string, plan: ScriptPlan, coverage: CoverageManifest | undefined, between: readonly string[]): string[] {
+  const guide = guidePlan("script", { spine: parseSpine(spine), structure: plan.structure });
+  const budget = plan.profile ? [budgetSection(plan.leads, plan.profile)] : [];
+  const covered = coverage ? [coverageSection(coverage)] : [];
+  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, ...between, ...covered, ...leadBeatSection(plan.leads), ...budget, scriptShape()];
+}
+
+export const factsSection = (facts: string, whose = ""): string => `## Facts pack (facts.md)${whose}\n\n${facts.trim()}`;
+
 /**
  * Every prompt section but the task: the guide in the spine's structure, the spine, the facts, the coverage a daily
  * gather sets, the lead beats, the budget and the shape.
  */
-export function promptSections(spine: string, facts: string, plan: ScriptPlan, coverage?: CoverageManifest): string[] {
-  const guide = guidePlan("script", { spine: parseSpine(spine), structure: plan.structure });
-  const budget = plan.profile ? [budgetSection(plan.leads, plan.profile)] : [];
-  const covered = coverage ? [coverageSection(coverage)] : [];
-  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, ...covered, ...leadBeatSection(plan.leads), ...budget, scriptShape()];
-}
+export const promptSections = (spine: string, facts: string, plan: ScriptPlan, coverage?: CoverageManifest): string[] =>
+  spineSections(spine, plan, coverage, [factsSection(facts)]);
+
+/** The single-call sections less the facts: what every chunked call sends first, byte for byte, so the cache reads it. */
+export const sharedSections = (spine: string, plan: ScriptPlan, coverage?: CoverageManifest): string[] => spineSections(spine, plan, coverage, []);
 
 /** The reply rules every script task ends on, whole script or one chapter. */
 export const REPLY_RULES = `- Every cue's atCue word must be a word the beat speaks.

@@ -243,15 +243,19 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
-call: the shared prompt (guide, spine, facts, lead beats, budget, schema), then what is written so far (the video fields,
-the glossary, the names declared in `new_terms`, the beats' planned seconds and the last beat), then that chapter's task.
+call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
+bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt
+cache and each later call reads it. The prompt then holds that chapter's facts slice (`script-facts.ts`: the rows the
+facts table's Beats column or the spine's Cites table places in this chapter, plus every row placed nowhere), what is
+written so far (the video fields, the glossary, the names declared in `new_terms`, the beats' planned seconds and the
+last beat), and that chapter's task. The whole-video round gets the whole facts pack, and L0 always reads all of it.
 The first chapter writes the video fields; a later one adds only glossary entries. Each chapter gets one schema or
 word-budget retry and up to `CHAPTER_REPAIR_ROUNDS` repair calls on the rules `rules.yaml` marks `scope: chapter`,
 measured on the chapters so far with the unwritten ones as bare entries. The chapters then join in the spine's order,
 the ledger stamp runs, and the whole script gets one repair round (`VIDEO_REPAIR_ROUNDS`) whose reply lists only the beats
 and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `unknown-words`, `word-budget`, `runtime`)
-run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls and
-dollars, and the path stops itself at the run's spend cap between calls.
+run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
+dollars and prompt-cache tokens read and written, and the path stops itself at the run's spend cap between calls.
 
 **The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
 script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`

@@ -7,9 +7,10 @@ import { wordBudgetFaults } from "../script-budget.js";
 import type { ScriptBeat, ScriptChapter, ScriptV1 } from "../script-schema.js";
 import type { SpineV1 } from "../spine-schema.js";
 import {
-  checkedObject, draftScript, failingErrors, failureList, REPLY_RULES, repairPrompt, repairRounds, stageUsage,
+  checkedObject, draftScript, factsSection, failingErrors, failureList, REPLY_RULES, repairPrompt, repairRounds, stageUsage,
   type Call, type Checked, type Lint, type Reader, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
+import { factPlaces, factsSlice, type FactPlaces } from "./script-facts.js";
 import { replyObject } from "./script-reply.js";
 import { StageFailure } from "./stage-failure.js";
 import { addUsage, NO_USAGE, type StageUsage } from "./records.js";
@@ -37,16 +38,22 @@ export const isChunked = (spine: SpineV1): boolean =>
   spine.chapters.length > 1 && (spine.chapters.length > CHUNK_OVER_CHAPTERS || plannedBeats(spine) > CHUNK_OVER_BEATS);
 
 interface ChunkContext {
-  call: Call;
-  /** The single-call prompt's sections less its task: the shared prefix of every chapter call. */
-  sections: readonly string[];
+  /** A call sending `system` as its own system prompt block, which the CLI caches, ahead of the call's prompt. */
+  callFor: (system: string) => Call;
+  /** The single-call prompt's sections less its facts and task: every call's system prompt, byte for byte the same. */
+  shared: readonly string[];
+  spineText: string;
+  /** The whole facts pack: each chapter call gets its own slice, the whole-video round all of it. */
+  facts: string;
   plan: ScriptPlan;
   lint: Lint;
   /** What the run has left; the chunked path makes many calls, so it stops itself here. */
   capUsd: number;
 }
 
-interface Chunk extends ChunkContext {
+interface Chunk extends Pick<ChunkContext, "facts" | "plan" | "lint"> {
+  call: Call;
+  places: FactPlaces;
   spent: () => StageUsage;
 }
 
@@ -191,8 +198,11 @@ ${handoff}
 ${REPLY_RULES}`;
 }
 
-const chapterPrompt = (ctx: Chunk, joined: Joined | undefined, index: number): string =>
-  [...ctx.sections, ...soFar(joined, ctx.plan), chapterTask(ctx.lint.spine, index, joined)].join("\n\n") + "\n";
+function chapterPrompt(ctx: Chunk, joined: Joined | undefined, index: number): string {
+  const id = ctx.lint.spine.chapters[index]!.chapter;
+  const facts = factsSection(factsSlice(ctx.facts, ctx.places, id), `, the rows chapter ${id} may cite`);
+  return [facts, ...soFar(joined, ctx.plan), chapterTask(ctx.lint.spine, index, joined)].join("\n\n") + "\n";
+}
 
 interface ChapterResult {
   joined: Joined;
@@ -259,7 +269,7 @@ function patched(outcome: StepRunOutcome, current: ScriptV1, plan: ScriptPlan): 
 
 async function repairVideo(ctx: Chunk, script: ScriptV1): Promise<Repaired> {
   const { spine, rows } = ctx.lint;
-  const task = [...ctx.sections, VIDEO_TASK].join("\n\n");
+  const task = [factsSection(ctx.facts), VIDEO_TASK].join("\n\n");
   const prompt = (current: ScriptV1, failing: readonly L0Result[]) => {
     const failures = failureList(failing, shippedRuleRegistry(), current, ctx.lint);
     return `${task}\n\n## The joined script\n\n\`\`\`json\n${JSON.stringify(current)}\n\`\`\`\n\n## Checks the script fails\n\n${failures}\n`;
@@ -279,35 +289,58 @@ function joinedScript(ctx: Chunk, joined: Joined): ScriptV1 {
   return result.script;
 }
 
-/** The calls and dollars spent between two readings of the meter. */
-const spendSince = (now: StageUsage, then: StageUsage): string =>
-  `${now.calls - then.calls} call(s), $${(now.usd - then.usd).toFixed(4)}${now.costUnknown ? " (cost unknown)" : ""}`;
+/** The calls, dollars and prompt-cache tokens spent between two readings of the meter. */
+function spendSince(now: StageUsage, then: StageUsage): string {
+  const cache = `cache ${now.cacheReadTokens - then.cacheReadTokens} read, ${(now.cacheWriteTokens ?? 0) - (then.cacheWriteTokens ?? 0)} written`;
+  return `${now.calls - then.calls} call(s), $${(now.usd - then.usd).toFixed(4)}${now.costUnknown ? " (cost unknown)" : ""}, ${cache}`;
+}
 
 /**
  * The long-spine path: each chapter drafted in its own call with what is written so far, and repaired on the
  * chapter-scoped rules; then the chapters join and the whole-video rules get one repair round on the joined script.
+ * Every call sends the shared sections as one system prompt, so the first chapter's draft writes them to the prompt
+ * cache and each later call, made after it, reads them back instead of writing them again.
  */
 export async function chunkedScript(context: ChunkContext): Promise<Written> {
-  let at = "the first chapter";
-  const notes: string[] = [];
-  // A stopped run keeps no notes, so the stop names what each finished chapter spent and fixed.
-  const meter = metered(context.call, context.capUsd, () => (notes.length > 0 ? `${at}, after ${notes.join("; ")}` : at));
-  const ctx: Chunk = { ...context, call: meter.call, spent: meter.spent };
+  const progress: Progress = { at: "the first chapter", notes: [], start: NO_USAGE };
+  const meter = metered(context.callFor(context.shared.join("\n\n") + "\n"), context.capUsd, () => progress.at);
+  const { facts, plan, lint } = context;
+  const ctx: Chunk = { facts, plan, lint, places: factPlaces(context.spineText, lint.spine, facts), call: meter.call, spent: meter.spent };
+  try {
+    return await writeAll(ctx, progress);
+  } catch (error) {
+    throw withNotes(error, progress, meter.spent());
+  }
+}
+
+/** Where the chunked path is, and a note per part it finished. */
+interface Progress {
+  at: string;
+  notes: string[];
+  start: StageUsage;
+}
+
+async function writeAll(ctx: Chunk, progress: Progress): Promise<Written> {
   let joined: Joined | undefined;
   const chapters: ChapterResult[] = [];
   for (const [index, row] of ctx.lint.spine.chapters.entries()) {
-    at = `chapter ${row.chapter}`;
-    const start = meter.spent();
+    [progress.at, progress.start] = [`chapter ${row.chapter}`, ctx.spent()];
     const result = await writeChapter(ctx, joined, index);
-    notes.push(`chapter ${row.chapter}: ${spendSince(meter.spent(), start)}; ${result.before} -> ${result.after} failing chapter checks`);
+    progress.notes.push(`chapter ${row.chapter}: ${spendSince(ctx.spent(), progress.start)}; ${result.before} -> ${result.after} failing chapter checks`);
     chapters.push(result);
     joined = result.joined;
   }
-  at = "the whole-video repair";
-  const start = meter.spent();
+  [progress.at, progress.start] = ["the whole-video repair", ctx.spent()];
   const video = await repairVideo(ctx, joinedScript(ctx, joined!));
-  notes.push(`whole video: ${spendSince(meter.spent(), start)}; ${video.before} -> ${video.after} failing error checks`);
-  return written(chapters, video, meter.spent(), notes);
+  progress.notes.push(`whole video: ${spendSince(ctx.spent(), progress.start)}; ${video.before} -> ${video.after} failing error checks`);
+  return written(chapters, video, ctx.spent(), progress.notes);
+}
+
+/** A failed run keeps no notes, so its failure names what each finished part, and the one it stopped in, spent and fixed. */
+function withNotes(error: unknown, progress: Progress, spent: StageUsage): unknown {
+  if (!(error instanceof StageFailure)) return error;
+  const parts = [...progress.notes, `${progress.at} so far: ${spendSince(spent, progress.start)}`];
+  return new StageFailure(`${error.message}; after ${parts.join("; ")}`, error.usage, error.retries, error.checks);
 }
 
 function written(chapters: readonly ChapterResult[], video: Repaired, usage: StageUsage, notes: string[]): Written {

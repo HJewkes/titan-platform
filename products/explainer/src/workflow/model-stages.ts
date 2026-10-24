@@ -19,7 +19,7 @@ import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry } from "../rules.js";
 import { chunkedScript, isChunked } from "./script-chunks.js";
 import {
-  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, scriptPlan, wholeScript,
+  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, scriptPlan, sharedSections, wholeScript,
   type Call, type Lint, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
 import { StageFailure } from "./stage-failure.js";
@@ -130,9 +130,11 @@ async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Li
   };
 }
 
-function scriptCall(input: ModelStageInput, deps: ScriptStageDeps): Call {
+/** With `system`, the CLI sends it as its own system prompt block and caches it, so calls sharing it read it back. */
+function scriptCall(input: ModelStageInput, deps: ScriptStageDeps, system?: string): Call {
   const maxBudgetUsd = Math.max(0.01, Math.min(SCRIPT_CALL_USD, input.remainingUsd));
-  const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults: { harness: "claude-print", model: deps.model } });
+  const defaults = { harness: "claude-print" as const, model: deps.model, ...(system === undefined ? {} : { systemPrompt: system }) };
+  const runner = (deps.runnerFor ?? agentRunner)({ cwd: tmpdir(), maxTurns: 1, maxBudgetUsd, defaults });
   const signal = deps.signal ?? new AbortController().signal;
   return (text) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
 }
@@ -150,17 +152,17 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const spine = parseSpine(spineText);
   const plan = scriptPlan(spine, deps.profile);
   const factsText = input.store.readText(need(input, "facts"));
-  const call = scriptCall(input, deps);
   const facts = claimFacts(factsText);
   const coverage = coverageOf(input);
   const l0Checks = withCoverage(withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts), coverage, facts);
   const g2p = deps.g2p ?? doctrineG2p();
   const rows = (script: ScriptV1) => [...runL0(script, undefined, l0Checks, undefined, spine), unknownWordsRow(g2p, spellScript(script))];
   const lint: Lint = { rows, spine, g2p, ...(facts ? { facts } : {}), ...(coverage ? { coverage } : {}) };
-  const sections = promptSections(spineText, factsText, plan, coverage);
+  const callFor = (system?: string) => scriptCall(input, deps, system);
+  const shared = sharedSections(spineText, plan, coverage);
   const written = isChunked(spine)
-    ? await chunkedScript({ call, sections, plan, lint, capUsd: input.remainingUsd })
-    : await wholeDraft(call, promptFor(sections), plan, lint);
+    ? await chunkedScript({ callFor, shared, spineText, facts: factsText, plan, lint, capUsd: input.remainingUsd })
+    : await wholeDraft(callFor(), promptFor(promptSections(spineText, factsText, plan, coverage)), plan, lint);
   const checks: Check[] = [{ name: "script-schema", gate: true, pass: true }, ...unknownKeysCheck(written.stripped), ...stampCheck(written.stamps), ...written.checks];
   const companion = companionOutputs(input, written.script, spine);
   const notes = [...written.notes, ...(companion.notes ?? [])];
