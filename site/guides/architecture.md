@@ -212,6 +212,7 @@ graph TD
   explainer --> codeGraph
   explainer --> codeRead
   explainer --> evidence
+  explainer --> frameCapture
   explainer --> github
   explainer --> graphLayout
   explainer --> hitl

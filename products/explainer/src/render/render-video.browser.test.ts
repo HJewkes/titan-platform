@@ -1,6 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -27,7 +26,9 @@ beforeAll(async () => {
   dir = mkdtempSync(path.join(tmpdir(), "explainer-render-browser-"));
   server = createServer((_, res) => res.writeHead(200, { "content-type": "text/html" }).end(PAGE));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error(`test server is not on a TCP port: ${String(address)}`);
+  url = `http://127.0.0.1:${address.port}/`;
 });
 
 afterAll(async () => {

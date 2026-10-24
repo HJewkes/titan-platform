@@ -22,7 +22,7 @@ describe("render manifest", () => {
   it("refuses an output path added at the top level", () => {
     const withPath = { ...MANIFEST, outDir: "/tmp/out" };
 
-    const write = () => renderManifestJson(withPath as RenderManifest);
+    const write = () => renderManifestJson(withPath);
 
     expect(write).toThrow();
   });
