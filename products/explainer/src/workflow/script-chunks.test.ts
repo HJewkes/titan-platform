@@ -17,6 +17,8 @@ function spineOf(chapters: number): string {
 }
 
 const FACTS = "# Facts\n\n| Id | Claim |\n|---|---|\n| F1 | Every lamp passes the bench. |\n";
+/** F2 is placed in ch2 and F3 in ch3 by their Beats cells; F1 names no beat, so every chapter may cite it. */
+const PLACED_FACTS = `# Facts\n\n| Id | Claim | Beats |\n|---|---|---|\n| F1 | Every lamp passes the bench. | |\n| F2 | A wick burns for six hours. | r2-wick |\n| F3 | The glass holds at 300 degrees. | r3-glass, ch3-b |\n`;
 
 const VIDEO = {
   audience: "TODO: audience",
@@ -58,17 +60,23 @@ type Answer = (prompt: string) => unknown;
 
 interface Model {
   prompts: string[];
+  /** Each call's system prompt, by call order; undefined where the call sent none. */
+  systems: (string | undefined)[];
   runnerFor: (options: AgentRunnerOptions) => { run: (input: StepRunInput) => Promise<StepRunOutcome> };
 }
 
 function fakeModel(answer: Answer, usd = 0.01): Model {
   const prompts: string[] = [];
-  const usage = { costUsd: usd, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10 };
-  const run = async (input: StepRunInput): Promise<StepRunOutcome> => {
-    prompts.push(input.prompt);
-    return { ok: true, output: JSON.stringify(answer(input.prompt)), usage };
-  };
-  return { prompts, runnerFor: () => ({ run }) };
+  const systems: (string | undefined)[] = [];
+  const usage = { costUsd: usd, inputTokens: 100, outputTokens: 50, cacheReadTokens: 10, cacheWrite1hTokens: 4 };
+  const runnerFor = (options: AgentRunnerOptions) => ({
+    run: async (input: StepRunInput): Promise<StepRunOutcome> => {
+      prompts.push(input.prompt);
+      systems.push(options.defaults?.systemPrompt);
+      return { ok: true, output: JSON.stringify(answer(input.prompt)), usage };
+    },
+  });
+  return { prompts, systems, runnerFor };
 }
 
 const taskChapter = (prompt: string): string => /## Task: chapter (\S+),/.exec(prompt)?.[1] ?? "none";
@@ -87,8 +95,8 @@ function row(check_id: string, beats: string[]): L0Result {
   return { check_id, mode: "tagged", severity: "error", value: beats.length, threshold: 0, pass: beats.length === 0, detail_beats: beats };
 }
 
-function stageInput(spine: string, remainingUsd = 5): ModelStageInput & { read: (sha: string) => string } {
-  const texts = new Map<string, string>([["spine-sha", spine], ["facts-sha", FACTS]]);
+function stageInput(spine: string, remainingUsd = 5, facts = FACTS): ModelStageInput & { read: (sha: string) => string } {
+  const texts = new Map<string, string>([["spine-sha", spine], ["facts-sha", facts]]);
   const store = {
     readText: (sha: string) => texts.get(sha)!,
     putText: (text: string) => {
@@ -102,8 +110,8 @@ function stageInput(spine: string, remainingUsd = 5): ModelStageInput & { read: 
 
 const LONG = CHUNK_OVER_CHAPTERS + 1;
 
-async function runStage(spine: string, model: Model, l0Checks: readonly L0Check[] = [], remainingUsd = 5) {
-  const input = stageInput(spine, remainingUsd);
+async function runStage(spine: string, model: Model, l0Checks: readonly L0Check[] = [], remainingUsd = 5, facts = FACTS) {
+  const input = stageInput(spine, remainingUsd, facts);
   const outcome = await runScriptStage(input, { model: "fake", runnerFor: model.runnerFor, l0Checks });
   return { outcome, script: ScriptSchema.parse(JSON.parse(input.read(outcome.outputs.draft!))) };
 }
@@ -118,7 +126,7 @@ describe("chunked script drafting", () => {
 
     expect(model.prompts.map(taskChapter)).toEqual(chapterIds(LONG));
     const third = model.prompts[2]!;
-    expect(third).toContain("## Story spine (spine.md)");
+    expect(model.systems[2]).toContain("## Story spine (spine.md)");
     expect(third).toContain("## Facts pack (facts.md)");
     expect(third).toContain("## Written so far");
     expect(third).toContain("The last beat written: ch2-b");
@@ -126,7 +134,7 @@ describe("chunked script drafting", () => {
     expect(third).toContain("ch2 glass");
     expect(third).toContain("hands off to ch4");
     expect(model.prompts[0]).not.toContain("## Written so far");
-    expect(outcome.notes).toContain("chapter ch3: 1 call(s), $0.0100; 0 -> 0 failing chapter checks");
+    expect(outcome.notes).toContain("chapter ch3: 1 call(s), $0.0100, cache 10 read, 4 written; 0 -> 0 failing chapter checks");
     expect(outcome.usage?.calls).toBe(LONG);
   });
 
@@ -145,7 +153,7 @@ describe("chunked script drafting", () => {
     expect(repairs[0]).toContain("beats: ch3-a;");
     expect(script.beats.find((beat) => beat.id === "ch3-a")?.spoken).toBe("The bench tests the wick first.");
     expect(script.beats.find((beat) => beat.id === "ch4-a")?.spoken).toBe("The bench tests the wick first.");
-    expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200; 1 -> 0 failing chapter checks");
+    expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200, cache 20 read, 8 written; 1 -> 0 failing chapter checks");
   });
 
   it("joins the chapters in the spine's order, keeping every beat id, and gathers each chapter's glossary", async () => {
@@ -166,7 +174,7 @@ describe("chunked script drafting", () => {
     expect(model.prompts.filter((prompt) => prompt.includes("## Task: the joined script"))).toHaveLength(1);
     expect(script.beats.find((beat) => beat.id === "ch5-a")?.spoken).toContain("lantern");
     expect(script.beats.filter((beat) => beat.spoken.includes("lantern"))).toHaveLength(1);
-    expect(outcome.notes).toContain("whole video: 1 call(s), $0.0100; 1 -> 0 failing error checks");
+    expect(outcome.notes).toContain("whole video: 1 call(s), $0.0100, cache 10 read, 4 written; 1 -> 0 failing error checks");
   });
 
   it("stops at the run's spend cap between chapter calls, keeping the spend so far", async () => {
@@ -174,7 +182,7 @@ describe("chunked script drafting", () => {
 
     if (!(failure instanceof StageFailure)) throw new Error("expected a StageFailure");
     expect(failure.message).toContain("spend cap stopped the chunked draft at chapter ch3");
-    expect(failure.message).toContain("after chapter ch1: 1 call(s), $1.0000; 0 -> 0 failing chapter checks; chapter ch2:");
+    expect(failure.message).toContain("after chapter ch1: 1 call(s), $1.0000, cache 10 read, 4 written; 0 -> 0 failing chapter checks; chapter ch2:");
     expect(failure.usage.usd).toBe(2);
   });
 
@@ -186,7 +194,36 @@ describe("chunked script drafting", () => {
 
     expect(isChunked(parseSpine(spineOf(4)))).toBe(false);
     expect(model.prompts[0]).toContain("Write the whole script/v1 for this video");
+    expect(model.prompts[0]).toContain("## Story spine (spine.md)");
+    expect(model.prompts[0]).toContain("| F1 | Every lamp passes the bench. |");
+    expect(model.systems.filter((system) => system !== undefined)).toEqual([]);
     expect(model.prompts.filter((prompt) => prompt.includes("## Task: chapter"))).toEqual([]);
+  });
+
+  it("sends every chunked call the same shared prefix as its own system prompt, and none of it in the call's prompt", async () => {
+    const model = fakeModel((prompt) => (prompt.includes("## Task: the joined script") ? { beats: [] } : passingVideo(prompt)));
+
+    await runStage(spineOf(LONG), model, markerChecks);
+
+    const prefix = model.systems[0]!;
+    expect(model.systems).toEqual(model.prompts.map(() => prefix));
+    expect(prefix).toContain("## Story spine (spine.md)");
+    expect(prefix).toContain("## The script/v1 JSON Schema");
+    expect(prefix).not.toContain("## Facts pack");
+    expect(model.prompts.filter((prompt) => prompt.includes("## Story spine (spine.md)"))).toEqual([]);
+  });
+
+  it("gives each chapter call only the facts placed in that chapter or in none, and the whole-video round every fact", async () => {
+    const model = fakeModel((prompt) => (prompt.includes("## Task: the joined script") ? { beats: [] } : chapterReply(taskChapter(prompt))));
+
+    await runStage(spineOf(LONG), model, markerChecks, 5, PLACED_FACTS);
+
+    const factIds = (prompt: string) => ["F1", "F2", "F3"].filter((id) => prompt.includes(`| ${id} |`));
+    const byChapter = new Map(model.prompts.filter((prompt) => !isRepair(prompt)).map((prompt) => [taskChapter(prompt), factIds(prompt)]));
+    expect(byChapter.get("ch2")).toEqual(["F1", "F2"]);
+    expect(byChapter.get("ch3")).toEqual(["F1", "F3"]);
+    expect(byChapter.get("ch5")).toEqual(["F1"]);
+    expect(byChapter.get("none")).toEqual(["F1", "F2", "F3"]);
   });
 });
 
