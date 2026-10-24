@@ -1,5 +1,7 @@
 import type { ReviewTarget, ReviewerAgent } from "@titan-design/review-panel";
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { OWNER_GATE_POLICY } from "./policy.js";
 import { chooseReviewer, lineageFor } from "./reviewer-choice.js";
 import type { Registration } from "./store.js";
 
@@ -17,7 +19,7 @@ const agent = (name: string, spawnedBy: string | null, over: Partial<ReviewerAge
 });
 
 /** Only the fields the choice reads: the opt-in reviewer, the implementer, and no hold or review ask. */
-const registration = { implementer: "impl-a", policy: { reviewer: "rv-standing" }, held: false, holdReviewer: null, holdReason: null, reviewRequest: null } as unknown as Registration;
+const registration = partialFake<Registration>({ implementer: "impl-a", policy: { ...OWNER_GATE_POLICY, reviewer: "rv-standing" }, held: false, holdReviewer: null, holdReason: null, reviewRequest: null });
 
 const standing = agent("rv-standing", "seat");
 /** The seat's first generation, retired, is the only row that says the implementer spawned the seat. */
