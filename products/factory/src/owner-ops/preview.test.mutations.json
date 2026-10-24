@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the preview leaves out the deploy pause",
+      "file": "products/factory/src/owner-ops/preview.ts",
+      "find": "  if (op.kind === \"deploy-pause-clear\") return { ...base, pause: pausePreview(systemPauseClearPorts(), factoryStateDir(process.env)) };\n",
+      "replace": "",
+      "kills": [
+        "owner-op.preview reads a deploy-pause-clear op's pause, the manual hold it leaves, and whether a deployer runs"
+      ]
+    },
+    {
+      "name": "the preview never reads a running deployer",
+      "file": "products/factory/src/owner-ops/preview.ts",
+      "find": "deployerRunning: runningDeployer(ports, stateDir) !== undefined",
+      "replace": "deployerRunning: false",
+      "kills": [
+        "owner-op.preview reads a live pid in the deploy lock as a running deployer"
+      ]
+    },
+    {
+      "name": "the preview hides the manual hold the clear leaves",
+      "file": "products/factory/src/owner-ops/preview.ts",
+      "find": "manualHold: manualHoldReason(ports, stateDir) };",
+      "replace": "manualHold: null };",
+      "kills": [
+        "owner-op.preview reads a deploy-pause-clear op's pause, the manual hold it leaves, and whether a deployer runs"
+      ]
+    }
+  ]
+}
