@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "--follow-tags is not read as a tag push",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "hasFlag(options, \"--tags\", \"--follow-tags\")",
+      "replace": "hasFlag(options, \"--tags\")",
+      "kills": [
+        "bash.release.git-push-tag git push --follow-tags reads as a release",
+        "handle: a tag push denies git push --follow-tags"
+      ]
+    },
+    {
+      "name": "a v<digit> refspec is not read as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.|v\\d)/;",
+      "replace": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.)/;",
+      "kills": [
+        "bash.release.git-push-tag git push origin v1 reads as a release",
+        "handle: a tag push denies git push origin v1"
+      ]
+    },
+    {
+      "name": "the refspec source, not its destination, is matched as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "return TAG_REF_RE.test(plain.slice(plain.lastIndexOf(\":\") + 1));",
+      "replace": "return TAG_REF_RE.test(plain);",
+      "kills": [
+        "bash.release.git-push-tag git push origin HEAD:refs/tags/v1 reads as a release"
+      ]
+    },
+    {
+      "name": "a tag push drops the branch verdict beside it",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  return [...tagPush(options, specs), ...branchPush(options, refspecs, specs, git, ctx)];",
+      "replace": "  const tags = tagPush(options, specs);\n  return tags.length > 0 ? tags : branchPush(options, refspecs, specs, git, ctx);",
+      "kills": [
+        "bash.release.git-push-tag keeps the merge verdict beside a tag push to a protected branch",
+        "bash.release.git-push-tag keeps the implicit push verdict of --follow-tags on main"
+      ]
+    },
+    {
+      "name": "a last refspec named tag reads as git's tag <name> form",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "(s === \"tag\" && i < specs.length - 1)",
+      "replace": "s === \"tag\"",
+      "kills": [
+        "bash.release.git-push-tag leaves a push of a branch called tag alone"
+      ]
+    }
+  ]
+}
