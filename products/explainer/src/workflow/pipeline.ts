@@ -3,6 +3,8 @@ import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
 import { JudgeConfigSchema } from "../eval-harness.js";
+import { exportReflection, type ReflectionConfig } from "../reflection-export.js";
+import { parseScript } from "../script-load.js";
 import { COMPANION_FILE } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore } from "./artifacts.js";
 import type { StylePack } from "../style-pack-schema.js";
@@ -94,6 +96,8 @@ export interface StageDeps {
   bridge: () => BridgeFile;
   cache: CacheDeps;
   stylePacks?: () => ReadonlyMap<string, StylePack>;
+  /** Where the script's reflection chapter lands once export has run; absent means it lands nowhere. */
+  reflection?: ReflectionConfig;
   now?: () => Date;
 }
 
@@ -131,6 +135,18 @@ function runExportStage(artifacts: Readonly<Record<string, string>>, store: Arti
   return { outputs, notes: [`linked ${stemmed.join(", ")} as ${file.theater.stem}.*`, ...companion] };
 }
 
+/** Keyed by the script's own id, not the plan's: a first run has no plan video id, and its re-runs carry the run id. */
+async function withReflection(outcome: StageOutcome, artifacts: Readonly<Record<string, string>>, deps: StageDeps, at: Date): Promise<StageOutcome> {
+  const sha = artifacts.script;
+  if (!deps.reflection || deps.reflection.mode === "off" || sha === undefined) return outcome;
+  const script = parseScript(JSON.parse(deps.store.readText(sha)));
+  const gather = deps.plan.gather;
+  const day = gather && "day" in gather ? gather.day : at.toISOString().slice(0, 10);
+  const outDir = deps.plan.theater ?? deps.bridge().theater.dir;
+  const result = await exportReflection(deps.reflection, { script, scriptSha: sha, videoId: script.id, day, outDir });
+  return { ...outcome, notes: [...(outcome.notes ?? []), ...result.notes] };
+}
+
 function reused(base: StageRecord, baseRunId: string | undefined, at: Date): StageRecord {
   const now = at.toISOString();
   return { ...base, reusedFrom: base.reusedFrom ?? baseRunId ?? "base", cached: false, startedAt: now, endedAt: now, wallMs: 0, usage: NO_USAGE, retries: 0 };
@@ -140,7 +156,7 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date): Pr
   const { stage } = input;
   if (!isCachedStage(stage)) {
     const startedAt = now();
-    const outcome = runExportStage(input.artifacts, deps.store, deps.bridge());
+    const outcome = await withReflection(runExportStage(input.artifacts, deps.store, deps.bridge()), input.artifacts, deps, startedAt);
     return stageRecord(stage, startedAt, now(), outcome);
   }
   const variantSha = deps.plan.variants[stage];

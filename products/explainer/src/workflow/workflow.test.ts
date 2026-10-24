@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
@@ -32,6 +33,24 @@ describe("explainer run", () => {
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
+  });
+
+  it("files the reflection once when the same script exports a second time", async () => {
+    fx = fixture();
+    const spool = mkdtempSync(path.join(tmpdir(), "reflection-spool-"));
+    const reflection = { mode: "deposit" as const, asker: "acme-seat", spoolDir: spool };
+    const draft = choppy();
+    const last = draft.chapters[draft.chapters.length - 1]!.id;
+    const script = { ...draft, chapters: draft.chapters.map((c) => (c.id === last ? { ...c, id: "reflection" } : c)), beats: draft.beats.map((b) => (b.chapter === last ? { ...b, chapter: "reflection" } : b)) };
+    const host = () => fakeHost(fx, fakeScriptModel(script), fakeBridge(), { reflection });
+
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, host());
+    const second = await runVideo({ spine: fx.spine, facts: fx.facts, from: "export", base: first.runId }, host());
+
+    expect([first.status, second.status], first.error).toEqual(["completed", "completed"]);
+    expect(readdirSync(spool).filter((name) => name.endsWith(".json"))).toHaveLength(1);
+    expect(existsSync(path.join(fx.theater, "reflection.md"))).toBe(true);
+    rmSync(spool, { recursive: true, force: true });
   });
 
   it("voices the rewritten script, not the draft", async () => {
