@@ -15,8 +15,8 @@
     {
       "name": "a queued land run shows as not landed",
       "file": "apps/console/src/pages/TapSheet.tsx",
-      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"already\"]);",
-      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"already\"]);",
+      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"pr-closed\", \"already\"]);",
+      "replace": "const LANDED = new Set([\"resolved\", \"released\", \"pr-closed\", \"already\"]);",
       "kills": ["the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"]
     },
     {
