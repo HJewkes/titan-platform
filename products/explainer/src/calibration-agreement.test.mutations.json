@@ -9,6 +9,42 @@
       "kills": [
         "labelsFromFeedback reads a pair's A as yes and B as no, dropping a pick that names another item"
       ]
+    },
+    {
+      "name": "an earlier round's other version pools",
+      "file": "products/explainer/src/calibration-agreement.ts",
+      "find": "const matching = earlier.filter((l) => l.entry.evalVersion !== undefined && versions.has(l.entry.evalVersion));",
+      "replace": "const matching = earlier;",
+      "kills": [
+        "pooledAgreement leaves out an earlier round's item at another eval_version or at none, counting it stale"
+      ]
+    },
+    {
+      "name": "two version-less rounds pool",
+      "file": "products/explainer/src/calibration-agreement.ts",
+      "find": "l.entry.evalVersion !== undefined && versions.has",
+      "replace": "versions.has",
+      "kills": [
+        "pooledAgreement never pools two rounds that both lack an eval_version, since nothing shows they ran one version"
+      ]
+    },
+    {
+      "name": "the oldest round sets the version",
+      "file": "products/explainer/src/calibration-agreement.ts",
+      "find": "const newest = rounds.at(-1) ?? [];",
+      "replace": "const newest = rounds[0] ?? [];",
+      "kills": [
+        "pooledAgreement leaves out an earlier round's item at another eval_version or at none, counting it stale"
+      ]
+    },
+    {
+      "name": "a judge missing from the newest round loses its earlier labels",
+      "file": "products/explainer/src/calibration-agreement.ts",
+      "find": ".filter((r) => r.length > 0);",
+      "replace": ";",
+      "kills": [
+        "pooledAgreement keeps an earlier round whole for a judge the newest round does not ask about"
+      ]
     }
   ]
 }

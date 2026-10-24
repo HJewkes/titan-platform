@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +75,7 @@ const readKey = (): QueueKey => QueueKeySchema.parse(readJson(join(dir, "key.jso
 const RoundSchema = z.looseObject({ questions: z.array(z.looseObject({})), sections: z.array(z.looseObject({ title: z.string() })) });
 
 beforeEach(() => {
+  VERSION_OF["cold-scores.tsv"] = "ev-cold";
   dir = mkdtempSync(join(tmpdir(), "explainer-calibrate-judges-"));
   log = vi.spyOn(console, "log").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -83,7 +84,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const queue = (...extra: string[]) => queueFrom(manifest(), ...extra);
 const queueFrom = (path: string, ...extra: string[]) =>
-  runEvalCli(["eval", "calibrate", "queue", path, "--round-dir", join(dir, "round"), "--key", join(dir, "key.json"), "--unit", "judge-cal-r1", ...extra]);
+  runEvalCli(["eval", "calibrate", "queue", path, "--round-dir", join(dir, "round"), "--key", join(dir, "key.json"), "--unit", "judge-cal", ...extra]);
 
 describe("explainer eval calibrate queue", () => {
   it("writes a blind round of 20 items mixed across judges and video types, with the holdout left out", async () => {
@@ -93,7 +94,7 @@ describe("explainer eval calibrate queue", () => {
     expect(code).toBe(0);
     const round = RoundSchema.parse(readJson(join(dir, "round", "round.json")));
     const key = readKey();
-    expect(round).toMatchObject({ schema: "titan-review/round@2", unit: "judge-cal-r1", variants: [] });
+    expect(round).toMatchObject({ schema: "titan-review/round@2", unit: "judge-cal", variants: [] });
     expect(round.questions).toHaveLength(20);
     expect(round.sections.map((s) => s.title)).toEqual(["Video digest", "Video tour"]);
     expect(new Set(key.entries.map((e) => e.judge))).toEqual(new Set(["cold", "cold-rubric", "l1"]));
@@ -185,6 +186,12 @@ describe("explainer eval calibrate queue", () => {
   });
 });
 
+/** Labels every question of the key just written: the judge's own verdict, or its opposite when `disagree` says so. */
+function answer(feedback: string, disagree: (judge: string) => boolean = () => false): void {
+  const answers = readKey().entries.map((e) => ({ questionId: e.id, pick: `${e.pass !== disagree(e.judge) ? "Yes" : "No"} (${e.id})` }));
+  writeFileSync(feedback, JSON.stringify({ schema: "titan-review/feedback@1", answers }));
+}
+
 describe("explainer eval calibrate agreement", () => {
   it("reports agreement per judge from the round's feedback and records it, still refusing promotion below the bar", async () => {
     expect(await queue()).toBe(0);
@@ -202,6 +209,44 @@ describe("explainer eval calibrate agreement", () => {
     expect(record.judges.filter((j) => (j.agreement ?? 0) < 0.8).length).toBeGreaterThan(0);
     expect(printed()).toMatch(/l1\t.*may be promoted/);
     expect(printed()).toMatch(/below 0\.8/);
+  });
+
+  it("pools rounds given as repeated --key and --feedback, naming them, and leaves a judge's older version out", async () => {
+    expect(await queue("--round", "1")).toBe(0);
+    answer(join(dir, "feedback-1.json"));
+    renameSync(join(dir, "key.json"), join(dir, "key-1.json"));
+    renameSync(join(dir, "round"), join(dir, "round-1"));
+    VERSION_OF["cold-scores.tsv"] = "ev-cold-2";
+    expect(await queue("--round", "2")).toBe(0);
+    answer(join(dir, "feedback-2.json"), (judge) => judge === "l1");
+    log.mockClear();
+
+    const args = ["--key", join(dir, "key-1.json"), "--feedback", join(dir, "feedback-1.json"), "--key", join(dir, "key.json"), "--feedback", join(dir, "feedback-2.json")];
+    expect(await runEvalCli(["eval", "calibrate", "agreement", ...args, "--format", "json"])).toBe(0);
+
+    const record = AgreementRecordSchema.parse(JSON.parse(printed()));
+    const row = (judge: string) => record.judges.find((j) => j.judge === judge)!;
+    expect(record.rounds).toEqual(["judge-cal-r1", "judge-cal-r2"]);
+    expect(row("cold")).toMatchObject({ agreement: 1, eval_versions: ["ev-cold-2"] });
+    expect(row("cold").stale).toBeGreaterThan(0);
+    expect(row("l1")).toMatchObject({ stale: 0, eval_versions: ["ev-l1"] });
+    expect(row("l1").labelled).toBeGreaterThan(readKey().entries.filter((e) => e.judge === "l1").length);
+    expect(row("l1").agreement).toBe(0.5);
+  });
+
+  it("refuses keys and feedback files that do not pair up, or a round given twice", async () => {
+    expect(await queue()).toBe(0);
+    answer(join(dir, "feedback.json"));
+    const key = join(dir, "key.json");
+    const feedback = join(dir, "feedback.json");
+
+    expect(await runEvalCli(["eval", "calibrate", "agreement", "--key", key, "--key", key, "--feedback", feedback])).toBe(2);
+    expect(await runEvalCli(["eval", "calibrate", "agreement", "--key", key, "--feedback", feedback, "--key", key, "--feedback", feedback])).toBe(2);
+
+    expect(error.mock.calls.map((c: unknown[]) => String(c[0]))).toEqual([
+      expect.stringMatching(/one --feedback per --key/),
+      expect.stringMatching(/round judge-cal-r1 is given twice/),
+    ]);
   });
 
   it("prints the agreement record as JSON when asked, though calibrate itself also takes --format", async () => {

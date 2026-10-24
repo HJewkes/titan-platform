@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import { auditionOutputs } from "./calibration-auditions.js";
-import { agreement, labelsFromFeedback, promotionRefusal, type AgreementRecord } from "./calibration-agreement.js";
+import { labelsFromFeedback, pooledAgreement, promotionRefusal, type AgreementRecord } from "./calibration-agreement.js";
 import { buildQueue, CALIBRATION_JUDGES, QUEUE_SIZE, QueueKeySchema, type JudgedOutput, type KeyEntry, type QueueKey } from "./calibration-queue.js";
 import { calibrationRound, roundMinutes, type RoundCase } from "./calibration-round.js";
 import { judgedOutputs, ManifestSchema } from "./calibration-sources.js";
@@ -48,9 +48,10 @@ function writeQueue(manifestPath: string, flags: QueueFlags): void {
     ...manifest.auditions.map((a) => [a.case, { title: a.title, script: PAIR_CONTEXT }] as const),
     ...read.map((r) => [r.entry.case, { title: r.entry.title, script: r.script }] as const),
   ]);
-  const key: QueueKey = { schema: "calibration-key/v1", round: flags.unit, entries: queue.key };
+  const round = positiveInt.parse(flags.round);
+  const key: QueueKey = { schema: "calibration-key/v1", round: `${flags.unit}-r${round}`, entries: queue.key };
   writeJson(flags.key, key);
-  writeJson(roundFile, calibrationRound(queue, { unit: flags.unit, round: positiveInt.parse(flags.round), cases }));
+  writeJson(roundFile, calibrationRound(queue, { unit: flags.unit, round, cases }));
   const minutes = roundMinutes(queue.items);
   const by = (field: (k: KeyEntry) => string) => countBy(queue.key.map(field));
   const mix = { by_judge: by((k) => k.judge), by_video_type: by((k) => k.videoType), judge_verdicts: by((k) => `${k.judge}:${k.pass ? "pass" : "fail"}`) };
@@ -71,22 +72,38 @@ export const queueCommand = (onResult: (code: number) => void): Command =>
     .exitOverride()
     .action((manifest: string, flags: QueueFlags) => guarded("queue", onResult, () => writeQueue(manifest, flags)));
 
-interface AgreementFlags { key: string; feedback: string; record?: string; format: "table" | "json" }
+interface AgreementFlags { key: string[]; feedback: string[]; record?: string; format: "table" | "json" }
+
+const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
 const fixed = (value: number | null): string => (value === null ? "-" : value.toFixed(2));
 
 function formatRecord(record: AgreementRecord): string {
-  const header = ["judge", "items", "labelled", "unsure", "agreed", "agreement", "fail_recall", "promotion"];
+  const header = ["judge", "items", "labelled", "unsure", "agreed", "agreement", "fail_recall", "stale", "eval_versions", "promotion"];
   const lines = record.judges.map((j) => [
-    j.judge, j.items, j.labelled, j.unsure, j.agreed, fixed(j.agreement), fixed(j.fail_recall), promotionRefusal(j.judge, record) ?? "may be promoted",
+    j.judge, j.items, j.labelled, j.unsure, j.agreed, fixed(j.agreement), fixed(j.fail_recall), j.stale ?? 0, j.eval_versions?.join(",") || "-",
+    promotionRefusal(j.judge, record) ?? "may be promoted",
   ].join("\t"));
   return [`round: ${record.round}`, header.join("\t"), ...lines].join("\n");
 }
 
+/** Each --key pairs with the --feedback at the same position, oldest round first. */
+function labelledRounds(flags: AgreementFlags) {
+  if (flags.key.length === 0 || flags.key.length !== flags.feedback.length) {
+    throw new Error(`give one --feedback per --key, in the same order (got ${flags.key.length} keys, ${flags.feedback.length} feedback files)`);
+  }
+  const keys = flags.key.map((path) => QueueKeySchema.parse(readJson(path)));
+  const repeated = keys.find((k, i) => keys.findIndex((other) => other.round === k.round) !== i);
+  if (repeated) throw new Error(`round ${repeated.round} is given twice; pooling it would count its labels twice`);
+  return keys.map((key, i) => ({ round: key.round, entries: key.entries, labels: labelsFromFeedback(readJson(flags.feedback[i]!)) }));
+}
+
 function reportAgreement(flags: AgreementFlags, now: () => Date): void {
-  const key = QueueKeySchema.parse(readJson(flags.key));
-  const labels = labelsFromFeedback(readJson(flags.feedback));
-  const record: AgreementRecord = { schema: "judge-agreement/v1", round: key.round, recorded_at: now().toISOString(), judges: agreement(key.entries, labels) };
+  const rounds = labelledRounds(flags);
+  const names = rounds.map((r) => r.round);
+  const record: AgreementRecord = {
+    schema: "judge-agreement/v1", round: names.join(" + "), recorded_at: now().toISOString(), ...(names.length > 1 ? { rounds: names } : {}), judges: pooledAgreement(rounds),
+  };
   if (flags.record) writeJson(flags.record, record);
   console.log(flags.format === "json" ? JSON.stringify(record) : formatRecord(record));
 }
@@ -94,8 +111,8 @@ function reportAgreement(flags: AgreementFlags, now: () => Date): void {
 export const agreementCommand = (onResult: (code: number) => void, now: () => Date = () => new Date()): Command =>
   new Command("agreement")
     .description(`Score each judge (${CALIBRATION_JUDGES.join(", ")}) against the owner's labels from the round's feedback.json`)
-    .requiredOption("--key <file>", "calibration-key/v1 written by `calibrate queue`")
-    .requiredOption("--feedback <file>", "the round's feedback.json, where the console stores the owner's labels")
+    .option("--key <file>", "calibration-key/v1 written by `calibrate queue`; repeat to pool rounds, oldest first", collect, [])
+    .option("--feedback <file>", "the round's feedback.json, where the console stores the owner's labels; one per --key, same order", collect, [])
     .option("--record <file>", "write the judge-agreement/v1 record a promotion reads")
     .addOption(new Option("--format <format>", "output format").choices(["table", "json"]).default("table"))
     .exitOverride()

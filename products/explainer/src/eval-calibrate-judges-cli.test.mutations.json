@@ -81,6 +81,42 @@
       "kills": [
         "explainer eval calibrate queue queues each question once, from the judge's own latest verdict, and names the config and run it came from"
       ]
+    },
+    {
+      "name": "a repeated round is pooled twice",
+      "file": "products/explainer/src/eval-calibrate-judges-cli.ts",
+      "find": "if (repeated) throw",
+      "replace": "if (repeated === undefined) throw",
+      "kills": [
+        "explainer eval calibrate agreement refuses keys and feedback files that do not pair up, or a round given twice"
+      ]
+    },
+    {
+      "name": "unpaired keys and feedback are accepted",
+      "file": "products/explainer/src/eval-calibrate-judges-cli.ts",
+      "find": "flags.key.length === 0 || flags.key.length !== flags.feedback.length",
+      "replace": "flags.key.length === 0",
+      "kills": [
+        "explainer eval calibrate agreement refuses keys and feedback files that do not pair up, or a round given twice"
+      ]
+    },
+    {
+      "name": "a pooled record does not name its rounds",
+      "file": "products/explainer/src/eval-calibrate-judges-cli.ts",
+      "find": "...(names.length > 1 ? { rounds: names } : {})",
+      "replace": "...{}",
+      "kills": [
+        "explainer eval calibrate agreement pools rounds given as repeated --key and --feedback, naming them, and leaves a judge's older version out"
+      ]
+    },
+    {
+      "name": "the key's round omits its number",
+      "file": "products/explainer/src/eval-calibrate-judges-cli.ts",
+      "find": "round: `${flags.unit}-r${round}`",
+      "replace": "round: flags.unit",
+      "kills": [
+        "explainer eval calibrate agreement pools rounds given as repeated --key and --feedback, naming them, and leaves a judge's older version out"
+      ]
     }
   ]
 }

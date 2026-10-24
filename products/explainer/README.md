@@ -561,13 +561,20 @@ beats that fail at least one error-severity row. Borderline labels count as neit
 a false positive, a flagged beat with no label is reported as unlabelled, and a check no row
 carries is "not run", not zero.
 
-**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, and L1's
-beat dimensions) stay reported only until the owner's labels show they agree with the owner.
+**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, L1's beat
+dimensions, and the audition's code and rubric pickers) stay reported only until the owner's labels show they agree
+with the owner.
 
-- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--size 20]
-  [--seed <s>]` reads a `calibration-manifest/v1` file. For each case the file gives its script, the bench the
-  judges wrote to, its video type, split and owner-named flag, and `format` (`v1`, or `spike` for a spike-era
-  script). Keep the manifest outside this repo, because it names private scripts.
+- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--round 1]
+  [--size 20] [--seed <s>] [--max-density <q>]` reads a `calibration-manifest/v1` file. For each case the file
+  gives its script, the bench the judges wrote to, its video type, split and owner-named flag, `format` (`v1`, or
+  `spike` for a spike-era script) and optionally `listener`, the script's `explainer eval listener` result. Its
+  optional `auditions` list names `audition/v1` records, each with a case, title, video type, split and
+  owner-named flag. Keep the manifest outside this repo, because it names private scripts.
+- `--max-density` is the listener screen. Cold and L1 items stay only from chapters whose listener density
+  (questions a sentence) is at or under it, and rubric items only from a script at or under it overall. A case
+  with no listener result is refused. The overall density also orders the round: the clearest video first, then
+  the pairs, then the other videos from clearest to least clear.
 - The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
   than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
   last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
@@ -576,16 +583,30 @@ beat dimensions) stay reported only until the owner's labels show they agree wit
     words (what-why, invariant or term), with a score above 0? An `inv` item gives two questions.
   - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
   - L1: does the beat pass a B dimension?
+  - audition pair: the pick and runner-up storyboards, shown as A and B in a seeded order, with the sentence,
+    the opening line and each block's question and length; never the structure, system, candidate id or scores.
+    One owner question carries two key entries: `audition-code` prefers the pick, and `audition-rubric` the side
+    with the higher J8 to J11 sum over the rows both sides scored (no entry on a tie). The key reads a pair's
+    `pass` as "prefers A".
+- Each key entry carries the judge's `evalVersion`; for `audition-code`, a hash of the pick rule.
 - It drops holdout and owner-named cases. Judges take turns, so each gets an even share of the queue; within a
-  judge, its video types and verdicts also take turns.
+  judge, its video types and verdicts also take turns. A pair counts as `audition-code`'s turn, and pairs where
+  the two pickers disagree take their own turn.
 - It writes `round.json`, a questions-only console round with one section per video. A section shows the script
-  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones. The round shows no judge
-  name, verdict or recommendation. The verdicts go to the answer key, which is kept outside the round directory.
-  The command never overwrites an existing round or key.
+  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones (`A` / `B` / `Can't tell`
+  for a pair). The header gives the estimated minutes (1.25 a yes or no item, 2 a pair). The round shows no judge
+  name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
+  outside the round directory. The command never overwrites an existing round or key.
+- `--round-dir` is a staging directory. File the round from it with `titan-console decisions file
+  <dir>/round.json --seat <seat> --initiative <initiative>`, which writes the asker and notifies the owner.
 - `explainer eval calibrate agreement --key <key.json> --feedback <round>/feedback.json [--record <file>]
   [--format table|json]` reads the owner's labels from the console's `feedback.json`. For each judge it prints the
   labelled and can't-tell counts, the agreement (the share of labelled items where owner and judge agree), and the
   recall on the items the owner failed. `--record` writes the `judge-agreement/v1` record.
+- Repeat `--key` and `--feedback` (paired by position, oldest round first) to pool rounds. A judge's newest round
+  counts whole; an earlier round's item counts only at an `evalVersion` the newest round ran, and is otherwise
+  reported as `stale`. An item with no `evalVersion` (round-1 keys) never pools into a later round. The pooled
+  record lists its `rounds`, and each judge row its `eval_versions`. A round given twice is refused.
 - `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
   agreement below 0.8. The evals units test checks that every judge check stays `reported`.
 

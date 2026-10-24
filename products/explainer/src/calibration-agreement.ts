@@ -38,6 +38,9 @@ const JudgeAgreementSchema = z.object({
   agreement: z.number().nullable(),
   /** Owner "no" items the judge also failed, over all owner "no" items. */
   fail_recall: z.number().nullable(),
+  /** Earlier rounds' items left out because the judge has since changed version; absent from records before pooling. */
+  stale: z.number().int().optional(),
+  eval_versions: z.array(z.string()).optional(),
 }).strict();
 export type JudgeAgreement = z.infer<typeof JudgeAgreementSchema>;
 
@@ -45,34 +48,62 @@ export const AgreementRecordSchema = z.object({
   schema: z.literal("judge-agreement/v1"),
   round: z.string().min(1),
   recorded_at: z.string().min(1),
+  /** The rounds a pooled record scores, oldest first. */
+  rounds: z.array(z.string()).optional(),
   judges: z.array(JudgeAgreementSchema),
 }).strict();
 export type AgreementRecord = z.infer<typeof AgreementRecordSchema>;
 
 const ratio = (hits: number, total: number): number | null => (total === 0 ? null : hits / total);
 
-function judgeAgreement(judge: CalibrationJudge, entries: readonly KeyEntry[], labels: ReadonlyMap<string, OwnerLabel>): JudgeAgreement {
-  const mine = entries.filter((e) => e.judge === judge);
-  const decided = mine.flatMap((e) => {
-    const label = labels.get(e.id);
-    return label === "yes" || label === "no" ? [{ owner: label === "yes", judge: e.pass }] : [];
-  });
+/** One round's answer key with the owner's labels for it; question ids only mean something within their round. */
+interface LabelledRound {
+  entries: readonly KeyEntry[];
+  labels: ReadonlyMap<string, OwnerLabel>;
+}
+
+interface Labelled {
+  entry: KeyEntry;
+  label: OwnerLabel | undefined;
+}
+
+/**
+ * A judge's newest round counts whole; an earlier round's item counts only at a version the newest round ran, so
+ * labels of two versions of a judge never pool. An item with no version (round 1 predates it) cannot match.
+ */
+function current(rounds: readonly Labelled[][]): { kept: Labelled[]; stale: number } {
+  const newest = rounds.at(-1) ?? [];
+  const versions = new Set(newest.map((l) => l.entry.evalVersion));
+  const earlier = rounds.slice(0, -1).flat();
+  const matching = earlier.filter((l) => l.entry.evalVersion !== undefined && versions.has(l.entry.evalVersion));
+  return { kept: [...matching, ...newest], stale: earlier.length - matching.length };
+}
+
+function judgeAgreement(judge: CalibrationJudge, rounds: readonly LabelledRound[]): JudgeAgreement {
+  const mine = rounds.map((r) => r.entries.filter((e) => e.judge === judge).map((entry) => ({ entry, label: r.labels.get(entry.id) }))).filter((r) => r.length > 0);
+  const { kept, stale } = current(mine);
+  const decided = kept.flatMap(({ entry, label }) => (label === "yes" || label === "no" ? [{ owner: label === "yes", judge: entry.pass }] : []));
   const agreed = decided.filter((d) => d.owner === d.judge).length;
   const ownerFails = decided.filter((d) => !d.owner);
   return {
     judge,
-    items: mine.length,
+    items: kept.length,
     labelled: decided.length,
-    unsure: mine.filter((e) => labels.get(e.id) === "unsure").length,
+    unsure: kept.filter((l) => l.label === "unsure").length,
     agreed,
     agreement: ratio(agreed, decided.length),
     fail_recall: ratio(ownerFails.filter((d) => !d.judge).length, ownerFails.length),
+    stale,
+    eval_versions: [...new Set(kept.flatMap((l) => l.entry.evalVersion ?? []))].sort(),
   };
 }
 
-/** "Can't tell" is neither agreement nor disagreement, so it only shrinks the labelled count. */
+/** Rounds oldest first. "Can't tell" is neither agreement nor disagreement, so it only shrinks the labelled count. */
+export const pooledAgreement = (rounds: readonly LabelledRound[]): JudgeAgreement[] =>
+  CALIBRATION_JUDGES.map((judge) => judgeAgreement(judge, rounds));
+
 export const agreement = (entries: readonly KeyEntry[], labels: ReadonlyMap<string, OwnerLabel>): JudgeAgreement[] =>
-  CALIBRATION_JUDGES.map((judge) => judgeAgreement(judge, entries, labels));
+  pooledAgreement([{ entries, labels }]);
 
 /** Why a judge may not become a climb target or gate, or null once its recorded agreement clears the bar. */
 export function promotionRefusal(judge: CalibrationJudge, record: AgreementRecord | undefined): string | null {
