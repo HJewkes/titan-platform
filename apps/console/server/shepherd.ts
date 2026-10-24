@@ -46,7 +46,10 @@ const LIST_STATES = ["active", "finished", "all"] as const;
 
 const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
 
-/** The factory's `owner-op.preview` for a PR op, pinned to the fields the read-back shows; `head` is there only while the PR is open. */
+/**
+ * The factory's `owner-op.preview`, pinned to the fields the read-back shows: a PR op's PR, where `head` is there only while
+ * the PR is open, or a deploy-pause-clear's failure pause as `/health` reads it.
+ */
 const opPreview = z
   .object({
     kind: z.string(),
@@ -63,6 +66,17 @@ const opPreview = z
         behind: z.boolean(),
         mergeableState: z.string(),
         shepherd: z.object({ runId: z.string(), held: z.boolean(), holdReason: z.string().nullable(), ownerHold: z.string().nullable() }).passthrough().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    pause: z
+      .object({
+        paused: z.boolean().nullable(),
+        since: z.string().nullable(),
+        reason: z.string().nullable(),
+        lastRollback: z.object({ target: z.string(), from: z.string(), status: z.string() }).passthrough().nullable(),
+        deployerRunning: z.boolean(),
+        manualHold: z.string().nullable(),
       })
       .passthrough()
       .optional(),

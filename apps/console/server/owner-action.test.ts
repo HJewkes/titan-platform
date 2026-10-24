@@ -6,6 +6,7 @@ import { closedPort } from "./test-support.js";
 const GATE = "11111111-0000-4000-8000-000000000001/approve-merge";
 const RUN = "22222222-0000-4000-8000-000000000002";
 const HEAD = "abcdef1234567890abcdef1234567890abcdef12";
+const PAUSED_AT = "2026-10-18T12:00:00.000Z";
 
 let server: Server | undefined;
 let seen: { url?: string; body: string; client?: string }[] = [];
@@ -52,6 +53,11 @@ describe("factoryOwnerAction", () => {
     [200, { outcome: "accepted", runId: RUN }, { status: "accepted", runId: RUN }],
     [200, { outcome: "pr-closed", closedHead: HEAD }, { status: "pr-closed", closedHead: HEAD }],
     [200, { outcome: "already", closedHead: HEAD }, { status: "already", closedHead: HEAD }],
+    [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null }, { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null }],
+    [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" }, { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" }],
+    [200, { outcome: "already", clearedPause: PAUSED_AT }, { status: "already", clearedPause: PAUSED_AT }],
+    [409, { outcome: "moved", currentPause: PAUSED_AT }, { status: "moved", currentHead: null, currentPause: PAUSED_AT }],
+    [409, { outcome: "refused", reason: "deploying", detail: "a deployer is running" }, { status: "refused", reason: "deploying", detail: "a deployer is running" }],
     [409, { outcome: "moved", currentHead: HEAD }, { status: "moved", currentHead: HEAD }],
     [410, { outcome: "gone", reason: "no gate" }, { status: "gone", reason: "no gate" }],
     [403, { outcome: "refused", reason: "resolver", detail: "owner-terminal only" }, { status: "refused", reason: "resolver", detail: "owner-terminal only" }],
@@ -70,6 +76,7 @@ describe("factoryOwnerAction", () => {
     ["a 200 with no outcome", 200, { ok: true }],
     ["an accepted with no run id", 200, { outcome: "accepted" }],
     ["a pr-closed with no closed head", 200, { outcome: "pr-closed" }],
+    ["a pause-cleared with no still-held answer", 200, { outcome: "pause-cleared", clearedPause: PAUSED_AT }],
     ["a redirect", 302, {}],
   ])("reads %s as unreachable, so a retry may land", async (_, status, body) => {
     const port = await factoryAnswering(status, body, status === 302 ? { location: "http://127.0.0.1:1/elsewhere" } : {});

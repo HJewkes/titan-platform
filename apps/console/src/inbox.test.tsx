@@ -449,6 +449,22 @@ describe("the inbox page, acting from the console", () => {
     expect(outcome.className).toContain("success");
   });
 
+  it("taps a deposit's deploy-pause-clear as Clear deploy pause, reads back the pause and the pacer's resume, and shows the clear as landed", async () => {
+    const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: HEAD } as const;
+    const op = item("op-3", { sources: [{ system: "deposit", ref: "fixture-agent/op-3" }], kind: "do", summary: "Clear the fixture deploy pause", action: { kind: "owner-op", op: pauseOp } });
+    const effect = "Clear the deploy pause from 2026-10-18T12:00:00.000Z over 0b7e2c1; the deploy pacer resumes and may deploy within about a minute";
+    const readBack = { pausedAt: pauseOp.pausedAt, target: HEAD, why: "the restarted build failed its watch", rollback: "verified", authority: "DRS-OR: gate", proposedBy: "fixture-agent", proposal: "Clear the fixture deploy pause", effect };
+    const cleared = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "pause-cleared", clearedPause: pauseOp.pausedAt, stillHeld: null }, message: "Deploy pause cleared; the deploy pacer may deploy within about a minute" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-3", action: op.action, readBack })), "inbox.act": cleared });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-3")).getByText("Clear deploy pause"));
+    expect(await screen.findByText(effect)).toBeTruthy();
+    expect(screen.getByText("Paused: the restarted build failed its watch")).toBeTruthy();
+    await tapConfirm();
+    const outcome = screen.getByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Deploy pause cleared; the deploy pacer may deploy within about a minute");
+    expect(outcome.className).toContain("success");
+  });
+
   it("names the gate on a gate read-back and gives it no confirm label", async () => {
     renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
     await tapGate();
