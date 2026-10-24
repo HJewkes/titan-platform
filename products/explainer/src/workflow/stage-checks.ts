@@ -1,4 +1,3 @@
-import { misakiEnglish, type G2p } from "@titan-design/speech-g2p";
 import { z } from "zod";
 import { loadBeatSpecs } from "../beat-load.js";
 import { claimFacts, withClaimFacts } from "../claim-facts.js";
@@ -17,7 +16,7 @@ import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { unknownWords } from "../unknown-words.js";
-import { misakiWords } from "./tts-engine.js";
+import { doctrineG2p } from "./voice-g2p.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
 
@@ -89,9 +88,6 @@ function cuesPresent(input: CheckInput): Verdict {
   const uncued = uncuedTargets(script(input, "draft"), leadBeats(parseSpine(text(input, "spine")), specs), specs);
   return { pass: uncued.length === 0, detail: uncued.length === 0 ? "every emphasis target has a cue" : `uncued: ${shownList(uncued)}` };
 }
-
-let voiceG2p: G2p | undefined;
-const doctrineG2p = (): G2p => (voiceG2p ??= misakiEnglish({ words: misakiWords() }));
 
 /**
  * Every word of the spelled draft has phonemes in the voice's g2p, the doctrine lexicon included, so a word the voice

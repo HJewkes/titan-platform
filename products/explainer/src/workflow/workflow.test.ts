@@ -143,6 +143,19 @@ describe("explainer run", () => {
     expect(model.prompts[1]).toMatch(/\n- Q-F4: .*\n {2}Found: the midpoint thesis ref /);
   });
 
+  // Mutation: dropping unknownWordsRow from the repair's rows sends no repair call, and the unknown-words gate fails.
+  it("puts a word the voice cannot say into the repair round with its split, and keeps the respelled reply", async () => {
+    fx = fixture();
+    const joined = choppy({ h2: { spoken: "The desk checks every parcel with shelfscan today." } });
+    const model = fakeScriptModel(joined, { repaired: choppy({ h2: { spoken: "The desk checks every parcel with shelf scan today." } }) });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeBridge()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toMatch(/\n- unknown-words: every spoken word must be one the voice has phonemes for \(beats: h2\b.*\n {2}Found: the voice has no phonemes for h2 "shelfscan" \(write "shelf scan"\)/);
+  });
+
   // Mutation: keeping the reply's structure records bluf, which the spine was never planned under.
   it("records the planned design-journey structure on the draft, whatever the reply names", async () => {
     fx = fixture();

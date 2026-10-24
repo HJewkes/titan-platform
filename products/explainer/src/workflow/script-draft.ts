@@ -14,6 +14,8 @@ import { budgetSection, planFaults, planHint } from "../script-budget.js";
 import { parseScript } from "../script-load.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
+import { spellScript } from "../rewrite-pass.js";
+import { UNKNOWN_WORDS_ID, UNKNOWN_WORDS_RULE, unknownWordsHint, type Tokens } from "../unknown-words.js";
 import { issueText, replyObject, stripUnknownKeys } from "./script-reply.js";
 import { addUsage, NO_USAGE, type Check, type StageUsage } from "./records.js";
 
@@ -182,16 +184,20 @@ export interface Lint {
   /** The gathered facts the Q-E20 rows read, so its hint names the nearest one. */
   facts?: readonly GatheredFact[];
   spine: SpineV1;
+  /** The voice's g2p, so the rounds also answer the words it has no phonemes for. */
+  g2p: Tokens;
 }
 
-export function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, lint: Pick<Lint, "facts" | "spine">): string {
+export function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, lint: Pick<Lint, "facts" | "spine" | "g2p">): string {
   const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
+  const words = (row: L0Result) => row.check_id === UNKNOWN_WORDS_ID;
+  const rule = (row: L0Result) => (words(row) ? UNKNOWN_WORDS_RULE : ruleFor(row.check_id)?.rule ?? "see the rules above");
   const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
   const found = (row: L0Result) => {
-    const hint = repairHint(row, script, lint.facts, lint.spine);
+    const hint = words(row) ? unknownWordsHint(lint.g2p, spellScript(script)) : repairHint(row, script, lint.facts, lint.spine);
     return hint ? `\n  Found: ${hint}` : "";
   };
-  return rows.map((row) => `- ${row.check_id}: ${ruleFor(row.check_id)?.rule ?? "see the rules above"} (${where(row)})${found(row)}`).join("\n");
+  return rows.map((row) => `- ${row.check_id}: ${rule(row)} (${where(row)})${found(row)}`).join("\n");
 }
 
 export const repairPrompt = (prompt: string, draft: ScriptV1, failures: string): string =>

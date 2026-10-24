@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unledgered pin gets the generic line, with no anchor or pin-text edit",
+      "file": "products/explainer/src/lint-ledger.ts",
+      "find": "unlisted.filter((i) => i.source === \"pin\"), unlisted.filter((i) => i.source !== \"pin\")]",
+      "replace": "unlisted.filter(() => false), unlisted]",
+      "kills": [
+        "Q-E17 on a ledger item named too early, or a pin the ledger does not list names each unledgered pin by its anchor, and says to set the pin's text to a ledger handle or remove it"
+      ]
+    }
+  ]
+}

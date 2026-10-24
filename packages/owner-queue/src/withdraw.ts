@@ -13,13 +13,13 @@
 import { appendFile, lstat, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { resolveDepositRef } from "./deposit-ref.js";
 import type { OwnerItem } from "./schema.js";
 import { readAnswer, readSpool, withdrawnFileName } from "./spool.js";
 
 export const WITHDRAW_LOG = "withdrawals.jsonl";
 /** `superseded:<id>` names the item that replaces this one. */
 export const WITHDRAW_REASON = /^(obsolete|resolved|superseded:\S{1,200})$/;
+const DEPOSIT_ID = /^deposit:/;
 
 export const withdrawalSchema = z.strictObject({
   reason: z.string().regex(WITHDRAW_REASON),
@@ -31,7 +31,7 @@ export const withdrawalSchema = z.strictObject({
 });
 export type Withdrawal = z.infer<typeof withdrawalSchema>;
 
-/** `unknown`: no deposit matches this id. `refused`: a bad reason, or the id is ambiguous, not a deposit, not this asker's, or answered. */
+/** `unknown`: no deposit has this id. `refused`: a bad reason, or the id is not a deposit, not this asker's, or answered. */
 export class WithdrawRefusedError extends Error {
   constructor(
     message: string,
@@ -91,19 +91,12 @@ function requireActor(actor: string): void {
   if (actor.trim() === "") throw refused("an actor is required: name the seat running this");
 }
 
-/** The deposit `ref` names, by exact id or a hex prefix of at least 8; throws when none or several match. */
-async function findDeposit(dir: string, ref: string): Promise<OwnerItem> {
-  const found = resolveDepositRef((await readSpool(dir)).items, ref);
-  if (found.kind === "not-deposit") throw refused(`${ref} is not a deposit; only a seat's own deposits can be withdrawn`);
-  if (found.kind === "ambiguous") throw refused(`ambiguous id ${ref} matches ${found.ids.join(", ")}`);
-  if (found.kind === "unknown") throw new WithdrawRefusedError(`unknown id ${ref}; full form is deposit:<32 hex>`, "unknown");
-  return found.item;
-}
-
-async function ownDeposit(dir: string, ref: string, as: string, actor: string): Promise<OwnerItem> {
+async function ownDeposit(dir: string, id: string, as: string, actor: string): Promise<OwnerItem> {
   requireActor(actor);
-  const item = await findDeposit(dir, ref);
-  if (item.asker !== as) throw refused(`${item.id} was filed by ${item.asker ?? "no asker"}, not ${as}`);
+  if (!DEPOSIT_ID.test(id)) throw refused(`${id} is not a deposit; only a seat's own deposits can be withdrawn`);
+  const item = (await readSpool(dir)).items.find((each) => each.id === id);
+  if (item === undefined) throw new WithdrawRefusedError(`no deposit ${id} in the spool`, "unknown");
+  if (item.asker !== as) throw refused(`${id} was filed by ${item.asker ?? "no asker"}, not ${as}`);
   return item;
 }
 
@@ -118,14 +111,10 @@ async function createMarker(dir: string, id: string, withdrawal: Withdrawal): Pr
   }
 }
 
-/**
- * Withdraws the deposit `ref` names, which `as` filed: its full id, or a hex prefix of at least 8
- * with or without `deposit:`. The result carries the full id. Throws WithdrawRefusedError on an
- * unknown id or a refusal.
- */
-export async function withdrawDeposit(dir: string, ref: string, { reason, as, actor, now = new Date() }: WithdrawRequest): Promise<WithdrawResult> {
+/** Withdraws the deposit `id` that `as` filed; throws WithdrawRefusedError on an unknown id or a refusal. */
+export async function withdrawDeposit(dir: string, id: string, { reason, as, actor, now = new Date() }: WithdrawRequest): Promise<WithdrawResult> {
   if (!WITHDRAW_REASON.test(reason)) throw refused(`reason "${reason}" is not obsolete, resolved or superseded:<id>`);
-  const { id } = await ownDeposit(dir, ref, as, actor);
+  await ownDeposit(dir, id, as, actor);
   if ((await readAnswer(dir, id)) !== undefined) throw refused(`${id} is already answered; the owner's answer stands`);
   const withdrawal = { reason, by: as, actor, at: now.toISOString() };
   if (!(await createMarker(dir, id, withdrawal))) return { id, outcome: "already-withdrawn" };
@@ -133,9 +122,9 @@ export async function withdrawDeposit(dir: string, ref: string, { reason, as, ac
   return { id, outcome: "withdrawn" };
 }
 
-/** Undoes a withdrawal of the deposit `ref` names, which `as` filed, so it is open again. */
-export async function restoreDeposit(dir: string, ref: string, { as, actor, now = new Date() }: RestoreRequest): Promise<RestoreResult> {
-  const { id } = await ownDeposit(dir, ref, as, actor);
+/** Undoes a withdrawal of the deposit `id` that `as` filed, so it is open again. */
+export async function restoreDeposit(dir: string, id: string, { as, actor, now = new Date() }: RestoreRequest): Promise<RestoreResult> {
+  await ownDeposit(dir, id, as, actor);
   try {
     await unlink(join(dir, withdrawnFileName(id)));
   } catch (error) {

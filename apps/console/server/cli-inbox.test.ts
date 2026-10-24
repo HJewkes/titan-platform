@@ -99,41 +99,8 @@ describe("titan-console inbox withdraw and restore", () => {
     await run(["inbox", "withdraw", depositItemId(ASKER, "never-filed"), "--reason", "obsolete", "--as", ASKER, "--actor", OPS]);
 
     expect(process.exitCode).toBe(EXIT.NOINPUT);
-    expect(err).toEqual([`not found: unknown id ${depositItemId(ASKER, "never-filed")}; full form is deposit:<32 hex>`]);
+    expect(err).toEqual([`not found: no deposit ${depositItemId(ASKER, "never-filed")} in the spool`]);
     expect(out).toEqual([]);
-  });
-
-  it("withdraws by a deposit:-prefixed short prefix and restores by a bare one, printing the full id", async () => {
-    await writeDeposit(config.inboxDir, deposit());
-    const hex = ID.slice("deposit:".length, "deposit:".length + 8);
-
-    await run(["inbox", "withdraw", `deposit:${hex}`, "--reason", "obsolete", "--as", ASKER, "--actor", OPS]);
-    await run(["inbox", "restore", hex, "--as", ASKER, "--actor", OPS]);
-
-    expect(process.exitCode).toBeUndefined();
-    expect(out).toEqual([`${ID}\nwithdrawn`, `${ID}\nrestored`]);
-    expect(await auditRows()).toEqual([expect.objectContaining({ op: "withdraw", id: ID }), expect.objectContaining({ op: "restore", id: ID })]);
-  });
-
-  it("exits 65 and lists the full ids when a prefix matches more than one deposit", async () => {
-    // These two depositIds were picked because their item ids share the first 8 hex digits.
-    const ids = ["d-24352", "d-34741"].map((depositId) => depositItemId(ASKER, depositId)).sort();
-    for (const depositId of ["d-24352", "d-34741"]) await writeDeposit(config.inboxDir, deposit({ depositId }));
-
-    await run(["inbox", "withdraw", "e3a55b9e", "--reason", "obsolete", "--as", ASKER, "--actor", OPS]);
-
-    expect(process.exitCode).toBe(EXIT.DATAERR);
-    expect(err).toEqual([`refused: ambiguous id e3a55b9e matches ${ids.join(", ")}`]);
-    expect(await readdir(config.inboxDir)).not.toContain(WITHDRAW_LOG);
-  });
-
-  it("exits 66 naming the full form for a short prefix no deposit starts", async () => {
-    await writeDeposit(config.inboxDir, deposit());
-
-    await run(["inbox", "restore", "00000000", "--as", ASKER, "--actor", OPS]);
-
-    expect(process.exitCode).toBe(EXIT.NOINPUT);
-    expect(err).toEqual(["not found: unknown id 00000000; full form is deposit:<32 hex>"]);
   });
 
   it("exits 65 with one line when another seat, a gate id or a bad reason asks", async () => {

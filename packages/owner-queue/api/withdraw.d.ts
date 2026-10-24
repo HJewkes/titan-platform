@@ -11,7 +11,7 @@ declare const withdrawalSchema: z.ZodObject<{
     at: z.ZodISODateTime;
 }, z.core.$strict>;
 type Withdrawal = z.infer<typeof withdrawalSchema>;
-/** `unknown`: no deposit matches this id. `refused`: a bad reason, or the id is ambiguous, not a deposit, not this asker's, or answered. */
+/** `unknown`: no deposit has this id. `refused`: a bad reason, or the id is not a deposit, not this asker's, or answered. */
 declare class WithdrawRefusedError extends Error {
     readonly kind: "unknown" | "refused";
     constructor(message: string, kind: "unknown" | "refused");
@@ -49,14 +49,10 @@ type RestoreResult = {
 };
 /** The withdrawal of item `id`, or undefined when none is filed. Throws on a malformed marker. */
 declare function readWithdrawal(dir: string, id: string): Promise<Withdrawal | undefined>;
-/**
- * Withdraws the deposit `ref` names, which `as` filed: its full id, or a hex prefix of at least 8
- * with or without `deposit:`. The result carries the full id. Throws WithdrawRefusedError on an
- * unknown id or a refusal.
- */
-declare function withdrawDeposit(dir: string, ref: string, { reason, as, actor, now }: WithdrawRequest): Promise<WithdrawResult>;
-/** Undoes a withdrawal of the deposit `ref` names, which `as` filed, so it is open again. */
-declare function restoreDeposit(dir: string, ref: string, { as, actor, now }: RestoreRequest): Promise<RestoreResult>;
+/** Withdraws the deposit `id` that `as` filed; throws WithdrawRefusedError on an unknown id or a refusal. */
+declare function withdrawDeposit(dir: string, id: string, { reason, as, actor, now }: WithdrawRequest): Promise<WithdrawResult>;
+/** Undoes a withdrawal of the deposit `id` that `as` filed, so it is open again. */
+declare function restoreDeposit(dir: string, id: string, { as, actor, now }: RestoreRequest): Promise<RestoreResult>;
 /** Every open deposit `asker` filed with one of `keys`, each withdrawn with `reason` unless `dryRun`. */
 declare function withdrawMatching(dir: string, { asker, actor, keys, reason, now, dryRun }: MatchRequest): Promise<OwnerItem[]>;
 

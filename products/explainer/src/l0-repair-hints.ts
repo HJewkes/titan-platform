@@ -1,11 +1,11 @@
 import type { L0Result } from "./eval-l0.js";
 import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lint-claims.js";
-import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects } from "./lint-flow.js";
+import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
-import type { ScriptV1 } from "./script-schema.js";
+import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
 
 type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], spine?: SpineV1) => string | undefined;
@@ -13,10 +13,28 @@ type Hint = (script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[], s
 const percent = (share: number): string => `${Math.round(share * 100)} %`;
 const listed = (ids: readonly string[]): string => (ids.length ? ids.join(", ") : "none");
 
+// The beats past the cap each get the least-used connector the cap still allows; with none left, a shared word links.
+function connectorEdits({ word, linked, beats, counts }: Overuse): string[] {
+  const cap = Math.floor(MAX_CONNECTIVE_SHARE * linked);
+  const tally = new Map(CONNECTORS.filter((c) => c !== word).map((c) => [c, counts.get(c) ?? 0]));
+  return beats.slice(cap).map((id) => {
+    const least = [...tally].sort((a, b) => a[1] - b[1])[0];
+    if (!least || least[1] >= cap) return `on ${id} remove connector_in and open on a word the beat before ends on`;
+    const [pick, used] = least;
+    tally.set(pick, used + 1);
+    return `set connector_in to "${pick}" on ${id}`;
+  });
+}
+
+function overuseHint(overused: Overuse): string {
+  const { word, count, linked, beats } = overused;
+  return `"${word}" opens ${count} of ${linked} linked beats, past the ${percent(MAX_CONNECTIVE_SHARE)} one connective may carry: ${beats.join(", ")}. The check counts a beat's connector_in before its spoken words, so ${connectorEdits(overused).join(", ")}`;
+}
+
 function linkHint(script: ScriptV1): string {
   const { ratio, unlinked, overused } = boundaryLinks(script.beats);
   const parts = [`${percent(ratio)} of in-chapter boundaries link (needs ${percent(MIN_LINKED)}); unlinked: ${listed(unlinked)}`];
-  if (overused) parts.push(`"${overused.word}" opens ${overused.count} of ${overused.linked} linked beats, past the ${percent(MAX_CONNECTIVE_SHARE)} one connective may carry; link the others by a shared word instead`);
+  if (overused) parts.push(overuseHint(overused));
   return parts.join("; ");
 }
 

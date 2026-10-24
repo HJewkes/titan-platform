@@ -29,6 +29,7 @@ export const BEAT_FUNCTIONS = [
   "CLOSE",
 ] as const;
 export const BEAT_MODES = ["explain", "demo", "ref"] as const;
+export const CONNECTORS = ["but", "therefore", "so", "and"] as const;
 export const CHIP_KINDS = ["verified", "computed", "docs-claim", "our-framing", "illustrative", "inferred"] as const;
 export const CLOSE_TYPES = ["lesson", "try-it", "callback", "refrain", "audience-rec"] as const;
 /** Off-map cue actions; a map beat's per-cue changes are `map_state` ops instead. */
@@ -150,7 +151,7 @@ const ScriptBeatSchema = z
     plannedS: z.number().positive(),
     heldS: z.number().positive().optional(),
     spoken: Text,
-    connector_in: z.enum(["but", "therefore", "so", "and"]).optional(),
+    connector_in: z.enum(CONNECTORS).optional(),
     why: Why.optional(),
     user_value: z.object({ text: Text, fact_ids: z.array(Id).default([]) }).strict().optional(),
     fact_ids: z.array(Id),
