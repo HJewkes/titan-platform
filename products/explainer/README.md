@@ -284,7 +284,10 @@ the commands run), `outputs` (name → path, `tree: true` for a directory) and `
 with `gate: false` is reported only, so its non-zero exit records a failed verdict and the commands after it still
 run), plus `vars`, the defaults for `{var.<name>}`
 tokens a stage variant may set. `{workdir}`, `{in.<name>}` and `{out.<name>}` expand to absolute paths. `theater`
-names the folder, the file stem and the suffix per artifact for `export`. A bridged stage's `inputs` are also its
+names the folder, the file stem and the suffix per artifact for `export`; `--theater <dir>` links into another folder
+instead. A type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads
+`bridges/<name>.json` from the per-user explainer data dir, whatever `--data-dir` says, so one host bridge serves
+every run of the type with no per-run copy. A bridged stage's `inputs` are also its
 cache key: declare every artifact its commands read (the MP4 for `qa` and `sheets`), or a new render will hit an old
 QA entry.
 
