@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shared boundary drops the history rule from every wake brief",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": "reason: `${wake.reason}\\n\\n${NO_REWRITE_RULE}\\n\\n${testRule}` };",
+      "replace": "reason: `${wake.reason}\\n\\n${testRule}` };",
+      "kills": [
+        "every wake brief: the branch history rule carries the rule exactly once in ci-red"
+      ]
+    }
+  ]
+}
