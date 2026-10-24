@@ -15,7 +15,7 @@ export interface SimSweep {
 
 function checkAxes(base: Record<string, number>, axes: SimAxis[]): void {
   for (const axis of axes) {
-    if (!(axis.param in base)) throw new Error(`sweep param ${axis.param} is not a model param`);
+    if (!Object.hasOwn(base, axis.param)) throw new Error(`sweep param ${axis.param} is not a model param`);
     if (new Set(axis.values).size !== axis.values.length) throw new Error(`sweep param ${axis.param} repeats a value`);
   }
   if (axes.length === 2 && axes[0]!.param === axes[1]!.param) throw new Error(`facet param ${axes[0]!.param} is also the swept param`);

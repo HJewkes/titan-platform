@@ -30,6 +30,12 @@ describe("loadSims", () => {
     expect(() => loadSims(dir)).toThrow(/sims\/fair-coin-retry\.yaml: .*share-tail/s);
   });
 
+  it("rejects a fittedFrom statistic that the statistics record only inherits", () => {
+    const spec = { ...toySpec("fair-coin-retry"), fittedFrom: ["toString"] };
+
+    expect(SimModelSpecSchema.safeParse(spec).success).toBe(false);
+  });
+
   it("rejects a tolerance that is both abs and rel, and a default outside its bounds", () => {
     const both = { ...toySpec("fair-coin-retry"), statistics: { "mean-tries": { tolerance: { abs: 0.1, rel: 0.05 }, why: "Synthetic." } } };
     const outside = toySpec("fair-coin-retry");
@@ -72,6 +78,14 @@ describe("checkSims", () => {
     const issues = checkSims({ "fixed-geometric": fixedGeometric }, specs);
 
     expect(issues).toEqual([expect.objectContaining({ code: "E-SIM-STAT-UNEMITTED", model: "fixed-geometric", message: expect.stringContaining("share-tail") })]);
+  });
+
+  it("reports a doctrine statistic named like an inherited key that the model never emits", () => {
+    const specs = new Map([["fixed-geometric", toySpec("fixed-geometric", ["mean-tries", "toString"])]]);
+
+    const issues = checkSims({ "fixed-geometric": fixedGeometric }, specs);
+
+    expect(issues).toEqual([expect.objectContaining({ code: "E-SIM-STAT-UNEMITTED", message: expect.stringContaining("toString") })]);
   });
 
   it("refuses an impure model while checking it", () => {

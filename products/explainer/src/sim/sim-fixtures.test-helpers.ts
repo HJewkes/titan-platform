@@ -62,3 +62,25 @@ export const toySpec = (id: string, statistics: string[] = ["mean-tries"]): SimM
 });
 
 export const TOY_DOCTRINE_SHA = "0".repeat(64);
+
+/** A model that breaks the contract by building a `Date` from the clock. */
+export const newDateModel: SimModel<{ p: number }> = {
+  id: "new-date",
+  version: "1",
+  simulate: ({ p }) => ({ steps: [], stats: { stamp: { value: new Date().getTime() * p, se: 0 } } }),
+};
+
+/** Models that break the contract through a random or clock source other than `Math.random` and `Date.now`. */
+export const hiddenSourceModels: [string, SimModel<{ p: number }>][] = [
+  ["Date()", { id: "date-call", version: "1", simulate: ({ p }) => ({ steps: [], stats: { stamp: { value: Date().length * p, se: 0 } } }) }],
+  ["crypto.getRandomValues", { id: "crypto-random", version: "1", simulate: ({ p }) => ({ steps: [], stats: { draw: { value: crypto.getRandomValues(new Uint8Array(1))[0]! * p, se: 0 } } }) }],
+  ["crypto.randomUUID", { id: "crypto-uuid", version: "1", simulate: ({ p }) => ({ steps: [], stats: { draw: { value: crypto.randomUUID().length * p, se: 0 } } }) }],
+  ["process.hrtime.bigint", { id: "hrtime", version: "1", simulate: ({ p }) => ({ steps: [], stats: { stamp: { value: Number(process.hrtime.bigint() % 1000n) * p, se: 0 } } }) }],
+  ["performance.now", { id: "perf-now", version: "1", simulate: ({ p }) => ({ steps: [], stats: { stamp: { value: performance.now() * p, se: 0 } } }) }],
+];
+
+/** A model that breaks the contract through state it keeps between calls, which no trap names. */
+export function statefulModel(): SimModel<{ p: number }> {
+  let calls = 0;
+  return { id: "stateful", version: "1", simulate: ({ p }) => ({ steps: [], stats: { calls: { value: ++calls * p, se: 0 } } }) };
+}

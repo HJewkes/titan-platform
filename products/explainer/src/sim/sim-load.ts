@@ -28,7 +28,7 @@ export const SimModelSpecSchema = z
     fittedFrom: z.array(z.string().min(1)).default([]),
   })
   .superRefine((spec, ctx) => {
-    for (const name of spec.fittedFrom.filter((stat) => !(stat in spec.statistics))) {
+    for (const name of spec.fittedFrom.filter((stat) => !Object.hasOwn(spec.statistics, stat))) {
       ctx.addIssue({ code: "custom", path: ["fittedFrom"], message: `fittedFrom names ${name}, which is not a declared statistic` });
     }
   });
@@ -57,7 +57,7 @@ const defaultsOf = (spec: SimModelSpec): Record<string, number> => Object.fromEn
 function unemitted(model: SimModel, spec: SimModelSpec): SimIssue[] {
   const emitted = runPure(model, defaultsOf(spec), `check:${spec.id}`).stats;
   return Object.keys(spec.statistics)
-    .filter((stat) => !(stat in emitted))
+    .filter((stat) => !Object.hasOwn(emitted, stat))
     .map((stat) => ({ code: "E-SIM-STAT-UNEMITTED", model: spec.id, message: `doctrine statistic ${stat} is not one the model emits at its default params` }));
 }
 

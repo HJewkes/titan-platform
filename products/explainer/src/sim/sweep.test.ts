@@ -81,6 +81,12 @@ describe("sweepSim and freezeSim", () => {
     expect(Date.now).toBe(original);
   });
 
+  it("refuses a sweep param that a plain object only inherits", () => {
+    for (const param of ["toString", "constructor", "__proto__"]) {
+      expect(() => sweepSim(fairCoinRetry, BASE, { param, values: [1] }, 7)).toThrow(new RegExp(`${param} is not a model param`));
+    }
+  });
+
   it("refuses a swept or faceted param the model does not take, and a facet on the swept param", () => {
     const axis = { param: "p", values: [0.5] };
 

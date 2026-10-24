@@ -2,13 +2,22 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the purity trap is never set",
+      "name": "the purity traps are never set",
       "file": "products/explainer/src/sim/pure-run.ts",
-      "find": "const traps = impureCalls().map(",
-      "replace": "const traps = impureCalls().slice(3).map(",
+      "find": "for (const trap of impureCalls())",
+      "replace": "for (const trap of impureCalls().slice(6))",
       "kills": [
         "sweepSim and freezeSim refuses a model that calls Math.random, and restores Math.random after",
         "sweepSim and freezeSim refuses a model that reads Date.now, and restores Date.now after"
+      ]
+    },
+    {
+      "name": "the param check accepts inherited keys",
+      "file": "products/explainer/src/sim/sweep.ts",
+      "find": "!Object.hasOwn(base, axis.param)",
+      "replace": "!(axis.param in base)",
+      "kills": [
+        "sweepSim and freezeSim refuses a sweep param that a plain object only inherits"
       ]
     },
     {
