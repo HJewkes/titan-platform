@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the console never dials the factory",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "    { source: \"factory\", url: `http://127.0.0.1:${config.factoryPort}/events`, headers: async () => accept, pick: factoryIds },\n",
+      "replace": "",
+      "kills": [
+        "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone",
+        "the factory relay source redials a dropped factory stream with the same doubling backoff, announcing each reopen"
+      ]
+    },
+    {
+      "name": "factory frames lose their run id",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "pick: factoryIds },",
+      "replace": "pick: brokerIds },",
+      "kills": [
+        "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
+      ]
+    },
+    {
+      "name": "any string passes as a run id",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "const RUN_ID = /^[\\w.-]{1,128}$/;",
+      "replace": "const RUN_ID = /^.{1,128}$/;",
+      "kills": [
+        "factoryIds drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object"
+      ]
+    },
+    {
+      "name": "a non-string run id is kept",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "return typeof runId === \"string\" && RUN_ID.test(runId) ? { runId } : {};",
+      "replace": "return runId !== undefined && RUN_ID.test(String(runId)) ? { runId: String(runId) } : {};",
+      "kills": [
+        "factoryIds drops a run id with spaces or slashes, a non-string run id, a frame with none, and data that is not an object"
+      ]
+    },
+    {
+      "name": "the factory dial sends the broker token",
+      "file": "apps/console/server/events-relay.ts",
+      "find": "headers: async () => accept, pick: factoryIds",
+      "replace": "headers: async () => ({ ...accept, [TOKEN_HEADER]: await readToken(config.agentChatTokenPath) }), pick: factoryIds",
+      "kills": [
+        "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
+      ]
+    }
+  ]
+}

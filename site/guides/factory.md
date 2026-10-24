@@ -14,8 +14,9 @@ file, and a crash resumes from the last completed step. Two workflows are regist
   `shepherd stats --slo` checks it against the SLOs in `metrics/shepherd.yml`: see
   [SLOs](/guides/shepherd#slo).
 
-The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
-when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the
+The factory starts two kinds of agent through agent-chat: the Shepherd reviewer, only when
+`shepherd.review` is configured, and the fixer a red main spawns, only when `shepherd.fixer` is.
+Relay and agent-chat keep every other dispatch. For the design and the file map, read the
 [factory reference](/reference/factory) and
 [`products/factory/README.md`](https://github.com/HJewkes/titan-platform/blob/main/products/factory/README.md).
 
@@ -600,7 +601,8 @@ curl -s http://127.0.0.1:7410/health
 
 ```json
 {"runs":{"running":2,"paused":0,"cancelling":0,"recovery_required":0,"completed":0,"failed":0,"cancelled":0},
- "pendingGates":0,"github":"ok","ok":true,"version":"0.1.0","pid":4242,"uptime_ms":4784,"port":7410}
+ "pendingGates":0,"busy":[],"github":"ok","build":{"sha":"0123456789abcdef0123456789abcdef01234567","behindMain":0},
+ "lastDeploy":null,"ok":true,"version":"0.1.0","pid":4242,"uptime_ms":4784,"port":7410}
 ```
 
 `github` is `ok` when `gh api rate_limit` succeeds in the server's environment, the redacted
@@ -608,7 +610,7 @@ curl -s http://127.0.0.1:7410/health
 background at most once a minute, so a health request never waits on `gh`.
 
 The registry commands are `factory.land`, `factory.status`, `factory.gates`, `needs.list`,
-`needs.count`, and the seven `shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
+`needs.count`, and the 14 `shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
 without one the server answers 403.
 
 ```sh
@@ -907,7 +909,7 @@ It never starts, stops or restarts the job.
 | `2` | Usage error, such as an invalid `--port` |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
-other platform these four verbs fail with one line.
+other platform these six verbs fail with one line.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its

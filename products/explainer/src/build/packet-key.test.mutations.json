@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the key is built from the beat id alone",
+      "file": "products/explainer/src/build/beat-worker.ts",
+      "find": "sha256(canonicalJson({ packet, builder }))",
+      "replace": "sha256(canonicalJson({ beat: packet.beat_id, builder }))",
+      "kills": [
+        "gives two packets for the same beat id that differ in one source line different keys"
+      ]
+    },
+    {
+      "name": "the builder is left out of the key",
+      "file": "products/explainer/src/build/beat-worker.ts",
+      "find": "sha256(canonicalJson({ packet, builder }))",
+      "replace": "sha256(canonicalJson({ packet }))",
+      "kills": [
+        "re-keys every packet when the base prompt changes"
+      ]
+    }
+  ]
+}
