@@ -408,6 +408,11 @@ titan-console inbox restore deposit:<32 hex> --as my-agent --actor my-agent     
 titan-console inbox withdraw-matching --as my-agent --actor my-agent --key my-alarm --reason resolved [--dry-run]
 ```
 
+- **Ids.** `inbox file` prints the full id, `deposit:<32 hex>`. `withdraw` and `restore` also take
+  a hex prefix of at least 8 digits, bare (`1a2b3c4d`) or as `deposit:1a2b3c4d`, when it starts
+  exactly one deposit in the spool; the output names the full id. A prefix that starts several
+  exits 65 and lists their full ids. No match exits 66 with
+  `unknown id <x>; full form is deposit:<32 hex>`.
 - **Its own status.** Withdrawal writes `<id>.withdrawn` beside the deposit and never an answer
   file. The inbox lists the item under withdrawn, not open or answered, and it stops counting
   against the open-deposit caps. A deposit the owner already answered is refused.
@@ -420,9 +425,9 @@ titan-console inbox withdraw-matching --as my-agent --actor my-agent --key my-al
 - **Actor required.** `--actor <seat>` names who runs the verb, so a seat closing items a retired
   automation filed shows as itself, not as the automation. A missing `--actor` exits 65 with one
   line on stderr and writes nothing.
-- **Own items only.** `--as` must equal the deposit's `asker`. An id that is not a deposit (a
-  hitl gate, a round question) is refused. A refusal exits 65 and an unknown id 66, each with one
-  line on stderr. `--as` is self-declared like `asker`, so this guards against a mistake, not a
+- **Own items only.** `--as` must equal the deposit's `asker`, checked after the id resolves. An
+  id of another item kind (a hitl `gate:`, a `round:` question) is refused as not a deposit. A
+  refusal exits 65 and an unknown id 66, each with one line on stderr. `--as` is self-declared like `asker`, so this guards against a mistake, not a
   hostile caller who can already write the spool.
 - **Local only.** Like `rounds withdraw`, these verbs write the spool directly and are never on
   `/rpc`, so nothing that reaches the daemon can take an item away from the owner.

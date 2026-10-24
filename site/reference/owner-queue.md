@@ -174,9 +174,14 @@ await withdrawMatching(dir, { asker: "agent-a", actor: "agent-b", keys: ["my-ala
   0600, exclusive create)
   beside the deposit. The name has no `.json` suffix, so an older `readSpool` never takes it for
   a deposit. `reason` is `obsolete`, `resolved` or `superseded:<id>`.
-- It throws `WithdrawRefusedError` with `kind: "unknown"` for a deposit id the spool does not
-  hold, and `kind: "refused"` for a bad reason, an id that is not `deposit:…`, an `as` other
-  than the deposit's `asker`, a blank `actor`, or a deposit that already has an answer.
+- The id is the full `deposit:<32 hex>`, or a hex prefix of at least 8 digits, bare or after
+  `deposit:`, that starts exactly one deposit in the spool. The result's `id` is always the full
+  one, and the checks below run on the deposit it resolves to.
+- It throws `WithdrawRefusedError` with `kind: "unknown"` for an id no deposit matches (`unknown
+  id <x>; full form is deposit:<32 hex>`), and `kind: "refused"` for a bad reason, a prefix that
+  matches several deposits (the message lists their full ids), an id of another item kind
+  (`gate:…`, `round:…`), an `as` other than the deposit's `asker`, a blank `actor`, or a
+  deposit that already has an answer.
 - Every withdraw and restore appends `{ op, id, reason?, by, actor, at }` to `withdrawals.jsonl`
   (`WITHDRAW_LOG`) in the spool. `restoreDeposit` deletes the marker and makes the same checks.
 - `withdrawMatching` withdraws every open deposit of `asker` carrying any of `keys`, and skips

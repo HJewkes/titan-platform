@@ -82,9 +82,31 @@ describe("withdrawDeposit", () => {
   });
 
   it("reports a deposit id the spool does not hold as unknown", async () => {
-    const error = await refusal(withdrawDeposit(dir, depositItemId("seat-a", "never-filed"), { reason: "obsolete", as: "seat-a", actor: OPS, now: NOW }));
+    const never = depositItemId("seat-a", "never-filed");
 
-    expect(error.kind).toBe("unknown");
+    const error = await refusal(withdrawDeposit(dir, never, { reason: "obsolete", as: "seat-a", actor: OPS, now: NOW }));
+
+    expect([error.kind, error.message]).toEqual(["unknown", `unknown id ${never}; full form is deposit:<32 hex>`]);
+  });
+
+  it("withdraws by a bare 8-hex prefix and marks and logs the full id", async () => {
+    await writeDeposit(dir, deposit());
+    const prefix = ID.slice("deposit:".length, "deposit:".length + 8);
+
+    expect(await withdrawDeposit(dir, prefix, { reason: "obsolete", as: "seat-a", actor: OPS, now: NOW })).toEqual({ id: ID, outcome: "withdrawn" });
+
+    expect(await readWithdrawal(dir, ID)).toMatchObject({ reason: "obsolete" });
+    expect((await log()).map((entry) => entry.id)).toEqual([ID]);
+  });
+
+  it("still refuses another seat and an answered deposit after resolving a prefix", async () => {
+    await writeDeposit(dir, deposit());
+    const prefix = ID.slice(0, "deposit:".length + 8);
+
+    expect((await refusal(withdrawDeposit(dir, prefix, { reason: "obsolete", as: "seat-b", actor: OPS, now: NOW }))).message).toBe(`${ID} was filed by seat-a, not seat-b`);
+    await writeAnswer(dir, ID, { text: "done", by: { class: "owner", id: "o", channel: "web" }, at: NOW.toISOString() });
+    expect((await refusal(withdrawDeposit(dir, prefix, { reason: "obsolete", as: "seat-a", actor: OPS, now: NOW }))).message).toBe(`${ID} is already answered; the owner's answer stands`);
+    expect(await readWithdrawal(dir, ID)).toBeUndefined();
   });
 
   it("refuses a reason outside obsolete, resolved and superseded:<id>", async () => {
