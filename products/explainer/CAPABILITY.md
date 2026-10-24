@@ -65,6 +65,11 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `placeBeatSystem` lands a system's steps in order in a profile's blocks.
 `loadStylePacks` reads the style packs (`doctrine/style-packs/*.yaml`: four selections of existing titan-design tokens by slot) and rejects a pack naming a token outside the pinned `tokens.css` names, the wrong kind of token for a slot, or a channel whose look it would copy,
 while each profile names the packs it allows and its voice band (Kokoro voice id and rate), and a render variant's `stylePack` puts the pack's content hash in the render key.
+For a `sim` beat, a `SimModel` in `SIM_MODELS` simulates from the seed's generator only (`runPure` refuses `Math.random` and clocks with `SimPurityError`),
+`sweepSim` runs it over one swept param and an optional facet with a seed per point, and
+`freezeSim` seals the runs as an `explainer.sim-trace/v1` trace (`SimTraceSchema`) keyed by its canonical-JSON sha256.
+`loadSims` reads the sim-model registry (`doctrine/sims/*.yaml`) and
+`checkSims` reports a model with no doctrine file, a file with no model, and a doctrine statistic the model never emits.
 `explainer guide types` writes each type's planner guide to `doctrine/guides/planner/<type>.md`.
 `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
 For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new),
