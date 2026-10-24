@@ -18,6 +18,18 @@ const EVENTS_API_SELECTORS = [
   { selector: "MemberExpression[property.name=/^list.*Events/][object.name='activity']", message: EVENTS_API_MESSAGE },
 ];
 
+const MOTION_PATHS = [
+  "/ui/beats/",
+  "/motion/",
+  "/products/explainer/src/beat-",
+  "/products/explainer/src/camera",
+  "/products/explainer/src/timing",
+  "/products/explainer/src/cues",
+  "/products/explainer/src/anchor-grid",
+  "/products/explainer/src/storyboard",
+  "/products/explainer/src/resolve-beat",
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -29,6 +41,8 @@ export default tseslint.config(
       "scripts/fixtures/eslint-recommended/**",
       // Holds deliberate Events API uses; scripts/eslint-recommended.test.mjs lints it from its own directory.
       "scripts/fixtures/events-api/**",
+      // Holds a deliberate Date.now(); scripts/eslint-recommended.test.mjs lints it from its own directory.
+      "scripts/fixtures/wall-clock/**",
     ],
   },
   js.configs.recommended,
@@ -46,6 +60,11 @@ export default tseslint.config(
   {
     files: ["products/factory/**", "packages/github/**"],
     rules: { "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS] },
+  },
+  // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera and timing sources are named.
+  {
+    files: ["**/products/explainer/src/**", "**/ui/beats/**", "**/motion/**"],
+    rules: { "titan/no-wall-clock-motion": ["error", { paths: MOTION_PATHS }] },
   },
   { languageOptions: { globals: globals.node } },
   { files: ["apps/*/src/**"], languageOptions: { globals: globals.browser } },
