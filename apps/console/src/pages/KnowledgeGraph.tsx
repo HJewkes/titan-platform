@@ -60,7 +60,7 @@ function EgoRead({ center }: { center: string }): ReactNode {
 }
 
 /** Counts are distinct neighbours found before the caps and the file and branch collapsing. */
-const foundNeighbours = (ego: Ego): number => Object.values(ego.counts).reduce((sum, count) => sum + (count ?? 0), 0);
+const foundNeighbours = (ego: Ego): number => Object.values(ego.counts).reduce((sum, count) => sum + count, 0);
 
 function EgoView({ ego }: { ego: Ego }): ReactNode {
   const shown = ego.nodes.length - 1;

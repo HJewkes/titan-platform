@@ -22,7 +22,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export function KnowledgePage({ route }: { route: Route }): ReactNode {
   const params = new URLSearchParams(route.query);
   if (route.id) return <KnowledgeRecordPage recordRef={route.id} graph={params.get("tab") === "graph"} />;
-  const tab = Math.max(0, TABS.indexOf(params.get("tab") as (typeof TABS)[number]));
+  const tab = Math.max(0, TABS.findIndex((name) => name === params.get("tab")));
   return (
     <VStack gap={4}>
       <Tabs index={tab} onChange={(index) => open({ view: "knowledge", ...(index === 0 ? {} : { query: `tab=${TABS[index]}` }) })}>
