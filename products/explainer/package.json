@@ -44,6 +44,7 @@
     "@titan-design/github": "workspace:^",
     "@titan-design/graph-layout": "workspace:^",
     "@titan-design/hitl": "workspace:^",
+    "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/speech-g2p": "workspace:^",

@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
@@ -34,6 +35,24 @@ describe("explainer run", () => {
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
   });
 
+  it("files the reflection once when the same script exports a second time", async () => {
+    fx = fixture();
+    const spool = mkdtempSync(path.join(tmpdir(), "reflection-spool-"));
+    const reflection = { mode: "deposit" as const, asker: "acme-seat", spoolDir: spool };
+    const draft = choppy();
+    const last = draft.chapters[draft.chapters.length - 1]!.id;
+    const script = { ...draft, chapters: draft.chapters.map((c) => (c.id === last ? { ...c, id: "reflection" } : c)), beats: draft.beats.map((b) => (b.chapter === last ? { ...b, chapter: "reflection" } : b)) };
+    const host = () => fakeHost(fx, fakeScriptModel(script), fakeBridge(), { reflection });
+
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, host());
+    const second = await runVideo({ spine: fx.spine, facts: fx.facts, from: "export", base: first.runId }, host());
+
+    expect([first.status, second.status], first.error).toEqual(["completed", "completed"]);
+    expect(readdirSync(spool).filter((name) => name.endsWith(".json"))).toHaveLength(1);
+    expect(existsSync(path.join(fx.theater, "reflection.md"))).toBe(true);
+    rmSync(spool, { recursive: true, force: true });
+  });
+
   it("voices the rewritten script, not the draft", async () => {
     fx = fixture();
     const bridge = fakeBridge();
@@ -53,7 +72,7 @@ describe("explainer run", () => {
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
-    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "9 pass, 1 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ status: "failed", checks: "10 pass, 1 gate fail, 1 reported fail" });
     expect(result.error).toContain("script: gate l0 failed");
     expect(bridge.calls).toEqual([]);
     expect(row(result, "rewrite").status).toBe("not run");
@@ -98,7 +117,7 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(1);
-    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "10 pass, 0 gate fail, 1 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 0, checks: "11 pass, 0 gate fail, 1 reported fail" });
     const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
     expect(draft.beats[0]).not.toHaveProperty("chips");
     expect(draft.beats[1]).not.toHaveProperty("cues");
@@ -116,7 +135,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain('Unrecognized key: "cues"');
-    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "10 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ retries: 1, checks: "11 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("repairs a draft that fails L0 with one call naming the failing checks, and keeps the repair", async () => {
@@ -130,7 +149,7 @@ describe("explainer run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("## Checks the draft fails\n\n- fake-l0:");
-    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "11 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "script")).toMatchObject({ calls: 2, retries: 0, checks: "12 pass, 0 gate fail, 0 reported fail" });
   });
 
   it("tells the repair what a failing check found where its row alone is opaque", async () => {

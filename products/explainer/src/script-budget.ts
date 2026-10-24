@@ -130,6 +130,12 @@ function beatPlan(leads: readonly LeadBeat[], targetS: number, shares: readonly 
   return `One idea per beat: every beat but the close plans ${MIN_BEAT_S}-${MAX_BEAT_S} s, so a chapter of chapterS seconds holds ceil(chapterS / ${MAX_BEAT_S}) beats or more.${split} Plan at least ${total} beats in all. A chapter's first beat carries its lead beat spec; each later beat in the chapter is a continuation beat with its own id, one function, its own plannedS and its own cues, and keeps the chapter's "visual.beat", listing in "visual.labels" only the items it adds.`;
 }
 
+/** The profile's label conventions, one line per block that has them, so the host bridge's views fire on the labels written. */
+function labelRules(profile: TypeProfile): string {
+  const rows = profile.structure.blocks.flatMap((block) => (block.labels ? [`- ${block.id}: ${block.labels}`] : []));
+  return rows.length > 0 ? `\n\nWrite "visual.labels" by the chapter's convention; the host draws a view only when the labels follow it:\n${rows.join("\n")}` : "";
+}
+
 /** The prompt's word caps, runtime and beat plan: each lead beat's rate, the band table for the rest, and the profile's runtime. */
 export function budgetSection(leads: readonly LeadBeat[], profile: string): string {
   const bands = loadSpeechBands();
@@ -141,5 +147,5 @@ export function budgetSection(leads: readonly LeadBeat[], profile: string): stri
   return `## Word caps, runtime and beats
 
 The beats' plannedS sum to about ${runtime.targetS} s, and never below ${runtime.minS} s or above ${runtime.maxS} s. ${beatPlan(leads, runtime.targetS, chapterShares(leads, set, type))} A beat speaks at most plannedS times its beat spec's words per second, rounded down, and close to that cap, since seconds the words do not fill are silent. Words per second by speech band: ${table}.
-${lines.join("\n")}`;
+${lines.join("\n")}${labelRules(type)}`;
 }
