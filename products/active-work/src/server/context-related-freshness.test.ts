@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runRelated } from '../commands/context-related.js';
+import { indexFreshness } from '../session-index/freshness.js';
 import { openGraph } from '../session-index/graph.js';
 import { withRefreshLock } from '../session-index/refresh.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
@@ -16,6 +17,9 @@ import { startSessionIndexWatch } from './session-index-watch.js';
  */
 
 const log = { info: () => {}, warn: () => {} };
+
+/** Past the workspace watcher's 200 ms debounce, so any change it saw has marked the workspace dirty. */
+const pastDebounce = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 600));
 
 let dir: string;
 let root: string;
@@ -101,6 +105,35 @@ describe('context.related in the daemon', () => {
     } finally {
       await watcher?.close();
       await lock.release();
+    }
+  });
+
+  it('the daemon\'s own index writes leave the workspace clean', { timeout: 15_000 }, async () => {
+    // The daemon's graph and lock now sit under the very root the workspace watcher covers.
+    vi.stubEnv('ACTIVE_ROOT', root);
+    const watcher = startSessionIndexWatch(log, { startPoll: () => () => {} });
+    let lock: { release: () => Promise<void> } | null = null;
+    try {
+      // The startup transcript pass holds the refresh lock; the workspace refresh below must not meet it.
+      await vi.waitFor(() => expect(watcher?.status().running).toBe(false), { timeout: 10_000 });
+      writeFile('alpha/sources/notes/2026-09-03-alpha-follow-up.md', '---\nkind: process\n---\n');
+      await pastDebounce();
+      // The first pass indexes the whole root, so it gets more than related's budget.
+      expect(await indexFreshness.ensure(10_000, 'workspace')).toBe('fresh');
+      await pastDebounce();
+      lock = await holdRefreshLock();
+      await pastDebounce();
+
+      const result = await runRelated(
+        { for: 'the alpha lesson', initiative: 'alpha', trigger: 'spawn' },
+        { activeRoot: root, dbPath, hitLog: async () => null },
+      );
+
+      // Any refresh now would meet the held lock and read stale.
+      expect(result.degraded.filter((entry) => entry.source === 'index')).toEqual([]);
+    } finally {
+      await watcher?.close();
+      await lock?.release();
     }
   });
 });

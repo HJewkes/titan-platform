@@ -4,6 +4,8 @@
  * `context related` reads only the workspace half of the index, so it waits on
  * a workspace-only refresh, never on a transcript delta pass. A watcher on the
  * active root marks the workspace dirty; nothing is refreshed until a reader asks.
+ * The watcher skips the miner root: the index database and its refresh lock live
+ * there, so the daemon's own passes would otherwise mark the workspace dirty.
  */
 import { existsSync } from 'node:fs';
 import { watchTree, type TreeWatcher } from '@titan-design/daemon';
@@ -11,7 +13,7 @@ import type { Freshness } from '../session-index/freshness.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { withRefreshLock } from '../session-index/refresh.js';
 import { withinBudget } from '../session-index/scheduler.js';
-import { getActiveRoot } from '../utils/paths.js';
+import { getActiveRoot, getMinerRoot } from '../utils/paths.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 
 export interface WorkspaceFreshness {
@@ -93,6 +95,7 @@ function watchWorkspace(
   try {
     return watchTree(root, () => workspace.markDirty(), {
       debounceMs: WORKSPACE_DEBOUNCE_MS,
+      ignore: [getMinerRoot()],
       onError: (err) => log.warn({ err, root }, 'workspace watcher error'),
     });
   } catch (err) {
