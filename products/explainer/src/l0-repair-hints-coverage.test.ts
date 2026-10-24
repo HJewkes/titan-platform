@@ -54,7 +54,7 @@ describe("the Q-W1 hint", () => {
   });
 
   it("says when no stake beat starts early enough", () => {
-    const late = GOOD_BEATS.map((spec) => (spec[0] === "h2" ? [spec[0], spec[1], "WHAT", spec[3], spec[4]] : spec) as typeof spec);
+    const late = GOOD_BEATS.map((spec): typeof spec => (spec[0] === "h2" ? [spec[0], spec[1], "WHAT", spec[3], spec[4]] : spec));
     const script = tour(late, { stake: STAKE });
     const row = runL0(script, undefined, [whyCheck]).find((r) => r.check_id === "Q-W1")!;
 
