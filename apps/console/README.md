@@ -646,9 +646,16 @@ written with `wx`, so a later run prints nothing for it:
 ```sh
 titan-console rounds nudge          # one "reply rec" line per newly due round; writes its nudged.json
 titan-console rounds nudge --json   # the same rounds as one JSON array
+titan-console rounds answer-rec <id>          # "<id>: answered N questions; feedback written"
+titan-console rounds answer-rec <id> --json   # one line: {id, answered, path, sha256}
 ```
 
-A "rec" reply, or the tap, is `rounds.answer-rec`.
+The tap is `rounds.answer-rec`. A "rec" reply is `rounds answer-rec`, which tp-operator runs to relay it: a local
+verb that runs the same path in-process, bound to the sha256 of the `round.json` on disk, through the daemon's own
+submit pipeline, so the decision log and the seat notice hear it as they hear the tap. The RPC command takes only a
+LAN session cookie, which no process on this machine holds. Every refusal the RPC gives (a sent or withdrawn round,
+a question no recommendation answers, a Ship) prints its one-line reason to stderr and exits non-zero; an unknown
+id exits 66. Run it with the service's `TITAN_CONSOLE_*` settings.
 
 - **Supersedes (automatic).** A round may list `supersedes: ["<round-id>", ...]` in its `round.json`,
   the earlier rounds it replaces. It is the console's own field, lifted off before review-schema's
