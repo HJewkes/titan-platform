@@ -294,7 +294,7 @@ describe("out-of-enum values in a script reply", () => {
     expect(script.beats.map((beat) => beat.id)).toEqual(chapterIds(4).map((id) => `${id}-a`));
   });
 
-  // Mutation: treating a required field as omittable in `enumFix` deletes the beat's function and the stage fails on a missing field instead.
+  // Mutation: letting `enumFix` drop an item of a required list (beats) loses the beat silently and the stage passes.
   it("fails the stage when a required field stays out of the enum after the retry, rather than dropping it", async () => {
     const model = fakeModel(() => wholeReply({ function: "MAYBE" }));
 
