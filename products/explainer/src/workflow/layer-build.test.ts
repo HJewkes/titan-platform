@@ -23,19 +23,22 @@ const TEMPLATE = { visual: visual({ layer: "template" }), fact_ids: ["F-1"] };
 const TreeSchema = z.object({ entries: z.array(z.object({ path: z.string() })) });
 const FACTS = JSON.stringify({ items: [{ id: "F-1", text: "Each scan waits for a ledger entry." }] });
 
-/** A beat worker that counts its calls and answers every packet with a one-line layer at a fixed price. */
-function countingWorker(fail: (beatId: string) => boolean = () => false, builder: BuilderRef = BUILDER) {
+/** A beat worker that counts its calls and answers every packet with a one-line layer (or `module`'s) at a fixed price. */
+function countingWorker(fail: (beatId: string) => boolean = () => false, builder: BuilderRef = BUILDER, module?: (beatId: string) => string) {
   const calls: string[] = [];
   const worker: BeatWorker = {
     builder,
     build: async ({ packet }): Promise<LayerBuild> => {
       calls.push(packet.beat_id);
       if (fail(packet.beat_id)) throw new Error(`fake build refused ${packet.beat_id}`);
-      return { module: `export const Layer = () => "${packet.beat_id}";\n`, anchors: packet.anchors, elements: [], usage: { usd: 0.01, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, calls: 1 } };
+      const source = module?.(packet.beat_id) ?? `export const Layer = () => "${packet.beat_id}";\n`;
+      return { module: source, anchors: packet.anchors, elements: [], usage: { usd: 0.01, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, calls: 1 } };
     },
   };
   return { calls, worker };
 }
+
+const customAt = (anchors: string[]) => ({ visual: visual({ layer: "custom", anchors }), fact_ids: ["F-1"] });
 
 function putInputs(db: Db, texts: Record<string, string>): Record<string, string> {
   const store = new ArtifactStore(fx.dataDir, db);
@@ -163,5 +166,57 @@ describe("custom-layer builds across a crash", () => {
     expect(before.calls.sort()).toEqual(["b1", "b2"]);
     expect(after.calls).toEqual([]);
     expect(childRecord(finished)?.outputs[CUSTOM_LAYERS]).toBeDefined();
+  });
+});
+
+describe("custom-layer builds across runs", () => {
+  it("reuses every build whose packet is unchanged when a script edit makes a new resolve run", async () => {
+    fx = fixture();
+    await runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", CUSTOM], ["b2", "WHAT", TEMPLATE]]) }, host(countingWorker().worker));
+    const second = countingWorker();
+    const edited = inputs([["b1", "WHAT", CUSTOM], ["b2", "WHAT", { ...TEMPLATE, visual: visual({ layer: "template", assertion: "The desk logs every refusal" }) }]]);
+
+    const record = await runOneStage({ stage: "resolve", inputs: edited }, host(second.worker));
+
+    expect(record.cached).toBeFalsy();
+    expect(second.calls).toEqual([]);
+    expect(treeFiles(record.outputs[CUSTOM_LAYERS]!)).toEqual(["b1.tsx", "layers.json"]);
+    expect(record.notes).toContain("1 custom layers built (1 from the build cache)");
+    expect(record.usage).toMatchObject({ usd: 0, calls: 0 });
+  });
+
+  it("calls the worker once, for the one beat whose packet changed", async () => {
+    fx = fixture();
+    await runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", CUSTOM], ["b2", "WHAT", CUSTOM]]) }, host(countingWorker().worker));
+    const second = countingWorker();
+
+    await runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", CUSTOM], ["b2", "WHAT", customAt(["C3"])]]) }, host(second.worker));
+
+    expect(second.calls).toEqual(["b2"]);
+  });
+});
+
+describe("the compile gate on custom-layer builds", () => {
+  it("marks a build that does not compile as needing repair, with esbuild's error, and never caches it", async () => {
+    fx = fixture();
+    const pins = inputs([["b1", "WHAT", CUSTOM]]);
+    const broken = () => "export default function Layer() {\n  return <div>;\n}\n";
+    const first = countingWorker(undefined, BUILDER, broken);
+
+    const run = runOneStage({ stage: "resolve", inputs: pins }, host(first.worker));
+
+    await expect(run).rejects.toThrow(/custom layers not built: b1 \(needs repair: layer\.tsx:\d+:\d+: /);
+    const retry = countingWorker(undefined, BUILDER, broken);
+    await expect(runOneStage({ stage: "resolve", inputs: pins }, host(retry.worker))).rejects.toThrow(/needs repair/);
+    expect(retry.calls).toEqual(["b1"]);
+  });
+
+  it("refuses a build that imports a module outside the allowlist", async () => {
+    fx = fixture();
+    const reader = countingWorker(undefined, BUILDER, () => `import { readFileSync } from "node:fs";\nexport const Layer = () => readFileSync("ledger");\n`);
+
+    const run = runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", CUSTOM]]) }, host(reader.worker));
+
+    await expect(run).rejects.toThrow(/b1 \(needs repair: .*import "node:fs" is not allowed in a custom layer/);
   });
 });

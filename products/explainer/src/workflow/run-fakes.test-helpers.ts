@@ -276,5 +276,6 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   let tick = Date.parse("2026-10-22T00:00:00Z");
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
-  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, evalChecks: [l0Check(true)], now, ...extra, rewriter, rubric };
+  // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
+  return { dataDir: fx.dataDir, runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, evalChecks: [l0Check(true)], now, beatWorker: null, ...extra, rewriter, rubric };
 }
