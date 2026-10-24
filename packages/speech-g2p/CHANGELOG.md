@@ -1,5 +1,11 @@
 # @titan-design/speech-g2p
 
+## 0.2.0
+
+### Minor Changes
+
+- f7b9e60: `misakiEnglish({ words })` takes misaki phonemes for words the shipped lexicon misreads or lacks. They match case-insensitively, are read ahead of golds and special cases, and fold into `version`; with no `words` (or an empty map) the version is unchanged.
+
 ## 0.1.0
 
 ### Minor Changes

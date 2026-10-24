@@ -1,5 +1,11 @@
 # @titan-design/speech-tts
 
+## 0.1.1
+
+### Patch Changes
+
+- 10c117f: Fix Kokoro word timings after a word with no phonemes: the timeline no longer drifts one id per such word, so the last word keeps its timing. The "does not speak" warning names the 510-phoneme cut only when a chunk was cut.
+
 ## 0.1.0
 
 ### Minor Changes

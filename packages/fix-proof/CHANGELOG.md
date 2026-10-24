@@ -1,5 +1,18 @@
 # @titan-design/fix-proof
 
+## 0.8.1
+
+### Patch Changes
+
+- 9c70c14: Keep a missing browser from reading as a vacuous proof. A base file that failed with every test skipped, as when a `beforeAll` hook throws, now classifies as an `error` verdict with file state `hook-error` instead of `not-run`. The sandboxed base run also forwards the runner's `PLAYWRIGHT_BROWSERS_PATH` when it is set; staging a browser the sandbox user can read is not part of this change.
+- 708e154: Leave a self-contained carried test out of `mutants.uncovered` (TP-4075). A changed test is exempt when it matches the `carry` globs and its runtime imports reach only carried files, vitest and builtins that cannot start a process, a worker or evaluated source. Imports are followed through every carried file they reach. No mutation may target a carried file, so a test-only PR touching such a test could otherwise never reach `killed`. A changed test still needs a spec if it loads non-carried source (directly or through a carried helper), another package, or `child_process`, `worker_threads` or `vm`, or if it runs code outside the import graph. So does any test outside the carry paths. The rule assumes a carried test reads files only to judge tests or carried files.
+- 6a2471a: Leave tests head skips or marks todo out of `classifyReports`, so a test-only diff whose files hold `it.skipIf` or `it.todo` can be proved by its mutants (TP-4079). A skip inside a failed file, or of a test base passed, still counts as `not-run`. The result line's shape is unchanged.
+- f5d92f3: A mutation spec kill that names no test in a baseline that loaded is now an `error` verdict naming the spec, mutation
+  and kill, with the full title when exactly one test ends with the bare one. It was a `baseline` outcome, which read as
+  a test that failed before the mutant rather than a kill that could never match.
+- 661a027: A diff that changes only a mutation spec now plans the spec's sibling test (TP-4039). `planFixProof` takes an optional `headFiles` list, the paths at head beside the diff's specs; a spec whose one sibling test is listed there and not deleted adds that test to `tests`, so the spec's mutants are judged instead of the diff reading as `no-tests`. The runner and judge list each spec's directory at head and pass it in. Without `headFiles` the plan is unchanged.
+- 2451aa9: The mutants side now parses and pairs a diff's `*.mutations.json` specs even when the diff changes source, and runs each mutation through `checkMutation` against head there (its new optional `at` names that commit in the error). Any refused spec, or on a source diff any failure reading one, also writes `mutants.refused`, which fails the fix-proof-mutants job. Before, a source diff skipped its specs unread, so over-cap specs landed. tool-guard: one sidecar mutation name shortened to the 80-character cap; test material only.
+
 ## 0.8.0
 
 ### Minor Changes

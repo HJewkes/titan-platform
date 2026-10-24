@@ -1,5 +1,26 @@
 # @titan-design/tool-guard
 
+## 0.6.0
+
+### Minor Changes
+
+- 020e7e7: merge-lint: add the `git-refspec-push` shape. A push that names its destination ref (`:${…}` or `:refs/heads/…`, in argv or on a shell line) writes a branch with no PR, so only declared ratchets may.
+
+### Patch Changes
+
+- 6dc90a8: Test that the merge rule's own docs sentences produce no merge-lint finding.
+- ee4b114: Read what a shell's script may run besides itself. Once a shell runs a script (a `-c` string, a file, or under `-s` a stdin something feeds), every substitution after it is read, since the script may run it by its positional (`bash ./run.sh <(...)`, `bash -s <(...) <<< 'bash "$1"'`), and so is every substitution a `source` or `.` passes on. A file operand after a `-c` string or a fed `-s` is read as a relayed stdin file is (`bash -c 'bash "$1"' _ ./x.sh`). bash's `--rcfile` and `--init-file` are read when the file is there. A bare `<(...)` as the whole command is read as `exec <(...)` is. `sourcedFiles` replaces `sourcedOperand` as the one reader of a sourced word: it reads bash 5.3's `source -p PATH FILE`, looking FILE up in PATH, reads zsh's file named `-p` or `-x` only when one is there, and after a first word only known at run time (`source "$D" <(...)`) reads every later word. Lines that open a descriptor also refuse a `-c` positional, an rcfile or a `source -p` file that may name it.
+- ff008c2: Read a process substitution as a script in three more places. A substitution that is the program itself (`exec <(...)`, `env <(...)`, `sudo <(...)`) is read as the file `exec ./x.sh` names is, instead of failing closed on an unreadable path. Under `bash -c STR`, every substitution after the string is read, since the string may run it by its positional (`bash -c 'bash "$1"' _ <(...)`). `source -- <(...)` and `. -- <(...)` read the substitution after `--`, and so does `source -- FILE`. A quoted or escaped `--` ends the options of `source`, `.` and a body's `cat` as the bare one does, so `bash <(cat '--' ./x.sh)` reads the file. Every reader of a `source` or `.` script word now takes it from one `sourcedOperand`, so the check for a descriptor the line opened also refuses `exec {fd}< f; source -- /dev/fd/$fd`.
+- 50a5735: `eval` and a shell's `-c` now read the printed text of a group, subshell, list or pipeline inside `$( )` (TP-3333).
+- ecbd245: Document the parked bypass tail in the README as "Known gaps (parked)": each open bypass by class, the node-option cases from #1859, a plain statement that tool-guard is a guard-rail against accidents and not a security boundary, and the pointer to egress control below the shell (TP-3751).
+- 3bc893a: TP-3256: read a process substitution a shell or `source` runs as its script. `bash <(echo 'git push origin HEAD:main')`, `sh <(printf …)`, `source <(echo …)` and `bash <(cat ./x.sh)` are now walked like the same text piped in, and a `cat` of a file the guard cannot read in full is refused. A body the guard does not model (`kubectl completion bash`, `curl …`) keeps the verdict the same program piped into the shell gets. A body's pipeline passes printed text through `cat` and `tee` (`bash <(echo … | cat)`), and once a shell runs a substitution as its script every later substitution operand is read too, since the script may run it by its positional (`bash <(echo 'bash "$1"') <(echo …)`).
+- e8ee079: The secret list gains `**/titan-factory/**/*.token`, so a Read, cat, cp or base64 of a titan-factory token file (for example `~/.config/titan-factory/secrets/github-bot.token`) classifies as secret-read. Other files under `titan-factory` stay unclassified.
+- 44cbdd1: Compiling a glob with many unterminated `[` no longer searches to the end of the word for each one, so a script word full of `$${x[` openers costs linear work instead of quadratic (TP-4051).
+- 7414219: List `zod` under `dependencies` instead of `peerDependencies`. The `titan-merge-lint` and
+  `titan-tool-guard` bins import it at run time, so `npx -p @titan-design/tool-guard` failed with
+  `ERR_MODULE_NOT_FOUND` wherever npm runs with `legacy-peer-deps=true`.
+- 2451aa9: The mutants side now parses and pairs a diff's `*.mutations.json` specs even when the diff changes source, and runs each mutation through `checkMutation` against head there (its new optional `at` names that commit in the error). Any refused spec, or on a source diff any failure reading one, also writes `mutants.refused`, which fails the fix-proof-mutants job. Before, a source diff skipped its specs unread, so over-cap specs landed. tool-guard: one sidecar mutation name shortened to the 80-character cap; test material only.
+
 ## 0.5.3
 
 ### Patch Changes

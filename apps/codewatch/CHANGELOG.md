@@ -1,5 +1,13 @@
 # codewatch
 
+## 0.0.21
+
+### Patch Changes
+
+- @titan-design/code-read@0.3.5
+- @titan-design/react-app@0.1.4
+- @titan-design/rpc-client@0.4.1
+
 ## 0.0.20
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @titan-design/retrieval-eval
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [42b6a21]
+  - @titan-design/retrieval@0.4.0
+
 ## 0.0.5
 
 ### Patch Changes

@@ -1,5 +1,16 @@
 # @titan-design/graph-layout
 
+## 0.2.0
+
+### Minor Changes
+
+- 538c0f7: code-graph adds `extractProtocolEdges`, which reads HTTP routes, SSE streams and MCP tools from source text and links each to the files that call it, plus a `NO_PROTOCOL_SOURCE` diagnostic when a repo declares none. graph-layout's `emitRepoMap` takes those edges as `protocolEdges` and draws one labelled one-way `protocol` arrow per container pair, or labels the container import arrows "imports only" when there is no arrow to draw.
+
+### Patch Changes
+
+- Updated dependencies [538c0f7]
+  - @titan-design/code-graph@0.19.0
+
 ## 0.1.0
 
 ### Minor Changes

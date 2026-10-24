@@ -1,5 +1,41 @@
 # @titan-design/evals
 
+## 0.5.6
+
+### Patch Changes
+
+- cd2e635: Each `explainer.<stage>` child run ends with a `checks:<stage>` step that runs the stage's deterministic checks; every verdict carries `gate`, a failed gate fails the stage, and reported checks only show in the run report's new Checks table. `bridge.json` `check` commands take `gate` (default `true`). `explainer stage --json` prints the record, verdicts included, even when a gate failed. Adds the `explainer-video` and per-stage ev units with frozen, sha-only cases.
+- 3c6ccec: `titan-evals review-pr cases` skips a corpus row whose head, or next head, the local clone no longer holds, and counts it as `head-unreachable` in the manifest's `skipped`. Before, one such row aborted the whole build (TP-4114).
+- Updated dependencies [ff061ba]
+- Updated dependencies [4ea511b]
+- Updated dependencies [9c70c14]
+- Updated dependencies [708e154]
+- Updated dependencies [6a2471a]
+- Updated dependencies [f5d92f3]
+- Updated dependencies [c15f0dc]
+- Updated dependencies [c18be57]
+- Updated dependencies [44038c9]
+- Updated dependencies [7d3b5fb]
+- Updated dependencies [481f3e4]
+- Updated dependencies [661a027]
+- Updated dependencies [801f9c4]
+- Updated dependencies [5e34e3d]
+- Updated dependencies [52dc7f3]
+- Updated dependencies [869014a]
+- Updated dependencies [869014a]
+- Updated dependencies [12afa80]
+- Updated dependencies [2451aa9]
+- Updated dependencies [4a2495f]
+- Updated dependencies [0229ba6]
+- Updated dependencies [7012bf0]
+- Updated dependencies [2165cec]
+  - @titan-design/agent@0.7.0
+  - @titan-design/fix-proof@0.8.1
+  - @titan-design/review-panel@0.9.0
+  - @titan-design/session-read@0.17.0
+  - @titan-design/workflow@0.14.0
+  - @titan-design/session-analytics@0.17.5
+
 ## 0.5.5
 
 ### Patch Changes

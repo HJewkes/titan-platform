@@ -1,5 +1,18 @@
 # @titan-design/agent-dispatch
 
+## 0.10.0
+
+### Minor Changes
+
+- a20c348: New `receivesMessages(row)`: whether `messageAgent` can reach the agent a roster row names. Its unregistered `debug send` reaches only a connected session, so only a `live` row counts; a `detached` row is as unreachable as an `exited` one.
+
+### Patch Changes
+
+- cb470f4: Carry `predecessor` from `agent-chat agent ls --json` through to Shepherd's roster. `AgentRow` gains an optional
+  `predecessor`: a string or null passes through, a missing or mistyped key stays absent and is never read as null. The
+  reviewer roster maps it the same way, so lineage can prove a reviewer independent once agent-chat reports the field,
+  and a roster without it still proves nothing.
+
 ## 0.9.0
 
 ### Minor Changes

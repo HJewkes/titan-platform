@@ -176,7 +176,7 @@ Key exports:
 
 ### [`anthropic-account`](https://hjewkes.github.io/titan-platform/reference/anthropic-account)
 
-Tier 0, `@titan-design/anthropic-account@0.3.0`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh
+Tier 0, `@titan-design/anthropic-account@0.3.1`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh
 
 **Use this when:**
 
@@ -358,7 +358,7 @@ Key exports:
 
 ### [`fix-proof`](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
-Tier 0, `@titan-design/fix-proof@0.8.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
+Tier 0, `@titan-design/fix-proof@0.8.1`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
 **Use this when:**
 
@@ -479,7 +479,7 @@ Key exports:
 
 ### [`tool-guard`](https://hjewkes.github.io/titan-platform/reference/tool-guard)
 
-Tier 0, `@titan-design/tool-guard@0.5.3`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
+Tier 0, `@titan-design/tool-guard@0.6.0`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
 **Use this when:**
 
@@ -506,7 +506,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](https://hjewkes.github.io/titan-platform/reference/agent)
 
-Tier 1, `@titan-design/agent@0.6.2`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.7.0`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:**
 
@@ -526,7 +526,7 @@ Key exports:
 
 ### [`agent-dispatch`](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
-Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+Tier 1, `@titan-design/agent-dispatch@0.10.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
 **Use this when:**
 
@@ -580,7 +580,7 @@ Key exports:
 
 ### [`daemon`](https://hjewkes.github.io/titan-platform/reference/daemon)
 
-Tier 1, `@titan-design/daemon@0.8.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
+Tier 1, `@titan-design/daemon@0.9.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
 **Use this when:**
 
@@ -600,7 +600,7 @@ Key exports:
 
 ### [`frame-capture`](https://hjewkes.github.io/titan-platform/reference/frame-capture)
 
-Tier 1, `@titan-design/frame-capture@0.1.0`. Deterministic frame capture of any page that speaks the __titanMotion protocol
+Tier 1, `@titan-design/frame-capture@0.2.0`. Deterministic frame capture of any page that speaks the __titanMotion protocol
 
 **Use this when:**
 
@@ -619,7 +619,7 @@ Key exports:
 
 ### [`github`](https://hjewkes.github.io/titan-platform/reference/github)
 
-Tier 1, `@titan-design/github@0.11.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+Tier 1, `@titan-design/github@0.12.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
 **Use this when:**
 
@@ -712,7 +712,7 @@ Key exports:
 
 ### [`registry`](https://hjewkes.github.io/titan-platform/reference/registry)
 
-Tier 1, `@titan-design/registry@0.5.0`. zod command registry projected to CLI, MCP, and HTTP surfaces
+Tier 1, `@titan-design/registry@0.6.0`. zod command registry projected to CLI, MCP, and HTTP surfaces
 
 **Use this when:**
 
@@ -731,7 +731,7 @@ Key exports:
 
 ### [`retrieval`](https://hjewkes.github.io/titan-platform/reference/retrieval)
 
-Tier 1, `@titan-design/retrieval@0.3.1`. FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open
+Tier 1, `@titan-design/retrieval@0.4.0`. FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open
 
 **Use this when:**
 
@@ -772,7 +772,7 @@ Key exports:
 
 ### [`speech-g2p`](https://hjewkes.github.io/titan-platform/reference/speech-g2p)
 
-Tier 1, `@titan-design/speech-g2p@0.1.0`. English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger
+Tier 1, `@titan-design/speech-g2p@0.2.0`. English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger
 
 **Use this when:**
 
@@ -809,7 +809,7 @@ Key exports:
 
 ### [`speech-tts`](https://hjewkes.github.io/titan-platform/reference/speech-tts)
 
-Tier 1, `@titan-design/speech-tts@0.1.0`. Swappable text-to-speech provider contract, registry and command/HTTP adapters
+Tier 1, `@titan-design/speech-tts@0.1.1`. Swappable text-to-speech provider contract, registry and command/HTTP adapters
 
 **Use this when:**
 
@@ -854,7 +854,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`autoresearch`](https://hjewkes.github.io/titan-platform/reference/autoresearch)
 
-Tier 2, `@titan-design/autoresearch@0.0.0`. Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports
+Tier 2, `@titan-design/autoresearch@0.1.0`. Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports
 
 **Use this when:**
 
@@ -873,7 +873,7 @@ Key exports:
 
 ### [`code-graph`](https://hjewkes.github.io/titan-platform/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.18.2`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.19.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:**
 
@@ -894,7 +894,7 @@ Key exports:
 
 ### [`code-read`](https://hjewkes.github.io/titan-platform/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.3.4`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.3.5`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:**
 
@@ -914,7 +914,7 @@ Key exports:
 
 ### [`coordinator`](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.5.3`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.6.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:**
 
@@ -933,7 +933,7 @@ Key exports:
 
 ### [`decider`](https://hjewkes.github.io/titan-platform/reference/decider)
 
-Tier 2, `@titan-design/decider@0.6.6`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
+Tier 2, `@titan-design/decider@0.6.7`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
 
 **Use this when:**
 
@@ -970,7 +970,7 @@ Key exports:
 
 ### [`graph-layout`](https://hjewkes.github.io/titan-platform/reference/graph-layout)
 
-Tier 2, `@titan-design/graph-layout@0.1.0`. Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot
+Tier 2, `@titan-design/graph-layout@0.2.0`. Level collapses and deterministic ELK layered layouts (flat and compound) over a code-graph snapshot
 
 **Use this when:**
 
@@ -994,7 +994,7 @@ Key exports:
 
 ### [`memory`](https://hjewkes.github.io/titan-platform/reference/memory)
 
-Tier 2, `@titan-design/memory@0.3.0`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
+Tier 2, `@titan-design/memory@0.3.1`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
 
 **Use this when:**
 
@@ -1013,7 +1013,7 @@ Key exports:
 
 ### [`owner-queue`](https://hjewkes.github.io/titan-platform/reference/owner-queue)
 
-Tier 2, `@titan-design/owner-queue@0.5.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
+Tier 2, `@titan-design/owner-queue@0.6.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
 
 **Use this when:**
 
@@ -1073,7 +1073,7 @@ Key exports:
 
 ### [`review-panel`](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.8.1`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.9.0`. Review-panel types and the reviewer ports a caller satisfies
 
 **Use this when:**
 
@@ -1091,7 +1091,7 @@ Key exports:
 
 ### [`review-workflow`](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
-Tier 2, `@titan-design/review-workflow@0.0.0`. PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome
+Tier 2, `@titan-design/review-workflow@0.1.0`. PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome
 
 **Use this when:**
 
@@ -1109,7 +1109,7 @@ Key exports:
 
 ### [`session-analytics`](https://hjewkes.github.io/titan-platform/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.17.4`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.17.5`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:**
 
@@ -1131,7 +1131,7 @@ Key exports:
 
 ### [`session-graph`](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.18.0`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.18.1`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:**
 
@@ -1153,7 +1153,7 @@ Key exports:
 
 ### [`session-read`](https://hjewkes.github.io/titan-platform/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.16.1`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.17.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:**
 
@@ -1171,7 +1171,7 @@ Key exports:
 
 ### [`speech-vet`](https://hjewkes.github.io/titan-platform/reference/speech-vet)
 
-Tier 2, `@titan-design/speech-vet@0.1.0`. Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts
+Tier 2, `@titan-design/speech-vet@0.1.1`. Speech text vetting: pronunciation override markup, heteronym reading checks, lexicon.v1, initialism spelling, number normalization and phone-level pronunciation verdicts
 
 **Use this when:**
 
@@ -1277,7 +1277,7 @@ Key exports:
 
 ### [`workflow`](https://hjewkes.github.io/titan-platform/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.13.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.14.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:**
 
@@ -1329,7 +1329,7 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 ### [`active-work`](https://hjewkes.github.io/titan-platform/reference/active-work)
 
-Tier product, `@titan-design/active-work@0.24.4`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
+Tier product, `@titan-design/active-work@0.24.5`. Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions
 
 **Use this when:**
 
