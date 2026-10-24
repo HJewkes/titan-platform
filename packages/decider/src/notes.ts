@@ -90,6 +90,10 @@ function noteRow(note: Note): LedgerRowWire {
   };
 }
 
+function isMissing(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
+}
+
 async function listDirs(root: string): Promise<string[]> {
   try {
     const entries = await readdir(root, { withFileTypes: true });
@@ -103,8 +107,9 @@ async function listDirs(root: string): Promise<string[]> {
 async function listNoteFiles(notesDir: string): Promise<string[]> {
   try {
     return (await readdir(notesDir)).filter((name) => name.endsWith(".md")).sort();
-  } catch {
-    return [];
+  } catch (err) {
+    if (isMissing(err)) return [];
+    throw err;
   }
 }
 
@@ -134,7 +139,14 @@ async function readNote(slug: string, filename: string, filePath: string, since:
 
 async function readInitiative(root: string, slug: string, since: SourceWatermarks, out: SourceRead): Promise<void> {
   const notesDir = path.join(root, slug, "sources", "notes");
-  for (const filename of await listNoteFiles(notesDir)) {
+  let filenames: string[];
+  try {
+    filenames = await listNoteFiles(notesDir);
+  } catch (err) {
+    out.errors.push(`${notesDir}: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  for (const filename of filenames) {
     const filePath = path.join(notesDir, filename);
     try {
       await readNote(slug, filename, filePath, since, out);

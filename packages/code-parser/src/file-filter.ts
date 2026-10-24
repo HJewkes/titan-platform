@@ -23,7 +23,8 @@ const EXCLUDED_PATTERNS = [
 ];
 
 const LANGUAGE_EXTENSIONS: Record<string, string[]> = {
-  typescript: [".ts", ".tsx"],
+  // `.mjs`/`.cjs` hold no JSX, so the typescript grammar parses them (TP-4161).
+  typescript: [".ts", ".tsx", ".mjs", ".cjs"],
   python: [".py"],
 };
 

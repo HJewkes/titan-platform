@@ -121,6 +121,16 @@ is not read as an empty stage. `occupancy-checks.ts` measures what the PP-9 lint
 `writeOccupancy` writes `occupancy.json` (`occupancy/v1`) next to the render's `qa.json`.
 `stage-empty-checks.ts` (`emptyStageRuns`) fails a beat whose stage rect holds no content box (decor excluded) for more than
 `MAX_EMPTY_STAGE_SECONDS` (3 s) of sampled moments; the host's measure step feeds it one `StageMoment` per beat and time.
+`content-fill.ts` (`contentFillFindings`) fails a beat whose settled element boxes, unioned, span less than
+`MIN_CONTENT_FILL` (60 %) of the frame width: the gate for beats styled at 720p and pinned left on a 1080p stage.
+
+`contact-sheet.ts` (`cutCells`) cuts contact-sheet stills from data the render already writes: `render.json` beat bounds,
+the cue gate's measured cue times and each beat's component. A title is cut at its held end, an outro before its exit,
+an additive beat (list, stat, compare) once at its settled last frame, a question swapped for rows before and after,
+a code walk at its whole view and then each focus step, and a chart at each highlight. A page that publishes
+`__titanMotion` marks is cut one cell per mark instead. Cells are never dropped by pixels.
+`explainer sheets` (`writeContactSheets`) extracts each still through ffmpeg with a label strip under it and tiles one
+`sheet-<chapter>.png` per chapter, plus `cells.json`; `--fill` also runs the content-fill gate. It replaces `sheets.sh`.
 
 `eval-store.ts` is the eval data layer. `scriptSha` names a script by the first 12 hex of
 sha256 over its canonical JSON (keys sorted by code point, no whitespace, UTF-8), the same
@@ -237,10 +247,21 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
-| `resolve` | in-process, no model call: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them) → resolved |
+| `resolve` | in-process: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
+
+**Custom layers, keyed by packet** (`build/`, `workflow/layer-build.ts`, TP-2607). After the resolve body, each beat
+the resolver made `layer: "custom"` gets a layer packet (`buildLayerPacket`: its narration, cues, framing, anchors,
+scene, band and cited facts, under the packet byte cap). The builds run as `mapItems` items of the resolve child
+workflow, keyed by `packetKey` = sha256 of the packet and the builder (`{ id, version, model, basePromptSha }`), never
+by beat id alone, so a replay reuses every build whose packet is unchanged. The `custom-layers` tree holds one
+`<beat>.tsx` per layer and a `layers.json` with each layer's anchors and element ids. A pinned `custom-layers` tree, or
+a script with no custom beats, runs no builds. The builder is part of the resolve key, so a new base prompt rebuilds
+every layer. The host's `beatWorker` builds the layers; with none configured the custom beats are left unbuilt and
+noted. The only worker ids are `claude-print` and `agent-chat`; there is no fork runner. Any build that fails fails
+the stage.
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same

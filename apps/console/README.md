@@ -387,10 +387,16 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 - **Typed ops.** A deposit may carry an `op` (owner-queue's `OwnerOp`) naming what a tap does
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
-  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head` and
-  `close-pr`) becomes an `owner-op` tap whose read-back comes from the factory. Any other kind stays
-  on the terminal until its factory effect lands. A `close-pr` tap closes the PR only at the head
-  the owner was shown and keeps its branch, so reopening it is one click on GitHub.
+  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`,
+  `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes from the
+  factory. Any other kind stays on the terminal until its factory effect lands. A `close-pr` tap
+  closes the PR only at the head the owner was shown and keeps its branch, so reopening it is one
+  click on GitHub. A `deploy-pause-clear` tap ("Clear deploy pause") reads back the failure pause a
+  rolled-back deploy left: when, over which target, and why. Clearing it lets the deploy pacer resume,
+  and it may deploy within about a minute. The tap is offered only while the pause is the exact one
+  the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
+  deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
+  cleared by this tap; the read-back says when one will keep deploys held.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
@@ -874,8 +880,10 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
+| 200 `pause-cleared` (with `clearedPause`, `stillHeld`) | "Deploy pause cleared; the deploy pacer may deploy within about a minute", or that deploys stay held by hand, with the hold's reason |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
-| 409 `moved` | "PR moved to `abc1234`, read again" |
+| 409 `moved` | "PR moved to `abc1234`, read again"; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
+| 409 `refused` `deploying` | the reason: a deployer holds the deploy lock, so tap again once it ends |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
