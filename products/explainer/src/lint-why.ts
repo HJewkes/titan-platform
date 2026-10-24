@@ -1,5 +1,7 @@
 import type { L0Check, L0Input, L0Result } from "./eval-l0.js";
+import { loadStructures } from "./profile-load.js";
 import type { ScriptBeat, ScriptChapter, ScriptV1 } from "./script-schema.js";
+import type { NarrativeStructure } from "./structure-schema.js";
 
 /** The share of planned time by which the stake must be voiced. */
 export const STAKE_BY_SHARE = 0.15;
@@ -52,12 +54,22 @@ function startTimes(script: ScriptV1): Map<string, number> {
   );
 }
 
+let structures: ReadonlyMap<string, NarrativeStructure> | undefined;
+
+/** The functions whose beats may voice the stake: the script's structure declares them, and STAKE alone otherwise. */
+function stakeFunctions(structure: string | undefined): readonly ScriptBeat["function"][] {
+  if (structure === undefined) return ["STAKE"];
+  structures ??= loadStructures();
+  return structures.get(structure)?.stakeFunctions ?? ["STAKE"];
+}
+
 function stakeVoiced(script: ScriptV1): L0Result {
   const stake = script.video.stake;
   if (isTodo(stake)) return verdict("Q-W1", "tagged", [], 1);
   const total = script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
   const starts = startTimes(script);
-  const early = script.beats.filter((beat) => beat.function === "STAKE" && (starts.get(beat.id) ?? 0) < total * STAKE_BY_SHARE);
+  const carriers = stakeFunctions(script.structure);
+  const early = script.beats.filter((beat) => carriers.includes(beat.function) && (starts.get(beat.id) ?? 0) < total * STAKE_BY_SHARE);
   const voiced = early.some((beat) => {
     const spoken = norm(beat.spoken);
     return (/\byou\b/.test(spoken) || spoken.includes(norm(stake.who))) && NUMBER.test(spoken);

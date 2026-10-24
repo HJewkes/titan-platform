@@ -4,7 +4,7 @@ import { loadBeatSpecs } from "../beat-load.js";
 import { resolveBeats } from "../resolve-beat.js";
 import { scriptBudgets } from "../resolve-budget.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
-import { draftBudgets, draftRuntime, draftWordBudget } from "../script-budget.js";
+import { budgetSection, draftBeatLengths, draftBudgets, draftRuntime, draftWordBudget, planFaults } from "../script-budget.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { shippedVisualRouter } from "../visual-router.js";
 import { runVideo } from "./host.js";
@@ -66,6 +66,35 @@ describe("the script stage's word-budget and runtime gates", () => {
     const draft = { ...plannedAt(5), profile: "pr-overview" };
 
     expect(draftRuntime(draft)).toMatchObject({ pass: true, detail: expect.stringContaining("or 45-90 s as cut decision-brief") });
+  });
+});
+
+describe("the script stage's beat plan", () => {
+  it("asks a 150 s daily plan of four chapters for at least eight beats, two a chapter", () => {
+    const list = loadBeatSpecs().get("list")!;
+    const leads = ["ch1", "ch2", "ch3", "ch4"].map((chapter) => ({ chapter, spec: list }));
+
+    const section = budgetSection(leads, "daily-overview");
+
+    expect(section).toContain("every beat but the close plans 6-20 s, so a chapter of chapterS seconds holds ceil(chapterS / 20) beats or more.");
+    expect(section).toContain("at least: ch1 2, ch2 2, ch3 2, ch4 2. Plan at least 8 beats in all.");
+  });
+
+  // Mutation: dropping the beat-length faults from planFaults passes this draft to L0, where Q-F8 fails it unrepaired.
+  it("fails a chapter planned as one 45 s beat, naming the beat and the split it needs", () => {
+    const draft = plannedAt(12.5);
+    const chapter = draft.beats[1]!.chapter;
+    const first = draft.beats.find((beat) => beat.chapter === chapter)!;
+    const oneBeat = { ...draft, beats: draft.beats.flatMap((beat) => (beat.chapter !== chapter ? [beat] : beat === first ? [{ ...beat, plannedS: 45 }] : [])) };
+
+    const verdict = draftBeatLengths(oneBeat);
+
+    expect(verdict).toEqual({ pass: false, detail: `out of band: ${first.id} (${chapter}) plans 45 s; a beat runs 6-20 s, so ${chapter}'s 45 s splits into at least 3 beats` });
+    expect(planFaults(oneBeat)).toContain(`beat length: ${first.id} (${chapter}) plans 45 s; a beat runs 6-20 s, so ${chapter}'s 45 s splits into at least 3 beats`);
+  });
+
+  it("passes a draft whose every beat is within the band", () => {
+    expect(draftBeatLengths(plannedAt(12.5))).toEqual({ pass: true, detail: "every beat within 6-20 s" });
   });
 });
 

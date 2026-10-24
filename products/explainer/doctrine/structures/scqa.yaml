@@ -14,6 +14,7 @@ blocks:
   - { id: takeaway, goal: "The decision and what to do next.", share: 0.15 }
 hook: "State the stake and the question the viewer must answer in the first beat."
 ending: "takeaways+button"
+stakeFunctions: [VERDICT, STAKE]
 spine:
   - title: Situation
     body: |-

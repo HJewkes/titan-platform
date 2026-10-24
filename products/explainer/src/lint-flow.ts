@@ -20,7 +20,9 @@ export const MAX_CONNECTIVE_SHARE = 0.4;
 export const MIN_HANDOFFS = 2 / 3;
 export const MAX_LIST_ITEMS = 5;
 export const MAX_OUTRO_WORDS = 8;
+/** Q-F8's one-idea beat: its seconds band and the most new names it introduces. The script stage plans to the same bounds. */
 export const BEAT_SECONDS = [6, 20] as const;
+export const MAX_BEAT_NEW_NAMES = 2;
 export const MIN_CAUSAL_DENSITY = 0.5;
 export const MIN_PLAIN_SHARE = 0.4;
 
@@ -137,7 +139,7 @@ const weakQuestions = ({ chapters, beats }: ScriptV1): string[] =>
 
 const overloadedBeats = (beats: readonly ScriptBeat[]): string[] =>
   bodyBeats(beats)
-    .filter((b) => b.new_terms.length > 2 || b.plannedS < BEAT_SECONDS[0] || b.plannedS > BEAT_SECONDS[1])
+    .filter((b) => b.new_terms.length > MAX_BEAT_NEW_NAMES || b.plannedS < BEAT_SECONDS[0] || b.plannedS > BEAT_SECONDS[1])
     .map((b) => b.id);
 
 /** Items in a spoken list: commas, plus one for an "x and y" tail; a colon starts the list. */

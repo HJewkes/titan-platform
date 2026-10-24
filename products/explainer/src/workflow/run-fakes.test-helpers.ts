@@ -8,7 +8,8 @@ import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.
 import type { L0Check } from "../eval-l0.js";
 import { choppy, fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
 import { loadProfiles } from "../profile-load.js";
-import type { ScriptV1 } from "../script-schema.js";
+import { beatsFor } from "../script-budget.js";
+import type { ScriptBeat, ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
 import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
@@ -157,8 +158,8 @@ function withLeadBeats(script: ScriptV1, prompt: string): ScriptV1 {
 const PROMPT_RUNTIME = /plannedS sum to about (\d+) s/;
 
 /**
- * `script` with its beats' plannedS scaled to the runtime the prompt names, else its own profile's target; a script
- * whose profile is unknown and a prompt naming no runtime leave it as written.
+ * `script` with its beats' plannedS scaled to the runtime the prompt names, else its own profile's target, and each beat
+ * the scaling pushes past Q-F8's band split; a script whose profile is unknown and a prompt naming no runtime leave it as written.
  */
 function atTargetRuntime(script: ScriptV1, prompt: string): ScriptV1 {
   const named = PROMPT_RUNTIME.exec(prompt)?.[1];
@@ -166,7 +167,19 @@ function atTargetRuntime(script: ScriptV1, prompt: string): ScriptV1 {
   if (targetS === undefined) return script;
   const total = script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
   const scale = targetS / total;
-  return { ...script, beats: script.beats.map((beat) => ({ ...beat, plannedS: Math.round(beat.plannedS * scale) })) };
+  const beats = script.beats.map((beat) => ({ ...beat, plannedS: Math.round(beat.plannedS * scale) }));
+  return { ...script, beats: beats.flatMap(splitBeat) };
+}
+
+/** A beat over Q-F8's band as the script stage's beat plan splits it: the first part keeps its id, each continuation beat repeats its words. */
+function splitBeat(beat: ScriptBeat): ScriptBeat[] {
+  const parts = beat.function === "CLOSE" ? 1 : beatsFor(beat.plannedS);
+  const each = Math.floor(beat.plannedS / parts);
+  return Array.from({ length: parts }, (_, i) => ({
+    ...beat,
+    id: i === 0 ? beat.id : `${beat.id}-${i + 1}`,
+    plannedS: i === 0 ? beat.plannedS - each * (parts - 1) : each,
+  }));
 }
 
 /** The script model: answers with `script`, after `invalid` replies that fail the schema, at `usd` a call. */
