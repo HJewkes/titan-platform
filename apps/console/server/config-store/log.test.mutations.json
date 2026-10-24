@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a zero-byte log is created with O_EXCL again",
+      "file": "apps/console/server/config-store/log.ts",
+      "find": "  const creating = log.state === \"empty\" && !log.exists;",
+      "replace": "  const creating = log.state === \"empty\";",
+      "kills": [
+        "the revision log reads a zero-byte log as empty and writes rev 0 into it, leaving no claim behind (TP-3685)"
+      ]
+    },
+    {
+      "name": "rev 0 into a zero-byte log takes no claim",
+      "file": "apps/console/server/config-store/log.ts",
+      "find": "  const release = log.state === \"empty\" && log.exists ? await claimZeroByteLog(file) : null;",
+      "replace": "  const release: (() => Promise<void>) | null = null;",
+      "kills": [
+        "the revision log refuses rev 0 into a zero-byte log while another writer holds the claim, naming both files"
+      ]
+    },
+    {
+      "name": "the rev 0 claim is never released",
+      "file": "apps/console/server/config-store/log.ts",
+      "find": "  return () => unlink(claim);",
+      "replace": "  return async () => {};",
+      "kills": [
+        "the revision log reads a zero-byte log as empty and writes rev 0 into it, leaving no claim behind (TP-3685)"
+      ]
+    },
+    {
+      "name": "a zero-byte log reads as absent",
+      "file": "apps/console/server/config-store/log.ts",
+      "find": "  if (text === \"\") return { state: \"empty\", exists: true };",
+      "replace": "  if (text === \"\") return { state: \"empty\", exists: false };",
+      "kills": [
+        "the revision log reads a zero-byte log as empty and writes rev 0 into it, leaving no claim behind (TP-3685)"
+      ]
+    }
+  ]
+}
