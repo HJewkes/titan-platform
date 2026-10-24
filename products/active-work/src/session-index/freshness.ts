@@ -10,7 +10,13 @@ import type { Freshness } from './scheduler.js';
 
 export type { Freshness } from './scheduler.js';
 
-export type EnsureFresh = (budgetMs: number) => Promise<Freshness>;
+/**
+ * What the reader reads. Session data needs the transcripts caught up; a reader
+ * of workspace documents only needs the workspace half, never a transcript pass (TP-4139).
+ */
+type FreshnessScope = 'transcripts' | 'workspace';
+
+export type EnsureFresh = (budgetMs: number, scope: FreshnessScope) => Promise<Freshness>;
 
 /** `context related` sits on the spawn path, so it waits least. */
 export const RELATED_FRESH_BUDGET_MS = 800;
@@ -21,7 +27,7 @@ export interface IndexFreshness {
   /** Make `refresh` the hook; returns a function that uninstalls it. */
   install(refresh: EnsureFresh): () => void;
   /** Refresh within `budgetMs`; never rejects, a failed hook reads as `'stale'`. */
-  ensure(budgetMs: number): Promise<Freshness>;
+  ensure(budgetMs: number, scope?: FreshnessScope): Promise<Freshness>;
 }
 
 const alreadyFresh: EnsureFresh = () => Promise.resolve('fresh');
@@ -35,8 +41,8 @@ export function createIndexFreshness(): IndexFreshness {
         if (refresh === next) refresh = alreadyFresh;
       };
     },
-    ensure(budgetMs) {
-      return refresh(budgetMs).catch((): Freshness => 'stale');
+    ensure(budgetMs, scope = 'transcripts') {
+      return refresh(budgetMs, scope).catch((): Freshness => 'stale');
     },
   };
 }
