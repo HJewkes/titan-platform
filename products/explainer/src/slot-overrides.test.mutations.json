@@ -1,0 +1,70 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the slot-overrides check only reports",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"slot-overrides\", gate: true",
+      "replace": "{ name: \"slot-overrides\", gate: false",
+      "kills": [
+        "owner slot overrides on script/v1 a valid override wins over the generated slot value and keeps the fields it leaves alone",
+        "owner slot overrides on script/v1 an override the slot schema rejects fails the gate with a hint naming its path"
+      ]
+    },
+    {
+      "name": "generated slots win over the owner's overrides",
+      "file": "products/explainer/src/slot-overrides.ts",
+      "find": "return { ...base, ...visual.slots };",
+      "replace": "return { ...visual.slots, ...base };",
+      "kills": [
+        "owner slot overrides on script/v1 a valid override wins over the generated slot value and keeps the fields it leaves alone"
+      ]
+    },
+    {
+      "name": "the emphasis gate reads the generated slots without overrides",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "withSlotOverrides(visuals.get(id) ?? {}, value)",
+      "replace": "value",
+      "kills": [
+        "owner slot overrides on script/v1 a valid override wins over the generated slot value and keeps the fields it leaves alone"
+      ]
+    },
+    {
+      "name": "overrides on custom-layer beats pass",
+      "file": "products/explainer/src/slot-overrides.ts",
+      "find": "if (found?.layer !== \"template\") return",
+      "replace": "if (found === undefined) return",
+      "kills": [
+        "owner slot overrides on script/v1 refuses slot or tune overrides on a custom-layer beat"
+      ]
+    },
+    {
+      "name": "override values are not parsed by the slot schema",
+      "file": "products/explainer/src/slot-overrides.ts",
+      "find": "return parsed.success ? [] :",
+      "replace": "return parsed ? [] :",
+      "kills": [
+        "owner slot overrides on script/v1 an override the slot schema rejects fails the gate with a hint naming its path",
+        "owner slot overrides on script/v1 an override deep in an array names the row and field it breaks"
+      ]
+    },
+    {
+      "name": "an override field the spec lacks passes",
+      "file": "products/explainer/src/slot-overrides.ts",
+      "find": "if (slot === undefined) return [`${where(id, field)}: beat spec ${spec.type} has no slot ${field}`];",
+      "replace": "if (slot === undefined) return [];",
+      "kills": [
+        "owner slot overrides on script/v1 an override naming a field the beat spec lacks fails the gate"
+      ]
+    },
+    {
+      "name": "a hint drops the issue's path inside the field",
+      "file": "products/explainer/src/slot-overrides.ts",
+      "find": "`${where(id, field, issue.path)}: ${issue.message}`",
+      "replace": "`${where(id, field)}: ${issue.message}`",
+      "kills": [
+        "owner slot overrides on script/v1 an override deep in an array names the row and field it breaks"
+      ]
+    }
+  ]
+}
