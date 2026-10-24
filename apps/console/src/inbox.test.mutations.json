@@ -13,11 +13,14 @@
       ]
     },
     {
-      "name": "a queued land run shows as not landed",
+      "name": "a queued land run or a cleared deploy pause shows as not landed",
       "file": "apps/console/src/pages/TapSheet.tsx",
-      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"pr-closed\", \"already\"]);",
+      "find": "const LANDED = new Set([\"resolved\", \"released\", \"accepted\", \"pr-closed\", \"pause-cleared\", \"already\"]);",
       "replace": "const LANDED = new Set([\"resolved\", \"released\", \"pr-closed\", \"already\"]);",
-      "kills": ["the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"]
+      "kills": [
+        "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed",
+        "the inbox page, acting from the console taps a deposit's deploy-pause-clear as Clear deploy pause, reads back the pause and the pacer's resume, and shows the clear as landed"
+      ]
     },
     {
       "name": "the op read-back drops who proposed it",

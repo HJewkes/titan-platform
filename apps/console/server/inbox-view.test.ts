@@ -397,10 +397,16 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
   });
 
-  it("stays on the terminal for a kind with no console tap yet", () => {
-    const { action } = actionFor(deposited({ kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "factory" }), undefined);
+  it("becomes an owner-op tap for a deploy-pause-clear", () => {
+    const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) } as const;
 
-    expect(action.kind === "terminal" && action.reason).toBe("a deploy-pause-clear op has no console tap yet; run its command");
+    expect(actionFor(deposited(pauseOp), undefined).action).toEqual({ kind: "owner-op", op: pauseOp });
+  });
+
+  it("stays on the terminal for a kind with no console tap yet", () => {
+    const { action } = actionFor(deposited({ kind: "factory-config-set", path: "shepherd.spawnGate.load5", value: 4 }), undefined);
+
+    expect(action.kind === "terminal" && action.reason).toBe("a factory-config-set op has no console tap yet; run its command");
   });
 
   it("holds a gate op with no live row to Morning, as a rowless hitl gate is", () => {

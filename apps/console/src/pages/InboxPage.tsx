@@ -68,7 +68,7 @@ const VERB: Record<InboxAction["kind"], string> = {
   terminal: "Run on terminal",
 };
 
-const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "close-pr": "Close PR" };
+const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "close-pr": "Close PR", "deploy-pause-clear": "Clear deploy pause" };
 
 type GateDecision = Extract<InboxAction, { kind: "resolve-gate" }>["decision"];
 
