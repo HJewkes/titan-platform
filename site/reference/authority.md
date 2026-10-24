@@ -214,6 +214,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440, widened in TP-2951), and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440, widened in TP-2951), the `decider` class with the `answer-question` rows in TP-713, and the `agent-retire` rows in TP-3622 (RET-OR by owner decision 532 of 2026-10-24). The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.

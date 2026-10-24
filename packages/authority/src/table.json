@@ -768,7 +768,7 @@
       "action": "agent-retire",
       "actor": "owner-remote",
       "verdict": "allow",
-      "condition": "Plain retire only, never --force: the agent's session has exited and it works on no live Shepherd run, both re-read at tap time under the confirmed agent id.",
+      "condition": "Owner decision of 2026-10-24 (decision 532, TP-3622): plain retire only, never --force: the agent's session has exited and it works on no live Shepherd run, both re-read at tap time under the confirmed agent id.",
       "evidence": [
         "E-prin"
       ]
