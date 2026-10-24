@@ -36,14 +36,14 @@
       ]
     },
     {
-      "name": "formatSquashMessage defangs only its output, so a re-format no longer finds its own Changes tail",
+      "name": "defanging only the output, a re-format misses its own Changes tail",
       "file": "packages/github/src/squash-message.ts",
       "find": "assemble(defangInput(input))",
       "replace": "assemble(input)",
       "kills": ["CI skip tokens in a squash message re-formats a message that carried every token unchanged"]
     },
     {
-      "name": "formatSquashMessage defangs only its input, missing a token an address strip joins",
+      "name": "defanging only the input misses a token an address strip joins",
       "file": "packages/github/src/squash-message.ts",
       "find": "  return { subject: defangCiSkip(subject), body: defangCiSkip(body) };",
       "replace": "  return { subject, body };",
