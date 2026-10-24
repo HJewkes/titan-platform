@@ -50,9 +50,20 @@ function missedNoticeRow({ round, seat, error, at }: NoticeFailed, now: number):
   );
 }
 
+const isMissing = (error: unknown): boolean => error instanceof Error && "code" in error && error.code === "ENOENT";
+
+/** No rounds dir yet means no rounds; any other failure to list it throws, so the inbox names it as a gap. */
+async function roundIds(roundsDir: string): Promise<string[]> {
+  const names = await readdir(roundsDir).catch((error: unknown) => {
+    if (isMissing(error)) return [];
+    throw error;
+  });
+  return names.filter((name) => ROUND_ID.test(name));
+}
+
 /** One row per round and seat whose last sweep send failed and no send has reached since. */
 export async function missedNoticeRows(roundsDir: string, now: number): Promise<DerivedRow[]> {
-  const rounds = (await readdir(roundsDir).catch(() => [])).filter((name) => ROUND_ID.test(name));
+  const rounds = await roundIds(roundsDir);
   const failures = await Promise.all(rounds.map((round) => roundFailures(path.join(roundsDir, round))));
   return failures.flat().map((failed) => missedNoticeRow(failed, now));
 }
