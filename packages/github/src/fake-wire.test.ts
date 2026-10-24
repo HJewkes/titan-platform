@@ -57,7 +57,7 @@ describe("fake wire handlers", () => {
   it("getJobLog and getJobSteps answer 404 for an unknown job and copies for a known one", async () => {
     const fake = fakeGitHub();
     fake.jobLogs.set(7, "log text");
-    fake.jobSteps.set(7, [{ name: "build", conclusion: "success" } as never]);
+    fake.jobSteps.set(7, [{ name: "build", conclusion: "success" }]);
 
     expect(await fake.wire.getJobLog(REPO, 7)).toBe("log text");
     const steps = await fake.wire.getJobSteps(REPO, 7);
@@ -99,8 +99,8 @@ describe("fake wire handlers", () => {
 
   it("listPrFiles reports the stored count unless changedFiles overrides it", async () => {
     const fake = fakeGitHub();
-    fake.prFiles.set(1, [{ path: "a.ts" } as never, { path: "b.ts" } as never]);
-    fake.prFiles.set(2, [{ path: "c.ts" } as never]);
+    fake.prFiles.set(1, [{ path: "a.ts", status: "added" }, { path: "b.ts", status: "added" }]);
+    fake.prFiles.set(2, [{ path: "c.ts", status: "added" }]);
     fake.prChangedFiles.set(2, 40);
 
     expect((await fake.wire.listPrFiles(REPO, 1)).changedFiles).toBe(2);
@@ -148,7 +148,7 @@ describe("fake wire handlers", () => {
 
   it("listForcePushes caps the page and says whether more remain", async () => {
     const fake = fakeGitHub();
-    const push = (n: number) => ({ at: `t${n}` }) as never;
+    const push = (n: number) => ({ before: `b${n}`, after: `a${n}` });
     fake.forcePushes.set(1, Array.from({ length: FORCE_PUSHES_CAP + 1 }, (_, i) => push(i)));
     fake.forcePushes.set(2, [push(0)]);
 
@@ -162,7 +162,7 @@ describe("fake wire handlers", () => {
   it("createCheckRun stamps the configured App id and the run lists under both filters", async () => {
     const fake = fakeGitHub({ appId: 77 });
     const sha = fakeSha("c");
-    await fake.wire.createCheckRun(REPO, { name: "n", headSha: sha, conclusion: "success" } as never);
+    await fake.wire.createCheckRun(REPO, { name: "n", headSha: sha, conclusion: "success", title: "t", summary: "s", externalId: "e" });
 
     const runs = await fake.wire.listCheckRuns(REPO, sha, "all");
     expect(runs).toHaveLength(1);
