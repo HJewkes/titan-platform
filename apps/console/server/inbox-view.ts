@@ -114,9 +114,9 @@ const isConsoleStep = (stepId: string): stepId is ConsoleStep => Object.hasOwn(C
 function offeredDecisions(item: OwnerItem, stepId: ConsoleStep): ConsoleDecision[] {
   const [first, ...rest]: readonly ConsoleDecision[] = CONSOLE_DECISIONS[stepId];
   const { options } = item;
-  if (options === undefined) return [first!];
+  if (options === undefined) return [first];
   const offered = (decision: ConsoleDecision) => options.some((option) => option.id === decision);
-  return offered(first!) ? [first!, ...rest.filter(offered)] : [];
+  return offered(first) ? [first, ...rest.filter(offered)] : [];
 }
 
 function gateStepDecisions(item: OwnerItem, stepId: string): ConsoleDecision[] | InboxAction {

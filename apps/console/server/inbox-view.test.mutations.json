@@ -31,8 +31,8 @@
     {
       "name": "an item with no options is offered every decision",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "if (options === undefined) return [first!];",
-      "replace": "if (options === undefined) return [first!, ...rest];",
+      "find": "if (options === undefined) return [first];",
+      "replace": "if (options === undefined) return [first, ...rest];",
       "kills": [
         "actionFor offers no waiver on a sent-back gate whose item lists no options, leaving that check to the factory"
       ]
@@ -40,8 +40,8 @@
     {
       "name": "a second tap is offered where the gate lacks the item's own",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "return offered(first!) ? [first!, ...rest.filter(offered)] : [];",
-      "replace": "return [first!, ...rest].filter(offered);",
+      "find": "return offered(first) ? [first, ...rest.filter(offered)] : [];",
+      "replace": "return [first, ...rest].filter(offered);",
       "kills": [
         "actionFor keeps an sh-sent-back gate whose options lack await-new-head on the terminal"
       ]
