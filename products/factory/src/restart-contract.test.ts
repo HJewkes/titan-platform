@@ -39,6 +39,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-order-reserve": `${WRITE}: reserves a conflicted PR's paths in the merge order`,
   "sh-order-wait": `${WRITE}: leaves the merge train, then waits for the PRs merging ahead of the reservation`,
   "sh-order-unreserve": `${WRITE}: deletes the run's merge-order reservation`,
+  "sh-order-expire": `${WRITE}: deletes the run's reservation past its TTL and logs order-expired, once`,
   "sh-wake-implementer": `${WRITE}: messages the implementer agent`,
   "sh-await-new-head": `${READ}: waits for the implementer's new head`,
   "sh-wake-fix-first": `${RECORD}: counts FIX_FIRST rounds`,

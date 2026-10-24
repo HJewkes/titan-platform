@@ -1,7 +1,8 @@
 import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
-import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
+import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName, type StatusRow } from "./commands.js";
 import type { PrRow } from "./prs.js";
+import type { OrderResult, OrderRow } from "./merge-order-command.js";
 import type { RepairStopResult } from "./repair-stop-command.js";
 import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
@@ -24,7 +25,7 @@ type ResultSchemas = { [Name in ShepherdCommandName]: { result: ZodType<Shepherd
 /** A verb with no entry here fails to compile, so a new one cannot fall through to another verb's text. */
 const FORMATTERS: Formatters = {
   "shepherd.register": formatRegistered,
-  "shepherd.status": formatRows,
+  "shepherd.status": formatStatus,
   "shepherd.list": formatRows,
   "shepherd.waiting": formatWaiting,
   "shepherd.timeline": formatTimeline,
@@ -33,6 +34,7 @@ const FORMATTERS: Formatters = {
   "shepherd.repair-stop": formatRepairStops,
   "shepherd.freeze": formatRepoFreezes,
   "shepherd.thaw": formatThaw,
+  "shepherd.order": formatOrder,
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
@@ -141,6 +143,24 @@ function heldLine(held: NonNullable<WatchRow["held"]>): string {
 
 function formatRows(rows: WatchRow[]): string {
   return rows.length === 0 ? "no shepherded PRs\n" : `${rows.map(rowLine).join("\n")}\n`;
+}
+
+/** A row holding a merge-order reservation says so after its blockers. */
+function formatStatus(rows: StatusRow[]): string {
+  const reserved = ({ mergeOrder }: StatusRow): string => (mergeOrder ? ` [merge order: reserved ${mergeOrder.paths.length} path(s) since ${mergeOrder.since}, ${mergeOrder.state}${waitingText(mergeOrder.waiting)}]` : "");
+  return rows.length === 0 ? "no shepherded PRs\n" : `${rows.map((row) => `${rowLine(row)}${reserved(row)}`).join("\n")}\n`;
+}
+
+const waitingText = (waiting: readonly number[]): string => (waiting.length === 0 ? "" : `; ${waiting.map((pr) => `#${pr}`).join(", ")} waiting`);
+
+function orderLine(row: OrderRow): string {
+  const prs = (label: string, list: readonly number[]): string => (list.length === 0 ? "" : `; ${label} ${list.map((pr) => `#${pr}`).join(", ")}`);
+  return `${row.repo}#${row.pr}  ${row.state}  ${row.ageMinutes}m  ${row.paths.length} path(s)${prs("ahead", row.ahead)}${prs("behind", row.behind)}${prs("waiting", row.waiting)}`;
+}
+
+function formatOrder({ cleared, reservations }: OrderResult): string {
+  const head = cleared ? `cleared ${cleared.repo}#${cleared.pr}'s reservation\n` : "";
+  return `${head}${reservations.length === 0 ? "no merge-order reservations" : `merge-order reservations:\n${reservations.map(orderLine).join("\n")}`}\n`;
 }
 
 function entryLine(entry: TimelineEntry): string {

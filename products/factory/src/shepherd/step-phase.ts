@@ -89,6 +89,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-order-reserve": "merging",
   "sh-order-wait": "merging",
   "sh-order-unreserve": "merging",
+  "sh-order-expire": "merging",
   "sh-landed": "post-merge",
   "sh-stack-children": "post-merge",
   "sh-restack": "post-merge",

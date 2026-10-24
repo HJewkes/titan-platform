@@ -80,8 +80,8 @@ describe("the merge-order store", () => {
     order.reserve({ ...reservation("run-x", 2301, ["README.md", "src/x.ts"]), headSha: "head-2301b" });
 
     expect(order.list("HJewkes/Titan-Platform")).toEqual([{ ...reservation("run-x", 2301, ["README.md", "src/x.ts"]), headSha: "head-2301b" }]);
-    expect(order.release(REPO, "run-x")).toBe(true);
-    expect(order.release(REPO, "run-x")).toBe(false);
+    expect(order.release(REPO, "run-x", { at: minutes(1) })).toBe(true);
+    expect(order.release(REPO, "run-x", { at: minutes(1) })).toBe(false);
     expect(order.list(REPO)).toEqual([]);
   });
 

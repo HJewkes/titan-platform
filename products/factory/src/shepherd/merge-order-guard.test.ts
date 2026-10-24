@@ -86,7 +86,7 @@ describe("the merge-order guard", () => {
     const paused = rig();
     running(paused.runs, "run-paused", "paused");
     paused.order.reserve({ ...paused.order.list(REPO)[0]!, runId: "run-paused" });
-    paused.order.release(REPO, "run-x");
+    paused.order.release(REPO, "run-x", { at: new Date(AT).toISOString() });
     const expired = rig();
     expired.clock.now = AT + 120 * 60_000;
 
@@ -95,7 +95,7 @@ describe("the merge-order guard", () => {
 
   it("never holds a PR behind its own reservation", async () => {
     const r = rig();
-    r.order.release(REPO, "run-x");
+    r.order.release(REPO, "run-x", { at: new Date(AT).toISOString() });
     r.order.reserve({ repo: REPO, runId: "run-y", pr: 2310, headSha: HEADS[2310], baseSha: fakeSha("base"), paths: [SHARED], ahead: [], since: new Date(AT).toISOString(), reason: "conflicted" });
     running(r.runs, "run-y");
 
