@@ -208,6 +208,8 @@ interface ChapterResult {
   joined: Joined;
   retried: boolean;
   stripped: string[];
+  /** The kept reply's dropped bad values, each note naming the chapter. */
+  dropped: string[];
   before: number;
   after: number;
 }
@@ -233,7 +235,8 @@ async function writeChapter(ctx: Chunk, joined: Joined | undefined, index: numbe
   if (!draft.script) throw new StageFailure(`script: chapter ${id}: ${draft.error}`, ctx.spent(), draft.retried ? 1 : 0);
   const repaired = await repairChapter(ctx, prompt, joined, draft.script);
   const stripped = repaired.stripped ?? draft.stripped ?? [];
-  return { joined: withPart(joined, repaired.script), retried: draft.retried, stripped, before: repaired.before, after: repaired.after };
+  const dropped = (repaired.dropped ?? draft.dropped ?? []).map((note) => `chapter ${id}: ${note}`);
+  return { joined: withPart(joined, repaired.script), retried: draft.retried, stripped, dropped, before: repaired.before, after: repaired.after };
 }
 
 /** Each call is counted against the run's cap before it is made: the chunked path has many, the single-call path three. */
@@ -353,6 +356,6 @@ function written(chapters: readonly ChapterResult[], video: Repaired, usage: Sta
     retries: chapters.filter((chapter) => chapter.retried).length,
     stripped: [...chapters.flatMap((chapter) => chapter.stripped), ...(video.stripped ?? [])],
     checks: [{ name: "l0-repair", gate: false, pass: video.after === 0, detail }],
-    notes,
+    notes: [...notes, ...chapters.flatMap((chapter) => chapter.dropped), ...(video.dropped ?? []).map((note) => `whole video: ${note}`)],
   };
 }

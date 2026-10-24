@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { L0Check, L0Result } from "../eval-l0.js";
 import { chapterScopedChecks, shippedRuleRegistry } from "../rules.js";
 import { parseSpine } from "../spine-schema.js";
-import { ScriptSchema } from "../script-schema.js";
+import { BEAT_FUNCTIONS, CHIP_KINDS, ScriptSchema } from "../script-schema.js";
 import { runScriptStage, StageFailure, type ModelStageInput } from "./model-stages.js";
 import { CHUNK_OVER_CHAPTERS, isChunked } from "./script-chunks.js";
 import { SPINE } from "./run-fakes.test-helpers.js";
@@ -236,6 +236,73 @@ describe("chunked script drafting", () => {
     expect(byChapter.get("ch3")).toEqual(["F1", "F3"]);
     expect(byChapter.get("ch5")).toEqual(["F1"]);
     expect(byChapter.get("none")).toEqual(["F1", "F2", "F3"]);
+  });
+});
+
+/** A short spine's whole reply, its first beat's visual and fields overridden. */
+function wholeReply(beat: Record<string, unknown> = {}, visual: Record<string, unknown> = {}): Record<string, unknown> {
+  const beats = chapterIds(4).map((id) => beatOf(`${id}-a`, id, "The bench tests the wick first."));
+  const first = { ...beats[0]!, ...beat, visual: { ...beats[0]!.visual, ...visual } };
+  return { ...chapterReply("ch1"), chapters: chapterIds(4).map((id) => ({ id, label: id, question: `Why does part ${id} matter?` })), beats: [first, ...beats.slice(1)] };
+}
+
+const chip = (kind: string, text: string) => ({ kind, text });
+/** The schema retry, not the plan retry a short synthetic runtime also draws. */
+const isRetry = (prompt: string): boolean => prompt.includes("## Your previous reply was rejected") && !prompt.includes("The plan check failed");
+
+describe("out-of-enum values in a script reply", () => {
+  // Mutation: making `enumFix` return undefined for a list item sends ch3 to the retry, which fails on the same chips.
+  it("drops a chapter's chips whose kind is outside the enum, keeps its beats, and names each dropped chip in a note", async () => {
+    const badChips = { ...chapterReply("ch3") };
+    const [a, b] = badChips.beats as ReturnType<typeof beatOf>[];
+    badChips.beats = [
+      { ...a!, visual: { ...a!.visual, chips: [chip("rumor", "Heard at the bench"), chip("verified", "Bench log")] } },
+      { ...b!, visual: { ...b!.visual, chips: [chip("guess", "Maybe six hours")] } },
+    ];
+    const model = fakeModel((prompt) => (taskChapter(prompt) === "ch3" ? badChips : passingVideo(prompt)));
+
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    expect(model.prompts.filter((prompt) => taskChapter(prompt) === "ch3")).toHaveLength(1);
+    expect(script.beats.find((beat) => beat.id === "ch3-a")?.visual.chips).toEqual([chip("verified", "Bench log")]);
+    expect(script.beats.find((beat) => beat.id === "ch3-b")?.visual.chips).toEqual([]);
+    expect(outcome.notes).toContain(`chapter ch3: dropped beats.0.visual.chips.0: kind: "rumor" is not one of ${CHIP_KINDS.join(", ")}`);
+    expect(outcome.notes).toContain(`chapter ch3: dropped beats.1.visual.chips.0: kind: "guess" is not one of ${CHIP_KINDS.join(", ")}`);
+  });
+
+  it("drops an optional field's out-of-enum value on the single-call path, with a note and no retry", async () => {
+    const model = fakeModel(() => wholeReply({}, { layer: "sky", chips: [chip("rumor", "Heard at the bench")] }));
+
+    const { script, outcome } = await runStage(spineOf(4), model);
+
+    expect(model.prompts.filter(isRetry)).toEqual([]);
+    expect(script.beats[0]?.visual).not.toHaveProperty("layer");
+    expect(script.beats[0]?.visual.chips).toEqual([]);
+    expect(outcome.notes).toEqual(expect.arrayContaining([expect.stringMatching(/^dropped beats\.0\.visual\.layer: "sky" is not one of /), expect.stringMatching(/^dropped beats\.0\.visual\.chips\.0: kind: "rumor"/)]));
+  });
+
+  // Mutation: dropping `raw` from `issueText` in `parsedObject` leaves zod's message, which names neither the bad value nor this wording.
+  it("names each bad value and the values the schema allows in the retry when a required field is out of the enum", async () => {
+    const replies = [wholeReply({ function: "MAYBE" }, { chips: [chip("rumor", "Heard at the bench")] }), wholeReply()];
+    const model = fakeModel(() => replies.shift() ?? wholeReply());
+
+    const { script } = await runStage(spineOf(4), model);
+
+    const retry = model.prompts.find(isRetry);
+    expect(retry).toContain(`beats.0.function: "MAYBE" is not one of ${BEAT_FUNCTIONS.join(", ")}`);
+    expect(retry).toContain(`beats.0.visual.chips.0.kind: "rumor" is not one of ${CHIP_KINDS.join(", ")}`);
+    expect(script.beats.map((beat) => beat.id)).toEqual(chapterIds(4).map((id) => `${id}-a`));
+  });
+
+  // Mutation: treating a required field as omittable in `enumFix` deletes the beat's function and the stage fails on a missing field instead.
+  it("fails the stage when a required field stays out of the enum after the retry, rather than dropping it", async () => {
+    const model = fakeModel(() => wholeReply({ function: "MAYBE" }));
+
+    const failure = await runStage(spineOf(4), model).catch((error: unknown) => error);
+
+    if (!(failure instanceof StageFailure)) throw new Error("expected a StageFailure");
+    expect(model.prompts.filter(isRetry)).toHaveLength(1);
+    expect(failure.message).toContain(`beats.0.function: "MAYBE" is not one of ${BEAT_FUNCTIONS.join(", ")}`);
   });
 });
 
