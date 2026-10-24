@@ -79,9 +79,9 @@ describe("config import", () => {
     const logFile = revisionLogPath(stateDir);
     mkdirSync(path.dirname(logFile), { recursive: true, mode: 0o700 });
     writeFileSync(logFile, "", { mode: 0o600 });
-    const source = { stateDir, coordinatorFile: path.join(tempDir("cfg"), "titan-coordinator", "coordinator.json") };
+    const source = { stateDir, autonomyTree: copyFixtureTree(), coordinatorFile: path.join(tempDir("cfg"), "titan-coordinator", "coordinator.json") };
 
-    await importRevisionZero(source, copyFixtureTree(), writtenLimits(stateDir), AT);
+    await importRevisionZero(source, source.autonomyTree, writtenLimits(stateDir), AT);
 
     const log = await readRevisionLog(logFile);
     expect(readFileSync(logFile, "utf8").split("\n")).toHaveLength(2);
