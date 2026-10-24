@@ -26,3 +26,26 @@ describe("L0 rules scoped by structure", () => {
     expect(rowsFor().map((r) => r.check_id).sort()).toEqual([...SCOPED].sort());
   });
 });
+
+// The fixture voices no simplifications, so every script held to Q-F12 fails it.
+const limitsRowsFor = (profile: string, structure: string) =>
+  runL0(ScriptSchema.parse({ ...scriptWith(), profile, structure }), undefined, L0_CHECKS).filter((r) => r.check_id === "Q-F12");
+
+describe("Q-F12 voiced limits, exempt for the daily briefing only", () => {
+  // Mutation: dropping the except_profiles filter emits a failing Q-F12 row here.
+  it("emits no voiced-limits row for a daily-overview script", () => {
+    expect(limitsRowsFor("daily-overview", "scqa")).toEqual([]);
+  });
+
+  it.each(["paper-summary", "pr-overview", "repo-argument"])("still holds a %s script that picks scqa to voiced limits", (profile) => {
+    const rows = limitsRowsFor(profile, "scqa");
+
+    expect(rows.map((r) => r.pass)).toEqual([false]);
+  });
+
+  it("still holds a repo-tour design-journey script to voiced limits", () => {
+    const rows = limitsRowsFor("repo-tour", "design-journey");
+
+    expect(rows.map((r) => r.pass)).toEqual([false]);
+  });
+});
