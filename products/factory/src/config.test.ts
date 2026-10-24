@@ -65,16 +65,15 @@ describe("loadConfig", () => {
     const env = xdg({});
     writeFileSync(configPath(env), "{ not json");
 
-    const thrown = (() => {
-      try {
-        loadConfig(configPath(env));
-      } catch (error) {
-        return error as Error;
-      }
-      throw new Error("loadConfig did not throw");
-    })();
+    let thrown: unknown;
+    try {
+      loadConfig(configPath(env));
+    } catch (error) {
+      thrown = error;
+    }
 
-    expect(thrown.cause).toBeInstanceOf(SyntaxError);
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).toHaveProperty("cause", expect.any(SyntaxError));
   });
 
   it("reads the shepherd seats directory and charter path", () => {
