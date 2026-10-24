@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { execGh, type GhExec } from "@titan-design/github";
 import { claudeTranscriptRoots } from "@titan-design/session-read";
 import { z } from "zod";
+import { lanesFileFor, loadLanes } from "../lanes-schema.js";
 import { gatherArticle, writeArticleGather } from "../presets/article/gather-article.js";
 import { activeWorkTasks } from "../presets/daily/active-work-tasks.js";
 import { gatherDaily, writeDailyGather } from "../presets/daily/gather-daily.js";
@@ -43,6 +44,8 @@ export interface GatherDeps {
   prGh?: GhRun;
   callEdges?: CallEdgeReader;
   readAt?: ReadAt;
+  /** The daily lanes rule file; the data dir's `daily/lanes.yaml` when it keeps one, else the doctrine default. */
+  lanesFile?: string;
 }
 
 interface Gathered {
@@ -60,11 +63,12 @@ interface Gathered {
 
 async function gatherDailyFacts(request: Extract<GatherRequest, { adapter: "gatherDaily" }>, dataDir: string, deps: GatherDeps): Promise<Gathered> {
   const transcriptRoots = request.transcripts.length > 0 ? request.transcripts : claudeTranscriptRoots().map((root) => root.root);
-  const { digest, notes } = await gatherDaily({
+  const lanes = loadLanes(deps.lanesFile ?? lanesFileFor(dataDir));
+  const { digest, notes, coverage } = await gatherDaily({
     day: request.day, repos: request.repos, transcriptRoots, initiative: request.initiative,
-    snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks,
+    snapshotDir: path.join(dataDir, "task-snapshots"), gh: deps.gh ?? execGh, listTasks: deps.listTasks ?? activeWorkTasks, lanes,
   });
-  const files = await writeDailyGather(path.join(dataDir, "gather", request.type, request.day), digest);
+  const files = await writeDailyGather(path.join(dataDir, "gather", request.type, request.day), digest, coverage);
   return { type: request.type, facts: files.facts, factsText: readFileSync(files.facts, "utf8"), items: digest.items.length, notes, record: files.digest };
 }
 

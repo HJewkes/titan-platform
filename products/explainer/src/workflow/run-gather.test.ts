@@ -1,19 +1,20 @@
-import { cpSync, existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { DAILY_FIXTURE, DAY, fakeGh, fixtureTasks, REPO } from "../presets/daily/daily-fakes.test-helpers.js";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
+import { DEFAULT_LANES_FILE } from "../lanes-schema.js";
 import { runRunCli } from "./run-cli.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
 
-function cli(model: Parameters<typeof fakeHost>[1] = fakeScriptModel()) {
+function cli(model: Parameters<typeof fakeHost>[1] = fakeScriptModel(), gatherOverrides: { lanesFile?: string } = {}) {
   const out: string[] = [];
   const err: string[] = [];
-  const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks() };
+  const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), lanesFile: DEFAULT_LANES_FILE, ...gatherOverrides };
   const host = fakeHost(fx, model, fakeBridge());
   const run = (...argv: string[]) => runRunCli(["run", ...argv, "--data-dir", fx.dataDir], { host, gather, out: (t) => out.push(t), err: (t) => err.push(t) });
   return { run, out, err };
@@ -32,10 +33,29 @@ describe("explainer run --facts-from gatherDaily", () => {
 
     expect(code).toBe(0);
     expect(err.join("")).toBe("");
-    expect(out.join("")).toContain(`gathered 9 facts for daily-overview ${DAY}: ${facts}`);
+    expect(out.join("")).toContain(`gathered 12 facts for daily-overview ${DAY}: ${facts}`);
     expect(out.join("")).toContain(`dry run: would run script to export with facts ${facts}`);
     expect(readFileSync(facts, "utf8")).toContain("| task/DM-3/owner-gated | task owner-gated · demo · Pick a courier for overnight runs");
+    expect(readFileSync(facts, "utf8")).toContain("| lane/factory/rollup | factory lane · rollup · Factory: 2 merged");
+    expect(JSON.parse(readFileSync(path.join(path.dirname(facts), "coverage.json"), "utf8"))).toMatchObject({ merged: 2 });
     expect(existsSync(path.join(fx.dataDir, "runs"))).toBe(false);
+  });
+
+  it("reads the lanes file kept under --data-dir over the doctrine default", async () => {
+    fx = fixture();
+    cpSync(path.join(DAILY_FIXTURE, "snapshots"), path.join(fx.dataDir, "task-snapshots"), { recursive: true });
+    mkdirSync(path.join(fx.dataDir, "daily"), { recursive: true });
+    const lanes = readFileSync(DEFAULT_LANES_FILE, "utf8").replace("fallback: factory", "fallback: solo").replace(/^lanes:\n[\s\S]*$/m, "lanes:\n  - id: solo\n    label: Solo\n");
+    writeFileSync(path.join(fx.dataDir, "daily", "lanes.yaml"), lanes);
+    const { run, out, err } = cli(fakeScriptModel(), { lanesFile: undefined });
+
+    const code = await run(...DAILY, "--type", "daily-overview", "--dry-run");
+    const facts = readFileSync(path.join(fx.dataDir, "gather", "daily-overview", DAY, "facts.md"), "utf8");
+
+    expect(code, err.join("")).toBe(0);
+    expect(out.join("")).toContain("gathered");
+    expect(facts).toContain("| lane/solo/rollup | solo lane · rollup · Solo: 2 merged");
+    expect(facts).not.toContain("lane/factory/rollup");
   });
 
   it("refuses a type whose profile does not take facts from gatherDaily", async () => {
