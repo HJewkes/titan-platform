@@ -36,6 +36,35 @@
       "kills": [
         "re-keys the resolve stage when the builder's base prompt changes, so every layer is rebuilt"
       ]
+    },
+    {
+      "name": "the cross-run build cache is never read",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (hit) return",
+      "replace": "if (false as boolean) return",
+      "kills": [
+        "reuses every build whose packet is unchanged when a script edit makes a new resolve run",
+        "calls the worker once, for the one beat whose packet changed"
+      ]
+    },
+    {
+      "name": "the compile gate's verdict is ignored",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (!verdict.ok) return",
+      "replace": "if (false as boolean) return",
+      "kills": [
+        "marks a build that does not compile as needing repair, with esbuild's error, and never caches it",
+        "refuses a build that imports a module outside the allowlist"
+      ]
+    },
+    {
+      "name": "a build is cached before the compile gate",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "const verdict = await compileLayer(build.module);",
+      "replace": "cache.put(key, build, { runId: step.runId, stage: STAGE });\n    const verdict = await compileLayer(build.module);",
+      "kills": [
+        "marks a build that does not compile as needing repair, with esbuild's error, and never caches it"
+      ]
     }
   ]
 }
