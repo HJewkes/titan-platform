@@ -10,7 +10,7 @@ import type { ShepherdServices } from "../shepherd/services.js";
 import type { StandingAnswer } from "./standing-answers.js";
 
 export const G10_HOLDS = ["g10-review", "g10-adversary"] as const;
-export type G10Hold = (typeof G10_HOLDS)[number];
+type G10Hold = (typeof G10_HOLDS)[number];
 const SUMMARY_MAX = 200;
 
 const isG10Hold = (holdClass: string | undefined): holdClass is G10Hold => G10_HOLDS.some((each) => each === holdClass);
