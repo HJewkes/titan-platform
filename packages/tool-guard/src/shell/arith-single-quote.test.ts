@@ -69,6 +69,19 @@ describe("a single-quoted command substitution in arithmetic runs (TP-3290)", ()
     expect(await handled(src)).toBe("deny");
   });
 
+  it.each([
+    ["an ANSI-C $( ) in $[ ]", `echo $[ $'$(${PUSH})' ]`],
+    ["an ANSI-C backtick in $[ ]", `echo $[ $'\`${PUSH}\`' ]`],
+  ])("extracts git push from %s (TP-3354)", (_, src) => {
+    expect(names(src).some((n) => n.startsWith(PUSH))).toBe(true);
+  });
+
+  it("reads $[ $'a\\nb' ] as ANSI-C, with no command and no deny (TP-3354)", async () => {
+    const src = "echo $[ $'a\\nb' ]";
+    expect(await handled(src)).toBe("pass");
+    expect(names(src)).not.toContain(PUSH);
+  });
+
   it("denies the older $[ ] spelling", async () => {
     const src = `x=$[ '$(${PUSH})' ]`;
     expect(await handled(src)).toBe("deny");

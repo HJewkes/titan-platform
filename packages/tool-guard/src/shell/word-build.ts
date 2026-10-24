@@ -1,4 +1,5 @@
 import { decodeAnsiC } from "./ansi-c.js";
+import { CODE_TEXT_RE } from "./arith-operand.js";
 import { ansiCEnd } from "./balanced.js";
 import { pastJoins } from "./joins.js";
 import { ParseError } from "./parse-error.js";
@@ -13,8 +14,22 @@ export function ensureWord(s: LexState): WordToken {
 }
 
 export function appendChar(s: LexState, c: string): void {
-  ensureWord(s).value += c;
+  appendLiteral(ensureWord(s), c);
   s.i++;
+}
+
+/**
+ * Appends text the word spells out itself, as a quote, an escape or a character does, rather than text an expansion
+ * stands for. A `$(` or backtick that lands in the value this way is code text, which bash evaluates wherever it reads
+ * the value as arithmetic.
+ */
+export function appendLiteral(w: WordToken, text: string): void {
+  // Reading the value back would flatten the string being built on every character, so only the new text is tested.
+  const base = w.value.length;
+  const joinsDollar = (text.startsWith("(") || text.startsWith("{")) && w.value.endsWith("$");
+  w.value += text;
+  if (joinsDollar) (w.codeAt ??= []).push(base - 1);
+  for (const m of text.matchAll(CODE_TEXT_RE)) (w.codeAt ??= []).push(base + m.index);
 }
 
 /** What may follow the `~` of a tilde prefix that names `HOME` itself: an unquoted `/`, a `:`, or the end of the word. */
@@ -87,7 +102,7 @@ export function readEscape(s: LexState): void {
   s.i += 2;
   if (next !== undefined && next !== "\n") {
     const w = ensureWord(s);
-    w.value += next;
+    appendLiteral(w, next);
     w.quoted = true;
     w.spliced = true;
   }
@@ -97,13 +112,13 @@ export function readSingle(s: LexState): void {
   const end = s.src.indexOf("'", s.i + 1);
   if (end === -1) throw new ParseError("unterminated '");
   const w = markQuoted(ensureWord(s));
-  w.value += s.src.slice(s.i + 1, end);
+  appendLiteral(w, s.src.slice(s.i + 1, end));
   s.i = end + 1;
 }
 
 export function readAnsiC(s: LexState, w: WordToken): void {
   const end = ansiCEnd(s.src, s.i + 1);
-  w.value += decodeAnsiC(s.src.slice(s.i + 2, end));
+  appendLiteral(w, decodeAnsiC(s.src.slice(s.i + 2, end)));
   w.quoted = true;
   w.spliced = true;
   s.i = end + 1;

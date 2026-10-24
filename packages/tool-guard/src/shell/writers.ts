@@ -1,6 +1,6 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment, Vars } from "./vars.js";
-import { nameOperandEvaluates, wordsEvaluateArithmetic } from "./arith-words.js";
+import { afterLeads, nameOperandEvaluates, wordsEvaluateArithmetic } from "./arith-words.js";
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
@@ -99,6 +99,23 @@ function integerValues(words: string[]): string[] {
   return words.slice(at + 1).flatMap((w) => VALUE_RE.exec(w)?.[1] ?? []);
 }
 
+/** `let`, `unset` and a `-v` test evaluate every argument, whatever its shape, past any `builtin` or `command` lead. */
+export function evaluatesEveryArgument(words: WordToken[], head: number): boolean {
+  const command = afterLeads(head < 0 ? [] : words.slice(head)).map((w) => w.value);
+  const name = command[0] ?? "";
+  return name === "let" || name === "unset" || testsVariable(name, command);
+}
+
+/** A `-v` test evaluates its operand's subscript; a `[[` split at `&&` or `(` leaves a piece that starts at `-v` or `! -v`. */
+function testsVariable(name: string, command: string[]): boolean {
+  return name === "-v" || (name === "!" && command[1] === "-v") || ((name === "[[" || TEST_COMMANDS.has(name)) && command.includes("-v"));
+}
+
+/** Whether the command word, past its leads, is `[` or `test`, whose numeric comparisons evaluate nothing. */
+export function isTestCommand(words: WordToken[], head: number): boolean {
+  return head >= 0 && TEST_COMMANDS.has(afterLeads(words.slice(head))[0]?.value ?? "");
+}
+
 const COMPARISON_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
 const TEST_COMMANDS = new Set(["[", "test"]);
 
@@ -112,10 +129,9 @@ const TEST_COMMANDS = new Set(["[", "test"]);
 export function evaluatesArithmetic(op: Token | null, words: WordToken[], head: number): boolean {
   if (op !== null && (compounds.has(op) || expansions.has(op))) return true;
   const values = words.map((w) => w.value);
-  const command = head < 0 ? [] : values.slice(head);
-  const name = command[0] ?? "";
-  if (name === "let" || name === "unset" || ((name === "[[" || TEST_COMMANDS.has(name)) && command.includes("-v"))) return true;
-  const numeric = !TEST_COMMANDS.has(name) && command.some((v) => COMPARISON_RE.test(v));
+  if (evaluatesEveryArgument(words, head)) return true;
+  const command = afterLeads(head < 0 ? [] : words.slice(head)).map((w) => w.value);
+  const numeric = !TEST_COMMANDS.has(command[0] ?? "") && command.some((v) => COMPARISON_RE.test(v));
   if (numeric || values.some((v) => expansionBodies(v).length > 0)) return true;
   return wordsEvaluateArithmetic(words) || (head >= 0 && nameOperandEvaluates(words.slice(head)));
 }
