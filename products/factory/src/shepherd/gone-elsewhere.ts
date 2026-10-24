@@ -67,7 +67,7 @@ class UnreadablePr extends Error {}
 const isNotFound = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 404;
 
 /** All the gone walk reads, so an owner op that holds only the store and the port can end a run too. */
-export type GoneReads = Pick<ShepherdServices, "store" | "port" | "snapshot" | "readTimer">;
+type GoneReads =Pick<ShepherdServices, "store" | "port" | "snapshot" | "readTimer">;
 
 /** Why the run's PR is no longer Shepherd's to land, or undefined while it is open. Rejects with `UnreadablePr` when GitHub cannot be read. */
 async function goneReason(services: GoneReads, runId: string): Promise<string | undefined> {
