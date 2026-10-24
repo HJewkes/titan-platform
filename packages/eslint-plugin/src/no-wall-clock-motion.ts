@@ -40,6 +40,11 @@ function isInScope(filename: string, paths: readonly string[]): boolean {
   return !TEST_FILE.test(normalized) && paths.some((path) => normalized.includes(path));
 }
 
+function configuredPaths(option: unknown): readonly string[] {
+  const paths = typeof option === "object" && option !== null && "paths" in option ? option.paths : undefined;
+  return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : DEFAULT_MOTION_PATHS;
+}
+
 export const noWallClockMotion: Rule.RuleModule = {
   meta: {
     type: "problem",
@@ -57,8 +62,7 @@ export const noWallClockMotion: Rule.RuleModule = {
     },
   },
   create(context) {
-    const options = (context.options[0] ?? {}) as { paths?: string[] };
-    if (!isInScope(context.filename, options.paths ?? DEFAULT_MOTION_PATHS)) return {};
+    if (!isInScope(context.filename, configuredPaths(context.options[0]))) return {};
     return {
       CallExpression(node) {
         const call = wallClockCall(node);
