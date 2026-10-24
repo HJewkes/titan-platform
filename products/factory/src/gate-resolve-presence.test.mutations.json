@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the gate store admits a confirmEvent that names no ledger record",
+      "file": "products/factory/src/gate-resolve-presence.ts",
+      "find": "  if (record === undefined) return `presence proof ${JSON.stringify(event)} names no owner-signed record`;\n",
+      "replace": "  if (record === undefined) return undefined;\n",
+      "kills": [
+        "the gate store checks a gate resolve's presence proof against the ledger a bare UUID is refused and the gate stays pending",
+        "the gate store checks a gate resolve's presence proof against the ledger an unknown ledger id is refused and the gate stays pending"
+      ]
+    }
+  ]
+}
