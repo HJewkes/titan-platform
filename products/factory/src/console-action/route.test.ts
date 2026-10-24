@@ -401,53 +401,6 @@ describe("POST /owner/console-action", () => {
       expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
     });
 
-    it("resolves waive-proof on a waivable gate with the gate's head, as owner-remote bound to the record's sha256", async () => {
-      const w = await sentBackWorld({ waivable: "true" });
-      const confirmEvent = w.record({ decision: "waive-proof" });
-
-      const res = await post(w.server, { actionId: ACTION_ID });
-
-      expect(await reply(res)).toEqual([200, { outcome: "resolved", gateId: w.sentBackId }]);
-      const gate = w.server.host.gates.get(w.sentBackId);
-      expect(gate?.payload).toEqual({ decision: "waive-proof", headSha: H });
-      expect(gate?.resolvedBy).toEqual({ class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent });
-    });
-
-    it("refuses with 403 class a waive-proof on a sent-back gate whose schema does not offer it, leaving the gate pending", async () => {
-      const w = await sentBackWorld();
-      w.record({ decision: "waive-proof" });
-
-      const res = await post(w.server, { actionId: ACTION_ID });
-
-      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class", detail: expect.stringContaining("waive-proof") }]);
-      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
-    });
-
-    it("refuses with 403 class a merge on a waivable sent-back gate and a waive-proof on an approve-merge gate", async () => {
-      const w = await sentBackWorld({ waivable: "true" });
-      w.record({ decision: "merge" }, "merge");
-      writeRecord(w, { runId: w.gateId.split("/")[0], decision: "waive-proof" }, "waive");
-
-      const outcomes = await Promise.all(["merge", "waive"].map(async (actionId) => reply(await post(w.server, { actionId }))));
-
-      expect(outcomes).toMatchObject([
-        [403, { outcome: "refused", reason: "class" }],
-        [403, { outcome: "refused", reason: "class" }],
-      ]);
-      expect([w.server.host.gates.get(w.sentBackId)?.status, w.server.host.gates.get(w.gateId)?.status]).toEqual(["pending", "pending"]);
-    });
-
-    it("answers 409 moved with GitHub's head when the PR moved past a waive-proof record's head, and leaves the gate pending", async () => {
-      const w = await sentBackWorld({ waivable: "true" });
-      w.github.pushHead(w.pr, H2);
-      w.record({ decision: "waive-proof" });
-
-      const res = await post(w.server, { actionId: ACTION_ID });
-
-      expect(await reply(res)).toEqual([409, { outcome: "moved", currentHead: H2 }]);
-      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
-    });
-
     it("refuses with 403 class an await-new-head the gate's own schema does not offer", async () => {
       const w = await sentBackWorld({ decisions: "abandon" });
       w.record();

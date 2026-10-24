@@ -35,7 +35,8 @@
       "find": "RESOLVED_MESSAGE[record.action.decision]",
       "replace": "RESOLVED_MESSAGE.merge",
       "kills": [
-        "inbox.act on a waivable sh-sent-back gate waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone"
+        "inbox.act on a waivable sh-sent-back gate waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone",
+        "inbox.act on a waivable sh-sent-back gate keeps await-new-head as the item's own tap beside the waiver"
       ]
     }
   ]

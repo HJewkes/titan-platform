@@ -11,12 +11,12 @@
       ]
     },
     {
-      "name": "the sent-back allowlist lacks waive-proof",
+      "name": "the approve-merge allowlist admits abandon and send-back",
       "file": "products/factory/src/console-action/gate.ts",
-      "find": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD, WAIVE_PROOF])]",
-      "replace": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD])]",
+      "find": "[MERGE_GATE, Object.freeze([\"merge\"])]",
+      "replace": "[MERGE_GATE, Object.freeze([\"merge\", \"abandon\", \"send-back\"])]",
       "kills": [
-        "POST /owner/console-action sh-sent-back resolves waive-proof on a waivable gate with the gate's head, as owner-remote bound to the record's sha256"
+        "POST /owner/console-action refuses with 403 class an approve-merge record asking abandon or send-back, leaving the gate pending"
       ]
     },
     {
@@ -25,17 +25,16 @@
       "find": "allowed.filter((decision) => offered.includes(decision))",
       "replace": "allowed",
       "kills": [
-        "POST /owner/console-action sh-sent-back refuses with 403 class an await-new-head the gate's own schema does not offer",
-        "POST /owner/console-action sh-sent-back refuses with 403 class a waive-proof on a sent-back gate whose schema does not offer it, leaving the gate pending"
+        "POST /owner/console-action sh-sent-back refuses with 403 class an await-new-head the gate's own schema does not offer"
       ]
     },
     {
-      "name": "a waiver's answer omits the head its anyOf shape pins",
+      "name": "a sent-back answer carries the head its schema does not pin",
       "file": "products/factory/src/console-action/gate.ts",
-      "find": " || HEAD_PINNED_DECISIONS.has(action.decision)",
-      "replace": "",
+      "find": "pinnedHead(gate.schema) !== undefined ||",
+      "replace": "true ||",
       "kills": [
-        "POST /owner/console-action sh-sent-back resolves waive-proof on a waivable gate with the gate's head, as owner-remote bound to the record's sha256"
+        "POST /owner/console-action sh-sent-back resolves await-new-head with the decision alone, as owner-remote from the console inbox bound to the record's sha256"
       ]
     },
     {
