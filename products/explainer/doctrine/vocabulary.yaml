@@ -94,6 +94,7 @@ structures:
   - timeline
   - board-walk
   - bluf
+  - goal-walk
 # Beat systems are the ordered beat patterns of doctrine/beat-systems/ (plan §B, slice 3): a beat
 # order inside a structure's blocks, never a second structure. Xu's opening styles and Wei's climax
 # patterns stay out until someone reads the papers; they are known only from abstracts.
