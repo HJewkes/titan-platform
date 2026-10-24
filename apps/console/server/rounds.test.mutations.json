@@ -7,7 +7,7 @@
       "find": "if (!parsed.ok) return withdrawn === null ? { gap: `${id}: ${parsed.reason}` } : {};",
       "replace": "if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };",
       "kills": [
-        "reports no gap for a withdrawn round whose round.json does not parse"
+        "readQueueRounds reports no gap for a withdrawn round whose round.json does not parse"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "if (!parsed.ok) return withdrawn === null ? { gap: `${id}: ${parsed.reason}` } : {};",
       "replace": "if (!parsed.ok) return {};",
       "kills": [
-        "still reports a gap for an open round whose round.json does not parse"
+        "readQueueRounds still reports a gap for an open round whose round.json does not parse"
       ]
     }
   ]
