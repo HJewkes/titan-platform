@@ -30,6 +30,7 @@ Before adding code:
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
+| [`md-chunk`](#cap-md-chunk) | 0 | Placeholder: replace with the situation that should send a reader to md-chunk, and name the neighbouring unit for the situations that should not. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
@@ -393,6 +394,20 @@ Key exports:
 - `transcript-table`: `emptyTable`, `resumePoint`, `transcriptIndexFor`
 - `read-locator`: `readLocatorBytes`, `readLocatorText`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/locator)
+
+<a id="cap-md-chunk"></a>
+
+### [`md-chunk`](https://hjewkes.github.io/titan-platform/reference/md-chunk)
+
+Tier 0, `@titan-design/md-chunk@0.0.0`. 
+
+**Use this when:**
+
+Placeholder: replace with the situation that should send a reader to md-chunk, and name the neighbouring unit for the situations that should not.
+
+Key exports:
+
+No library entry point.
 
 <a id="cap-openai-account"></a>
 

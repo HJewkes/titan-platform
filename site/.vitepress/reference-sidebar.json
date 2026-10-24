@@ -56,6 +56,10 @@
         "link": "/reference/locator"
       },
       {
+        "text": "md-chunk",
+        "link": "/reference/md-chunk"
+      },
+      {
         "text": "openai-account",
         "link": "/reference/openai-account"
       },
