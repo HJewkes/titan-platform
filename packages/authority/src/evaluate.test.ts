@@ -23,12 +23,16 @@ const DENY_RULE_IDS = [
   "MRG-DC", "REL-DC", "SEC-DC", "UNT-DC", "PUB-DC", "EXT-DC", "HW-DC", "HWS-DC",
   "DSR-DC", "DSL-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
   "ANS-OT", "ANS-OR", "ANS-CO", "ANS-WK", "ANS-HD", "ANS-AU", "ANS-DC",
+  "PRC-CO", "PRC-WK", "PRC-HD", "PRC-AU", "PRC-DC",
+  "DPR-CO", "DPR-WK", "DPR-HD", "DPR-AU", "DPR-DC",
+  "FLC-CO", "FLC-WK", "FLC-HD", "FLC-AU", "FLC-DC",
 ];
 
 const ACTION_CODES: Record<string, ActionClass> = {
   MRG: "merge", REL: "release", SEC: "secret-read", UNT: "untrusted-ingest", PUB: "private-to-public", EXT: "private-egress",
   HW: "hardware-actuate", HWS: "hardware-stop", DSR: "destructive-remote", DSL: "destructive-local", DSX: "destructive-foreign",
   SPN: "spawn", SPD: "spend-over-cap", CFG: "authority-config", HV: "human-verb", ANS: "answer-question",
+  PRC: "pr-close", DPR: "deploy-resume", FLC: "fleet-config",
 };
 const ACTOR_CODES: Record<string, ActorClass> = {
   OT: "owner-terminal", OR: "owner-remote", CO: "coordinator", WK: "worker", HD: "headless", AU: "automation", DC: "decider",
@@ -44,9 +48,9 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 44 allow, 6 gate and 66 deny rows", () => {
+  it("holds 48 allow, 9 gate and 81 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 45, gate: 6, deny: 66 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 48, gate: 9, deny: 81 });
   });
 
   it("denies exactly the hand-listed rows", () => {
@@ -62,6 +66,31 @@ describe("the approved table", () => {
     for (const actor of ACTOR_CLASSES.filter((candidate) => candidate !== "decider")) expect(evaluate(DEFAULT_TABLE, request("hardware-stop", actor)).verdict).toBe("allow");
     for (const actor of ["coordinator", "worker", "headless", "automation"] as const) {
       expect(evaluate(DEFAULT_TABLE, request("spend-over-cap", actor)).verdict).toBe("allow");
+    }
+  });
+});
+
+describe("the console owner-op rows", () => {
+  const OWNER_OP_ACTIONS = ["pr-close", "deploy-resume", "fleet-config"] as const;
+  const SEATS = ["coordinator", "worker", "headless", "automation", "decider"] as const;
+
+  it.each(OWNER_OP_ACTIONS)("gates %s by owner-remote on the owner-remote tap alone", (action) => {
+    expect(evaluate(DEFAULT_TABLE, request(action, "owner-remote"))).toMatchObject({ verdict: "gate", resolvers: ["owner-remote"] });
+  });
+
+  it.each(OWNER_OP_ACTIONS)("allows %s by the owner at a terminal", (action) => {
+    expect(evaluate(DEFAULT_TABLE, request(action, "owner-terminal")).verdict).toBe("allow");
+  });
+
+  it.each(OWNER_OP_ACTIONS)("refuses %s to every seat, tainted or not", (action) => {
+    const verdicts = SEATS.flatMap((actor) => [false, true].map((tainted) => evaluate(DEFAULT_TABLE, request(action, actor, tainted)).verdict));
+    expect(verdicts).toEqual(Array(SEATS.length * 2).fill("deny"));
+  });
+
+  it("never lets a seat resolve an owner-op gate", () => {
+    for (const ruleId of ["PRC-OR", "DPR-OR", "FLC-OR"]) {
+      expect(canResolve(DEFAULT_TABLE, ruleId, { class: "owner-remote", tainted: false })).toBe(true);
+      for (const actor of SEATS) expect(canResolve(DEFAULT_TABLE, ruleId, { class: actor, tainted: false })).toBe(false);
     }
   });
 });

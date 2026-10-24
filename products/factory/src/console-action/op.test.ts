@@ -1,5 +1,6 @@
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
+import { opAuthority } from "../owner-ops/authority.js";
 import type { LedgerEntry, OwnerOpsLedger } from "../owner-ops/ledger.js";
 import { actOnOp, type OpEffect } from "./op.js";
 import type { Outcome } from "./outcome.js";
@@ -18,14 +19,32 @@ const CONTEXT = undefined;
 
 const act = (op: OwnerOp, effect: OpEffect<undefined>, ledger = memoryLedger()) => actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: { [op.kind]: effect }, ledger, now: () => 0 }, CONTEXT);
 
+describe("opAuthority", () => {
+  it("gates close-pr, factory-config-set and deploy-pause-clear each on its own owner-remote row", () => {
+    const ops: OwnerOp[] = [
+      { kind: "close-pr", repo: REPO, pr: 7, headSha: H },
+      { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on" },
+      { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" },
+    ];
+
+    const decisions = ops.map((op) => opAuthority(op));
+
+    expect(decisions).toMatchObject([
+      { verdict: "gate", ruleId: "PRC-OR", resolvers: ["owner-remote"] },
+      { verdict: "gate", ruleId: "FLC-OR", resolvers: ["owner-remote"] },
+      { verdict: "gate", ruleId: "DPR-OR", resolvers: ["owner-remote"] },
+    ]);
+  });
+});
+
 describe("actOnOp", () => {
   it("refuses with class an op the authority table denies owner-remote, running no effect and logging nothing", async () => {
     const effect = vi.fn<OpEffect<undefined>>();
     const ledger = memoryLedger();
 
-    const outcome = await act({ kind: "close-pr", repo: REPO, pr: 7, headSha: H }, effect, ledger);
+    const outcome = await act({ kind: "retire-agent", name: "impl-a", agentId: "agent-1", force: true }, effect, ledger);
 
-    expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("DSR-OR denies destructive-remote by owner-remote") });
+    expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("DSL-OR denies destructive-local by owner-remote") });
     expect(effect).not.toHaveBeenCalled();
     expect(ledger.entries).toEqual([]);
   });
