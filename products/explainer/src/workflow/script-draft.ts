@@ -6,6 +6,7 @@ import type { BeatSpec } from "../beat-schema.js";
 import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
 import type { GatheredFact } from "../lint-claims.js";
+import { LANES_CHAPTER, type CoverageManifest } from "../lint-coverage.js";
 import { repairHint } from "../l0-repair-hints.js";
 import type { Stamped, LedgerStamp } from "../ledger-stamp.js";
 import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
@@ -53,11 +54,29 @@ Each chapter opens on the beat spec the spine's chapter order names. Set that be
 
 const leadBeatSection = (leads: readonly LeadBeat[]): string[] => (leads.length > 0 ? [`${LEAD_BEATS}\n\n${leadBeatLines(leads).join("\n")}`] : []);
 
-/** Every prompt section but the task: the guide in the spine's structure, the spine, the facts, the lead beats, the budget and the shape. */
-export function promptSections(spine: string, facts: string, plan: ScriptPlan): string[] {
+function laneLine(lane: CoverageManifest["lanes"][number], coverage: CoverageManifest): string {
+  const prsOf = (thread: string) => coverage.prs.filter((entry) => entry.thread === thread && entry.lane === lane.id).map((entry) => entry.pr);
+  const named = lane.named.map((thread) => `${thread} (${prsOf(thread).join(", ")})`).join("; ") || "none";
+  return `- ${lane.label} (${lane.id}): ${lane.merged} merged, counted by ${lane.rollup}; name: ${named}`;
+}
+
+/** Per lane, the threads a script names and the rollup fact that counts the rest, so Q-E21 is met in the draft. */
+export const coverageSection = (coverage: CoverageManifest): string =>
+  `## Coverage (coverage.json)
+
+Every merged PR of the day is named or counted under its lane. Name each thread below by citing its PR fact ids in the beat that names it. Count the rest of a lane in a "${LANES_CHAPTER}" chapter beat that cites the lane's rollup fact and says or shows the lane's merged total.
+
+${coverage.lanes.map((lane) => laneLine(lane, coverage)).join("\n")}`;
+
+/**
+ * Every prompt section but the task: the guide in the spine's structure, the spine, the facts, the coverage a daily
+ * gather sets, the lead beats, the budget and the shape.
+ */
+export function promptSections(spine: string, facts: string, plan: ScriptPlan, coverage?: CoverageManifest): string[] {
   const guide = guidePlan("script", { spine: parseSpine(spine), structure: plan.structure });
   const budget = plan.profile ? [budgetSection(plan.leads, plan.profile)] : [];
-  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, ...leadBeatSection(plan.leads), ...budget, scriptShape()];
+  const covered = coverage ? [coverageSection(coverage)] : [];
+  return [guide, `## Story spine (spine.md)\n\n${spine.trim()}`, `## Facts pack (facts.md)\n\n${facts.trim()}`, ...covered, ...leadBeatSection(plan.leads), ...budget, scriptShape()];
 }
 
 /** The reply rules every script task ends on, whole script or one chapter. */
@@ -183,18 +202,20 @@ export interface Lint {
   rows: (script: ScriptV1) => L0Result[];
   /** The gathered facts the Q-E20 rows read, so its hint names the nearest one. */
   facts?: readonly GatheredFact[];
+  /** A daily gather's coverage manifest, so the Q-E21 hint names each lane and PR left out. */
+  coverage?: CoverageManifest;
   spine: SpineV1;
   /** The voice's g2p, so the rounds also answer the words it has no phonemes for. */
   g2p: Tokens;
 }
 
-export function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, lint: Pick<Lint, "facts" | "spine" | "g2p">): string {
+export function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, lint: Pick<Lint, "facts" | "spine" | "g2p" | "coverage">): string {
   const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
   const words = (row: L0Result) => row.check_id === UNKNOWN_WORDS_ID;
   const rule = (row: L0Result) => (words(row) ? UNKNOWN_WORDS_RULE : ruleFor(row.check_id)?.rule ?? "see the rules above");
   const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
   const found = (row: L0Result) => {
-    const hint = words(row) ? unknownWordsHint(lint.g2p, spellScript(script)) : repairHint(row, script, lint.facts, lint.spine);
+    const hint = words(row) ? unknownWordsHint(lint.g2p, spellScript(script)) : repairHint(row, script, lint.facts, lint.spine, lint.coverage);
     return hint ? `\n  Found: ${hint}` : "";
   };
   return rows.map((row) => `- ${row.check_id}: ${rule(row)} (${where(row)})${found(row)}`).join("\n");

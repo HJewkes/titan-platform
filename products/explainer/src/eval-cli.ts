@@ -18,6 +18,7 @@ import { parseScript } from "./script-load.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { parseSpine } from "./spine-schema.js";
 import { claimFacts, withClaimFacts } from "./claim-facts.js";
+import { parseCoverage, withCoverage } from "./lint-coverage.js";
 import { speechVerdict, verdictSummary, VETTED_RANGE, vetSentences, withSpeechVerdict, type SentenceVet } from "./speech-vet-gate.js";
 import { localSentenceVet } from "./speech-vet-local.js";
 import { readTiming } from "./timing.js";
@@ -35,6 +36,7 @@ interface L0Flags {
   timing?: string;
   spine?: string;
   facts?: string;
+  coverage?: string;
   failOnGhosts?: boolean;
   speechVet?: boolean;
   format: ScriptFormat;
@@ -111,7 +113,9 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   const spine = flags.spine ? parseSpine(readFileSync(flags.spine, "utf8")) : undefined;
   const sha = freezeScript(bench, raw, flags.parent ?? null);
   const facts = flags.facts ? claimFacts(readFileSync(flags.facts, "utf8")) : undefined;
-  const results = runL0(script, layout, withClaimFacts(await l0Checks(script, flags, deps), facts), timing, spine);
+  const coverage = flags.coverage ? parseCoverage(readFileSync(flags.coverage, "utf8")) : undefined;
+  const checks = withCoverage(withClaimFacts(await l0Checks(script, flags, deps), facts), coverage, facts);
+  const results = runL0(script, layout, checks, timing, spine);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
   appendTsv(bench.structure, STRUCTURE_COLUMNS, rows);
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
@@ -134,6 +138,7 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--timing <file>", "words.json (or a durations-only extract); the pace lints read its heard durations, not plannedS")
     .option("--spine <file>", "story spine markdown (the script-method template); the spine lints Q-E15 and Q-E18 and the ledger lints read it")
     .option("--facts <file>", "the gather's digest.json or facts pack (facts.md or facts.jsonl); without it Q-E20 reports that it did not run")
+    .option("--coverage <file>", "the daily gather's coverage.json; without it Q-E21 reports that it did not run")
     .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
     .option("--speech-vet", "vet each 26-32 word sentence with speech-vet (local Kokoro and Whisper; the first run downloads them) so Q-V9 can pass it; off by default, which keeps the 25-word cap")

@@ -76,7 +76,7 @@ export function withoutSkipped(rubric: ColdRubricResult | null, skipped: readonl
 
 export function chapterBlocks(spine: SpineCandidate, profile: TypeProfile): ChapterBlock[] {
   const named = new Set(profile.structure.blocks.map((block) => block.id));
-  return spine.blocks.map((block, i) => ({ chapter: `ch${i + 1}`, block: named.has(block.id) ? block.id : null }));
+  return spine.blocks.map((block) => ({ chapter: block.id, block: named.has(block.id) ? block.id : null }));
 }
 
 interface RecordInput {

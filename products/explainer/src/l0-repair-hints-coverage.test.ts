@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { withClaimFacts } from "./claim-facts.js";
 import { L0_CHECKS, runL0, type L0Result } from "./eval-l0.js";
 import { HINTED_CHECKS, repairHint } from "./l0-repair-hints.js";
+import { withCoverage } from "./lint-coverage.js";
 import { whyCheck } from "./lint-why.js";
 import { parseSpine } from "./spine-schema.js";
 import { GOOD_BEATS, tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
@@ -9,10 +10,11 @@ import { SPINE } from "./workflow/run-fakes.test-helpers.js";
 
 const STAKE = { who: "The courier", loses_what: "A parcel printed against a missing row", number: "3 refused labels", fact_ids: ["F-1"] };
 const FACTS = [{ id: "task/QA-901/opened", kind: "task" }];
+const COVERAGE = { merged: 1, lanes: [{ id: "qa", label: "QA", rollup: "lane/qa/rollup", merged: 1, named: [] }], prs: [{ pr: "pr/acme/widgets#1/merged", lane: "qa", thread: "QA-901", named: false }] };
 
-/** Every error-severity row the script stage's L0 emits, with the spine and the gathered facts it reads. */
+/** Every error-severity row the script stage's L0 emits, with the spine, the gathered facts and the coverage manifest it reads. */
 function scriptStageErrorIds(): string[] {
-  const rows = runL0(tour(), undefined, withClaimFacts(L0_CHECKS, FACTS), undefined, parseSpine(SPINE));
+  const rows = runL0(tour(), undefined, withCoverage(withClaimFacts(L0_CHECKS, FACTS), COVERAGE, FACTS), undefined, parseSpine(SPINE));
   return [...new Set(rows.filter((row) => row.severity === "error").map((row) => row.check_id))];
 }
 
@@ -32,7 +34,7 @@ describe("repair hint coverage", () => {
   it("answers a failing row of every hinted rule without throwing", () => {
     const script = tour();
 
-    const hints = [...HINTED_CHECKS].map((id) => [id, () => repairHint(failingOn(id, ["h2", "w2"]), script, FACTS, parseSpine(SPINE))] as const);
+    const hints = [...HINTED_CHECKS].map((id) => [id, () => repairHint(failingOn(id, ["h2", "w2"]), script, FACTS, parseSpine(SPINE), COVERAGE)] as const);
 
     hints.forEach(([id, hint]) => expect(hint, id).not.toThrow());
   });

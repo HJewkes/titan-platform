@@ -6,6 +6,7 @@ import { createJudgeHarness, type JudgeConfig, type JudgeHarness } from "../eval
 import { canonicalSha } from "../eval-store.js";
 import { claimFacts, withClaimFacts } from "../claim-facts.js";
 import { stampLedgerTerms, type Stamped } from "../ledger-stamp.js";
+import { parseCoverage, withCoverage, type CoverageManifest } from "../lint-coverage.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript, spellScript } from "../rewrite-pass.js";
@@ -136,6 +137,10 @@ function scriptCall(input: ModelStageInput, deps: ScriptStageDeps): Call {
   return (text) => runner.run({ runId: input.from.runId, workflowName: "explainer-video", stepId: "script", iteration: 0, prompt: text, signal });
 }
 
+/** A daily gather's coverage manifest, when the run gathered one. */
+const coverageOf = (input: ModelStageInput): CoverageManifest | undefined =>
+  input.artifacts.coverage === undefined ? undefined : parseCoverage(input.store.readText(input.artifacts.coverage));
+
 /**
  * Spine and facts to a script/v1 draft, then the L0 repair rounds: in one call with one retry, or, for a long spine,
  * one chapter per call (script-chunks.ts).
@@ -147,11 +152,12 @@ export async function runScriptStage(input: ModelStageInput, deps: ScriptStageDe
   const factsText = input.store.readText(need(input, "facts"));
   const call = scriptCall(input, deps);
   const facts = claimFacts(factsText);
-  const l0Checks = withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts);
+  const coverage = coverageOf(input);
+  const l0Checks = withCoverage(withClaimFacts(deps.l0Checks ?? L0_CHECKS, facts), coverage, facts);
   const g2p = deps.g2p ?? doctrineG2p();
   const rows = (script: ScriptV1) => [...runL0(script, undefined, l0Checks, undefined, spine), unknownWordsRow(g2p, spellScript(script))];
-  const lint: Lint = { rows, spine, g2p, ...(facts ? { facts } : {}) };
-  const sections = promptSections(spineText, factsText, plan);
+  const lint: Lint = { rows, spine, g2p, ...(facts ? { facts } : {}), ...(coverage ? { coverage } : {}) };
+  const sections = promptSections(spineText, factsText, plan, coverage);
   const written = isChunked(spine)
     ? await chunkedScript({ call, sections, plan, lint, capUsd: input.remainingUsd })
     : await wholeDraft(call, promptFor(sections), plan, lint);
@@ -226,7 +232,7 @@ export async function runEvalStage(input: ModelStageInput, deps: EvalStageDeps, 
   const script = readScript(input, "script");
   const spine = parseSpine(input.store.readText(need(input, "spine")));
   const facts = input.artifacts.facts === undefined ? undefined : claimFacts(input.store.readText(input.artifacts.facts));
-  const l0 = runL0(script, undefined, withClaimFacts(l0Checks, facts), undefined, spine);
+  const l0 = runL0(script, undefined, withCoverage(withClaimFacts(l0Checks, facts), coverageOf(input), facts), undefined, spine);
   const pace = paceRows(fromScriptV1(script), script.video.invariants ?? []);
   const checks = [verdict("l0", l0), verdict("pace", pace)];
   const red = checks.filter((check) => !check.pass);

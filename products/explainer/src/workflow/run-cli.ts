@@ -5,6 +5,7 @@ import { Command, CommanderError, InvalidArgumentError, Option } from "commander
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeReport, type RunHost, type RunOutcome } from "./host.js";
+import { ownerInboxDir, REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
@@ -40,6 +41,9 @@ interface RunFlags {
   dryRun?: boolean;
   profile?: string;
   theater?: string;
+  reflection: ReflectionMode;
+  asker: string;
+  retroDir?: string;
   listenerQuestions?: boolean;
   listenerThreshold?: number;
 }
@@ -170,8 +174,12 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
     from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
     ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}), ...(flags.theater ? { theater: path.resolve(flags.theater) } : {}),
-  }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}) }, flags));
+  }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}), reflection: deps.host?.reflection ?? reflectionFor(flags) }, flags));
   return summary(result, io);
+}
+
+function reflectionFor(flags: RunFlags): ReflectionConfig {
+  return { mode: flags.reflection, asker: flags.asker, spoolDir: ownerInboxDir(process.env), ...(flags.retroDir ? { retroDir: path.resolve(flags.retroDir) } : {}) };
 }
 
 function threshold(text: string): number {
@@ -193,6 +201,9 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--facts <file>", "facts pack, markdown or JSON lines; required from audition or script unless --base supplies it")
     .option("--profile <type>", "the video type whose profile the audition reads, and whose named bridge renders; required from audition")
     .option("--theater <dir>", "the folder export links the video into, in place of the bridge's theater.dir")
+    .addOption(new Option("--reflection <mode>", "where the script's reflection chapter lands after export: one owner-queue deposit a day, a dated retro file, or nowhere").choices(REFLECTION_MODES).default("off"))
+    .option("--asker <seat>", "the seat running the pipeline, the asker of the reflection deposit", "explainer")
+    .option("--retro-dir <dir>", "where --reflection retro-file writes <day>-daily.md")
     .addOption(new Option("--from <stage>", "first stage to run; earlier stages reuse the base run's outputs").choices(STAGES).default("script"))
     .addOption(new Option("--to <stage>", "last stage to run; a run that stops before export never reaches the theater").choices(STAGES).default("export"))
     .option("--base <runId>", "the run whose outputs stand in for the stages before --from (default: the latest run, unless --pin is given)")
