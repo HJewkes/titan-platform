@@ -132,6 +132,12 @@ describe("facts packs", () => {
     expect(parseFacts(text)).toEqual({ format: "facts-md", facts: [{ id: "F01", text: "One claim." }, { id: "F02", text: "Two claims." }] });
   });
 
+  it("keeps an escaped pipe inside its markdown cell", () => {
+    const text = "| Id | Claim | Priority |\n|---|---|---|\n| F1 | Draft the label \\| printer spec |  |\n| F2 | a \\| b | P1 |\n";
+
+    expect(parseFacts(text).facts).toEqual([{ id: "F1", text: "Draft the label | printer spec" }, { id: "F2", text: "a | b", priority: "P1" }]);
+  });
+
   it("reads gather facts as JSON lines, keeping kind and priority", () => {
     const text = `${JSON.stringify({ id: "f1", text: "A claim.", kind: "gotcha", tier: "P1", source: "row" })}\n`;
 
