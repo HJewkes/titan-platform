@@ -7,7 +7,9 @@
       "find": "return answerer.answer(action.msgId, withOutcomePreamble(action.msgId, record.text));",
       "replace": "return answerer.answer(action.msgId, record.text);",
       "kills": [
-        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged"
+        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged",
+        "inbox answer-chat sends the owner's text to the broker, keeps it in the record and logs it as the answer",
+        "inbox answer-chat leaves a broker-down answer unsettled, so the retry sends the words first written"
       ]
     },
     {
@@ -16,7 +18,9 @@
       "find": "A chat reply is not a resolution: record the outcome durably on this item (task note, PR comment or reply) before moving on.]",
       "replace": "Reply in chat.]",
       "kills": [
-        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged"
+        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged",
+        "inbox answer-chat sends the owner's text to the broker, keeps it in the record and logs it as the answer",
+        "inbox answer-chat leaves a broker-down answer unsettled, so the retry sends the words first written"
       ]
     },
     {
@@ -25,7 +29,9 @@
       "find": "to chat msg ${msgId}.",
       "replace": "to an agent.",
       "kills": [
-        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged"
+        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged",
+        "inbox answer-chat sends the owner's text to the broker, keeps it in the record and logs it as the answer",
+        "inbox answer-chat leaves a broker-down answer unsettled, so the retry sends the words first written"
       ]
     },
     {
@@ -34,7 +40,9 @@
       "find": "const text = textFor(action, tap.text);",
       "replace": "const text = action.kind === \"answer-chat\" ? withOutcomePreamble(action.msgId, textFor(action, tap.text) ?? \"\") : textFor(action, tap.text);",
       "kills": [
-        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged"
+        "inbox answer-chat sends the owner's text behind the fixed outcome preamble naming the chat msg, keeping the owner's words unchanged",
+        "inbox answer-chat sends the owner's text to the broker, keeps it in the record and logs it as the answer",
+        "inbox answer-chat leaves a broker-down answer unsettled, so the retry sends the words first written"
       ]
     }
   ]

@@ -34,7 +34,6 @@ const ADV_ID = `gate:${RUN_ADV}/approve-merge`;
 const OLD_HEAD = "0000000000aaaaaaaaaa0000000000aaaaaaaaaa";
 const MSG = "msg-0007";
 const CHAT_ID = `chat:${MSG}`;
-const PREAMBLE = `[Owner answer from the console inbox to chat msg ${MSG}. A chat reply is not a resolution: record the outcome durably on this item (task note, PR comment or reply) before moving on.]\n\n`;
 
 const SESSION: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
 const BEARER: RequestAuth = { credential: "bearer", issuedAt: null, peerLocal: false };
@@ -410,23 +409,6 @@ describe("inbox answer-chat", () => {
     expect(await prepare(CHAT_ID)).toMatchObject({ ok: true, data: { status: "no-action", action: { kind: "answer-chat" } } });
   });
 
-  it("sends the owner's text to the broker, keeps it in the record and logs it as the answer", async () => {
-    const broker = spyBroker();
-    const factorySpy = spyFactory();
-    const { log, calls } = spyLog();
-    const { prepare, act } = await harness(factorySpy.client, { answerer: broker.answerer, decisionLog: log });
-    const { confirm } = ready(await prepare(CHAT_ID));
-
-    const { envelope } = await act(CHAT_ID, confirm, undefined, "  alpha  ");
-
-    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "answered" }, message: "Answer sent" } });
-    expect(broker.answers).toEqual([[MSG, `${PREAMBLE}alpha`]]);
-    expect(factorySpy.posts).toEqual([]);
-    expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ itemId: CHAT_ID, action: { kind: "answer-chat", msgId: MSG }, text: "alpha" });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]![1]).toMatchObject({ text: "alpha", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
-  });
-
   it("refuses an answer with no text before writing or sending anything", async () => {
     const broker = spyBroker();
     const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
@@ -460,23 +442,6 @@ describe("inbox answer-chat", () => {
 
     expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "closed" }, message: expect.stringMatching(/^Not sent; the question is closed/) } });
     expect(calls).toEqual([]);
-  });
-
-  it("leaves a broker-down answer unsettled, so the retry sends the words first written", async () => {
-    const broker = spyBroker({ status: "unreachable", detail: "connect ECONNREFUSED" });
-    const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
-    const { confirm } = ready(await prepare(CHAT_ID));
-
-    const down = await act(CHAT_ID, confirm, undefined, "alpha");
-    const afterDown = await records();
-    await act(CHAT_ID, confirm, undefined, "beta");
-
-    expect(down.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
-    expect(afterDown).toEqual([`${confirm}.json`]);
-    expect(broker.answers).toEqual([
-      [MSG, `${PREAMBLE}alpha`],
-      [MSG, `${PREAMBLE}alpha`],
-    ]);
   });
 });
 
