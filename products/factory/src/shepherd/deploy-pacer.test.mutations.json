@@ -57,6 +57,27 @@
         "deploy pacer the next green merge replaces an ask whose deployer was refused and recorded nothing, and deploys after its own quiet window (TP-4085)",
         "deploy pacer steady merges while a spawned deploy is unserved spawn once per cap, not once per merge"
       ]
+    },
+    {
+      "name": "every sweep logs its wait",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "if (wait !== undefined && (wait.sha !== last?.sha || wait.key !== last.key)) {",
+      "replace": "if (wait !== undefined) {",
+      "kills": [
+        "the pacer's wait line (TP-2427) a quiet-window wait is logged once across repeated sweeps",
+        "the pacer's wait line (TP-2427) a change to a busy-run wait logs again, and a busy count that moves does not",
+        "the pacer's wait line (TP-2427) a new sha in the quiet window logs again",
+        "the pacer's wait line (TP-2427) a paused wait logs no until-time, and a wait that ends forgets it"
+      ]
+    },
+    {
+      "name": "a busy count that moves reads as a new reason",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "key: decision.key ?? decision.why",
+      "replace": "key: decision.why",
+      "kills": [
+        "the pacer's wait line (TP-2427) a change to a busy-run wait logs again, and a busy count that moves does not"
+      ]
     }
   ]
 }
