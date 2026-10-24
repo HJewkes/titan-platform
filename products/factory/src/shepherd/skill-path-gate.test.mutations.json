@@ -11,7 +11,7 @@
       ]
     },
     {
-      "name": "mergeAdmits reads a multi-line prompt by its policy line and skips the run's rule",
+      "name": "mergeAdmits reads a prompt's policy line and skips the run's rule",
       "file": "products/factory/src/coordinator-evidence.ts",
       "find": "  const land = landGate(gate);\n  if (!land || !isDeepStrictEqual(payload, { decision: \"merge\", headSha: land.head })) return false;\n  if (evidence.repo !== land.repo || evidence.pr !== land.pr || evidence.headSha !== land.head || !runEligible(evidence.run, land)) return false;\n",
       "replace": "  const land = landGate({ ...gate, prompt: gate.prompt.split(\"\\n\")[0]! });\n  if (!land || !isDeepStrictEqual(payload, { decision: \"merge\", headSha: land.head })) return false;\n  if (evidence.repo !== land.repo || evidence.pr !== land.pr || evidence.headSha !== land.head) return false;\n",
