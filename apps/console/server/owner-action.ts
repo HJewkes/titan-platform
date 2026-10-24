@@ -2,8 +2,9 @@
  * The client of titan-factory's `POST /owner/console-action`: the body names an action id, and the factory reads what to do from
  * the console's own record file `<actionsDir>/<id>.json`. The console depends on the factory only across this HTTP call, so the
  * response shapes are pinned here, not imported: `resolved` and `already` for a gate, `released` and `already` for an owner-asked
- * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, `pr-closed`
- * and `already` (each with the closed head) for a `close-pr` op, and `moved`, `gone` and `refused` for any of them.
+ * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, `retired` and
+ * `already` for a `retire-agent` op, `pr-closed` and `already` (each with the closed head) for a `close-pr` op, and `moved`,
+ * `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -14,9 +15,10 @@ export type ActionOutcome =
   | { status: "resolved"; gateId: string }
   | { status: "released"; runId: string; stillHeld: string | null }
   | { status: "accepted"; runId: string }
+  | { status: "retired"; name: string; caveats: string[] }
   | { status: "pr-closed"; closedHead: string }
-  | { status: "already"; gateId?: string; runId?: string; closedHead?: string }
-  | { status: "moved"; currentHead: string | null }
+  | { status: "already"; gateId?: string; runId?: string; name?: string; closedHead?: string }
+  | { status: "moved"; currentHead: string | null; currentAgentId?: string }
   | { status: "gone"; reason: string }
   | { status: "refused"; reason: string; detail?: string }
   | { status: "off" };
@@ -33,6 +35,9 @@ const routeBody = z.looseObject({
   runId: z.string().optional(),
   stillHeld: z.string().nullable().optional(),
   currentHead: z.string().nullable().optional(),
+  name: z.string().optional(),
+  caveats: z.array(z.string()).optional(),
+  currentAgentId: z.string().optional(),
   closedHead: z.string().optional(),
   reason: z.string().optional(),
   detail: z.string().optional(),
@@ -43,12 +48,13 @@ type RouteBody = z.infer<typeof routeBody>;
 
 const unreachable = (detail: string): Unreachable => ({ status: "unreachable", detail });
 
-function settledOutcome({ outcome, gateId, runId, stillHeld, closedHead }: RouteBody): ActionOutcome | undefined {
+function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
   if (outcome === "accepted" && runId) return { status: "accepted", runId };
+  if (outcome === "retired" && name && caveats) return { status: "retired", name, caveats };
   if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
-  if (outcome === "already" && (gateId || runId || closedHead)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }), ...(closedHead && { closedHead }) };
+  if (outcome === "already" && (gateId || runId || name || closedHead)) return { status: "already", ...(gateId && { gateId }), ...(runId && { runId }), ...(name && { name }), ...(closedHead && { closedHead }) };
   return undefined;
 }
 
@@ -61,7 +67,7 @@ function outcomeOf(status: number, body: RouteBody): ActionOutcome | Unreachable
   if (status >= 500) return unreachable(`factory answered ${status}: ${body.detail ?? body.error ?? "unavailable"}`);
   const settled = status === 200 ? settledOutcome(body) : undefined;
   if (settled !== undefined) return settled;
-  if (status === 409 && body.outcome === "moved") return { status: "moved", currentHead: body.currentHead ?? null };
+  if (status === 409 && body.outcome === "moved") return { status: "moved", currentHead: body.currentHead ?? null, ...(body.currentAgentId !== undefined && { currentAgentId: body.currentAgentId }) };
   if (status === 410 && body.outcome === "gone") return { status: "gone", reason: body.reason ?? "gone" };
   if (body.outcome === "refused") return { status: "refused", reason: body.reason ?? "refused", ...(body.detail !== undefined && { detail: body.detail }) };
   if (status === 400 || status === 413) return { status: "refused", reason: status === 413 ? "too-large" : "bad-request", ...(body.error !== undefined && { detail: body.error }) };

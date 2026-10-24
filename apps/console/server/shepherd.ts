@@ -46,7 +46,7 @@ const LIST_STATES = ["active", "finished", "all"] as const;
 
 const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
 
-/** The factory's `owner-op.preview` for a PR op, pinned to the fields the read-back shows; `head` is there only while the PR is open. */
+/** The factory's `owner-op.preview` for a PR or agent op, pinned to the fields the read-back shows; `head` is there only while the PR is open. */
 const opPreview = z
   .object({
     kind: z.string(),
@@ -63,6 +63,19 @@ const opPreview = z
         behind: z.boolean(),
         mergeableState: z.string(),
         shepherd: z.object({ runId: z.string(), held: z.boolean(), holdReason: z.string().nullable(), ownerHold: z.string().nullable() }).passthrough().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    /** For a retire-agent op: the agent holding the name now, as agent-chat's roster reads, and the live run that would stop it. */
+    agent: z
+      .object({
+        name: z.string(),
+        holder: z
+          .object({ agentId: z.string(), state: z.string(), presence: z.string(), status: z.string(), profile: z.string(), cwd: z.string(), spawnedBy: z.string().nullable() })
+          .passthrough()
+          .optional(),
+        exited: z.boolean(),
+        liveRun: z.string().nullable(),
       })
       .passthrough()
       .optional(),

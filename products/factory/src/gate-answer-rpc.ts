@@ -67,11 +67,15 @@ export interface ConsoleAnswersOptions {
   roundsDir: string;
   /** The console inbox's action records; set, it mounts the console-action route. */
   actionsDir?: string;
+  /** `shepherd.agentChatBin`, which a console retire-agent op runs through. */
+  agentChatBin?: string;
 }
 
 /** `shepherd.consoleAnswers` from the factory config; absent means the route is not mounted. */
 export function configuredConsoleAnswers(env: NodeJS.ProcessEnv): ConsoleAnswersOptions | undefined {
-  return loadConfig(configPath(env)).shepherd?.consoleAnswers;
+  const shepherd = loadConfig(configPath(env)).shepherd;
+  if (shepherd?.consoleAnswers === undefined) return undefined;
+  return { ...shepherd.consoleAnswers, ...(shepherd.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
 }
 
 /**

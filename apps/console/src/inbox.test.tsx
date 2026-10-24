@@ -428,12 +428,27 @@ describe("the inbox page, acting from the console", () => {
     expect(outcome.className).toContain("success");
   });
 
+  // Kills: rendering an agent read-back through the chat branch (an empty title and question), or a retire left off LANDED.
+  it("taps a deposit's retire-agent op, reads back the agent from the roster, and shows the retire as landed", async () => {
+    const op = item("op-2", { sources: [{ system: "deposit", ref: "fixture-agent/op-2" }], kind: "do", summary: "Retire item-42", action: { kind: "owner-op", op: { kind: "retire-agent", name: "item-42", agentId: "9e3faa6c0011", force: false } } });
+    const readBack = { agent: "item-42", agentId: "9e3faa6c0011", state: "exited", profile: "impl", cwd: "/work/tree", spawnedBy: "coordinator", authority: "RET-OR: allow", proposedBy: "fixture-agent", proposal: "Retire item-42", effect: "Retire item-42 (9e3faa6): release its worktree" };
+    const retired = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "retired", name: "item-42", caveats: [] }, message: "Retired item-42" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-2", action: op.action, readBack })), "inbox.act": retired });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-2")).getByText("Retire"));
+    expect(await screen.findByText("item-42 (id 9e3faa6c), exited, profile impl, spawned by coordinator")).toBeTruthy();
+    expect(screen.getByText("Authority RET-OR: allow")).toBeTruthy();
+    await tapConfirm();
+    const outcome = screen.getByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Retired item-42");
+    expect(outcome.className).toContain("success");
+  });
+
   it("taps a deposit's close-pr op as Close PR, reads back that the branch is kept, and shows the close as landed", async () => {
-    const op = item("op-2", { sources: [{ system: "deposit", ref: "fixture-agent/op-2" }], kind: "do", summary: "Close example/repo#17", action: { kind: "owner-op", op: { kind: "close-pr", repo: "example/repo", pr: 17, headSha: HEAD } } });
+    const op = item("op-3", { sources: [{ system: "deposit", ref: "fixture-agent/op-3" }], kind: "do", summary: "Close example/repo#17", action: { kind: "owner-op", op: { kind: "close-pr", repo: "example/repo", pr: 17, headSha: HEAD } } });
     const readBack = { repo: "example/repo", pr: 17, title: "a superseded fixture", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "PRC-OR: allow", proposedBy: "fixture-agent", proposal: "Close example/repo#17", effect: "Close example/repo#17 at 0b7e2c1 on GitHub; the branch is kept and reopen is one click" };
     const closed = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "pr-closed", closedHead: HEAD }, message: "PR closed at 0b7e2c1; its branch is kept" }));
-    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-2", action: op.action, readBack })), "inbox.act": closed });
-    fireEvent.click(within(await screen.findByTestId("inbox-row-op-2")).getByText("Close PR"));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-3", action: op.action, readBack })), "inbox.act": closed });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-3")).getByText("Close PR"));
     expect(await screen.findByText("Close example/repo#17 at 0b7e2c1 on GitHub; the branch is kept and reopen is one click")).toBeTruthy();
     await tapConfirm();
     const outcome = screen.getByTestId("inbox-confirm-outcome");

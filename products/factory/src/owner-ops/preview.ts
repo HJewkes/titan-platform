@@ -7,8 +7,10 @@ import { z } from "zod";
 import { landGate } from "../coordinator-evidence.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
+import type { ShepherdServices } from "../shepherd/services.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { opAuthority } from "./authority.js";
+import { hasExited, liveRunOf, nameHolder } from "./retire-agent.js";
 
 interface PrPreview {
   repo: string;
@@ -31,11 +33,22 @@ interface GatePreview {
   asks?: { repo: string; pr: number; head: string };
 }
 
+interface AgentPreview {
+  name: string;
+  /** The agent that holds the name now, as agent-chat's roster reads; absent when no unretired agent does. */
+  holder?: { agentId: string; state: string; presence: string; status: string; profile: string; cwd: string; spawnedBy: string | null };
+  /** True only for an agent whose session has exited; anything else the console leaves to the terminal. */
+  exited: boolean;
+  /** The live Shepherd run the agent works on, which stops a console retire. */
+  liveRun: string | null;
+}
+
 export interface OpPreview {
   kind: OwnerOpKind;
   authority: Decision;
   pr?: PrPreview;
   gate?: GatePreview;
+  agent?: AgentPreview;
 }
 
 type PrOp = Extract<OwnerOp, { repo: string; pr: number }>;
@@ -48,9 +61,21 @@ const isPrOp = (op: OwnerOp): op is PrOp => "pr" in op;
 async function previewOp(op: OwnerOp, ctx: FactoryContext): Promise<OpPreview> {
   const base = { kind: op.kind, authority: opAuthority(op) };
   if (op.kind === "resolve-gate") return { ...base, gate: gatePreview(ctx.host, op.gateId) };
-  if (!isPrOp(op)) return base;
-  if (ctx.shepherd === undefined) throw Object.assign(new Error(`previewing a ${op.kind} op needs the shepherd routes`), { code: EXIT.UNAVAILABLE });
+  if (!isPrOp(op) && op.kind !== "retire-agent") return base;
+  if (ctx.shepherd === undefined) throw unavailable(`previewing a ${op.kind} op needs the shepherd routes`);
+  if (op.kind === "retire-agent") return { ...base, agent: await agentPreview(ctx.shepherd, ctx.host, op.name) };
   return { ...base, pr: await prPreview(ctx.shepherd.port, ctx.shepherd.store.get(), op) };
+}
+
+const unavailable = (message: string): Error => Object.assign(new Error(message), { code: EXIT.UNAVAILABLE });
+
+async function agentPreview({ roster, store }: ShepherdServices, host: FactoryHost, name: string): Promise<AgentPreview> {
+  if (roster === undefined) throw unavailable("previewing a retire-agent op needs agent-chat's roster");
+  const row = nameHolder(await roster.rows(), name);
+  if (row === undefined) return { name, exited: false, liveRun: null };
+  const { agentId, state, presence, status, profile, cwd, spawnedBy } = row;
+  const holder = { agentId, state, presence, status, profile, cwd, spawnedBy: spawnedBy ?? null };
+  return { name, holder, exited: hasExited(row), liveRun: liveRunOf(name, store.get(), host) ?? null };
 }
 
 async function prPreview(port: GitHubPort, store: ShepherdStore, { repo, pr }: PrOp): Promise<PrPreview> {

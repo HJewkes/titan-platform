@@ -202,10 +202,12 @@ function messageOf(outcome: Outcome): string {
       return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
+    case "retired":
+      return [`Retired ${outcome.name}`, ...outcome.caveats].join("; ");
     case "already":
       return "Already done by this confirmation";
     case "moved":
-      return `PR moved to ${short(outcome.currentHead)}, read again`;
+      return outcome.currentAgentId === undefined ? `PR moved to ${short(outcome.currentHead)}, read again` : `The name is now a different agent (${short(outcome.currentAgentId)}), read again`;
     case "gone":
       return `Nothing to act on: ${outcome.reason}`;
     case "refused":

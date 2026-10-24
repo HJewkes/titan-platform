@@ -65,6 +65,54 @@ describe("owner-op.preview", () => {
     expect(answer.ok && answer.data.gate).toEqual({ gateId: "run-x/approve-merge", status: "missing" });
   });
 
+  describe("a retire-agent op", () => {
+    const AGENT = { name: "item-42", agentId: "9e3faa6c", state: "exited", presence: "exited", status: "finished", profile: "impl", surface: "headless", cwd: "/work/tree", sessionId: "s-1", generation: 1, spawnedBy: "coordinator" };
+    const retireOp = { kind: "retire-agent", name: "item-42", agentId: "0000aaaa", force: false };
+
+    function rosterWorld(rows: (typeof AGENT)[]) {
+      const w = world();
+      Object.assign(w.fixture.routes.shepherd!, { roster: { rows: async () => rows } });
+      return w;
+    }
+
+    // Kills: reading the agent id back from the op instead of the roster, or showing a retired row as the holder.
+    it("reads the agent holding the name from agent-chat's roster, with RET-OR's allow", async () => {
+      const { preview } = rosterWorld([{ ...AGENT, agentId: "old00000", state: "retired", status: "retired" }, AGENT]);
+
+      const answer = await preview(retireOp);
+
+      expect(answer.ok && answer.data).toMatchObject({
+        authority: { verdict: "allow", ruleId: "RET-OR" },
+        agent: { name: "item-42", holder: { agentId: "9e3faa6c", state: "exited", profile: "impl", spawnedBy: "coordinator" }, exited: true, liveRun: null },
+      });
+    });
+
+    // Kills: dropping the live-run read, so the console offers a retire the factory then refuses.
+    it("names the live Shepherd run the agent implements", async () => {
+      const w = rosterWorld([AGENT]);
+      const { number: pr } = w.fixture.fake.addPr({ headSha: H });
+      const registered = await callCommand<{ runId: string }>(w.host, w.fixture.routes, "shepherd.register", { repo: REPO, pr, task: "demo/T-1", implementer: "item-42" });
+
+      const answer = await w.preview(retireOp);
+
+      expect(registered.ok && answer.ok && answer.data.agent?.liveRun).toBe(registered.ok ? registered.data.runId : "unregistered");
+    });
+
+    it("reads a name no unretired agent holds as having no holder", async () => {
+      const { preview } = rosterWorld([{ ...AGENT, state: "retired", status: "retired" }]);
+
+      const answer = await preview(retireOp);
+
+      expect(answer.ok && answer.data.agent).toEqual({ name: "item-42", exited: false, liveRun: null });
+    });
+
+    it("refuses as unavailable without agent-chat's roster", async () => {
+      const { preview } = world();
+
+      expect((await preview(retireOp)).ok).toBe(false);
+    });
+  });
+
   it("refuses an op the schema does not admit", async () => {
     const { preview } = world();
 

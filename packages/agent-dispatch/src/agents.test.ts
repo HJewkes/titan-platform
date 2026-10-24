@@ -209,4 +209,37 @@ describe("retire", () => {
   it("refuses a binary path that is not absolute", async () => {
     await expect(retire("agent-chat", "item-42", 10_000)).rejects.toThrow(DispatchError);
   });
+
+  // Kills: passing the parent env through, or dropping the caller from the child env.
+  it("names the caller to the broker through AGENT_CHAT_NAME alone, not the parent env", async () => {
+    process.env.TP_RETIRE_PARENT_ONLY = "leak";
+    const bin = fakeAgentChat(`env >"${dir}/env"\necho "Retired item-42."\n`);
+
+    await retire(bin, "item-42", 10_000, { caller: "titan-console" }).finally(() => delete process.env.TP_RETIRE_PARENT_ONLY);
+
+    const env = readFileSync(join(dir, "env"), "utf8").split("\n");
+    expect(env).toContain("AGENT_CHAT_NAME=titan-console");
+    expect(env.some((line) => line.startsWith("TP_RETIRE_PARENT_ONLY="))).toBe(false);
+  });
+
+  // Kills: leaking the parent's AGENT_CHAT_NAME into a retire that named no caller.
+  it("sends no AGENT_CHAT_NAME when no caller is named", async () => {
+    const saved = process.env.AGENT_CHAT_NAME;
+    process.env.AGENT_CHAT_NAME = "some-parent";
+    const bin = fakeAgentChat(`env >"${dir}/env"\necho "Retired item-42."\n`);
+
+    await retire(bin, "item-42", 10_000).finally(() => {
+      if (saved === undefined) delete process.env.AGENT_CHAT_NAME;
+      else process.env.AGENT_CHAT_NAME = saved;
+    });
+
+    expect(readFileSync(join(dir, "env"), "utf8")).not.toContain("AGENT_CHAT_NAME=");
+  });
+
+  // Kills: skipping the caller check, so a crafted caller reaches the child env.
+  it("refuses a caller that is not a peer name before running anything", async () => {
+    const bin = fakeAgentChat("exit 0\n");
+    await expect(retire(bin, "item-42", 10_000, { caller: "-x y" })).rejects.toThrow(/invalid caller/);
+    expect(() => readFileSync(join(dir, "argv"))).toThrow();
+  });
 });

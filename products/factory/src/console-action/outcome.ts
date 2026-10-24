@@ -3,7 +3,7 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable";
+type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable";
 export type Outcome =
   | { outcome: "resolved"; gateId: string }
   | { outcome: "already"; gateId: string }
@@ -11,10 +11,14 @@ export type Outcome =
   | { outcome: "already"; runId: string }
   /** A merge-at-head tap started (or found) the land run its standing answer waits on. */
   | { outcome: "accepted"; runId: string }
+  | { outcome: "retired"; name: string; caveats: string[] }
+  | { outcome: "already"; name: string }
   /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
   | { outcome: "pr-closed"; closedHead: string }
   | { outcome: "already"; closedHead: string }
   | { outcome: "moved"; currentHead: string | undefined }
+  /** The name now belongs to a different agent than the one the owner confirmed. */
+  | { outcome: "moved"; currentAgentId: string }
   | { outcome: "gone"; reason: string }
   | { outcome: "refused"; reason: RefusalCode; detail: string };
 
@@ -45,6 +49,7 @@ export function statusOf(outcome: Outcome): Status {
     case "resolved":
     case "released":
     case "accepted":
+    case "retired":
     case "pr-closed":
     case "already":
       return 200;
@@ -53,6 +58,6 @@ export function statusOf(outcome: Outcome): Status {
     case "gone":
       return 410;
     case "refused":
-      return outcome.reason === "github-unreadable" ? 503 : outcome.reason === "class" || outcome.reason === "resolver" ? 403 : 422;
+      return outcome.reason === "github-unreadable" || outcome.reason === "agent-chat-unavailable" ? 503 : outcome.reason === "class" || outcome.reason === "resolver" ? 403 : 422;
   }
 }
