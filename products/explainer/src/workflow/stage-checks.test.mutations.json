@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a resolved variety row gates the resolve stage",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"variety-top-component\", gate: false,",
+      "replace": "{ name: \"variety-top-component\", gate: true,",
+      "kills": [
+        "running a stage's checks declares every check either a gate or reported",
+        "resolve stage variety checks reports a repetitive resolve, naming its beats, and fails no gate",
+        "resolve stage variety checks reads the resolved profile's limits, and an unknown profile is reported, not gated"
+      ]
+    },
+    {
+      "name": "the resolved variety rows are not registered at checks:resolve",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"variety-component-run\", gate: false, reads: [\"resolved\"], run: resolvedVarietyVerdict(\"variety:component-run\") },\n",
+      "replace": "",
+      "kills": [
+        "running a stage's checks declares every check either a gate or reported",
+        "resolve stage variety checks passes every variety row on a varied resolve",
+        "resolve stage variety checks reports a repetitive resolve, naming its beats, and fails no gate"
+      ]
+    }
+  ]
+}

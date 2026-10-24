@@ -14,6 +14,19 @@ export { heteronymCheck, heteronymCheckWith } from "./lint-heteronyms.js";
 export { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineCheck, headlineLines, overlongHeadlines } from "./lint-headline.js";
 export { VISUAL_GAP_CHECK_ID, visualGapBeats, visualKindCheck } from "./lint-visual-kind.js";
 export {
+  VARIETY_LIMITS,
+  connectorShareRow,
+  cueActionRow,
+  hookFormulaRow,
+  resolvedVarietyRows,
+  scriptFramingRunRow,
+  scriptVarietyRows,
+  varietyScriptCheck,
+  type ProfileLimits,
+  type ResolvedVarietyBeat,
+  type VarietyRow,
+} from "./variety-lints.js";
+export {
   VisualRouterSchema,
   findVisualType,
   loadVisualRouter,
