@@ -11,6 +11,16 @@ const DigestItemSchema = z.object({
   summary: z.string().optional(),
   /** What happened to the item that day: a PR `opened` or `merged`, a task `opened`, `closed`, `moved` or `owner-gated`. */
   change: z.string().min(1).optional(),
+  /** A merged PR's head branch, which names the seat that did the work. */
+  branch: z.string().min(1).optional(),
+  /** What a merged PR did, in a sentence: the first prose sentence of its body, else its title. */
+  outcome: z.string().min(1).optional(),
+  /** Top-two path segments of the files a merged PR changed, changesets left out. */
+  packages: z.array(z.string().min(1)).optional(),
+  /** Lines added plus lines deleted. */
+  size: z.number().int().nonnegative().optional(),
+  /** `P1` makes the item an anchor the audition must place. */
+  priority: z.string().min(1).optional(),
 });
 
 export type DigestItem = z.infer<typeof DigestItemSchema>;
