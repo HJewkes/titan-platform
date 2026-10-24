@@ -44,7 +44,8 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
   Readers still accept a deposit filed under its name from before A-Z was escaped.
 - `@titan-design/owner-queue/withdraw`: `withdrawDeposit(dir, id, { reason, as, actor })` marks
-  a seat's own deposit withdrawn with `<id>.withdrawn` beside it, never an answer file;
+  a seat's own deposit withdrawn with `<id>.withdrawn` beside it, never an answer file. `id` is
+  the full `deposit:<32 hex>` or a hex prefix of at least 8 that starts one deposit;
   `restoreDeposit` undoes it, and `withdrawMatching` withdraws every open deposit of one asker
   with given keys. Each withdraw and restore appends to `withdrawals.jsonl`, recording the asker
   (`by`) and the `actor` who ran it. A refusal throws
