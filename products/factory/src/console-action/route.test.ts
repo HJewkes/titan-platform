@@ -53,7 +53,7 @@ const sentBack = defineWorkflow({
     const pr = Number(ctx.param("pr")!);
     const prompt = `Changes requested on PR #${pr} in ${REPO} at head ${H}: synthetic reason. Await a new head or abandon?`;
     const built = sentBackDecision({ repo: REPO, pr, headSha: H, situation: "synthetic reason", waivable: ctx.param("waivable") === "true" });
-    const decisions = ctx.param("decisions")?.split(",") as [string, ...string[]] | undefined;
+    const decisions = ctx.param("decisions")?.split(",");
     const schema = decisions ? z.object({ decision: z.enum(decisions) }) : built.schema;
     await ctx.assisted("sh-sent-back", prompt, { schema, brief: built.brief });
   },

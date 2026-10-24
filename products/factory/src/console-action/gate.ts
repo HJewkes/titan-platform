@@ -6,6 +6,7 @@ import { batchRefusal } from "../gate-batch-plan.js";
 import { pendingGateId } from "../gate-resolve.js";
 import type { FactoryHost } from "../host.js";
 import { headGateAsks } from "../shepherd/stale-gates.js";
+import { z } from "zod";
 import { consoleResolver, githubOutcome, refused, type Outcome } from "./outcome.js";
 import type { GateAction, Read } from "./record.js";
 
@@ -18,6 +19,9 @@ const CONSOLE_STEPS: ReadonlyMap<string, readonly string[]> = new Map([
   [MERGE_GATE, Object.freeze(["merge"])],
   [SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD])],
 ]);
+
+/** The decision enum a gate's stored JSON schema offers; a schema without one offers nothing the console may give. */
+const DecisionEnum = z.object({ properties: z.object({ decision: z.object({ enum: z.array(z.string()) }) }) });
 
 /** The PR and head a console-answerable gate asks about. */
 interface GateTarget {
@@ -58,9 +62,9 @@ function targetOf(gate: GateRecord): GateTarget | undefined {
 
 /** The step's allowlist, narrowed to the decisions the gate's own schema offers, so the console never gives one the gate lacks. */
 function consoleDecisions(gate: GateRecord): readonly string[] {
-  const offered = (gate.schema?.properties as Record<string, { enum?: unknown }> | undefined)?.decision?.enum;
+  const offered = DecisionEnum.safeParse(gate.schema).data?.properties.decision.enum ?? [];
   const allowed = CONSOLE_STEPS.get(stepOf(gate.id)) ?? [];
-  return Array.isArray(offered) ? allowed.filter((decision) => offered.includes(decision)) : [];
+  return allowed.filter((decision) => offered.includes(decision));
 }
 
 /** The run waits on a newer gate for the step, or the gate itself asks about a head other than the one the owner confirmed. */
