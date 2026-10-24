@@ -1,6 +1,5 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,8 +39,10 @@ async function startFakeStream(token?: string): Promise<FakeStream> {
     res.on("close", () => open.delete(res));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("fake stream bound no TCP port");
   return {
-    port: (server.address() as AddressInfo).port,
+    port: address.port,
     dials,
     openCount: () => open.size,
     write: (text) => open.forEach((res) => res.write(text)),
@@ -334,7 +335,7 @@ describe("the factory relay source", () => {
 
       const backoffs = spy.mock.calls.map(([, ms]) => ms).filter((ms) => ms !== undefined && [10, 20, 40, 80, 160].includes(ms));
       expect(backoffs).toEqual([40, 80, 80]);
-      expect(relayed.map(({ event, data }) => `${event}:${(JSON.parse(data) as { kind: string }).kind}`)).toEqual(["factory:reconnected", "factory:reconnected", "factory:reconnected"]);
+      expect(relayed.map(({ event, data }) => ({ event, data: JSON.parse(data) as unknown }))).toEqual(Array(3).fill({ event: "factory", data: { kind: "reconnected" } }));
     } finally {
       spy.mockRestore();
     }
