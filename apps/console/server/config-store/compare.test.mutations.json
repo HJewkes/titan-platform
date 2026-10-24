@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an fs error reaches the caller with its raw message",
+      "file": "apps/console/server/config-store/compare.ts",
+      "find": "  return new Error(`cannot read ${file || \".\"}: ${error.code}`);\n",
+      "replace": "  return error;\n",
+      "kills": [
+        "compare-tree read errors reaching a LAN caller names the revision log relative to the state dir when its directory is a file (ENOTDIR)",
+        "compare-tree read errors reaching a LAN caller names the revision log relative to the state dir when it cannot be read (EACCES)"
+      ]
+    },
+    {
+      "name": "the revision log read is not wrapped",
+      "file": "apps/console/server/config-store/compare.ts",
+      "find": "  const log = await readRevisionLog(revisionLogPath(source.stateDir)).catch(rethrowRelative(source.stateDir));\n",
+      "replace": "  const log = await readRevisionLog(revisionLogPath(source.stateDir));\n",
+      "kills": [
+        "compare-tree read errors reaching a LAN caller names the revision log relative to the state dir when its directory is a file (ENOTDIR)",
+        "compare-tree read errors reaching a LAN caller names the revision log relative to the state dir when it cannot be read (EACCES)"
+      ]
+    },
+    {
+      "name": "the error path is not made relative to the root",
+      "file": "apps/console/server/config-store/compare.ts",
+      "find": "path.relative(root, error.path)",
+      "replace": "error.path",
+      "kills": [
+        "compare-tree read errors reaching a LAN caller names the revision log relative to the state dir when its directory is a file (ENOTDIR)",
+        "compare-tree read errors reaching a LAN caller names the revision log relative to the state dir when it cannot be read (EACCES)"
+      ]
+    },
+    {
+      "name": "a tree file read failure drops its errno code",
+      "file": "apps/console/server/config-store/import.ts",
+      "find": "`the file is unreadable: ${errnoOf(error)}`",
+      "replace": "\"the file is unreadable\"",
+      "kills": [
+        "compare-tree read errors reaching a LAN caller names a charter that is a directory relative to the tree (EISDIR)",
+        "compare-tree read errors reaching a LAN caller names an unreadable seat file relative to the tree (EACCES)"
+      ]
+    },
+    {
+      "name": "every error is replaced, not only fs errors",
+      "file": "apps/console/server/config-store/compare.ts",
+      "find": "  if (!(error instanceof Error) || !(\"code\" in error) || typeof error.code !== \"string\") return error;\n",
+      "replace": "  if (!(error instanceof Error)) return error;\n",
+      "kills": [
+        "compare-tree read errors reaching a LAN caller passes an error that is not an fs error through unchanged"
+      ]
+    }
+  ]
+}

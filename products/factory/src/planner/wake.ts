@@ -1,11 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { z } from "zod";
 import { EXIT } from "../exit-codes.js";
+import { plannerAlarmDeposit } from "./alarm.js";
 import type { PlannerConfig } from "./config.js";
 import { buildDigest, digestPreamble, type DigestPiece } from "./digest.js";
 import { combineParts, hashText, normalizeVolatile } from "./fingerprint.js";
 import { readInput, type PlannerRun } from "./inputs.js";
+import { watchForReview } from "./watch.js";
+import { watchPorts } from "./watch-ports.js";
 
 const WakeRecordSchema = z.object({
   at: z.string(),
@@ -16,10 +20,18 @@ const WakeRecordSchema = z.object({
 
 type WakeRecord = z.infer<typeof WakeRecordSchema>;
 
+/** The owner inbox: file a no-review alarm, or withdraw every open one; resolve returns how many it withdrew. */
+export interface PlannerAlarmPort {
+  file: (deposit: OwnerItemDeposit) => Promise<void>;
+  resolve: () => Promise<number>;
+}
+
 interface WakePorts {
   run: PlannerRun;
   now: () => Date;
+  sleep: (ms: number) => Promise<void>;
   stateDir: string;
+  alarm: PlannerAlarmPort;
   log: (line: string) => void;
 }
 
@@ -50,8 +62,34 @@ export async function plannerWake(config: PlannerConfig, ports: WakePorts): Prom
   }
   writeRecord(recordPath, { at, outcome: "spawned", fingerprint: read.fingerprint, parts: read.parts });
   ports.log(`${at} spawned ${config.name} on ${config.profile}${read.fingerprint ? ` (${read.fingerprint.slice(0, 12)})` : ""}`);
-  return EXIT.OK;
+  return awaitReview(config, ports, at);
 }
+
+/** Spawn returns 0 even when the planner dies on its first API call, so only a new review file proves the wake worked. */
+async function awaitReview(config: PlannerConfig, ports: WakePorts, at: string): Promise<number> {
+  const clock = { sleep: ports.sleep, now: () => ports.now().getTime() };
+  const outcome = await watchForReview(config, watchPorts(config, ports.run, clock), Date.parse(at));
+  if (outcome.kind === "wrote") {
+    ports.log(`${ports.now().toISOString()} wrote ${outcome.name}`);
+    await ports.alarm.resolve().catch((error: unknown) => ports.log(`could not withdraw the planner alarm: ${messageOf(error)}`));
+    return EXIT.OK;
+  }
+  const { transcriptPath, apiError } = outcome;
+  const deposit = plannerAlarmDeposit({
+    name: config.name,
+    reason: outcome.kind,
+    spawnedAt: at,
+    noFileAfterMinutes: config.noFileAfterMinutes,
+    reviewDir: config.reviewDir,
+    ...(transcriptPath !== undefined && { transcriptPath }),
+    ...(apiError && { apiError }),
+  });
+  ports.log(`${ports.now().toISOString()} no review: ${deposit.summary}`);
+  await ports.alarm.file(deposit).catch((error: unknown) => ports.log(`could not file the planner alarm: ${messageOf(error)}`));
+  return EXIT.FAILURE;
+}
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 interface ReadInputs {
   pieces: DigestPiece[];

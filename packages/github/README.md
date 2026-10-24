@@ -118,7 +118,11 @@ inline) or an address inside a URL or ssh remote. GitHub's own squash text is re
 in a commit whose subject ends `(#<n>)`, the one place GitHub writes it: there a `---------`
 line followed only by trailers is dropped and a `* <subject>` header standing alone loses its
 star, so an author's lists and rules pass through everywhere else. An empty PR body omits
-`## Summary`, and an empty title leaves the subject as `(#<pr>)`. The same input always gives
+`## Summary`, and an empty title leaves the subject as `(#<pr>)`. CI skip tokens (`[skip ci]`,
+`[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, any case or inner spacing) become
+`(skip ci)` and so on, and `skip-checks: true` becomes `skip-checks= true`, everywhere, code
+included, because GitHub reads the raw message and would skip main CI; `defangCiSkip(text)`
+is the same rewrite on its own. The same input always gives
 byte-identical output, and formatting its own output again (as title and body) changes
 nothing: only the exact Changes and Refs tail it would write is cut from the PR body, so an
 author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads the same

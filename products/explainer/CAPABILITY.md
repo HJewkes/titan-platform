@@ -38,6 +38,9 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `deriveEvalView` derives the view evals read from it, and
 `migrateTourV0` lifts a spike tour to v1.
 `emptyStageRuns` fails a beat whose stage area holds no non-decor content box for more than 3 s of measured moments.
+`contentFillFindings` fails a beat whose settled element boxes span less than 60 % of the frame width.
+`cutCells` cuts beat-aware contact-sheet stills from beat bounds, measured cue times and beat kind (or the page's marks), stable when a beat is lengthened.
+`explainer sheets` (`writeContactSheets`) tiles those stills, each with a label strip, into one PNG per chapter.
 `scriptSha` names a script by its canonical-JSON sha, and
 `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`.
 For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and
@@ -124,3 +127,8 @@ every stage but export is its own `explainer.<stage>` child workflow behind a st
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+`renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
+mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
+`assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.
+`RenderManifestSchema` is `explainer.render-manifest/v1`: workers, frames, durations, draft, `qaGate: "absent"`, a strict `RenderHostSchema` host with no hostname or paths (`collectRenderHost`), and the timeline, page, mix, mp4, vtt and words shas.
+`toVtt` and `captionCues` write WebVTT from timed words (42 characters or 8 words a cue, broken at sentence ends, held 0.3 s).
