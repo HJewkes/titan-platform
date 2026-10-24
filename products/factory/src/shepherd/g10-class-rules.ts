@@ -1,3 +1,4 @@
+import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_CLASS_RULES, pathTouches, type ClassRules } from "@titan-design/review-panel";
 
 /** Shepherd's merge-policy files. These tables sit apart from registration-hold.ts so risk-tier.ts can read them without an import cycle through policy.ts. */
@@ -68,21 +69,24 @@ const OWNER_SKILL_GUARD_FILES = ["merge-facts.ts", "skill-paths.ts", "approval-c
 const AGENT_CHAT_SECURITY_FILES = ["src/leak-guard/**", "src/agents/*self-grant*", "src/cli/verbs/permission-hook.ts", "src/broker/host-directory.ts", "profiles/*.json", "src/agents/profile*.ts"];
 
 /**
- * The closure check for who may resolve a gate and its mutation sidecar (TP-4065): weakening either lets a new resolver
- * site go unheld, so these stay policy though the panel exempts test files.
+ * The closure check for who may resolve a gate as one unit (TP-4065): the test, its mutation sidecar and the helpers that
+ * compute the closure. Weakening any of them lets a new resolver site go unheld, so the unit is policy, test file or not.
  */
-const HELD_TEST_FILES = ["gate-resolve-sites.test.ts", "gate-resolve-sites.test.mutations.json"].map((name) => `products/factory/src/shepherd/${name}`);
+export const GATE_RESOLVE_CHECK_FILES = ["gate-resolve-sites.test.ts", "gate-resolve-sites.test.mutations.json", "gate-resolve-*.test-helpers.ts"].map(
+  (name) => `products/factory/src/shepherd/${name}`,
+);
+
+const inGateResolveCheck = compileGlobs(GATE_RESOLVE_CHECK_FILES);
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES, ...GATE_RESOLVE_ACTOR_FILES, ...OWNER_SKILL_GUARD_FILES, ...HELD_TEST_FILES],
+  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES, ...OWNER_ACTION_FILES, ...GATE_RESOLVE_ACTOR_FILES, ...OWNER_SKILL_GUARD_FILES, ...GATE_RESOLVE_CHECK_FILES],
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
 
-/** The panel's path touches under Shepherd's rules, with a held test file counted as policy despite the panel's test exemption. */
+/** The panel's path touches under Shepherd's rules, with the gate-resolve check counted as policy despite the panel's test exemption. */
 export function shepherdPathTouches(paths: readonly string[]): string[] {
   const touches: string[] = pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES);
-  const heldTest = paths.some((path) => HELD_TEST_FILES.includes(path));
-  return heldTest && !touches.includes("policy") ? [...touches, "policy"] : touches;
+  return paths.some(inGateResolveCheck) && !touches.includes("policy") ? [...touches, "policy"] : touches;
 }

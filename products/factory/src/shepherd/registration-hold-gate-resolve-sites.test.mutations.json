@@ -2,14 +2,21 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the closure check and its sidecar leave the held test files",
+      "name": "the gate-resolve check unit is emptied",
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "[\"gate-resolve-sites.test.ts\", \"gate-resolve-sites.test.mutations.json\"].map",
+      "find": "[\"gate-resolve-sites.test.ts\", \"gate-resolve-sites.test.mutations.json\", \"gate-resolve-*.test-helpers.ts\"].map",
       "replace": "([] as string[]).map",
       "kills": [
         "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only gate-resolve-sites.test.ts g10-adversary",
         "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only its mutation sidecar g10-adversary"
       ]
+    },
+    {
+      "name": "the closure helpers leave the gate-resolve check unit",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": ", \"gate-resolve-*.test-helpers.ts\"]",
+      "replace": "]",
+      "kills": ["the gate-resolve check unit in Shepherd's class rules names the check, its sidecar and every test helper the check imports"]
     }
   ]
 }
