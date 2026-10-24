@@ -18,6 +18,7 @@ import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from ".
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 import { kokoroEngine } from "./tts-engine.js";
 import { runTtsStage, type TtsEngine } from "./tts-stage.js";
+import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 
 interface BodyDeps {
   dataDir: string;
@@ -33,6 +34,8 @@ interface BodyDeps {
   ttsEngine?: () => Promise<TtsEngine>;
   /** The gather stage's outside world; gh, the transcript roots, the task list and git by default. */
   gather?: GatherDeps;
+  /** The sheets stage's ffprobe and ffmpeg; the host's own by default. */
+  media?: MediaExec;
 }
 
 /** One `explainer.<stage>` run: the stage body on the spec it was started with, resolve's custom-layer builds, then the stage's checks over its artifacts. */
@@ -50,11 +53,7 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     return runGatherStage(config.gather, input, deps.dataDir, deps.gather);
   }
   if (stage === "audition") return runAuditionBody(config, input, deps);
-  if (stage === "script") {
-    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
-    if (!config.model) throw new Error("script stage spec has no model");
-    return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
-  }
+  if (stage === "script") return runScriptBody(config, input, deps);
   if (stage === "rewrite") {
     if (!config.judge || config.rounds === undefined) throw new Error("rewrite stage spec has no judge or rounds");
     return runRewriteStage(input, { judge: config.judge, rounds: config.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
@@ -68,10 +67,17 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     return runEvalStage(input, { judge: config.judge, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) }, deps.evalChecks);
   }
   if (stage === "tts") return runTtsBody(config, input, deps);
+  if (stage === "sheets") return runSheetsBody(config, input, deps);
   return runBridgeStage({
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
   });
+}
+
+function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+  if (!config.model) throw new Error("script stage spec has no model");
+  return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
 }
 
 function runAuditionBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -84,6 +90,13 @@ function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: B
   if (!config.voice || !config.rates) throw new Error("tts stage spec has no voice or band rates");
   const takesDir = path.join(deps.dataDir, "tts-takes");
   return runTtsStage({ ...input, store: deps.store }, { voice: config.voice, rates: config.rates }, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
+}
+
+function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.sheets) throw new Error("sheets stage spec has no sidecar settings");
+  const { take, status, stem } = config.sheets;
+  const settings = { take, status, stem, ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
+  return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia());
 }
 
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {

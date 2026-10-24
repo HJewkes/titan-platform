@@ -39,7 +39,7 @@ describe("stage cache over whole runs", () => {
 
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toEqual({ gather: "not run", audition: "not run", script: "cached", rewrite: "cached", eval: "cached", resolve: "cached", tts: "cached", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
     expect(model.prompts).toHaveLength(1);
     expect(second.report.totals.usd).toBe(0);
     expect(row(second, "render").outputs.mp4).not.toBe(row(first, "render").outputs.mp4);
@@ -90,7 +90,7 @@ describe("stage cache over whole runs", () => {
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toEqual({ gather: "not run", audition: "not run", script: "cached", rewrite: "ran", eval: "ran", resolve: "ran", tts: "ran", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
     expect(unchanged.prompts.length).toBeGreaterThan(0);
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
   });
 
   it("a variant file for another stage is refused before any stage runs", async () => {
@@ -116,8 +116,9 @@ describe("stage cache over whole runs", () => {
     const bridge = fakeBridge();
     const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
     const { words, audio } = row(first, "tts").outputs;
+    const script = row(first, "rewrite").outputs.script!;
 
-    const pinned = await runVideo({ from: "render", pins: { words: words!, audio: audio! }, variants: { render: variantFile("render", "w2", { workers: 2 }) } }, fakeHost(fx, fakeScriptModel(), bridge));
+    const pinned = await runVideo({ from: "render", pins: { words: words!, audio: audio!, script }, variants: { render: variantFile("render", "w2", { workers: 2 }) } }, fakeHost(fx, fakeScriptModel(), bridge));
     const missing = await runVideo({ from: "render", pins: { words: words! } }, fakeHost(fx, fakeScriptModel(), bridge));
 
     expect(pinned.status, pinned.error).toBe("completed");

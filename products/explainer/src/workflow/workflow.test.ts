@@ -29,7 +29,7 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "gather" || stage === "audition" ? "not run" : "ran"]));
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
@@ -262,7 +262,7 @@ describe("the cold rubric on every run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(row(result, "eval").checks).toBe("2 pass, 0 gate fail, 0 reported fail");
     expect(row(result, "eval").notes[0]).toMatch(/^cold rubric \(reported only\)/);
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
   });
 });
 
@@ -284,9 +284,11 @@ describe("explainer run --from", () => {
     for (const stage of ["script", "rewrite", "eval"]) {
       expect(row(second, stage)).toMatchObject({ status: "reused", cacheHit: true, usd: 0, wallMs: 0, outputs: row(first, stage).outputs, reusedFrom: first.runId });
     }
-    for (const stage of ["tts", "render", "qa", "sheets"]) {
+    for (const stage of ["tts", "render", "qa"]) {
       expect(row(second, stage)).toMatchObject({ status: "cached", cacheHit: true, wallMs: 0, outputs: row(first, stage).outputs, childRunId: row(first, stage).childRunId });
     }
+    // The sidecar lists the video's runs, so a new linked run makes it again.
+    expect(row(second, "sheets").status).toBe("ran");
     expect(second.report.linked).toEqual([{ runId: first.runId, usd: first.report.totals.usd }]);
   });
 
@@ -349,7 +351,7 @@ describe("bridged stages", () => {
     expect(failed.error).toContain("bridge qa: command 1 (qa.ts) exited 1: held errors at b1");
     expect(row(failed, "qa")).toMatchObject({ status: "failed", checks: "0 pass, 1 gate fail, 0 reported fail" });
     expect(resumed.status, resumed.error).toBe("completed");
-    expect(bridge.calls).toEqual(["qa.ts", "sheets.sh", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["qa.ts", "variety.mjs"]);
   });
 
   it("writes each command's output to the run's log directory", async () => {
@@ -394,8 +396,8 @@ describe("checks as stage steps", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge({ varietyFails: true })));
 
     expect(result.status, result.error).toBe("completed");
-    expect(row(result, "sheets").checks).toBe("0 pass, 0 gate fail, 1 reported fail");
-    expect(readFileSync(result.reportPath, "utf8")).toContain("| sheets | variety | reported | **fail** | variety WARN: 3 beats in a row share a framing |");
+    expect(row(result, "qa").checks).toBe("1 pass, 0 gate fail, 1 reported fail");
+    expect(readFileSync(result.reportPath, "utf8")).toContain("| qa | variety | reported | **fail** | variety WARN: 3 beats in a row share a framing |");
   });
 
   it("lists every stage's verdicts with their role in the report", async () => {
@@ -436,7 +438,7 @@ describe("run report", () => {
 
     const md = readFileSync(result.reportPath, "utf8");
     const bridgedRows = md.split("\n").filter((line) => line.includes("**bridge**")).map((line) => line.split("|")[1]!.trim());
-    expect(bridgedRows).toEqual(["render", "qa", "sheets"]);
+    expect(bridgedRows).toEqual(["render", "qa"]);
     expect(md).toContain(`mp4 ${row(result, "render").outputs.mp4!.slice(0, 12)}`);
     expect(md).toContain("qa PASS demo: 0 held errors");
     expect(existsSync(result.reportPath.replace(/\.md$/, ".json"))).toBe(true);
