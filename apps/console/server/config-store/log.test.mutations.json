@@ -11,12 +11,21 @@
       ]
     },
     {
-      "name": "rev 0 into a zero-byte log takes no claim",
+      "name": "no rev 0 write takes a claim",
       "file": "apps/console/server/config-store/log.ts",
-      "find": "  const release = log.state === \"empty\" && log.exists ? await claimZeroByteLog(file) : null;",
+      "find": "  const release = log.state === \"empty\" ? await claimRev0(file) : null;",
       "replace": "  const release: (() => Promise<void>) | null = null;",
       "kills": [
         "the revision log refuses rev 0 into a zero-byte log while another writer holds the claim, naming both files"
+      ]
+    },
+    {
+      "name": "rev 0 into an absent log takes no claim",
+      "file": "apps/console/server/config-store/log.ts",
+      "find": "  const release = log.state === \"empty\" ? await claimRev0(file) : null;",
+      "replace": "  const release = log.state === \"empty\" && log.exists ? await claimRev0(file) : null;",
+      "kills": [
+        "the revision log refuses rev 0 into an absent log while another writer holds the claim, creating no log (TP-3685)"
       ]
     },
     {

@@ -56,8 +56,19 @@ describe("the revision log", () => {
     const append = appendRevision(file, { at, by, document });
 
     await expect(append).rejects.toThrow(RevisionLogError);
-    await expect(append).rejects.toThrow(`the zero-byte ${file} (claim ${file}.rev0-claim)`);
+    await expect(append).rejects.toThrow(`into ${file} (claim ${file}.rev0-claim)`);
     expect([readFileSync(file, "utf8"), existsSync(`${file}.rev0-claim`)]).toEqual(["", true]);
+  });
+
+  it("refuses rev 0 into an absent log while another writer holds the claim, creating no log (TP-3685)", async () => {
+    const file = revisionLogPath(tempDir("log"));
+    mkdirSync(path.dirname(file), { mode: 0o700 });
+    writeFileSync(`${file}.rev0-claim`, "", { mode: 0o600 });
+
+    const append = appendRevision(file, { at, by, document });
+
+    await expect(append).rejects.toThrow(`into ${file} (claim ${file}.rev0-claim)`);
+    expect([existsSync(file), existsSync(`${file}.rev0-claim`)]).toEqual([false, true]);
   });
 
   it("numbers each appended revision and parents it on the previous one's sha", async () => {

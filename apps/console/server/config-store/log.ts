@@ -5,10 +5,10 @@
  * and only after the whole chain, the new entry included, passes `verifyChain`.
  *
  * Reads fail closed. A torn last line, a line that is not JSON or a broken chain makes the log
- * `invalid`, and nothing is appended to an invalid log. Rev 0 is created with O_EXCL, so two
- * imports cannot both write it; a later append refuses when the file grew after it was read. A
- * zero-byte log has no revisions, but O_EXCL cannot claim a file that exists, so rev 0 into one
- * is claimed with an O_EXCL sibling instead, held from the size check until the line is synced.
+ * `invalid`, and nothing is appended to an invalid log. Every rev 0 write, into an absent log or
+ * a zero-byte one, first takes an O_EXCL sibling claim held until the line is synced, so two
+ * imports cannot both write it; O_EXCL on the log alone cannot cover a zero-byte file that
+ * already exists. A later append refuses when the file grew after it was read.
  */
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readFile, unlink, type FileHandle } from "node:fs/promises";
@@ -103,12 +103,12 @@ async function writeOpened(file: string, line: string, log: LogState): Promise<v
   }
 }
 
-/** Held across the size check and the write, so two writers cannot both see the zero-byte log. */
-async function claimZeroByteLog(file: string): Promise<() => Promise<void>> {
+/** Held across the open, the size check and the write, so two writers cannot both write rev 0. */
+async function claimRev0(file: string): Promise<() => Promise<void>> {
   const claim = `${file}${REV0_CLAIM_SUFFIX}`;
   const handle = await open(claim, CREATE_FLAGS, 0o600).catch((error: unknown) => {
     throw errnoOf(error) === "EEXIST"
-      ? new RevisionLogError(`another writer is writing rev 0 into the zero-byte ${file} (claim ${claim}); read the log again, or remove the claim if no import is running`)
+      ? new RevisionLogError(`another writer is writing rev 0 into ${file} (claim ${claim}); read the log again, or remove the claim if no import is running`)
       : error;
   });
   await handle.close();
@@ -117,7 +117,7 @@ async function claimZeroByteLog(file: string): Promise<() => Promise<void>> {
 
 async function writeLine(file: string, line: string, log: LogState): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const release = log.state === "empty" && log.exists ? await claimZeroByteLog(file) : null;
+  const release = log.state === "empty" ? await claimRev0(file) : null;
   try {
     await writeOpened(file, line, log);
   } finally {
