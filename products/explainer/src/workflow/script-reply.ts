@@ -17,7 +17,7 @@ const valueAt = (raw: unknown, path: readonly PropertyKey[]): unknown =>
   path.reduce<unknown>((node, key) => (isObject(node) ? node[key] : undefined), raw);
 
 /** Deletes, in place, each key zod reports as unrecognized, and returns its dotted path. */
-export function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
+function stripUnknownKeys(raw: unknown, issues: readonly z.core.$ZodIssue[]): string[] {
   return issues.flatMap((issue) => {
     if (issue.code !== "unrecognized_keys") return [];
     const owner = valueAt(raw, issue.path);
@@ -86,7 +86,7 @@ function applyFixes(fixes: readonly Fix[]): void {
   for (const [list, indexes] of lists) for (const index of [...indexes].sort((x, y) => y - x)) list.splice(index, 1);
 }
 
-export interface Repair {
+interface Repair {
   /** Keys the schema does not allow, by dotted path. */
   stripped: string[];
   /** Per out-of-enum value, what was dropped and why. */
