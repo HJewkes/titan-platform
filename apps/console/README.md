@@ -392,6 +392,14 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   on the terminal until its factory effect lands. A `close-pr` tap closes the PR only at the head
   the owner was shown and keeps its branch, so reopening it is one click on GitHub.
 
+  A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
+  "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the
+  hold. "Approve; merge when the loop closes" prepares and acts with `waitFor: "adversary-loop"`:
+  the owner's approval stands at the head shown, the run stays held, and once the adversary loop
+  closes MERGE at that head the factory lifts the hold as the owner and answers the run's
+  approve-merge, so Shepherd merges by itself. A new head, a non-MERGE close or 24 hours voids the
+  approval, and the factory files an inbox item, "Merge approval voided", saying why.
+
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
   ```
@@ -873,6 +881,7 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | --- | --- |
 | 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
+| 200 `approved` (with `runId`) | "Merge approved": a `merge-at-head` that waits for the adversary loop left the owner's approval on the held Shepherd run |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
 | 409 `moved` | "PR moved to `abc1234`, read again" |
@@ -880,7 +889,7 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
 
-After a landed tap on a PR (`resolved`, `released`, `accepted`, `pr-closed` or `already`), `inbox.act` reads the PR
+After a landed tap on a PR (`resolved`, `released`, `accepted`, `approved`, `pr-closed` or `already`), `inbox.act` reads the PR
 again and answers `next`: `merged` or `closed` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
 Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
 sheet shows it as "Now: …" under the outcome.
