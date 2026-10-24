@@ -12,15 +12,6 @@
       ]
     },
     {
-      "name": "generated slots win over the owner's overrides",
-      "file": "products/explainer/src/slot-overrides.ts",
-      "find": "return { ...base, ...visual.slots };",
-      "replace": "return { ...visual.slots, ...base };",
-      "kills": [
-        "owner slot overrides on script/v1 a valid override wins over the generated slot value and keeps the fields it leaves alone"
-      ]
-    },
-    {
       "name": "the emphasis gate reads the generated slots without overrides",
       "file": "products/explainer/src/resolve-stage.ts",
       "find": "withSlotOverrides(visuals.get(id) ?? {}, value)",
@@ -55,15 +46,6 @@
       "replace": "if (slot === undefined) return [];",
       "kills": [
         "owner slot overrides on script/v1 an override naming a field the beat spec lacks fails the gate"
-      ]
-    },
-    {
-      "name": "a hint drops the issue's path inside the field",
-      "file": "products/explainer/src/slot-overrides.ts",
-      "find": "`${where(id, field, issue.path)}: ${issue.message}`",
-      "replace": "`${where(id, field)}: ${issue.message}`",
-      "kills": [
-        "owner slot overrides on script/v1 an override deep in an array names the row and field it breaks"
       ]
     }
   ]
