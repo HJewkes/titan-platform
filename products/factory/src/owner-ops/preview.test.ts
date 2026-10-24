@@ -72,4 +72,13 @@ describe("owner-op.preview", () => {
 
     expect(answer.ok).toBe(false);
   });
+
+  it("reads a close-pr op's PR at GitHub's head, which the console pins the close to", async () => {
+    const { fixture, preview } = world();
+    const { number } = fixture.fake.addPr({ headSha: H, title: "Synthetic stale change" });
+
+    const answer = await preview({ kind: "close-pr", repo: REPO, pr: number, headSha: "b".repeat(40) });
+
+    expect(answer.ok && answer.data.pr).toMatchObject({ repo: REPO, pr: number, state: "open", head: H, title: "Synthetic stale change" });
+  });
 });

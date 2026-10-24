@@ -1,17 +1,21 @@
 import type { OwnerOpKind } from "@titan-design/owner-queue";
 import { opAuthority } from "../owner-ops/authority.js";
+import { closePr, type ClosePrDeps } from "../owner-ops/close-pr.js";
 import { runLogged, type OwnerOpsLedger } from "../owner-ops/ledger.js";
 import { mergeAtHead, type MergeAtHeadDeps } from "../owner-ops/merge-at-head.js";
 import { refused, type Outcome } from "./outcome.js";
 import type { OpRead } from "./record.js";
 
-/** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, and the standing answers. */
-type OpContext = MergeAtHeadDeps;
+/** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, the standing answers and the ledger. */
+type OpContext = MergeAtHeadDeps & ClosePrDeps;
 export type OpEffect<C = OpContext> = (actionId: string, read: OpRead, context: C) => Promise<Outcome>;
 type OpEffects<C = OpContext> = Readonly<Partial<Record<OwnerOpKind, OpEffect<C>>>>;
 
 /** The ops the console may run, as data: each later slice adds its kind's effect here, and a kind with none is refused. */
-export const OP_EFFECTS: OpEffects = Object.freeze({ "merge-at-head": mergeAtHead });
+export const OP_EFFECTS: OpEffects = Object.freeze({
+  "merge-at-head": mergeAtHead,
+  "close-pr": closePr,
+});
 
 export interface OpDeps<C = OpContext> {
   effects: OpEffects<C>;

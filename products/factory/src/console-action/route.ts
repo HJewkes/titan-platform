@@ -79,7 +79,7 @@ async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: Stan
   const { host, port, store, freeze, now } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
-  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, now });
+  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, now });
   const { action, confirmEvent } = read;
   return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get()) : resolveGate({ action, confirmEvent }, port, host);
 }
