@@ -142,12 +142,13 @@ function texts(p: Prober): ProbedText[] {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
   const out: ProbedText[] = []
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const text = node.textContent?.trim()
+    if (!(node instanceof Text)) continue
+    const text = node.textContent.trim()
     const el = node.parentElement
     if (!text || !el || !p.shown(el)) continue
     const cls = (el.closest('[class]')?.getAttribute('class') ?? '').trim()
     const tag = el.tagName.toLowerCase()
-    out.push({ text, px: Number.parseFloat(getComputedStyle(el).fontSize), tag, cls, element: p.describe(el), lines: p.lineBoxes(node as Text), clips: p.clips(el) })
+    out.push({ text, px: Number.parseFloat(getComputedStyle(el).fontSize), tag, cls, element: p.describe(el), lines: p.lineBoxes(node), clips: p.clips(el) })
   }
   return out
 }
@@ -189,7 +190,7 @@ export async function probeMoments(page: Page, moments: readonly ProbeAt[]): Pro
   const out: ProbedMoment[] = []
   for (const { beat, t } of moments) {
     await captureFrame(page, t)
-    const measured = (await page.evaluate(PROBE_SOURCE)) as Pick<ProbedMoment, 'texts' | 'boxes'>
+    const measured: Pick<ProbedMoment, 'texts' | 'boxes'> = await page.evaluate(PROBE_SOURCE)
     out.push({ beat, t, ...measured })
   }
   return out

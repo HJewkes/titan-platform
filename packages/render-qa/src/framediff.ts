@@ -16,7 +16,7 @@ export type FfmpegExec = (args: readonly string[]) => AsyncIterable<Uint8Array>
 
 export function changedShare(a: Uint8Array, b: Uint8Array): number {
   let changed = 0
-  for (let i = 0; i < a.length; i++) if (Math.abs((a[i] as number) - (b[i] as number)) > PIXEL_LEVELS) changed++
+  for (let i = 0; i < a.length; i++) if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > PIXEL_LEVELS) changed++
   return changed / a.length
 }
 

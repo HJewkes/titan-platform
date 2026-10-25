@@ -19,7 +19,10 @@ before(async () => {
   browser = await launch()
   const session = await openQaPage(browser, served.url('probe-fixture'))
   try {
-    ;[empty, filled] = (await probeMoments(session.page, [{ beat: 'b1-clip', t: 0.5 }, { beat: 'b1-clip', t: 2 }])) as [ProbedMoment, ProbedMoment]
+    const [first, second] = await probeMoments(session.page, [{ beat: 'b1-clip', t: 0.5 }, { beat: 'b1-clip', t: 2 }])
+    if (!first || !second) throw new Error('probeMoments returned fewer moments than it was given')
+    empty = first
+    filled = second
   } finally {
     await session.page.context().close()
   }
