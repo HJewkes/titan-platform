@@ -33,7 +33,7 @@ function stub(reply: Response | Error): { fetch: typeof fetch; calls: Call[] } {
     calls.push({ url: String(url), init });
     return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply.clone());
   };
-  return { fetch: fake as typeof fetch, calls };
+  return { fetch: fake, calls };
 }
 
 const json = (status: number, body: unknown): Response =>
@@ -81,7 +81,7 @@ describe("brokerVerdicter", () => {
     await writeFile(tokenPath, "test-token-1\n", { mode: 0o600 });
     await verdicter.permission(MSG, "deny");
 
-    const tokens = broker.calls.map((call) => (call.init?.headers as Record<string, string>)["X-Agent-Chat-Token"]);
+    const tokens = broker.calls.map((call) => new Headers(call.init?.headers).get("X-Agent-Chat-Token"));
     expect(tokens).toEqual([TOKEN, "test-token-1"]);
   });
 
