@@ -31,7 +31,7 @@ const MERGED_PRS_SQL = `
   where julianday(merged_at) <= julianday(@until)
     and lower(repo) in (select lower(value) from json_each(@repos))`;
 
-function canonicalUntil(until: string): string {
+export function canonicalUntil(until: string): string {
   const time = Date.parse(until);
   if (Number.isNaN(time)) throw new Error(`until is not an ISO time: ${until}`);
   return new Date(time).toISOString();

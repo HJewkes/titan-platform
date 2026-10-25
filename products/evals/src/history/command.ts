@@ -11,9 +11,6 @@ import { openGraph } from "./graph.js";
 import { ensureMirror } from "./mirror.js";
 import { v2Parity, type StoredCase } from "./parity.js";
 
-/** Added to the exclusion's engineering repos, which are the five label-v2 repos (TP-381 Q2 default). */
-const EXTRA_DEFAULT_REPO = "titan-design";
-
 interface BuildFlags {
   until: string;
   out: string;
@@ -31,9 +28,9 @@ const collect = (value: string, all: string[] = []): string[] => [...all, value]
 
 async function runBuild(flags: BuildFlags): Promise<void> {
   const graphPath = flags.graph ?? activeWorkGraphPath();
-  const base = defaultPolicy(flags.activeWorkRoot ?? activeWorkRoot());
-  const repos = flags.repo ?? [...base.repos, EXTRA_DEFAULT_REPO].map((name) => `${flags.owner}/${name}`);
-  const policy = { ...base, repos: repos.map((repo) => repo.slice(repo.lastIndexOf("/") + 1)) };
+  // Only private/exclusion.ts owns the allowlist: --repo narrows what is built, never what is allowed.
+  const policy = defaultPolicy(flags.activeWorkRoot ?? activeWorkRoot());
+  const repos = flags.repo ?? policy.repos.map((name) => `${flags.owner}/${name}`);
   const graph = openGraph(graphPath);
   try {
     const mirrorFor = (repo: string) => ensureMirror(flags.mirrors, repo, { fetch: flags.fetch });
@@ -79,7 +76,7 @@ function buildCommand(onResult: (code: number) => void): Command {
     .requiredOption("--until <iso>", "list PRs merged at or before this instant")
     .requiredOption("--out <dir>", "an empty dir outside every git work tree")
     .option("--owner <owner>", "the owner of the default repos", "HJewkes")
-    .option("--repo <owner/repo>", "a repo to build; repeatable (default: the engineering repos and titan-design)", collect)
+    .option("--repo <owner/repo>", "a repo to build; repeatable (default: the exclusion's engineering repos); others are excluded as private", collect)
     .option("--graph <path>", "the session graph, opened with mode=ro (default: the active-work graph)")
     .option("--mirrors <dir>", "where the bare mirrors live", join(homedir(), ".cache", "titan-corpus", "mirrors"))
     .option("--active-work-root <dir>", "the active-work root the private markers are read from")

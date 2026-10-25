@@ -57,7 +57,7 @@ titan-evals history v2-parity --gh-cache <dir> --cases cases.v2.jsonl --as-of 20
 
 - `build` lists merged PRs at or before `--until` from the session graph (`mode=ro`) and computes
   each PR's shas, paths, test paths and size band from a bare mirror holding `refs/pull/*/head`.
-  Default repos: the five label-v2 repos plus `HJewkes/titan-design`.
+  Default repos: the exclusion's engineering repos; a `--repo` outside them is excluded as `private-repo`.
 - It writes `cases.jsonl` (canonical, sorted) and `summary.json` (`build_id`, per-repo counts, PRs
   `missing` facts and `excluded` as private, by reason) into an empty `--out` outside every work
   tree. Two `--no-fetch` runs with one `--until` are byte-identical.

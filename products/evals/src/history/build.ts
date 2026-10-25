@@ -5,14 +5,14 @@ import { canonicalJson, sha256Hex } from "../hash.js";
 import { assertNoPrivate, filterPrivate, type ExclusionPolicy } from "../private/exclusion.js";
 import { assertFreshOut, assertOutsideWorkTree } from "../private/out-dir.js";
 import { commitFacts, landedPrNumber, mergeCommitFor, type CommitFacts, type MirrorGit, type MissingReason } from "./git-facts.js";
-import type { GraphReader, MergedPr } from "./graph.js";
+import { canonicalUntil, type GraphReader, type MergedPr } from "./graph.js";
 
 interface HistoryCase extends CommitFacts {
   case_id: string;
   repo: string;
   pr_number: number;
-  /** The subject of the commit that landed the PR on main. */
-  title: string;
+  /** Not the graph's PR title: the subject of the commit that landed the PR on main. */
+  landing_subject: string;
   merged_at: string;
   closed_at: string | null;
 }
@@ -55,12 +55,6 @@ interface RepoBuild {
 
 const bump = <K extends string>(counts: Counts<K>, key: K, by = 1): void => void (counts[key] = (counts[key] ?? 0) + by);
 
-function canonicalUntil(until: string): string {
-  const time = Date.parse(until);
-  if (Number.isNaN(time)) throw new Error(`until is not an ISO time: ${until}`);
-  return new Date(time).toISOString();
-}
-
 function mainLogPrs(log: readonly MainCommit[], until: string): number {
   const cutoff = Date.parse(until) / 1000;
   return new Set(log.filter((commit) => commit.time <= cutoff).flatMap((commit) => landedPrNumber(commit.subject) ?? [])).size;
@@ -68,7 +62,7 @@ function mainLogPrs(log: readonly MainCommit[], until: string): number {
 
 function caseOf(pr: MergedPr, facts: CommitFacts, commit: MainCommit | undefined): HistoryCase {
   const name = pr.repo.slice(pr.repo.lastIndexOf("/") + 1);
-  return { case_id: `${name}#${pr.number}`, repo: pr.repo, pr_number: pr.number, title: commit?.subject ?? "", merged_at: pr.mergedAt, closed_at: pr.closedAt, ...facts };
+  return { case_id: `${name}#${pr.number}`, repo: pr.repo, pr_number: pr.number, landing_subject: commit?.subject ?? "", merged_at: pr.mergedAt, closed_at: pr.closedAt, ...facts };
 }
 
 /** The exclusion reads the landing commit's body too, though only its subject is written. */

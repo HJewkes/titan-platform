@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { runCli } from "../cli.js";
 import { lines, scratchRepo, type ScratchRepo } from "../corpus/test-fixture.js";
 import type { ExclusionPolicy } from "../private/exclusion.js";
 import { buildHistory, writeHistory, type HistoryInputs } from "./build.js";
@@ -80,7 +81,7 @@ describe("history build", () => {
     const { cases } = buildHistory(inputs());
 
     expect(cases).toEqual([
-      expect.objectContaining({ case_id: "widgets#7", repo: REPO, pr_number: 7, title: "Add x (#7)", paths: ["src/x.test.ts", "src/x.ts"], test_paths: ["src/x.test.ts"], has_tests: true, size_band: "s" }),
+      expect.objectContaining({ case_id: "widgets#7", repo: REPO, pr_number: 7, landing_subject: "Add x (#7)", paths: ["src/x.test.ts", "src/x.ts"], test_paths: ["src/x.test.ts"], has_tests: true, size_band: "s" }),
     ]);
     expect(cases[0]?.base_sha).toMatch(/^[0-9a-f]{40}$/);
   });
@@ -104,5 +105,17 @@ describe("history build", () => {
 
   it("refuses an --out inside a git work tree", async () => {
     await expect(writeHistory(join(root, "origin", "out"), inputs())).rejects.toThrow(/inside a git work tree/);
+  });
+
+  // Kills: the CLI widening the exclusion's repo allowlist to whatever --repo names.
+  it("excludes every PR of a --repo outside the exclusion's allowlist as private-repo", async () => {
+    const out = join(root, "out-cli");
+    const awRoot = mkdtempSync(join(root, "aw-"));
+    const argv = ["history", "build", "--until", UNTIL, "--out", out, "--repo", REPO, "--graph", join(root, "graph.sqlite3")];
+
+    const code = await runCli([...argv, "--mirrors", join(root, "mirrors"), "--active-work-root", awRoot, "--no-fetch"]);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(read(out).summary)).toMatchObject({ cases: 0, excluded: { "private-repo": 2 } });
   });
 });
