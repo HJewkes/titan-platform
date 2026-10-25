@@ -1,14 +1,12 @@
 import type { MergeMethod, RepoSlug } from "@titan-design/github";
-import type { OwnerBrief } from "@titan-design/review-panel";
 import { codeStep, type WorkflowContext } from "@titan-design/workflow";
 import type { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import { stuckBehindDecision, type CiPolicyCard } from "../gate-brief.js";
+import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
-import type { OwnerAtHeadRow } from "../owner-at-head.js";
 import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { landedOf, type LandedPr } from "./land-landed.js";
-import { approveMergeGate, askedApproval, type ApprovalSource, type AskApproval } from "./land-approval.js";
+import { approveMergeGate, askedApproval, type ApprovalSource, type ApproveMergeFacts, type AskApproval } from "./land-approval.js";
 import type { CiSnapshot, FailingCheck } from "./land-ci.js";
 import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, waitsAgain, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
@@ -66,7 +64,8 @@ export interface MergeAllowContext {
   decision: GateDecision;
 }
 
-export interface LandOptions {
+/** The approve-merge facts are each read at exactly the head the gate asks about; `sendBackOffered` true makes land return a `sent-back` stop on that answer. */
+export interface LandOptions extends ApproveMergeFacts {
   /**
    * Consulted with the head before each merge of an untrusted head, and the decision is recorded in a `merge-policy`
    * step before any branch, so a replay reuses it. `gate` asks the owner through `approve-merge`, `deny` stops
@@ -75,18 +74,6 @@ export interface LandOptions {
   policy: GatePolicy;
   /** Evidence the allowing caller vouches for, stored beside the policy trace in the `merge-policy` step. */
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
-  /** True when the reviewer's verdict at exactly this head is MERGE; only then does the approve-merge brief recommend merging. */
-  reviewedMerge?: (headSha: string) => boolean;
-  /** The reviewer's owner brief from a MERGE at exactly this head, shown on the approve-merge gate. */
-  ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
-  /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
-  skillPathsAt?: (headSha: string) => readonly string[];
-  /** A weakened CI-policy line from a MERGE at exactly this head; the approve-merge gate then shows the D21 owner card. */
-  ciPolicyAt?: (headSha: string) => CiPolicyCard | undefined;
-  /** The D21 facts that hold at exactly this head whatever the rule; the approve-merge gate marks each one. */
-  ownerAtHeadAt?: (headSha: string) => readonly OwnerAtHeadRow[];
-  /** Read before each approve-merge gate opens; true offers the owner `send-back`, and land returns a `sent-back` stop on it. */
-  sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */

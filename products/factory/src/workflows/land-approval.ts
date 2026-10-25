@@ -40,8 +40,10 @@ export type ApprovalSource = "human" | "set";
 export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => Promise<ApprovalAnswer>;
 
 /** What the approve-merge gate shows beside the policy's reason, each read at the head it asks about. */
-interface ApproveMergeFacts {
+export interface ApproveMergeFacts {
+  /** True when the reviewer's verdict at exactly this head is MERGE; only then does the brief recommend merging. */
   reviewedMerge?: (headSha: string) => boolean;
+  /** The reviewer's owner brief from a MERGE at exactly this head. */
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at this head; any one drops the merge recommendation and links the diff. */
   skillPathsAt?: (headSha: string) => readonly string[];
