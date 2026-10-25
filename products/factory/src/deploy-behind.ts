@@ -47,7 +47,7 @@ export function gitBehind(checkout: string, run: Run = runCommand, closure: Clos
 }
 
 /** A private ref, so the fetch never holds the origin/main lock a running deployer's own `git fetch origin main` needs; `--refmap=` stops git updating origin/main anyway. */
-export const WATCHED_MAIN_REF = "refs/titan-factory/watched-main";
+const WATCHED_MAIN_REF = "refs/titan-factory/watched-main";
 
 /**
  * Serve's reading: the deploy checkout's origin/main moves only when a deploy fetches, so a merge no one deployed
