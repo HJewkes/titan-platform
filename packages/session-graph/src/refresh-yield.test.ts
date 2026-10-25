@@ -39,12 +39,13 @@ const CLOCK_COLUMNS = new Set(["t_indexed", "t_created", "applied_at", "last_ind
 
 /** Every table, rows in rowid order, minus the wall-clock audit columns that differ between passes by construction. */
 function dumpAll(graph: SessionGraph): Record<string, string> {
-  const tables = graph.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[];
-  const strip = (row: unknown) => Object.fromEntries(Object.entries(row as Record<string, unknown>).filter(([key]) => !CLOCK_COLUMNS.has(key)));
-  return Object.fromEntries(tables.map(({ name }) => [name, JSON.stringify(graph.db.prepare(`SELECT * FROM "${name}"`).all().map(strip))]));
+  const tables = graph.db.prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all();
+  const strip = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => !CLOCK_COLUMNS.has(key)));
+  const rows = (name: string) => graph.db.prepare<[], Record<string, unknown>>(`SELECT * FROM "${name}"`).all();
+  return Object.fromEntries(tables.map(({ name }) => [name, JSON.stringify(rows(name).map(strip))]));
 }
 
-const count = (graph: SessionGraph, sql: string) => (graph.db.prepare(sql).get() as { n: number }).n;
+const count = (graph: SessionGraph, sql: string) => graph.db.prepare<[], { n: number }>(sql).get()?.n;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), "titan-session-graph-yield-"));

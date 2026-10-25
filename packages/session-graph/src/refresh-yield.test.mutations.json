@@ -14,8 +14,8 @@
     {
       "name": "a yielding delta that throws commits what it wrote",
       "file": "packages/session-graph/src/apply.ts",
-      "find": "    if (graph.db.inTransaction) graph.db.exec(\"ROLLBACK\");",
-      "replace": "    if (graph.db.inTransaction) graph.db.exec(\"COMMIT\");",
+      "find": "  if (db.inTransaction) db.exec(\"ROLLBACK\");",
+      "replace": "  if (db.inTransaction) db.exec(\"COMMIT\");",
       "kills": [
         "refreshCorpus with a yieldPoint (TP-4175) rolls a delta back whole when its yield throws, leaving the watermark where it was"
       ]

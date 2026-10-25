@@ -10,7 +10,7 @@ const MAIN_THREAD_SESSIONS = "SELECT DISTINCT session_id AS sessionId FROM reque
  * names, so the pages, merged back into its order, give the same list.
  */
 export async function staleEpisodeSessionsYielding(db: Db, yieldPoint: () => Promise<void>, pageSize = 20): Promise<string[]> {
-  const ids = (db.prepare(MAIN_THREAD_SESSIONS).all() as { sessionId: string }[]).map((row) => row.sessionId);
+  const ids = db.prepare<[], { sessionId: string }>(MAIN_THREAD_SESSIONS).all().map((row) => row.sessionId);
   const ends = episodeEnds(db);
   const stale: LastMainRequest[] = [];
   for (let i = 0; i < ids.length; i += pageSize) {

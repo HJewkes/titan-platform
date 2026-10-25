@@ -39,9 +39,14 @@ export async function applyDeltaYielding(graph: SessionGraph, transcriptId: numb
     }
     graph.db.exec("COMMIT");
   } catch (err) {
-    if (graph.db.inTransaction) graph.db.exec("ROLLBACK");
+    rollbackIfOpen(graph.db);
     throw err;
   }
+}
+
+/** A failed COMMIT may already have rolled back on its own. */
+function rollbackIfOpen(db: Db): void {
+  if (db.inTransaction) db.exec("ROLLBACK");
 }
 
 /** Rows per step. Each list is applied in order, so slicing it changes no row: every statement reads what the slices before it wrote. */
