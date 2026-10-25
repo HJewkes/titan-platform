@@ -23,12 +23,12 @@ import { Worker } from 'node:worker_threads';
  * the next pass indexes that transcript again from the source.
  */
 
-export const CHECKPOINT_INTERVAL_MS = 1_000;
+const CHECKPOINT_INTERVAL_MS = 1_000;
 
 /** SQLite's own default, restored when the worker is gone so the WAL cannot grow without bound. */
 const SQLITE_AUTOCHECKPOINT_PAGES = 1_000;
 
-export interface CheckpointerOptions {
+interface CheckpointerOptions {
   intervalMs?: number;
   /** Stands in for a slow disk: the worker sleeps this long before each checkpoint. For tests. */
   simulatedFsyncMs?: number;
@@ -37,7 +37,7 @@ export interface CheckpointerOptions {
   onError?: (err: unknown) => void;
 }
 
-export interface Checkpointer {
+interface Checkpointer {
   /** Runs a last checkpoint in the worker and waits for it to exit. */
   stop(): Promise<void>;
 }
