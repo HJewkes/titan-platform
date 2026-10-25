@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every pass deletes the derived edges and re-asserts them all",
+      "file": "products/active-work/src/workspace-index/edges.ts",
+      "find": "    applyDiff(graph, wanted);\n",
+      "replace": "    graph.db.prepare(\"DELETE FROM edge WHERE relation IN ('holds', 'mentions', 'shares_tag')\").run();\n    for (const edge of wanted.values()) graph.edges.assert(edge);\n",
+      "kills": [
+        "workspace edges by diff leaves every edge row and the max edge id alone on passes over an unchanged workspace",
+        "workspace edges by diff turns one swapped mention into exactly one insert and one delete, matching a full rebuild"
+      ]
+    },
+    {
+      "name": "the diff reads edges of every relation, not only the derived ones",
+      "file": "products/active-work/src/workspace-index/edges.ts",
+      "find": "FROM edge WHERE relation IN (${placeholders}) AND t_expired IS NULL`,\n    )\n    .all(...relations)",
+      "replace": "FROM edge WHERE t_expired IS NULL`,\n    )\n    .all()",
+      "kills": [
+        "workspace edges by diff leaves another writer's edge untouched across passes"
+      ]
+    }
+  ]
+}
