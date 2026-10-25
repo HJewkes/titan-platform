@@ -9,7 +9,7 @@ changesets, the six gates) apply here too.
 - TypeScript strict, target ES2022, module Node16, extending the root `tsconfig.base.json`
 - Package manager: pnpm workspace; `@titan-design/*` dependencies are `workspace:^`
 - Build: tsup → ESM bundle of `src/cli.ts` to `dist/`
-- Tests: root vitest (the projects for `__tests__/` arrive in TP-624 S1b)
+- Tests: root vitest, in the `active-work` and `active-work-forks` projects (`vitest.config.ts`)
 - Lint: the root eslint config, with pre-existing hits in `eslint-suppressions.json`
 
 ## Layout

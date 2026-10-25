@@ -363,8 +363,9 @@ terminal result through a newer owner's fence. Durable results must be JSON-safe
 Only a `runtime_error` failure is treated as ambiguous transport loss and parks the
 record in `recovery_required`. A Claude run that reaches its native `maxTurns`
 fails as `limit_exceeded` (unit `agent_iterations`), and a Codex CLI refused by
-the version or capability check fails as `harness_mismatch` before spawn. Both
-persist as terminal `failed`.
+the version or capability check fails as `harness_mismatch` before spawn, as does
+a version or help probe that throws (for example ENOENT). Both persist as terminal
+`failed`.
 
 
 ### Shared pricing implementation

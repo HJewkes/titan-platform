@@ -12,6 +12,7 @@ import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { httpRequest, isWrite } from "./http-request.js";
 import { ghPathUnknown } from "./gh-path.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
+import { AMBIGUOUS_LONG, GIT_PUSH_LONG, resolveLong } from "./long-options.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
 
@@ -29,7 +30,9 @@ const GH_PR_MERGE_VALUES = set("-b", "--body", "-F", "--body-file", "-t", "--sub
 const GH_API_VALUES = set("-X", "--method", "-f", "--raw-field", "-F", "--field", "-H", "--header", "--input", "-q", "--jq", "-t", "--template", "-p", "--preview", "--hostname", "--cache");
 const GIT_MERGE_VALUES = set("-m", "--message", "-F", "--file", "-s", "--strategy", "-X", "--strategy-option", "--into-name", "--cleanup");
 const GIT_MERGE_CONTROL = ["--abort", "--continue", "--quit", "--skip"];
-const GIT_PUSH_VALUES = set("--repo", "-o", "--push-option", "--receive-pack", "--exec");
+const GIT_PUSH_VALUES = set(...GIT_PUSH_LONG.values, "-o");
+/** git takes any unambiguous prefix of a long option, so `--ta` is `--tags`. */
+const resolvePushLong = resolveLong(GIT_PUSH_LONG, false);
 
 export interface PrMerge {
   /** The PR number, URL or branch named, null for the current branch's PR. */
@@ -195,8 +198,10 @@ function tagPush(options: Options, specs: string[], config: readonly string[]): 
   return flagged || named ? [classified("bash.release.git-push-tag", {})] : [];
 }
 
+/** An ambiguous option prefix makes git refuse the push, but which option was meant is unknown, so it reads as unknown. */
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
-  const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
+  const options = readOptions(git.subArgs, GIT_PUSH_VALUES, resolvePushLong);
+  if (hasFlag(options, AMBIGUOUS_LONG)) return [classified("bash.merge.git-push-protected", { branch: UNKNOWN })];
   const refspecs = options.positionals.slice(1);
   const specs = refspecs.flatMap((s) => literalSpec(s) ?? []);
   return [...tagPush(options, specs, git.config), ...branchPush(options, refspecs, specs, git, ctx)];
