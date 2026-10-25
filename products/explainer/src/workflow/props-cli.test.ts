@@ -46,7 +46,7 @@ describe("explainer props --mp4-sha", () => {
     const base = await baseRun();
 
     const { result } = await props(base.mp4Sha);
-    const file = editFile({ ...base, scriptSha: result.scriptSha as string }, { h1: { slots: { figures: [{ id: "scan-rate", value: 4, label: "Scans a minute" }] } } });
+    const file = editFile({ ...base, scriptSha: String(result.scriptSha) }, { h1: { slots: { figures: [{ id: "scan-rate", value: 4, label: "Scans a minute" }] } } });
     const checked = await cli(["check", file]);
 
     expect(result.scriptSha).toBe(base.scriptSha);
