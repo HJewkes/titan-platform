@@ -55,18 +55,6 @@ const CLOCK_BUDGET_BASELINE = [
   "products/active-work/__tests__/session-index/refresh.test.ts",
   "products/active-work/__tests__/session-index/scheduler.test.ts",
   "products/active-work/src/session-index/pass-stall.test.ts",
-  "products/factory/src/cli-coverage.test.ts",
-  "products/factory/src/ingress/answer.test.ts",
-  "products/factory/src/ingress/listen.test.ts",
-  "products/factory/src/redact.test.ts",
-  "products/factory/src/serve-restart-resume.test.ts",
-  "products/factory/src/serve-shutdown.test.ts",
-  "products/factory/src/service-ports.test.ts",
-  "products/factory/src/shepherd/busy-serve.test.ts",
-  "products/factory/src/shepherd/park-serve.test.ts",
-  "products/factory/src/workflows/post-merge.test.ts",
-  "scripts/dag-check-lock.test.mjs",
-  "scripts/vitest-config.test.mjs",
 ];
 
 export default tseslint.config(
