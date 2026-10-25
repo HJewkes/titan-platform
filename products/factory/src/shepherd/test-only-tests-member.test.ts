@@ -179,7 +179,7 @@ describe("a g10 head with an unproven or error fix-proof and a correctness + adv
   it.each([
     ["unproven", unproven],
     ["error", proofLine("error")],
-  ])("plans a blocking tests member for a %s line and merges on its MERGE, never a no-verdict retry", async (_verdict, line) => {
+  ])("plans a blocking tests member when the line reads %s and merges on its MERGE, never a no-verdict retry", async (_verdict, line) => {
     const { verdicts, spawns, panel } = await review({ files: NEW_API, line, kind: "correctness" });
 
     expect(spawns.map((spawn) => spawn.name.split("-").at(-1))).toEqual(expect.arrayContaining(["adversary", "tests"]));
