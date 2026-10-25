@@ -8,8 +8,7 @@
       "replace": "  if ((run && isSucceeded(run)) || state === \"success\") return null;\n  if (!run && state === null) return { kind: \"pending\", text: name };",
       "kills": [
         "check judges against their origin/main oracles ciVerdict is never green while a run of a required context and app is unfinished",
-        "check judges against their origin/main oracles ciVerdict is never green where a status sits beside a run and the oracle is not",
-        "check judges against their origin/main oracles ciVerdict diverges only where the pick may differ or a status sits beside a run, and does diverge there"
+        "check judges against their origin/main oracles ciVerdict is never green where a status sits beside a run and the oracle is not"
       ]
     },
     {
