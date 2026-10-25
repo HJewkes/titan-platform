@@ -82,12 +82,9 @@ const prFilesEvidence = (repo: string, pr: number): string => `${prEvidence(repo
 /** Each path is flattened to one line, so a path holding a newline cannot pose as a line of the prompt it is shown in. */
 const shownSkillPaths = (skillPaths: readonly string[]): string => skillPaths.map((path) => oneLine(path, MAX_EVIDENCE_REF)).join(", ");
 
-/** How a skill-diff line starts; a merge gate's prompt holding one stays off every remote merge path. */
-export const SKILL_DIFF_LEAD = "Review the repo skill diff: ";
-
 /** The owner reads a repo skill change in the diff itself. The link leads, so a long path list cut to fit a field never cuts it. */
 export function skillChangeNote(repo: string, pr: number, skillPaths: readonly string[]): string {
-  return `${SKILL_DIFF_LEAD}${prFilesEvidence(repo, pr)}. Repo skill changes: ${shownSkillPaths(skillPaths)}.`;
+  return `Review the repo skill diff: ${prFilesEvidence(repo, pr)}. Repo skill changes: ${shownSkillPaths(skillPaths)}.`;
 }
 
 interface ApproveMergeTarget extends PrHead {

@@ -3,6 +3,7 @@ import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
+import { ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
 import { SET_ANSWER_ORIGIN, step } from "../workflows/land.js";
 import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved-set-carry.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
@@ -35,17 +36,17 @@ export function landGateHead(stepId: string, prompt: string): string | undefined
 /** The base a land gate names; a gate from before the base was named reads as none. */
 export const landGateBase = (prompt: string): string | undefined => LAND_GATE.exec(prompt)?.[2];
 
-/** The owner reviews a skill diff at its own head, so a skill-path gate is never answered by an earlier approval. */
-function isSkillPathGate(prompt: string): boolean {
+/** Whether land marked `row` on the gate (owner-at-head.ts), or opened it under that merge-guard row before markers existed. */
+function holdsOwnerAtHeadRow(prompt: string, row: OwnerAtHeadRow): boolean {
   const match = LAND_GATE.exec(prompt);
-  return match?.[3] === "shepherd-merge-guard" && match[4] === "skill-path";
+  return (match?.[3] === "shepherd-merge-guard" && match[4] === row) || (ownerAtHeadRowsIn(prompt)?.includes(row) ?? false);
 }
 
+/** The owner reviews a skill diff at its own head, so a skill-path gate is never answered by an earlier approval. */
+const isSkillPathGate = (prompt: string): boolean => holdsOwnerAtHeadRow(prompt, "skill-path");
+
 /** Only the owner accepts a weaker CI policy, and only at the head they read it at, so a D21 approval follows to no head. */
-function isCiPolicyWeakenedGate(prompt: string): boolean {
-  const match = LAND_GATE.exec(prompt);
-  return match?.[3] === "shepherd-merge-guard" && match[4] === "ci-policy-weakened";
-}
+const isCiPolicyWeakenedGate = (prompt: string): boolean => holdsOwnerAtHeadRow(prompt, "ci-policy-weakened");
 
 interface Followed {
   rule: string;

@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
-import { SKILL_DIFF_LEAD } from "./gate-brief.js";
+import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
 
@@ -131,25 +131,22 @@ export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): La
   return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}`, reason: match[6]! };
 }
 
-/**
- * The D21 merge-guard rows the owner reads at their own head: a repo skill diff (CC-1120) and a weakened or malformed CI
- * policy. Until TP-4141 a multi-line prompt kept such a gate off the console tap, merge-at-head, standing answers, Ship
- * answers and batches; it stays off them.
- */
-const OWNER_AT_HEAD_ROWS: ReadonlySet<string> = new Set(["skill-path", "ci-policy-weakened", "ci-policy-malformed"]);
 const MERGE_GUARD = "shepherd-merge-guard/";
 
 /**
- * The row of a land gate the remote paths refuse, named in their refusal; undefined for any other gate. A gate showing a
- * repo skill diff reads as `skill-path` whatever its rule: a seat or route gate carries one too, and the owner reads it at
- * their own head.
+ * The D21 row of a land gate the remote paths refuse, named in their refusal; undefined for any other gate. It reads the
+ * marker land writes for each fact that holds (owner-at-head.ts), whatever the rule. A multi-line gate with no marker was
+ * opened before markers existed, and main kept every such gate off the remote paths; it stays off them. A one-line gate
+ * with no marker is read by its rule, the only fact it carries.
  */
 export function ownerAtHeadRow(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
   const land = landGate(gate);
   if (land === undefined) return undefined;
-  if (gate.prompt.split("\n").slice(1).some((line) => line.startsWith(SKILL_DIFF_LEAD))) return "skill-path";
-  const row = land.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : undefined;
-  return row !== undefined && OWNER_AT_HEAD_ROWS.has(row) ? row : undefined;
+  const marked = ownerAtHeadRowsIn(gate.prompt);
+  if (marked !== undefined) return marked[0];
+  if (gate.prompt.includes("\n")) return "pre-marker";
+  const row = land.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : "";
+  return isOwnerAtHeadRow(row) ? row : undefined;
 }
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {

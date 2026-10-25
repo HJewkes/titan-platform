@@ -2,16 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the owner-at-head rows drop the D21 CI-policy rows",
-      "file": "products/factory/src/coordinator-evidence.ts",
-      "find": "new Set([\"skill-path\", \"ci-policy-weakened\", \"ci-policy-malformed\"])",
-      "replace": "new Set([\"skill-path\"])",
-      "kills": [
-        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
-      ]
-    },
-    {
       "name": "batchRefusal lets an owner-at-head gate ride in a batch",
       "file": "products/factory/src/gate-batch-plan.ts",
       "find": "  if (ownerRow !== undefined) return `a ${ownerRow} gate`;\n",
@@ -19,7 +9,7 @@
       "kills": [
         "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
         "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped seat or route gate showing a repo skill diff reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
       ]
     },
     {
@@ -29,7 +19,7 @@
       "replace": "  if (step === MERGE_GATE) return landGate(gate);",
       "kills": [
         "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped seat or route gate showing a repo skill diff reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
       ]
     },
     {
@@ -39,7 +29,7 @@
       "replace": "",
       "kills": [
         "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped seat or route gate showing a repo skill diff reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
       ]
     },
     {
@@ -49,7 +39,16 @@
       "replace": "",
       "kills": [
         "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped seat or route gate showing a repo skill diff reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+      ]
+    },
+    {
+      "name": "a multi-line gate with no marker reads as open",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "  if (gate.prompt.includes(\"\\n\")) return \"pre-marker\";\n",
+      "replace": "",
+      "kills": [
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
       ]
     }
   ]

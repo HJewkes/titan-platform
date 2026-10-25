@@ -11,9 +11,18 @@
       ]
     },
     {
-      "name": "the owner-at-head check ignores a skill-diff line under another rule",
+      "name": "the owner-at-head check ignores land's marker",
       "file": "products/factory/src/coordinator-evidence.ts",
-      "find": "  if (gate.prompt.split(\"\\n\").slice(1).some((line) => line.startsWith(SKILL_DIFF_LEAD))) return \"skill-path\";\n",
+      "find": "  if (marked !== undefined) return marked[0];\n",
+      "replace": "",
+      "kills": [
+        "the approve-merge gate land opens carries Shepherd's skill paths and the files URL through land's options, still tied to its PR but never auto-approvable"
+      ]
+    },
+    {
+      "name": "land marks no skill change",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "  if (skillPaths.length > 0) held.add(\"skill-path\");\n",
       "replace": "",
       "kills": [
         "the approve-merge gate land opens carries Shepherd's skill paths and the files URL through land's options, still tied to its PR but never auto-approvable"
