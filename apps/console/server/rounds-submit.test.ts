@@ -853,13 +853,13 @@ describe("a long round sends in about one human-only read (TP-4001)", () => {
     const waiting: (() => void)[] = [];
     const humanOnly = () => new Promise<HumanOnly>((resolve) => waiting.push(() => resolve({ known: true, initiatives: new Set() })));
     const decisionLog = createDecisionLog({ stateDir: path.join(root, "state"), decisionsFile: null, humanOnly });
-    let settled = false;
-    const response = submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog).finally(() => (settled = true));
+    const state = { settled: false };
+    const response = submit({ id: KILN, manifestSha256: kilnSha, answers: TWELVE_ANSWERS }, ownerContext(), decisionLog).finally(() => (state.settled = true));
 
     let released = 0;
-    while (!settled) {
-      await vi.waitFor(() => expect(settled || waiting.length > 0).toBe(true));
-      if (settled) break;
+    for (;;) {
+      await vi.waitFor(() => expect(state.settled || waiting.length > 0).toBe(true));
+      if (state.settled) break;
       waiting.shift()!();
       released += 1;
     }

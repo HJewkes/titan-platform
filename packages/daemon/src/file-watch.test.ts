@@ -23,6 +23,8 @@ afterEach(async () => {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+const isWatcher = (value: unknown): value is FSWatcher => typeof value === "object" && value !== null && "close" in value;
+
 /**
  * Write into `dir` until the watcher reports a change.
  *
@@ -174,7 +176,9 @@ describe("watchTree", () => {
       await mkdir(deep);
     }
     const probe = watch(root, { persistent: false });
-    const closes = vi.spyOn(Object.getPrototypeOf(probe) as FSWatcher, "close");
+    const prototype: unknown = Object.getPrototypeOf(probe);
+    if (!isWatcher(prototype)) throw new Error("fs.watch returned no FSWatcher");
+    const closes = vi.spyOn(prototype, "close");
     probe.close();
     watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
     expect(await watcher.whenWatching(deep)).toBe(true);
