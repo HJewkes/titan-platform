@@ -29,10 +29,11 @@ describe("countCalls", () => {
 
   it("stops a run at the first call past the cap and reports a count above it", () => {
     let reached = 0;
+    const sink: number[] = [];
 
     const calls = countCalls([[Array.prototype, "push"]], () => {
       for (let i = 0; i < 1_000_000; i += 1) {
-        [].push(i as never);
+        sink.push(i);
         reached = i;
       }
     }, 10);
@@ -42,10 +43,11 @@ describe("countCalls", () => {
   });
 
   it("keeps throwing past the cap when the code under test catches the first throw", () => {
+    const sink: number[] = [];
     const calls = countCalls([[Array.prototype, "push"]], () => {
       for (let i = 0; i < 100; i += 1) {
         try {
-          [].push(i as never);
+          sink.push(i);
         } catch {
           // The code under test swallows the error, as a fail-open wrapper would.
         }

@@ -13,8 +13,6 @@ export interface CallMeter {
 
 class CallCapExceeded extends Error {}
 
-type Method = (...args: unknown[]) => unknown;
-
 /**
  * Counts every call to `methods` until `restore`. Calls are the same on every machine and under any load, so a test can
  * assert work flat or linear in its input where a millisecond limit would flake (TP-4262). Every call past `cap` throws,
@@ -30,7 +28,7 @@ export function callMeter(methods: readonly CountedMethod[], cap = Infinity): Ca
     const counted = function (this: unknown, ...args: unknown[]): unknown {
       calls += 1;
       if (calls > cap) throw new CallCapExceeded(`more than ${cap} calls`);
-      return Reflect.apply(original as Method, this, args);
+      return Reflect.apply(original, this, args);
     };
     Object.defineProperty(methods[index]![0], methods[index]![1], { configurable: true, writable: true, value: counted });
   }

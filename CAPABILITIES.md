@@ -334,6 +334,7 @@ Key exports:
 - `no-chained-type-assertions`: `noChainedTypeAssertions`
 - `no-commented-code`: `noCommentedCode`
 - `no-internal-module-mock`: `noInternalModuleMock`
+- `no-test-clock-budget`: `noTestClockBudget`
 - `no-wall-clock-motion`: `DEFAULT_MOTION_PATHS`, `noWallClockMotion`
 - `todo-needs-issue`: `todoNeedsIssue`
 - `index`: `recommended`
@@ -367,16 +368,16 @@ Tier 0, `@titan-design/fix-proof@0.8.0`. Proves a fix PR's new tests fail on the
 
 You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
-A package compiles globs or other untrusted patterns to a RegExp: construct a `LinearRegExp` from `@titan-design/fix-proof/linear-regexp` in place of `new RegExp`, so matching cannot backtrack polynomially.
+A package compiles globs or other untrusted patterns to a RegExp: construct a `LinearRegExp` from `@titan-design/fix-proof/linear-regexp` in place of `new RegExp`, so matching cannot backtrack polynomially; its tests count `linearRegExpSteps()` instead of timing it.
 
 Key exports:
 
 - `config`: `isHarnessPath`, `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
-- `linear-regexp`: `LinearRegExp`
+- `linear-regexp`: `LinearRegExp`, `linearRegExpSteps`
 - `plan`: `planFixProof`, `testOnlyOf`, `testOnlyReading`
 - `mutation`: `checkMutation`, `parseMutationSpec`
-- `mutant-classify`: `classifyMutants`, `testFileOfSpec`
+- `mutant-classify`: `classifyMutants`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
@@ -495,12 +496,13 @@ Tier 0, `@titan-design/test-kit@0.1.0`. Typed test doubles: partialFake builds a
 
 A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. For a whole fake service with behaviour, use the package's own fake (for example `fakeGitHub()` in `github`).
 
-A test must show an operation is linear, typically a glob or regex matcher that could backtrack: `linearGrowth` with `hostileGlobs` asserts a growth ratio, not a wall time.
+A test must show an operation is linear or bounded, typically a glob or regex matcher that could backtrack: `linearWork` with `hostileGlobs` and a step meter, or `countCalls` with a cap, asserts counted work, never a time.
 
 Key exports:
 
+- `count-calls`: `callMeter`, `countCalls`, `CallMeter`, `CountedMethod`
 - `hostile-globs`: `hostileGlobs`, `HostileGlob`
-- `linear-growth`: `GROWTH`, `LINEAR_GROWTH_LIMIT`, `linearGrowth`, `Growth`, `GrowthOptions`
+- `linear-work`: `GROWTH`, `LINEAR_WORK_LIMIT`, `linearWork`, `WorkGrowth`, `WorkOptions`
 - `partial-fake`: `partialFake`
 
 <a id="cap-tool-guard"></a>

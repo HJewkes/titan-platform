@@ -13,7 +13,7 @@
     {
       "name": "a call to a local function carries no clock from its return",
       "file": "packages/eslint-plugin/src/no-test-clock-budget.ts",
-      "find": "  return callee.type === \"Identifier\" && readsClock(callee, walk, path);",
+      "find": "  return isFlow(callee) && callee.type === \"Identifier\" && readsClock(callee, walk, path);",
       "replace": "  return false;",
       "kills": [
         "no-test-clock-budget invalid a ratio of best-of-N times from a local helper",
@@ -23,7 +23,7 @@
     {
       "name": "a property read follows every property of the object",
       "file": "packages/eslint-plugin/src/no-test-clock-budget.ts",
-      "find": "  if (key !== undefined && (prop.computed || keyOf(prop.key as Flow) !== key)) return false;",
+      "find": "  if (key !== undefined && (prop.computed === true || keyOf(prop.key) !== key)) return false;",
       "replace": "",
       "kills": [
         "no-test-clock-budget valid another property of a value that holds a time"

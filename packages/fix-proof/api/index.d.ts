@@ -1,4 +1,4 @@
-export { LinearRegExp } from './linear-regexp.js';
+export { LinearRegExp, linearRegExpSteps } from './linear-regexp.js';
 
 /** Where a target repo keeps its fix-proof config; read at the merge base, never at head. */
 declare const CONFIG_PATH = ".github/fix-proof.json";
