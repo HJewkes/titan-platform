@@ -116,3 +116,19 @@ describe("a git command whose subcommand word is dynamic", () => {
     expect(actions.map((a) => a.subject)).toEqual([{ host: "unknown" }]);
   });
 });
+
+describe("a gh command whose group or verb is only known at run time", () => {
+  const egress = (command: string) => bash(command).filter((a) => a.spelling.startsWith("bash.egress."));
+
+  it.each([["gh $X"], ["gh gist $X f"], ["gh $(cat f) create f"]])("reads %s as a gist upload", (command) => {
+    expect(egress(command).map((a) => [a.spelling, a.subject])).toEqual([["bash.egress.gh-gist", { host: "gist.github.com" }]]);
+  });
+
+  it("keeps a literal gist create as one gist upload", () => {
+    expect(egress("gh gist create f").map((a) => a.spelling)).toEqual(["bash.egress.gh-gist"]);
+  });
+
+  it.each([["gh gist view $ID"], ["gh gist list"]])("still allows %s", (command) => {
+    expect(bash(command)).toEqual([]);
+  });
+});

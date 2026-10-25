@@ -375,8 +375,13 @@ describe("xargs -I runs the command once per input line", () => {
     expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
   });
 
-  it("denies a merge when {} is the value of gh -R and the line has a space", () => {
-    expect(spellings(bash("printf 'my repo' | xargs -I{} gh -R {} pr merge 1"))).toEqual(["bash.merge.gh-pr-merge"]);
+  it("denies a merge, and every gh action, when {} is the value of gh -R and the line has a space", () => {
+    expect(spellings(bash("printf 'my repo' | xargs -I{} gh -R {} pr merge 1"))).toEqual([
+      "bash.merge.gh-pr-merge",
+      "bash.merge.gh-pr-merge",
+      "bash.release.gh-release",
+      "bash.egress.gh-gist",
+    ]);
   });
 
   it.each([
@@ -492,8 +497,13 @@ describe("xargs -I fails closed when it cannot read the input", () => {
     expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
   });
 
-  it("denies a merge behind a stdin file", () => {
-    expect(spellings(bash("xargs -I{} gh {} < cmds.txt"))).toEqual(["bash.merge.gh-pr-merge"]);
+  it("denies a merge, and every gh action, behind a stdin file", () => {
+    expect(spellings(bash("xargs -I{} gh {} < cmds.txt"))).toEqual([
+      "bash.merge.gh-pr-merge",
+      "bash.release.gh-release",
+      "bash.egress.gh-gist",
+      "bash.merge.gh-pr-merge",
+    ]);
   });
 
   it.each([
@@ -546,5 +556,26 @@ describe("a git command whose subcommand word is dynamic", () => {
 
   it("still allows a literal git status", () => {
     expect(bash("git status")).toEqual([]);
+  });
+});
+
+describe("a gh command whose group or verb is only known at run time", () => {
+  const merges = (command: string) => bash(command).filter((a) => a.spelling.startsWith("bash.merge."));
+
+  it.each([["gh $X"], ["gh pr $X 5"], ['gh "$X" 5'], ["gh $X merge 5"]])("reads %s as a merge of an unknown PR", (command) => {
+    expect(merges(command).map((a) => [a.spelling, a.subject])).toEqual([["bash.merge.gh-pr-merge", {}]]);
+  });
+
+  it("keeps the PR a literal gh pr merge names", () => {
+    expect(merges("gh pr merge 12 --squash").map((a) => a.subject)).toEqual([{ pr: "12" }]);
+  });
+
+  it("reads it as a switch to an unknown head, so a later push counts as protected", () => {
+    expect(spellings(bash("gh $X 5 && git push", "feat/x"))).toContain("bash.merge.git-push-implicit");
+    expect(merges("gh $X 5 && git push").at(-1)?.subject).toEqual({ branch: "unknown" });
+  });
+
+  it.each([["gh pr view $N"], ['gh --repo "$R" pr view 1'], ["gh pr view 1 && git push"]])("still allows %s", (command) => {
+    expect(bash(command)).toEqual([]);
   });
 });
