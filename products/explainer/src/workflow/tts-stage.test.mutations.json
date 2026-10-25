@@ -40,6 +40,15 @@
         "tts stage: per-beat rate and take cache re-voices only the beat whose beat type moved it to another band",
         "tts stage: per-beat rate and take cache misses the take cache for every beat when the band rates changes"
       ]
+    },
+    {
+      "name": "a beat resolve cut is voiced, or stops the stage",
+      "file": "products/explainer/src/workflow/tts-stage.ts",
+      "find": "script.beats.filter((beat) => !cut.has(beat.id)).map(",
+      "replace": "script.beats.map(",
+      "kills": [
+        "tts stage: per-beat rate and take cache voices no beat that resolve cut, and still voices the rest"
+      ]
     }
   ]
 }

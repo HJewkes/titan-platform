@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a failing sim beat stays in resolved",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return { kept: beats.filter((beat) => !failed.has(beat.id)), cut, notes,",
+      "replace": "return { kept: beats, cut, notes,",
+      "kills": [
+        "sim beats at resolve cuts a sim beat that misses its claim and records the cut in resolved, the notes and sim-check"
+      ]
+    },
+    {
+      "name": "a cut goes unrecorded in resolved",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "budgets: rows, ...(cut.length ? { cut } : {}) };",
+      "replace": "budgets: rows };",
+      "kills": [
+        "sim beats at resolve cuts a sim beat that misses its claim and records the cut in resolved, the notes and sim-check",
+        "sim beats at resolve fails the sim-cut-orphan gate when cuts empty a chapter"
+      ]
+    },
+    {
+      "name": "a cut that empties a chapter is never seen",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return beats.length > 0 && beats.every((beat) => cutIds.has(beat.id));",
+      "replace": "return false;",
+      "kills": [
+        "sim beats at resolve fails the sim-cut-orphan gate when cuts empty a chapter"
+      ]
+    },
+    {
+      "name": "the orphan check is reported, not a gate",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"sim-cut-orphan\", gate: true,",
+      "replace": "{ name: \"sim-cut-orphan\", gate: false,",
+      "kills": [
+        "sim beats at resolve fails the sim-cut-orphan gate when cuts empty a chapter",
+        "sim beats at resolve holds a cut that leaves its chapter other beats, so sim-cut-orphan passes"
+      ]
+    },
+    {
+      "name": "the sim registry is left out of the resolve doctrine hash",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "rows, sims: sorted(sims) };",
+      "replace": "rows };",
+      "kills": [
+        "sim beats at resolve re-keys the stage when a doctrine tolerance changes"
+      ]
+    }
+  ]
+}
