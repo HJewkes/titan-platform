@@ -43,6 +43,11 @@ tsRuleTester.run("no-test-clock-budget", noTestClockBudget, {
       code: "const handle = startDaemon({ startedAt: Date.now() }); expect(handle.port).toBeGreaterThan(0);",
       filename: test,
     },
+    {
+      name: "a loop that walks a property of its own variable",
+      code: "let node = start; while (node.next) node = node.next; expect(node.size).toBeGreaterThan(0);",
+      filename: test,
+    },
   ],
   invalid: [
     {
@@ -97,6 +102,12 @@ tsRuleTester.run("no-test-clock-budget", noTestClockBudget, {
     {
       name: "a bench flag that only names the test, not a condition",
       code: 'it("bench: is fast", () => { expect(Date.now() - started).toBeLessThan(50); });',
+      filename: test,
+      errors: [{ message: message("toBeLessThan") }],
+    },
+    {
+      name: "a time read after a self-write walks into it",
+      code: "let run = { next: { ms: Date.now() - s } }; run = run.next; expect(run.ms).toBeLessThan(5);",
       filename: test,
       errors: [{ message: message("toBeLessThan") }],
     },
