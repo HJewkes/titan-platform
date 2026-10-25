@@ -20,6 +20,24 @@
       ]
     },
     {
+      "name": "transcript ids are not carried, so the new file renumbers them",
+      "file": "products/active-work/src/session-index/rebuild-carry.ts",
+      "find": "  { table: 'transcript', override: { last_offset: '0', prefix_hash: 'NULL' } },\n",
+      "replace": "",
+      "kills": [
+        "rebuildGraph keeps a pruned session's fact at offset 0 on its own transcript id after the rebuild"
+      ]
+    },
+    {
+      "name": "carried transcripts keep their offsets, so live files are never re-read",
+      "file": "products/active-work/src/session-index/rebuild-carry.ts",
+      "find": "  { table: 'transcript', override: { last_offset: '0', prefix_hash: 'NULL' } },\n",
+      "replace": "  { table: 'transcript' },\n",
+      "kills": [
+        "rebuildGraph keeps a pruned session's fact at offset 0 on its own transcript id after the rebuild"
+      ]
+    },
+    {
       "name": "the swap keeps no backup of the old file",
       "file": "products/active-work/src/session-index/rebuild.ts",
       "find": "  await fs.link(livePath, backupPath);\n",

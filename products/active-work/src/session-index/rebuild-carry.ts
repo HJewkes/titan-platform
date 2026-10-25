@@ -9,8 +9,23 @@ import { openGraphReadOnly } from './graph.js';
  * `preserved_row` is history whose transcripts are gone, the forge columns of
  * `pr` would otherwise cost one `gh` call per PR to re-learn, and a review
  * verdict from GitHub has no transcript line behind it.
+ *
+ * `transcript` comes first, with its `source_id`s, because preserved `fact`,
+ * `request` and `compaction` rows name their transcript by that id. A fresh file
+ * would number only the files still on disk, so a pruned transcript's id would
+ * belong to a live one and its replayed rows would collide or point at the wrong
+ * file. Carried rows are rewound as `resetIndex` rewinds them, so the first pass
+ * re-reads every file under the id it already had.
  */
-const CARRIED: { table: string; where?: string }[] = [
+interface CarrySpec {
+  table: string;
+  where?: string;
+  /** SQL expressions that replace a column's carried value. */
+  override?: Record<string, string>;
+}
+
+const CARRIED: CarrySpec[] = [
+  { table: 'transcript', override: { last_offset: '0', prefix_hash: 'NULL' } },
   { table: 'preserved_row' },
   { table: 'pr' },
   { table: 'pr_review', where: "surface <> 'chat'" },
@@ -30,7 +45,7 @@ function columnsOf(db: Database.Database, table: string): string[] {
 function carryTable(
   from: Database.Database,
   to: Database.Database,
-  spec: { table: string; where?: string },
+  spec: CarrySpec,
 ): number {
   const target = new Set(columnsOf(to, spec.table));
   const columns = columnsOf(from, spec.table).filter((column) => target.has(column));
@@ -38,8 +53,9 @@ function carryTable(
   const insert = to.prepare(
     `INSERT OR IGNORE INTO "${spec.table}" (${names}) VALUES (${columns.map(() => '?').join(', ')})`,
   );
+  const selected = columns.map((column) => spec.override?.[column] ?? `"${column}"`).join(', ');
   const where = spec.where ? ` WHERE ${spec.where}` : '';
-  const rows = from.prepare<[], unknown[]>(`SELECT ${names} FROM "${spec.table}"${where}`).raw();
+  const rows = from.prepare<[], unknown[]>(`SELECT ${selected} FROM "${spec.table}"${where}`).raw();
   let carried = 0;
   for (const row of rows.iterate()) carried += insert.run(...row).changes;
   return carried;
@@ -58,7 +74,13 @@ export function carryNonDerivable(
 }
 
 const TOTAL_KEYS = [
+  'sessions',
   'turns',
+  'facts',
+  'compactions',
+  'permissionPhases',
+  'humanEdits',
+  'sessionOrigins',
   'turnDurationMs',
   'toolCalls',
   'requests',
@@ -70,7 +92,13 @@ const TOTAL_KEYS = [
 export type GraphTotals = Record<(typeof TOTAL_KEYS)[number], number>;
 
 const TOTALS = `SELECT
+  (SELECT COUNT(*) FROM session) AS sessions,
   (SELECT COUNT(*) FROM turn) AS turns,
+  (SELECT COUNT(*) FROM fact) AS facts,
+  (SELECT COUNT(*) FROM compaction) AS compactions,
+  (SELECT COUNT(*) FROM permission_phase) AS permissionPhases,
+  (SELECT COUNT(*) FROM human_edit) AS humanEdits,
+  (SELECT COUNT(*) FROM session_origin) AS sessionOrigins,
   (SELECT COALESCE(SUM(duration_ms), 0) FROM turn) AS turnDurationMs,
   (SELECT COALESCE(SUM(tool_call_count), 0) FROM turn) AS toolCalls,
   (SELECT COUNT(*) FROM request) AS requests,
@@ -78,7 +106,10 @@ const TOTALS = `SELECT
   (SELECT COALESCE(SUM(input_tokens), 0) FROM session_model_usage) AS inputTokens,
   (SELECT COALESCE(SUM(output_tokens), 0) FROM session_model_usage) AS outputTokens`;
 
-/** Turn and request totals; a rebuild that changes one has lost or invented history. */
+/**
+ * Row counts of every table `preserveUnreachable` declares, and turn and token
+ * totals; a rebuild that changes one has lost or invented history.
+ */
 export function graphTotals(dbPath: string): GraphTotals {
   const db = openGraphReadOnly(dbPath);
   try {
