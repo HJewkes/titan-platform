@@ -628,6 +628,11 @@ with the owner.
   (questions a sentence) is at or under it, and rubric items only from a script at or under it overall. A case
   with no listener result is refused. The overall density also orders the round: the clearest video first, then
   the pairs, then the other videos from clearest to least clear.
+- Under `--max-density` the round also asks "Is this chapter clear enough to follow on one hearing?" for 3
+  chapters, on top of `--size`, so no judge loses a label to them. They are the heard chapters (holdout and
+  owner-named cases left out) nearest the bar, taking turns between chapters at or under it and chapters over
+  it, so the answers bracket it. Each goes first in its video's section, clearest chapter first. Its key entry
+  is judge `listener`, passes when the chapter clears the bar, and carries the chapter's `density`.
 - The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
   than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
   last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
@@ -647,8 +652,8 @@ with the owner.
   the two pickers disagree take their own turn.
 - It writes `round.json`, a questions-only console round with one section per video. A section shows the script
   as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones (`A` / `B` / `Can't tell`
-  for a pair). The header gives the estimated minutes (1.25 a yes or no item, 2 a pair). The round shows no judge
-  name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
+  for a pair). The header gives the estimated minutes (1.25 a yes or no item, listener items included, 2 a
+  pair). The round shows no judge name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
   outside the round directory. The command never overwrites an existing round or key.
 - `--round-dir` is a staging directory. File the round from it with `titan-console decisions file
   <dir>/round.json --seat <seat> --initiative <initiative>`, which writes the asker and notifies the owner.
@@ -660,6 +665,10 @@ with the owner.
   counts whole; an earlier round's item counts only at an `evalVersion` the newest round ran, and is otherwise
   reported as `stale`. An item with no `evalVersion` (round-1 keys) never pools into a later round. The pooled
   record lists its `rounds`, and each judge row its `eval_versions`. A round given twice is refused.
+- `explainer eval calibrate listener-labels --key <key.json> --feedback <round>/feedback.json [--out <file>]`
+  prints a `listener-labels/v1` record: one row per listener item the owner answered Yes or No, with its case,
+  chapter, `density`, `clear` and the listener's `eval_version`. These rows are TP-4080's labelled threshold
+  examples; a "Can't tell" gives no row.
 - `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
   agreement below 0.8. The evals units test checks that every judge check stays `reported`.
 

@@ -46,10 +46,10 @@ function bench(name: string): { script: string; bench: string } {
   return { script, bench: root };
 }
 
-/** A listener result over the bench script's chapters; `dense` chapters get 3 questions a sentence, the rest 1. */
-function listener(name: string, density: number, dense: readonly string[] = []): string {
+/** A listener result over the bench script's chapters; `dense` chapters get 3 questions a sentence, the rest 1, unless `at` says. */
+function listener(name: string, density: number, dense: readonly string[] = [], at: Record<string, number> = {}): string {
   const chapters = [...new Set(BEATS.map((b) => b.chapter))].map((chapter) => ({
-    chapter, sentences: [], questions: 0, density: dense.includes(chapter) ? 3 : 1, untagged: 0, asked: [],
+    chapter, sentences: [], questions: 0, density: at[chapter] ?? (dense.includes(chapter) ? 3 : 1), untagged: 0, asked: [],
     flags: { list_spread: [], terms_before_setup: [], fragments: [] }, failure: null,
   }));
   const path = join(dir, `listener-${name}.json`);
@@ -149,7 +149,7 @@ describe("explainer eval calibrate queue", () => {
 
     const entries = readKey().entries;
     const denseBeats = BEATS.filter((b) => b.chapter === "ch1").map((b) => b.id);
-    const tour = entries.filter((e) => e.case.endsWith("tour"));
+    const tour = entries.filter((e) => e.case.endsWith("tour") && e.judge !== "listener");
     expect(tour.filter((e) => denseBeats.includes(e.target.split(" · ")[0]!))).toEqual([]);
     expect(new Set(tour.map((e) => e.judge))).toEqual(new Set(["cold", "l1"]));
     expect(entries.some((e) => e.case.endsWith("digest") && e.judge === "cold-rubric")).toBe(true);
@@ -164,7 +164,7 @@ describe("explainer eval calibrate queue", () => {
     expect(String(error.mock.calls[0]?.[0])).toMatch(/explainer-eval\/digest: --max-density needs the case's listener result/);
   });
 
-  it("orders the clearest video first, then the pairs, and writes the round number and minutes per kind of item", async () => {
+  it("orders the clearest video first, then the pairs, and writes the round number and minutes per kind of item, in a round the console files", async () => {
     const listeners = { tour: listener("tour", 1), held: listener("held", 1), digest: listener("digest", 2) };
     const auditions = [auditionEntry(dir, "one", { J8: 4 }, { J8: 2 }), auditionEntry(dir, "two", { J8: 2 }, { J8: 4 })];
 
@@ -174,10 +174,47 @@ describe("explainer eval calibrate queue", () => {
       .parse(readJson(join(dir, "round", "round.json")));
     expect(round.sections.map((s) => s.title)).toEqual(["Video tour", "Storyboard pairs", "Video digest"]);
     expect(round.round).toBe(2);
-    expect(JSON.parse(printed())).toMatchObject({ items: 20, minutes: Math.round(18 * 1.25 + 2 * 2) });
+    expect(JSON.parse(printed())).toMatchObject({ items: 23, minutes: Math.round(21 * 1.25 + 2 * 2) });
     expect(readFileSync(join(dir, "round", "round.json")).length).toBeLessThan(1024 * 1024);
     expect(round.variants).toEqual([]);
     expect(round.questions.filter((q) => "merge" in q)).toEqual([]);
+  });
+
+  it("adds 3 \"clear on one hearing?\" items to the 20 under --max-density, for the chapters nearest the bar either side of it", async () => {
+    const listeners = { tour: listener("tour", 2, [], { ch1: 2.4, ch2: 1 }), held: listener("held", 2.5, [], { ch1: 2.5 }), digest: listener("digest", 2.5, [], { ch1: 2.7, ch2: 4 }) };
+
+    expect(await queueFrom(manifest({}, listeners), "--max-density", "2.5")).toBe(0);
+
+    const round = z.object({ questions: z.array(z.looseObject({ id: z.string(), prompt: z.string(), options: z.array(z.string()) })) }).parse(readJson(join(dir, "round", "round.json")));
+    const heard = readKey().entries.filter((e) => e.judge === "listener");
+    expect(round.questions).toHaveLength(23);
+    expect(heard.map((e) => `${e.case.split("/")[1]} ${e.target} ${e.density}`).sort()).toEqual(["digest ch1 2.7", "tour ch1 2.4", "tour ch2 1"]);
+    for (const e of heard) {
+      const asked = round.questions.find((q) => q.id === e.id)!;
+      expect(asked.prompt).toMatch(/^Is this chapter clear enough to follow on one hearing\?\n\n\[ch\d\] /);
+      expect(asked.options).toEqual([`Yes (${e.id})`, `No (${e.id})`, `Can't tell (${e.id})`]);
+    }
+    expect(JSON.stringify(round)).not.toMatch(/density|2\.7|2\.4/);
+  });
+
+  it("returns a submitted round's listener answers as a yes or no per chapter beside its listener density", async () => {
+    const listeners = { tour: listener("tour", 2, [], { ch1: 2.4, ch2: 1 }), held: listener("held", 1), digest: listener("digest", 2.5, [], { ch1: 2.7, ch2: 4 }) };
+    expect(await queueFrom(manifest({}, listeners), "--max-density", "2.5")).toBe(0);
+    answer(join(dir, "feedback.json"), (judge) => judge === "listener");
+    log.mockClear();
+
+    const args = ["--key", join(dir, "key.json"), "--feedback", join(dir, "feedback.json"), "--out", join(dir, "listener-labels.json")];
+    expect(await runEvalCli(["eval", "calibrate", "listener-labels", ...args])).toBe(0);
+
+    const record = z.object({ schema: z.literal("listener-labels/v1"), round: z.string(), rows: z.array(z.looseObject({})) }).parse(readJson(join(dir, "listener-labels.json")));
+    expect(record.round).toBe("judge-cal-r1");
+    expect(record.rows).toEqual(expect.arrayContaining([
+      { case: "explainer-eval/tour", chapter: "ch1", density: 2.4, clear: false, eval_version: "ev-listener" },
+      { case: "explainer-eval/tour", chapter: "ch2", density: 1, clear: false, eval_version: "ev-listener" },
+      { case: "explainer-eval/digest", chapter: "ch1", density: 2.7, clear: true, eval_version: "ev-listener" },
+    ]));
+    expect(record.rows).toHaveLength(3);
+    expect(JSON.parse(printed())).toEqual(record);
   });
 
   it("refuses to overwrite a round that is already published", async () => {
