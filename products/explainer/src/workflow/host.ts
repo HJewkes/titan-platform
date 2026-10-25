@@ -183,8 +183,7 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   const missing = neededInputs(from, to, profile).filter((name) => artifacts[name] === undefined);
   if (missing.length > 0) throw new Error(`this run needs ${missing.map((m) => `--${m}`).join(" and ")}`);
   const videoId = request.video ?? (base ? videoIdOf(runs, base) : undefined);
-  const edit = request.edit ? { edit: request.edit } : {};
-  return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings, ...edit };
+  return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings, ...(request.edit ? { edit: request.edit } : {}) };
 }
 
 function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageName): WorkflowRun {
@@ -219,10 +218,8 @@ export function writeReport(runId: string, host: Pick<RunHost, "dataDir">): { re
     const failed = failedStage ? readJson(paths.failed(failedStage), StageRecordSchema) : undefined;
     const stop = readJson(paths.stop, StopSchema);
     const { videoId, linked } = linkedRuns(host.dataDir, runs, run);
-    const edit = plan.edit ? editOf(host.dataDir, plan.edit) : undefined;
-    const report = buildReport({
-      run, from: plan.from, to: plan.to, budgetUsd: plan.budgetUsd, records: stageRecords(run), ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), videoId, linked, ...(edit ? { edit } : {}),
-    });
+    const extra = { ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), ...(plan.edit ? { edit: editOf(host.dataDir, plan.edit) } : {}) };
+    const report = buildReport({ run, from: plan.from, to: plan.to, budgetUsd: plan.budgetUsd, records: stageRecords(run), videoId, linked, ...extra });
     writeJson(paths.reportJson, report);
     writeText(paths.reportMd, renderReport(report));
     return { report, reportPath: paths.reportMd };
