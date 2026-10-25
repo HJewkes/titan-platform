@@ -66,10 +66,13 @@ const ResultSchema = z.object({
 type Result = z.infer<typeof ResultSchema>;
 
 /** One stderr line naming who holds the lock, so a long wait is never anonymous (TP-791). */
-export function describeLockWait(holder: RefreshLockHolder | null): string {
-  if (!holder) return 'miner refresh: waiting for the refresh lock (holder unknown)\n';
+export function describeLockWait(
+  holder: RefreshLockHolder | null,
+  command = 'miner refresh',
+): string {
+  if (!holder) return `${command}: waiting for the refresh lock (holder unknown)\n`;
   const state = holder.stale ? ', stale: that pid is gone' : '';
-  return `miner refresh: waiting for the refresh lock held by pid ${holder.pid} since ${holder.startedAt} (${holder.command}${state})\n`;
+  return `${command}: waiting for the refresh lock held by pid ${holder.pid} since ${holder.startedAt} (${holder.command}${state})\n`;
 }
 
 export default defineCommand<Args, Result>({

@@ -17,7 +17,7 @@ import { refreshEpisodes, snapshotOffsets } from './episodes.js';
 import { rollupYielding } from './unfinished-turns.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
-import { bytesAdvanced, lapTimer } from './pass-metrics.js';
+import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
 import type { RefreshSummary } from './refresh.js';
 
 type IndexStatus = 'indexed' | 'unchanged' | 'rewound' | 'missing' | 'quarantined';
@@ -122,6 +122,7 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
   const startedAt = new Date().toISOString();
   const started = Date.now();
   const offsetsBefore = snapshotOffsets(graph);
+  const rowsWritten = rowsWrittenCounter(graph.db);
   const lap = lapTimer();
   const phases: Record<string, number> = {};
   const tasksBefore = new Set(allTaskIds(graph));
@@ -153,6 +154,8 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
     scanned: transcripts.length,
     filesOpened: counts.indexed + counts.rewound + counts.quarantined,
     bytesRead: bytesAdvanced(offsetsBefore, snapshotOffsets(graph)),
+    rowsWritten: rowsWritten(),
+    dbBytes: dbBytes(graph.db),
     phases,
     ...counts,
     reconciledMissing: 0,

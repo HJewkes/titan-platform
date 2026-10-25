@@ -105,20 +105,23 @@ function watchWorkspace(
 }
 
 /** The workspace half alone; fails at once on a held lock, since a reader is waiting on it. */
-function workspaceRefresh(graph: WorkspaceGraph, signal: AbortSignal): () => Promise<unknown> {
+function workspaceRefresh(
+  currentGraph: () => Promise<WorkspaceGraph>,
+  signal: AbortSignal,
+): () => Promise<unknown> {
   return () =>
-    withRefreshLock(() => refreshWorkspace(graph, { activeRoot: getActiveRoot() }), {
-      retries: 0,
-      signal,
-    });
+    withRefreshLock(
+      async () => refreshWorkspace(await currentGraph(), { activeRoot: getActiveRoot() }),
+      { retries: 0, signal },
+    );
 }
 
-/** The daemon's workspace freshness over `graph`, with its active-root watcher when the root exists. */
+/** The daemon's workspace freshness over the graph `currentGraph` returns inside the lock, with its active-root watcher when the root exists. */
 export function startWorkspaceFreshness(
-  graph: WorkspaceGraph,
+  currentGraph: () => Promise<WorkspaceGraph>,
   signal: AbortSignal,
   log: WarnLogger,
 ): { workspace: WorkspaceFreshness; watcher: TreeWatcher | null } {
-  const workspace = createWorkspaceFreshness(workspaceRefresh(graph, signal));
+  const workspace = createWorkspaceFreshness(workspaceRefresh(currentGraph, signal));
   return { workspace, watcher: watchWorkspace(getActiveRoot(), workspace, log) };
 }

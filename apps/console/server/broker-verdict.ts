@@ -20,7 +20,7 @@ export type VerdictOutcome =
   | { status: "refused"; reason: string }
   | { status: "unreachable"; detail: string };
 
-interface BrokerVerdicter {
+export interface BrokerVerdicter {
   /** Never rejects: a broker that cannot be reached, redirects, or answers badly comes back as `unreachable`. */
   permission(msgId: string, behavior: "allow" | "deny"): Promise<VerdictOutcome>;
   /** `text` is the exact bytes the owner read; `to` is the recipient they read it addressed to. */

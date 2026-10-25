@@ -48,8 +48,13 @@ export const BridgeFileSchema = z.object({
 export type BridgeFile = z.infer<typeof BridgeFileSchema>;
 type BridgeCommand = z.infer<typeof CommandSchema>;
 
-/** A host file written while tts was bridged. */
-const PortedStagesSchema = z.object({ stages: z.object({ tts: z.unknown().refine((block) => block !== undefined) }) });
+/** The fix for a host file written while a stage that runs in TypeScript now was still bridged. */
+const PORTED_STAGES: Readonly<Record<string, string>> = {
+  tts: 'still has a "tts" block, but tts runs in TypeScript now; delete it, and move any command it ran that is not TTS (a sample builder) to the start of "render"',
+  sheets: 'still has a "sheets" block, but sheets runs in TypeScript now (the sidecar, poster and fingerprint); delete it, and drop write_video_meta.py and sheets.sh from the host',
+};
+
+const PortedStagesSchema = z.object({ stages: z.record(z.string(), z.unknown()) });
 
 /** A bridge a profile names, kept once per host so a run in any data dir uses it without a per-run copy. */
 export interface NamedBridge {
@@ -65,9 +70,9 @@ export function readBridgeFile(dataDir: string, named?: NamedBridge): BridgeFile
   const file = bridgeFilePath(dataDir, named);
   if (!existsSync(file)) throw new Error(`no bridge host file at ${file}; see the explainer README, "explainer run"`);
   const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
-  if (PortedStagesSchema.safeParse(raw).success) {
-    throw new Error(`${file} still has a "tts" block, but tts runs in TypeScript now; delete it, and move any command it ran that is not TTS (a sample builder) to the start of "render"`);
-  }
+  const stages = PortedStagesSchema.safeParse(raw).data?.stages ?? {};
+  const ported = Object.keys(PORTED_STAGES).find((stage) => stages[stage] !== undefined);
+  if (ported) throw new Error(`${file} ${PORTED_STAGES[ported]}`);
   return BridgeFileSchema.parse(raw);
 }
 

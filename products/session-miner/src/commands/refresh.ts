@@ -27,7 +27,8 @@ export const refresh = defineCommand<z.infer<typeof RefreshArgs>, RefreshSummary
     if (args.full) resetIndex(graph);
     const discovered = await discoverTranscripts(ctx.config.corpusRoot);
     const visiting = args.limit === undefined ? discovered : discovered.slice(0, args.limit);
-    const summary = await refreshCorpus(graph, visiting, { full: args.full, verifyHash: args.verify_hashes });
+    // Search, drain and insights read tool spans and context blocks, so this graph keeps both.
+    const summary = await refreshCorpus(graph, visiting, { full: args.full, verifyHash: args.verify_hashes, indexToolSpans: true, contextBlocks: true });
     if (ctx.config.codexHome) {
       const sources = await discoverCodexSources({ codexHome: ctx.config.codexHome, namespace: ctx.config.namespace ?? "local" });
       const remaining = args.limit === undefined ? sources : sources.slice(0, Math.max(0, args.limit - visiting.length));

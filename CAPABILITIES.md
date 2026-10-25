@@ -217,9 +217,10 @@ Code must decide whether an owner, agent or automation process may merge, releas
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`
 - `conditions`: `isCarryFencedPath`, `unmetConditions`
 - `schema`: `policyTableSchema`
+- `taint`: `taintSourceSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
@@ -366,14 +367,16 @@ Tier 0, `@titan-design/fix-proof@0.8.0`. Proves a fix PR's new tests fail on the
 
 You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
+A package compiles globs or other untrusted patterns to a RegExp: construct a `LinearRegExp` from `@titan-design/fix-proof/linear-regexp` in place of `new RegExp`, so matching cannot backtrack polynomially.
+
 Key exports:
 
 - `config`: `isHarnessPath`, `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
+- `linear-regexp`: `LinearRegExp`
 - `plan`: `planFixProof`, `testOnlyOf`, `testOnlyReading`
 - `mutation`: `checkMutation`, `parseMutationSpec`
 - `mutant-classify`: `classifyMutants`, `testFileOfSpec`
-- `classify`: `classifyReports`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
@@ -492,8 +495,12 @@ Tier 0, `@titan-design/test-kit@0.1.0`. Typed test doubles: partialFake builds a
 
 A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. For a whole fake service with behaviour, use the package's own fake (for example `fakeGitHub()` in `github`).
 
+A test must show an operation is linear, typically a glob or regex matcher that could backtrack: `linearGrowth` with `hostileGlobs` asserts a growth ratio, not a wall time.
+
 Key exports:
 
+- `hostile-globs`: `hostileGlobs`, `HostileGlob`
+- `linear-growth`: `GROWTH`, `LINEAR_GROWTH_LIMIT`, `linearGrowth`, `Growth`, `GrowthOptions`
 - `partial-fake`: `partialFake`
 
 <a id="cap-tool-guard"></a>
@@ -1474,6 +1481,8 @@ For a `sim` beat, a `SimModel` in `SIM_MODELS` simulates from the seed's generat
 `freezeSim` seals the runs as an `explainer.sim-trace/v1` trace (`SimTraceSchema`) keyed by its canonical-JSON sha256.
 `loadSims` reads the sim-model registry (`doctrine/sims/*.yaml`) and
 `checkSims` reports a model with no doctrine file, a file with no model, and a doctrine statistic the model never emits.
+`simCheck` passes a sim beat only when its run reproduces a gathered number fact within the doctrine tolerance, refusing a tolerance under 3 se, over a tenth of the claim, or on a fitted statistic, and
+`runSimPass` sweeps, freezes and checks every sim beat at resolve, which cuts the failing ones before tts behind the `sim-cut-orphan` gate.
 `explainer guide types` writes each type's planner guide to `doctrine/guides/planner/<type>.md`.
 `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
 For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new),
@@ -1520,7 +1529,9 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
+then render and QA through a host bridge file of today's template commands (marked as bridged in every report row),
+then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
+`fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
 resolve builds each `layer: "custom"` beat's layer through claude-print by default, behind an esbuild compile gate and import allowlist, and reuses an earlier run's build of an unchanged packet,
@@ -1529,6 +1540,11 @@ resolve builds each `layer: "custom"` beat's layer through claude-print by defau
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-edit/v1` (slot and tune fields per template beat, over a base run's script and render), and
+`applyEdit` applies it to the base script, refusing a stale base, an unknown or custom-layer beat and a slot change that drops an element a cue targets, and returns the new script and a field diff.
+`explainer edit check` prints that verdict with the slot-overrides gate, the template fill and the emphasis-target gate, and writes nothing,
+`explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
+`explainer edit list` lists a render's or a video's edits with their linked run's status.
 `renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
 mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
 `assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.

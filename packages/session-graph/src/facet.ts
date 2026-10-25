@@ -16,6 +16,8 @@ export interface BackfillOptions {
   limit?: number;
   /** The extraction version a facet must reach. Defaults to session-read's `EXTRACT_VERSION`. */
   version?: number;
+  /** Rewrite `context_block` rows. Default false, matching `IndexOptions.contextBlocks`. */
+  contextBlocks?: boolean;
 }
 
 export interface BackfillSummary {
@@ -42,8 +44,9 @@ export async function backfillFacets(graph: SessionGraph, transcripts: readonly 
   const visit = stale.slice(0, options.limit ?? DEFAULT_FACET_LIMIT);
   const sessionIds = new Set<string>();
   let backfilled = 0;
+  const contextBlocks = options.contextBlocks ?? false;
   for (const candidate of visit) {
-    const touched = await backfillOne(graph, candidate, version);
+    const touched = await backfillOne(graph, candidate, version, contextBlocks);
     if (!touched) continue;
     backfilled += 1;
     for (const id of touched) sessionIds.add(id);
@@ -70,10 +73,12 @@ function facetVersions(db: Db): Map<number, number> {
 }
 
 /** Returns the sessions touched, or `null` when the file could not be re-read and was marked instead. */
-async function backfillOne(graph: SessionGraph, { row, transcript }: Candidate, version: number): Promise<string[] | null> {
+async function backfillOne(graph: SessionGraph, { row, transcript }: Candidate, version: number, contextBlocks: boolean): Promise<string[] | null> {
   let delta: TranscriptDelta & { lastByteOffset: number };
   try {
-    delta = await extractTranscript(transcript.absolutePath, { untilByteOffset: row.lastOffset, subagentId: transcript.subagentId });
+    // Spans are not an audit table, so the backfill never writes one and need not build their text.
+    const policy = { toolSpans: false, contextBlocks };
+    delta = await extractTranscript(transcript.absolutePath, { untilByteOffset: row.lastOffset, subagentId: transcript.subagentId, ...policy });
   } catch (err) {
     // Mark rather than skip, or a broken file would hold a slot at the head of every pass.
     const status = unreadableStatus(err);

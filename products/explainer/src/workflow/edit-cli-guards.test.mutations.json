@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "apply rewrites a started edit",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "if (earlier) throw new EditRefused(",
+      "replace": "if (earlier && false) throw new EditRefused(",
+      "kills": [
+        "explainer edit apply on an edit that already started a run refuses a second --start and launches nothing more",
+        "explainer edit apply on an edit that already started a run refuses a plain apply, so the started row keeps its run and a later --start is still refused"
+      ]
+    },
+    {
+      "name": "only --start reads the earlier ledger",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "const earlier = startedBefore(dataDir, editId);",
+      "replace": "const earlier = start ? startedBefore(dataDir, editId) : undefined;",
+      "kills": ["explainer edit apply on an edit that already started a run refuses a plain apply, so the started row keeps its run and a later --start is still refused"]
+    },
+    {
+      "name": "a repeat start exits as a usage error",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "return error instanceof EditRefused ? EXIT.REFUSED : EXIT.USAGE;",
+      "replace": "return EXIT.USAGE;",
+      "kills": [
+        "explainer edit apply on an edit that already started a run refuses a second --start and launches nothing more",
+        "explainer edit apply on an edit that already started a run refuses a plain apply, so the started row keeps its run and a later --start is still refused"
+      ]
+    },
+    {
+      "name": "edit check runs without the template fill",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "deps.fill ?? fillProblems",
+      "replace": "deps.fill ?? (() => [])",
+      "kills": ["explainer edit check through the template fill refuses an edit whose filled slots leave an emphasis cue with no element to land on"]
+    },
+    {
+      "name": "the fill skips the emphasis gate",
+      "file": "products/explainer/src/workflow/edit-fill.ts",
+      "find": "return emphasisProblems(script, fillScript(",
+      "replace": "return [] || emphasisProblems(script, fillScript(",
+      "kills": ["explainer edit check through the template fill refuses an edit whose filled slots leave an emphasis cue with no element to land on"]
+    }
+  ]
+}

@@ -1,12 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { indexTranscript } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from '../../src/session-index/graph.js';
 import { searchWorkspace } from '../../src/search/index.js';
 import { SEARCH_CLASSES, capFor, classOf } from '../../src/search/classes.js';
 import { refreshInto, scaffold, writeFile } from '../workspace-index/fixture.js';
+import { FIXTURE_LINES, SESSION, renderTranscript } from '../session-index/fixture.js';
 
 /**
  * Search over the miniature active root.
@@ -93,8 +95,29 @@ describe('search', () => {
 
   it('tells a session record from a transcript, which their shared prefix cannot', async () => {
     expect(classOf('session:abc', 'body')).toBe('sessions');
-    expect(classOf('session:abc', 'tool_result')).toBe('transcripts');
+    expect(classOf('session:abc', 'prompt')).toBe('transcripts');
     expect(classOf('note:a/b.md', 'body')).toBe('notes');
+  });
+
+  it('finds a transcript by its prompt or reply but never by a tool span a graph still holds', async () => {
+    // A graph indexed before TP-881 keeps its tool spans until a full rebuild.
+    const absolutePath = path.join(dir, 'session.jsonl');
+    writeFileSync(absolutePath, renderTranscript(FIXTURE_LINES), 'utf8');
+    const transcript = {
+      projectDir: 'demo',
+      absolutePath,
+      displayPath: absolutePath,
+      subagentId: null,
+      account: null,
+    };
+    await indexTranscript(graph, transcript, { indexToolSpans: true });
+    const transcriptRefs = async (query: string) =>
+      (await search(query)).hits.filter((hit) => hit.class === 'transcripts').map((hit) => hit.ref);
+
+    expect(await transcriptRefs('build')).toEqual([`session:${SESSION}`]);
+    expect(await transcriptRefs('"on it"')).toEqual([`session:${SESSION}`]);
+    expect(await transcriptRefs('boom')).toEqual([]);
+    expect(await transcriptRefs('checkout')).toEqual([]);
   });
 
   it('answers an empty query with nothing rather than everything', async () => {

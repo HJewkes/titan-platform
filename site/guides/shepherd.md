@@ -799,10 +799,18 @@ minute old, and concurrent callers share one list read. The PRs Shepherd itself 
 row is `{ repo, number, branch, headSha, base, state, mergedAt, mergeSha, title, body, draft,
 registered, runId?, phase?, ci?, source, at }`. `state` is `open` or `merged`. `source` is
 `snapshot` or `merge-step`, and `at` is when that source was read. `ci` is
-`{ head, state, requiredMissing, at }`, where `state` is `pending`, `green`, `red` or `none`. It
-appears only when the snapshot already holds the head's check runs. A head it holds none for
-leaves `ci` out rather than reading GitHub. `requiredMissing` names the run's required contexts
-that have no check run on the head. A serve wired without a snapshot refuses with exit 69.
+`{ head, state, requiredMissing, checks, statuses?, required?, settled, at }`, where `state` is
+`pending`, `green`, `red` or `none`. It appears only when the snapshot already holds the head's
+check runs. A head it holds none for leaves `ci` out rather than reading GitHub. `head` is the
+commit the checks were read for: when it differs from the row's `headSha`, a push outran the read
+and the checks describe the old head. `requiredMissing` names the run's required contexts that
+have no check run or status on the head. `checks` holds the newest run per name as
+`{ name, status, conclusion, startedAt, completedAt, url, title }`. `statuses` holds the head's
+commit statuses as `{ context, state, targetUrl, description, createdAt, updatedAt }`; the
+snapshot reads them beside the runs, on the same cadence, and leaves the field out when that read
+failed. `required` is the run's land-rules contexts, absent when none were recorded. `settled` says
+the runs that decide the head are complete, so the snapshot reads them again only once per settled
+window. A serve wired without a snapshot refuses with exit 69.
 
 ## Stats {#stats}
 
@@ -1437,6 +1445,8 @@ Agents (seats, implementers and fixers) merge the base into a registered PR only
   tells the agent to merge the base and resolve the conflict.
 - A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`,
   or as `mergeUps.baseRed` when it waited on a red base.
+- A run with a planner's merge-base exception, when the fix needs code that has landed on the
+  base since the branch was cut. See [Merge-base exception](#merge-base-exception).
 
 They do not merge the base in these cases:
 
@@ -1448,6 +1458,33 @@ They do not merge the base in these cases:
 
 `stats` counts foreign merges of the base as `foreignMergeUps`, so a week above 0 in a repo
 means an agent merged the base when it should not have.
+
+### Merge-base exception {#merge-base-exception}
+
+Sometimes a fix round cannot be done without code that merged to the base after the branch was
+cut. For example, the fix calls an export that another PR has just added on main. A planner or
+coordinator who decides that the round should merge the base records an exception on the run:
+
+```
+titan-factory shepherd allow-merge-base owner/repo#N --reason "the fix needs #12 from main"
+titan-factory shepherd revoke-merge-base owner/repo#N
+```
+
+The exception is a row in `shepherd_merge_base_exception`, keyed by the run, holding the reason,
+the caller (`AGENT_CHAT_NAME`, else the agent id, else the OS user) and the time. A repeat replaces the reason. The row
+follows the registration to the run that replaces a failed one. While it stands, every fix-round
+brief except a conflict's works as follows (`products/factory/src/shepherd/wake-brief.ts`):
+
+- A ci-red brief drops "Do not merge the base branch to re-run CI or to bring the PR up to date".
+- The brief says a planner allowed the merge, gives the `git merge origin/<base>` recipe, and
+  says not to merge the base for any other reason.
+- A fenced `merge-base exception` block carries who allowed it and why. The planner's words stay
+  in the fence and never reach the brief's own text.
+
+A conflict wake asks for the merge anyway, so it does not change. If the exception cannot be
+read, the run has none, and the wake still goes out with the forbidding line. A merge made under
+the exception is still a head Shepherd did not make. It starts CI again, can reset the review,
+and is counted in `foreignMergeUps`.
 
 ## Merge train {#merge-train}
 

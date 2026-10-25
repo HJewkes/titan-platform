@@ -4,8 +4,8 @@
     {
       "name": "the host never applies the registrant migration",
       "file": "products/factory/src/workflows.ts",
-      "find": "registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), orderEventKindsMigration(42)];",
-      "replace": "gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), orderEventKindsMigration(42)];",
+      "find": "registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), orderEventKindsMigration(43)];",
+      "replace": "gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), orderEventKindsMigration(43)];",
       "kills": [
         "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it"
       ]
