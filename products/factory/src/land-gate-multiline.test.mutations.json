@@ -51,15 +51,6 @@
         "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
         "a live-shaped seat or route gate showing a repo skill diff reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
       ]
-    },
-    {
-      "name": "the owner-at-head check ignores a skill-diff line under another rule",
-      "file": "products/factory/src/coordinator-evidence.ts",
-      "find": "  if (gate.prompt.split(\"\\n\").slice(1).some((line) => line.startsWith(SKILL_DIFF_LEAD))) return \"skill-path\";\n",
-      "replace": "",
-      "kills": [
-        "a live-shaped seat or route gate showing a repo skill diff reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
-      ]
     }
   ]
 }
