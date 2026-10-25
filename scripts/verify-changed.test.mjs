@@ -54,7 +54,6 @@ describe("locScope", () => {
   it("skips files code-graph never indexes: declarations, JS and excluded directories", () => {
     // Mutant caught: an own extension regex that counts the committed api/*.d.ts reports CI never sees.
     expect(checked("packages/a/api/index.d.ts")).toBe(false);
-    expect(checked("packages/a/src/x.mjs")).toBe(false);
     expect(checked("packages/a/src/x.js")).toBe(false);
     expect(checked("packages/a/vendor/x.ts")).toBe(false);
     expect(checked("packages/a/src/x.tsx")).toBe(true);

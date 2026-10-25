@@ -18,7 +18,8 @@ const CODE_GRAPH_ENTRY = join(ROOT, "packages/code-graph/dist/index.js");
 const VITEST_TIMEOUT_SECONDS = 600;
 const VITEST_HEAP_MB = 4096;
 
-// The languages code-graph's indexer walks (LANGUAGES in its indexer.ts); `typescript` covers .ts and .tsx only.
+// The languages code-graph's indexer walks (LANGUAGES in its indexer.ts); which extensions `typescript` covers is
+// code-parser's call (.mjs and .cjs joined in TP-4161), so nothing here lists them.
 const INDEXED_LANGUAGES = ["typescript", "python"];
 
 /**
