@@ -72,6 +72,8 @@ interface ClassifyContext {
     readLink(path: string): string | null;
     /** Current branch of the checkout at `dir`, null when detached or not a checkout. */
     readHead(dir: string): string | null;
+    /** Whether the checkout at `dir` holds `refs/tags/<name>`; omitted or false when it cannot tell. */
+    isTag?(dir: string, name: string): boolean;
     /** Text of a script run by path, null for none. A node context throws `UnreadableScriptError` for one it cannot read in full. */
     readScript(path: string): string | null;
     /**

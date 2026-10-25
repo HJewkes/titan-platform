@@ -54,6 +54,8 @@ describe("one fixture per bash.merge spelling", () => {
     ["bash.merge.git-push-all", "git push --all origin", {}],
     ["bash.merge.git-push-all", "git push --mirror origin", {}],
     ["bash.merge.git-push-all", "git push origin 'refs/heads/*:refs/heads/*'", {}],
+    ["bash.merge.git-push-all", "git push --mirr origin", {}],
+    ["bash.merge.git-push-all", "git push --al origin", {}],
   ])("%s: %s", (spelling, command, subject) => {
     expect(bash(command)).toEqual([expect.objectContaining({ action: "merge", spelling, subject })]);
   });

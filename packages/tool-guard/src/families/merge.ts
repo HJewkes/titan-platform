@@ -11,6 +11,7 @@ import { httpRequest, isWrite } from "./http-request.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
+import { GIT_PUSH_LONG, resolveLong } from "./long-options.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
 /** The Version Packages branch; merging it is a release, which the release family classifies. */
@@ -26,7 +27,7 @@ const GH_PR_MERGE_VALUES = set("-b", "--body", "-F", "--body-file", "-t", "--sub
 const GH_API_VALUES = set("-X", "--method", "-f", "--raw-field", "-F", "--field", "-H", "--header", "--input", "-q", "--jq", "-t", "--template", "-p", "--preview", "--hostname", "--cache");
 const GIT_MERGE_VALUES = set("-m", "--message", "-F", "--file", "-s", "--strategy", "-X", "--strategy-option", "--into-name", "--cleanup");
 const GIT_MERGE_CONTROL = ["--abort", "--continue", "--quit", "--skip"];
-const GIT_PUSH_VALUES = set("--repo", "-o", "--push-option", "--receive-pack", "--exec");
+const GIT_PUSH_VALUES = set("-o", ...GIT_PUSH_LONG.values);
 
 export interface PrMerge {
   /** The PR number, URL or branch named, null for the current branch's PR. */
@@ -171,32 +172,50 @@ function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boole
 const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]/.test(word.typed ?? word.value);
 
 const TAG_REF_RE = /^(?:refs\/)?tags\//;
-/** Release tags are version-shaped (`v1`, `v1.2.0`), so a push of one reads as a tag push whether or not it is qualified. */
-const VERSION_NAME_RE = /^v\d/;
+/**
+ * Names shaped like a release tag: `v1`, `1.2.0`, and the `@scope/pkg@1.2.0` or `pkg@1.2.0` tags changesets writes. A name
+ * the local repository holds as a tag reads as one too, whatever its shape.
+ */
+const RELEASE_NAME_RE = /^v\d|^\d+\.\d|@\d/;
 /** `-c push.followTags`, bare or with a value git reads as true, makes every push send its annotated tags. */
 const FOLLOW_TAGS_CONFIG_RE = /^push\.followtags(?:=(?!(?:false|no|off|0)?$).*)?$/i;
+const resolvePushLong = resolveLong(GIT_PUSH_LONG, false);
 
-/** A refspec that creates, moves or deletes a tag: a `tags/` destination, or an unqualified one a tag source or a version name sends there. */
-function updatesTag(spec: string): boolean {
+/** `git push`'s options, a unique prefix such as `--tag` or `--mirr` read as the option git runs. */
+export const readPushOptions = (args: WordToken[]): Options => readOptions(args, GIT_PUSH_VALUES, resolvePushLong);
+
+type TagLookup = (name: string) => boolean;
+
+/** Whether `name` is a local tag where git runs; a directory the line leaves unknown is not looked in. */
+function tagLookup(git: GitInvocation, ctx: ClassifyContext): TagLookup {
+  const dir = git.otherPaths.length === 0 ? git.dir : null;
+  return (name) => dir !== null && ctx.isTag?.(dir, name) === true;
+}
+
+/**
+ * A refspec that creates, moves or deletes a tag: a `tags/` destination, or an unqualified one that a tag source, a
+ * release-shaped name or a local tag of either name sends there. Git sends an unqualified name that is a local tag to `refs/tags/`.
+ */
+function updatesTag(spec: string, isTag: TagLookup): boolean {
   const plain = spec.replace(/^\+/, "");
   const colon = plain.lastIndexOf(":");
   const src = colon >= 0 ? plain.slice(0, colon) : plain;
   const dest = colon >= 0 ? plain.slice(colon + 1) : plain;
   if (TAG_REF_RE.test(dest)) return true;
   if (/^(?:refs\/|heads\/)/.test(dest)) return false;
-  return TAG_REF_RE.test(src) || VERSION_NAME_RE.test(dest);
+  return TAG_REF_RE.test(src) || RELEASE_NAME_RE.test(dest) || [src, dest].some((name) => name !== "" && isTag(name));
 }
 
 /** `--tags`, `--follow-tags`, the `tag <name>` refspec form, or a refspec that updates a tag: charter hard stop tag-move. */
-function pushesTag(git: GitInvocation, options: Options, specs: string[]): boolean {
+function pushesTag(git: GitInvocation, options: Options, specs: string[], isTag: TagLookup): boolean {
   if (hasFlag(options, "--tags", "--follow-tags") || git.config.some((c) => FOLLOW_TAGS_CONFIG_RE.test(c))) return true;
-  return specs.slice(0, -1).includes("tag") || specs.some(updatesTag);
+  return specs.slice(0, -1).includes("tag") || specs.some((spec) => updatesTag(spec, isTag));
 }
 
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
-  const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
+  const options = readPushOptions(git.subArgs);
   const specs = options.positionals.slice(1).flatMap((s) => literalSpec(s) ?? []);
-  const tag = pushesTag(git, options, specs) ? [classified("bash.release.git-push-tag", { tool: "git" })] : [];
+  const tag = pushesTag(git, options, specs, tagLookup(git, ctx)) ? [classified("bash.release.git-push-tag", { tool: "git" })] : [];
   return [...tag, ...branchPush(git, options, ctx)];
 }
 

@@ -415,6 +415,41 @@ describe("nodeContext over a real temp directory", () => {
     expect(ctx.readHead(path.join(home, "wt"))).toBe("feat/x");
   });
 
+  function worktreeWithTags(home: string): string {
+    fs.mkdirSync(path.join(home, "app/.git/refs/tags/@scope"), { recursive: true });
+    fs.writeFileSync(path.join(home, "app/.git/HEAD"), "ref: refs/heads/main\n");
+    fs.writeFileSync(path.join(home, "app/.git/refs/tags/rc1"), "1".repeat(40) + "\n");
+    fs.writeFileSync(path.join(home, "app/.git/refs/tags/@scope/a"), "1".repeat(40) + "\n");
+    fs.writeFileSync(path.join(home, "app/.git/packed-refs"), `# pack-refs with: peeled fully-peeled sorted\n${"2".repeat(40)} refs/tags/nightly\n^${"3".repeat(40)}\n`);
+    fs.mkdirSync(path.join(home, "app/.git/worktrees/wt"), { recursive: true });
+    fs.writeFileSync(path.join(home, "app/.git/worktrees/wt/HEAD"), "ref: refs/heads/feat/x\n");
+    fs.writeFileSync(path.join(home, "app/.git/worktrees/wt/commondir"), "../..\n");
+    fs.mkdirSync(path.join(home, "wt"));
+    fs.writeFileSync(path.join(home, "wt/.git"), "gitdir: ../app/.git/worktrees/wt\n");
+    return path.join(home, "wt");
+  }
+
+  it("finds loose and packed tags in a worktree's common directory, and only names inside the tag tree", () => {
+    const home = tempHome();
+    const wt = worktreeWithTags(home);
+    const ctx = nodeContext(home);
+
+    expect(["rc1", "@scope/a", "nightly", "feat/x", "../HEAD", "@scope", "rc1/"].map((name) => ctx.isTag?.(wt, name))).toEqual([true, true, true, false, false, false, false]);
+    expect(ctx.isTag?.(path.join(home, "app"), "nightly")).toBe(true);
+  });
+
+  it("denies a push of a local tag whose name is not release-shaped, and allows the branch beside it", async () => {
+    const home = tempHome();
+    const wt = worktreeWithTags(home);
+    const context = nodeContext(home);
+
+    const tag = await handle(bash("git push origin rc1", { cwd: wt }), {}, port({ context }));
+    const branch = await handle(bash("git push origin feat/x", { cwd: wt }), {}, port({ context }));
+
+    expect(tag.log[0]?.split("\t")[4]).toBe("bash.release.git-push-tag");
+    expect([decisionOf(tag.stdout), decisionOf(branch.stdout)]).toEqual(["deny", null]);
+  });
+
   it("reads scripts that are regular files only, and refuses any other", () => {
     const home = tempHome();
     fs.writeFileSync(path.join(home, "x.sh"), "echo hi\n");

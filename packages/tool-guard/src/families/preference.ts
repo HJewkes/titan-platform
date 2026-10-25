@@ -3,7 +3,7 @@ import { parseGit } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import type { ClassifiedAction, ClassifyContext } from "../types.js";
-import { merge } from "./merge.js";
+import { merge, readPushOptions } from "./merge.js";
 import { hasFlag, readOptions, set } from "./options.js";
 import type { Options } from "./options.js";
 import { release } from "./release.js";
@@ -73,7 +73,7 @@ const GIT_PUSH_VALUES = set("-o", "--push-option", "--repo", "--receive-pack", "
 function deletesBranchOrPushesTag(inv: GitInvocation): boolean {
   if (inv.sub === "branch") return hasFlag(readOptions(inv.subArgs, GIT_BRANCH_VALUES), "-d", "-D", "--delete");
   if (inv.sub !== "push") return false;
-  const options = readOptions(inv.subArgs, GIT_PUSH_VALUES);
+  const options = readPushOptions(inv.subArgs);
   if (hasFlag(options, "-d", "--delete", "--tags", "--follow-tags")) return true;
   return options.positionals.slice(1).some((s) => s.value.startsWith(":") || s.value.includes("refs/tags/"));
 }

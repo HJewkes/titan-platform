@@ -55,6 +55,14 @@ describe("one fixture per bash.release spelling", () => {
     ["bash.release.git-push-tag", "git push origin refs/tags/nightly:", "git"],
     ["bash.release.git-push-tag", "git -c push.followTags push origin feat/x", "git"],
     ["bash.release.git-push-tag", "git -c push.followtags=true push", "git"],
+    ["bash.release.git-push-tag", "git push origin @titan-design/tool-guard@1.2.3", "git"],
+    ["bash.release.git-push-tag", "git push origin --delete @titan-design/x@1.0.0", "git"],
+    ["bash.release.git-push-tag", "git push origin pkg@2.0.0", "git"],
+    ["bash.release.git-push-tag", "git push origin 1.2.0", "git"],
+    ["bash.release.git-push-tag", "git push --tag origin", "git"],
+    ["bash.release.git-push-tag", "git push --follow origin feat/x", "git"],
+    ["bash.release.git-push-tag", "git push --fol origin feat/x", "git"],
+    ["bash.release.git-push-tag", "git push --del origin v1", "git"],
   ])("%s: %s", (spelling, command, tool) => {
     expect(bash(command)).toEqual([expect.objectContaining({ action: "release", spelling, subject: { tool } })]);
   });
@@ -93,10 +101,27 @@ describe("normal work classifies nothing", () => {
     "git push origin refs/tags/v1:refs/heads/feat/x",
     "git push origin tag",
     "git push --no-follow-tags origin feat/x",
+    "git push --no-fol origin feat/x",
+    "git push --fo origin feat/x",
+    "git push origin rc1",
+    "git push origin feat/node-1.2",
     "git -c push.followTags=false push origin feat/x",
     "git tag v1",
   ])("%s", (command) => {
     expect(bash(command)).toEqual([]);
+  });
+});
+
+describe("a name the local repository holds as a tag", () => {
+  const tagged: ClassifyContext = { ...ctx, isTag: (dir, name) => dir === REPO && name === "rc1" };
+  const push = (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, tagged).map((a) => a.spelling);
+
+  it.each(["git push origin rc1", "git push origin -d rc1", "git push origin HEAD:rc1", "git push origin +rc1:rc1"])("reads `%s` as a tag push", (command) => {
+    expect(push(command)).toEqual(["bash.release.git-push-tag"]);
+  });
+
+  it.each(["git push origin rc1:refs/heads/feat/x", 'git -C "$D" push origin rc1', "git push origin feat/rc1"])("does not read `%s` as a tag push", (command) => {
+    expect(push(command)).not.toContain("bash.release.git-push-tag");
   });
 });
 

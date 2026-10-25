@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AMBIGUOUS_LONG, CURL_LONG, WGET_LONG, resolveLong } from "./long-options.js";
+import { AMBIGUOUS_LONG, CURL_LONG, GIT_PUSH_LONG, WGET_LONG, resolveLong } from "./long-options.js";
 
 const curl = resolveLong(CURL_LONG, true);
 const wget = resolveLong(WGET_LONG, false);
+const gitPush = resolveLong(GIT_PUSH_LONG, false);
 
 describe("curl long options resolve as older curl matched them", () => {
   it.each([
@@ -44,6 +45,7 @@ describe("the option tables match the binaries they were read from", () => {
   it.each([
     ["curl", CURL_LONG, curl],
     ["wget", WGET_LONG, wget],
+    ["git push", GIT_PUSH_LONG, gitPush],
   ])("every %s name resolves to itself", (_tool, table, resolve) => {
     expect(table.names.filter((n) => resolve(`--${n}`) !== `--${n}`)).toEqual([]);
   });
@@ -53,6 +55,12 @@ describe("the option tables match the binaries they were read from", () => {
     expect(CURL_LONG.names).toEqual(expect.arrayContaining(["config", "request-target", "url-query", "http0.9", "http1.1", "include", "keepalive", "sessionid"]));
     expect(CURL_LONG.names).not.toEqual(expect.arrayContaining(["http0"]));
     expect(CURL_LONG.names.filter((n) => n.startsWith("expand-"))).toEqual([]);
+  });
+
+  it("holds every git push 2.53.0 long option, and reads its prefixes as git does", () => {
+    expect(GIT_PUSH_LONG.names).toHaveLength(52);
+    expect([...GIT_PUSH_LONG.values].sort()).toEqual(["--exec", "--push-option", "--receive-pack", "--recurse-submodules", "--repo"]);
+    expect(["--tag", "--fol", "--mirr", "--al", "--fo", "--no-ta"].map(gitPush)).toEqual(["--tags", "--follow-tags", "--mirror", "--all", AMBIGUOUS_LONG, "--no-tags"]);
   });
 
   it("holds every wget 1.25.0 long option, hidden ones included", () => {

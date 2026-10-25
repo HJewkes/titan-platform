@@ -14,6 +14,7 @@ export interface ReadFs {
 
 const SCRIPT_CAP = 64 * 1024;
 const HEAD_CAP = 4096;
+const PACKED_REFS_CAP = 8 * 1024 * 1024;
 const MAX_DEPTH = 64;
 
 /**
@@ -50,6 +51,7 @@ export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContex
     home,
     readLink: (p) => attempt(() => inHomeSpelling(rfs.realpath(p), home, realHome)),
     readHead: (dir) => attempt(() => branchOf(dir, rfs)),
+    isTag: (dir, name) => attempt(() => hasTag(dir, name, rfs)) === true,
     readScript: (p) => wholeScript(p, rfs),
     ...(rfs.foldsCase ? { foldCase: true } : {}),
   };
@@ -100,11 +102,15 @@ function attempt<T>(read: () => T | null): T | null {
 
 /** The checked-out branch: the nearest `.git` up from `dir`, followed through a worktree's `gitdir:` file. */
 function branchOf(dir: string, rfs: ReadFs): string | null {
+  const head = headOf(dir, rfs);
+  return head === null ? null : (/^ref: refs\/heads\/(.+)$/m.exec(rfs.readHead(head, HEAD_CAP))?.[1]?.trim() ?? null);
+}
+
+function headOf(dir: string, rfs: ReadFs): string | null {
   let current = path.resolve(dir);
   for (let depth = 0; depth < MAX_DEPTH; depth++) {
-    const dotGit = path.join(current, ".git");
-    const head = attempt(() => headFile(dotGit, rfs));
-    if (head !== null) return /^ref: refs\/heads\/(.+)$/m.exec(rfs.readHead(head, HEAD_CAP))?.[1]?.trim() ?? null;
+    const head = attempt(() => headFile(path.join(current, ".git"), rfs));
+    if (head !== null) return head;
     const parent = path.dirname(current);
     if (parent === current) return null;
     current = parent;
@@ -119,4 +125,19 @@ function headFile(dotGit: string, rfs: ReadFs): string | null {
   }
   const gitdir = /^gitdir: (.+)$/m.exec(rfs.readHead(dotGit, HEAD_CAP))?.[1]?.trim();
   return gitdir ? path.join(path.resolve(path.dirname(dotGit), gitdir), "HEAD") : null;
+}
+
+/** A name git could store under `refs/tags/`: no `..`, no empty or dot-led component, so the lookup stays inside the tag tree. */
+const isTagName = (name: string) => name !== "" && !/(?:^|\/)\.|\/\/|^\/|[/.]$|[\s~^:?*[\\]/.test(name);
+
+/** Tags live in the common directory a worktree's `commondir` file names, loose or in `packed-refs`. */
+function hasTag(dir: string, name: string, rfs: ReadFs): boolean {
+  const head = headOf(dir, rfs);
+  if (head === null || !isTagName(name)) return false;
+  const gitDir = path.dirname(head);
+  const commondir = path.join(gitDir, "commondir");
+  const common = rfs.isFile(commondir) ? path.resolve(gitDir, rfs.readHead(commondir, HEAD_CAP).trim()) : gitDir;
+  if (rfs.isFile(path.join(common, "refs", "tags", name))) return true;
+  const packed = path.join(common, "packed-refs");
+  return rfs.isFile(packed) && rfs.readHead(packed, PACKED_REFS_CAP).split("\n").some((line) => line.endsWith(` refs/tags/${name}`));
 }
