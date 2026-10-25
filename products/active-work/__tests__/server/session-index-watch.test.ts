@@ -95,18 +95,21 @@ describe('startSessionIndexWatch', () => {
       await new Promise<void>((resolve) => (letGo = resolve));
     });
     await inside;
-    const releaseLater = setTimeout(() => letGo(), 3_000);
+    let releasedByTimer = false;
+    const releaseLater = setTimeout(() => {
+      releasedByTimer = true;
+      letGo();
+    }, 3_000);
     const watcher = startSessionIndexWatch(log);
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const started = Date.now();
     await watcher!.close();
-    const elapsedMs = Date.now() - started;
+    const closedWhileHeld = !releasedByTimer;
     clearTimeout(releaseLater);
     letGo();
     await held;
 
-    expect(elapsedMs).toBeLessThan(1_000);
+    expect(closedWhileHeld).toBe(true);
     expect(log.warn).not.toHaveBeenCalled();
   });
 
@@ -263,16 +266,15 @@ describe('startSessionIndexWatch', () => {
     scheduler.trigger();
     await vi.waitFor(() => expect(waiting).toHaveBeenCalled());
 
-    const started = Date.now();
-    const freshness = await scheduler.runNow(800);
-    const elapsedMs = Date.now() - started;
+    // A read that waited for the budget's timer would still be pending at the next loop turn.
+    const nextTurn = new Promise((resolve) => setImmediate(() => resolve('still waiting')));
+    const freshness = await Promise.race([scheduler.runNow(800), nextTurn]);
     abort.abort(new Error('test over'));
     await scheduler.close();
     letGo();
     await held;
 
     expect(freshness).toBe('stale');
-    expect(elapsedMs).toBeLessThan(50);
   });
 
   describe('with transcripts on disk', () => {
