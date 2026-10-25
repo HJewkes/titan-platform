@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "matchPattern compiles a backtracking RegExp again",
+      "file": "products/factory/src/dispatch/glob-pattern.ts",
+      "find": "new LinearRegExp(",
+      "replace": "new RegExp(",
+      "kills": [
+        "matchPattern on a hostile glob grows linearly with the path for d/ and 20 stars",
+        "matchPattern on a hostile glob grows linearly with the path for 12 globstar segments"
+      ]
+    }
+  ]
+}

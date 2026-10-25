@@ -35,12 +35,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/fix-proof": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
     "@titan-design/workflow": "workspace:^"
   },
   "devDependencies": {
     "@titan-design/hitl": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
+    "@titan-design/test-kit": "workspace:*",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
