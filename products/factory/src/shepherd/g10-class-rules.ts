@@ -76,7 +76,9 @@ export const GATE_RESOLVE_CHECK_FILES = ["gate-resolve-sites.test.ts", "gate-res
   (name) => `products/factory/src/shepherd/${name}`,
 );
 
-const inGateResolveCheck = compileGlobs(GATE_RESOLVE_CHECK_FILES);
+const matchesGateResolveCheck = compileGlobs(GATE_RESOLVE_CHECK_FILES);
+/** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */
+const inGateResolveCheck = (path: string): boolean => matchesGateResolveCheck(path.toLowerCase());
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = {
