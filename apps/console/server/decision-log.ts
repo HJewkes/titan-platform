@@ -93,14 +93,18 @@ function pickedLabels(item: DecisionItem, answer: DecisionAnswer): string[] {
   return ids.map((id) => item.options?.find((option) => option.id === id)?.label ?? id);
 }
 
-/** One unnumbered bullet, so it never collides with the numbered items written by hand. */
+/**
+ * One unnumbered bullet, so it never collides with the numbered items written by hand. Each field is cleaned on its
+ * own: cleaning the joined line would let an escape opened in the summary swallow the owner's pick and note.
+ */
 export function decisionLine(item: DecisionItem, answer: DecisionAnswer): string {
-  const picks = pickedLabels(item, answer);
-  const pick = picks.length > 0 ? picks.join(", ") : (answer.text ?? "(no pick)");
-  const note = picks.length > 0 && answer.text !== undefined ? `; "${answer.text}"` : "";
+  const text = answer.text === undefined ? undefined : promptLine(answer.text);
+  const picks = pickedLabels(item, answer).map((label) => promptLine(label));
+  const pick = picks.length > 0 ? picks.join(", ") : (text ?? "(no pick)");
+  const note = picks.length > 0 && text !== undefined ? `; "${text}"` : "";
   const time = new Date(answer.at).toISOString().slice(11, 16);
-  const raw = `- ${time}Z ${decisionsClass(item, answer) ?? "answer"}: ${item.summary} → ${pick}${note} (item ${item.id}, by ${answer.by.id} via ${answer.by.channel})`;
-  const line = promptLine(raw);
+  const [summary, id, by, channel] = [item.summary, item.id, answer.by.id, answer.by.channel].map((field) => promptLine(field));
+  const line = `- ${time}Z ${decisionsClass(item, answer) ?? "answer"}: ${summary} → ${pick}${note} (item ${id}, by ${by} via ${channel})`;
   return line.length <= MAX_LINE_CHARS ? line : `${line.slice(0, MAX_LINE_CHARS - 1)}…`;
 }
 

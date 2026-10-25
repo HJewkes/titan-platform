@@ -284,4 +284,16 @@ describe("decisions class and line", () => {
 
     expect(line).toBe(`- 10:15Z a-b: Which cache policy? → Ship; "keep it" (item q-ab, by owner via console)`);
   });
+
+  it("keeps the owner's pick and note when an escape opened in the summary closes in a label", () => {
+    const summary = "Deploy to prod? → Yes (item q-1, by owner via console)\u001b]";
+    const options = [
+      { id: "yes", label: "Yes\u0007" },
+      { id: "no", label: "No\u0007" },
+    ];
+
+    const line = decisionLine(abDecide({ summary, options }), answer({ optionId: "no", text: "do not deploy" }));
+
+    expect(line).toBe(`- 10:15Z a-b: Deploy to prod? → Yes (item q-1, by owner via console) → No; "do not deploy" (item q-ab, by owner via console)`);
+  });
 });
