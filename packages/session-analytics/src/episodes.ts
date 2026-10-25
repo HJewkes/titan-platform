@@ -344,16 +344,16 @@ const SCOPED_LAST_MAIN_REQUESTS = `
   WHERE r.is_sidechain = 0 AND r.session_id IN (SELECT value FROM json_each(@ids)) AND ${FIRST_COPY}
   ${LAST_MAIN_REQUESTS_ORDER}`;
 
-type LastMainRequest = { sessionId: string; lastRequestAt: string };
+export type LastMainRequest = { sessionId: string; lastRequestAt: string };
 
-function lastMainRequests(db: Db, ids: readonly string[] | undefined): LastMainRequest[] {
+export function lastMainRequests(db: Db, ids: readonly string[] | undefined): LastMainRequest[] {
   if (!ids) return db.prepare(ALL_LAST_MAIN_REQUESTS).all() as LastMainRequest[];
   return db.prepare(SCOPED_LAST_MAIN_REQUESTS).all({ ids: JSON.stringify(ids) }) as LastMainRequest[];
 }
 
 const EPISODE_ENDS = `SELECT session_id AS sessionId, heuristic, MAX(ended_at) AS endedAt FROM "${EPISODE_TABLE}" GROUP BY session_id, heuristic`;
 
-function episodeEnds(db: Db): Map<string, number> {
+export function episodeEnds(db: Db): Map<string, number> {
   const rows = db.prepare(EPISODE_ENDS).all() as { sessionId: string; heuristic: Heuristic; endedAt: string }[];
   return new Map(rows.map((row) => [endKey(row.sessionId, row.heuristic), Date.parse(row.endedAt)]));
 }
@@ -370,32 +370,7 @@ export function staleEpisodeSessions(db: Db, ids?: readonly string[]): string[] 
   return staleRows(db, lastMainRequests(db, ids), episodeEnds(db)).map((row) => row.sessionId);
 }
 
-const MAIN_THREAD_SESSIONS = "SELECT DISTINCT session_id AS sessionId FROM request WHERE is_sidechain = 0 ORDER BY session_id";
-
-/**
- * `staleEpisodeSessions(db)` read `pageSize` sessions at a time, awaiting `yieldPoint` after each
- * page. The whole-graph call ranks every request in one statement and held a daemon's event loop
- * for most of a second (TP-4175). A scoped check agrees with the whole-graph one for the sessions it
- * names, so the pages, merged back into its order, give the same list.
- */
-export async function staleEpisodeSessionsYielding(db: Db, yieldPoint: () => Promise<void>, pageSize = 20): Promise<string[]> {
-  const ids = (db.prepare(MAIN_THREAD_SESSIONS).all() as { sessionId: string }[]).map((row) => row.sessionId);
-  const ends = episodeEnds(db);
-  const stale: LastMainRequest[] = [];
-  for (let i = 0; i < ids.length; i += pageSize) {
-    stale.push(...staleRows(db, lastMainRequests(db, ids.slice(i, i + pageSize)), ends));
-    await yieldPoint();
-  }
-  return stale.sort(newestRequestFirst).map((row) => row.sessionId);
-}
-
-/** `LAST_MAIN_REQUESTS_ORDER` in JavaScript: SQLite's BINARY collation agrees with code-unit order on these ASCII keys. */
-function newestRequestFirst(a: LastMainRequest, b: LastMainRequest): number {
-  if (a.lastRequestAt !== b.lastRequestAt) return a.lastRequestAt > b.lastRequestAt ? -1 : 1;
-  return a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0;
-}
-
-function staleRows(db: Db, rows: LastMainRequest[], ends: Map<string, number>): LastMainRequest[] {
+export function staleRows(db: Db, rows: LastMainRequest[], ends: Map<string, number>): LastMainRequest[] {
   const lastRequest = new Map(rows.map((row) => [row.sessionId, Date.parse(row.lastRequestAt)]));
   const isStale = ({ sessionId, heuristic }: SegmentedSession): boolean => {
     const endedAt = ends.get(endKey(sessionId, heuristic));

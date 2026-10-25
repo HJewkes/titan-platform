@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSessionContexts } from "./cost-report-queries.js";
-import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, staleEpisodeSessionsYielding, writeEpisodes, type EpisodeInput } from "./episodes.js";
+import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, writeEpisodes, type EpisodeInput } from "./episodes.js";
+import { staleEpisodeSessionsYielding } from "./stale-sweep.js";
 import { createFixtureGraph, insertInbound, insertOrigin, insertRequest, insertSession, insertSignal, type FixtureGraph } from "./fixture.js";
 
 const BASE_MS = Date.parse("2026-09-20T10:00:00Z");

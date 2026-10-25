@@ -3,7 +3,7 @@
   "mutations": [
     {
       "name": "the paged sweep returns stale sessions in page order",
-      "file": "packages/session-analytics/src/episodes.ts",
+      "file": "packages/session-analytics/src/stale-sweep.ts",
       "find": "  return stale.sort(newestRequestFirst).map((row) => row.sessionId);",
       "replace": "  return stale.map((row) => row.sessionId);",
       "kills": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "the paged sweep never yields",
-      "file": "packages/session-analytics/src/episodes.ts",
+      "file": "packages/session-analytics/src/stale-sweep.ts",
       "find": "    await yieldPoint();\n",
       "replace": "",
       "kills": [

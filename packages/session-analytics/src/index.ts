@@ -67,9 +67,9 @@ export {
   heuristicFor,
   readEpisodeInput,
   staleEpisodeSessions,
-  staleEpisodeSessionsYielding,
   writeEpisodes,
 } from "./episodes.js";
+export { staleEpisodeSessionsYielding } from "./stale-sweep.js";
 export type { WorkerFacts, WorkerRole } from "./roles.js";
 export { PROFILE_ROLES, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, roleFromProfile, sessionRole, workerRole } from "./roles.js";
 export { initiativeFromCwd, sessionInitiative } from "./initiative.js";
