@@ -491,6 +491,17 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
   });
 
+  it("records a refused proof's own message in the MERGE's standing, and reads past a skipped judge from a later edit", async () => {
+    const refusal = "fix-proof runs only against the default branch: base stack/parent is not main";
+    const line = formatResultLine({ ...JSON.parse(resultLine(H, "error").slice("fix-proof/v1 ".length)), error: refusal });
+    const skipped = fixProofRun({ id: FIX_PROOF_JOB + 1, conclusion: "skipped" });
+
+    const { proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun(), skipped], log: actionsLog(line) });
+
+    expect(proof).toMatchObject({ kind: "result", verdict: "error", line });
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ proofUnverified: `error (${refusal})` });
+  });
+
   it("keeps the merge-on-green grant and asks no owner brief for a reproduced proof", async () => {
     const { verdicts, spawns, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "reproduced")) });
 

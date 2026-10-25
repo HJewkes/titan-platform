@@ -17,6 +17,7 @@ import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { ciPolicyAt, ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
 import { checkedBaseTap, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { withReboundProof } from "./rebound-proof.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
@@ -131,7 +132,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 
 /** An unsettled mergeability past its bound is the seat's to hear about, never an owner gate, while land keeps re-reading. */
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined, checkedBase: () => string | undefined): LandOptions {
-  const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);
+  const options = withReboundProof(shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase), run.target, verdictFor, checkedBase);
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
   const atHead = { ownerBriefAt: (headSha: string) => ownerBriefAt(verdictFor(headSha), headSha), ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };

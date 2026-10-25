@@ -528,6 +528,15 @@ describe("fix-proof workflow", () => {
     expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
   });
 
+  it("runs again on a same-head retarget, skips every job on any other edit, and gives that edit its own concurrency group", () => {
+    const baseEditOnly = "(github.event.action != 'edited' || github.event.changes.base)";
+    const guarded = Object.entries(workflow.jobs).filter(([, job]) => String(job.if ?? "").includes(baseEditOnly));
+
+    expect(workflow.on.pull_request.types).toContain("edited");
+    expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
+    expect(workflow.concurrency.group).toMatch(/^\$\{\{ github\.event\.action == 'edited' && !github\.event\.changes\.base && format\('fix-proof-edit-\{0\}', github\.run_id\)/);
+  });
+
   it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
     const caches = (job) => job.steps.some((step) => Object.keys(step.with ?? {}).some((key) => /cache/.test(key)) || /cache/.test(step.uses ?? ""));
 
@@ -557,7 +566,7 @@ describe("fix-proof workflow", () => {
 
   it("the judge job has no cache and installs only from the runner tree", () => {
     expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
-    expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}");
+    expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base) }}");
     expect(judge.steps.some((step) => step.with !== undefined && "cache" in step.with)).toBe(false);
     expect(judge.steps.every((step) => step["working-directory"] === undefined || step["working-directory"] === "runner")).toBe(true);
     const setup = judge.steps.filter((step) => /^(pnpm\/action-setup|actions\/setup-node)@/.test(step.uses ?? ""));

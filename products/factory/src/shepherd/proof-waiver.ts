@@ -3,7 +3,8 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { fixProofRoute, fixProofStanding, fixProofVerdict, type FixProofReadSchema } from "./fix-proof.js";
+import { fixProofRoute, fixProofStanding, fixProofVerdict, standingReasonOf, type FixProofReadSchema } from "./fix-proof.js";
+import { REBOUND_PROOF_STEP, reboundProofRoute } from "./rebound-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ProofStanding } from "./take-verdict.js";
 
@@ -13,6 +14,7 @@ const PROOF_WAIVER_STEP = "sh-fix-proof-waived";
 export const PROOF_WAIVER_STEPS: readonly StepDeclaration[] = [
   { id: WAIVE_PROOF_STEP, kind: "dispatch" },
   { id: PROOF_WAIVER_STEP, kind: "dispatch" },
+  { id: REBOUND_PROOF_STEP, kind: "dispatch" },
 ];
 
 const PROOF_WAIVER_DDL = `
@@ -56,6 +58,7 @@ export const fixProofRoutes = (deps: ShepherdDeps): StepRoute[] => [
     const { runId, head } = WaiverInput.parse(raw);
     return { waived: deps.store.get().proofWaivers().waivedAt(runId, head) };
   }),
+  reboundProofRoute(deps),
 ];
 
 /** Records the owner's waiver of `head`'s fix-proof for this run. */
@@ -82,5 +85,6 @@ export async function proofStandingAt(ctx: WorkflowContext, head: string, proof:
   const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
   const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
   if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
-  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {} };
+  const reason = standingReasonOf(proof);
+  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(reason !== undefined && { reason }) } : {} };
 }

@@ -34,7 +34,7 @@ describe("shepherd phase step families", () => {
   });
 
   it("pins every review-phase step, sh-fix-proof through sh-scope-check, to review.ts, declared and routed there", () => {
-    const ids = ["sh-fix-proof", "sh-fix-proof-waive", "sh-fix-proof-waived", "sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-seat-recheck", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request", "sh-review-stop", "sh-ci-unread", "sh-review-panel", "sh-no-reviewer-hold", "sh-no-reviewer-wait", "sh-scope-check"];
+    const ids = ["sh-fix-proof", "sh-fix-proof-waive", "sh-fix-proof-waived", "sh-fix-proof-rebound", "sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-seat-recheck", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request", "sh-review-stop", "sh-ci-unread", "sh-review-panel", "sh-no-reviewer-hold", "sh-no-reviewer-wait", "sh-scope-check"];
     expect(REVIEW_STEPS.map((step) => step.id)).toEqual(ids);
     expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids.filter((id) => id !== "sh-merge-evidence-gate"));
     expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");

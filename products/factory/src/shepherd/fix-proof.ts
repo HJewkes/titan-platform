@@ -22,13 +22,13 @@ const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "f
  * Above the four-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
  */
-const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
+export const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
 /**
  * A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it, or the head opted out
  * with `[skip ci]`. In a repo whose base runs fix-proof, the grace ends in `error`, not `missing`.
  */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
-const LOG_TAIL_LINES = 200;
+export const LOG_TAIL_LINES = 200;
 const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
@@ -90,8 +90,12 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
   }
 }
 
-/** Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. */
-const isFixProofRun = (head: string) => (run: CheckRun) => run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head;
+/**
+ * Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. So is a skipped
+ * judge: an `edited` event that changes no base skips every job, and that run printed no line.
+ */
+export const isFixProofRun = (head: string) => (run: CheckRun) =>
+  run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head && run.conclusion !== "skipped";
 
 const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
   runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
@@ -311,6 +315,14 @@ export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head:
   const parsed = typeof read.line === "string" ? parseResultLine(read.line) : undefined;
   if (!parsed?.ok || parsed.result.head !== head) return { unverified: "unread" };
   return parsed.result.verdict === "error" ? { unverified: "error" } : undefined;
+}
+
+/** Why the read proves nothing as the step recorded it, or an error line's own message, so a refusal names its base (TP-4259). */
+export function standingReasonOf(read: z.infer<typeof FixProofReadSchema>): string | undefined {
+  if (typeof read.reason === "string") return read.reason;
+  if (read.kind !== "result" || typeof read.line !== "string") return undefined;
+  const parsed = parseResultLine(read.line);
+  return parsed.ok && parsed.result.verdict === "error" ? parsed.result.error : undefined;
 }
 
 /** A workflow-only diff that CI proved names its two commits to the reviewer; any other read adds nothing. */

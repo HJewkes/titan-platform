@@ -65,6 +65,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-review-panel": `${RECORD}: the panel's aggregate verdict`,
   "sh-fix-proof-waive": `${WRITE}: stores the owner's fix-proof waiver for a head`,
   "sh-fix-proof-waived": `${RECORD}: whether the owner waived a head's fix-proof`,
+  "sh-fix-proof-rebound": `${READ}: waits for a fix-proof line at a retargeted head`,
   "sh-no-reviewer-hold": `${WRITE}: holds the run and alerts when no reviewer is wired`,
   "sh-no-reviewer-wait": `${READ}: waits for the no-reviewer hold to release`,
   "sh-no-verdict-diagnosis": `${WRITE}: spawns the planner that diagnoses review rounds with no verdict; a planner already on the roster is not spawned again`,

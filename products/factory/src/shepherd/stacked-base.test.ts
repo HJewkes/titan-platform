@@ -1,4 +1,5 @@
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import type { StepRoute } from "@titan-design/workflow";
@@ -7,7 +8,9 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import { FIX_PROOF_CHECK } from "./fix-proof.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
+import { REBOUND_PROOF_STEP } from "./rebound-proof.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -23,10 +26,11 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** `afterReview` runs once the MERGE verdict and its evidence are recorded, standing in for GitHub retargeting the PR then. */
-const phasesFor = (afterReview: () => void): ShepherdPhases => ({
+const phasesFor = (afterReview: () => void, proofUnverified?: string): ShepherdPhases => ({
   wake: async () => ({ kind: "unhandled", reason: "no agent in this test" }),
   review: async (ctx, request: ReviewRequest) => {
-    const verdict = await mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
+    const proof = proofUnverified === undefined ? {} : { proofUnverified };
+    const verdict = await mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"], ...proof });
     afterReview();
     return verdict;
   },
@@ -38,6 +42,9 @@ interface World {
   runId: string;
   /** The base of the PR at each merge the fake took. */
   mergedInto: string[];
+  /** fix-proof judge runs at H1, served beside the required checks on every read. */
+  proofRuns: CheckRun[];
+  serveRuns: () => void;
 }
 
 /** Every merge-evidence read sees the PR on `base`, standing in for GitHub retargeting it there and back during each read. */
@@ -65,12 +72,14 @@ function evidenceReadOn(fake: FakeGitHub, base: string): (route: StepRoute) => S
 }
 
 /** A PR on `base`, reviewed MERGE at H1, whose checks are green; the stacked parent branch protects nothing, main requires `validate`. */
-function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGitHub) => void = () => undefined, evidenceBase?: string): World {
+function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGitHub) => void = () => undefined, evidenceBase?: string, proofUnverified?: string): World {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, baseRef: base, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+  const proofRuns: CheckRun[] = [];
+  const serveRuns = () => fake.setRuns(H1, [successRun("validate", 1), successRun("dag-check", 2), ...proofRuns]);
   fake.onGetPr = (pr) => {
-    fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    serveRuns();
     fake.rules.contexts = pr.baseRef === "main" ? ["validate"] : [];
   };
   const mergedInto: string[] = [];
@@ -89,12 +98,30 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
     mergeTree: async () => "clean",
   });
   const routes = Object.assign(given.map(wrap), { database: given.database, shepherd: given.shepherd });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phasesFor(() => afterReview(fake)))], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phasesFor(() => afterReview(fake), proofUnverified))], routes, gatePollMs: 5 });
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy });
-  return { fake, host, runId, mergedInto };
+  return { fake, host, runId, mergedInto, proofRuns, serveRuns };
 }
+
+const REFUSAL = `fix-proof runs only against the default branch: base ${PARENT} is not main`;
+const REFUSED_JOB = 70;
+const MAIN_JOB = 71;
+
+function proofLine(verdict: FixProofResult["verdict"], error?: string): string {
+  const counts = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
+  return formatResultLine({ head: H1, mergeBase: fakeSha("stack-merge-base"), verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(error !== undefined && { error }) });
+}
+
+/** A judge run at H1 that printed `line`; GitHub lists the PR on its live base, so even the refused run reads as on main. */
+function judged({ fake, proofRuns, serveRuns }: World, id: number, line: string): void {
+  proofRuns.push({ ...successRun(FIX_PROOF_CHECK, id), headSha: H1, pullRequests: [{ number: 1, baseRef: "main" }] });
+  fake.jobLogs.set(id, line);
+  serveRuns();
+}
+
+const reboundReads = (w: World) => Object.values(w.host.runtime.status(w.runId)!.stepResults).filter((result) => result.stepId.startsWith(`${REBOUND_PROOF_STEP}:`));
 
 const stepIds = ({ host, runId }: World): string[] => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
 const mergePolicies = (w: World) => Object.values(w.host.runtime.status(w.runId)!.stepResults).filter((result) => result.stepId.startsWith("merge-policy"));
@@ -151,6 +178,58 @@ describe("a stacked PR whose MERGE evidence was read on the parent branch", () =
     expect(pendingGate(w)).toBeUndefined();
     expect(w.fake.effects.merge).toBe(0);
     expect(w.mergedInto).toEqual([]);
+  });
+});
+
+describe("a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259)", () => {
+  const refused = (policy: EffectivePolicy = AUTO): World => {
+    const w = world(PARENT, policy, undefined, undefined, `error (${REFUSAL})`);
+    judged(w, REFUSED_JOB, proofLine("error", REFUSAL));
+    return w;
+  };
+
+  it("merges nothing into main on the panel's MERGE until a main-bound fix-proof line at the head is read", async () => {
+    const w = refused();
+    let mergesAtRefusedRead: number | undefined;
+    const getJobLog = w.fake.wire.getJobLog;
+    w.fake.wire.getJobLog = async (repo, jobId) => {
+      if (jobId === REFUSED_JOB && mergesAtRefusedRead === undefined) {
+        mergesAtRefusedRead = w.fake.effects.merge;
+        judged(w, MAIN_JOB, proofLine("reproduced"));
+      }
+      return getJobLog(repo, jobId);
+    };
+    await waitingForRetarget(w);
+
+    w.fake.pr(1).baseRef = "main";
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
+
+    expect(mergesAtRefusedRead).toBe(0);
+    expect(w.mergedInto).toEqual(["main"]);
+    expect(reboundReads(w).map((read) => read.data)).toMatchObject([{ result: { bound: true, line: proofLine("reproduced") } }]);
+  });
+
+  it("asks the owner instead of merging when only the refused line stands at the head", async () => {
+    const w = refused();
+    await waitingForRetarget(w);
+
+    w.fake.pr(1).baseRef = "main";
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain("no fix-proof line against main has been read at this head");
+    const reads = reboundReads(w);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((read) => (read.data as { result?: { bound?: boolean } }).result?.bound === false)).toBe(true);
+  });
+
+  it("reads nothing again on a seat that decides on the parent branch the proof was refused on", async () => {
+    const w = refused({ ...AUTO, featureBase: true });
+
+    await vi.waitFor(() => expect(mergePolicies(w).length).toBeGreaterThan(0));
+
+    expect(reboundReads(w)).toEqual([]);
+    expect(JSON.stringify(mergePolicies(w)[0]!.data)).not.toContain("no fix-proof line against");
   });
 });
 
