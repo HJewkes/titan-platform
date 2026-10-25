@@ -33,6 +33,9 @@ describe("a $( ) in a subscript whose ) a case pattern or heredoc body holds", (
     ["a heredoc body", "( ((1)); a[ $(cat <<E\n)\nE\n: ] ) # ]=1; git push origin HEAD:main )"],
     ["a case pattern one $( down", "declare -A a; ((1)); a[ $(echo $(case x in x) esac) : ] ) # ]=1; git push origin HEAD:main"],
     ["a case pattern, ahead of gh pr merge", "( ((1)); a[ $(case x in x) esac | : ] ) # ]=1; gh pr merge 1 )"],
+    ["a case word split after ca by a line continuation", "( ((1)); a[ $(ca\\\nse x in x) esac | : ] ) # ]=1; git push origin HEAD:main )"],
+    ["a case word split after cas by a line continuation", "( ((1)); a[ $(cas\\\ne x in x) esac | : ] ) # ]=1; git push origin HEAD:main )"],
+    ["a heredoc opener split by a line continuation", "( ((1)); a[ $(cat <\\\n<E\n)\nE\n: ] ) # ]=1; git push origin HEAD:main )"],
   ])("denies %s", async (_name, command) => {
     expect(await decisionOf(command)).toBe("deny");
   });

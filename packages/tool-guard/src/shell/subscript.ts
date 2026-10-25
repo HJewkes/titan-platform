@@ -257,16 +257,17 @@ function closingSubstitution(src: string, from: number, open: string, close: str
 /**
  * Whether the unquoted text at `k` of a `$( )` body starting at `from` may hide or fake its `)`: a `#` opening a
  * comment, a `case` word whose pattern `)` closes nothing, or a heredoc opener whose body may hold a `)`. A `<<` in
- * `$(( ))` is a shift.
+ * `$(( ))` is a shift. Bash drops backslash-newlines before it reads a word, so `ca\⏎se` and `<\⏎<` are read joined.
  */
 function movesParenClose(src: string, k: number, from: number): boolean {
   if (src[k] === "#") return true;
-  if (src.startsWith("<<", k)) return src[from] !== "(";
-  return isCaseWord(src, k);
+  if (src[k] === "<") return readAhead(src, k, 2).text === "<<" && src[from] !== "(";
+  return src[k] === "c" && isCaseWord(src, k);
 }
 
 function isCaseWord(src: string, k: number): boolean {
-  return src.startsWith("case", k) && !IDENTIFIER_PART.test(src[k - 1] ?? "") && !IDENTIFIER_PART.test(src[k + 4] ?? "");
+  const { text } = readAhead(src, k, 5);
+  return text.startsWith("case") && !IDENTIFIER_PART.test(src[k - 1] ?? "") && !IDENTIFIER_PART.test(text[4] ?? "");
 }
 
 /** Index of the next unescaped `quote` from `from`; -1 when there is none. */

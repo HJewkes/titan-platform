@@ -4,41 +4,49 @@
     {
       "name": "a case word in a $( ) body is read as plain text",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": "  return isCaseWord(src, k);\n}",
-      "replace": "  return false;\n}",
+      "find": "  return src[k] === \"c\" && isCaseWord(src, k);",
+      "replace": "  return false;",
       "kills": [
         "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case pattern, inside a subshell",
         "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case pattern, with no subshell",
         "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case pattern one $( down",
-        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case pattern, ahead of gh pr merge"
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case pattern, ahead of gh pr merge",
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case word split after ca by a line continuation",
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case word split after cas by a line continuation"
       ]
     },
     {
-      "name": "a heredoc opener in a $( ) body is read as plain text",
+      "name": "a case word is matched on raw text, line continuations kept",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": "  if (src.startsWith(\"<<\", k)) return src[from] !== \"(\";",
-      "replace": "",
-      "kills": ["a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a heredoc body"]
+      "find": "  const { text } = readAhead(src, k, 5);",
+      "replace": "  const text = src.slice(k, k + 5);",
+      "kills": [
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case word split after ca by a line continuation",
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a case word split after cas by a line continuation"
+      ]
     },
     {
-      "name": "a << inside $(( )) is read as a heredoc opener",
+      "name": "a raw << anywhere in a $( ) body is read as a heredoc opener",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": "  if (src.startsWith(\"<<\", k)) return src[from] !== \"(\";",
+      "find": "  if (src[k] === \"<\") return readAhead(src, k, 2).text === \"<<\" && src[from] !== \"(\";",
       "replace": "  if (src.startsWith(\"<<\", k)) return true;",
-      "kills": ["a $( ) in a subscript whose ) a case pattern or heredoc body holds passes a shift inside $(( ))"]
+      "kills": [
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds denies a heredoc opener split by a line continuation",
+        "a $( ) in a subscript whose ) a case pattern or heredoc body holds passes a shift inside $(( ))"
+      ]
     },
     {
       "name": "a case word needs no boundary before it",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": "  return src.startsWith(\"case\", k) && !IDENTIFIER_PART.test(src[k - 1] ?? \"\") && ",
-      "replace": "  return src.startsWith(\"case\", k) && ",
+      "find": " && !IDENTIFIER_PART.test(src[k - 1] ?? \"\")",
+      "replace": "",
       "kills": ["a $( ) in a subscript whose ) a case pattern or heredoc body holds passes a word ending in case"]
     },
     {
       "name": "a case word needs no boundary after it",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": " && !IDENTIFIER_PART.test(src[k + 4] ?? \"\");",
-      "replace": ";",
+      "find": " && !IDENTIFIER_PART.test(text[4] ?? \"\")",
+      "replace": "",
       "kills": ["a $( ) in a subscript whose ) a case pattern or heredoc body holds passes a word starting with case"]
     }
   ]
