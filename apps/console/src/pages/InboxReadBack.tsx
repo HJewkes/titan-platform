@@ -10,6 +10,9 @@ type OpReadBack = Extract<RepoReadBack, { proposal: string }>;
 type AgentReadBack = Extract<InboxReady["readBack"], { agent: string }>;
 /** A deploy-pause-clear's read-back: the failure pause it clears, and no PR. */
 type PauseReadBack = Extract<InboxReady["readBack"], { pausedAt: string }>;
+/** An agent's permission prompt or endorsement, read back from the broker's own queue row. */
+type PermissionReadBack = Extract<InboxReady["readBack"], { kind: "permission" }>;
+type EndorseReadBack = Extract<InboxReady["readBack"], { kind: "endorse" }>;
 
 const secondsSince = (at: string, now: number = Date.now()): number => Math.max(0, Math.round((now - Date.parse(at)) / 1000));
 
@@ -30,6 +33,7 @@ function ReadBackFacts({ prepared }: { prepared: InboxReady }): ReactNode {
   if ("repo" in readBack) return <PrFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("agent" in readBack) return <AgentFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("pausedAt" in readBack) return <PauseFacts readBack={readBack} readAt={prepared.readAt} />;
+  if ("kind" in readBack) return readBack.kind === "permission" ? <PermissionFacts readBack={readBack} /> : <EndorseFacts readBack={readBack} />;
   return (
     <>
       <Typography variant="body2">{readBack.title}</Typography>
@@ -84,6 +88,34 @@ function AgentFacts({ readBack, readAt }: { readBack: AgentReadBack; readAt: str
       <Typography variant="mono">{`cwd ${readBack.cwd}, read ${secondsSince(readAt)} s ago`}</Typography>
       <Typography variant="caption" color="secondary">{`Authority ${readBack.authority}`}</Typography>
       <Proposal readBack={readBack} />
+    </>
+  );
+}
+
+/** The tool and its input as the broker's row holds them; the description is the asking agent's own words. */
+function PermissionFacts({ readBack }: { readBack: PermissionReadBack }): ReactNode {
+  return (
+    <>
+      <Typography variant="body2" testID="inbox-readback-tool">{`Tool: ${readBack.tool}`}</Typography>
+      <pre className="max-h-64 overflow-auto rounded bg-surface-raised p-2 font-mono text-sm" data-testid="inbox-readback-input">
+        {readBack.inputPreview}
+      </pre>
+      <Typography variant="caption" color="secondary" testID="inbox-readback-description">{`${readBack.asker ?? "The agent"} says: ${readBack.description}`}</Typography>
+    </>
+  );
+}
+
+const EDGE_WHITESPACE = /^\s|\s$/;
+
+/** The bytes Endorse delivers, whitespace kept, since the broker refuses any text but the stored one. */
+function EndorseFacts({ readBack }: { readBack: EndorseReadBack }): ReactNode {
+  return (
+    <>
+      <Typography variant="body2" testID="inbox-readback-recipient">{`To ${readBack.to}`}</Typography>
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-surface-raised p-2 font-mono text-sm" data-testid="inbox-readback-text">
+        {readBack.text}
+      </pre>
+      {EDGE_WHITESPACE.test(readBack.text) ? <Typography variant="caption" color="secondary">Starts or ends with whitespace, delivered as is</Typography> : null}
     </>
   );
 }

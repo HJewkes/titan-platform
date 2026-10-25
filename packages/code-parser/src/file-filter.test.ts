@@ -73,6 +73,13 @@ describe("isExcludedDir", () => {
     }
   });
 
+  it("prunes Python virtualenv and tool-cache directories", () => {
+    for (const d of [".venv", "venv", "__pycache__", ".pytest_cache", ".tox"]) {
+      expect(isExcludedDir(d)).toBe(true);
+      expect(shouldIncludeFile(`${d}/lib/dep.py`, ["python"])).toBe(false);
+    }
+  });
+
   it("does not prune ordinary source directories", () => {
     for (const d of ["src", "packages", "lib", "server", "node_modules_helper"]) {
       expect(isExcludedDir(d)).toBe(false);

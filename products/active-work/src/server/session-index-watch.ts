@@ -108,9 +108,12 @@ function passLogLine(summary: RefreshSummary, maxStallMs: number): object {
     scanned: summary.scanned,
     filesOpened: summary.filesOpened,
     bytesRead: summary.bytesRead,
+    rowsWritten: summary.rowsWritten,
+    dbBytes: summary.dbBytes,
     durationMs: summary.durationMs,
     maxStallMs,
     phases: summary.phases,
+    prsPolled: summary.prsPolled,
     errors: summary.errors.slice(0, LOGGED_ERRORS),
     errorCount: summary.errors.length,
   };

@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a question mark matches a slash",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "token.kind === \"one\" && inSegment",
+      "replace": "token.kind === \"one\"",
+      "kills": [
+        "compileGlobs on hostile globs matches a?c like the backtracking compiler did",
+        "compileGlobs on hostile globs agrees with the backtracking compiler on 300 random globs over every path up to 5 characters"
+      ]
+    },
+    {
+      "name": "a globstar segment may be empty",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "token.kind === \"segments\" && state !== at",
+      "replace": "token.kind === \"segments\"",
+      "kills": [
+        "compileGlobs on hostile globs matches **/**/a like the backtracking compiler did",
+        "compileGlobs on hostile globs agrees with the backtracking compiler on 300 random globs over every path up to 5 characters"
+      ]
+    }
+  ]
+}

@@ -64,6 +64,12 @@ messages) enters its context. Taint is sticky and inherited on spawn. A rule mar
 `spawn` by a coordinator escalates. `private-egress` by a coordinator also carries the
 marker but is already `deny`. A tainted session never resolves a gate.
 
+Callers that record why a session is tainted share one vocabulary. `taintSourceSchema`
+validates a `TaintSource`, `{ kind, ref, at }`: `kind` is one of `TAINT_KINDS` (`web-fetch`,
+`web-search`, `external-tool`, `inbound-message`, `untrusted-item`, `inherited`), `ref` is a
+safe label of 1 to 200 characters such as a host or an item id, never fetched content, and
+`at` is an ISO timestamp. Any other field is refused.
+
 ## The table (version 1.0.0)
 
 51 allow, 6 gate and 67 deny rows: one unconditional row per pair, plus the five conditional

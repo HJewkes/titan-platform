@@ -234,14 +234,7 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
   const check = await allowedBase(ctx, input, ci, state, options);
   if (check === undefined) return undefined;
-  const mergeInput = {
-    repo: input.repo,
-    pr: input.pr,
-    sha: ci.headSha,
-    method: input.method ?? "squash",
-    taskIds: input.taskIds ?? [],
-    base: check.base,
-  };
+  const mergeInput = { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base: check.base };
   const merge = await step(ctx, roundId("merge", state.round, state.merges++), mergeInput, MergeResultResult);
   return afterMerge(merge, ci, check, state);
 }
@@ -319,12 +312,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   if (decided.outcome === "deny") return stopped("merge-denied", ci.headSha, decided.reason);
   if (decided.outcome === "allow") return void trust(state, ci.headSha, "policy", base);
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) =>
-    step(
-      ctx,
-      roundId("merge-settle", state.round, state.settles++),
-      { repo: input.repo, baseRef: state.rules.base, ...wait },
-      SettleResult,
-    );
+    step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = gatedOnRecord(ctx) ? decided : await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);

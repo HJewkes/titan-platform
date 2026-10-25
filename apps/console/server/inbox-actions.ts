@@ -11,10 +11,13 @@
  * preamble naming the chat msg and asking for a durable outcome on it. A g10
  * `hold-release` tap reads back the verdicts Shepherd recorded (`g10-hold.ts`) and calls `shepherd.release` itself.
  *
+ * An `approve-chat` tap (an agent's permission prompt or endorsement) reads back the broker's own queue row and posts a verdict
+ * through `brokerVerdicter` (`inbox-approve-chat.ts`).
+ *
  * An `owner-op` tap (a deposit's typed op on `CONSOLE_OPS`) reads its read-back from the factory's `owner-op.preview`
  * (`inbox-op.ts`) and writes a record naming the `op`, never an `action`, so the factory reads it as an op record.
  *
- * The inbox acts on `resolve-gate`, `owner-release`, `owner-op`, `answer-chat` and a g10 `hold-release`; every other action
+ * The inbox acts on `resolve-gate`, `owner-release`, `owner-op`, `answer-chat`, `approve-chat` and a g10 `hold-release`; every other action
  * has no console action.
  */
 import { z } from "zod";
@@ -23,6 +26,8 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import type { DecisionItem, DecisionLog, DecisionLogResult } from "./decision-log.js";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
+import type { BrokerVerdicter, VerdictOutcome } from "./broker-verdict.js";
+import { APPROVE_AT_SESSION, approveChatReadBackOf, dispatchVerdict, verdictFor, isApproveChatReadBack, verdictMessageOf, VERDICTS, type ApproveChatAction, type ApproveChatReadBack } from "./inbox-approve-chat.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { nextStateOf, type NextState } from "./inbox-next.js";
 import { opReadBackOf, postedOp, type MergeWait, type OpAction, type OpReadBack } from "./inbox-op.js";
@@ -37,12 +42,13 @@ const MAX_ANSWER = 8000;
 const CHANGED = "the item changed since it was read; read it again before confirming";
 const DECISION = z.enum(CONSOLE_DECISION_IDS).optional();
 const WAIT_FOR = z.enum(MERGE_WAITS).optional();
+const VERDICT = z.enum(VERDICTS).optional();
 
 type InboxAction = InboxItem["action"];
 type PostedAction = Extract<InboxAction, { kind: "resolve-gate" | "owner-release" }>;
 type ChatAction = Extract<InboxAction, { kind: "answer-chat" }>;
-type ConsoleAction = PostedAction | ChatAction | G10Action | OpAction;
-type Outcome = ActionOutcome | Unreachable | AnswerOutcome;
+type ConsoleAction = PostedAction | ChatAction | ApproveChatAction | G10Action | OpAction;
+type Outcome = ActionOutcome | Unreachable | AnswerOutcome | VerdictOutcome;
 
 export interface InboxActionOptions {
   /** `TITAN_CONSOLE_INBOX_ACTIONS`; off, both commands answer `inbox actions are off`. */
@@ -52,6 +58,8 @@ export interface InboxActionOptions {
   client: OwnerActionClient;
   /** The broker's answer route; absent, an `answer-chat` item has no console action. */
   answerer?: BrokerAnswerer;
+  /** The broker's verdict routes; absent, or with no broker reader, an `approve-chat` item has no console action. */
+  verdicter?: BrokerVerdicter;
   decisionLog?: DecisionLog;
   now?: () => number;
 }
@@ -78,7 +86,7 @@ type ChatReadBack = {
 
 type G10ReadBack = Omit<PrReadBack, "gateId"> & G10Signal;
 
-type ReadBack = PrReadBack | G10ReadBack | ChatReadBack | OpReadBack;
+type ReadBack = PrReadBack | G10ReadBack | ChatReadBack | ApproveChatReadBack | OpReadBack;
 
 export type PrepareResult =
   | { status: "ready"; itemId: string; action: ConsoleAction; readBack: ReadBack; readAt: string; confirm: string; expiresAt: string }
@@ -96,7 +104,8 @@ type ActResult = {
 
 const isPostedAction = (action: InboxAction): action is PostedAction | OpAction => action.kind === "resolve-gate" || action.kind === "owner-release" || action.kind === "owner-op";
 
-const isConsoleAction = (action: InboxAction, answerer: BrokerAnswerer | undefined): action is ConsoleAction => isPostedAction(action) || isG10Release(action) || (action.kind === "answer-chat" && answerer !== undefined);
+const isConsoleAction = (action: InboxAction, { answerer, verdicter }: InboxActionOptions, sources: InboxSources): action is ConsoleAction =>
+  isPostedAction(action) || isG10Release(action) || (action.kind === "answer-chat" && answerer !== undefined) || (action.kind === "approve-chat" && verdicter !== undefined && sources.agents !== undefined);
 
 const short = (sha: string | null): string => (sha === null ? "an unknown head" : sha.slice(0, 7));
 
@@ -118,6 +127,7 @@ const prBaseOf = (item: InboxItem, action: PostedAction | G10Action) => ({ repo:
 async function readBackOf(sources: InboxSources, item: InboxItem, action: ConsoleAction, waitFor?: MergeWait): Promise<ReadBack | string> {
   if (waitFor !== undefined && action.kind !== "owner-op") return "only a merge-at-head tap waits for the adversary loop";
   if (action.kind === "answer-chat") return chatReadBackOf(item, action);
+  if (action.kind === "approve-chat") return approveChatReadBackOf(sources.agents, action);
   if (action.kind === "owner-op") return opReadBackOf(sources.shepherd, item, action, waitFor);
   if (action.kind === "hold-release") return { ...prBaseOf(item, action), ...g10Signal((await sources.shepherd.timeline(action.repo, action.pr)).entries, action) };
   const at = `${action.repo}#${action.pr} at ${short(action.headSha)}`;
@@ -152,6 +162,7 @@ function postedAction(action: Exclude<ConsoleAction, OpAction>): Exclude<Console
 
 function noActionReason(action: InboxAction): string {
   if (action.kind === "terminal") return action.reason;
+  if (action.kind === "approve-chat") return APPROVE_AT_SESSION;
   if (action.kind === "hold-release") return `a ${action.holdClass} hold is released by its seat, not from the inbox`;
   return `a ${action.kind} item is not acted on from the inbox yet`;
 }
@@ -166,7 +177,7 @@ async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, 
   const { item, readAt } = await liveItem(ctx.sources, itemId);
   const action = chosenAction(item.action, decision);
   if (action === undefined) return { status: "no-action", itemId, action: item.action, reason: `this item offers no ${decision} tap` };
-  if (!isConsoleAction(action, ctx.options.answerer)) return { status: "no-action", itemId, action, reason: noActionReason(action) };
+  if (!isConsoleAction(action, ctx.options, ctx.sources)) return { status: "no-action", itemId, action, reason: noActionReason(action) };
   const readBack = await readBackOf(ctx.sources, item, action, waitFor);
   if (typeof readBack === "string") return { status: "no-action", itemId, action, reason: readBack };
   const confirm = itemDigest(item, action, readAt, readBack);
@@ -192,18 +203,19 @@ interface ActContext {
 async function writeItemRecord(ctx: ActContext, file: string, tap: Tap, prepared: Prepared): Promise<void> {
   const { item } = await liveItem(ctx.sources, prepared.key);
   const action = chosenAction(item.action, tap.decision);
-  if (action === undefined || !isConsoleAction(action, ctx.options.answerer)) return refuse(CHANGED);
+  if (action === undefined || !isConsoleAction(action, ctx.options, ctx.sources)) return refuse(CHANGED);
   const readBack = await readBackOf(ctx.sources, item, action, tap.waitFor);
   if (typeof readBack === "string" || itemDigest(item, action, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
+  const verdict = verdictFor(action.kind === "approve-chat" && isApproveChatReadBack(readBack) ? readBack : undefined, tap.verdict);
   const target = action.kind === "owner-op" ? ("proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action }) : { action: postedAction(action) };
-  const record = { itemId: item.id, ...target, readBack, ...(text !== undefined && { text }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
+  const record = { itemId: item.id, ...target, readBack, ...(text !== undefined && { text }), ...(verdict !== undefined && { verdict }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
   await writeRecord(ctx.options.actionsDir, file, record);
 }
 
 /** An op record carries no `action`, which is how the factory tells the two apart; it is tried first for that reason. */
 const opRecord = z.looseObject({ op: ownerOpSchema, action: z.never().optional(), item: z.custom<DecisionItem>() });
-const actionRecord = z.looseObject({ action: z.custom<Exclude<ConsoleAction, OpAction>>((value) => typeof value === "object" && value !== null), item: z.custom<DecisionItem>(), text: z.string().optional() });
+const actionRecord = z.looseObject({ action: z.custom<Exclude<ConsoleAction, OpAction>>((value) => typeof value === "object" && value !== null), item: z.custom<DecisionItem>(), text: z.string().optional(), verdict: VERDICT });
 const recordFile = z.union([opRecord, actionRecord]);
 
 type OpRecord = z.infer<typeof opRecord>;
@@ -251,6 +263,7 @@ function movedMessage(outcome: Extract<Outcome, { status: "moved" }>): string {
 }
 
 function messageOf(outcome: Outcome, record: ActionRecord): string {
+  if (!isOpRecord(record) && record.action.kind === "approve-chat") return verdictMessageOf(outcome, record, record.action.msgId);
   switch (outcome.status) {
     case "answered":
       return "Answer sent";
@@ -273,7 +286,7 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "gone":
       return `Nothing to act on: ${outcome.reason}`;
     case "refused":
-      return `Refused (${outcome.reason})${outcome.detail === undefined ? "" : `: ${outcome.detail}`}`;
+      return `Refused (${outcome.reason})${"detail" in outcome && outcome.detail !== undefined ? `: ${outcome.detail}` : ""}`;
     case "off":
       return "The factory's console-action route is not mounted; run the item's command on the terminal";
     case "unreachable":
@@ -291,7 +304,8 @@ async function settle(ctx: ActContext, file: string, record: ActionRecord, outco
 
 function answerTextOf(record: ActionRecord): string {
   if (isOpRecord(record)) return record.op.kind;
-  const { action, text } = record;
+  const { action, text, verdict } = record;
+  if (action.kind === "approve-chat") return verdict ?? "";
   return action.kind === "answer-chat" ? (text ?? "") : action.kind === "resolve-gate" ? action.decision : "release";
 }
 
@@ -302,11 +316,16 @@ async function releaseOnce(ctx: ActContext, file: string, confirm: string, actio
   return releaseG10(ctx.sources.shepherd, action, confirm);
 }
 
-/** A replay posts what the record says, so an answer goes out with the words first written, whatever a later tap carries. */
-function dispatch(ctx: ActContext, file: string, confirm: string, record: ActionRecord): Promise<Outcome> {
+/**
+ * A replay posts what the record says, so an answer goes out with the words first written, whatever a later tap carries. A
+ * verdict tap is the exception: one whose choice differs from the record is refused, not posted as the first choice.
+ */
+function dispatch(ctx: ActContext, file: string, tap: Tap, record: ActionRecord): Promise<Outcome> {
+  const { confirm } = tap;
   if (isOpRecord(record)) return ctx.options.client.post(confirm);
   const { action } = record;
   if (action.kind === "hold-release") return releaseOnce(ctx, file, confirm, action);
+  if (action.kind === "approve-chat") return dispatchVerdict(ctx.options.verdicter, file, record, tap);
   if (action.kind !== "answer-chat") return ctx.options.client.post(confirm);
   const { answerer } = ctx.options;
   if (answerer === undefined || record.text === undefined) return Promise.resolve({ status: "unreachable", detail: "the broker answerer is not wired" });
@@ -328,13 +347,15 @@ interface Choice {
 interface Tap extends Choice {
   confirm: string;
   text?: string;
+  /** An `approve-chat` tap's answer, checked against its read-back's kind. */
+  verdict?: (typeof VERDICTS)[number];
 }
 
 async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<ActResult> {
   const stale = "the confirmation is unknown or over five minutes old; read the item again";
   const write = (file: string, prepared: Prepared) => writeItemRecord(ctx, file, tap, prepared);
   const { file, record } = await recordOnce({ store, actionsDir: ctx.options.actionsDir, confirm: tap.confirm, key: tap.itemId, stale, schema: recordFile, write });
-  const outcome = await dispatch(ctx, file, tap.confirm, record);
+  const outcome = await dispatch(ctx, file, tap, record);
   const log = await settle(ctx, file, record, outcome);
   const next = await nextAfter(ctx.sources, record, outcome);
   return { actionId: tap.confirm, outcome, message: messageOf(outcome, record), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
@@ -370,8 +391,8 @@ export function inboxActionCommands(sources: InboxSources, options: InboxActionO
     }),
     "inbox.act": ownerWriteCommand({
       name: "inbox.act",
-      description: "Do what a prepared inbox item's read-back said: write its action record once and post it to the factory, an answer to the broker, or a g10 release to Shepherd",
-      args: z.strictObject({ itemId: z.string().min(1).max(512), decision: DECISION, confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional(), waitFor: WAIT_FOR }),
+      description: "Do what a prepared inbox item's read-back said: write its action record once and post it to the factory, an answer or verdict to the broker, or a g10 release to Shepherd",
+      args: z.strictObject({ itemId: z.string().min(1).max(512), decision: DECISION, confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional(), waitFor: WAIT_FOR, verdict: VERDICT }),
       result: z.custom<ActResult>(),
       ownerWrite: true,
       run: (args, ctx) => {

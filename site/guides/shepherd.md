@@ -714,6 +714,9 @@ titan-factory shepherd list --state all        # active (default), finished or a
 titan-factory shepherd timeline owner/repo#123
 titan-factory shepherd timeline owner/repo#123 --last 8 --width 300
 titan-factory shepherd wait owner/repo#123 --until merging,done --timeout 900
+titan-factory shepherd watch owner/repo#123 --on merged,stopped,gated
+titan-factory shepherd watch --list
+titan-factory shepherd unwatch owner/repo#123
 ```
 
 ```
@@ -763,6 +766,21 @@ row's phase is one of `--until`. It exits 1, with the reason on stderr, when the
 (default 900) pass; the timeout message names the last phase seen. An unknown phase in
 `--until` exits 2 before any poll.
 
+`shepherd watch <ref> [--on <events>] [--seat <name>]` replaces a seat's Monitor loop or
+`shepherd wait` run on a registered PR (`products/factory/src/shepherd/watch-list.ts`). It records
+a watch through serve when one answers, else in the database here. `--on` takes `merged`, `stopped`
+and `gated`, all three by default. While the watch stands, those events are prompt-class in the seat
+digest's `shepherd.seatDigest.pacing`: they go out once `settleMs` has passed, not at `flushMs`.
+`--seat` names a seat from the seat book that gets a copy of the run's digest lines, routed to a
+live seat the way digests are; the run's own seat keeps them. The watching seat, the `--seat` one
+or else the run's own, is the one whose digest is paced promptly. `--on` decides only that pacing:
+the watching seat is told the run's end whichever it is, and the watch is dropped once that seat
+knows it, from a digest that carried the end or an earlier one, or at once for a run that ended
+with no outcome to tell. A seat with no digest memory yet is still told. Watches live in the factory database, so they survive a serve restart. A PR Shepherd
+has not registered, one whose run has already finished, or a `--seat` outside the seat book exits
+1 with the reason. `shepherd unwatch <ref>` drops a watch, and
+`shepherd watch --list` prints every watch.
+
 `shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and
 PR, head, task, age in hours and held reason. It builds on the same rows as `status` and writes
 nothing. Gates the owner answers (`approve-merge`, `release`, `one-way`, `failed-rounds`, main-red
@@ -781,10 +799,18 @@ minute old, and concurrent callers share one list read. The PRs Shepherd itself 
 row is `{ repo, number, branch, headSha, base, state, mergedAt, mergeSha, title, body, draft,
 registered, runId?, phase?, ci?, source, at }`. `state` is `open` or `merged`. `source` is
 `snapshot` or `merge-step`, and `at` is when that source was read. `ci` is
-`{ head, state, requiredMissing, at }`, where `state` is `pending`, `green`, `red` or `none`. It
-appears only when the snapshot already holds the head's check runs. A head it holds none for
-leaves `ci` out rather than reading GitHub. `requiredMissing` names the run's required contexts
-that have no check run on the head. A serve wired without a snapshot refuses with exit 69.
+`{ head, state, requiredMissing, checks, statuses?, required?, settled, at }`, where `state` is
+`pending`, `green`, `red` or `none`. It appears only when the snapshot already holds the head's
+check runs. A head it holds none for leaves `ci` out rather than reading GitHub. `head` is the
+commit the checks were read for: when it differs from the row's `headSha`, a push outran the read
+and the checks describe the old head. `requiredMissing` names the run's required contexts that
+have no check run or status on the head. `checks` holds the newest run per name as
+`{ name, status, conclusion, startedAt, completedAt, url, title }`. `statuses` holds the head's
+commit statuses as `{ context, state, targetUrl, description, createdAt, updatedAt }`; the
+snapshot reads them beside the runs, on the same cadence, and leaves the field out when that read
+failed. `required` is the run's land-rules contexts, absent when none were recorded. `settled` says
+the runs that decide the head are complete, so the snapshot reads them again only once per settled
+window. A serve wired without a snapshot refuses with exit 69.
 
 ## Stats {#stats}
 

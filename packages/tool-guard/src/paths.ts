@@ -1,3 +1,4 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { resolveFrom } from "./shell/path.js";
 
 /**
@@ -212,7 +213,7 @@ function globRegExp(glob: string, onFail: RegExp): RegExp {
     i += width;
   }
   try {
-    return new RegExp(`^${src}$`);
+    return new LinearRegExp(`^${src}$`);
   } catch {
     return onFail;
   }

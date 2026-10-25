@@ -17,7 +17,7 @@ import { resetWorkspaceIndex } from '../workspace-index/write.js';
 import { preserveUnreachable, replayPreserved, type ReplaySummary } from './preserve.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
 import { runDeltaPass } from './delta-pass.js';
-import { bytesAdvanced, lapTimer } from './pass-metrics.js';
+import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
 import { restoreUnvisited, retiredSessions, sealedFilter, unvisitedOk } from './retired.js';
 import { rollupUnfinishedTurns } from './unfinished-turns.js';
 import type { DiscoveredTranscript } from '@titan-design/session-read';
@@ -113,6 +113,10 @@ export interface RefreshSummary {
   filesOpened: number;
   /** Bytes the watermarks advanced this pass, counting a rewound file from byte 0. */
   bytesRead: number;
+  /** Rows the pass inserted, updated or deleted, by `total_changes()` (TP-881). */
+  rowsWritten: number;
+  /** The graph file's size when the pass ended, from `page_count * page_size`. */
+  dbBytes: number;
   /** Milliseconds spent in each phase; a full pass names discover, corpus, episodes, workspace and preserve, a delta pass scan, rollup, episodes and workspace. */
   phases: Record<string, number>;
   indexed: number;
@@ -137,6 +141,8 @@ export interface RefreshSummary {
   /** Task ids handed to the resolver, and rows it wrote. */
   tasksRequested: number;
   tasksApplied: number;
+  /** PRs this pass asked `gh` about: only open and never-checked ones (TP-887). */
+  prsPolled: number;
   /** The workspace half of the pass (TP-24); null when skipped. */
   workspace: WorkspaceRefreshSummary | null;
   /** Non-derivable rows put back after the pass (TP-41). */
@@ -309,6 +315,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
         onIndexed: options.onIndexed,
       });
     }
+    const rowsWritten = rowsWrittenCounter(graph.db);
     if (options.full) {
       // Before the reset, never after: a session whose transcripts Claude Code
       // has pruned cannot be re-derived, and `resetIndex` would take it with
@@ -342,6 +349,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     const offsetsBefore = snapshotOffsets(graph);
     phases.discover = lap();
     const prErrors: string[] = [];
+    let prsPolled = 0;
     const summary = await refreshCorpus(graph, visiting, {
       full: options.full,
       verifyHash: verify,
@@ -350,7 +358,13 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       resolveOrigins: agentChatOriginResolver(undefined, options.taskRoot),
       resolvePrs: options.skipPrOutcomes
         ? undefined
-        : ghPrResolver(graph, { run: options.runGh, errors: prErrors }),
+        : ghPrResolver(graph, {
+            run: options.runGh,
+            errors: prErrors,
+            onPolled: (count) => {
+              prsPolled += count;
+            },
+          }),
       facetLimit: options.facetLimit,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
@@ -393,6 +407,8 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       scanned: visiting.length,
       filesOpened: summary.indexed + summary.rewound + summary.quarantined,
       bytesRead: bytesAdvanced(offsetsBefore, snapshotOffsets(graph)),
+      rowsWritten: rowsWritten(),
+      dbBytes: dbBytes(graph.db),
       phases,
       indexed: summary.indexed,
       rewound: summary.rewound,
@@ -407,6 +423,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       turnsRolledUp: summary.turnsRolledUp + resumedTurns,
       tasksRequested: summary.tasks.requested,
       tasksApplied: summary.tasks.applied,
+      prsPolled,
       workspace,
       preserved,
       errors: [

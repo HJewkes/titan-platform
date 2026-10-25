@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the full pass opts back in to tool spans and context blocks",
+      "file": "products/active-work/src/session-index/refresh.ts",
+      "find": "      facetLimit: options.facetLimit,\n",
+      "replace": "      facetLimit: options.facetLimit,\n      indexToolSpans: true,\n      contextBlocks: true,\n",
+      "kills": [
+        "runRefresh stores only prompt and reply spans and no context_block rows for a transcript with tool calls"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pass log line drops rowsWritten",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "    rowsWritten: summary.rowsWritten,\n",
+      "replace": "",
+      "kills": [
+        "startSessionIndexWatch with transcripts on disk logs one session index pass line with what the pass opened and read"
+      ]
+    },
+    {
+      "name": "the pass log line drops dbBytes",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "    dbBytes: summary.dbBytes,\n",
+      "replace": "",
+      "kills": [
+        "startSessionIndexWatch with transcripts on disk logs one session index pass line with what the pass opened and read"
+      ]
+    }
+  ]
+}

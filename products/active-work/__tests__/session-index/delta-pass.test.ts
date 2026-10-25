@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, appendFileSync, utimesSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,6 +131,91 @@ describe('delta pass', () => {
     await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
 
     expect(frequency('prompt')).toBeGreaterThan(before);
+  });
+
+  const toolLines = (n: number): string =>
+    [
+      {
+        type: 'assistant',
+        sessionId: `sess-${n}`,
+        uuid: `a-tool-${n}`,
+        timestamp: '2026-01-01T00:00:05.000Z',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: `t${n}`, name: 'Bash', input: { command: 'ls' } }],
+        },
+      },
+      {
+        type: 'user',
+        sessionId: `sess-${n}`,
+        uuid: `u-tool-${n}`,
+        timestamp: '2026-01-01T00:00:06.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: `t${n}`, content: 'listing output' }],
+        },
+      },
+    ]
+      .map((line) => `${JSON.stringify(line)}\n`)
+      .join('');
+
+  const storedFields = (): string[] =>
+    (
+      graph.db.prepare('SELECT DISTINCT field FROM search_span ORDER BY field').all() as {
+        field: string;
+      }[]
+    ).map((row) => row.field);
+
+  const contextBlocks = (): number =>
+    (graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number }).n;
+
+  it('stores no tool span or context block for bytes a delta pass indexes', async () => {
+    writeTranscript(1);
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    appendFileSync(path.join(root, 'demo', 's1.jsonl'), toolLines(1), 'utf8');
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s1.jsonl');
+    const transcripts = await transcriptsFromDirty(graph, dirty.drain(), [
+      { root, account: 'default' },
+    ]);
+
+    const summary = await runRefresh({
+      graph,
+      mode: 'delta',
+      transcripts,
+      skipWorkspace: true,
+      taskRoot: dir,
+    });
+
+    expect(summary.indexed).toBe(1);
+    expect(storedFields()).toEqual(['prompt']);
+    expect(contextBlocks()).toBe(0);
+  });
+
+  it('reports the rows each pass wrote and the database size it left', async () => {
+    writeTranscript(1);
+    const full = await runRefresh({
+      graph,
+      root,
+      skipPrOutcomes: true,
+      skipWorkspace: true,
+      taskRoot: dir,
+    });
+    const spans = (graph.db.prepare('SELECT COUNT(*) AS n FROM search_span').get() as { n: number })
+      .n;
+    appendFileSync(path.join(root, 'demo', 's1.jsonl'), userLine(1, 'a later prompt'), 'utf8');
+    const transcripts = await discoverTranscripts(root);
+
+    const delta = await runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir });
+    // Folded into the main file, its size is exactly the pages the pass counts.
+    graph.db.pragma('wal_checkpoint(TRUNCATE)');
+    const idle = await runRefresh({ graph, mode: 'delta', transcripts: [], taskRoot: dir });
+
+    expect(full.rowsWritten).toBeGreaterThan(spans);
+    expect(delta.rowsWritten).toBeGreaterThan(0);
+    expect(idle.rowsWritten).toBe(0);
+    expect(full.dbBytes).toBeGreaterThan(0);
+    expect(idle.dbBytes).toBe(statSync(path.join(dir, 'graph.sqlite3')).size);
   });
 
   it('visits only recent rows and files with no row when a root is unknown', async () => {

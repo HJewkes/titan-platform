@@ -53,6 +53,9 @@ export const QUESTION_CONDITION_KINDS = ["gate-rule-is-question", "category-mode
 /** Facts a conditional rule checks on the request; the rule applies only when every one holds. */
 export const CONDITION_KINDS = [...MERGE_CONDITION_KINDS, ...QUESTION_CONDITION_KINDS] as const;
 
+/** What made an agent identity tainted; `inbound-message` is reserved for an external door that does not exist yet. */
+export const TAINT_KINDS = ["web-fetch", "web-search", "external-tool", "inbound-message", "untrusted-item", "inherited"] as const;
+
 export type ActorClass = (typeof ACTOR_CLASSES)[number];
 export type ResolverClass = (typeof RESOLVER_CLASSES)[number];
 export type DelegateResolverClass = (typeof DELEGATE_RESOLVER_CLASSES)[number];
@@ -62,3 +65,4 @@ export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 export type MergeConditionKind = (typeof MERGE_CONDITION_KINDS)[number];
 export type QuestionConditionKind = (typeof QUESTION_CONDITION_KINDS)[number];
 export type ConditionKind = (typeof CONDITION_KINDS)[number];
+export type TaintKind = (typeof TAINT_KINDS)[number];
