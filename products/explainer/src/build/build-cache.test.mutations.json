@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the cross-run build cache is never read",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (hit) return",
+      "replace": "if (false as boolean) return",
+      "kills": [
+        "the layer build cache reads on the next run a build stored by an earlier run, with zero worker calls"
+      ]
+    },
+    {
+      "name": "the compile gate's verdict is ignored",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (!verdict.ok) return",
+      "replace": "if (false as boolean) return",
+      "kills": [
+        "the layer build cache never stores a build that fails the compile gate, so the next run asks the worker again"
+      ]
+    },
+    {
+      "name": "a build is cached before the compile gate",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "const verdict = await compileLayer(build.module);",
+      "replace": "cache.put(key, build, { runId: step.runId, stage: STAGE });\n    const verdict = await compileLayer(build.module);",
+      "kills": [
+        "the layer build cache never stores a build that fails the compile gate, so the next run asks the worker again"
+      ]
+    }
+  ]
+}
