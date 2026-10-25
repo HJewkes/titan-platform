@@ -13,7 +13,7 @@ import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import type { RuleRegistry } from "../rules.js";
 import { budgetSection, planFaults, planHint } from "../script-budget.js";
 import { parseScript } from "../script-load.js";
-import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
+import { DraftScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { spellScript } from "../rewrite-pass.js";
 import { UNKNOWN_WORDS_ID, UNKNOWN_WORDS_RULE, unknownWordsHint, type Tokens } from "../unknown-words.js";
@@ -36,7 +36,7 @@ export function stageUsage(usage: StepUsage | undefined): StageUsage {
 }
 
 /** The guide names the fields in prose only, so the model also gets the exact shape the reply is parsed with. */
-const scriptShape = (): string => `## The script/v1 JSON Schema\n\n\`\`\`json\n${JSON.stringify(z.toJSONSchema(ScriptSchema, { io: "input", unrepresentable: "any" }))}\n\`\`\``;
+const scriptShape = (): string => `## The script/v1 JSON Schema\n\n\`\`\`json\n${JSON.stringify(z.toJSONSchema(DraftScriptSchema, { io: "input", unrepresentable: "any" }))}\n\`\`\``;
 
 /** What the stage plans the script under; the script records the structure and profile whatever the reply names. */
 export interface ScriptPlan {
@@ -166,13 +166,13 @@ function cueKindFault(script: ScriptV1): string | undefined {
 }
 
 function parsedObject(raw: unknown, plan: ScriptPlan): Checked {
-  const parsed = ScriptSchema.safeParse(raw);
+  const parsed = DraftScriptSchema.safeParse(raw);
   if (parsed.success) return { script: planned(parsed.data, plan) };
   const { issues } = parsed.error;
   const first = issueText(issues, raw);
-  const repair = repairReply(ScriptSchema, raw, issues);
+  const repair = repairReply(DraftScriptSchema, raw, issues);
   if (!repair) return { error: first };
-  const again = ScriptSchema.safeParse(raw);
+  const again = DraftScriptSchema.safeParse(raw);
   if (!again.success) return { error: `${first}; ${issueText(again.error.issues, raw)}` };
   return { script: planned(again.data, plan), stripped: repair.stripped, ...(repair.dropped.length > 0 ? { dropped: repair.dropped } : {}) };
 }

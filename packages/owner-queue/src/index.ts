@@ -17,7 +17,7 @@ export type { CardRule } from "./card.js";
 export { audienceOf, forAudience } from "./audience.js";
 export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from "./deposit.js";
 export type { OwnerItemDeposit } from "./deposit.js";
-export { HOLD_CLASSES, opKeys, ownerOpSchema } from "./op.js";
+export { HOLD_CLASSES, MERGE_WAITS, opKeys, ownerOpSchema } from "./op.js";
 export type { OwnerOp, OwnerOpKind } from "./op.js";
 export { consolidate } from "./consolidate.js";
 export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockReason } from "./consolidate.js";

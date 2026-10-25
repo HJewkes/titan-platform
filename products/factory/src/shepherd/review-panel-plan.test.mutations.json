@@ -21,6 +21,13 @@
       "kills": [
         "plannedPanel's installed-profile check (TP-3907) refuses the plan when the cap would lower a member to a profile that is not installed"
       ]
+    },
+    {
+      "name": "the panel's changed files drop a rename's old path",
+      "file": "products/factory/src/shepherd/review-panel-plan.ts",
+      "find": "({ path, ...(previousPath !== undefined && { previousPath }), additions",
+      "replace": "({ path, additions",
+      "kills": ["panelFacts plans the adversary for a rename out of tool-guard, which the panel classes by its old path"]
     }
   ]
 }

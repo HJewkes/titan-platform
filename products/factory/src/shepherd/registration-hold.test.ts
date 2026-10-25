@@ -318,6 +318,7 @@ describe("the G10 hold Shepherd places at registration", () => {
     ["products/factory/src/shepherd/commands.ts", "products/factory/src/shepherd/cmds.ts", "policy"],
     ["products/factory/src/shepherd/g10-release.ts", "products/factory/src/shepherd/release-gate.ts", "policy"],
     ["packages/authority/src/x.ts", "packages/other/src/x.ts", "authority"],
+    ["packages/tool-guard/src/x.ts", "src/x.ts", "security"],
   ])("holds a 20-line rename of %s to %s g10-adversary by its old path", async (from, to, touch) => {
     const r = rig([renamed(from, to)]);
 

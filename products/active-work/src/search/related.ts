@@ -70,6 +70,8 @@ export interface RelatedInput {
   exclude?: string[];
   /** How the caller renders a hit, so the budget counts what is actually printed. */
   render?: (hit: RelatedHit) => string;
+  /** False drops the hit before the cap, so a withheld initiative never takes a slot. */
+  servable?: (initiative: string | null) => boolean;
   dbPath?: string;
   activeRoot?: string;
 }
@@ -160,6 +162,7 @@ async function searchOpenIndex(
 ): Promise<RelatedResult> {
   const limit = input.limit ?? RELATED_DEFAULT_LIMIT;
   const exclude = new Set(input.exclude ?? []);
+  const servable = input.servable ?? (() => true);
   const result = await searchWorkspace(query.expression, {
     graph,
     rawExpression: true,
@@ -169,7 +172,7 @@ async function searchOpenIndex(
     ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
   });
   const kept = result.hits
-    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit))
+    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit) && servable(hit.initiative))
     .slice(0, limit)
     .map(toRelatedHit);
   return {

@@ -247,7 +247,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
-| `resolve` | in-process: the resolver tables, code citations and word budgets, with the emphasis-target and word-budget gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, custom-layers |
+| `resolve` | in-process: the resolver tables, code citations and word budgets, with the emphasis-target, word-budget and slot-overrides gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render`, `qa`, `sheets` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
@@ -743,4 +743,33 @@ new stage key.
   layer and anchors, plus every budget row.
 - **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
   chose. It is skipped with a note until a `slots` artifact exists; template fill (TP-2614 D3) will write one.
-  `word-budget` fails on any beat or block over its cap.
+  `word-budget` fails on any beat or block over its cap. `slot-overrides` refuses an owner override the chosen beat
+  spec would not accept (below).
+- **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
+  that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
+  untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they
+  win over every other layer; the emphasis gate reads slots that way. The `slot-overrides` gate fails a field the
+  spec's slot schema lacks or whose value it rejects, naming the path (`beats.<id>.visual.slots.rows.0.id`), and any
+  override on a custom-layer beat. A script with neither field resolves to the same bytes as before. Both fields
+  are the owner's: the script stage's prompt shape (`DraftScriptSchema`) leaves them out, and a draft reply naming
+  them loses them as `script-unknown-keys`.
+
+### The sim kit
+
+A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contract, in TypeScript only:
+
+- **Contract.** A `SimModel` has an `id` (its `doctrine/sims/<id>.yaml`), a `version` bumped on any behaviour
+  change, and `simulate(params, random)`. `simulate` is pure: its only randomness is `random`, the seed's
+  `seededRandom` generator from `@titan-design/evidence`. `runPure` swaps `Math.random`, `Date.now` and
+  `performance.now` for throwing stubs while a model runs, so a model that reaches for them fails with
+  `SimPurityError`. The code registry is `SIM_MODELS`.
+- **Sweep.** `sweepSim(model, base, { param, values }, seed, facet?)` runs one `SimRun` per point, each seeded with
+  `` `${seed}:${param}=${value}` `` (plus `:${facet}=${value}` with a facet), so adding a point leaves every other
+  point's run unchanged. The facet's values become the small multiples.
+- **Trace.** `freezeSim(swept, doctrineSha)` validates an `explainer.sim-trace/v1` trace (`SimTraceSchema`: at most
+  64 steps a run, at least one statistic with its Monte Carlo `se`) and keys it by the sha256 of its canonical JSON
+  (`canonicalJson` from the eval store). A trace is a run artifact, never committed; only synthetic fixtures are.
+- **Registry.** `loadSims` reads `doctrine/sims/*.yaml` (`sim-model/v1`: params with bounds, statistics with a
+  tolerance and its `why`, and `fittedFrom`). `simDoctrineSha` is the sha a trace records as `doctrine`.
+  `checkSims(SIM_MODELS, loadSims())` reports a model with no doctrine file (`E-SIM-NO-DOCTRINE`), a doctrine file
+  with no model (`E-SIM-NO-MODEL`) and a doctrine statistic the model does not emit (`E-SIM-STAT-UNEMITTED`).

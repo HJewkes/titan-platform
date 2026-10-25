@@ -162,6 +162,25 @@ describe("one fixture per bash.merge spelling", () => {
     });
   });
 
+  describe("a readHead that throws reads as an unknown protected head", () => {
+    const throwing: ClassifyContext = {
+      home: HOME,
+      readLink: () => null,
+      readHead: () => {
+        throw new Error("EACCES");
+      },
+      readScript: () => null,
+    };
+    const run = (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, throwing);
+
+    it.each([
+      ["git push origin HEAD", "bash.merge.git-push-protected"],
+      ["git merge x", "bash.merge.git-merge-protected"],
+    ])("%s", (command, spelling) => {
+      expect(run(command)).toEqual([expect.objectContaining({ action: "merge", spelling, subject: { branch: "unknown" } })]);
+    });
+  });
+
   it("finds a merge chained after other commands and inside a subshell", () => {
     expect(spellings(bash("pnpm test && (gh pr merge 4 --squash)"))).toEqual(["bash.merge.gh-pr-merge"]);
   });
@@ -252,7 +271,7 @@ describe("normal work classifies nothing", () => {
     ["git push -u origin HEAD on a feature branch", "git push -u origin HEAD", "feat/x"],
     ["git push with no refspec on a feature branch", "git push", "feat/x"],
     ["git push on a detached head", "git push", null],
-    ["git push --tags on main", "git push origin --tags", "main"],
+    ["git push to a branch whose name holds tags/", "git push origin HEAD:feat/tags/v1", "main"],
     ["gh pr merge --disable-auto", "gh pr merge 12 --disable-auto", "feat/x"],
     ["gh pr view and gh pr create", "gh pr view 12 && gh pr create --base main --fill", "feat/x"],
     ["a GET of a PR's merge status", "gh api repos/o/r/pulls/12/merge", "feat/x"],
@@ -527,5 +546,57 @@ describe("a git command whose subcommand word is dynamic", () => {
 
   it("still allows a literal git status", () => {
     expect(bash("git status")).toEqual([]);
+  });
+});
+
+describe("a push the command's own -c or --config-env config routes onto a protected branch", () => {
+  const pushVerdicts = (command: string, head = "feat") =>
+    bash(command, head)
+      .filter((a) => a.action === "merge")
+      .map((a) => [a.spelling, a.subject]);
+
+  it.each([
+    ["a remote push refspec mapping the named branch", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin feat"],
+    ["a remote push refspec mapping HEAD", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin HEAD"],
+    ["a remote push refspec with only the remote named", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin"],
+    ["a remote push refspec with no remote named", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push"],
+    ["a short heads/ destination", "git -c remote.origin.push=feat:heads/main push origin feat"],
+    ["push.default=upstream to a protected upstream", "git -c push.default=upstream -c branch.feat.merge=refs/heads/main push"],
+    ["push.default=upstream with the branch named", "git -c push.default=upstream -c branch.feat.merge=refs/heads/main push origin feat"],
+  ])("%s reads as a push to main", (_what, command) => {
+    expect(pushVerdicts(command)).toEqual([["bash.merge.git-push-protected", { branch: "main" }]]);
+  });
+
+  it.each([
+    ["--config-env on a remote push refspec", "git --config-env=remote.origin.push=V push origin feat"],
+    ["--config-env on push.default", "git --config-env push.default=V push"],
+    ["push.default=upstream alone", "git -c push.default=upstream push"],
+    ["push.default=upstream with another branch's upstream", "git -c push.default=upstream -c branch.other.merge=refs/heads/feat push"],
+    ["an included config file", "git -c include.path=/tmp/x push origin feat"],
+    ["a run-time remote push value", 'git -c "remote.origin.push=$V" push origin feat'],
+    ["a run-time key", 'git -c "$K" push origin feat'],
+  ])("%s reads as a push to an unknown branch", (_what, command) => {
+    expect(pushVerdicts(command)).toEqual([["bash.merge.git-push-protected", { branch: "unknown" }]]);
+  });
+
+  it.each([
+    ["a mirror remote", "git -c remote.origin.mirror=true push origin"],
+    ["push.default=matching", "git -c push.default=matching push"],
+    ["a glob remote push refspec", "git -c 'remote.origin.push=refs/heads/*:refs/heads/*' push origin feat"],
+  ])("%s reads as a push of every branch", (_what, command) => {
+    expect(pushVerdicts(command)).toEqual([["bash.merge.git-push-all", {}]]);
+  });
+
+  it.each([
+    ["an unrelated -c", "git -c user.name=x push origin feat/x", "feat/x"],
+    ["an explicit src:dst refspec, which git does not map", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin feat:feat", "feat"],
+    ["--tags with no refspec", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push --tags origin", "feat"],
+    ["--tags with push.default=matching, which git does not consult", "git -c push.default=matching push --tags origin", "feat"],
+    ["--delete, which git does not map", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin --delete feat", "feat"],
+    ["push.default=current on a feature branch", "git -c push.default=current push", "feat/x"],
+    ["a remote push refspec to the same branch", "git -c remote.origin.push=refs/heads/feat:refs/heads/feat push origin feat", "feat"],
+    ["push.default=upstream to a feature upstream", "git -c push.default=upstream -c branch.feat.merge=refs/heads/feat push", "feat"],
+  ])("%s pushes no protected branch", (_what, command, head) => {
+    expect(pushVerdicts(command, head)).toEqual([]);
   });
 });

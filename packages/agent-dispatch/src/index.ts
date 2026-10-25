@@ -40,9 +40,11 @@ export { dataFence } from "./fence.js";
 export {
   buildListAgentsArgs,
   buildRetireArgs,
+  listAgentLineage,
   listAgents,
   parseAgentRows,
   retire,
+  type AgentLineage,
   type AgentRow,
   type RetireResult,
 } from "./agents.js";

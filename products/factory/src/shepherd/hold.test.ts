@@ -177,6 +177,18 @@ describe("a hold that names a reviewer", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 
+  it("refuses a reviewer whose spawning seat's retired first generation the implementer spawned, which only the lineage holds", async () => {
+    const r = rig();
+    const retiredFirst = agent("coord", { agentId: "agent-coord-1", spawnedBy: "impl-a" });
+    const lineage = async () => ({ rows: [...r.roster, retiredFirst], complete: true });
+    say(r, verdictAt(H1));
+
+    const held = heldCheck(r.port, () => r.store, undefined, holdSatisfier({ store: () => r.store, roster: async () => r.roster, lineage, reader: { read: async () => r.messages } }));
+
+    expect(await held(REPO, r.pr, H1)).toBeDefined();
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
   it("refuses a reviewer whose agent id the run recorded as an author", async () => {
     const r = rig();
     r.store.recordAuthor("run-1", { agentId: `agent-${REVIEWER}`, name: "impl-a-s1", role: "successor", predecessor: "impl-a" });

@@ -175,6 +175,9 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         repo: z.ZodString;
         pr: z.ZodNumber;
         headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"close-pr">;
         repo: z.ZodString;
@@ -370,6 +373,9 @@ declare const ownerItemSchema: z.ZodObject<{
         repo: z.ZodString;
         pr: z.ZodNumber;
         headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"close-pr">;
         repo: z.ZodString;
