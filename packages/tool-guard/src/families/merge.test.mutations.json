@@ -2,6 +2,15 @@
   "v": 1,
   "mutations": [
     {
+      "name": "a tags/ or v<digit> segment anywhere in a destination reads as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.|v\\d|(?:@[^/@:]+\\/)?[^@:/]+@\\d)/;",
+      "replace": "const TAG_REF_RE = /(?:(?:refs\\/)?tags\\/.|v\\d|(?:@[^/@:]+\\/)?[^@:/]+@\\d)/;",
+      "kills": [
+        "normal work classifies nothing git push to a branch whose name holds tags/"
+      ]
+    },
+    {
       "name": "a readHead that throws reads as no branch checked out",
       "file": "packages/tool-guard/src/families/merge.ts",
       "find": "  } catch {\n    return UNKNOWN;\n  }",
