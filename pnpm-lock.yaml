@@ -998,6 +998,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@4.5.4)
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../../packages/agent-dispatch
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol
