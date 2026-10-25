@@ -41,12 +41,12 @@ interface HoldFiles {
 }
 
 /**
- * The panel matches a file's new path only, so a rename's old path is classed as a file of its own: renaming a policy file
- * away keeps its class. Only path touches count, so a kind alone (security or unread) names no hold.
+ * The panel matches a rename's old path too, so renaming a policy file away keeps its class. Only path touches count, so a
+ * kind alone (security or unread) names no hold.
  */
 function signoffFactsOf(files: readonly PrFile[]): { touches: string[]; paths: string[] } {
   const paths = files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]));
-  return { touches: shepherdPathTouches(paths), paths };
+  return { touches: shepherdPathTouches(files), paths };
 }
 
 /** Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness reviewer instead. */
