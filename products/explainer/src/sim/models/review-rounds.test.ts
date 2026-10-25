@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { canonicalJson } from "../../eval-store.js";
+import { visual } from "../../resolve-fixtures.test-helpers.js";
+import type { ScriptBeat } from "../../script-schema.js";
 import { freezeSim } from "../freeze.js";
 import { SIM_MODELS } from "../model.js";
 import { runPure } from "../pure-run.js";
@@ -83,7 +85,7 @@ describe("review-rounds params the model cannot run", () => {
   });
   const verdictOf = (filled: ReturnType<typeof slots>) =>
     runSimPass({
-      beats: [{ id: "s-rounds", spoken: "Later rounds carry the rest.", visual: { beat: "sim" } }],
+      beats: [{ id: "s-rounds", spoken: "Later rounds carry the rest.", visual: visual({ beat: "sim" }) as ScriptBeat["visual"] }],
       filled: new Map([["s-rounds", { slots: filled }]]),
       facts: undefined,
       registry: { models: SIM_MODELS, specs: loadSims() },
