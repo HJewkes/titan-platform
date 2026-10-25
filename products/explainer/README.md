@@ -277,6 +277,19 @@ script or facts edit makes a new resolve run, a beat whose packet did not change
 in-run `mapItems` memo cannot do this, because it lasts only for one child run. A build that fails the gate is never
 cached.
 
+A build that fails the gate gets one repair round (`agentChatRepairer`; round caps are TP-2616's). It spawns an
+agent-chat agent under the `beat-builder` profile (a config value) through `@titan-design/agent-dispatch`. The brief
+goes on stdin, never in argv: the packet, the failing module and the gate's error, each fenced as data. The agent
+writes `<beat>.tsx` into `runs/<run>/layer-repairs/<packet key>/`. Once the roster shows the agent exited, the module
+is read back and the gate runs again. The agent's spend is priced from its own transcript, found by the roster's
+session id, at the price table, so the `mapItems` budget sees a known cost at once. A transcript that is not on this
+host, or an agent that is not seen to exit in time, marks the spend unknown rather than free. The repair's spend joins
+the build's usage, and its session id is kept as `repairSessionId` on the build and in `layers.json`. A repair that
+still fails stays `needsRepair` (its error names the repair session), keeps its spend, and is not cached. The host's
+`layerRepairer` defaults to this runner when an `agent-chat` binary is found (`AGENT_CHAT_BIN` or `PATH`); `null`
+turns repairs off. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
+and no resumed session.
+
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
 bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt
