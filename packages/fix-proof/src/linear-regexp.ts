@@ -210,8 +210,8 @@ function beginsInside(states: readonly State[], start: number): boolean {
 function advance(run: Run, current: StateSet, char: string, position: number, next: StateSet): boolean {
   let matched = false;
   for (let i = 0; i < current.size; i += 1) {
-    const state = run.states[current.items[i]!] as Extract<State, { kind: "char" }>;
-    if (state.test(char)) matched = close(run, state.next, position + 1, next) || matched;
+    const state = run.states[current.items[i]!]!;
+    if (state.kind === "char" && state.test(char)) matched = close(run, state.next, position + 1, next) || matched;
   }
   return matched;
 }
