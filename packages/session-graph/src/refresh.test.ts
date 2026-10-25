@@ -203,6 +203,26 @@ describe("task resolver (TP-22)", () => {
   });
 });
 
+describe("refreshCorpus emit policy (TP-880)", () => {
+  const toolSpanCount = () =>
+    (graph.db.prepare("SELECT count(*) AS n FROM search_span WHERE field IN ('tool_input', 'tool_result')").get() as { n: number }).n;
+
+  it("stores no tool span and no context_block row under the default options", async () => {
+    await refreshCorpus(graph, [transcript]);
+    expect(toolSpanCount()).toBe(0);
+    expect(count("context_block")).toBe(0);
+    expect(count("search_span")).toBeGreaterThan(0);
+  });
+
+  it("stores what extractTranscript emits when both options are on", async () => {
+    const extracted = await extractTranscript(transcript.absolutePath);
+    await refreshCorpus(graph, [transcript], { indexToolSpans: true, contextBlocks: true });
+    expect(toolSpanCount()).toBe(extracted.spans.filter((s) => s.field === "tool_input" || s.field === "tool_result").length);
+    expect(toolSpanCount()).toBeGreaterThan(0);
+    expect(count("context_block")).toBe(extracted.contextBlocks.length);
+  });
+});
+
 describe("refreshCorpus", () => {
   it("indexes a transcript into facts, sessions, usage, phases, assets, edges, and searchable spans", async () => {
     const summary = await refreshCorpus(graph, [transcript]);

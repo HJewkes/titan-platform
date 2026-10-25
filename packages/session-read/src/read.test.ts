@@ -29,6 +29,18 @@ describe("extractTranscript", () => {
     }
   });
 
+  it("keeps tool spans and context blocks when no emit policy is passed", async () => {
+    const result = await extractTranscript(transcript);
+    expect(result.spans.map((s) => s.field)).toEqual(expect.arrayContaining(["tool_input", "tool_result"]));
+    expect(result.contextBlocks.length).toBeGreaterThan(0);
+  });
+
+  it("drops tool spans and context blocks when the read options turn them off", async () => {
+    const result = await extractTranscript(transcript, { toolSpans: false, contextBlocks: false });
+    expect(result.spans.map((s) => s.field)).not.toContain("tool_result");
+    expect(result.contextBlocks).toEqual([]);
+  });
+
   it("folds session metadata and turns", async () => {
     const result = await extractTranscript(transcript);
     expect(result.sessions).toHaveLength(1);

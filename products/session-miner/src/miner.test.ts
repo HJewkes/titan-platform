@@ -161,3 +161,14 @@ describe("price reconciliation", () => {
     expect(row).toEqual({ input_usd_mtok: 4, table_version: PRICE_TABLE_VERSION });
   });
 });
+
+describe("session-miner refresh emit policy (TP-880)", () => {
+  it("keeps tool_result spans and context_block rows that search, drain and insights read", async () => {
+    await run(refresh, {});
+    const db = ctx.graph().db;
+    const n = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+
+    expect(n("SELECT count(*) AS n FROM search_span WHERE field = 'tool_result'")).toBeGreaterThan(0);
+    expect(n("SELECT count(*) AS n FROM context_block")).toBeGreaterThan(0);
+  });
+});

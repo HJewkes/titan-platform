@@ -21,16 +21,21 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-async function index(): Promise<void> {
+/** Opts in to tool spans the way `runRefresh` does; `indexToolSpans: false` reads with the package default. */
+async function index({ indexToolSpans = true } = {}): Promise<void> {
   const absolutePath = path.join(dir, 'session.jsonl');
   writeFileSync(absolutePath, renderTranscript(FIXTURE_LINES), 'utf8');
-  await indexTranscript(graph, {
-    projectDir: 'demo',
-    absolutePath,
-    displayPath: '~/demo/session.jsonl',
-    subagentId: null,
-    account: null,
-  });
+  await indexTranscript(
+    graph,
+    {
+      projectDir: 'demo',
+      absolutePath,
+      displayPath: '~/demo/session.jsonl',
+      subagentId: null,
+      account: null,
+    },
+    { indexToolSpans },
+  );
 }
 
 /** The same transcript applied as two chunks, so span ids are assigned in two batches. */
@@ -80,6 +85,14 @@ describe('search_fts population', () => {
     expect(search('boom').map((r) => r.field)).toEqual(['tool_result']);
     // A tool input's string leaves — here the Bash command — are searchable.
     expect(search('checkout').map((r) => r.field)).toEqual(['tool_input']);
+  });
+
+  it('stores no tool span under the session-graph default', async () => {
+    await index({ indexToolSpans: false });
+
+    expect(search('boom')).toEqual([]);
+    expect(search('checkout')).toEqual([]);
+    expect(search('"on it"').map((r) => r.field)).toEqual(['assistant_response']);
   });
 
   it('does not index JSON field names', async () => {

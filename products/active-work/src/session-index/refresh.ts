@@ -361,6 +361,9 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
             },
           }),
       facetLimit: options.facetLimit,
+      // Pinned to the pre-TP-880 classes until TP-881 drops them together with TRANSCRIPT_FIELDS.
+      indexToolSpans: true,
+      contextBlocks: true,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
     const restored = restoreUnvisited(graph, unvisited);

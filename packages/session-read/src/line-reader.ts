@@ -20,6 +20,18 @@ export interface LineContext {
 
 export type Emit = (event: SessionEvent) => void;
 
+/** Which bulk event classes a reader emits. Both default on, so a reader built without a policy sees every event. */
+export interface EmitPolicy {
+  /** `tool_input` and `tool_result` spans. Off skips building their text at all. */
+  readonly toolSpans: boolean;
+  /** `context_block` audit rows, from user, assistant and attachment lines alike. */
+  readonly contextBlocks: boolean;
+}
+
+export const DEFAULT_EMIT_POLICY: EmitPolicy = { toolSpans: true, contextBlocks: true };
+
+const TOOL_SPAN_FIELDS: ReadonlySet<SpanField> = new Set(["tool_input", "tool_result"]);
+
 /**
  * Translates one transcript JSONL line into typed events. Every rule is
  * stateless across lines except the last-seen timestamp: a record such as
@@ -40,6 +52,7 @@ export class LineReader {
     private readonly fallbackSessionId: string | null = null,
     private readonly subagentId: string | null = null,
     initialTs = "",
+    readonly policy: EmitPolicy = DEFAULT_EMIT_POLICY,
   ) {
     this.lastTs = initialTs;
   }
@@ -76,6 +89,7 @@ export class LineReader {
   }
 
   span(ctx: LineContext, field: SpanField): void {
+    if (!this.policy.toolSpans && TOOL_SPAN_FIELDS.has(field)) return;
     this.emit({ ...this.base(ctx), kind: "span", field, text: searchText(asObject(ctx.line.message), field) });
   }
 
