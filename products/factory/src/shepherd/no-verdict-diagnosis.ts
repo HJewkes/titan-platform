@@ -8,7 +8,9 @@ import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { AgentChatAgents } from "./agents.js";
 import type { ReviewerSeen } from "./no-verdict-round.js";
+import { DEFAULT_BUSY_WAIT_MS, ReviewerSpawnQueued, whileBrokerBusy } from "./review-wait.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 
 const DIAGNOSIS_STEP = "sh-no-verdict-diagnosis";
 export const DIAGNOSIS_STEPS: readonly StepDeclaration[] = [{ id: DIAGNOSIS_STEP, kind: "dispatch" }];
@@ -19,6 +21,8 @@ export const DEFAULT_DIAGNOSIS_PROFILE = "bd-planner";
 const MAX_LOG_LINES = 40;
 /** How much of the log's tail is searched; older lines predate the rounds that failed. */
 const LOG_TAIL_BYTES = 4 * 1024 * 1024;
+/** A spawn the gate defers is asked again after its window, up to this many asks in all, before ops hears (TP-4157). */
+export const DIAGNOSIS_SPAWN_ATTEMPTS = 5;
 
 /** How the diagnosis planner is spawned; the profile is passed to agent-chat as configured, never lowered. */
 export interface DiagnosisPorts {
@@ -43,7 +47,11 @@ const DiagnosisInput = z.object({
 });
 type DiagnosisInput = z.infer<typeof DiagnosisInput>;
 
-const DiagnosisResult = z.looseObject({ spawned: z.boolean(), agent: z.string(), profile: z.string().optional(), reason: z.string().optional() });
+const DiagnosisResult = z.looseObject({
+  ...{ spawned: z.boolean(), agent: z.string(), profile: z.string().optional(), reason: z.string().optional() },
+  /** The spawn gate's reason for each deferred ask, oldest first; absent when the first ask was admitted. */
+  deferrals: z.array(z.string()).optional(),
+});
 type DiagnosisResult = z.infer<typeof DiagnosisResult>;
 
 /** Unique per run and head, and one argv word agent-chat takes as a name. */
@@ -75,6 +83,12 @@ const TASK_STEPS = [
   "Report the root cause per reviewer, the evidence lines, and the fix. File the fix as a task when it is a Shepherd or reviewer defect.",
 ];
 
+/** Every reviewer answering means the panel's aggregate withheld the verdict, which is a different hunt from a silent reviewer. */
+function noSilentLine(reviewers: readonly ReviewerSeen[]): string {
+  if (reviewers.length === 0) return "- none recorded: the review returned no verdict without dispatching a reviewer Shepherd could see";
+  return `- none: all ${reviewers.length} dispatched reviewers gave a verdict, so the panel's aggregate withheld it (an unplanned seat such as the fix-proof's tests member)`;
+}
+
 function diagnosisBrief(input: DiagnosisInput, roster: readonly AgentRow[], logLines: readonly string[], reportTo: string | undefined): string {
   const silent = input.reviewers.filter((reviewer) => reviewer.verdict !== true);
   return [
@@ -84,7 +98,7 @@ function diagnosisBrief(input: DiagnosisInput, roster: readonly AgentRow[], logL
     `Failed rounds: ${input.failedOutcomes.join(", ") || "none counted"}`,
     "",
     "Reviewers that gave no verdict:",
-    ...(silent.length > 0 ? silent.map((reviewer) => reviewerLine(reviewer, roster)) : ["- none recorded: the review returned no verdict without dispatching a reviewer Shepherd could see"]),
+    ...(silent.length > 0 ? silent.map((reviewer) => reviewerLine(reviewer, roster)) : [noSilentLine(input.reviewers)]),
     "",
     logLines.length > 0 ? dataFence("serve.err.log lines naming these reviewers oldest first", logLines.join("\n")) : "serve.err.log: no line names these reviewers.",
     "",
@@ -105,20 +119,47 @@ async function spawnPlanner(ports: DiagnosisPorts, input: DiagnosisInput, agent:
   await ports.agents.spawn({ name: agent, profile: ports.profile, brief: diagnosisBrief(input, roster, logLines, ports.reportTo?.()), cwd: checkout.dir });
 }
 
+/** The clock the deferred asks wait on, and the step's signal that ends the wait. */
+export interface DiagnosisTiming {
+  now: () => number;
+  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  signal: AbortSignal;
+}
+
+/**
+ * The reviewers' busy wait asks again a window after each deferral (TP-4157); `deferrals` keeps each gate reason. The
+ * last allowed deferral is rethrown as a plain refusal, which ends the wait.
+ */
+async function spawnPastGate(ports: DiagnosisPorts, input: DiagnosisInput, agent: string, timing: DiagnosisTiming, deferrals: string[]): Promise<void> {
+  const ask = async () => {
+    try {
+      await spawnPlanner(ports, input, agent);
+    } catch (error) {
+      if (!(error instanceof SpawnDeferred)) throw error;
+      deferrals.push(error.message);
+      if (deferrals.length >= DIAGNOSIS_SPAWN_ATTEMPTS) throw new Error(`the spawn gate deferred it ${deferrals.length} times; the last: ${error.message}`);
+      throw new ReviewerSpawnQueued(`spawn gate: ${error.message}`, { cause: error });
+    }
+  };
+  await whileBrokerBusy({ now: timing.now, sleep: timing.sleep, busyWaitMs: DEFAULT_BUSY_WAIT_MS }, timing.signal, () => undefined, ask);
+}
+
 /** Never throws: a refused spawn or a missing checkout is recorded as failed, and the run tells ops instead. */
-export async function spawnDiagnosis(ports: DiagnosisPorts | undefined, input: DiagnosisInput): Promise<DiagnosisResult> {
+export async function spawnDiagnosis(ports: DiagnosisPorts | undefined, input: DiagnosisInput, timing: DiagnosisTiming): Promise<DiagnosisResult> {
   const agent = diagnosisName(input.runId, input.headSha);
   if (ports === undefined) return { spawned: false, agent, reason: "no diagnosis planner is wired" };
+  const deferrals: string[] = [];
+  const recorded = () => (deferrals.length > 0 ? { deferrals } : {});
   try {
-    await spawnPlanner(ports, input, agent);
-    return { spawned: true, agent, profile: ports.profile };
+    await spawnPastGate(ports, input, agent, timing, deferrals);
+    return { spawned: true, agent, profile: ports.profile, ...recorded() };
   } catch (error) {
-    return { spawned: false, agent, profile: ports.profile, reason: error instanceof Error ? error.message : String(error) };
+    return { spawned: false, agent, profile: ports.profile, reason: error instanceof Error ? error.message : String(error), ...recorded() };
   }
 }
 
-export function diagnosisRoutes(deps: { now: () => number; diagnosis?: DiagnosisPorts }): StepRoute[] {
-  return [codeRoute(DIAGNOSIS_STEP, deps.now, async (raw: unknown) => spawnDiagnosis(deps.diagnosis, DiagnosisInput.parse(raw)))];
+export function diagnosisRoutes(deps: { now: () => number; sleep: DiagnosisTiming["sleep"]; diagnosis?: DiagnosisPorts }): StepRoute[] {
+  return [codeRoute(DIAGNOSIS_STEP, deps.now, async (raw: unknown, signal) => spawnDiagnosis(deps.diagnosis, DiagnosisInput.parse(raw), { now: deps.now, sleep: deps.sleep, signal }))];
 }
 
 /** What the run hands its planner: the PR, the head, and every reviewer of the failed rounds. */

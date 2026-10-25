@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
+import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -228,6 +229,8 @@ export const FactoryConfigSchema = z.object({
         .optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
+      /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
+      seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
       /**
        * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
@@ -312,7 +315,7 @@ function parseJson(path: string, text: string): unknown {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 

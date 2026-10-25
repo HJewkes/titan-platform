@@ -45,3 +45,20 @@ export {
 export { OCCUPANCY_FILE, OccupancyFileSchema, occupancyPathFor, readOccupancy, writeOccupancy, type OccupancyFile } from "./occupancy-file.js";
 export { CLIP_TOLERANCE_PX, clippedText, type ClipBox, type MeasuredText } from "./clip-checks.js";
 export { MAX_EMPTY_STAGE_SECONDS, emptyStageRuns, type StageBox, type StageMoment } from "./stage-empty-checks.js";
+export { MIN_CONTENT_FILL, contentFill, contentFillFindings } from "./content-fill.js";
+export {
+  CueTimesSchema,
+  PageMarksSchema,
+  RenderTimelineSchema,
+  SHEET_RULES,
+  SheetVisualSchema,
+  chapterSheets,
+  cutCells,
+  sheetRule,
+  type PageMark,
+  type SheetCell,
+  type SheetInput,
+  type SheetRule,
+} from "./contact-sheet.js";
+export { writeContactSheets, type ChapterSheet, type FfmpegExec, type FramedCell, type SheetSet } from "./contact-sheet-render.js";
+export { runSheetsCli } from "./contact-sheet-cli.js";

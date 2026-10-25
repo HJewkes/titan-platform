@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runAaFloorCli } from "./aa-floor-cli.js";
+import { runSheetsCli } from "./contact-sheet-cli.js";
 import { runEvalCli } from "./eval-cli.js";
 import { runGuideCli } from "./guide-plan-cli.js";
 import { runPrCli } from "./presets/pr-overview/pr-cli.js";
@@ -17,6 +18,7 @@ const SUBCOMMANDS = new Map<string | undefined, (argv: string[]) => Promise<numb
   ["pr", runPrCli],
   ["rewrite", runRewriteCli],
   ["run", runRunCli],
+  ["sheets", runSheetsCli],
   ["stage", runStageCli],
 ]);
 

@@ -1,5 +1,6 @@
 /**
- * Machine-derived inbox rows: exceptions the console reads off Shepherd and the agent roster, where no producer filed
+ * Machine-derived inbox rows: exceptions the console reads off Shepherd, the agent roster and its own failed round
+ * notices (`round-notice-gaps.ts`), where no producer filed
  * anything. No evidence, no exception: every row names what was observed, by which source and when, and the threshold
  * it crossed, and {@link derivedRow} refuses a row without them. The rows carry no action, and they sit beside
  * `inbox.list`'s items rather than among them, so `inbox.act` can never find one to act on.
@@ -23,7 +24,7 @@ export const FAILED_RUN_LOOKBACK_MS = 24 * 60 * MINUTE;
 /** An agent blocked on a prompt for a quarter hour is past the time an operator normally takes to answer one. */
 export const BLOCKED_AGENT_AFTER_MS = 15 * MINUTE;
 
-type DerivedKind = "stalled-run" | "failed-run" | "blocked-agent";
+type DerivedKind = "stalled-run" | "failed-run" | "blocked-agent" | "missed-notice";
 
 interface DerivedEvidence {
   /** What the source reported, in its own words where it has them. */

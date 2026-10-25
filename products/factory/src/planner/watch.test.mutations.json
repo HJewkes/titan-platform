@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a planner that exits is waited on until the deadline",
+      "file": "products/factory/src/planner/watch.ts",
+      "find": "if (presence.state === \"gone\") return failed(\"exited\", ports, transcriptPath);",
+      "replace": "if (presence.state === \"gone\") void 0;",
+      "kills": [
+        "titan-factory planner wake waits for the review a planner that exits without writing a review files one inbox deposit carrying its API error",
+        "titan-factory planner wake waits for the review a review file older than the spawn, or the brief beside the reviews, does not count"
+      ]
+    },
+    {
+      "name": "the transcript is forgotten once the planner leaves the roster",
+      "file": "products/factory/src/planner/watch.ts",
+      "find": "transcriptPath = presence.transcriptPath ?? transcriptPath;",
+      "replace": "transcriptPath = presence.transcriptPath;",
+      "kills": ["titan-factory planner wake waits for the review a planner that exits without writing a review files one inbox deposit carrying its API error"]
+    },
+    {
+      "name": "a review older than the spawn counts",
+      "file": "products/factory/src/planner/watch.ts",
+      "find": "file.name.endsWith(\".md\") && file.mtimeMs > spawnedAt",
+      "replace": "file.name.endsWith(\".md\")",
+      "kills": ["titan-factory planner wake waits for the review a review file older than the spawn, or the brief beside the reviews, does not count"]
+    },
+    {
+      "name": "a good wake leaves the open alarm in place",
+      "file": "products/factory/src/planner/wake.ts",
+      "find": "await ports.alarm.resolve().catch(",
+      "replace": "await Promise.resolve(0).catch(",
+      "kills": ["titan-factory planner wake waits for the review a review file newer than the spawn ends the watch and withdraws an open planner alarm"]
+    },
+    {
+      "name": "a personal configDir is accepted",
+      "file": "products/factory/src/planner/config.ts",
+      "find": ".refine((dir) => !PERSONAL_CONFIG_DIR.test(dir),",
+      "replace": ".refine(() => true,",
+      "kills": ["titan-factory planner wake waits for the review a config whose configDir is the personal profile is refused"]
+    }
+  ]
+}

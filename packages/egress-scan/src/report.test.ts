@@ -26,6 +26,13 @@ describe("formatReport", () => {
     expect(report).toContain("docs/setup.md:4 private-term #3");
   });
 
+  it("prints the category in place of the line number for a tagged term", () => {
+    const tagged = scan([parseDiff(diff)], { terms: parseTerms(`# terms\n\n[owner-email] ${term}`) });
+    const lines = formatReport(tagged.findings, { ...tagged, termsLoaded: true });
+    expect(lines).toContain("docs/setup.md:4 private-term [owner-email]");
+    expect(lines.join("\n")).not.toContain("private-term #");
+  });
+
   it("never echoes the planted path, the term or the matched line", () => {
     for (const secret of [user, plantedPath, term, leakyLine]) expect(report).not.toContain(secret);
   });

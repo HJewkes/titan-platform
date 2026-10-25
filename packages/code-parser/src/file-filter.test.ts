@@ -12,6 +12,11 @@ describe("shouldIncludeFile", () => {
     expect(shouldIncludeFile("src/App.tsx", languages)).toBe(true);
   });
 
+  it("includes .mjs and .cjs scripts when typescript is requested", () => {
+    expect(shouldIncludeFile("scripts/gen.mjs", languages)).toBe(true);
+    expect(shouldIncludeFile("scripts/legacy.cjs", languages)).toBe(true);
+  });
+
   it("includes .py files when python is requested", () => {
     expect(shouldIncludeFile("scripts/main.py", languages)).toBe(true);
   });
@@ -68,6 +73,13 @@ describe("isExcludedDir", () => {
     }
   });
 
+  it("prunes Python virtualenv and tool-cache directories", () => {
+    for (const d of [".venv", "venv", "__pycache__", ".pytest_cache", ".tox"]) {
+      expect(isExcludedDir(d)).toBe(true);
+      expect(shouldIncludeFile(`${d}/lib/dep.py`, ["python"])).toBe(false);
+    }
+  });
+
   it("does not prune ordinary source directories", () => {
     for (const d of ["src", "packages", "lib", "server", "node_modules_helper"]) {
       expect(isExcludedDir(d)).toBe(false);
@@ -91,6 +103,11 @@ describe("getLanguageFromPath", () => {
 
   it("returns typescript for .tsx", () => {
     expect(getLanguageFromPath("src/App.tsx")).toBe("typescript");
+  });
+
+  it("returns typescript for .mjs and .cjs", () => {
+    expect(getLanguageFromPath("scripts/gen.mjs")).toBe("typescript");
+    expect(getLanguageFromPath("scripts/legacy.cjs")).toBe("typescript");
   });
 
   it("returns python for .py", () => {

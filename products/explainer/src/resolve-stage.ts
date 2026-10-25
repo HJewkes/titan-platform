@@ -10,6 +10,7 @@ import { budgetVerdict, scriptBudgets } from "./resolve-budget.js";
 import { citationRefusals, codeSource } from "./resolve-citation.js";
 import { CONTENT_SHAPES, RESOLVE_ROWS, type ResolveRow } from "./resolve-tables.js";
 import { BEAT_FUNCTIONS, FRAMINGS, ScriptSchema, VISUAL_LAYERS, type ScriptV1 } from "./script-schema.js";
+import { slotOverrideProblems, withSlotOverrides } from "./slot-overrides.js";
 import { loadSpeechBands } from "./speech-bands.js";
 import { shippedVisualRouter } from "./visual-router.js";
 import { sha256 } from "./workflow/artifacts.js";
@@ -110,9 +111,20 @@ export function readEmphasisInput(input: CheckInput): EmphasisGateInput {
   const script = ScriptSchema.parse(readJson(input, "script"));
   const chosen = new Map(ResolvedSchema.parse(readJson(input, "resolved")).beats.map((beat) => [beat.id, beat.beat]));
   const beats = script.beats.map(({ id, visual }) => ({ id, visual: { ...visual, beat: chosen.get(id) ?? visual.beat } }));
-  const slots = z.record(z.string(), z.unknown()).parse(readJson(input, "slots"));
+  const filled = z.record(z.string(), z.unknown()).parse(readJson(input, "slots"));
+  const visuals = new Map(script.beats.map(({ id, visual }) => [id, visual]));
+  const slots = Object.fromEntries(Object.entries(filled).map(([id, value]) => [id, withSlotOverrides(visuals.get(id) ?? {}, value)]));
   const layout = input.artifacts.layout === undefined ? undefined : LayoutSchema.parse(readJson(input, "layout"));
   return { beats, specs: loadBeatSpecs(), slots, ...(layout ? { layout } : {}) };
 }
 
 export const wordBudgetVerdict = (input: CheckInput): { pass: boolean; detail: string } => budgetVerdict(ResolvedSchema.parse(readJson(input, "resolved")).budgets);
+
+/** The `slot-overrides` gate: every owner override in the script is one the beat spec the resolver chose accepts. */
+export function slotOverridesVerdict(input: CheckInput): { pass: boolean; detail: string } {
+  const script = ScriptSchema.parse(readJson(input, "script"));
+  const problems = slotOverrideProblems(script.beats, ResolvedSchema.parse(readJson(input, "resolved")).beats, loadBeatSpecs());
+  const overridden = script.beats.filter(({ visual }) => visual.slots !== undefined || visual.tune !== undefined).length;
+  const shown = problems.slice(0, 5).join("; ") + (problems.length > 5 ? ` and ${problems.length - 5} more` : "");
+  return { pass: problems.length === 0, detail: problems.length === 0 ? `${overridden} beats carry overrides, all accepted` : `refused overrides: ${shown}` };
+}

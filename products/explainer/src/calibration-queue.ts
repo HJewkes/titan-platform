@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-/** The model judges the owner's labels calibrate: the cold probe, the cold-viewer rubric (J8 to J12) and L1. */
-export const CALIBRATION_JUDGES = ["cold", "cold-rubric", "l1"] as const;
+/**
+ * The model judges the owner's labels calibrate: the cold probe, the cold-viewer rubric (J8 to J12) and L1, plus the
+ * audition's two pickers, its code total and its cold rubric, which each prefer one storyboard of a pair.
+ */
+export const CALIBRATION_JUDGES = ["cold", "cold-rubric", "l1", "audition-code", "audition-rubric"] as const;
 export type CalibrationJudge = (typeof CALIBRATION_JUDGES)[number];
 
 /** The design's bar (§4.5): below it on agreement a judge stays reported. */
@@ -19,9 +22,17 @@ export interface CaseRef {
   ownerNamed: boolean;
 }
 
-/** One judge verdict the owner can label: "yes" to `question` means the judge should have passed it. */
+/** A verdict asks yes or no about one output; a pair asks which of storyboards A and B the owner would rather watch. */
+export type ItemKind = "verdict" | "pair";
+
+/**
+ * One judge verdict the owner can label: "yes" to `question` means the judge should have passed it, and for a pair,
+ * that it prefers A. Outputs sharing a `group` are one owner question, so one label scores every judge in it.
+ */
 export interface JudgedOutput extends CaseRef {
   judge: CalibrationJudge;
+  kind: ItemKind;
+  group?: string;
   target: string;
   question: string;
   excerpt: string;
@@ -29,12 +40,15 @@ export interface JudgedOutput extends CaseRef {
   /** The judge config and run the verdict came from, so an agreement names what it calibrated. */
   configId: string;
   run: string;
+  /** The judge's eval_version, so agreement pools only labels of one version of the judge. */
+  evalVersion: string;
 }
 
 /** What the owner sees: no judge, no verdict. */
 export interface QueueItem {
   id: string;
   case: string;
+  kind: ItemKind;
   question: string;
   excerpt: string;
 }
@@ -49,6 +63,8 @@ const KeyEntrySchema = z
     pass: z.boolean(),
     configId: z.string(),
     run: z.string(),
+    /** Absent from round-1 keys, which predate it. */
+    evalVersion: z.string().optional(),
   })
   .strict();
 export type KeyEntry = z.infer<typeof KeyEntrySchema>;
@@ -61,32 +77,45 @@ export interface CalibrationQueue {
   key: KeyEntry[];
 }
 
-const seeded = (seed: string, output: JudgedOutput): string =>
-  createHash("sha256").update(`${seed}\0${output.case}\0${output.judge}\0${output.target}`).digest("hex");
+/** The outputs one owner question carries: one, or a pair's judges; the first one stands for the question. */
+type Unit = readonly JudgedOutput[];
 
-const shuffled = (outputs: readonly JudgedOutput[], seed: string): JudgedOutput[] =>
-  [...outputs].sort((a, b) => seeded(seed, a).localeCompare(seeded(seed, b)));
+const seeded = (seed: string, unit: Unit): string =>
+  createHash("sha256").update(`${seed}\0${unit[0]!.case}\0${unit[0]!.judge}\0${unit[0]!.target}`).digest("hex");
 
-function groupBy(outputs: readonly JudgedOutput[], keyOf: (output: JudgedOutput) => string): JudgedOutput[][] {
-  const groups = new Map<string, JudgedOutput[]>();
-  for (const output of outputs) groups.set(keyOf(output), [...(groups.get(keyOf(output)) ?? []), output]);
+const shuffled = (units: readonly Unit[], seed: string): Unit[] =>
+  [...units].sort((a, b) => seeded(seed, a).localeCompare(seeded(seed, b)));
+
+function groupBy(units: readonly Unit[], keyOf: (unit: Unit) => string): Unit[][] {
+  const groups = new Map<string, Unit[]>();
+  for (const unit of units) groups.set(keyOf(unit), [...(groups.get(keyOf(unit)) ?? []), unit]);
   return [...groups.keys()].sort().map((key) => groups.get(key)!);
+}
+
+function units(outputs: readonly JudgedOutput[]): Unit[] {
+  const grouped = new Map<string, JudgedOutput[]>();
+  outputs.forEach((o, i) => {
+    const key = o.group === undefined ? `\0${i}` : `${o.case}\0${o.group}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), o]);
+  });
+  return [...grouped.values()];
 }
 
 /**
  * Judges take turns, so each gets an even share however many outputs it has; within a judge, its video type and
- * verdict buckets take turns, so its share mixes both.
+ * verdict buckets take turns, so its share mixes both. A pair's bucket is every verdict it carries, so pairs where
+ * the code and rubric pickers disagree get their own turn.
  */
-function perJudge(outputs: readonly JudgedOutput[], seed: string): JudgedOutput[][] {
-  return groupBy(outputs, (o) => o.judge).map((mine) => {
-    const buckets = groupBy(mine, (o) => `${o.videoType}\0${String(o.pass)}`).map((bucket) => shuffled(bucket, seed));
+function perJudge(all: readonly Unit[], seed: string): Unit[][] {
+  return groupBy(all, (u) => u[0]!.judge).map((mine) => {
+    const buckets = groupBy(mine, (u) => `${u[0]!.videoType}\0${u.map((o) => String(o.pass)).join(",")}`).map((bucket) => shuffled(bucket, seed));
     return roundRobin(buckets, mine.length);
   });
 }
 
-function roundRobin(groups: readonly JudgedOutput[][], size: number): JudgedOutput[] {
+function roundRobin(groups: readonly Unit[][], size: number): Unit[] {
   const queues = groups.map((group) => [...group]);
-  const picked: JudgedOutput[] = [];
+  const picked: Unit[] = [];
   while (picked.length < size && queues.some((queue) => queue.length > 0)) {
     for (const queue of queues) {
       const next = queue.shift();
@@ -98,13 +127,33 @@ function roundRobin(groups: readonly JudgedOutput[][], size: number): JudgedOutp
 
 const eligible = (output: CaseRef): boolean => output.split !== "holdout" && !output.ownerNamed;
 
-/** Grouped by case so the owner reads one video at a time; the seed fixes the order within a case. */
-export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012"): CalibrationQueue {
-  const picked = roundRobin(perJudge(outputs.filter(eligible), seed), size);
-  const ordered = [...new Set(picked.map((o) => o.case))].sort().flatMap((c) => shuffled(picked.filter((o) => o.case === c), seed));
+const keyEntry = (id: string, o: JudgedOutput): KeyEntry =>
+  ({ id, judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run, evalVersion: o.evalVersion });
+
+const caseOf = (u: Unit) => u[0]!.case;
+
+/**
+ * Clearest first, so an owner who stops early has labelled the most readable material: the clearest video, then the
+ * pairs, which are short and score two judges each, then the other videos from clearest to least clear.
+ */
+function caseOrder(picked: readonly Unit[], clarity: ReadonlyMap<string, number>): string[] {
+  const cases = [...new Set(picked.map(caseOf))].sort();
+  const isPair = (c: string) => picked.some((u) => caseOf(u) === c && u[0]!.kind === "pair");
+  const rank = (c: string) => clarity.get(c) ?? Number.POSITIVE_INFINITY;
+  const [first, ...rest] = cases.filter((c) => !isPair(c)).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return [...(first === undefined ? [] : [first]), ...cases.filter(isPair), ...rest];
+}
+
+/**
+ * Grouped by case so the owner reads one video at a time; the seed fixes the order within a case. `clarity` ranks
+ * cases, lower being easier to follow; an unranked case goes after every ranked one.
+ */
+export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012", clarity: ReadonlyMap<string, number> = new Map()): CalibrationQueue {
+  const picked = roundRobin(perJudge(units(outputs.filter(eligible)), seed), size);
+  const ordered = caseOrder(picked, clarity).flatMap((c) => shuffled(picked.filter((u) => caseOf(u) === c), seed));
   const id = (i: number): string => `q${String(i + 1).padStart(2, "0")}`;
   return {
-    items: ordered.map((o, i) => ({ id: id(i), case: o.case, question: o.question, excerpt: o.excerpt })),
-    key: ordered.map((o, i) => ({ id: id(i), judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run })),
+    items: ordered.map((u, i) => ({ id: id(i), case: caseOf(u), kind: u[0]!.kind, question: u[0]!.question, excerpt: u[0]!.excerpt })),
+    key: ordered.flatMap((u, i) => u.map((o) => keyEntry(id(i), o))),
   };
 }

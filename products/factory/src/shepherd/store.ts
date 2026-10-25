@@ -3,6 +3,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { watchListTable, type WatchList } from "./watch-list.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
@@ -248,6 +249,9 @@ export class ShepherdStore implements HoldLookup {
 
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
+
+  /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
+  readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());
 
   /** The run's hold, release, repair-stop and gate-cancel events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {

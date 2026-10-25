@@ -305,6 +305,7 @@ describe('startSessionIndexWatch', () => {
           discover: expect.any(Number),
           corpus: expect.any(Number),
         }),
+        prsPolled: 0,
         errors: [],
         errorCount: 0,
       });

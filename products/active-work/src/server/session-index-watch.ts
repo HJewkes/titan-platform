@@ -16,9 +16,11 @@ import { watchChangedPaths } from '../session-index/watch-paths.js';
 import { createDirtySet, type DirtySet, type DrainedDirtySet } from '../session-index/dirty-set.js';
 import { transcriptsFromDirty } from '../session-index/delta-pass.js';
 import { indexFreshness } from '../session-index/freshness.js';
+import { startCheckpointer } from '../session-index/checkpoint.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
+import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
 import {
   readRefreshLockHolder,
   runRefresh,
@@ -109,6 +111,7 @@ function passLogLine(summary: RefreshSummary, maxStallMs: number): object {
     durationMs: summary.durationMs,
     maxStallMs,
     phases: summary.phases,
+    prsPolled: summary.prsPolled,
     errors: summary.errors.slice(0, LOGGED_ERRORS),
     errorCount: summary.errors.length,
   };
@@ -297,12 +300,17 @@ function createScheduler(
 }
 
 /** Readers refresh before they read; nothing to index and nothing running means already fresh. */
-function installFreshness(scheduler: RefreshScheduler, dirty: DirtySet): () => void {
-  return indexFreshness.install((budgetMs) =>
-    dirty.size === 0 && !scheduler.status().running
+export function installFreshness(
+  scheduler: Pick<RefreshScheduler, 'runNow' | 'status'>,
+  dirty: DirtySet,
+  workspace: WorkspaceFreshness,
+): () => void {
+  return indexFreshness.install((budgetMs, scope) => {
+    if (scope === 'workspace') return workspace.ensure(budgetMs);
+    return dirty.size === 0 && !scheduler.status().running
       ? Promise.resolve('fresh')
-      : scheduler.runNow(budgetMs),
-  );
+      : scheduler.runNow(budgetMs);
+  });
 }
 
 export function startSessionIndexWatch(
@@ -322,17 +330,26 @@ export function startSessionIndexWatch(
     return null;
   }
 
+  const checkpointer = startCheckpointer(graph.db, {
+    onError: (err) => log.warn({ err }, 'session index checkpoint worker failed; checkpointing on the loop'),
+  });
   const dirty = createDirtySet();
   const abort = new AbortController();
   const runner = passRunner(graph, dirty, log, abort.signal);
   const scheduler = createScheduler(runner, dirty, log, abort.signal);
-  const uninstall = installFreshness(scheduler, dirty);
+  const { workspace, watcher: workspaceWatcher } = startWorkspaceFreshness(
+    graph,
+    abort.signal,
+    log,
+  );
+  const uninstall = installFreshness(scheduler, dirty, workspace);
 
   // The watcher only records what changed; a reader or the poll runs the pass.
   const watchers = claudeTranscriptRoots().flatMap(({ root }) => {
     const watcher = watchRoot(root, () => {}, log, dirty);
     return watcher ? [watcher] : [];
   });
+  if (workspaceWatcher) watchers.push(workspaceWatcher);
 
   const startPoll = options.startPoll ?? startIntervalPoll;
   const stopPoll = startPoll(
@@ -351,7 +368,8 @@ export function startSessionIndexWatch(
       abort.abort(new Error('session index watcher closed'));
       stopPoll();
       for (const watcher of watchers) watcher.close();
-      await scheduler.close();
+      await Promise.all([scheduler.close(), workspace.idle()]);
+      await checkpointer.stop();
       graph.db.close();
     },
   };

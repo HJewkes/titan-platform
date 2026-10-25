@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "shepherd-pr wires no D21 card",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": "ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };",
+      "replace": "ciPolicyAt: () => undefined };",
+      "kills": ["shepherd-pr shows the D21 owner card of a weakened MERGE at the gate's head on approve-merge"]
+    }
+  ]
+}

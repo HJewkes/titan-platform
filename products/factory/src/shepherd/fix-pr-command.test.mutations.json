@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "fix-pr never writes the mark",
+      "file": "products/factory/src/shepherd/fix-pr-command.ts",
+      "find": "const outcome = freezes.markFixPr(args.repo, live.episode, args.pr, args.actor, runId);",
+      "replace": "const outcome = \"marked\" as string;",
+      "kills": [
+        "shepherd fix-pr lets the marked fix PR through the freeze guard while another registered PR stays held",
+        "a run waiting on repo-not-frozen when its PR is marked as the fix merges on a later step with no re-register, while the repo stays frozen"
+      ]
+    },
+    {
+      "name": "fix-pr skips the open-freeze check",
+      "file": "products/factory/src/shepherd/fix-pr-command.ts",
+      "find": "if (!live) throw refused(`${repo} has no open main-red freeze`);",
+      "replace": "if (false) throw refused(`${repo} has no open main-red freeze`);",
+      "kills": [
+        "shepherd fix-pr refuses a repo with no open main-red freeze"
+      ]
+    },
+    {
+      "name": "fix-pr ignores an --episode that is not the open one",
+      "file": "products/factory/src/shepherd/fix-pr-command.ts",
+      "find": "if (episode !== undefined && episode !== live.episode)",
+      "replace": "if (false)",
+      "kills": [
+        "shepherd fix-pr refuses an --episode that is not the open one, and a second PR once one is marked"
+      ]
+    },
+    {
+      "name": "fix-pr marks a PR shepherd has no registration for",
+      "file": "products/factory/src/shepherd/fix-pr-command.ts",
+      "find": "if (!registration) throw refused(",
+      "replace": "if (false) throw refused(",
+      "kills": [
+        "shepherd fix-pr refuses a PR that is not registered with shepherd, and marks nothing"
+      ]
+    },
+    {
+      "name": "shepherd freezes omits the open main-red episodes",
+      "file": "products/factory/src/shepherd/repo-freeze-command.ts",
+      "find": "mainRed: store.activeFreezes()",
+      "replace": "mainRed: []",
+      "kills": [
+        "shepherd fix-pr shows the mark in shepherd freezes and in the marked PR's timeline, naming who marked it"
+      ]
+    }
+  ]
+}

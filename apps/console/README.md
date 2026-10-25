@@ -387,9 +387,26 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 - **Typed ops.** A deposit may carry an `op` (owner-queue's `OwnerOp`) naming what a tap does
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
-  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`)
-  becomes an `owner-op` tap whose read-back comes from the factory. Any other kind stays on the
-  terminal until its factory effect lands.
+  and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`,
+  `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes from the
+  factory. Any other kind stays on the terminal until its factory effect lands. A `close-pr` tap
+  closes the PR only at the head the owner was shown and keeps its branch, so reopening it is one
+  click on GitHub. A `deploy-pause-clear` tap ("Clear deploy pause") reads back the failure pause a
+  rolled-back deploy left: when, over which target, and why. Clearing it lets the deploy pacer resume,
+  and it may deploy within about a minute. The tap is offered only while the pause is the exact one
+  the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
+  deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
+  cleared by this tap; the read-back says when one will keep deploys held.
+
+  A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
+  "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the
+  hold. "Approve; merge when the loop closes" prepares and acts with `waitFor: "adversary-loop"`:
+  the owner's approval stands at the head and g10 hold shown, the run stays held, and once the
+  adversary loop closes MERGE at that head the factory lifts the hold as the owner and answers the
+  run's approve-merge, so Shepherd merges by itself. Only a g10 release Shepherd writes after the tap
+  counts, and for a `g10-adversary` hold only one under the two-MERGE rule. A new head, a hold
+  escalated to another g10 class, a non-MERGE close or 24 hours voids the approval, and the factory
+  files an inbox item, "Merge approval voided", saying why.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
@@ -844,16 +861,26 @@ Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and
 behind look the same in the item.
 
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
-`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate), `owner-release` (an
-owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a `hold-release` of a
-`g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers `no-action` with its
-reason.
+`TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
+`owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
+`hold-release` of a `g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers
+`no-action` with its reason.
 
-1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
+Each gate step's decisions are held as data in `inbox-view.ts` and mirrored by the factory's `CONSOLE_STEPS`:
+`merge` on approve-merge, and `await-new-head` then `waive-proof` on sh-sent-back. The first is the item's tap; a
+later one is a second, outline-styled tap, offered only when the gate's options list it. The sent-back tap reads
+"Wait for new head": the run waits for the implementer's next pushed head, and nothing merges. On a fix-proof
+send-back (NO_REPRO, or a fixer's exit from a fix-proof wake) the gate also lists `waive-proof`, and the item gets a
+second tap, "Waive fix-proof": it skips the fix-proof requirement for the shown head only, so Shepherd reviews that
+head. It merges nothing; the merge still needs the owner's Approve merge tap, and a new push asks again. `abandon` is
+never offered, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
+record asking any other decision, or one the gate's own schema does not offer, as 403 `class`.
+
+1. `inbox.prepare({ itemId, decision? })` is a read; `decision` picks a second tap the item offers. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
    id, its action, its hold, the read-back and the read time. The console keeps it for five minutes and accepts no confirm it did
    not issue.
-2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
+2. `inbox.act({ itemId, decision?, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
    It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
    It then writes `$TITAN_CONSOLE_STATE/owner-actions/<confirm>.json` once (O_EXCL, 0600, in a 0700 dir). The
    record holds the item, its action and read-back, the confirm, the session's `issuedAt` and the peer class,
@@ -864,16 +891,20 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 
 | Factory answer | Owner sees |
 | --- | --- |
-| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" / "Hold released", plus any hold left |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged"; a waiver: "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
+| 200 `approved` (with `runId`) | "Merge approved": a `merge-at-head` that waits for the adversary loop left the owner's approval on the held Shepherd run |
+| 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
+| 200 `pause-cleared` (with `clearedPause`, `stillHeld`) | "Deploy pause cleared; the deploy pacer may deploy within about a minute", or that deploys stay held by hand, with the hold's reason |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
-| 409 `moved` | "PR moved to `abc1234`, read again" |
+| 409 `moved` | "PR moved to `abc1234`, read again"; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
+| 409 `refused` `deploying` | the reason: a deployer holds the deploy lock, so tap again once it ends |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
 
-After a landed tap on a PR (`resolved`, `released`, `accepted` or `already`), `inbox.act` reads the PR again and
-answers `next`: `merged` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
+After a landed tap on a PR (`resolved`, `released`, `accepted`, `approved`, `pr-closed` or `already`), `inbox.act` reads the PR
+again and answers `next`: `merged` or `closed` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
 Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
 sheet shows it as "Now: …" under the outcome.
 

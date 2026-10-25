@@ -61,5 +61,6 @@ function probeFailure(error: unknown, options: CodexAvailabilityOptions, phase: 
       (("code" in error && error.code === "ETIMEDOUT") || ("killed" in error && error.killed === true && "signal" in error && error.signal === "SIGKILL"))) {
     return { kind: "wall_time_exceeded", wallTimeMs: options.timeoutMs ?? 5000, reason: "Codex availability deadline exceeded" };
   }
-  return { kind: "runtime_error", reason: `could not verify ${phase}: ${error instanceof Error ? error.message : String(error)}`, native: error };
+  // Probes run before any model process starts, so a thrown probe (ENOENT, bad exit) is definite.
+  return { kind: "harness_mismatch", reason: `could not verify ${phase}: ${error instanceof Error ? error.message : String(error)}` };
 }

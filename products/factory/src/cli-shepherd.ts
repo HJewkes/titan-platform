@@ -7,6 +7,7 @@ import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
+import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import { gitBehind } from "./deploy-behind.js";
 import { deployBlockOf, deploySummary, withGitBehind, type DeployHealth } from "./deploy-health.js";
@@ -50,6 +51,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
+  registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
@@ -118,13 +120,17 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
       runShepherd(verbs, "shepherd.freeze", () => ({ action: "freeze", repo, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
   verb("unfreeze <repo>", "lift the freeze on owner/repo, so waiting runs merge on their next step; a red main's freeze stays")
     .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
-  verb("freezes", "every repo freeze: repo, reason, who set it and since when")
+  verb("freezes", "every repo freeze: repo, reason, who set it and since when; then each open red-main episode with its red sha, fix task, fixer and fix PR")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
   verb("thaw <repo>", "thaw owner/repo's red-main freeze by hand while it is still red at --red-sha; records who and why, and alerts the repo's red seat")
     .requiredOption("--red-sha <sha>", "the full red sha of the episode being thawed")
     .requiredOption("--reason <text>", "why main may thaw without a green")
     .action((repo: string, opts: ShepherdOpts & { redSha: string; reason: string }) =>
       runShepherd(verbs, "shepherd.thaw", () => ({ repo, redSha: opts.redSha, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("fix-pr <repo> <pr>", "mark registered PR <pr> as the fix of owner/repo's open red-main freeze, so its merge passes the freeze while other PRs stay held; records who marked it")
+    .option("--episode <n>", "the red-main episode the mark is for; refused when it is not the open one", parsePositiveInt)
+    .action((repo: string, pr: string, opts: ShepherdOpts & { episode?: number }) =>
+      runShepherd(verbs, "shepherd.fix-pr", () => ({ repo, pr: parsePositiveInt(pr), episode: opts.episode, actor: callerOf(verbs.io.env) }), opts));
 }
 
 /** A conflicted PR's merge-order reservation, read, and ended by hand only as break-glass. */
@@ -190,9 +196,9 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
 
-/** Serve's block counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. */
+/** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
 async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
-  if (block === null) return null;
+  if (block === null || block.originLag !== undefined) return block;
   const probe = verbs.deps.deployBehind ?? gitBehind(deployCheckoutFor(verbs.io.env));
   return withGitBehind(block, await probe(block.runningSha), Date.now());
 }

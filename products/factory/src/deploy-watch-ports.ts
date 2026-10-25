@@ -8,8 +8,10 @@ import { cachedAncestry, gitAncestry } from "./build-ancestry.js";
 import { buildSha } from "./build-info.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { DEPLOY_ALARM_ASKER, DEPLOY_ALARM_KEYS, incidentDeposit, incidentMessage, type DeployIncident } from "./deploy-incident.js";
+import { fetchingGitBehind } from "./deploy-behind.js";
 import { deployWatch, type DeployWatch } from "./deploy-watch.js";
 import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
+import { nodeWantedStore, readWanted } from "./shepherd/deploy-pacer.js";
 import { failureOf } from "./shepherd/error-class.js";
 import { REDEPLOY_LOG } from "./shepherd/redeploy.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
@@ -66,6 +68,8 @@ export function configuredDeployWatch(env: NodeJS.ProcessEnv, checkout: string):
     runningSha: () => sha,
     isAncestor: cachedAncestry(gitAncestry(checkout)),
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
+    originBehind: fetchingGitBehind(checkout),
+    deployQueued: () => readWanted(stateDir, nodeWantedStore) !== undefined,
     ...(notify && { notify }),
     escalate: async (deposit: OwnerItemDeposit) => void (await writeDeposit(inbox, deposit)),
     ...(shepherd.deployAlarm && { policy: shepherd.deployAlarm }),

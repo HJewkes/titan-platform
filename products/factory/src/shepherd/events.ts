@@ -62,7 +62,7 @@ export function gateCancelKindMigration(version = 39): Migration {
 export const EVENT_KINDS = [...GATE_CANCEL_KINDS, "order-reserve", "order-release", "order-expired"] as const;
 
 /** A merge-order reservation taken, released (by its run or a seat's break-glass clear) or expired past its TTL (TP-4098 D). */
-export function orderEventKindsMigration(version = 41): Migration {
+export function orderEventKindsMigration(version = 42): Migration {
   return { version, name: "factory:shepherd_event_merge_order", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
 }
 

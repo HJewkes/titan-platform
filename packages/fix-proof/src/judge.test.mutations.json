@@ -18,6 +18,15 @@
       "kills": [
         "judge with mutation specs a changed test file with no spec of its own a changed carried test that imports non-carried source still needs a spec, since a mutation may target that source"
       ]
+    },
+    {
+      "name": "the judge lets a source diff's stale kills through",
+      "file": "packages/fix-proof/src/judge.ts",
+      "find": "unmatched.length > 0 ?",
+      "replace": "unmatched.length > 99 ?",
+      "kills": [
+        "judge with mutation specs a source diff whose spec kills tests the head no longer has three stale kills turn a reproduced verdict into an error naming each kill"
+      ]
     }
   ]
 }

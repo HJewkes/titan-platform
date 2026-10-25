@@ -26,12 +26,14 @@ import { repairStopCommand } from "./repair-stop-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
 import { thawCommand } from "./thaw-command.js";
+import { fixPrCommand } from "./fix-pr-command.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
+import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
@@ -375,10 +377,12 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.freeze": repoFreezeCommand,
   "shepherd.thaw": thawCommand,
   "shepherd.order": orderCommand,
+  "shepherd.fix-pr": fixPrCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
   "shepherd.prs": prsCommand,
+  "shepherd.watch": watchCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

@@ -403,6 +403,19 @@ describe("shepherd-pr", () => {
     expect(w.host.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).not.toContain("FIX_FIRST");
   });
+
+  it("shows the D21 owner card of a weakened MERGE at the gate's head on approve-merge", async () => {
+    const changes = [{ path: ".github/workflows/ci.yml", lines: [{ side: "-", n: 2, text: "  contents: read" }, { side: "+", n: 2, text: "  contents: write" }], omitted: 0 }];
+    const evidence = { head: H1, ciPolicy: { kind: "weakened", keys: ["permissions"] }, record: { ciPolicyChanges: changes } };
+    const { phases } = fakePhases({ review: () => ({ kind: "MERGE", headSha: H1, evidence }) });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Class D21 (CI policy weakened): permissions.\n.github/workflows/ci.yml:\n- L2:   contents: read\n+ L2:   contents: write");
+  });
 });
 
 describe("a pull request whose base moved into a conflict while approve-merge was open", () => {

@@ -7,7 +7,9 @@ import { readCoordinatorEvidence, type EvidenceSources } from "./coordinator-evi
 import type { FactoryHost } from "./host.js";
 import { stepIdMatches } from "./definition.js";
 import { EXIT } from "./exit-codes.js";
-import { confirmOwner } from "./owner-presence.js";
+import type { GateBatchStore } from "./gate-batch-store.js";
+import { mintPresenceRecord } from "./gate-resolve-presence.js";
+import { mintHoldReleaseRecord, type OwnerHeldAt } from "./owner-release-presence.js";
 
 interface ResolveIo {
   stdout: (text: string) => void;
@@ -17,7 +19,7 @@ interface ResolveIo {
 
 /**
  * `titan-factory gate resolve`: answers the gate the run waits on at `stepId`; a resolver refusal throws to the CLI, which exits 1.
- * Presence is always `confirmOwner`, and `sources` is injected only in code: no proof, runner, helper path or evidence is ever read from argv or the environment.
+ * Presence is always an owner-signed statement, and `sources` is injected only in code: no proof, runner, helper path or evidence is ever read from argv or the environment.
  * Without `sources` no coordinator evidence is read, so the resolve takes the presence path as before.
  */
 export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string, sources?: EvidenceSources): Promise<number> {
@@ -33,16 +35,27 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
   }
   const gateId = pendingGateId(host, runId, stepId);
   const evidenceFor = (resolver: GateResolver) => (sources && gateId ? readCoordinatorEvidence(host, sources, gateId, payload, resolver) : Promise.resolve(undefined));
-  const resolution = await cliResolver(io.env, gateId, payload, evidenceFor);
+  const resolution = await cliResolver(io.env, host.batches, gateId, payload, evidenceFor);
   if (typeof resolution === "string") {
     io.stderr(`error: ${resolution}\n`);
     return EXIT.USAGE;
   }
+  if (resolution.presenceRefusal) io.stderr(`owner presence refused: ${resolution.presenceRefusal}\n`);
+  applyResolution(host, runId, stepId, gateId, payload, resolution);
   const { resolver, evidence } = resolution;
-  if (evidence && gateId) host.gates.resolve(gateId, payload, resolver, evidence);
-  else host.runtime.signal(runId, stepId, payload, resolver);
   io.stdout(`resolved ${runId}/${stepId}${evidence ? ` as coordinator ${resolver.id} on ${evidence.kind} evidence` : ""}\n`);
   return EXIT.OK;
+}
+
+/** The store spends the presence record when it admits it; one the store refused first is spent here, so it is never reused. */
+function applyResolution(host: FactoryHost, runId: string, stepId: string, gateId: string | undefined, payload: Record<string, unknown>, { resolver, evidence, presenceBatch }: Resolution): void {
+  try {
+    if (evidence && gateId) host.gates.resolve(gateId, payload, resolver, evidence);
+    else host.runtime.signal(runId, stepId, payload, resolver);
+  } catch (error) {
+    if (presenceBatch && host.batches.get(presenceBatch)?.items[0]?.outcome === "signed") host.batches.mark(presenceBatch, 0, "failed", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 /** The gate the run waits on at `stepId` now, if any. */
@@ -68,10 +81,15 @@ interface Resolution {
   resolver: GateResolver;
   /** Set when a coordinator answers on fresh evidence; the store re-checks it and keeps it on the gate row. */
   evidence?: CoordinatorEvidence;
+  /** The gate batch row the owner's signed presence was recorded in. */
+  presenceBatch?: string;
+  /** Why an agent shell's presence proof failed, so the resolve falls back to the coordinator the store then refuses. */
+  presenceRefusal?: string;
 }
 
 /**
- * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is owner-terminal only with a presence proof, because the owner's
+ * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is owner-terminal only with an owner-signed presence record for this
+ * gate and answer (`mintPresenceRecord`), because the owner's
  * `!` commands inherit that marker; without one it is the coordinator named by AGENT_CHAT_NAME. An answer the factory
  * allows a coordinator (a stuck-behind retry), or one fresh evidence justifies (TP-1904), skips the dialog, so it never
  * reaches the owner's screen. Any other shell stays owner-terminal without a dialog until owner question Q1 is answered.
@@ -79,6 +97,7 @@ interface Resolution {
  */
 async function cliResolver(
   env: NodeJS.ProcessEnv,
+  batches: GateBatchStore,
   gateId: string | undefined,
   payload: Record<string, unknown>,
   evidenceFor: (coordinator: GateResolver) => Promise<CoordinatorEvidence | undefined>,
@@ -90,24 +109,26 @@ async function cliResolver(
   if (evidence !== undefined) return { resolver: coordinator, evidence };
   const reason = presenceReason(gateId, payload);
   if (reason === undefined) return `gate ${JSON.stringify(gateId)} or its decision or headSha has an unexpected shape; refusing to ask for owner presence`;
-  const owner = await ownerResolver(env, reason);
-  return { resolver: typeof owner === "string" ? coordinator : owner };
+  const minted = await mintPresenceRecord(batches, gateId, payload, reason);
+  if ("refusal" in minted) return { resolver: coordinator, presenceRefusal: minted.refusal };
+  return { resolver: { ...ownerTerminal(), confirmEvent: minted.confirmEvent }, presenceBatch: minted.batchId };
 }
 
 const ownerTerminal = (): GateResolver => ({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
 const coordinatorOf = (id: string): GateResolver => ({ class: "coordinator", id, channel: "factory-cli" });
 
 /**
- * The owner-only part of `cliResolver`, for an action no coordinator may take: no allowance and no evidence admit one.
- * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with a presence proof for `reason`; without one
- * it is refused. Any other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
+ * The owner-only check for `shepherd owner-release`: no allowance and no evidence admit a coordinator. A shell
+ * agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with an owner-signed hold-release record for exactly
+ * `held` (`mintHoldReleaseRecord`), which `ownerRelease` verifies against the ledger; without one it is refused. Any
+ * other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
  */
-export async function ownerResolver(env: NodeJS.ProcessEnv, reason: string): Promise<GateResolver | string> {
+export async function ownerResolver(env: NodeJS.ProcessEnv, batches: GateBatchStore, held: OwnerHeldAt, reason: string): Promise<GateResolver | string> {
   const owner = ownerTerminal();
   if (!env.AGENT_CHAT_AGENT_ID) return owner;
-  const proof = await confirmOwner(reason);
-  if (!proof) return `owner presence was not confirmed, so ${env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID}, a shell agent-chat launched, is refused: only the owner may ${reason}`;
-  return { ...owner, confirmEvent: proof };
+  const minted = await mintHoldReleaseRecord(batches, held, reason);
+  if ("refusal" in minted) return `${minted.refusal}, so ${env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID}, a shell agent-chat launched, is refused: only the owner may ${reason}`;
+  return { ...owner, confirmEvent: minted.confirmEvent };
 }
 
 const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
