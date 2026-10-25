@@ -39,7 +39,7 @@ declare function parseFixProofConfig(text: string | null | undefined): ConfigRes
 
 /** Every alternative of a brace glob, innermost group first; throws past 256 alternatives, 32 brace groups or 1024 characters. */
 declare function expandBraces(glob: string): string[];
-/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`. */
+/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`, in time linear in the path. */
 declare function compileGlobs(globs: readonly string[]): (path: string) => boolean;
 
 interface PlanInput {
