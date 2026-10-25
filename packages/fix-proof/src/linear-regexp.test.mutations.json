@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dot matches a line terminator without the s flag",
+      "file": "packages/fix-proof/src/linear-regexp.ts",
+      "find": "this.dotAll ? () => true : (char) => !LINE_TERMINATORS.has(char)",
+      "replace": "() => true",
+      "kills": [
+        "LinearRegExp agrees with RegExp on 400 random sources, under each of its flags, on every input up to 4 characters"
+      ]
+    }
+  ]
+}

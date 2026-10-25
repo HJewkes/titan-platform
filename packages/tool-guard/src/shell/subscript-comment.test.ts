@@ -213,15 +213,19 @@ function countCharAt(read: () => unknown, cap: number): number {
  * of a 64 KB script of it: about twice what each was measured to read. Each span costs several readings, so the linear
  * rows range from 18 to 1 230. The $${ row read 6 947 when the glob compiler searched to the end for each unterminated
  * `[` (TP-4051); it reads 549 now.
+ *
+ * The $${, closed ${ and closed $(( rows were measured while V8 refused to compile the script's 98 KB glob word as a
+ * RegExp at its first test ("Regular expression too large"), which ended the reading before its case-folded pass. The
+ * linear glob matcher compiles it (TP-4223), so both passes now run: 1 129, 644 and 1 103 per character.
  */
 const SPAN_SHAPES: Array<[string, string, number]> = [
-  ["$${ openers, each a bare { to bash", "$${x[", 1_100],
+  ["$${ openers, each a bare { to bash", "$${x[", 2_300],
   ["nested ${ openers", "${x[", 40],
-  ["closed ${ spans", "${x[0]}", 650],
+  ["closed ${ spans", "${x[0]}", 1_300],
   ["backquote spans", "`[]`", 65],
   ["nested $( openers", "$(x[", 55],
   ["closed $( spans", "$(f [0])", 2_500],
-  ["closed $(( spans", "$(( ${#a[@]} ))", 1_100],
+  ["closed $(( spans", "$(( ${#a[@]} ))", 2_200],
 ];
 
 const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
