@@ -11,6 +11,10 @@ export interface GitInvocation {
   otherPaths: Array<string | null>;
   /** `-c key=value` overrides. */
   config: string[];
+  /** `--config-env key=ENVVAR` entries, whose values live in the environment. */
+  configEnv: string[];
+  /** `-c` entries, as typed, that are dynamic or that a case attribute may have changed. */
+  configUnsure: string[];
   sub: string | null;
   /** True when the subcommand is, or an unquoted dynamic option word could split into, a word git could run as anything. */
   subDynamic: boolean;
@@ -19,7 +23,7 @@ export interface GitInvocation {
 
 /** Parses `git [global options] <subcommand> [args]` and resolves where it operates. */
 export function parseGit(args: WordToken[], dir: string | null, home: string | null = null): GitInvocation {
-  const inv: GitInvocation = { dir, otherPaths: [], config: [], sub: null, subDynamic: false, subArgs: [] };
+  const inv = emptyInvocation(dir);
   let i = 0;
   for (; i < args.length && (args[i] as WordToken).value.startsWith("-"); i++) {
     const { flag, value, width } = option(args, i, GLOBAL_VALUE_OPTS);
@@ -27,7 +31,8 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
     i += width - 1;
     if (flag === "-C") inv.dir = resolvePath(inv.dir, value, home);
     else if (flag === "--git-dir" || flag === "--work-tree") inv.otherPaths.push(resolvePath(inv.dir, value, home));
-    else if (flag === "-c" && value) inv.config.push(value.value);
+    else if (flag === "-c" && value) recordConfig(inv, value);
+    else if (flag === "--config-env" && value) inv.configEnv.push(value.typed ?? value.value);
   }
   const sub = args[i];
   if (sub?.dynamic || isCaseUnsure(sub)) inv.subDynamic = true;
@@ -36,6 +41,16 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
     inv.subArgs = args.slice(i + 1);
   }
   return inv;
+}
+
+/** An invocation in `dir` with no options and no subcommand. */
+export function emptyInvocation(dir: string | null): GitInvocation {
+  return { dir, otherPaths: [], config: [], configEnv: [], configUnsure: [], sub: null, subDynamic: false, subArgs: [] };
+}
+
+function recordConfig(inv: GitInvocation, value: WordToken): void {
+  inv.config.push(value.value);
+  if (value.dynamic || isCaseUnsure(value)) inv.configUnsure.push(value.typed ?? value.value);
 }
 
 /** An unquoted dynamic word word-splits, so it can carry the subcommand itself. */
