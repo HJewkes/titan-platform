@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a same-head retarget starts no fix-proof run",
+      "file": ".github/workflows/fix-proof.yml",
+      "find": "types: [opened, synchronize, reopened, edited]",
+      "replace": "types: [opened, synchronize, reopened]",
+      "kills": ["fix-proof workflow runs again on a same-head retarget, skips every job on any other edit, and gives that edit its own concurrency group"]
+    }
+  ]
+}
