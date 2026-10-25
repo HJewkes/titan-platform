@@ -24,6 +24,38 @@ const IMPLEMENTER = [
 const REVIEWER = [{ type: "agent-name", agentName: "rv-pr-9" }, snapshot("2026-10-21T09:00:00Z", ["base prompt", "You review."], ["Read"]), assistant("r1", usage(1, 2000, 0, 10))];
 const OLD_COORDINATOR = [{ type: "agent-name", agentName: "ws-coord" }, snapshot("2026-09-01T09:00:00Z", ["Rule marker A."], []), assistant("c1", usage(1, 1, 1, 1))];
 
+const HOUR_AGO = new Date(Date.now() - 3_600_000).toISOString();
+const MONTH_AGO = new Date(Date.now() - 30 * 86_400_000).toISOString();
+const channel = (from: string, body: string, attrs = "") => `<channel source="plugin:agent-chat:agent-chat" from="${from}" msg_id="x"${attrs}>\n${body}\n</channel>`;
+const pushed = (content: unknown, fields: object = {}, at = HOUR_AGO) => ({ type: "user", timestamp: at, message: { role: "user", content }, ...fields });
+const fromPeer = (body: string) => pushed(body, { origin: { kind: "channel" }, turnOrigin: "peer", isMeta: true });
+const queued = (kind: string, prompt: string) => ({ type: "attachment", timestamp: HOUR_AGO, attachment: { type: "queued_command", origin: { kind }, prompt, timestamp: HOUR_AGO } });
+
+const COORDINATOR_GEN_1 = [{ type: "agent-name", agentName: "ws-coord" }, pushed("You are ws-coord gen 1.", { turnOrigin: "sdk" }), assistant("g1", usage(1, 1, 1, 1))];
+const COORDINATOR_GEN_2 = [
+  { type: "agent-name", agentName: "ws-coord" },
+  fromPeer(channel("human", "Shepherd digest for ws-coord: 2 open, 1 finished")),
+  fromPeer(channel("human", "Shepherd: acme/widgets#7 gated on review")),
+  fromPeer(channel("human", "deploy alarm: a deploy has not landed")),
+  fromPeer(channel("agent-chat", "Lifecycle: w1 attached", ' system="true" count="1"')),
+  fromPeer(channel("agent-chat", "w2 exited with no Status report")),
+  fromPeer(channel("agent-chat", "2 reports from peers (w1, w2), delivered together", ' count="2" senders="w1,w2"')),
+  fromPeer(channel("w1", "Status: DONE")),
+  pushed("<task-notification>\n<summary>Monitor event</summary>\n</task-notification>", { origin: { kind: "task-notification" }, turnOrigin: "task_notification" }),
+  pushed("Loop tick", { isMeta: true, turnOrigin: "scheduled", scheduledTaskId: "t1" }),
+  pushed("please look at the failing build", { origin: { kind: "human" }, turnOrigin: "human" }),
+  queued("channel", channel("w2", "Status: BLOCKED")),
+  queued("task-notification", "<task-notification>\n<summary>Background command done</summary>\n</task-notification>"),
+  queued("human", "also check the docs"),
+  pushed("<task-notification>\n<summary>legacy record with no origin</summary>\n</task-notification>"),
+  pushed("a legacy typed message"),
+  pushed([{ type: "tool_result", tool_use_id: "tu9", content: "ok" }]),
+  pushed("[1 prior /loop wakeup found nothing actionable.]", { isMeta: true, turnCompanion: true }),
+  pushed([{ type: "text", text: "Base directory for this skill: /skills/x" }], { isMeta: true }),
+  pushed("stale before the window", { origin: { kind: "human" }, turnOrigin: "human" }, MONTH_AGO),
+  assistant("g2", usage(1, 1, 1, 1)),
+];
+
 let root: string;
 
 function transcript(profile: string, project: string, file: string, records: readonly unknown[]): string {
@@ -72,6 +104,21 @@ describe("context-audit report", () => {
   it("weights tool results by the later calls that carry them, keyed by program and subcommand", async () => {
     const { out } = await audit();
     expect(out).toMatch(/^ {2}bash:pnpm test\s+raw\s+50\s+carried\s+100 /m);
+  });
+});
+
+describe("context-audit wakes by trigger", () => {
+  it("counts each coordinator's pushed messages by trigger across its sessions, inside the window only", async () => {
+    transcript("server", "-work-active-work-ws", "g1.jsonl", COORDINATOR_GEN_1);
+    transcript("server", "-work-active-work-ws", "g2.jsonl", COORDINATOR_GEN_2);
+    const { out } = await audit();
+    expect(out).toMatch(/^coordinator\s+sessions\s+digest\s+pr-notice\s+task-note\s+lifecycle\s+broker\s+host\s+cron\s+peer\s+owner\s+sdk\s+other\s+total$/m);
+    expect(out).toMatch(/^ws-coord\s+2\s+1\s+1\s+3\s+1\s+1\s+1\s+1\s+3\s+3\s+1\s+0\s+16$/m);
+  });
+
+  it("leaves the wake table out when no coordinator session is in the window", async () => {
+    const { out } = await audit();
+    expect(out).not.toContain("wakes by trigger");
   });
 });
 

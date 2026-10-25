@@ -6,14 +6,9 @@
       "file": "products/factory/src/context-audit/scan.ts",
       "find": "if (!m.usage || this.seen.has(id)) return;",
       "replace": "if (!m.usage) return;",
-      "kills": ["context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"]
-    },
-    {
-      "name": "transcripts older than the window are read",
-      "file": "products/factory/src/context-audit/command.ts",
-      "find": ".mtimeMs >= since)",
-      "replace": ".mtimeMs >= 0)",
-      "kills": ["context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"]
+      "kills": [
+        "context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"
+      ]
     },
     {
       "name": "the first snapshot in a session wins over the newest",
@@ -26,18 +21,31 @@
       ]
     },
     {
-      "name": "a tool result counts once however many later calls carry it",
-      "file": "products/factory/src/context-audit/scan.ts",
-      "find": "row.carried += chars * Math.max(this.scan.spend.calls - call, 0);",
-      "replace": "row.carried += chars;",
-      "kills": ["context-audit report weights tool results by the later calls that carry them, keyed by program and subcommand"]
+      "name": "a Shepherd per-PR notice counts as a digest",
+      "file": "products/factory/src/context-audit/wakes.ts",
+      "find": "return body.startsWith(\"Shepherd:\") ? \"pr-notice\" : \"host\";",
+      "replace": "return \"digest\";",
+      "kills": [
+        "context-audit wakes by trigger counts each coordinator's pushed messages by trigger across its sessions, inside the window only"
+      ]
     },
     {
-      "name": "a role with no snapshot in the window passes the assert",
+      "name": "a message that rode along a busy turn is not a wake",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "if (kind === \"queued_command\") this.scan.wakes.push(",
+      "replace": "if (kind === \"queued\") this.scan.wakes.push(",
+      "kills": [
+        "context-audit wakes by trigger counts each coordinator's pushed messages by trigger across its sessions, inside the window only"
+      ]
+    },
+    {
+      "name": "a wake stamped before the window counts",
       "file": "products/factory/src/context-audit/report.ts",
-      "find": "if (!held.length) return [`FAIL ${role}: no prompt_snapshot in the window`];",
-      "replace": "if (!held.length) return [];",
-      "kills": ["context-audit --assert-rule fails for a role whose prompt lacks the marker and for a role with no snapshot in the window"]
+      "find": "if (Date.parse(at) < since) continue;",
+      "replace": "if (Date.parse(at) < 0) continue;",
+      "kills": [
+        "context-audit wakes by trigger counts each coordinator's pushed messages by trigger across its sessions, inside the window only"
+      ]
     }
   ]
 }

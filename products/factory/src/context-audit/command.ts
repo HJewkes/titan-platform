@@ -47,7 +47,8 @@ function contextAudit(opts: ContextAuditOpts, { io, setExit }: Verbs, now: () =>
     return setExit(EXIT.USAGE);
   }
   const root = opts.root ?? path.join(io.env.HOME || homedir(), ".claude-profiles");
-  const report = buildReport(readSessions(root, now() - opts.days * DAY_MS));
+  const since = now() - opts.days * DAY_MS;
+  const report = buildReport(readSessions(root, since), since);
   if (!opts.assertRule) return io.stdout(formatReport(report, opts.days));
   const [marker = "", roles = ""] = opts.assertRule;
   const result = assertRule(report, marker, roles.split(",").map((r) => r.trim()).filter(Boolean));
@@ -59,7 +60,7 @@ function contextAudit(opts: ContextAuditOpts, { io, setExit }: Verbs, now: () =>
 export function registerContextAudit(program: Command, verbs: Verbs, now: () => number = Date.now): void {
   program
     .command("context-audit")
-    .description("per role class: sessions, calls, turn-1 context, cache write/read, output and API-equivalent USD; per profile and role: the newest prompt snapshot's system blocks, tool schemas and instructions files; carried tool-result chars by kind")
+    .description("per role class: sessions, calls, turn-1 context, cache write/read, output and API-equivalent USD; per profile and role: the newest prompt snapshot's system blocks, tool schemas and instructions files; carried tool-result chars by kind; wakes by trigger per coordinator")
     .option("--days <n>", "transcripts modified in the last n days", parseDays, 7)
     .option("--root <dir>", "the profiles directory holding <profile>/projects/<project>/*.jsonl (default ~/.claude-profiles)")
     .option("--assert-rule <marker-and-roles...>", "<marker> <roles>: exit 1 unless every listed role's newest system prompt, in every profile, contains the marker sentence")
