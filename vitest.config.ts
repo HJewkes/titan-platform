@@ -25,8 +25,6 @@ const needsProcess = [
 // os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
 const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
 const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
-// Date rendering in these tests must not depend on the host zone.
-const activeWorkEnv = { TZ: "UTC" };
 // These assign process.env.HOME or spy on os.homedir() in-process.
 const activeWorkNeedsProcess = [
   "products/active-work/__tests__/commands/setup.test.ts",
@@ -34,6 +32,11 @@ const activeWorkNeedsProcess = [
   "products/active-work/__tests__/server/session-index-watch.test.ts",
   "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
 ];
+
+// Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
+// worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
+// this process, which its threads share and its forks inherit.
+process.env.TZ = "UTC";
 
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
 // workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
@@ -115,7 +118,6 @@ export default defineConfig({
         test: {
           name: "active-work",
           pool: "threads",
-          env: activeWorkEnv,
           include: activeWorkTests,
           exclude: ["**/node_modules/**", ...activeWorkNeedsProcess],
           setupFiles: activeWorkSetup,
@@ -128,7 +130,6 @@ export default defineConfig({
           pool: "forks",
           maxWorkers: 1,
           execArgv: forksHeap,
-          env: activeWorkEnv,
           include: activeWorkNeedsProcess,
           setupFiles: activeWorkSetup,
         },

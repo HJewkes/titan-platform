@@ -58,7 +58,7 @@ export const ALWAYS_PROJECTS = ["threads", "forks", "active-work", "active-work-
 
 /** Root projects named in the vitest config that this script would never select, so their tests would be skipped silently. */
 export function unselectedProjects(configSource) {
-  const names = [...configSource.matchAll(/^\s*name: "([^"]+)",/gm)].map((match) => match[1]);
+  const names = [...configSource.matchAll(/^\s*name:\s*["']([^"']+)["']/gm)].map((match) => match[1]);
   return names.filter((name) => name !== "repo" && !ALWAYS_PROJECTS.includes(name));
 }
 

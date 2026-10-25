@@ -84,4 +84,8 @@ describe("project list guard", () => {
   it("names a root project the list lacks", () => {
     expect(unselectedProjects('test: {\n  name: "threads",\n}\n{\n  name: "newcomer",\n}')).toEqual(["newcomer"]);
   });
+
+  it("names a project written with single quotes and no trailing comma", () => {
+    expect(unselectedProjects("{\n  name: 'newcomer'\n}")).toEqual(["newcomer"]);
+  });
 });
