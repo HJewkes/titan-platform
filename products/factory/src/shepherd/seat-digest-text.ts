@@ -50,22 +50,49 @@ function unchangedLines(unchanged: readonly DigestItem[]): string[] {
   return rest.length === 0 ? lines : [...lines, "Still to act on:", ...rest];
 }
 
-/**
- * The digest text, or undefined when nothing changed. A seat with no memory hears every open item; after that it hears
- * only what changed: new open items, the PRs whose items cleared, newly finished runs, and the unchanged rest per
- * `unchangedLines`.
- */
-export function digestText(seat: string, open: readonly DigestItem[], fresh: readonly DigestItem[], last: ToldState | undefined): string | undefined {
+/** What changed since the seat was last told: open items it has not heard of, keys of told items now gone, and fresh runs. */
+interface DigestDelta {
+  open: DigestItem[];
+  added: DigestItem[];
+  cleared: string[];
+  fresh: readonly DigestItem[];
+}
+
+export function digestDelta(open: readonly DigestItem[], fresh: readonly DigestItem[], last: ToldState | undefined): DigestDelta {
   const sorted = [...open].sort((a, b) => a.key.localeCompare(b.key));
   const told = new Set(last?.open ?? []);
-  const added = last === undefined ? sorted : sorted.filter((item) => !told.has(item.key));
   const now = new Set(sorted.map((item) => item.key));
-  const cleared = [...told].filter((key) => !now.has(key)).sort();
-  if (added.length === 0 && cleared.length === 0 && fresh.length === 0) return undefined;
+  const added = last === undefined ? sorted : sorted.filter((item) => !told.has(item.key));
+  return { open: sorted, added, cleared: [...told].filter((key) => !now.has(key)).sort(), fresh };
+}
+
+/**
+ * A PR whose told item cleared while a new one opened on it moved, say from one gate to another; it reads as a change, so
+ * its new item is listed under `Changed:` and its cleared key leaves the `Cleared:` line.
+ */
+function splitMoves(added: readonly DigestItem[], cleared: readonly string[], refs: Readonly<Record<string, string>> | undefined) {
+  const movedFrom = new Set(cleared.flatMap((key) => (refs?.[key] === undefined ? [] : [refs[key]])));
+  const changed = added.filter((item) => movedFrom.has(item.pr));
+  const changedPrs = new Set(changed.map((item) => item.pr));
+  return { changed, added: added.filter((item) => !changedPrs.has(item.pr)), cleared: cleared.filter((key) => refs?.[key] === undefined || !changedPrs.has(refs[key])) };
+}
+
+/**
+ * The digest text, or undefined when nothing changed. A seat with no memory hears every open item; after that it hears
+ * only what changed: new open items, items that moved on their PR, the PRs whose items cleared, newly finished runs, and
+ * the unchanged rest per `unchangedLines`.
+ */
+export function digestText(seat: string, open: readonly DigestItem[], fresh: readonly DigestItem[], last: ToldState | undefined): string | undefined {
+  const delta = digestDelta(open, fresh, last);
+  const { open: sorted } = delta;
+  if (delta.added.length === 0 && delta.cleared.length === 0 && fresh.length === 0) return undefined;
+  const told = new Set(last?.open ?? []);
+  const { changed, added, cleared } = last === undefined ? { changed: [], ...delta } : splitMoves(delta.added, delta.cleared, last.refs);
   const lines = [`Shepherd digest for ${seat}: ${sorted.length} open, ${fresh.length} newly finished.`];
   if (sorted.length === 0) lines.push("Open: none.");
   if (last === undefined && sorted.length > 0) lines.push("Open:", ...sorted.map((item) => item.line));
   if (last !== undefined && added.length > 0) lines.push("New:", ...newLines(added));
+  if (changed.length > 0) lines.push("Changed:", ...changed.map((item) => item.line));
   if (cleared.length > 0) lines.push(clearedLine(cleared, last?.refs));
   if (last !== undefined) lines.push(...unchangedLines(sorted.filter((item) => told.has(item.key))));
   if (fresh.length > 0) lines.push("Finished:", ...fresh.map((item) => item.line));
