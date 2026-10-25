@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { tokenize, type WordToken } from "../shell/lexer.js";
 import { expandsAtRunTime, literalKey } from "./field-words.js";
 
-const word = (src: string) => tokenize(src)[0] as WordToken;
+function word(src: string): WordToken {
+  const [token] = tokenize(src);
+  if (token?.type !== "word") throw new Error(`${src} lexes to no leading word`);
+  return token;
+}
 
 describe("expandsAtRunTime reads only characters outside quotes", () => {
   it.each([

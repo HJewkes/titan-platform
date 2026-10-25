@@ -31,6 +31,11 @@ interface WordToken {
         text: string;
         at: number[];
     };
+    /** On a spliced word, the `[start, end)` ranges of `value` read outside every quote and escape; trusted only while `value` is still `text`. */
+    bare?: {
+        text: string;
+        spans: Array<[number, number]>;
+    };
     /** Token lists of command substitutions, which run even when quoted. */
     subs: Token[][];
     /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */

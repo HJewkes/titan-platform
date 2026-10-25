@@ -182,7 +182,7 @@ describe("bare spans of a spliced word", () => {
   });
 
   it("keeps no record on a word read whole one way", () => {
-    expect(tokenize("'{a,b}' {a,b}").map((t) => (t as WordToken).bare)).toEqual([undefined, undefined]);
+    expect(tokenize("'{a,b}' {a,b}").map((t) => (t.type === "word" ? t.bare : t.type))).toEqual([undefined, undefined]);
   });
 
   it("records the spans of a redirect target", () => {
