@@ -449,8 +449,8 @@ describe("inbox ordering", () => {
   });
 
   it("orders live-sized items in work linear in their count", () => {
-    // A run-id lookup lowercases one id, and each sort comparison parses two dates; a scan of the rows per gate is quadratic.
-    const meter = callMeter([[String.prototype, "toLowerCase"], [Date, "parse"]]);
+    // Keying the rows lowercases each run id once and a gate's lookup lowercases its own; a scan of the rows per gate is quadratic.
+    const meter = callMeter([[String.prototype, "toLowerCase"]]);
     try {
       const { ratio } = linearWork((size) => {
         const { many, rows } = liveSized(size);
