@@ -44,7 +44,10 @@ const recordedArgv = (): string[] => readFileSync(join(dir, "argv"), "utf8").spl
 
 function recordedEnv(): Record<string, string> {
   const entries = readFileSync(join(dir, "env"), "utf8").split("\0").slice(0, -1);
-  const pairs = entries.map((entry) => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]);
+  const pairs = entries.map((entry): [string, string] => [
+    entry.slice(0, entry.indexOf("=")),
+    entry.slice(entry.indexOf("=") + 1),
+  ]);
   return Object.fromEntries(pairs.filter(([key]) => !SHELL_SET.has(key)));
 }
 

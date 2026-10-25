@@ -35,11 +35,6 @@
       "count": 1
     }
   },
-  "packages/agent-dispatch/src/dispatch.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "packages/agent-dispatch/src/exec.ts": {
     "titan/max-function-lines": {
       "count": 1
