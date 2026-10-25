@@ -151,7 +151,7 @@ describe("inbox approve-chat prepare", () => {
   });
 
   it("gives a needs-grant notice that the factory also shapes approve no tap", async () => {
-    queue = [{ msgId: MSG, kind: "notice", from: "agent-1", text: "needs a grant for example scope", at: 1_000, meta: { kind: "needs-grant" } }];
+    queue = [{ msgId: MSG, kind: "notice", from: "agent-1", text: "needs a grant for example scope", at: 1_000, meta: { kind: "needs-grant", tool_name: "Bash" } }];
     const spy = spyVerdicter();
     const { prepare } = await harness(spy.verdicter);
 
