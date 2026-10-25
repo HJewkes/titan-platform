@@ -1,7 +1,7 @@
 import type { GitInvocation } from "./git.js";
 
 /** What the command's own `-c` and `--config-env` overrides do to a push git routes through config. */
-export interface PushConfig {
+interface PushConfig {
   /** Config that pushes every branch: a mirror remote, `push.default=matching`, or a glob or `:` push refspec. */
   all: boolean;
   /** Config whose effect the classifier cannot read: an environment value, an included file, a run-time key or value. */
@@ -74,7 +74,7 @@ function readEntry(config: PushConfig, item: string): void {
   if (k.section === "include" || k.section === "includeif") config.unknown = true;
   else if (k.variable === "mirror") config.all ||= value === null || !FALSE_RE.test(value);
   else if (k.variable === "push") readPushSpec(config, value);
-  else if (k.variable === "merge") readMerge(config, k.subsection as string, value);
+  else if (k.variable === "merge") readMerge(config, k.subsection ?? "", value);
   else readDefault(config, value);
 }
 
