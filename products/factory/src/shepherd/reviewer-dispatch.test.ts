@@ -5,6 +5,7 @@ import type * as childProcess from "node:child_process";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReviewTarget } from "@titan-design/review-panel";
+import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { provablyIndependent } from "./lineage.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown } from "./review.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
@@ -39,17 +40,8 @@ beforeEach(() => {
   home = join(dir, "home");
   checkout = join(home, "projects", "demo");
   mkdirSync(checkout, { recursive: true });
-  vi.stubEnv("HOME", home);
-  vi.stubEnv("AGENT_CHAT_HOME", join(home, ".agent-chat"));
-  installHeadlessProfiles(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
+  isolateAgentChatHome(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
 });
-
-/** agent-dispatch refuses a spawn unless `~/.agent-chat/profiles/<profile>.json` says headless. */
-function installHeadlessProfiles(root: string, profiles: string[]): void {
-  const profilesDir = join(root, ".agent-chat", "profiles");
-  mkdirSync(profilesDir, { recursive: true });
-  for (const profile of profiles) writeFileSync(join(profilesDir, `${profile}.json`), JSON.stringify({ surface: "headless" }));
-}
 
 afterEach(() => {
   vi.unstubAllEnvs();
