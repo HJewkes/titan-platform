@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the prompt carries no card lines",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "const cardLines = ciPolicy ? [\"\", ...ciPolicyCardLines(ciPolicy, repo, pr)] : [];",
+      "replace": "const cardLines: string[] = [];",
+      "kills": [
+        "the D21 owner card on approve-merge names Class D21, the keys and the before→after lines read at the gate's head"
+      ]
+    },
+    {
+      "name": "the brief is built without the card",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "skillPaths, ...(ciPolicy && { ciPolicy }), sendBack });",
+      "replace": "skillPaths, sendBack });",
+      "kills": [
+        "the D21 owner card on approve-merge names Class D21, the keys and the before→after lines read at the gate's head"
+      ]
+    }
+  ]
+}

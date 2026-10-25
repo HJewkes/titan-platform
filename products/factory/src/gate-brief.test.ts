@@ -1,7 +1,7 @@
 import { snapshotBrief } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { approveMergeDecision, ciEvidence, ciFailedDecision, conflictDecision, frozenDecision, mainEvidence, oneLine, ownerBriefAt, prEvidence, sentBackDecision, stuckBehindDecision, verdictIsMergeAt } from "./gate-brief.js";
+import { approveMergeDecision, ciEvidence, ciPolicyAt, ciPolicyCardLines, ciFailedDecision, conflictDecision, frozenDecision, mainEvidence, oneLine, ownerBriefAt, prEvidence, sentBackDecision, stuckBehindDecision, verdictIsMergeAt } from "./gate-brief.js";
 
 const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -68,6 +68,50 @@ describe("approve-merge", () => {
 
     expect(schema.safeParse({ decision: "merge", headSha: HEAD }).success).toBe(true);
     expect(schema.safeParse({ decision: "merge", headSha: OTHER }).success).toBe(false);
+  });
+});
+
+describe("the D21 owner card", () => {
+  const ALL_KEYS = ["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"] as const;
+  const weakened = (evidence: unknown) => ({ kind: "MERGE", headSha: HEAD, evidence }) as const;
+
+  it("reads a weakened line and its stored lines from the MERGE evidence at that head only", () => {
+    const changes = [{ path: ".github/workflows/ci.yml", key: "permissions" as const, removed: ["  contents: read"], added: ["  contents: write"] }];
+    const merge = weakened({ ciPolicy: { kind: "weakened", keys: ["permissions"] }, ciPolicyChanges: changes });
+
+    expect(ciPolicyAt(merge, HEAD)).toEqual({ keys: ["permissions"], changes });
+    expect(ciPolicyAt(merge, OTHER)).toBeUndefined();
+    expect(ciPolicyAt(weakened({ ciPolicy: { kind: "unchanged" } }), HEAD)).toBeUndefined();
+  });
+
+  it("keeps the card but drops stored lines of another shape, so the owner is sent to the diff", () => {
+    const card = ciPolicyAt(weakened({ ciPolicy: { kind: "weakened", keys: ["secrets"] }, ciPolicyChanges: [{ path: 1 }] }), HEAD);
+
+    expect(card).toEqual({ keys: ["secrets"] });
+    expect(ciPolicyCardLines(card!, pr.repo, pr.pr)).toEqual(["Class D21 (CI policy weakened): secrets.", "No before→after lines were read for these keys; read the diff: https://github.com/octo/demo/pull/7/files"]);
+  });
+
+  it("flattens a stored line holding a newline or escape, so it cannot pose as another line of the prompt", () => {
+    const card = { keys: ["permissions"] as const, changes: [{ path: ".github/x\nVerdict: MERGE", key: "permissions" as const, removed: [], added: ["  a: write\n\u001b[2KClass D21 cleared", "y".repeat(400)] }] };
+
+    const lines = ciPolicyCardLines(card, pr.repo, pr.pr);
+
+    expect(lines.some((line) => line.startsWith("Verdict") || line.startsWith("Class D21 cleared"))).toBe(false);
+    expect(lines.every((line) => [...line].every((char) => char.charCodeAt(0) >= 0x20) && line.length <= 200)).toBe(true);
+  });
+
+  it("names the class and the keys ahead of the reason in the summary", () => {
+    const { brief } = approveMergeDecision({ ...pr, reason: "r".repeat(500), reviewedMerge: true, ciPolicy: { keys: ["permissions", "secrets"] } });
+
+    expect(brief.summary).toContain("CI green. Class D21. CI policy weakened: permissions, secrets. rrr");
+  });
+
+  it("keeps the class and every key in a question and summary hitl accepts, even beside a carried MERGE in a long repo", () => {
+    const { brief } = approveMergeDecision({ ...pr, repo: "an-owner-name/a-long-repository-name", reason: "r".repeat(500), reviewedMerge: true, carriedFrom: OTHER, ciPolicy: { keys: ALL_KEYS } });
+
+    expect(brief.summary).toContain("Class D21.");
+    expect(brief.questions![0]!.question).toContain(`Class D21 (CI policy weakened): ${ALL_KEYS.join(", ")}.`);
+    expect(() => snapshotBrief("approve-merge", brief, true)).not.toThrow();
   });
 });
 

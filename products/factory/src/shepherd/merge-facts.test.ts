@@ -303,6 +303,38 @@ describe("mergeEvidence", () => {
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
   });
 
+  it("reads a weakened line's before→after lines from the base branch and the head, for the D21 card (TP-2407 c)", async () => {
+    const fake = world([{ path: ".github/workflows/ci.yml", status: "modified" }, { path: "src/a.ts", status: "modified" }]);
+    fake.files.set("main:.github/workflows/ci.yml", { blobSha: "b1", content: "jobs:\n  validate:\n    x: 1\n  egress-scan:\n    x: 1" });
+    fake.files.set(`${HEAD}:.github/workflows/ci.yml`, { blobSha: "b2", content: "jobs:\n  validate:\n    x: 1" });
+
+    const evidence = await collect(fake, { ciPolicy: { kind: "weakened", keys: ["required-check"] } });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.ciPolicyChanges).toEqual([{ path: ".github/workflows/ci.yml", key: "required-check", removed: ["  egress-scan:"], added: [] }]);
+    expect(evidence.unreadFacts).toBeUndefined();
+  });
+
+  it("still gates a weakened line whose file read fails, naming the unread file", async () => {
+    const fake = world([{ path: ".github/workflows/ci.yml", status: "modified" }]);
+    const port: GitHubPort = { ...githubPort(fake.wire), getFile: async () => Promise.reject(new FakeHttpError(502, "Bad Gateway")) };
+
+    const evidence = await mergeEvidence(port, { ...input, ciPolicy: { kind: "weakened", keys: ["permissions"] } }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.unreadFacts).toEqual([expect.stringContaining("the CI-policy lines of .github/workflows/ci.yml are unreadable")]);
+    expect(evidence.record.decision.reason).toContain(".github/workflows/ci.yml are unreadable");
+    expect(evidence.ciPolicyChanges).toEqual([]);
+  });
+
+  it("reads no file for an unchanged line", async () => {
+    const fake = world([{ path: ".github/workflows/ci.yml", status: "modified" }]);
+
+    await collect(fake, { ciPolicy: { kind: "unchanged" } });
+
+    expect(fake.calls).not.toContain("getContent");
+  });
+
   it("collects the source of a rename, so a move out of .github/ is visible to authority", async () => {
     const fake = world([{ path: "tools/x.yml", previousPath: ".github/actions/x.yml", status: "renamed" }]);
 

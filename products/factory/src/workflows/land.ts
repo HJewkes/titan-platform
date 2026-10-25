@@ -3,7 +3,7 @@ import type { OwnerBrief } from "@titan-design/review-panel";
 import { codeStep, type WorkflowContext } from "@titan-design/workflow";
 import type { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import { stuckBehindDecision } from "../gate-brief.js";
+import { stuckBehindDecision, type CiPolicyCard } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
 import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { landedOf, type LandedPr } from "./land-landed.js";
@@ -80,6 +80,8 @@ export interface LandOptions {
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
   skillPathsAt?: (headSha: string) => readonly string[];
+  /** A weakened CI-policy line from a MERGE at exactly this head; the approve-merge gate then shows the D21 owner card. */
+  ciPolicyAt?: (headSha: string) => CiPolicyCard | undefined;
   /** Read before each approve-merge gate opens; true offers the owner `send-back`, and land returns a `sent-back` stop on it. */
   sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */

@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "base and head swapped reverses removed and added",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "removed: multisetMinus(was, now), added: multisetMinus(now, was) };",
+      "replace": "removed: multisetMinus(now, was), added: multisetMinus(was, now) };",
+      "kills": [
+        "ciPolicyChanges shows a permission raised from read to write as that removed and added pair",
+        "ciPolicyChanges shows a deleted egress-scan job under required-check"
+      ]
+    },
+    {
+      "name": "lines keep their escape sequences and control characters",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "const cleanLine = (line: string): string => line.replace(ESCAPE_SEQUENCE, \"\").replace(CONTROL, \"\").trimEnd();",
+      "replace": "const cleanLine = (line: string): string => line.trimEnd();",
+      "kills": [
+        "ciPolicyChanges strips an ANSI escape, control and bidi characters from a head line and cuts it at the line cap"
+      ]
+    },
+    {
+      "name": "a line is never cut at the line cap",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "  return clean.length <= MAX_LINE_CHARS ? clean : `${clean.slice(0, MAX_LINE_CHARS - 1)}…`;",
+      "replace": "  return clean;",
+      "kills": [
+        "ciPolicyChanges strips an ANSI escape, control and bidi characters from a head line and cuts it at the line cap"
+      ]
+    },
+    {
+      "name": "a file has no line cap",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "  let room = MAX_LINES_PER_FILE;",
+      "replace": "  let room = Number.POSITIVE_INFINITY;",
+      "kills": [
+        "ciPolicyChanges caps a file at the per-file line count and counts what it dropped"
+      ]
+    },
+    {
+      "name": "other matches every line",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "  other: undefined,",
+      "replace": "  other: (_path, lines) => [...lines],",
+      "kills": [
+        "ciPolicyChanges yields no lines for other, which has no matcher"
+      ]
+    }
+  ]
+}

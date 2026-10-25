@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the card is lent to a gate at any head",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "  if (verdict?.kind !== \"MERGE\" || verdict.headSha !== headSha) return undefined;\n  const stored",
+      "replace": "  if (verdict?.kind !== \"MERGE\") return undefined;\n  const stored",
+      "kills": [
+        "the D21 owner card reads a weakened line and its stored lines from the MERGE evidence at that head only"
+      ]
+    },
+    {
+      "name": "stored lines of another shape void the card",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "ciPolicyChanges: z.array(CiPolicyChangeSchema).optional().catch(undefined)",
+      "replace": "ciPolicyChanges: z.array(CiPolicyChangeSchema).optional()",
+      "kills": [
+        "the D21 owner card keeps the card but drops stored lines of another shape, so the owner is sent to the diff"
+      ]
+    },
+    {
+      "name": "stored lines are shown unstripped",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "const shown = (mark: string, line: string) => `${mark} ${shownLine(line)}`;",
+      "replace": "const shown = (mark: string, line: string) => `${mark} ${line}`;",
+      "kills": [
+        "the D21 owner card flattens a stored line holding a newline or escape, so it cannot pose as another line of the prompt"
+      ]
+    },
+    {
+      "name": "the summary leaves out the class and keys",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "(target.ciPolicy ? `CI policy weakened: ${target.ciPolicy.keys.join(\", \")}. ${detail}` : detail)",
+      "replace": "detail",
+      "kills": [
+        "the D21 owner card names the class and the keys ahead of the reason in the summary"
+      ]
+    },
+    {
+      "name": "every key in the fixed lead overflows the summary bound",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "(target.ciPolicy ? \" Class D21.\" : \"\")",
+      "replace": "(target.ciPolicy ? ` ${d21Line(target.ciPolicy.keys)}` : \"\")",
+      "kills": [
+        "the D21 owner card keeps the class and every key in a question and summary hitl accepts, even beside a carried MERGE in a long repo"
+      ]
+    }
+  ]
+}

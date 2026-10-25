@@ -4,6 +4,8 @@ import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
+import { ciPolicyAt } from "../gate-brief.js";
+import type { Verdict } from "../shepherd/phases.js";
 import { gateEverything, type GatePolicy, type PolicyRule } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, landScenario } from "../test-support/land.js";
@@ -103,6 +105,42 @@ describe("approveMergeGate", () => {
     ["a merge the approved set answered", { decision: "merge", headSha: H1, origin: SET_ANSWER_ORIGIN }, "merge-by-set"],
   ])("reads %s with its source", async (_name, data, expected) => {
     expect(await approveMergeGate(RULE)(answering(data), QUESTION)).toBe(expected);
+  });
+});
+
+describe("the D21 owner card on approve-merge", () => {
+  const RULE: PolicyRule = { table: "shepherd-merge-guard", rowId: "ci-policy-weakened", version: 1 };
+  const changes = [{ path: ".github/workflows/ci.yml", key: "required-check", removed: ["  egress-scan:"], added: [] }];
+  const verdict: Verdict = { kind: "MERGE", headSha: H1, evidence: { ciPolicy: { kind: "weakened", keys: ["required-check", "other"] }, ciPolicyChanges: changes } };
+  const facts = { ciPolicyAt: (headSha: string) => ciPolicyAt(verdict, headSha) };
+
+  async function askedAt(headSha: string) {
+    const asked: { prompt?: string; summary?: string } = {};
+    const ctx = partialFake<WorkflowContext>({
+      assisted: async (stepId, prompt, options) => {
+        Object.assign(asked, { prompt, summary: options?.brief?.summary });
+        return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: "abandon", headSha } };
+      },
+    });
+    await approveMergeGate(RULE, facts)(ctx, { repo: REPO, pr: 1, headSha, round: 0, reason: "CI-policy weakened: required-check, other" });
+    return asked;
+  }
+
+  it("names Class D21, the keys and the before→after lines read at the gate's head", async () => {
+    const { prompt, summary } = await askedAt(H1);
+
+    expect(prompt).toContain("Class D21 (CI policy weakened): required-check, other.");
+    expect(prompt).toContain(".github/workflows/ci.yml (required-check):\n-   egress-scan:");
+    expect(prompt).toContain("Key other has no line matcher; read the diff:");
+    expect(summary).toContain("Class D21. CI policy weakened: required-check, other.");
+  });
+
+  it("shows no card on a gate at another head", async () => {
+    const { prompt, summary } = await askedAt(H2);
+
+    expect(prompt).not.toContain("D21");
+    expect(prompt).not.toContain("egress-scan");
+    expect(summary).not.toContain("D21");
   });
 });
 

@@ -1,7 +1,10 @@
 import type { GateBrief, GateQuestion } from "@titan-design/hitl";
 import type { OwnerBrief } from "@titan-design/review-panel";
+import type { CiPolicyKey } from "@titan-design/session-read";
 import { z } from "zod";
+import { CiPolicyChangeSchema, shownLine, type CiPolicyChange } from "./shepherd/ci-policy-changes.js";
 import type { Verdict } from "./shepherd/phases.js";
+import { CiPolicySchema } from "./shepherd/review-schemas.js";
 import type { FailingCheck } from "./workflows/land-ci.js";
 
 const MAX_SUMMARY = 280;
@@ -69,6 +72,44 @@ export function ownerBriefLines(ownerBrief: OwnerBrief): string[] {
   return [`What: ${ownerBrief.what}`, `Why: ${ownerBrief.why}`, "Pros:", ...bullets(ownerBrief.pros), "Cons:", ...bullets(ownerBrief.cons), `Door: ${ownerBrief.doorType}`];
 }
 
+/** A weakened CI-policy line at one head: its keys, and the before→after lines Shepherd read, absent when none were stored. */
+export interface CiPolicyCard {
+  keys: readonly CiPolicyKey[];
+  changes?: readonly CiPolicyChange[];
+}
+
+const StoredCard = z.looseObject({ ciPolicy: CiPolicySchema, ciPolicyChanges: z.array(CiPolicyChangeSchema).optional().catch(undefined) });
+
+/** The D21 card of the MERGE evidence at exactly this head; a stored list of another shape reads as no lines, never as none weakened. */
+export function ciPolicyAt(verdict: Verdict | undefined, headSha: string): CiPolicyCard | undefined {
+  if (verdict?.kind !== "MERGE" || verdict.headSha !== headSha) return undefined;
+  const stored = StoredCard.safeParse(verdict.evidence);
+  const ciPolicy = stored.data?.ciPolicy;
+  if (ciPolicy?.kind !== "weakened") return undefined;
+  const changes = stored.data?.ciPolicyChanges;
+  return { keys: ciPolicy.keys, ...(changes && { changes }) };
+}
+
+export const d21Line = (keys: readonly CiPolicyKey[]): string => `Class D21 (CI policy weakened): ${keys.join(", ")}.`;
+
+/**
+ * Lines the PR author wrote are stripped and capped again here, so a stored line can never pose as a line of the prompt;
+ * unlike `oneLine`, this keeps a YAML line's indent.
+ */
+export function ciPolicyCardLines(card: CiPolicyCard, repo: string, pr: number): string[] {
+  const shown = (mark: string, line: string) => `${mark} ${shownLine(line)}`;
+  const diff = prFilesEvidence(repo, pr);
+  const lines = (card.changes ?? []).flatMap((change) => [
+    `${shownLine(change.path)} (${change.key}):`,
+    ...change.removed.map((line) => shown("-", line)),
+    ...change.added.map((line) => shown("+", line)),
+    ...(change.omitted ? [`… ${change.omitted} more lines: ${diff}`] : []),
+  ]);
+  const none = lines.length === 0 ? [`No before→after lines were read for these keys; read the diff: ${diff}`] : [];
+  const other = card.keys.includes("other") ? [`Key other has no line matcher; read the diff: ${diff}`] : [];
+  return [d21Line(card.keys), ...lines, ...none, ...other];
+}
+
 interface PrHead {
   repo: string;
   pr: number;
@@ -93,6 +134,8 @@ interface ApproveMergeTarget extends PrHead {
   carriedFrom?: string;
   ownerBrief?: OwnerBrief;
   skillPaths?: readonly string[];
+  /** A weakened CI-policy line at this head: the gate is a D21 owner card naming its keys. */
+  ciPolicy?: CiPolicyCard;
   /** Offers `send-back`, whose answer must carry the owner's note; only `shepherd.consoleAnswers` turns it on. */
   sendBack?: boolean;
 }
@@ -131,7 +174,8 @@ const sendBackNeedsNote = (answer: { decision: string; note?: unknown }, ctx: z.
  */
 export function approveMergeDecision(target: ApproveMergeTarget) {
   const skills = target.skillPaths ?? [];
-  const asked = skills.length > 0 ? `Land ${target.headSha}? ${skillChangeNote(target.repo, target.pr, skills)}` : `Land ${target.headSha}?`;
+  const d21 = target.ciPolicy ? ` ${d21Line(target.ciPolicy.keys)}` : "";
+  const asked = skills.length > 0 ? `Land ${target.headSha}?${d21} ${skillChangeNote(target.repo, target.pr, skills)}` : `Land ${target.headSha}?${d21}`;
   const sendBack = target.sendBack ? [{ id: SEND_BACK, label: "Send back to the implementer with your note" } as const] : [];
   const { schema, questions } = decisionGate({
     question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : oneLine(asked, MAX_QUESTION),
@@ -146,10 +190,14 @@ export function approveMergeDecision(target: ApproveMergeTarget) {
   return { schema: checked, brief: skills.length > 0 ? skillMergeBrief(target, skills, questions) : mergeBrief(target, questions) };
 }
 
+/** The class sits in the fixed lead and the keys open the detail, so a long reason is cut before either, and the field's bound always holds. */
+const leadD21 = (target: ApproveMergeTarget): string => (target.ciPolicy ? " Class D21." : "");
+const detailD21 = (target: ApproveMergeTarget, detail: string): string => (target.ciPolicy ? `CI policy weakened: ${target.ciPolicy.keys.join(", ")}. ${detail}` : detail);
+
 function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
   const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
   const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
-  return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
+  return brief(summarize(`Merge ${where(target)}? CI green.${leadD21(target)}`, detailD21(target, target.reason), verdict), prEvidence(target.repo, target.pr), questions);
 }
 
 /**
@@ -158,7 +206,8 @@ function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): Gate
  */
 function skillMergeBrief(target: ApproveMergeTarget, skills: readonly string[], questions: GateQuestion[]): GateBrief {
   const files = prFilesEvidence(target.repo, target.pr);
-  const summary = summarize(`Merge ${where(target)}? CI green.`, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`, `Review the diff: ${files}; no recommendation.`);
+  const detail = detailD21(target, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`);
+  const summary = summarize(`Merge ${where(target)}? CI green.${leadD21(target)}`, detail, `Review the diff: ${files}; no recommendation.`);
   return brief(summary, prEvidence(target.repo, target.pr), questions);
 }
 
