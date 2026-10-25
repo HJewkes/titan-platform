@@ -360,8 +360,11 @@ cleanup without a gate. That holds even if a new red has frozen the repo again. 
 already spawned by then is reported in the step's detail and keeps running.
 
 While the repo is frozen, every merge route waits in `merging`, the same way a hold does.
-One pull request is exempt: the one whose registration names the episode's fix task and
-the episode's fixer as its implementer. The guard also re-reads the default branch at most
+Two pull requests can be exempt: the one whose registration names the episode's fix task and
+the episode's fixer as its implementer, and the one registered pull request a seat marked as
+the episode's fix with [`shepherd fix-pr`](#fix-pr). A seat marks its own fix when it is not
+the auto-fixer's registration; without the mark, that fix waits on `repo-not-frozen` like every
+other pull request until main thaws. The guard also re-reads the default branch at most
 every five minutes, and a green head there thaws the repo.
 
 **Green.** `sh-unfreeze` thaws a frozen repo when the merge commit descends from the red sha
@@ -1271,7 +1274,8 @@ Packages pull request must land with no other merge ahead of it. It is not a hol
 charter class. While the repo is frozen, runs keep reviewing and CI keeps running, but a run that
 would merge waits in `merging` instead. `unfreeze` lifts it, and each waiting run merges on its next
 step. `status`, `list` and `timeline` show the freeze on every row of the repo, with its reason,
-who set it and since when. `freezes` lists every repo freeze.
+who set it and since when. `freezes` lists every repo freeze, then each open main-red episode
+with its [fix PR](#fix-pr).
 
 `--reason` is required and must not be blank. Freezing a frozen repo replaces the reason and who
 set it, and keeps the time it started. Unfreezing a repo that is not frozen changes nothing and
@@ -1311,6 +1315,33 @@ Every thaw alerts the repo's red seat, by the route the [main CI watch](#main-ci
 `shepherd.hubSeat`. The alert names the repo, the red sha, the caller and the reason. When no
 seat can be found or the send fails, the thaw logs an error line and still stands. The
 command prints which seat it told, or why it told none.
+
+### Mark a red main's fix PR {#fix-pr}
+
+```sh
+titan-factory shepherd fix-pr owner/repo 123 [--episode <n>]
+```
+
+`fix-pr` marks pull request 123 as the fix of the repo's open [main-red](#after-the-merge)
+episode, so its merge passes the freeze while every other pull request stays held. Use it when
+the fix is a seat's own pull request rather than the auto-fixer's. The repo stays frozen; a
+green main after the fix merges thaws it as usual.
+
+It refuses, and changes nothing, when:
+
+- the repo has no open main-red episode;
+- `--episode` is given and is not the open episode;
+- the pull request is not registered with Shepherd for that repo;
+- another pull request is already this episode's fix. Each episode has at most one marked fix,
+  and a new episode starts with none.
+
+Marking the same pull request again changes nothing and says so. The mark writes a `freeze`
+event naming the caller, so the marked pull request's `timeline` shows
+`fix PR #123 marked (by <caller>)`, and `shepherd freezes` lists each open main-red episode with
+its red sha, fix task, fixer and fix PR. A run already waiting on `repo-not-frozen` reads the
+freeze again on its next step and merges with no new `register`. An approve-merge gate the
+freeze alone caused is cancelled at once, as the sweep after a thaw does, so its run asks the
+policy again at the same head.
 
 ### Ask for Shepherd's own review {#own-review}
 
@@ -1530,6 +1561,19 @@ minutes). Past that ceiling the step fails with a reason that names the CI backl
 wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
 repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
 
+A queue backlog also leaves waits behind that only GitHub can end. Shepherd waits those out again
+instead of failing the run. If the last read before the timeout saw `mergeable_state unknown`, saw an
+open repo's first or changed run set (`waiting on a second read that sees the same check-runs`), or
+failed with an HTTP 5xx, the step returns that read marked as timed out. Land then waits again in a
+fresh `ci-wait` step, up to 3 windows in a row (`CI_WAIT_ATTEMPTS`). Any read that has not timed out
+starts the count over. Once the PR settles green, the run goes on to review with no re-register. A red
+check still ends the wait at once. When all 3 windows time out, the run fails as a `ci-timeout`:
+`ci-wait timed out after 2700000 ms on each of 3 attempts: <last read>`. Each timed-out window shows on
+`titan-factory shepherd timeline` as a `ci-timeout` event, for example `ci-timeout <at>: attempt 1 of 3,
+waiting again: ci-wait:0 timed out after 2700000 ms, waiting on mergeable_state unknown (by shepherd)`.
+A 5xx with no earlier read that answered has no head to return, so it still fails at the first
+timeout.
+
 GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
 never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute
 ceiling with the merge train held. Now, once a check has waited 5 minutes, `ci-wait` reads its workflow
@@ -1596,6 +1640,16 @@ allows a merge; it only gates one:
 
 - `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
   a weaker CI policy.
+  Its approve-merge gate is the D21 card: it names the class and the weakened keys, then, for
+  each changed `.github/` file read at the base and at the head, every changed line of a
+  positional diff as `- L<n>:` (removed) or `+ L<n>:` (added). No line is picked by what it says,
+  so every changed line is shown or counted: a file shows at most 20 lines and the card 120, and
+  the rest is a count with a link to the diff. Each line is the PR author's, so it is stripped of
+  escape, control, bidi and zero-width characters and cut at 160 characters. A file that cannot
+  be read, or one past the first ten, is named on the card and in the gate's reason. A PR with
+  no `.github/` change, or a record whose lines cannot be read, gets a fixed line that sends the
+  owner to the diff. Only a changed-file list that was read in full can say no `.github/` file
+  changed; an unread list is named on the card, which then says no changed lines were read. Evidence from another head shows no card, and the gate still opens.
 - The label is read on every raw line, fenced, indented or commented out, and with any casing,
   decoration or punctuation, so a hidden or decorated `weakened` still reads weakened. Across
   several lines the strictest reading wins.
@@ -1735,7 +1789,8 @@ its extract to run targeted tests.
 These limits remain:
 
 - **The freeze exemption is not a security boundary.** `register` accepts any
-  `--implementer` string, and the fixer's name is printed in the gate prompt. The exemption
+  `--implementer` string, the fixer's name is printed in the gate prompt, and any caller can
+  mark a registered pull request with `fix-pr`. The exemption
   stops honest mistakes, not a determined caller.
 
 ## How it fails

@@ -196,6 +196,11 @@ async function queueDeploy(options: DeployerOptions, ports: DeployerPorts, store
   return { spawned: false, queued: true, detail };
 }
 
+/** A green main sha no Shepherd run merged (seat-merge, bin/merge, the owner) queues through the record Shepherd's redeploy step writes (TP-3474). */
+export function mainDeployQueue(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts, store: WantedStore = nodeWantedStore): (sha: string) => Promise<Redeploy> {
+  return (sha) => queueDeploy(options, ports, store, sha);
+}
+
 /** The pacer spawns through the same deployer, so both paths share A0's unit naming and log. */
 export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts): DeployPacerOptions {
   const deployer = systemDeployer(options, ports);
@@ -206,7 +211,7 @@ export function deployPacerPorts(options: DeployerOptions, ports: DeployerPorts 
 export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts, store: WantedStore = nodeWantedStore): Deployer {
   return {
     runningSha: buildSha,
-    request: (mergeSha) => queueDeploy(options, ports, store, mergeSha),
+    request: mainDeployQueue(options, ports, store),
     spawn: (mergeSha, target) => {
       const log = join(options.stateDir, REDEPLOY_LOG);
       const at = options.now?.() ?? new Date();

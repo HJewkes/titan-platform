@@ -71,8 +71,10 @@ const VERB: Record<InboxAction["kind"], string> = {
 
 const OP_VERB: Partial<Record<Extract<InboxAction, { kind: "owner-op" }>["op"]["kind"], string>> = { "merge-at-head": "Merge at head", "retire-agent": "Retire", "close-pr": "Close PR", "deploy-pause-clear": "Clear deploy pause" };
 
-/** A sent-back tap only waits for the implementer's next head, so it never reads as a merge. */
-const GATE_VERB: Record<Extract<InboxAction, { kind: "resolve-gate" }>["decision"], string> = { merge: VERB["resolve-gate"], "await-new-head": "Wait for new head" };
+type GateDecision = Extract<InboxAction, { kind: "resolve-gate" }>["decision"];
+
+/** A sent-back tap waits for the implementer's next head or waives this head's fix-proof, so it never reads as a merge. */
+const GATE_VERB: Record<GateDecision, string> = { merge: VERB["resolve-gate"], "await-new-head": "Wait for new head", "waive-proof": "Waive fix-proof" };
 
 /** On a g10-held PR the plain merge goes past the hold, so its verb says which verdicts it skips. */
 const PAST_HOLD_VERB: Readonly<Record<string, string>> = { "g10-adversary": "Merge without both MERGEs", "g10-review": "Merge without a MERGE" };
@@ -235,7 +237,7 @@ function RowAction({ item }: { item: InboxItem }): ReactNode {
   if (!CONSOLE_TAPS.has(item.action.kind)) return <TerminalAction item={item} reason={laterReason(item.action)} />;
   if (!live) return <TerminalAction item={item} reason="This page is a snapshot: act from the live console, or run it on the terminal." />;
   const forced = pastHoldVerb(item);
-  return forced === undefined ? <ConsoleAction item={item} verb={verbOf(item.action)} /> : <HeldMergeActions item={item} forced={forced} />;
+  return forced === undefined ? <GateActions item={item} /> : <HeldMergeActions item={item} forced={forced} />;
 }
 
 /** A g10-held merge offers both taps: the forced merge past the hold, and the approval that leaves the merge to the adversary loop. */
@@ -243,26 +245,48 @@ function HeldMergeActions({ item, forced }: { item: InboxItem; forced: string })
   return (
     <HStack gap={2} align="center" wrap>
       <ConsoleAction item={item} verb={forced} />
-      <ConsoleAction item={item} verb={AFTER_LOOP_VERB} waitFor="adversary-loop" />
+      <ConsoleAction item={item} verb={AFTER_LOOP_VERB} choice={{ waitFor: "adversary-loop" }} />
     </HStack>
   );
 }
 
 const laterReason = (action: InboxAction): string => (action.kind === "terminal" ? action.reason : `${verbOf(action)} from the console comes later; run it on the terminal for now.`);
 
-const inboxTap = (itemId: string, waitFor?: MergeWait): TapCommands => ({ prepare: "inbox.prepare", act: "inbox.act", args: { itemId, ...(waitFor && { waitFor }) }, invalidates: ["inbox.list"] });
+interface TapChoice {
+  decision?: GateDecision;
+  waitFor?: MergeWait;
+}
 
-/** One primary button labelled with the verb; the sheet it opens holds the second tap. */
-function ConsoleAction({ item, verb, waitFor }: { item: InboxItem; verb: string; waitFor?: MergeWait }): ReactNode {
-  const [confirming, setConfirming] = useState(false);
-  const command = terminalCommandOf(item);
+const inboxTap = (itemId: string, { decision, waitFor }: TapChoice): TapCommands => ({ prepare: "inbox.prepare", act: "inbox.act", args: { itemId, ...(decision && { decision }), ...(waitFor && { waitFor }) }, invalidates: ["inbox.list"] });
+
+const alternativesOf = (action: InboxAction): readonly GateDecision[] => (action.kind === "resolve-gate" ? (action.alternatives ?? []) : []);
+
+/** The item's own tap, and an outline one per second decision its gate offers, never styled as the recommendation. */
+function GateActions({ item }: { item: InboxItem }): ReactNode {
+  const alternatives = alternativesOf(item.action);
+  if (alternatives.length === 0) return <ConsoleAction item={item} verb={verbOf(item.action)} />;
   return (
     <HStack gap={2} align="center" wrap>
-      <Button size="sm" onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}${waitFor === undefined ? "" : `-${waitFor}`}`}>
+      <ConsoleAction item={item} verb={verbOf(item.action)} />
+      {alternatives.map((decision) => (
+        <ConsoleAction key={decision} item={item} verb={GATE_VERB[decision]} choice={{ decision }} />
+      ))}
+    </HStack>
+  );
+}
+
+/** One button labelled with the verb, primary for the item's own tap; the sheet it opens holds the confirming tap. */
+function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: string; choice?: TapChoice }): ReactNode {
+  const [confirming, setConfirming] = useState(false);
+  const command = terminalCommandOf(item);
+  const suffix = choice.decision ?? choice.waitFor;
+  return (
+    <HStack gap={2} align="center" wrap>
+      <Button {...(choice.decision !== undefined && { variant: "outline" as const })} size="sm" onPress={() => setConfirming(true)} testID={`inbox-act-${item.id}${suffix === undefined ? "" : `-${suffix}`}`}>
         <ButtonText>{verb}</ButtonText>
       </Button>
-      {command !== undefined && canCopy() && waitFor === undefined ? <CopyButton command={command} /> : null}
-      {confirming ? <TapSheet<InboxReady> commands={inboxTap(item.id, waitFor)} verb={verb} reading="Reading the live gate and head" command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} testID="inbox-confirm" onClose={() => setConfirming(false)} /> : null}
+      {command !== undefined && canCopy() && suffix === undefined ? <CopyButton command={command} /> : null}
+      {confirming ? <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading="Reading the live gate and head" command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} testID="inbox-confirm" onClose={() => setConfirming(false)} /> : null}
     </HStack>
   );
 }

@@ -32,6 +32,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
+| [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
@@ -428,6 +429,25 @@ Key exports:
 
 - `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
 
+<a id="cap-review-burden"></a>
+
+### [`review-burden`](https://hjewkes.github.io/titan-platform/reference/review-burden)
+
+Tier 0, `@titan-design/review-burden@0.0.0`. Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser
+
+**Use this when:**
+
+You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. `burdenScore` turns a numstat-shaped file list, the `$tiers` map, the changed `package.json` sides and the PR body into a 0 to 100 score with every part shown; `doorFacts` lists the one-way facts (migration path, major changeset, authority-protected path, removed `exports`/`bin`/`name` key, deleted stored-data path); `parseFooter` reads the author's `` footer. It does no git or GitHub I/O, so a CLI and Shepherd compute the same number; to decide who may merge, use authority.
+
+Key exports:
+
+- `config`: `resolveConfig`
+- `path-class`: `classifyPath`, `pathClassifier`
+- `footer`: `hasContract`, `parseFooter`
+- `door`: `doorFacts`, `effectiveDoor`, `underDeclared`
+- `score`: `burdenFacts`, `burdenScore`, `scoreParts`, `unitOf`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-burden)
+
 <a id="cap-rpc-protocol"></a>
 
 ### [`rpc-protocol`](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
@@ -536,9 +556,10 @@ Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin
 Key exports:
 
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `DispatchTimeoutError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `spawn-as-caller`: `callerEnv`, `spawnAsCaller`
 - `call-timing`: `observeAgentChatCalls`
 - `profile-guard`: `assertInstalledHeadless`, `installedProfilesDir`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`
+- `exec`: `ExecError`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
@@ -1441,6 +1462,7 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `beatSpecFor` rejects an unknown beat,
 `parseBeatSlots` rejects bad slots and duplicate emphasis ids,
 `cueElement` resolves a cue target to exactly one emphasis element, and
+`fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
@@ -1501,6 +1523,7 @@ a per-beat take cache),
 then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
+resolve builds each `layer: "custom"` beat's layer through claude-print by default, behind an esbuild compile gate and import allowlist, and reuses an earlier run's build of an unchanged packet,
 `explainer stage` runs one stage from stored shas,
 `--from`/`--to`/`--pin` start and stop mid-pipeline,
 `--budget-usd` is a resumable hard stop,

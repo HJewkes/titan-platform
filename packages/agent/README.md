@@ -221,7 +221,7 @@ probe `exec resume --help`: required flags come from the invoked subcommand,
 while sandbox values come from `exec --help`, because both commands set
 `sandbox_mode` through `--config`. Required capabilities follow the arguments
 the adapter builds. Both help probes share the setup deadline. Missing or unrecognized
-capabilities fail before starting a model; help is surface evidence, not sandbox or
+capabilities fail as `harness_mismatch` before starting a model; help is surface evidence, not sandbox or
 policy enforcement proof. `MIN_CODEX_EXEC_VERSION` names the floor; deprecated
 `SUPPORTED_CODEX_EXEC_VERSION` remains an alias for compatibility, not an exact pin.
 
@@ -329,6 +329,8 @@ reads and cache creation; those subset counters must not be added again.
 The adapter does not translate SDK `maxTurns` into a generic model-request or
 agent-iteration limit, or treat the SDK budget estimate as an exact monetary cap.
 Generic optional limits remain unsupported until their semantics are verified.
+A run that reaches the native `maxTurns` still reports `limit_exceeded` with unit
+`agent_iterations`, the closest shared unit, so callers see a definite limit failure.
 No process reattachment, visible terminal, or semantic-interrupt capability is
 claimed by this wrapper. Legacy `runAgent` callers retain their existing API.
 
@@ -357,6 +359,13 @@ native terminal acknowledgment after a deadline or abort, the ledger records
 `cancellation_unknown`. Lease-renewal, stale-owner, and local persistence failures
 settle completion promptly even when the adapter ignores abort; they cannot write a
 terminal result through a newer owner's fence. Durable results must be JSON-safe.
+
+Only a `runtime_error` failure is treated as ambiguous transport loss and parks the
+record in `recovery_required`. A Claude run that reaches its native `maxTurns`
+fails as `limit_exceeded` (unit `agent_iterations`), and a Codex CLI refused by
+the version or capability check fails as `harness_mismatch` before spawn, as does
+a version or help probe that throws (for example ENOENT). Both persist as terminal
+`failed`.
 
 
 ### Shared pricing implementation

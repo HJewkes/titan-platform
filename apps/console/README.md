@@ -869,17 +869,21 @@ A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are o
 `hold-release` of a `g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers
 `no-action` with its reason.
 
-Each gate step's tap gives one decision, held as data in `inbox-view.ts` and mirrored by the factory's
-`CONSOLE_STEPS`: `merge` on approve-merge, and `await-new-head` on sh-sent-back. The sent-back tap reads "Wait for
-new head": the run waits for the implementer's next pushed head, and nothing merges. It never offers `abandon` or
-`waive-proof`, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
+Each gate step's decisions are held as data in `inbox-view.ts` and mirrored by the factory's `CONSOLE_STEPS`:
+`merge` on approve-merge, and `await-new-head` then `waive-proof` on sh-sent-back. The first is the item's tap; a
+later one is a second, outline-styled tap, offered only when the gate's options list it. The sent-back tap reads
+"Wait for new head": the run waits for the implementer's next pushed head, and nothing merges. On a fix-proof
+send-back (NO_REPRO, or a fixer's exit from a fix-proof wake) the gate also lists `waive-proof`, and the item gets a
+second tap, "Waive fix-proof": it skips the fix-proof requirement for the shown head only, so Shepherd reviews that
+head. It merges nothing; the merge still needs the owner's Approve merge tap, and a new push asks again. `abandon` is
+never offered, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
 record asking any other decision, or one the gate's own schema does not offer, as 403 `class`.
 
-1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
+1. `inbox.prepare({ itemId, decision? })` is a read; `decision` picks a second tap the item offers. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
    id, its action, its hold, the read-back and the read time. The console keeps it for five minutes and accepts no confirm it did
    not issue.
-2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
+2. `inbox.act({ itemId, decision?, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
    It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
    It then writes `$TITAN_CONSOLE_STATE/owner-actions/<confirm>.json` once (O_EXCL, 0600, in a 0700 dir). The
    record holds the item, its action and read-back, the confirm, the session's `issuedAt` and the peer class,
@@ -890,7 +894,7 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 
 | Factory answer | Owner sees |
 | --- | --- |
-| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged"; a waiver: "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `approved` (with `runId`) | "Merge approved": a `merge-at-head` that waits for the adversary loop left the owner's approval on the held Shepherd run |
 | 200 `retired` (with `name`, `caveats`) | "Retired `name`", plus agent-chat's caveats: a `retire-agent` op ran a plain retire |

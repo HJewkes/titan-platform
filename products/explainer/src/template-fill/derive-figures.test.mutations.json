@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "chart loses its title slot",
+      "file": "products/explainer/src/beat-slots.ts",
+      "find": "title: Label.optional(), unit: Label.optional()",
+      "replace": "unit: Label.optional()",
+      "kills": [
+        "template fill: chart beats draws three ISO-dated points as a line titled by the chapter, each point on its cue and read as MM-DD"
+      ]
+    }
+  ]
+}

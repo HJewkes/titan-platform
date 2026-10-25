@@ -25,6 +25,7 @@ import { repairStopCommand } from "./repair-stop-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
 import { thawCommand } from "./thaw-command.js";
+import { fixPrCommand } from "./fix-pr-command.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
@@ -373,6 +374,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.repair-stop": repairStopCommand,
   "shepherd.freeze": repoFreezeCommand,
   "shepherd.thaw": thawCommand,
+  "shepherd.fix-pr": fixPrCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,

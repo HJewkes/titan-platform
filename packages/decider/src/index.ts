@@ -59,6 +59,7 @@ export {
   DECIDER_MODES,
   RoutingPolicySchema,
   categoryPolicy,
+  decidePolicyFrom,
   isLockedCategory,
   parseRoutingPolicy,
   setCategoryMode,

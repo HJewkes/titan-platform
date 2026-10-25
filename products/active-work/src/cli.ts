@@ -17,6 +17,8 @@ import { BUILD_VERSION } from './version.js';
 import { color } from './utils/color.js';
 import { appendUsage } from './utils/usage-log.js';
 import { exitAfterFlush, exitQuietlyOnBrokenPipe } from './utils/exit.js';
+import { attachSpawnCommand } from './spawn/args.js';
+import { processSpawnDeps } from './spawn/run.js';
 
 /**
  * Look up the inner zod type, skipping optional/nullable/default wrappers.
@@ -299,6 +301,7 @@ function buildProgram(): Command {
   for (const cmd of cmds) {
     attachCommand(program, cmd);
   }
+  attachSpawnCommand(program, processSpawnDeps(exitAfterFlush));
 
   return program;
 }

@@ -67,6 +67,18 @@ export function autocorrectOff(config: readonly string[]): boolean {
   return OFF_WORDS.has(value) || OFF_BOOLEANS.has(value.toLowerCase());
 }
 
+/**
+ * Whether the command's own `-c` overrides turn boolean `key` on, the last entry winning as in git. A bare
+ * `-c key` is true; any value but a false word reads as true, so a value git would refuse fails closed.
+ */
+export function configTrue(config: readonly string[], key: string): boolean {
+  const entry = [...config].reverse().find((item) => configKey(item).toLowerCase() === key);
+  if (entry === undefined) return false;
+  const eq = entry.indexOf("=");
+  const value = entry.slice(eq + 1).toLowerCase();
+  return eq < 0 || (value !== "" && !OFF_BOOLEANS.has(value));
+}
+
 const configKey = (item: string) => {
   const eq = item.indexOf("=");
   return eq < 0 ? item : item.slice(0, eq);

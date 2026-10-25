@@ -26,6 +26,8 @@ export interface WordToken {
   refs: VarRef[];
   /** Where in `value` an unquoted `~` opens a tilde prefix the shell expands; trusted only while `value` is still `text`. */
   tildes?: { text: string; at: number[] };
+  /** On a spliced word, the `[start, end)` ranges of `value` read outside every quote and escape; trusted only while `value` is still `text`. */
+  bare?: { text: string; spans: Array<[number, number]> };
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
   /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */
@@ -118,6 +120,8 @@ export interface LexState {
   depth: number;
   tokens: Token[];
   word: WordToken | null;
+  /** The `[start, end)` ranges of the pending word's `value` read inside quotes or after an escape. */
+  quotes: Array<[number, number]>;
   heredocs: Array<{ token: RedirectToken; stripTabs: boolean }>;
   /** A `$( )` or `<( )` closed on this line with a heredoc still open. */
   leftOpen: boolean;

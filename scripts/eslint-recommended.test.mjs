@@ -98,3 +98,28 @@ describe("the root lint config with the Activity Events API ban", () => {
     expect(result.status).toBe(0);
   });
 });
+
+describe("the root lint config with the wall-clock motion ban", () => {
+  const CLOCK_FIXTURE = join(REPO, "scripts", "fixtures", "wall-clock");
+
+  function lintClockFixture(file) {
+    return spawnSync(process.execPath, [ESLINT_BIN, "--config", join(REPO, "eslint.config.js"), "--format", "json", file], {
+      cwd: CLOCK_FIXTURE,
+      encoding: "utf8",
+    });
+  }
+
+  it("fails a Date.now() in explainer beat code", () => {
+    const result = lintClockFixture("products/explainer/src/beat-clock.ts");
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", message: expect.stringContaining("`Date.now`") })]);
+  });
+
+  it("passes a Date.now() in explainer code outside the beat and motion paths", () => {
+    const result = lintClockFixture("products/explainer/src/report-clock.ts");
+
+    expect(result.status).toBe(0);
+  });
+});

@@ -22,6 +22,8 @@ beforeEach(async () => {
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
   (await refreshInto(dbPath, root)).db.close();
+  // A trigger serves only the caller's own initiative unless the charter says which are human-only.
+  writeFile(root, 'claude-channels/sources/autonomy/charter.md', '---\nhuman_only_initiatives: []\n---\n');
 });
 
 afterEach(() => {

@@ -87,7 +87,7 @@ async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: Stan
   if ("outcome" in read) return read;
   if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, done: (id) => doneResults(stateDir, id) });
   const { action, confirmEvent } = read;
-  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get()) : resolveGate({ action, confirmEvent }, port, host);
+  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host);
 }
 
 function failure(status: Status, message: string): Answer {
