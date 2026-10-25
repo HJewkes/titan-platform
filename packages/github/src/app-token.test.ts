@@ -612,7 +612,7 @@ describe("token shape scrub", () => {
           redact(text, []);
           times.push(performance.now() - started);
         }
-        return times.sort((a, b) => a - b)[2];
+        return times.sort((a, b) => a - b)[2] ?? 0;
       };
       const small = repeated(1 << 17);
       const large = repeated(1 << 18);
