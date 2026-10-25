@@ -60,6 +60,9 @@ export const deriveItems =
     return { slots: { [field]: textItems(field, labels) }, reveals: itemReveals(beat, field, labels.length) };
   };
 
+const recordsOf = (list: unknown): Record<string, unknown>[] =>
+  Array.isArray(list) ? list.filter((item: unknown): item is Record<string, unknown> => typeof item === "object" && item !== null) : [];
+
 /** The lead's last rows that still fit beside `own` rows, renamed `held-<n>` (n their place on the lead's stage). */
 function heldRows(lead: Lead, own: number, beat: ScriptBeat): { items: Record<string, unknown>[]; reveals: Reveal[] } {
   const room = Math.max(0, HEADED_ROWS_MAX - own);
@@ -77,7 +80,7 @@ export function deriveContinuation(beat: ScriptBeat, scope: BeatScope, lead: Lea
   const reasons = { slots: { reasons: textItems("reasons", labels) }, reveals: itemReveals(beat, "reasons", labels.length), hints: { qaLeadLine: true as const } };
   const found = lead.spec === "verdict-card" ? reasons : own;
   if (!isDerived(found)) return found;
-  const mine = (found.slots[lead.field] as Record<string, unknown>[] | undefined) ?? [];
+  const mine = recordsOf(found.slots[lead.field]);
   const held = heldRows(lead, mine.length, beat);
   const hints = { ...(found.hints?.qaLeadLine ? { qaLeadLine: true as const } : {}), continues: lead.id };
   return { slots: { ...found.slots, ...lead.heading, [lead.field]: [...held.items, ...mine] }, reveals: [...held.reveals, ...found.reveals], hints };
@@ -88,6 +91,6 @@ export function stageOf(id: string, spec: string, slots: Record<string, unknown>
   const field = STAGE_FIELDS[spec];
   if (field === undefined) return undefined;
   const heading = Object.fromEntries((HEADING_FIELDS[spec] ?? []).filter((key) => slots[key] !== undefined).map((key) => [key, slots[key]]));
-  const items = (slots[field] as Record<string, unknown>[] | undefined) ?? [];
+  const items = recordsOf(slots[field]);
   return { id: lead?.spec === spec ? lead.id : id, spec, heading, field, items };
 }

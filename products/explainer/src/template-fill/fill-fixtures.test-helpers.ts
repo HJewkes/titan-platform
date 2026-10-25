@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { z } from "zod";
 import { resolveBeats } from "../resolve-beat.js";
 import { shippedRouter, shippedSpecs } from "../resolve-fixtures.test-helpers.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
@@ -7,10 +8,10 @@ import { fillScript, type FillContext, type FilledBeat, type FilledScript } from
 // Synthetic: an invented parcel desk in three chapters; nothing here quotes a real repo, script or video.
 export const fillFixture = (name: string): string => readFileSync(new URL(`../../fixtures/template-fill/${name}`, import.meta.url), "utf8");
 
-type RawBeat = { id: string; chapter: string; spoken: string; visual: Record<string, unknown> } & Record<string, unknown>;
-type RawScript = { beats: RawBeat[] } & Record<string, unknown>;
+// Only the fields the helpers patch; ScriptSchema checks the rest.
+const RawScriptSchema = z.looseObject({ beats: z.array(z.looseObject({ id: z.string(), visual: z.record(z.string(), z.unknown()) })) });
 
-export const rawFixture = (): RawScript => JSON.parse(fillFixture("fill.script.json")) as RawScript;
+export const rawFixture = () => RawScriptSchema.parse(JSON.parse(fillFixture("fill.script.json")));
 
 export const fixtureScript = (): ScriptV1 => ScriptSchema.parse(rawFixture());
 
