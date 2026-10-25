@@ -50,6 +50,12 @@ export const ResolvedSchema = z.object({
 });
 type Resolved = z.infer<typeof ResolvedSchema>;
 
+/** The script beats resolve kept: every beat but those `resolved.cut` lists, the set each resolve consumer reads. */
+export function keptBeats<T extends { id: string }>(beats: readonly T[], resolved: Pick<Resolved, "cut">): T[] {
+  const cut = new Set((resolved.cut ?? []).map((beat) => beat.id));
+  return beats.filter((beat) => !cut.has(beat.id));
+}
+
 /**
  * The doctrine the resolve stage reads, by content hash: beat specs, profiles, the pinned router, the speech bands' caps,
  * the resolver rows and the sim registry, so a tolerance change re-keys the stage.
@@ -127,8 +133,7 @@ export function runResolveStage(input: ModelStageInput, config: { doctrine: stri
   const read = (name: string): string | undefined => (artifacts[name] === undefined ? undefined : store.readText(artifacts[name]));
   const linked = linkCompanionCards(resolveScript(script, read("code"), loadBeatSpecs()), read("chapter-links"));
   const { kept: beats, cut, notes: simNotes, simTraces } = cutFailingSims(script, linked.beats, input, sims, read);
-  const keptIds = new Set(beats.map((beat) => beat.id));
-  const { rows, unplaced } = scriptBudgets({ ...script, beats: script.beats.filter((beat) => keptIds.has(beat.id)) }, beats, loadBeatSpecs());
+  const { rows, unplaced } = scriptBudgets({ ...script, beats: keptBeats(script.beats, { cut }) }, beats, loadBeatSpecs());
   const resolved: Resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats, budgets: rows, ...(cut.length ? { cut } : {}) };
   const sha = store.putText(`${JSON.stringify(resolved, null, 2)}\n`, "resolved", input.from);
   const rowsUsed = [...new Set(beats.map((beat) => beat.row))];
@@ -149,8 +154,9 @@ const LayoutSchema = z.object({ stage: z.object({ width: z.number(), height: z.n
  */
 export function readEmphasisInput(input: CheckInput): EmphasisGateInput {
   const script = ScriptSchema.parse(readJson(input, "script"));
-  const chosen = new Map(ResolvedSchema.parse(readJson(input, "resolved")).beats.map((beat) => [beat.id, beat.beat]));
-  const beats = script.beats.map(({ id, visual }) => ({ id, visual: { ...visual, beat: chosen.get(id) ?? visual.beat } }));
+  const resolved = ResolvedSchema.parse(readJson(input, "resolved"));
+  const chosen = new Map(resolved.beats.map((beat) => [beat.id, beat.beat]));
+  const beats = keptBeats(script.beats, resolved).map(({ id, visual }) => ({ id, visual: { ...visual, beat: chosen.get(id) ?? visual.beat } }));
   const filled = z.record(z.string(), z.unknown()).parse(readJson(input, "slots"));
   const visuals = new Map(script.beats.map(({ id, visual }) => [id, visual]));
   const slots = Object.fromEntries(Object.entries(filled).map(([id, value]) => [id, withSlotOverrides(visuals.get(id) ?? {}, value)]));
@@ -160,11 +166,12 @@ export function readEmphasisInput(input: CheckInput): EmphasisGateInput {
 
 export const wordBudgetVerdict = (input: CheckInput): { pass: boolean; detail: string } => budgetVerdict(ResolvedSchema.parse(readJson(input, "resolved")).budgets);
 
-/** The `slot-overrides` gate: every owner override in the script is one the beat spec the resolver chose accepts. */
+/** The `slot-overrides` gate: every owner override on a kept beat is one the beat spec the resolver chose accepts. */
 export function slotOverridesVerdict(input: CheckInput): { pass: boolean; detail: string } {
-  const script = ScriptSchema.parse(readJson(input, "script"));
-  const problems = slotOverrideProblems(script.beats, ResolvedSchema.parse(readJson(input, "resolved")).beats, loadBeatSpecs());
-  const overridden = script.beats.filter(({ visual }) => visual.slots !== undefined || visual.tune !== undefined).length;
+  const resolved = ResolvedSchema.parse(readJson(input, "resolved"));
+  const beats = keptBeats(ScriptSchema.parse(readJson(input, "script")).beats, resolved);
+  const problems = slotOverrideProblems(beats, resolved.beats, loadBeatSpecs());
+  const overridden = beats.filter(({ visual }) => visual.slots !== undefined || visual.tune !== undefined).length;
   const shown = problems.slice(0, 5).join("; ") + (problems.length > 5 ? ` and ${problems.length - 5} more` : "");
   return { pass: problems.length === 0, detail: problems.length === 0 ? `${overridden} beats carry overrides, all accepted` : `refused overrides: ${shown}` };
 }

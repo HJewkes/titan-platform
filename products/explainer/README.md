@@ -847,7 +847,9 @@ A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contrac
   stores each frozen trace and a `sim-traces` artifact (trace sha and verdict per beat), and cuts every failing beat:
   it leaves `resolved.beats`, is listed in `resolved.cut` and in the notes, and tts voices none of them. The sim
   registry is part of `resolveConfig`, so a tolerance edit re-keys the stage. Its checks are `sim-check` (reported)
-  and `sim-cut-orphan`, a gate that fails when the cuts leave a chapter with no beats.
+  and `sim-cut-orphan`, a gate that fails when the cuts leave a chapter with no beats. Every other consumer of
+  `resolved` reads `keptBeats`, the script's beats less `resolved.cut`: `slot-overrides`, `emphasis-target`, tts and
+  its `cue-resolution` gate skip a cut beat instead of failing on it.
 
 ## Composition page
 

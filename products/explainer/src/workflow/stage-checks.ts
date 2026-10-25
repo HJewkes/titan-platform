@@ -10,7 +10,7 @@ import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
-import { readEmphasisInput, simCheckVerdict, simCutOrphanVerdict, slotOverridesVerdict, wordBudgetVerdict } from "../resolve-stage.js";
+import { keptBeats, readEmphasisInput, ResolvedSchema, simCheckVerdict, simCutOrphanVerdict, slotOverridesVerdict, wordBudgetVerdict } from "../resolve-stage.js";
 import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { labelConventionsVerdict } from "../label-conventions.js";
@@ -111,13 +111,19 @@ function cuedBeats(beats: ScriptV1["beats"]): number {
 }
 
 /** Every cue the script names lands on a word the voice actually spoke, so no visual fires on a guess. */
+/** The script beats tts voiced: those resolve kept, once the run has a `resolved` artifact. */
+function voicedScriptBeats(input: CheckInput): ScriptV1["beats"] {
+  const { beats } = script(input, "script");
+  return input.artifacts.resolved === undefined ? beats : keptBeats(beats, ResolvedSchema.parse(JSON.parse(text(input, "resolved"))));
+}
+
 function cueResolution(input: CheckInput): Verdict {
   const timing = readTiming(JSON.parse(text(input, "words")));
   const words = Object.fromEntries([...timing].map(([id, beat]) => [id, beat.words ?? []]));
   const resolve = cueResolverFromWords(words);
   const missed: string[] = [];
   let total = 0;
-  const { beats } = script(input, "script");
+  const beats = voicedScriptBeats(input);
   for (const beat of beats) {
     for (const cue of beatCues(beat.visual)) {
       total++;

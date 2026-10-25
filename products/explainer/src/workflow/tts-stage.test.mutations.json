@@ -44,7 +44,7 @@
     {
       "name": "a beat resolve cut is voiced, or stops the stage",
       "file": "products/explainer/src/workflow/tts-stage.ts",
-      "find": "script.beats.filter((beat) => !cut.has(beat.id)).map(",
+      "find": "keptBeats(script.beats, resolved).map(",
       "replace": "script.beats.map(",
       "kills": [
         "tts stage: per-beat rate and take cache voices no beat that resolve cut, and still voices the rest"

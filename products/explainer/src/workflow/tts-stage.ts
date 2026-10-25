@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { calibrateSpeed, encodeWav, type Audio, type TtsProvider } from "@titan-design/speech-tts";
 import type { SpeechBand } from "../beat-schema.js";
-import { ResolvedSchema } from "../resolve-stage.js";
+import { keptBeats, ResolvedSchema } from "../resolve-stage.js";
 import { parseScript } from "../script-load.js";
 import type { ScriptV1 } from "../script-schema.js";
 import type { ArtifactStore, Provenance } from "./artifacts.js";
@@ -83,8 +83,7 @@ function beatRates(script: ScriptV1, input: TtsStageInput, speech: StageSpeech):
   if (sha === undefined) throw new Error(`stage tts needs artifact "resolved", which no earlier stage produced`);
   const resolved = ResolvedSchema.parse(JSON.parse(input.store.readText(sha)));
   const bands = new Map(resolved.beats.map((beat) => [beat.id, beat.band]));
-  const cut = new Set((resolved.cut ?? []).map((beat) => beat.id));
-  return new Map(script.beats.filter((beat) => !cut.has(beat.id)).map((beat) => {
+  return new Map(keptBeats(script.beats, resolved).map((beat) => {
     const band = bands.get(beat.id);
     if (band === undefined) throw new Error(`stage tts: beat ${beat.id} has no band in "resolved"; re-run resolve on this script`);
     return [beat.id, { band, rateWpm: tenths(speech.rates[band] * speech.voice.rate) }];
