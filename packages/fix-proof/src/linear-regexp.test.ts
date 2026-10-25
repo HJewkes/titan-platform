@@ -1,6 +1,6 @@
-import { LINEAR_GROWTH_LIMIT, linearGrowth } from "@titan-design/test-kit";
+import { LINEAR_WORK_LIMIT, linearWork } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { LinearRegExp } from "./linear-regexp.js";
+import { LinearRegExp, linearRegExpSteps } from "./linear-regexp.js";
 
 function seededRandom(seed: number): (below: number) => number {
   let state = seed;
@@ -68,14 +68,23 @@ describe("LinearRegExp", () => {
   });
 
   it.each([
-    ["d/ and 20 stars", `^d/${"[^/]*".repeat(20)}x$`, (n: number) => `d/${"a".repeat(n)}`],
-    ["12 globstar segments", `^${"(?:.*/)?".repeat(12)}x$`, (n: number) => `${"a/".repeat(n)}b`],
-  ])("grows linearly with the path for %s", (_name, source, path) => {
+    ["d/ and 20 stars", `^d/${"[^/]*".repeat(20)}x$`, (n: number) => `d/${"a".repeat(n)}`, 1],
+    ["12 globstar segments", `^${"(?:.*/)?".repeat(12)}x$`, (n: number) => `${"a/".repeat(n)}b`, 16],
+  ])("grows linearly with the path for %s", (_name, source, path, steady) => {
     const regexp = new LinearRegExp(source);
-    const { ratio } = linearGrowth((n) => {
+    const { ratio } = linearWork((n) => {
       const input = path(n);
       return () => regexp.test(input);
-    }, { from: 1, to: 1024 });
-    expect(ratio).toBeLessThan(LINEAR_GROWTH_LIMIT);
-  }, 60_000);
+    }, { from: 1, to: 1024, steady, meter: linearRegExpSteps });
+    expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+  });
+
+  it("counts steps in proportion to the input it reads", () => {
+    const regexp = new LinearRegExp("^a*b$");
+    const before = linearRegExpSteps();
+
+    regexp.test("a".repeat(100));
+
+    expect(linearRegExpSteps() - before).toBeGreaterThanOrEqual(100);
+  });
 });

@@ -331,6 +331,10 @@ whose `test` simulates its source as an NFA: build the regex source as before an
 input as the match, which is what an anchored glob matches. review-panel, autoresearch, code-graph,
 tool-guard, factory and the console build their globs this way (TP-4223).
 
+`linearRegExpSteps()` is the running count of NFA steps every `LinearRegExp` has simulated in the
+process. Pass it as test-kit `linearWork`'s `meter` to assert a matcher's work grows linearly
+without timing it; a matcher that falls back to a native RegExp counts no steps and fails (TP-4262).
+
 ## What it deliberately does not do
 
 The pure functions make no git, vitest, filesystem or network calls; only `execSide`, `judge`, `run` and the bin do.

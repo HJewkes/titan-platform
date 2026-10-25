@@ -1,4 +1,10 @@
 /**
+ * The NFA steps every LinearRegExp has simulated in this process: one per state a closure visits and one per state a
+ * character is tested against. A test reads it before and after a match to assert counted work, which no load on the
+ * machine moves, where a timing ratio would flake (TP-4262).
+ */
+declare const linearRegExpSteps: () => number;
+/**
  * A RegExp whose `test` costs input length times pattern length, for patterns built from untrusted globs. A backtracking
  * RegExp goes polynomial on runs such as `[^/]*` twenty times or `(?:.*\/)?` twelve times, which one config line or
  * command word can hold (TP-1756, TP-4223). The source is simulated as a Thompson NFA instead. It accepts the subset glob
@@ -13,4 +19,4 @@ declare class LinearRegExp extends RegExp {
     exec(input: string): RegExpExecArray | null;
 }
 
-export { LinearRegExp };
+export { LinearRegExp, linearRegExpSteps };

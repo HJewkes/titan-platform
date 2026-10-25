@@ -31,6 +31,54 @@ const MOTION_PATHS = [
   "/products/explainer/src/composition/",
 ];
 
+// Tests that still compare a clock with a limit. TP-4264 empties this list and TP-4076 owns the two tool-guard files; only remove entries.
+const CLOCK_BUDGET_BASELINE = [
+  "apps/console/server/events-relay.test.ts",
+  "apps/console/server/inbox-view.test.ts",
+  "apps/console/server/rounds-submit.test.ts",
+  "packages/agent-surface/src/run-agent.test.ts",
+  "packages/anthropic-account/src/node/login.test.ts",
+  "packages/anthropic-account/src/node/refresh.test.ts",
+  "packages/anthropic-account/src/node/usage-file.test.ts",
+  "packages/daemon/src/file-watch.test.ts",
+  "packages/daemon/src/lifecycle.test.ts",
+  "packages/decider/src/ask-lint.test.ts",
+  "packages/egress-scan/src/allow.test.ts",
+  "packages/egress-scan/src/git.test.ts",
+  "packages/github/src/app-token.test.ts",
+  "packages/github/src/octokit-client.test.ts",
+  "packages/github/src/redact.test.ts",
+  "packages/retrieval/src/fail-open.test.ts",
+  "packages/session-read/src/review-verdict.test.ts",
+  "packages/session-read/src/spawn-assignment.test.ts",
+  "packages/session-read/src/verdict-block.test.ts",
+  "packages/speech-tts/src/command-tts.test.ts",
+  "packages/speech-tts/src/fake-tts.test.ts",
+  "packages/speech-tts/src/http-tts.test.ts",
+  "packages/tool-guard/src/merge-lint/merge-lint.test.ts",
+  "packages/tool-guard/src/shell/procsub-heredoc.test.ts",
+  "packages/worktree/src/setup.repo.test.ts",
+  "products/active-work/__tests__/server/daemon-shutdown-order.test.ts",
+  "products/active-work/__tests__/server/related-during-refresh.test.ts",
+  "products/active-work/__tests__/server/session-index-watch.test.ts",
+  "products/active-work/__tests__/session-index/delta-pass.test.ts",
+  "products/active-work/__tests__/session-index/refresh.test.ts",
+  "products/active-work/__tests__/session-index/scheduler.test.ts",
+  "products/active-work/src/session-index/pass-stall.test.ts",
+  "products/factory/src/cli-coverage.test.ts",
+  "products/factory/src/ingress/answer.test.ts",
+  "products/factory/src/ingress/listen.test.ts",
+  "products/factory/src/redact.test.ts",
+  "products/factory/src/serve-restart-resume.test.ts",
+  "products/factory/src/serve-shutdown.test.ts",
+  "products/factory/src/service-ports.test.ts",
+  "products/factory/src/shepherd/busy-serve.test.ts",
+  "products/factory/src/shepherd/park-serve.test.ts",
+  "products/factory/src/workflows/post-merge.test.ts",
+  "scripts/dag-check-lock.test.mjs",
+  "scripts/vitest-config.test.mjs",
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -68,6 +116,12 @@ export default tseslint.config(
   {
     files: ["**/products/explainer/src/**", "**/ui/beats/**", "**/motion/**"],
     rules: { "titan/no-wall-clock-motion": ["error", { paths: MOTION_PATHS }] },
+  },
+  // A test that compares elapsed time, or a ratio of times, with a limit fails on a loaded hosted runner: count the work, or time it only under a bench flag (TP-4262).
+  {
+    files: ["**/*.test.{ts,tsx,mts,mjs}"],
+    ignores: CLOCK_BUDGET_BASELINE,
+    rules: { "titan/no-test-clock-budget": "error" },
   },
   // A bare gray-matter import evaluates `---js` frontmatter; only the wrapper sets the safe engines (TP-1007).
   {
