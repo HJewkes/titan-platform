@@ -216,6 +216,16 @@ describe("the diagnosis planner's spawn", () => {
     expect(ports.spawned[0]!.brief).toContain("session session-2, transcript /transcripts/session-2.jsonl");
   });
 
+  it("says the aggregate withheld the verdict, not a reviewer, when every dispatched reviewer answered (TP-4195)", async () => {
+    const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE);
+    const answered = [REVIEWERS[0]!, { head: HEAD, shape: "adversary", name: "rv-demo-1-adversary", agentId: "agent-3", sessionId: "session-3", verdict: true as const }];
+
+    await spawnDiagnosis(ports, { ...input, reviewers: answered }, timing());
+
+    expect(ports.spawned[0]!.brief).toContain("- none: all 2 dispatched reviewers gave a verdict, so the panel's aggregate withheld it");
+    expect(ports.spawned[0]!.brief).not.toContain("without dispatching a reviewer");
+  });
+
   it("spawns at the configured profile as given, even one the panel cap would lower to an uninstalled profile (TP-3762)", async () => {
     const ports = diagnosisPorts("bd-reviewer");
 
