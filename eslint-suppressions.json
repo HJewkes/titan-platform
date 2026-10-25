@@ -270,9 +270,6 @@
     "titan/max-function-lines": {
       "count": 1
     },
-    "titan/max-line-length": {
-      "count": 2
-    },
     "titan/no-chained-type-assertions": {
       "count": 1
     }

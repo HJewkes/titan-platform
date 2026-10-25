@@ -237,6 +237,8 @@ interface GhCheckRun {
   status: string;
   conclusion: string | null;
   started_at: string | null;
+  completed_at: string | null;
+  output?: { title: string | null } | null;
   head_sha: string;
   details_url: string | null;
   html_url: string | null;
@@ -253,6 +255,8 @@ async function listCheckRuns(api: Rest, repo: string, sha: string, filter?: "all
     status: run.status,
     conclusion: run.conclusion,
     startedAt: run.started_at,
+    completedAt: run.completed_at ?? null,
+    title: run.output?.title ?? null,
     headSha: run.head_sha,
     appId: run.app?.id ?? null,
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
