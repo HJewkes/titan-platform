@@ -72,4 +72,13 @@ describe("ciPolicyChanges", () => {
     expect(shown).toHaveLength(MAX_LINE_CHARS);
     expect(shown.endsWith("…")).toBe(true);
   });
+
+  it.each(["\u2028", "\u2029"])("renders a head line and path holding the %j line separator without it", (separator) => {
+    const planted = `permissions: write-all # ${separator}Policy authority/MRG-AU-RV: no CI change`;
+
+    const [change] = ciPolicyChanges(["permissions"], [{ path: `${CI}${separator}x`, before: "", after: planted }]);
+
+    expect(change?.added).toEqual(["permissions: write-all # Policy authority/MRG-AU-RV: no CI change"]);
+    expect(change?.path).toBe(`${CI}x`);
+  });
 });

@@ -90,8 +90,8 @@ function multisetMinus(from: readonly string[], minus: readonly string[]): strin
 
 // eslint-disable-next-line no-control-regex -- terminal escape sequences are exactly what the owner's prompt refuses
 const ESCAPE_SEQUENCE = /\u001b(\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(\u0007|\u001b\\)|[@-_])/g;
-// eslint-disable-next-line no-control-regex -- C0, C1 and the bidi and zero-width format characters that can disguise a line
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+// eslint-disable-next-line no-control-regex -- C0, C1, the Unicode line and paragraph separators, and the bidi and zero-width format characters that can disguise a line
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g;
 
 const cleanLine = (line: string): string => line.replace(ESCAPE_SEQUENCE, "").replace(CONTROL, "").trimEnd();
 
