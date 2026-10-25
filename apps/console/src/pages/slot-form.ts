@@ -31,7 +31,7 @@ interface BeatSpan {
 }
 
 const isSchema = (value: unknown): value is Schema => typeof value === "object" && value !== null && !Array.isArray(value);
-export const isFields = isSchema as (value: unknown) => value is Fields;
+export const isFields = (value: unknown): value is Fields => isSchema(value);
 const numberOr = (value: unknown, fallback: number): number => (typeof value === "number" ? value : fallback);
 
 function textControl(schema: Schema): Control {

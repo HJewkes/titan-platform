@@ -166,7 +166,7 @@ function RawField({ path, label, value }: NodeProps): ReactNode {
   return (
     <VStack gap={1} className="w-full min-w-0" testID={testIdOf(path)}>
       <Typography variant="caption" color="secondary">{label}</Typography>
-      <Typography variant="body2" className="break-all font-mono">{JSON.stringify(value) ?? "—"}</Typography>
+      <Typography variant="body2" className="break-all font-mono">{value === undefined ? "—" : JSON.stringify(value)}</Typography>
     </VStack>
   );
 }

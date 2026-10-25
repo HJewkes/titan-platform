@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import PROPS_JSON from "../../fixtures/explainer/props.json?raw";
 import { addRow, beatAt, canAddRow, changedFields, controlOf, idsIn, moveRow, placeProblems, removeRow, uniqueId, type Control } from "./slot-form.js";
 
 /** The fake explainer's canned props: zod's JSON Schema for the compare and list slots, with synthetic values. */
-const PROPS = JSON.parse(PROPS_JSON) as { beats: { id: string; schema: unknown; value: Record<string, unknown>; startS: number; endS: number }[] };
-const [COMPARE, LIST] = PROPS.beats as [(typeof PROPS.beats)[number], (typeof PROPS.beats)[number]];
+const FixtureBeat = z.object({ id: z.string(), schema: z.unknown(), value: z.record(z.string(), z.unknown()), startS: z.number(), endS: z.number() });
+const PROPS = z.object({ beats: z.tuple([FixtureBeat, FixtureBeat]) }).parse(JSON.parse(PROPS_JSON));
+const [COMPARE, LIST] = PROPS.beats;
+const ROWS = z.array(z.object({ id: z.string() }).loose()).parse(COMPARE.value.rows);
 
 type ArrayControl = Extract<Control, { kind: "array" }>;
 const fieldOf = (control: Control, name: string): Control => {
@@ -41,7 +44,7 @@ describe("a slot JSON Schema as form controls", () => {
 
 describe("array rows", () => {
   const rows = arrayOf(fieldOf(controlOf(COMPARE.schema), "rows"));
-  const value = COMPARE.value.rows as { id: string }[];
+  const value = ROWS;
 
   it("adds rows up to maxItems and no further", () => {
     let current: unknown[] = [...value];
@@ -75,7 +78,7 @@ describe("array rows", () => {
 
 describe("a draft as an edit", () => {
   it("names only the top-level fields that changed, each whole", () => {
-    const draft = { ...COMPARE.value, rows: [...(COMPARE.value.rows as unknown[]).slice(0, 1)] };
+    const draft = { ...COMPARE.value, rows: ROWS.slice(0, 1) };
 
     expect(changedFields(COMPARE.value, draft)).toEqual({ rows: draft.rows });
     expect(changedFields(COMPARE.value, { ...COMPARE.value })).toEqual({});

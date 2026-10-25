@@ -14,14 +14,23 @@ type Check = { status: "idle" } | { status: "checking" } | { status: "checked"; 
 /** Long enough that a word typed on a phone keyboard is one check, short enough that the verdict follows the typing. */
 const CHECK_DEBOUNCE_MS = 400;
 
+type CheckRead = ConsoleCommands["videos.edit-check"]["result"];
+
+/** The server parses its own result, so the shape is only confirmed here, not re-validated. */
+function isCheckRead(data: unknown): data is CheckRead {
+  return typeof data === "object" && data !== null && "verdict" in data && "gaps" in data && Array.isArray(data.gaps);
+}
+
 /** The draft through `videos.edit-check` once typing pauses; nothing is sent while the draft equals the render. */
 function useEditCheck(videoId: string, props: BeatProps, beatId: string, slots: Fields): Check {
   const source = useAnswerSource();
   const [check, setCheck] = useState<Check>({ status: "idle" });
-  // The text, not the object: a draft is a new object on every render, and only a changed draft is checked again.
+  // Keyed by the text, not the object: a draft is a new object on every render, and only a changed draft is checked again.
   const key = JSON.stringify(slots);
+  const latest = useRef(slots);
+  latest.current = slots;
   useEffect(() => {
-    const draft = JSON.parse(key) as Fields;
+    const draft = latest.current;
     const { runId, scriptSha } = props;
     if (source === null || scriptSha === undefined || Object.keys(draft).length === 0) return setCheck({ status: "idle" });
     let live = true;
@@ -30,7 +39,8 @@ function useEditCheck(videoId: string, props: BeatProps, beatId: string, slots: 
       const args = { videoId, runId, scriptSha, beats: { [beatId]: { slots: draft } } };
       void source.call("videos.edit-check", args).then((envelope) => {
         if (!live) return;
-        setCheck(envelope.ok ? { status: "checked", ...(envelope.data as ConsoleCommands["videos.edit-check"]["result"]) } : { status: "failed", error: envelope.error });
+        if (!envelope.ok) return setCheck({ status: "failed", error: envelope.error });
+        setCheck(isCheckRead(envelope.data) ? { status: "checked", ...envelope.data } : { status: "failed", error: "videos.edit-check answered an unexpected shape" });
       });
     }, CHECK_DEBOUNCE_MS);
     return () => {

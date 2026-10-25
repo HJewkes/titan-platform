@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import PROPS_JSON from "../../fixtures/explainer/props.json?raw";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
@@ -12,7 +13,7 @@ const VIDEO_ID = "v_0123456789abcdef0123";
 const VIDEO = { id: VIDEO_ID, title: "relay-explainer.mp4", group: "orbit/render", bytes: 5_500_000, modifiedAt: "2031-03-05T10:00:00.000Z", captions: false, renderNotes: false, noteCount: 0, verdict: null };
 const MP4_SHA = "e".repeat(64);
 /** The fake explainer's props as `videos.props` returns them: without `found` or explainer's own video id. */
-const PROPS = Object.fromEntries(Object.entries(JSON.parse(PROPS_JSON) as Record<string, unknown>).filter(([key]) => key !== "found" && key !== "videoId"));
+const PROPS = Object.fromEntries(Object.entries(z.record(z.string(), z.unknown()).parse(JSON.parse(PROPS_JSON))).filter(([key]) => key !== "found" && key !== "videoId"));
 
 type Call = { name: string; args: unknown };
 type Tap = (args: unknown) => Promise<JsonEnvelope<unknown>>;
@@ -84,7 +85,7 @@ describe("Edit this beat", () => {
 
     const save = await screen.findByTestId("beat-editor-save");
 
-    expect(save.getAttribute("aria-disabled") === "true" || (save as HTMLButtonElement).disabled).toBe(true);
+    expect(save.getAttribute("aria-disabled") === "true" || save.hasAttribute("disabled")).toBe(true);
     expect(screen.getByTestId("beat-editor-save-reason").textContent).toBe("Save is off: renders ignore edits until TP-2992 S3");
   });
 
@@ -123,6 +124,6 @@ describe("the draft check", () => {
     const remove = screen.getByTestId("slot-rows-0-remove");
 
     expect(lockedId.readOnly).toBe(true);
-    expect(remove.getAttribute("aria-disabled") === "true" || (remove as HTMLButtonElement).disabled).toBe(true);
+    expect(remove.getAttribute("aria-disabled") === "true" || remove.hasAttribute("disabled")).toBe(true);
   });
 });

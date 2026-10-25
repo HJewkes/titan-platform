@@ -16,8 +16,6 @@ const SCRIPT_SHA = "5".repeat(64);
 const AT = new Date("2031-03-05T12:00:00.000Z");
 const context: ConsoleContext = { warnings: [], format: "json", surface: "http", auth: null, ownerWrites: false };
 
-type Served = ReturnType<typeof videoPropsCommands>;
-type PropsResult = Awaited<ReturnType<Served["videos.props"]["run"]>>;
 
 let dir: string;
 let root: string;
@@ -45,7 +43,7 @@ const calls = async (): Promise<{ argv: string[]; stdin: string }[]> => (await r
 async function props(bin?: string | null) {
   const { envelope } = await invokeCommand(commands(bin)["videos.props"], { videoId: cutId() }, context);
   if (!envelope.ok) throw new Error(envelope.error);
-  return envelope.data as PropsResult;
+  return commands(bin)["videos.props"].result.parse(envelope.data);
 }
 
 async function editCheck(beats: Record<string, unknown>, bin?: string | null) {
