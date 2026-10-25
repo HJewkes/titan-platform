@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "readPushOptions reads a long option only when spelled in full",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "readOptions(args, GIT_PUSH_VALUES, resolvePushLong);",
+      "replace": "readOptions(args, GIT_PUSH_VALUES);",
+      "kills": [
+        "a git push long option given as a unique prefix reads as the option git runs git push --tag origin reads as a tag push",
+        "a git push long option given as a unique prefix reads as the option git runs git push --mirr origin reads as a push of every branch",
+        "preference rules read push options through the same reader R31 matches a branch delete spelled --del beside another command"
+      ]
+    },
+    {
+      "name": "the push classifier keeps its own option reader",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  const options = readPushOptions(git.subArgs);",
+      "replace": "  const options = readOptions(git.subArgs, GIT_PUSH_VALUES);",
+      "kills": [
+        "a git push long option given as a unique prefix reads as the option git runs git push --fol origin feat/x reads as a tag push",
+        "a git push long option given as a unique prefix reads as the option git runs git push --al origin reads as a push of every branch"
+      ]
+    },
+    {
+      "name": "the own-call rule keeps its own push option reader",
+      "file": "packages/tool-guard/src/families/preference.ts",
+      "find": "  const options = readPushOptions(inv.subArgs);",
+      "replace": "  const options = readOptions(inv.subArgs, set(\"-o\"));",
+      "kills": [
+        "preference rules read push options through the same reader R31 matches a branch delete spelled --del beside another command"
+      ]
+    },
+    {
+      "name": "the hook-skip rule keeps its own push option reader",
+      "file": "packages/tool-guard/src/families/preference.ts",
+      "find": "inv.sub === \"push\" ? readPushOptions(inv.subArgs) : readOptions(",
+      "replace": "readOptions(",
+      "kills": [
+        "preference rules read push options through the same reader R164 matches --no-verif, which git reads as --no-verify"
+      ]
+    },
+    {
+      "name": "the push table leaves out follow-tags",
+      "file": "packages/tool-guard/src/families/long-options.ts",
+      "find": " dry-run exec= follow-tags force ",
+      "replace": " dry-run exec= force ",
+      "kills": [
+        "the git push option table matches git 2.53.0 holds every git push long option, and reads its prefixes as git does",
+        "a git push long option given as a unique prefix reads as the option git runs git push --follow origin feat/x reads as a tag push"
+      ]
+    }
+  ]
+}
