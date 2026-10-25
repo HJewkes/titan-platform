@@ -67,7 +67,7 @@ function readEdit(file: string, deps: EditCliDeps): { edit?: SlotEdit; problems:
   return parsed.success ? { edit: parsed.data, problems: [] } : { problems: issues(parsed.error) };
 }
 
-export interface RunView {
+interface RunView {
   runId: string;
   status: string;
   videoId: string;

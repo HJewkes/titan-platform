@@ -13,7 +13,7 @@ type Resolved = z.infer<typeof ResolvedSchema>;
  * Whether the render draws a beat from the template fill. Flipped when TP-2992 S3 moves render in-process onto
  * `fillScript`; until then a saved edit changes the script but not the MP4.
  */
-export const RENDER_READS_FILL = false;
+const RENDER_READS_FILL = false;
 
 /** How long before a beat ends its frame counts as settled: late enough for every reveal, before the next beat's cut. */
 export const SETTLE_LEAD_S = 0.3;
@@ -23,7 +23,7 @@ export interface SaveBack {
   reason?: string;
 }
 
-export interface RenderPath {
+interface RenderPath {
   bridged: boolean;
   readsFill: boolean;
 }
@@ -57,7 +57,7 @@ export interface BeatProps {
   fallback?: FilledBeat["fallback"];
 }
 
-export interface PropsInput {
+interface PropsInput {
   script: ScriptV1;
   resolved: Resolved;
   words: unknown;

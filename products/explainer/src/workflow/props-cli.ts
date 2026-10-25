@@ -12,9 +12,9 @@ import { videoRuns } from "./video-runs.js";
 const EXIT = { OK: 0, USAGE: 2 } as const;
 const SHA = /^[0-9a-f]{64}$/;
 
-export type PropsResult = { found: false } | { found: true; runId: string; videoId: string; saveBack: SaveBack; beats: BeatProps[] };
+type PropsResult = { found: false } | { found: true; runId: string; videoId: string; saveBack: SaveBack; beats: BeatProps[] };
 
-export interface PropsCliDeps {
+interface PropsCliDeps {
   out?: (text: string) => void;
   err?: (text: string) => void;
 }
@@ -22,7 +22,7 @@ export interface PropsCliDeps {
 const exportedMp4 = (run: WorkflowRun): string | undefined => stageRecords(run).find((record) => record.stage === "export")?.outputs.mp4;
 
 /** The newest run whose export linked this mp4 into the theater: a re-render of the same bytes is the same video state. */
-export function runOfMp4(dataDir: string, mp4Sha: string): string | undefined {
+function runOfMp4(dataDir: string, mp4Sha: string): string | undefined {
   const db = openState(dataDir);
   try {
     const exported = videoRuns(new WorkflowRunStore(db)).filter((run) => exportedMp4(run) === mp4Sha);
@@ -33,7 +33,7 @@ export function runOfMp4(dataDir: string, mp4Sha: string): string | undefined {
 }
 
 /** What the props panel edits on the render with this sha; `found: false` when no explainer run exported it. */
-export function readProps(dataDir: string, mp4Sha: string): PropsResult {
+function readProps(dataDir: string, mp4Sha: string): PropsResult {
   const runId = runOfMp4(dataDir, mp4Sha);
   if (runId === undefined) return { found: false };
   const view = runView(dataDir, runId);
