@@ -16,6 +16,7 @@ export {
   type ScriptVisual,
 } from "./script-schema.js";
 export { parseScript } from "./script-load.js";
+export { applyEdit, SlotEditSchema, type EditBase, type EditResult, type FieldChange, type SlotEdit } from "./slot-edit.js";
 export { deriveEvalView, toMapBeats, type EvalBeat, type StateChange } from "./eval-view.js";
 export {
   CUE_KIND_ROLES,
