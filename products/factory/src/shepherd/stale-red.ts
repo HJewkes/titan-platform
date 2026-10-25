@@ -3,7 +3,7 @@ import { judgeMain, type BaseReader, type MainRules } from "./main-verdict.js";
 import { MAIN_WATCH_WINDOW_MS } from "./main-watch.js";
 
 /** How many main commits, the base tip first, are read for a green one containing a red sha before the red stands. */
-export const STALE_RED_SCAN = 10;
+const STALE_RED_SCAN = 10;
 
 /** True when `tip` is `sha`, or compare reads `sha` as the merge base, so `tip` is ahead of it. */
 export async function contains(port: GitHubPort, repo: RepoSlug, tip: string, sha: string): Promise<boolean> {
@@ -17,7 +17,7 @@ async function candidates(port: GitHubPort, repo: RepoSlug, tip: string, redSha:
   return [...new Set([tip, ...(end === -1 ? listed : listed.slice(0, end + 1))])].slice(0, STALE_RED_SCAN);
 }
 
-export interface StaleRedRead {
+interface StaleRedRead {
   port: GitHubPort;
   repo: RepoSlug;
   base: BaseReader | undefined;
@@ -28,7 +28,7 @@ export interface StaleRedRead {
  * stale (TP-4230): main moved past it while the tip itself may still be running. Undefined with no base, no rules or
  * none found, so a red with no green descendant still stands; a read that fails throws and the caller keeps the red.
  */
-export async function greenContaining(read: StaleRedRead, redSha: string, rules: MainRules | undefined, now: number): Promise<string | undefined> {
+async function greenContaining(read: StaleRedRead, redSha: string, rules: MainRules | undefined, now: number): Promise<string | undefined> {
   if (read.base === undefined || rules === undefined) return undefined;
   const { port, repo } = read;
   const tip = await port.getHeadSha(repo, await read.base());
