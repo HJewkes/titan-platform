@@ -106,6 +106,7 @@ import mcpLogs from './mcp-logs.js';
 // Session-signal index / Drain miner
 import minerDrainIngest from './miner-drain-ingest.js';
 import minerRefresh from './miner-refresh.js';
+import minerRebuild from './miner-rebuild.js';
 import minerLiveness from './miner-liveness.js';
 import minerStatus from './miner-status.js';
 import minerCost from './miner-cost.js';
@@ -209,6 +210,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   // session-signal index / drain miner
   minerDrainIngest,
   minerRefresh,
+  minerRebuild,
   minerLiveness,
   minerStatus,
   minerCost,
