@@ -161,6 +161,13 @@ describe("inbox approve-chat prepare", () => {
     expect(spy.calls).toEqual([]);
   });
 
+  it("gives a permission prompt that names no tool no tap, so the owner never decides on the agent's words alone", async () => {
+    queue = [{ ...permissionRow(), meta: { input_preview: "echo example" } }];
+    const { prepare } = await harness(spyVerdicter().verdicter);
+
+    expect(await prepare()).toMatchObject({ ok: true, data: { status: "no-action", reason: APPROVE_AT_SESSION } });
+  });
+
   it("gives no tap when the broker row is gone between the list and the prepare", async () => {
     queue = [];
     const { prepare } = await harness(spyVerdicter().verdicter);
@@ -177,7 +184,7 @@ describe("inbox approve-chat act", () => {
     const { confirm } = ready(await prepare());
 
     const first = await act(confirm, { verdict: "deny" });
-    const replay = await act(confirm, { verdict: "allow" });
+    const replay = await act(confirm, { verdict: "deny" });
 
     expect(first.envelope).toMatchObject({ ok: true, data: { outcome: { status: "answered" }, message: "Denied" } });
     expect(replay.envelope).toMatchObject({ ok: true, data: { outcome: { status: "already" } } });
@@ -185,6 +192,27 @@ describe("inbox approve-chat act", () => {
     expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ action: { kind: "approve-chat", msgId: MSG }, verdict: "deny" });
     expect(calls).toHaveLength(1);
     expect(calls[0]![1]).toMatchObject({ text: "deny" });
+  });
+
+  it("refuses a retry that changes the verdict after the first tap found the broker unreachable, posting nothing", async () => {
+    const spy = spyVerdicter({ status: "unreachable", detail: "connect ECONNREFUSED" });
+    const { prepare, act } = await harness(spy.verdicter);
+    const { confirm } = ready(await prepare());
+
+    const first = await act(confirm, { verdict: "allow" });
+    const changed = await act(confirm, { verdict: "deny" });
+    const bare = await act(confirm, {});
+    const same = await act(confirm, { verdict: "allow" });
+
+    expect(first.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
+    expect(changed.exitCode).toBe(EXIT.DATAERR);
+    expect(changed.envelope).toMatchObject({ ok: false, error: expect.stringMatching(/already recorded allow/) });
+    expect(bare.envelope.ok).toBe(false);
+    expect(same.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
+    expect(spy.calls).toEqual([
+      ["permission", MSG, "allow"],
+      ["permission", MSG, "allow"],
+    ]);
   });
 
   it("endorses with the read-back's stored text and recipient byte for byte, never the item's summary", async () => {

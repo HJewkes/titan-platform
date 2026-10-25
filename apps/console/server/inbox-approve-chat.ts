@@ -44,9 +44,10 @@ const askerOf = (row: BrokerEvent): { asker?: string } => (row.from === "" ? {} 
 
 function readBackOfRow(row: BrokerEvent): ApproveChatReadBack | string {
   const who = row.from || "the agent";
-  if (row.kind === "approval_request") {
-    const tool = row.meta["tool_name"] ?? "";
-    const effect = `Answer ${who}'s permission prompt for ${tool || "a tool"}; the broker records the verdict as yours, from the console`;
+  const tool = row.meta["tool_name"];
+  // With no tool name the owner would decide on the agent's own words alone, so such a prompt is answered at its session.
+  if (row.kind === "approval_request" && tool) {
+    const effect = `Answer ${who}'s permission prompt for ${tool}; the broker records the verdict as yours, from the console`;
     return { msgId: row.msgId, kind: "permission", tool, inputPreview: row.meta["input_preview"] ?? "", description: row.text, ...askerOf(row), choices: ["allow", "deny"], effect };
   }
   const to = row.meta["recipient"];
@@ -82,14 +83,30 @@ function replayOf(settled: Awaited<ReturnType<typeof readSettled>>): VerdictOutc
   return settled.status === "closed" ? { status: "closed", reason } : { status: "refused", reason };
 }
 
+/** What the current tap asked for; a replay reuses the first tap's record, so its choice is checked against that record. */
+interface VerdictTap {
+  verdict?: Verdict;
+  text?: string;
+}
+
+/**
+ * A replay posts the record's verdict, never the current tap's, so a tap whose choice differs is refused: an Allow that came
+ * back unreachable must not be retried as a Deny that posts Allow.
+ */
+function assertSameChoice(recorded: Verdict, tap: VerdictTap): void {
+  if (tap.text !== undefined) refuse("only an answer to an agent's question takes text");
+  if (tap.verdict !== recorded) refuse(`this confirmation already recorded ${recorded}; read the item again to give ${tap.verdict ?? "no verdict"}`);
+}
+
 /**
  * The broker refuses a second verdict, but a replay must not reach it at all, so a settled outcome answers the replay. The
  * verdict and the endorse bytes come from the record written at the first tap.
  */
-export async function dispatchVerdict(verdicter: BrokerVerdicter | undefined, file: string, record: unknown): Promise<VerdictOutcome | AlreadyOutcome> {
-  if (verdicter === undefined) return { status: "unreachable", detail: "the broker verdicter is not wired" };
+export async function dispatchVerdict(verdicter: BrokerVerdicter | undefined, file: string, record: unknown, tap: VerdictTap): Promise<VerdictOutcome | AlreadyOutcome> {
   const parsed = verdictRecord.safeParse(record);
   if (!parsed.success) return { status: "unreachable", detail: "the action record carries no verdict read-back" };
+  assertSameChoice(parsed.data.verdict, tap);
+  if (verdicter === undefined) return { status: "unreachable", detail: "the broker verdicter is not wired" };
   const replay = replayOf(await readSettled(file));
   if (replay !== undefined) return replay;
   const { readBack, verdict } = parsed.data;

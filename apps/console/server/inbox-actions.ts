@@ -307,12 +307,16 @@ async function releaseOnce(ctx: ActContext, file: string, confirm: string, actio
   return releaseG10(ctx.sources.shepherd, action, confirm);
 }
 
-/** A replay posts what the record says, so an answer goes out with the words first written, whatever a later tap carries. */
-function dispatch(ctx: ActContext, file: string, confirm: string, record: ActionRecord): Promise<Outcome> {
+/**
+ * A replay posts what the record says, so an answer goes out with the words first written, whatever a later tap carries. A
+ * verdict tap is the exception: one whose choice differs from the record is refused, not posted as the first choice.
+ */
+function dispatch(ctx: ActContext, file: string, tap: Tap, record: ActionRecord): Promise<Outcome> {
+  const { confirm } = tap;
   if (isOpRecord(record)) return ctx.options.client.post(confirm);
   const { action } = record;
   if (action.kind === "hold-release") return releaseOnce(ctx, file, confirm, action);
-  if (action.kind === "approve-chat") return dispatchVerdict(ctx.options.verdicter, file, record);
+  if (action.kind === "approve-chat") return dispatchVerdict(ctx.options.verdicter, file, record, tap);
   if (action.kind !== "answer-chat") return ctx.options.client.post(confirm);
   const { answerer } = ctx.options;
   if (answerer === undefined || record.text === undefined) return Promise.resolve({ status: "unreachable", detail: "the broker answerer is not wired" });
@@ -342,7 +346,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   const stale = "the confirmation is unknown or over five minutes old; read the item again";
   const write = (file: string, prepared: Prepared) => writeItemRecord(ctx, file, tap, prepared);
   const { file, record } = await recordOnce({ store, actionsDir: ctx.options.actionsDir, confirm: tap.confirm, key: tap.itemId, stale, schema: recordFile, write });
-  const outcome = await dispatch(ctx, file, tap.confirm, record);
+  const outcome = await dispatch(ctx, file, tap, record);
   const log = await settle(ctx, file, record, outcome);
   const next = await nextAfter(ctx.sources, record, outcome);
   return { actionId: tap.confirm, outcome, message: messageOf(outcome, record), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
