@@ -3,7 +3,7 @@ import type { Reveal } from "./types.js";
 
 // Ports of the spike sample builder's label conventions (TP-4115 S6b, S7, S9), so a daily script fills the same rows.
 
-export const MARKS = ["tick", "cross", "risk", "open", "dot"] as const;
+const MARKS = ["tick", "cross", "risk", "open", "dot"] as const;
 export type Mark = (typeof MARKS)[number];
 
 const LANE_ROW = /^([\p{L}\p{N}_-]{1,12}) · (.+)$/u;
@@ -19,7 +19,7 @@ const FIRST_CUE_FRACTION = 0.3;
 const isMark = (word: string): word is Mark => (MARKS as readonly string[]).includes(word);
 
 /** `crew · Night shift` is the row `Night shift` in lane `crew`. */
-export function laned(text: string): { text: string; lane?: string } {
+function laned(text: string): { text: string; lane?: string } {
   const found = LANE_ROW.exec(text);
   return found ? { text: found[2]!, lane: found[1]! } : { text };
 }

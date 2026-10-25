@@ -8,7 +8,7 @@ const FIGURE = /(-?\d[\d,]*(?:\.\d+)?)\s*(%)?/;
 const GRAPH_POINTS_MIN = 3;
 
 /** A label's first number as a figure, `%` as its unit when it follows, the rest of the label as its label. */
-export function figureOf(label: string, id: string): Record<string, unknown> | undefined {
+function figureOf(label: string, id: string): Record<string, unknown> | undefined {
   const found = FIGURE.exec(label);
   if (!found) return undefined;
   const rest = `${label.slice(0, found.index)} ${label.slice(found.index + found[0].length)}`.replace(/\s+/g, " ").trim();

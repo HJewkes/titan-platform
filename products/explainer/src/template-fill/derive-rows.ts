@@ -3,12 +3,12 @@ import { firstWord, itemReveals, marked, type Mark } from "./label-parse.js";
 import { isDerived, type BeatScope, type Derivation, type Derived, type Lead, type Reveal } from "./types.js";
 
 // A chapter heading fits beside at most 3 rows; a 4th makes the heading give way (the sample builder's HEADED_ROWS_MAX).
-export const HEADED_ROWS_MAX = 3;
+const HEADED_ROWS_MAX = 3;
 const TITLE_MAX = 48;
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** The specs whose later beats in a chapter extend the lead's stage, and the slot field holding its rows. */
-export const STAGE_FIELDS: Readonly<Record<string, string>> = { list: "rows", "verdict-card": "reasons", "issue-pin": "issues" };
+const STAGE_FIELDS: Readonly<Record<string, string>> = { list: "rows", "verdict-card": "reasons", "issue-pin": "issues" };
 const HEADING_FIELDS: Readonly<Record<string, readonly string[]>> = { list: ["title"], "verdict-card": ["verdict", "call"], "issue-pin": ["title"] };
 
 /** The chapter label as a title slot, left out when it is longer than a title holds. */
