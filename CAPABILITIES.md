@@ -217,9 +217,10 @@ Code must decide whether an owner, agent or automation process may merge, releas
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`
 - `conditions`: `isCarryFencedPath`, `unmetConditions`
 - `schema`: `policyTableSchema`
+- `taint`: `taintSourceSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
