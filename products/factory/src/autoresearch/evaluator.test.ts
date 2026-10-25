@@ -24,7 +24,7 @@ const TARGET = {
   rungs: {
     seed: { cmd: ["sh", "ar/eval.sh", "{caseSet}", "{case}", "{key}", "{runnerRoot}"], maxUsd: 1, timeoutMin: 1 },
     "L1-replay": { cmd: ["sh", "ar/micro.sh", "{runnerRoot}", "{baselineDir}", "{microSignal}"] },
-    slow: { cmd: ["sh", "-c", "exec sleep 4"], timeoutMin: 0.005 },
+    slow: { cmd: ["sh", "-c", 'echo $$ > "$0/slow.pid"; exec sleep 600', "{runnerRoot}"], timeoutMin: 0.005 },
   },
   metric: { primary: { name: "score", direction: "min" }, noise: {} },
   phases: [{ id: "p1", train: ["t-alpha"], stop: { ideasEvaluated: 1, roundsWithoutGain: 1 } }],
@@ -158,14 +158,15 @@ describe("evaluator eval and micro", () => {
     expect(result).toMatchObject({ case: "t-alpha", repeat: "run-1-a-r1", usd: 0.5, artifact_dir: join(tree, ".artifacts", "run-1-a-r1") });
   });
 
-  it("stops a rung that runs past its timeoutMin instead of waiting for it", { timeout: 3000 }, async () => {
+  // The rung sleeps far past the suite's timeout, so an evaluator that waited would never answer; no clock is read (TP-4262).
+  it("stops a rung that runs past its timeoutMin instead of waiting for it", async () => {
     const repo = await fixture();
     await repo.ports.pin({ runId: "run-1", pin: "main" }, signal);
     const { tree } = await ideaTree(repo, "slow", GATE_EDIT);
-    const started = Date.now();
 
     await expect(repo.ports.evalCase({ ...repo.run, tree, case: "t-alpha", key: "k-slow", rung: "slow" }, signal)).rejects.toThrow("[command]");
-    expect(Date.now() - started).toBeLessThan(2000);
+    const pid = Number(readFileSync(join(tree, "slow.pid"), "utf8"));
+    expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
   });
 
   it("fails an eval whose run rewrites and commits a frozen file", async () => {

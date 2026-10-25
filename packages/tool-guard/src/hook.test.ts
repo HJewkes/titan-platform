@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { linearRegExpSteps } from "@titan-design/fix-proof/linear-regexp";
 import { afterEach, describe, expect, it } from "vitest";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
@@ -544,11 +545,20 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
   });
 
+  /**
+   * The guarded-path globs run as a LinearRegExp NFA, whose steps countWork cannot see. The row below reads four 34 KiB
+   * scripts in about 0.75 steps a byte; without matchGuarded's memo it took 2 800 a byte and passed its timeout on a
+   * loaded runner (TP-4255). A step cap fails that on an assertion instead (TP-4262).
+   */
+  const GLOB_STEPS_PER_BYTE = 2;
+
   it("refuses scripts past the line's budget, names the script to split off, and each half then passes", async () => {
     const files = { "a1.sh": fill("echo hi\n", 34 * 1024), "a2.sh": fill("echo hi\n", 34 * 1024) };
 
+    const before = linearRegExpSteps();
     const refused = await inRepo("bash a1.sh; bash a2.sh", files);
     const halves = [await inRepo("bash a1.sh", files), await inRepo("bash a2.sh", files)];
+    expect(linearRegExpSteps() - before, "LinearRegExp steps").toBeLessThan(GLOB_STEPS_PER_BYTE * 4 * 34 * 1024);
 
     expect(decisionOf(refused.stdout)).toBe("deny");
     expect(refused.stdout).toMatch(/64 KiB.*reach 68 KiB at a2\.sh.*run a2\.sh in its own command/);
