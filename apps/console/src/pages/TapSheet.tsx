@@ -115,12 +115,7 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
           <ButtonText>{done ? "Close" : "Cancel"}</ButtonText>
         </Button>
         {done ? null : choices.length > 0 ? (
-          // Choices mount only once the read-back is ready, so each press responder is built with the live config.
-          choices.map((choice) => (
-            <Button key={choice.id} color={choice.color} onPress={() => void confirm(choice.args)} testID={`${testID}-${choice.id}`}>
-              <ButtonText>{choice.label}</ButtonText>
-            </Button>
-          ))
+          <ChoiceButtons choices={choices} confirm={confirm} testID={testID} />
         ) : (
           // Pressable applies a changed isDisabled in a passive effect, so a press as the read-back paints would hit the
           // stale disabled config and drop. Remounting on each status builds the responder with the live config instead.
@@ -131,6 +126,15 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
       </DrawerFooter>
     </Drawer>
   );
+}
+
+/** Choices mount only once the read-back is ready, so each press responder is built with the live config. */
+function ChoiceButtons({ choices, confirm, testID }: { choices: readonly TapConfirmChoice[]; confirm: (choice: Record<string, unknown>) => Promise<void>; testID: string }): ReactNode {
+  return choices.map((choice) => (
+    <Button key={choice.id} color={choice.color} onPress={() => void confirm(choice.args)} testID={`${testID}-${choice.id}`}>
+      <ButtonText>{choice.label}</ButtonText>
+    </Button>
+  ));
 }
 
 type SheetBodyProps<R extends TapReady> = Pick<TapSheetProps<R>, "reading" | "command" | "renderReadBack" | "testID"> & { sheet: Sheet<R> };
