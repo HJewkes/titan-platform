@@ -8,7 +8,7 @@ import { open, parseRoute } from "../router.js";
 import { openExternal } from "./homeLinks.js";
 import { NudgeSection } from "./InboxNudges.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
-import { TapSheet, type TapCommands } from "./TapSheet.js";
+import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
 
 export type InboxItem = ConsoleCommands["inbox.list"]["result"]["items"][number];
 type InboxAction = InboxItem["action"];
@@ -94,7 +94,19 @@ function verbOf(action: InboxAction): string {
 const isNavigation = (action: InboxAction): boolean => action.kind === "open" || action.kind === "open-round";
 
 /** The writes the page taps through `inbox.act`; `answer-chat` waits on a sheet that takes the answer's text. */
-const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "owner-op"]);
+const CONSOLE_TAPS: ReadonlySet<InboxAction["kind"]> = new Set(["resolve-gate", "owner-release", "owner-op", "approve-chat"]);
+
+/** A permission prompt is answered Allow or Deny and an endorsement Endorse; the verdict goes to the act alone, never with text. */
+function verdictChoicesOf({ readBack }: InboxReady): readonly TapConfirmChoice[] {
+  if (!("kind" in readBack)) return [];
+  if (readBack.kind === "endorse") return [{ id: "endorse", label: "Endorse", color: "success", args: { verdict: "endorse" } }];
+  return [
+    { id: "allow", label: "Allow", color: "success", args: { verdict: "allow" } },
+    { id: "deny", label: "Deny", color: "error", args: { verdict: "deny" } },
+  ];
+}
+
+const readingOf = (action: InboxAction): string => (action.kind === "approve-chat" ? "Reading the agent's prompt from the broker" : "Reading the live gate and head");
 
 function followEvidence(evidence: string): void {
   if (evidence.startsWith("#")) open(parseRoute(evidence));
@@ -287,7 +299,9 @@ function ConsoleAction({ item, verb, choice = {} }: { item: InboxItem; verb: str
         <ButtonText>{verb}</ButtonText>
       </Button>
       {command !== undefined && canCopy() && suffix === undefined ? <CopyButton command={command} /> : null}
-      {confirming ? <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading="Reading the live gate and head" command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} testID="inbox-confirm" onClose={() => setConfirming(false)} /> : null}
+      {confirming ? (
+        <TapSheet<InboxReady> commands={inboxTap(item.id, choice)} verb={verb} reading={readingOf(item.action)} command={command} renderReadBack={(prepared) => <InboxReadBack prepared={prepared} />} choicesOf={verdictChoicesOf} testID="inbox-confirm" onClose={() => setConfirming(false)} />
+      ) : null}
     </HStack>
   );
 }
