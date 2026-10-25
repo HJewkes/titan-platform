@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "indexTranscript applies a delta in one go despite a yieldPoint",
+      "file": "packages/session-graph/src/refresh.ts",
+      "find": "  if (options.yieldPoint) await applyDeltaYielding",
+      "replace": "  if (!options) await applyDeltaYielding",
+      "kills": [
+        "refreshCorpus with a yieldPoint (TP-4175) yields between bounded steps inside one transcript's delta",
+        "refreshCorpus with a yieldPoint (TP-4175) rolls a delta back whole when its yield throws, leaving the watermark where it was"
+      ]
+    },
+    {
+      "name": "a yielding delta that throws commits what it wrote",
+      "file": "packages/session-graph/src/apply.ts",
+      "find": "    if (graph.db.inTransaction) graph.db.exec(\"ROLLBACK\");",
+      "replace": "    if (graph.db.inTransaction) graph.db.exec(\"COMMIT\");",
+      "kills": [
+        "refreshCorpus with a yieldPoint (TP-4175) rolls a delta back whole when its yield throws, leaving the watermark where it was"
+      ]
+    },
+    {
+      "name": "a delta step takes every row of its list",
+      "file": "packages/session-graph/src/apply.ts",
+      "find": "const STEP_ROWS = 500;",
+      "replace": "const STEP_ROWS = Infinity;",
+      "kills": [
+        "refreshCorpus with a yieldPoint (TP-4175) yields between bounded steps inside one transcript's delta"
+      ]
+    },
+    {
+      "name": "the corpus rollup runs in one transaction despite a yieldPoint",
+      "file": "packages/session-graph/src/refresh.ts",
+      "find": "perTranscript.yieldPoint ? await rollupYielding(graph, rollupIds, perTranscript.yieldPoint) : rollupSessions",
+      "replace": "rollupSessions",
+      "kills": [
+        "refreshCorpus with a yieldPoint (TP-4175) yields between sessions of the rollup and finishes every session when that yield throws"
+      ]
+    },
+    {
+      "name": "a throw at a rollup yield leaves the remaining sessions unrolled",
+      "file": "packages/session-graph/src/refresh.ts",
+      "find": "      rollupSessions(graph, unique.slice(i + 1));\n",
+      "replace": "",
+      "kills": [
+        "refreshCorpus with a yieldPoint (TP-4175) yields between sessions of the rollup and finishes every session when that yield throws"
+      ]
+    }
+  ]
+}
