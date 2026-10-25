@@ -11,7 +11,8 @@ describe("a guarded path pattern that is a hostile glob", () => {
     const list: GuardedList = { paths: [{ id: "p", pattern: `/${glob}` }], basenames: [] };
     const { ratio } = linearGrowth((size) => {
       const input = `/${path(size)}`;
-      return () => matchGuarded(input, list, HOME);
+      // A fresh list per call misses matchGuarded's answer memo, so each timed run matches the pattern (TP-4255).
+      return () => matchGuarded(input, { ...list }, HOME);
     }, { from: 1, to: 1024, stopwatch: cpuStopwatch, between: expectWithinCpuBudget });
     expect(ratio).toBeLessThan(LINEAR_GROWTH_LIMIT);
   });
