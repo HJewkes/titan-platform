@@ -97,5 +97,5 @@ describe("a park whose agent-chat child reads Shepherd back from serve", () => {
     expect(version.status).toBe(200);
     expect(settledAtVersion).toBe(false);
     expect(outcome).toMatchObject({ kind: "parked", lines: expect.arrayContaining(["Parked impl-a."]) });
-  }, 20_000);
+  });
 });
