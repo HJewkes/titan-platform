@@ -253,18 +253,20 @@ describe("gate resolve by a coordinator", () => {
 });
 
 describe("ownerResolver", () => {
-  it("refuses an agent shell without presence, proves it with presence, and asks nothing of the owner's own terminal", async () => {
+  it("refuses an agent shell without a signed hold release, names its record with one, and asks nothing of the owner's own terminal", async () => {
+    const { host } = await pausedMerge();
+    const held = { runId: "run-1", repo: "octo/demo", pr: 1, head: HEAD, ownerHold: { reason: "owner-asked: synthetic", at: new Date(0).toISOString() } };
     const reason = "release the owner-asked hold on octo/demo#1";
-    const refused = fakeOwnerHelper(undefined);
-    const agent = await ownerResolver(AGENT_SHELL, reason);
-    const confirmed = fakeOwnerHelper(PROOF);
-    const proved = await ownerResolver(AGENT_SHELL, reason);
-    const ownShell = fakeOwnerHelper(undefined);
-    const terminal = await ownerResolver({}, reason);
+    const refused = fakeOwnerSigner({ cancel: true });
+    const agent = await ownerResolver(AGENT_SHELL, host.batches, held, reason);
+    const signed = fakeOwnerSigner();
+    const proved = await ownerResolver(AGENT_SHELL, host.batches, held, reason);
+    const ownShell = fakeOwnerSigner();
+    const terminal = await ownerResolver({}, host.batches, held, reason);
 
     expect(agent).toBe(`owner presence was not confirmed, so tc-synthetic, a shell agent-chat launched, is refused: only the owner may ${reason}`);
-    expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });
+    expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: expect.stringMatching(/^gate-batch:/) });
     expect(terminal).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
-    expect([refused.reasons, confirmed.reasons, ownShell.reasons]).toEqual([[reason], [reason], []]);
+    expect([refused.reasons, signed.reasons, ownShell.reasons]).toEqual([[reason], [reason], []]);
   });
 });
