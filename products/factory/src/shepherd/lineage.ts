@@ -22,9 +22,19 @@ function ancestry(name: string, roster: readonly ReviewerAgent[], parents: Paren
   return found;
 }
 
+/**
+ * The rows a lineage walk reads: the roster plus retired generations, whose spawners a teleported seat's live rows no
+ * longer name. `complete` is false when the broker could not include the retired rows, and then nothing is proven.
+ */
+export interface Lineage {
+  rows: readonly ReviewerAgent[];
+  complete: boolean;
+}
+
 /** Proven only from roster facts: nobody who wrote the code is the agent, spawned it, or handed over to it, at any depth. */
-export function provablyIndependent(agent: ReviewerAgent, implementer: string, roster: readonly ReviewerAgent[]): boolean {
-  const wrote = ancestry(implementer, roster, takeovers);
-  const above = ancestry(agent.name, roster, descent);
+export function provablyIndependent(agent: ReviewerAgent, implementer: string, lineage: Lineage): boolean {
+  if (!lineage.complete) return false;
+  const wrote = ancestry(implementer, lineage.rows, takeovers);
+  const above = ancestry(agent.name, lineage.rows, descent);
   return wrote !== undefined && above !== undefined && ![...wrote].some((author) => above.has(author));
 }

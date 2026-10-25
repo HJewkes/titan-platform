@@ -115,6 +115,12 @@ describe("stamping the reference page the docs build demands", () => {
     expect(page).not.toMatch(/__[A-Z]+__/);
   });
 
+  it("stamps no page for a product, which is private and so unlinked in the generated index", () => {
+    const root = fakeRoot();
+    expect(stampReferencePage(root, { ...opts, tier: "product" })).toBeNull();
+    expect(existsSync(join(root, "site", "reference", "beacon.md"))).toBe(false);
+  });
+
   it("leaves an existing page alone so a re-stamp cannot flatten hand-written prose", () => {
     const root = fakeRoot();
     const page = join(root, "site", "reference", "beacon.md");
@@ -132,6 +138,25 @@ describe("stamping the package directory", () => {
     const capability = readFileSync(join(dest, "CAPABILITY.md"), "utf8");
     expect(capability).toContain("# beacon: use this when");
     expect(capability).not.toMatch(/__[A-Z]+__/);
+  });
+
+  it("stamps a product private and unpublishable", () => {
+    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
+    const { dest } = stampPackageDir(root, { name: "beacon", tier: "product", description: "signals a thing", task: "TP-99" });
+    const pkg = JSON.parse(readFileSync(join(dest, "package.json"), "utf8"));
+    expect(pkg.private).toBe(true);
+    expect(pkg.publishConfig).toBeUndefined();
+    expect(pkg.name).toBe("@titan-design/beacon");
+  });
+
+  it("leaves a package-tier package public, as the template has it", () => {
+    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
+    const { dest } = stampPackageDir(root, { name: "beacon", tier: "1", description: "signals a thing", task: "TP-99" });
+    const pkg = JSON.parse(readFileSync(join(dest, "package.json"), "utf8"));
+    expect(pkg.private).toBeUndefined();
+    expect(pkg.publishConfig).toEqual({ access: "public" });
   });
 });
 

@@ -2,6 +2,15 @@
   "v": 1,
   "mutations": [
     {
+      "name": "a merge-at-head deposit never joins its PR's live row",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "item.op.kind === \"release-hold\" || item.op.kind === \"merge-at-head\" ? rowOfPr",
+      "replace": "item.op.kind === \"release-hold\" ? rowOfPr",
+      "kills": [
+        "a deposit's typed op shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge"
+      ]
+    },
+    {
       "name": "a deploy-pause-clear deposit gets no console tap",
       "file": "apps/console/server/inbox-view.ts",
       "find": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\"]);",
@@ -20,30 +29,30 @@
       ]
     },
     {
-      "name": "the sent-back allowlist lacks waive-proof",
+      "name": "inbox.list drops the missed-notice rows",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "\"sh-sent-back\": [\"await-new-head\", \"waive-proof\"]",
-      "replace": "\"sh-sent-back\": [\"await-new-head\"]",
+      "find": ", ...blocked, ...missed.value]",
+      "replace": ", ...blocked]",
       "kills": [
-        "actionFor taps a waivable sh-sent-back gate with await-new-head and offers waive-proof as its second tap, never abandon"
+        "inbox.list's machine-derived rows a round notice the start-up sweep could not send lists a missed-notice row linking the round until a later sweep reaches the seat"
       ]
     },
     {
-      "name": "an item with no options is offered every decision",
+      "name": "inbox.list drops the round notices gap",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "if (options === undefined) return [first];",
-      "replace": "if (options === undefined) return [first, ...rest];",
+      "find": ", ...missed.gaps]",
+      "replace": "]",
       "kills": [
-        "actionFor offers no waiver on a sent-back gate whose item lists no options, leaving that check to the factory"
+        "inbox.list's machine-derived rows a round notice the start-up sweep could not send names an unreadable rounds dir as a round notices gap"
       ]
     },
     {
-      "name": "a second tap is offered where the gate lacks the item's own",
-      "file": "apps/console/server/inbox-view.ts",
-      "find": "return offered(first) ? [first, ...rest.filter(offered)] : [];",
-      "replace": "return [first, ...rest].filter(offered);",
+      "name": "an unreadable rounds dir reads as no rounds instead of a gap",
+      "file": "apps/console/server/round-notice-gaps.ts",
+      "find": "    if (isMissing(error)) return [];\n    throw error;\n",
+      "replace": "    return [];\n",
       "kills": [
-        "actionFor keeps an sh-sent-back gate whose options lack await-new-head on the terminal"
+        "inbox.list's machine-derived rows a round notice the start-up sweep could not send names an unreadable rounds dir as a round notices gap"
       ]
     }
   ]

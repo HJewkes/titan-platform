@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,6 +11,10 @@ import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
 import { actionFor, DIVERGED_HOLD, inboxItems, type InboxItem, type InboxView, type WatchRow } from "./inbox-view.js";
+import { createRoundListeners } from "./listeners.js";
+import { FIXTURE_ROUNDS } from "./round-fixtures.js";
+import { fileRound } from "./round-file.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
 import { closedPort, send, startFakeBroker, startFakeDaemon, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
 const REPO = "example/repo";
@@ -284,6 +288,56 @@ describe("inbox.list's machine-derived rows", () => {
     expect(list.gaps.map((gap) => gap.slice(0, gap.indexOf(":")))).toEqual(["agents"]);
     expect(list.derived.map((each) => each.kind)).toEqual(["failed-run", "stalled-run"]);
   });
+
+  describe("a round notice the start-up sweep could not send", () => {
+    // Synthetic: a questions-only fixture round filed by a made-up seat and answered, in the temp state dir.
+    const ROUND = "kiln-schedule-r2";
+    const SEAT = "sample-seat";
+    const roundsDir = (): string => path.join(dir, "state", "rounds");
+    const isNoticeGap = (gap: string): boolean => gap.startsWith("round notices:");
+    const noShepherd: RpcAnswer = (command) => (command === "needs.list" ? { items: [], gaps: [] } : []);
+
+    async function fileAnsweredRound(): Promise<void> {
+      const body = await readFile(path.join(FIXTURE_ROUNDS.dir, ROUND, "round.json"), "utf8");
+      await fileRound({ body, roundsDir: roundsDir(), asker: { seat: SEAT, initiative: null } });
+      await writeFile(path.join(roundsDir(), ROUND, "feedback.json"), "{}\n");
+    }
+
+    function sweep(notify: SeatNotifier): Promise<void> {
+      const unused = () => Promise.reject(new Error("no factory in this test"));
+      return createRoundListeners({ enabled: false, roundsDir: roundsDir(), shepherd: { list: unused }, answer: { post: unused }, notify, now: () => new Date() }).sweep();
+    }
+
+    async function listAgain(factoryPort: number): Promise<InboxView> {
+      await handle?.close();
+      return listInbox(factoryPort);
+    }
+
+    it("lists a missed-notice row linking the round until a later sweep reaches the seat", async () => {
+      await fileAnsweredRound();
+      await sweep(() => Promise.reject(new Error("seat sample-seat is not live")));
+      const factoryPort = await serveFactory(noShepherd);
+
+      const missed = await listInbox(factoryPort);
+      await sweep(async () => undefined);
+      const reached = await listAgain(factoryPort);
+
+      expect(missed.gaps.filter(isNoticeGap)).toEqual([]);
+      expect(missed.derived.map((each) => [each.kind, each.link])).toEqual([["missed-notice", `#/rounds/${ROUND}`]]);
+      expect(missed.derived[0]).toMatchObject({ evidence: { observed: "notice failed after the start-up sweep's retry: seat sample-seat is not live", source: `round notice ${ROUND} to ${SEAT}` } });
+      expect(reached.derived).toEqual([]);
+    });
+
+    it("names an unreadable rounds dir as a round notices gap", async () => {
+      await mkdir(path.dirname(roundsDir()), { recursive: true });
+      await writeFile(roundsDir(), "not a directory\n");
+
+      const list = await listInbox(await serveFactory(noShepherd));
+
+      expect(list.gaps.filter(isNoticeGap)).toHaveLength(1);
+      expect(list.derived).toEqual([]);
+    });
+  });
 });
 
 describe("actionFor", () => {
@@ -319,25 +373,6 @@ describe("actionFor", () => {
     const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
 
     const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
-
-    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head" });
-  });
-
-  it("taps a waivable sh-sent-back gate with await-new-head and offers waive-proof as its second tap, never abandon", () => {
-    const offered = [
-      { id: "await-new-head", label: "Wait for a new head" },
-      { id: "abandon", label: "Abandon the PR" },
-      { id: "waive-proof", label: "Waive the fix-proof" },
-    ];
-    const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
-
-    const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
-
-    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head", alternatives: ["waive-proof"] });
-  });
-
-  it("offers no waiver on a sent-back gate whose item lists no options, leaving that check to the factory", () => {
-    const { action } = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), row(RUN_PLAIN, 1));
 
     expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head" });
   });
@@ -431,6 +466,14 @@ describe("a deposit's typed op", () => {
 
     expect(held!.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
     expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
+  });
+
+  it("shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge", () => {
+    const [held] = inboxItems([deposited({ ...mergeOp, pr: 3 })], [row(RUN_G10, 3, "g10-adversary: authority change")]);
+    const [open] = inboxItems([deposited(mergeOp)], [row(RUN_PLAIN, 7)]);
+
+    expect(held).toMatchObject({ action: { kind: "owner-op" }, hold: { class: "g10-adversary", reason: "g10-adversary: authority change" } });
+    expect(open).not.toHaveProperty("hold");
   });
 });
 

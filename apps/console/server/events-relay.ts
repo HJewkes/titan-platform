@@ -4,7 +4,7 @@ import { TOKEN_HEADER, readToken } from "./broker.js";
 import type { ConsoleConfig } from "./config.js";
 
 /** The SSE event names the browser sees; each relayed frame is named for the upstream it came from. */
-export type RelaySource = "active-work" | "agent-chat";
+export type RelaySource = "active-work" | "agent-chat" | "factory";
 
 /** A kind the browser gets after an upstream stream reopens, since frames sent while it was down are lost. */
 const RECONNECTED_KIND = "reconnected";
@@ -20,6 +20,8 @@ interface RelayedEvent {
   /** Agent names, which `agents.roster` already shows. */
   actor?: string;
   target?: string;
+  /** The factory workflow run a frame moved, which the run pages already show. */
+  runId?: string;
 }
 
 type RelayedIds = Omit<RelayedEvent, "kind">;
@@ -38,7 +40,7 @@ export interface RelayTiming {
   maxDelayMs: number;
   /** A dial with no response headers by then is abandoned. */
   dialTimeoutMs: number;
-  /** Both upstreams send a heartbeat every 25 s, so a stream silent this long is dead. */
+  /** Every upstream sends a heartbeat every 25 s, so a stream silent this long is dead. */
   idleTimeoutMs: number;
   /** A stream must stay up this long before the backoff resets, so a flapping upstream keeps backing off. */
   stableMs: number;
@@ -53,6 +55,7 @@ export const MAX_FRAME_CHARS = 1 << 20;
 const KEEPALIVES = new Set(["ready", "ping"]);
 const KIND = /^[A-Za-z][\w.-]{0,63}$/;
 const AGENT_NAME = /^[\w.:@-]{1,128}$/;
+const RUN_ID = /^[\w.-]{1,128}$/;
 
 interface RelayOptions {
   hub: Pick<EventHub, "broadcast">;
@@ -96,7 +99,7 @@ export function startEventsRelay(options: RelayOptions): EventsRelay {
   };
 }
 
-/** The console's two upstreams, on loopback, with the broker token sent as a header and never relayed. */
+/** The console's three upstreams, on loopback, with the broker token sent as a header and never relayed. */
 export function relayUpstreams(config: ConsoleConfig): RelayUpstream[] {
   const accept = { accept: "text/event-stream" };
   return [
@@ -107,6 +110,7 @@ export function relayUpstreams(config: ConsoleConfig): RelayUpstream[] {
       headers: async () => ({ ...accept, [TOKEN_HEADER]: await readToken(config.agentChatTokenPath) }),
       pick: brokerIds,
     },
+    { source: "factory", url: `http://127.0.0.1:${config.factoryPort}/events`, headers: async () => accept, pick: factoryIds },
   ];
 }
 
@@ -119,6 +123,12 @@ export function brokerIds(data: string): RelayedIds {
   if (typeof row.actor === "string" && AGENT_NAME.test(row.actor)) ids.actor = row.actor;
   if (typeof row.target === "string" && AGENT_NAME.test(row.target)) ids.target = row.target;
   return ids;
+}
+
+/** A factory frame names the run it moved; only that id is kept, never its repo, PR or step. */
+export function factoryIds(data: string): RelayedIds {
+  const runId = parseObject(data)?.runId;
+  return typeof runId === "string" && RUN_ID.test(runId) ? { runId } : {};
 }
 
 function parseObject(data: string): Record<string, unknown> | null {

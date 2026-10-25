@@ -103,6 +103,9 @@ const { subject, body } = formatSquashMessage({
 // body: "## Summary\n\nAdds the widget.\n\n## Changes\n\n- **Add the widget core.** Holds no I/O, so tests need no fakes.\n\nRefs: TP-1, #42"
 ```
 
+CI skip tokens such as `[skip ci]` and a `skip-checks: true` trailer are defanged everywhere in
+the output, code included, so a squash never skips main CI; `defangCiSkip` exposes the rewrite.
+
 Waiting on CI for a pushed sha is `ciWait`, or the `titan-gh ci-wait` bin. The verdict itself
 is pure, so a caller with its own loop can call `ciVerdict` directly:
 

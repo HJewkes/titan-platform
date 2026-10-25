@@ -109,6 +109,20 @@ describe("score", () => {
       { category: "tech_design", samples: 3, agreed: 1, missedRedirects: 1, baseline: 1 / 3 },
     ]);
   });
+
+  it("buckets a blank category under other and a symbol-only one under its own name instead of throwing", () => {
+    const set = withPredictions([
+      [row({ category: "" }), predict(RECOMMENDED)],
+      [row({ category: "  " }), predict(RECOMMENDED)],
+      [row({ category: "??" }), predict(RECOMMENDED)],
+      [row({ category: "", answered_by: "overrule" }), predict(OTHER)],
+    ]);
+
+    expect(score(set.predictions, set.rows, { policy: shadowPolicy, now })).toMatchObject([
+      { category: "??", samples: 1, agreed: 1 },
+      { category: "other", samples: 2, agreed: 2, overrules: 1 },
+    ]);
+  });
 });
 
 describe("graduation", () => {
