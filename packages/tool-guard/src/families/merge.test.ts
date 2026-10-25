@@ -591,6 +591,7 @@ describe("a push the command's own -c or --config-env config routes onto a prote
     ["an unrelated -c", "git -c user.name=x push origin feat/x", "feat/x"],
     ["an explicit src:dst refspec, which git does not map", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin feat:feat", "feat"],
     ["--tags with no refspec", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push --tags origin", "feat"],
+    ["--tags with push.default=matching, which git does not consult", "git -c push.default=matching push --tags origin", "feat"],
     ["--delete, which git does not map", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin --delete feat", "feat"],
     ["push.default=current on a feature branch", "git -c push.default=current push", "feat/x"],
     ["a remote push refspec to the same branch", "git -c remote.origin.push=refs/heads/feat:refs/heads/feat push origin feat", "feat"],
