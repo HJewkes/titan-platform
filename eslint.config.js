@@ -28,6 +28,7 @@ const MOTION_PATHS = [
   "/products/explainer/src/anchor-grid",
   "/products/explainer/src/storyboard",
   "/products/explainer/src/resolve-beat",
+  "/products/explainer/src/composition/",
 ];
 
 export default tseslint.config(
@@ -63,7 +64,7 @@ export default tseslint.config(
     files: ["products/factory/**", "packages/github/**"],
     rules: { "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS] },
   },
-  // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera and timing sources are named.
+  // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera, timing and composition page sources are named.
   {
     files: ["**/products/explainer/src/**", "**/ui/beats/**", "**/motion/**"],
     rules: { "titan/no-wall-clock-motion": ["error", { paths: MOTION_PATHS }] },

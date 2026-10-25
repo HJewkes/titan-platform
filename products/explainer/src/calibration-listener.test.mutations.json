@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "listener items come only from chapters that clear the bar",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "roundRobin([side(true), side(false)], count)",
+      "replace": "roundRobin([side(true)], count)",
+      "kills": [
+        "listener items picks the chapters nearest the bar, taking turns between ones that clear it and ones that do not"
+      ]
+    },
+    {
+      "name": "listener items ignore their distance from the bar",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "Math.abs(a.density! - maxDensity) - Math.abs(b.density! - maxDensity) || ",
+      "replace": "",
+      "kills": [
+        "listener items picks the chapters nearest the bar, taking turns between ones that clear it and ones that do not"
+      ]
+    },
+    {
+      "name": "a holdout chapter can be a listener item",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "eligible(o) && o.pass === clear",
+      "replace": "o.pass === clear",
+      "kills": [
+        "listener items never picks a holdout or owner-named chapter"
+      ]
+    },
+    {
+      "name": "listener items go after their section's other items",
+      "file": "products/explainer/src/calibration-queue.ts",
+      "find": "return [...heard, ...shuffled(mine.filter((u) => !isListener(u)), seed)];",
+      "replace": "return [...shuffled(mine.filter((u) => !isListener(u)), seed), ...heard];",
+      "kills": [
+        "listener items asks them on top of the queue's size, first in their video's section, clearest chapter first"
+      ]
+    },
+    {
+      "name": "a can't-tell becomes an unclear example",
+      "file": "products/explainer/src/calibration-agreement.ts",
+      "find": "(label !== \"yes\" && label !== \"no\")",
+      "replace": "label === undefined",
+      "kills": [
+        "listener items turns the owner's yes and no into a row per chapter beside its density, leaving can't-tell and other judges out"
+      ]
+    }
+  ]
+}

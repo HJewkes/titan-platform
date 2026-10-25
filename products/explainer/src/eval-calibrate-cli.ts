@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import { calibrate, LabelsSchema, type Calibration, type CalibrationRow } from "./eval-calibrate.js";
-import { agreementCommand, queueCommand } from "./eval-calibrate-judges-cli.js";
+import { agreementCommand, listenerLabelsCommand, queueCommand } from "./eval-calibrate-judges-cli.js";
 import { readTsv } from "./eval-store.js";
 
 const EXIT = { OK: 0, USAGE: 2 } as const;
@@ -66,6 +66,7 @@ export function calibrateCommand(onResult: (code: number) => void): Command {
     .enablePositionalOptions()
     .addCommand(queueCommand(onResult))
     .addCommand(agreementCommand(onResult))
+    .addCommand(listenerLabelsCommand(onResult))
     .exitOverride()
     .action((files: string[], flags: CalibrateFlags) => {
       try {
