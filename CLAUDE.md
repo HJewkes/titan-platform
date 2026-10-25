@@ -57,6 +57,8 @@ All six must be green. `dag:check` is self-hosted: it runs against this repo's o
 `@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
 release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
 
+Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
+
 ## Rules that CI enforces
 
 - **Tier order.** A package imports only its own tier or lower. The `package-layers` rule in

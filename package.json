@@ -20,6 +20,7 @@
     "lint:types": "node scripts/lint-types.mjs",
     "test": "vitest run --passWithNoTests",
     "test:affected": "node scripts/test-affected.mjs",
+    "verify:changed": "node scripts/verify-changed.mjs",
     "test:scope": "node scripts/test-scope.mjs",
     "test:watch": "vitest --project threads --project forks",
     "env:doctor": "node scripts/env-doctor.mjs",

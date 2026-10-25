@@ -1,6 +1,7 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
-import { parseGit, splits } from "../shell/git.js";
+import { emptyInvocation, parseGit, splits } from "../shell/git.js";
+import { pushConfig } from "../shell/git-config.js";
 import { configTrue } from "../shell/git-verbs.js";
 import { continuesChain } from "../shell/reading-hand-on.js";
 import type { GitInvocation } from "../shell/git.js";
@@ -9,6 +10,7 @@ import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { httpRequest, isWrite } from "./http-request.js";
+import { ghPathUnknown } from "./gh-path.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
@@ -201,14 +203,49 @@ function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 function branchPush(options: Options, refspecs: WordToken[], specs: string[], git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
-  if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*"))) {
+  const routed = configSpecs(git, options, ctx);
+  if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*")) || routed === "all") {
     return [classified("bash.merge.git-push-all", {})];
   }
-  if (hasUnknownDestination(git, refspecs)) return pushSpecs([...specs, UNKNOWN], git, ctx);
-  if (options.positionals.length > 1) return pushSpecs(specs, git, ctx);
+  if (hasUnknownDestination(git, refspecs)) return pushSpecs([...specs, ...routed, UNKNOWN], git, ctx);
+  if (options.positionals.length > 1) return pushSpecs([...specs, ...routed], git, ctx);
   if (hasFlag(options, "--tags", "--delete", "-d")) return [];
   const head = headOf(git, ctx);
-  return isProtected(head) ? [classified("bash.merge.git-push-implicit", { branch: head as string })] : [];
+  const implicit = isProtected(head) ? [classified("bash.merge.git-push-implicit", { branch: head as string })] : [];
+  return [...implicit, ...pushSpecs(routed, git, ctx)];
+}
+
+/**
+ * Refspecs the command's own config adds. git maps a colon-less refspec, or a push with none, through
+ * `remote.<r>.push` and, under `push.default=upstream`, `branch.<name>.merge`, so the destination may be a branch
+ * the command line never names. Which remote the config is for is not matched, which can only over-deny.
+ */
+function configSpecs(git: GitInvocation, options: Options, ctx: ClassifyContext): string[] | "all" {
+  if (git.config.length === 0 && git.configEnv.length === 0) return [];
+  const sources = routedSources(git, options, ctx);
+  if (sources === null) return [];
+  const config = pushConfig(git);
+  if (config.all) return "all";
+  const merged = [...config.merges.values()].map((m) => `:${m}`);
+  const unread = config.unknown || (config.upstream && sources.some((s) => s === UNKNOWN || !config.merges.has(s)));
+  return [...config.specs, ...merged, ...(unread ? [UNKNOWN] : [])];
+}
+
+/**
+ * The branches a config-routed push sends, null when config routes nothing: `--delete` and an explicit `src:dst` bypass
+ * it, as does `--tags` with no refspec. A refspec known only at run time may be colon-less, so it routes as `unknown`.
+ */
+function routedSources(git: GitInvocation, options: Options, ctx: ClassifyContext): string[] | null {
+  const refspecs = options.positionals.slice(1);
+  if (hasFlag(options, "--delete", "-d") || (refspecs.length === 0 && hasFlag(options, "--tags"))) return null;
+  const head = headOf(git, ctx);
+  if (refspecs.length === 0) return head === null ? [] : [head];
+  const colonless = refspecs.flatMap((word) => {
+    const spec = literalSpec(word);
+    return spec === null ? [UNKNOWN] : spec.includes(":") ? [] : [spec];
+  });
+  if (colonless.length === 0) return null;
+  return colonless.map((spec) => pushDestination(spec, head) ?? UNKNOWN);
 }
 
 function pushSpecs(specs: string[], git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
@@ -226,7 +263,7 @@ function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  if (cmd.name === "gh") return [...prMerge(cmd), ...apiMerge(cmd)];
+  if (cmd.name === "gh") return ghPathUnknown(cmd) ? [classified("bash.merge.gh-pr-merge", {})] : [...prMerge(cmd), ...apiMerge(cmd)];
   if (cmd.name === "git") return git(cmd, inChain(cmd, ctx));
   return curlMerge(cmd, ctx);
 }
@@ -236,7 +273,8 @@ const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--forc
 /** The directory a branch switch acts in, null when unknown; undefined when `cmd` does not switch branch. */
 function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | null; created: WordToken | null } | undefined {
   if (cmd.name === "gh") {
-    return /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" ")) ? { dir: cmd.dir, created: null } : undefined;
+    const checksOut = ghPathUnknown(cmd) || /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" "));
+    return checksOut ? { dir: cmd.dir, created: null } : undefined;
   }
   if (cmd.name !== "git") return undefined;
   const inv = parseGit(cmd.args, cmd.dir, ctx.home);
@@ -271,7 +309,7 @@ function guardsChain(cmd: SimpleCommand): boolean {
 function switchedHead(sw: Switch, succeeded: boolean, ctx: ClassifyContext): string {
   if (sw.dir === null || !sw.created || sw.created.dynamic || isCaseUnsure(sw.created)) return UNKNOWN;
   if (succeeded) return sw.created.value;
-  return isProtected(headOf({ dir: sw.dir, otherPaths: [], config: [], sub: null, subDynamic: false, subArgs: [] }, ctx)) ? UNKNOWN : sw.created.value;
+  return isProtected(headOf(emptyInvocation(sw.dir), ctx)) ? UNKNOWN : sw.created.value;
 }
 
 function switched(sw: Switch, head: string, ctx: ClassifyContext): ClassifyContext {
