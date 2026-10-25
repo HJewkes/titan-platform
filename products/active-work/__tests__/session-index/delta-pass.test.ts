@@ -301,12 +301,10 @@ describe('delta pass behind runNow', () => {
     );
 
     try {
-      const started = Date.now();
+      // 'fresh' means the read settled before the budget's timer, so no clock is read here.
       const freshness = await scheduler.runNow(800);
-      const elapsedMs = Date.now() - started;
 
       expect(freshness).toBe('fresh');
-      expect(elapsedMs).toBeLessThan(800);
       expect(episodeStepBlocked).toBe(true);
       expect(scheduler.status().running).toBe(true);
     } finally {

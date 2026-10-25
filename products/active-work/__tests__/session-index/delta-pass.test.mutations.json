@@ -15,21 +15,38 @@
       "file": "products/active-work/src/session-index/delta-pass.ts",
       "find": "    rowsWritten: rowsWritten(),\n",
       "replace": "    rowsWritten: 0,\n",
-      "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
+      "kills": [
+        "delta pass reports the rows each pass wrote and the database size it left"
+      ]
     },
     {
       "name": "the full pass reports no rows written",
       "file": "products/active-work/src/session-index/refresh.ts",
       "find": "      rowsWritten: rowsWritten(),\n",
       "replace": "      rowsWritten: 0,\n",
-      "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
+      "kills": [
+        "delta pass reports the rows each pass wrote and the database size it left"
+      ]
     },
     {
       "name": "the database size counts pages, not bytes",
       "file": "products/active-work/src/session-index/pass-metrics.ts",
       "find": "page_count * page_size AS n",
       "replace": "page_count AS n",
-      "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
+      "kills": [
+        "delta pass reports the rows each pass wrote and the database size it left"
+      ]
+    },
+    {
+      "name": "the delta pass never signals indexed before its episode step",
+      "file": "products/active-work/src/session-index/delta-pass.ts",
+      "find": "  options.onIndexed?.();\n",
+      "replace": "",
+      "kills": [
+        "delta pass behind runNow reads fresh inside the related budget while the episode step blocks for 5 s",
+        "delta pass behind runNow reads stale when it joins a delta in its episode step after a path was written",
+        "delta pass behind runNow reads fresh once a follow-up delta indexes the path written during the episode step"
+      ]
     }
   ]
 }
