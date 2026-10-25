@@ -753,6 +753,27 @@ new stage key.
   override on a custom-layer beat. A script with neither field resolves to the same bytes as before. Both fields
   are the owner's: the script stage's prompt shape (`DraftScriptSchema`) leaves them out, and a draft reply naming
   them loses them as `script-unknown-keys`.
+- **Owner edits** (`slot-edit.ts`, `workflow/edit-cli.ts`, TP-4021). One save is an `explainer.slot-edit/v1`:
+  `{ schema, base: { runId, scriptSha, mp4Sha }, beats: { <id>: { slots?, tune? } }, fromNote?, createdAt }`. Each
+  field replaces the override whole, and `null` drops it so the generated value stands again; anything else on a beat
+  is refused (spoken and framing go through rewrite and eval). `applyEdit` refuses a base whose script is not the
+  edit's `scriptSha`, a beat the script lacks, a beat whose resolved layer is not `template`, an edit that changes
+  nothing, and a slot change that drops an element a cue targets, naming the cue. It returns the new script, byte for
+  byte the base's outside each edited `visual.slots`/`visual.tune`, and a field diff against what the render saw
+  (the run's `slots` artifact with the overrides laid over it).
+  - `explainer edit check <edit.json|->` adds `ScriptSchema` and the `slot-overrides` gate and prints
+    `{ ok, editId, problems, diff }` as JSON; it writes nothing. TP-4134's template fill plugs in as the `fill` dep
+    (`FillCheck`): until it lands, check skips the filled-whole parse and the emphasis gate, which resolve still runs.
+  - `explainer edit apply <edit.json|-> [--start] [--json]` stores the script artifact (provenance
+    `{ runId: "input", stage: "edit" }`) and writes `<data dir>/edits/<editId>.json` (base, video, new script sha,
+    beats, `fromNote`, status `stored` or `started`, and the run id once known). `--start` launches
+    `explainer run --from resolve --base <run> --pin script=<sha> --edit <editId> --budget-usd 0.25` detached, its
+    output in `edits/<editId>.log`, and returns at once. The run pins the base's `custom-layers`, so a template edit
+    never rebuilds a layer; its tts takes are all cached, so it voices nothing; it links its id into the ledger as it
+    starts, joins the base's video, and its report says which edit it carries. One save makes one run: an edit
+    already started is refused.
+  - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
+    status (`not started`, `starting` before the run links itself, then the workflow status).
 
 ### The sim kit
 
