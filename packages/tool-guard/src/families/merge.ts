@@ -10,6 +10,7 @@ import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { httpRequest, isWrite } from "./http-request.js";
+import { ghPathUnknown } from "./gh-path.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
@@ -262,7 +263,7 @@ function git(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  if (cmd.name === "gh") return [...prMerge(cmd), ...apiMerge(cmd)];
+  if (cmd.name === "gh") return ghPathUnknown(cmd) ? [classified("bash.merge.gh-pr-merge", {})] : [...prMerge(cmd), ...apiMerge(cmd)];
   if (cmd.name === "git") return git(cmd, inChain(cmd, ctx));
   return curlMerge(cmd, ctx);
 }
@@ -272,7 +273,8 @@ const NEW_BRANCH_OPTS = ["-b", "-B", "-c", "-C", "--orphan", "--create", "--forc
 /** The directory a branch switch acts in, null when unknown; undefined when `cmd` does not switch branch. */
 function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | null; created: WordToken | null } | undefined {
   if (cmd.name === "gh") {
-    return /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" ")) ? { dir: cmd.dir, created: null } : undefined;
+    const checksOut = ghPathUnknown(cmd) || /^pr checkout\b/.test(cmd.args.map((a) => a.value).join(" "));
+    return checksOut ? { dir: cmd.dir, created: null } : undefined;
   }
   if (cmd.name !== "git") return undefined;
   const inv = parseGit(cmd.args, cmd.dir, ctx.home);

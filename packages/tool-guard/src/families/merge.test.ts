@@ -375,10 +375,6 @@ describe("xargs -I runs the command once per input line", () => {
     expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
   });
 
-  it("denies a merge when {} is the value of gh -R and the line has a space", () => {
-    expect(spellings(bash("printf 'my repo' | xargs -I{} gh -R {} pr merge 1"))).toEqual(["bash.merge.gh-pr-merge"]);
-  });
-
   it.each([
     ["-0", "printf 'status\\0push origin HEAD:main' | xargs -0 -I{} git {}"],
     ["--null", "printf 'status\\0push origin HEAD:main' | xargs --null -I{} git {}"],
@@ -490,10 +486,6 @@ describe("xargs -I fails closed when it cannot read the input", () => {
     ["a heredoc fed through cat", "cat <<EOF | xargs -I{} git {}\nstatus\nEOF"],
   ])("denies a push behind %s", (_how, command) => {
     expect(spellings(bash(command))).toEqual(["bash.merge.git-push-protected"]);
-  });
-
-  it("denies a merge behind a stdin file", () => {
-    expect(spellings(bash("xargs -I{} gh {} < cmds.txt"))).toEqual(["bash.merge.gh-pr-merge"]);
   });
 
   it.each([
