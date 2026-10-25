@@ -282,8 +282,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   description: "The watch list: every shepherded PR whose run is active (default), finished, or all of them",
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
-  run: async ({ state }, ctx) =>
-    watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
+  run: async ({ state }, ctx) => watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
