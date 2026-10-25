@@ -1,7 +1,7 @@
 import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
-import type { BeatWorker } from "../build/beat-worker.js";
+import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import { runResolveStage } from "../resolve-stage.js";
 import type { ArtifactStore } from "./artifacts.js";
@@ -169,6 +169,6 @@ export function checksRoute(deps: Pick<BodyDeps, "dataDir" | "store" | "evalChec
 export const childStepIds = (stage: CachedStage): string[] => [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`, ...(stage === "resolve" ? LAYER_STEP_IDS : [])];
 
 /** Every route a child stage run dispatches to: its body, its checks, and resolve's custom-layer builds. */
-export function childRoutes(deps: BodyDeps & { judge?: CheckJudge; worker?: BeatWorker }): StepRoute[] {
+export function childRoutes(deps: BodyDeps & { judge?: CheckJudge; worker?: BeatWorker; repairer?: LayerRepairer }): StepRoute[] {
   return [bodyRoute(deps), checksRoute(deps), ...layerRoutes(deps)];
 }
