@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a held qa error is reported only and the run goes on to sheets",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"held-errors\", gate: true,",
+      "replace": "{ name: \"held-errors\", gate: false,",
+      "kills": [
+        "explainer run through the qa stage fails qa on a held error with a per-kind summary, stops before sheets and keeps the verdicts"
+      ]
+    },
+    {
+      "name": "the qa stage falls through to the bridge",
+      "file": "products/explainer/src/workflow/stage-workflows.ts",
+      "find": "  if (stage === \"qa\") return runQaBody(config, input, deps);\n",
+      "replace": "",
+      "kills": [
+        "explainer run through the qa stage fails qa on a held error with a per-kind summary, stops before sheets and keeps the verdicts",
+        "explainer run through the qa stage opens the bridged page by its theater stem with the cues it resolved, and passes a clean page"
+      ]
+    },
+    {
+      "name": "qa stays a bridged stage",
+      "file": "products/explainer/src/workflow/records.ts",
+      "find": "export const BRIDGE_STAGES = [\"render\"] as const;",
+      "replace": "export const BRIDGE_STAGES = [\"render\", \"qa\"] as const;",
+      "kills": [
+        "explainer run through the qa stage fails qa on a held error with a per-kind summary, stops before sheets and keeps the verdicts",
+        "explainer run through the qa stage opens the bridged page by its theater stem with the cues it resolved, and passes a clean page"
+      ]
+    }
+  ]
+}

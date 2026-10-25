@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "qa leaves the MP4 out of its key",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "qa: [\"mp4\", \"words\", \"script\", \"page\"]",
+      "replace": "qa: [\"words\", \"script\", \"page\"]",
+      "kills": [
+        "qa stage spec keys on the MP4, so a new render reruns qa and the same render hits the cache"
+      ]
+    },
+    {
+      "name": "qa registers no mp4-duration check",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"mp4-duration\", gate: true, reads: [\"qa\"], run: mp4DurationVerdict },\n",
+      "replace": "",
+      "kills": [
+        "qa stage fails mp4-duration when the MP4 runs 0.034 s past its timeline",
+        "qa stage passes mp4-duration when the MP4 runs 0.033 s past its timeline"
+      ]
+    }
+  ]
+}
