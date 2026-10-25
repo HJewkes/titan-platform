@@ -52,6 +52,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_AGENT_CHAT_BIN` | `agent-chat` on the service's `PATH` | the agent-chat CLI that tells a seat its decision round was answered (`agent-chat debug send`); a send that fails is retried when the console next starts |
+| `TITAN_CONSOLE_EXPLAINER_BIN` | `explainer` on the service's `PATH` | the explainer CLI the theater's beat editor reads through (`explainer props`, `explainer edit check`); not found, or a relative path, the editor shows a gap line instead |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
@@ -740,6 +741,26 @@ about the content written after its latest `ship` verdict, in file order (a comm
 is video-coord's, never open): `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
+### Beat editor
+
+On a paused explainer render, **Edit this beat** opens the template beat under the playhead (the
+beat whose `[startS, endS)` holds it) with a form generated from its slot JSON Schema, and seeks the
+player to the beat's `stillS`, so the still is the render itself. Beat starts are ticks on the strip
+under the video. Both reads run the installed explainer CLI with a fixed argv, no shell and a 20 s
+timeout; the console never imports explainer.
+
+- **`videos.props`** (read) `{ videoId }` runs `explainer props --mp4-sha <the render's sha256> --json`
+  and returns `{ mp4Sha, props, gaps }`. `props` is null with one gap line when the CLI is missing,
+  the render was not made by `explainer run`, or the CLI fails (its exit code and first stderr line).
+- **`videos.edit-check`** (read) `{ videoId, runId, scriptSha, beats }` builds an
+  `explainer.slot-edit/v1` over the current render and pipes it to `explainer edit check -`, a dry run
+  that writes nothing. It returns `{ verdict: { ok, problems, diff }, gaps }`; a draft over 64 KB is
+  refused. The form shows each problem at the field it names and the diff as before and after.
+
+Save stays visible but disabled with `saveBack.reason` until explainer reports that the render reads
+edits (TP-2992 S3). An explainer that does not report the run's script sha gets a gap line and no
+draft check (TP-4263).
 
 ### Video metadata
 
