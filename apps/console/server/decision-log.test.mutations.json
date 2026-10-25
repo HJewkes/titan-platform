@@ -22,6 +22,13 @@
         "decision log a batch of answers (TP-4001) writes nothing for an unknown human-only list, asking once (fail closed)",
         "decision log a batch of answers (TP-4001) reads the list afresh for each batch, so a newly human-only initiative is excluded on the next submit"
       ]
+    },
+    {
+      "name": "the decisions line skips the shared cleaner and keeps a bidi override",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "  const line = promptLine(raw);",
+      "replace": "  const line = raw;",
+      "kills": ["decisions class and line writes the summary and the note on one plain line when they carry a right-to-left override"]
     }
   ]
 }

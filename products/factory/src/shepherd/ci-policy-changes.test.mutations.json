@@ -28,6 +28,13 @@
       "find": "const edits = lineEdits(sides[\"-\"], sides[\"+\"]);",
       "replace": "const edits = lineEdits(sides[\"-\"].map(shownLine), sides[\"+\"].map(shownLine));",
       "kills": ["ciPolicyChanges strips escapes, controls, bidi and zero-width characters from lines and the path, and still shows a change made only of them"]
+    },
+    {
+      "name": "card lines skip the shared cleaner and keep tag characters",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "promptLine(line.replace(/\\t/g, \"  \"), { lineBreak: SEPARATOR_MARK })",
+      "replace": "line.replace(/\\t/g, \"  \")",
+      "kills": ["ciPolicyChanges strips tag characters and soft hyphens, which hide text the owner would otherwise approve unseen"]
     }
   ]
 }
