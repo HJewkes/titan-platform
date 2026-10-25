@@ -251,7 +251,7 @@ function mismatches(snapshots: Iterable<Snapshot>): { count: number; first: unkn
     for (const [judge, live, oracle] of checks) {
       if (JSON.stringify(live) === JSON.stringify(oracle)) continue;
       if (judge === "latestPerName" && unstartedBesideStarted(snapshot.runs)) continue;
-      if (judge === "ciVerdict" && statusBesideRun(snapshot) && (live as CiVerdict).verdict !== "green") continue;
+      if (judge === "ciVerdict" && statusBesideRun(snapshot) && live.verdict !== "green") continue;
       count++;
       if (first.length < 5) first.push({ judge, snapshot, live, oracle });
     }
