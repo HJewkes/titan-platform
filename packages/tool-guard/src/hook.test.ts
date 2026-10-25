@@ -557,6 +557,8 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
 
     const before = linearRegExpSteps();
     const refused = await inRepo("bash a1.sh; bash a2.sh", files);
+    // Checked before the halves, so a regression fails after one run instead of three.
+    expect(linearRegExpSteps() - before, "LinearRegExp steps").toBeLessThan(GLOB_STEPS_PER_BYTE * 2 * 34 * 1024);
     const halves = [await inRepo("bash a1.sh", files), await inRepo("bash a2.sh", files)];
     expect(linearRegExpSteps() - before, "LinearRegExp steps").toBeLessThan(GLOB_STEPS_PER_BYTE * 4 * 34 * 1024);
 
