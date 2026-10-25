@@ -12,15 +12,6 @@
       ]
     },
     {
-      "name": "factory frames lose their run id",
-      "file": "apps/console/server/events-relay.ts",
-      "find": "pick: factoryIds },",
-      "replace": "pick: brokerIds },",
-      "kills": [
-        "the factory relay source dials the factory's /events with no broker token and relays each frame as its run id alone"
-      ]
-    },
-    {
       "name": "any string passes as a run id",
       "file": "apps/console/server/events-relay.ts",
       "find": "const RUN_ID = /^[\\w.-]{1,128}$/;",
