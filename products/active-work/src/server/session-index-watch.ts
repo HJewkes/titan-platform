@@ -16,6 +16,7 @@ import { watchChangedPaths } from '../session-index/watch-paths.js';
 import { createDirtySet, type DirtySet, type DrainedDirtySet } from '../session-index/dirty-set.js';
 import { transcriptsFromDirty } from '../session-index/delta-pass.js';
 import { indexFreshness } from '../session-index/freshness.js';
+import { startCheckpointer } from '../session-index/checkpoint.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
@@ -328,6 +329,9 @@ export function startSessionIndexWatch(
     return null;
   }
 
+  const checkpointer = startCheckpointer(graph.db, {
+    onError: (err) => log.warn({ err }, 'session index checkpoint worker failed; checkpointing on the loop'),
+  });
   const dirty = createDirtySet();
   const abort = new AbortController();
   const runner = passRunner(graph, dirty, log, abort.signal);
@@ -364,6 +368,7 @@ export function startSessionIndexWatch(
       stopPoll();
       for (const watcher of watchers) watcher.close();
       await Promise.all([scheduler.close(), workspace.idle()]);
+      await checkpointer.stop();
       graph.db.close();
     },
   };
