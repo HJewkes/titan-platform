@@ -181,8 +181,67 @@ describe("ciVerdict fails closed on a required context", () => {
     expect(ciVerdict({ rules: rules("validate"), runs: [], statuses: [st("validate", state)] })).toEqual({ verdict: "red", reasons: [`validate=${state}`] });
   });
 
-  it("lets a success status override a red Actions run of an unpinned context, as origin/main does (TP-2485)", () => {
-    expect(ciVerdict({ rules: rules("validate"), runs: [done("validate", "failure")], statuses: [st("validate", "success")] }).verdict).toBe("green");
+  it("is red when a success status sits beside a failed Actions run of an unpinned context (TP-2485)", () => {
+    expect(ciVerdict({ rules: rules("validate"), runs: [done("validate", "failure")], statuses: [st("validate", "success")] })).toEqual({ verdict: "red", reasons: ["validate=failure"] });
+  });
+});
+
+/** The unpinned rule table (TP-2485): each source that reported must succeed; pending outranks red; the run names a red first. */
+describe("ciVerdict judges an unpinned context on its Actions run and its commit status together", () => {
+  const judgeValidate = (runs: CheckRun[], statuses: CommitStatus[]) => ciVerdict({ rules: rules("validate"), runs, statuses });
+  const green = { verdict: "green", reasons: [] };
+  const pending = { verdict: "pending", reasons: ["validate"] };
+  const red = (text: string) => ({ verdict: "red", reasons: [text] });
+  const RUNS = { absent: () => [], success: () => [done("validate", "success")], unfinished: () => [cr("validate", "queued")], failed: () => [done("validate", "failure")] };
+  const STATES = { absent: [], success: [st("validate", "success")], pending: [st("validate", "pending")], error: [st("validate", "error")] };
+
+  it.each([
+    ["absent", "absent", pending],
+    ["absent", "success", green],
+    ["absent", "pending", pending],
+    ["absent", "error", red("validate=error")],
+    ["success", "absent", green],
+    ["success", "success", green],
+    ["success", "pending", pending],
+    ["success", "error", red("validate=error")],
+    ["unfinished", "absent", pending],
+    ["unfinished", "success", pending],
+    ["unfinished", "pending", pending],
+    ["unfinished", "error", pending],
+    ["failed", "absent", red("validate=failure")],
+    ["failed", "success", red("validate=failure")],
+    ["failed", "pending", pending],
+    ["failed", "error", red("validate=failure")],
+  ] as const)("reads run %s beside status %s as the table says", (run, state, expected) => {
+    expect(judgeValidate(RUNS[run](), [...STATES[state]])).toEqual(expected);
+  });
+
+  it.each(["queued", "in_progress", "waiting", "bogus"])("is pending with a success status beside a %s run", (status) => {
+    expect(judgeValidate([cr("validate", status)], [st("validate", "success")])).toEqual(pending);
+  });
+
+  it("is pending with a success status beside a queued rerun with no start over an older success", () => {
+    expect(judgeValidate([validate(1, "completed", "success", T1), validate(2, "queued", null, null)], [st("validate", "success")])).toEqual(pending);
+  });
+
+  it("is red with a success status when the newest run failed after an older success", () => {
+    expect(judgeValidate([done("validate", "success", A, T1), done("validate", "failure", A, T2)], [st("validate", "success")])).toEqual(red("validate=failure"));
+  });
+
+  it.each(["cancelled", "stale", "skipped", "neutral", "timed_out", "bogus"])("is red with a success status beside a run concluded %s", (conclusion) => {
+    expect(judgeValidate([done("validate", conclusion)], [st("validate", "success")])).toEqual(red(`validate=${conclusion}`));
+  });
+
+  it.each(["failure", "bogus"])("is red with a successful run beside a %s status", (state) => {
+    expect(judgeValidate([done("validate", "success")], [st("validate", state)])).toEqual(red(`validate=${state}`));
+  });
+
+  it("is pending with an unknown status state beside an unfinished run", () => {
+    expect(judgeValidate([cr("validate", "in_progress")], [st("validate", "bogus")])).toEqual(pending);
+  });
+
+  it("judges a success status alone when the only run is from another app", () => {
+    expect(judgeValidate([done("validate", "failure", 999)], [st("validate", "success")])).toEqual(green);
   });
 });
 

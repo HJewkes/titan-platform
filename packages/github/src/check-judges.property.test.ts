@@ -227,6 +227,17 @@ const unfinishedBesideAnother = (snapshot: Snapshot) => requiredSlots(snapshot).
 const completedTieOrNullStart = (snapshot: Snapshot) =>
   requiredSlots(snapshot).some((slot) => slot.some((a) => slot.some((b) => a !== b && (a.startedAt === b.startedAt || a.startedAt === null || b.startedAt === null))));
 
+/**
+ * Where the oracle let either source satisfy an unpinned context and ciVerdict now needs both (TP-2485): the context has
+ * a commit status and an Actions run of its name, and one of them is not success. There ciVerdict may only be less green.
+ */
+const statusBesideRun = ({ rules, runs, statuses }: Snapshot) =>
+  rules.contexts.some((name) => {
+    const state = statuses.find((status) => status.context === name)?.state;
+    const slot = slotOf(runs, name, GITHUB_ACTIONS_APP_ID);
+    return !rules.pins?.[name] && state !== undefined && slot.length > 0 && (state !== "success" || !slot.every(oracleIsSucceeded));
+  });
+
 /** Collects mismatches instead of asserting per case, so one failure reports its first few cases, not 50k. */
 function mismatches(snapshots: Iterable<Snapshot>): { count: number; first: unknown[] } {
   const first: unknown[] = [];
@@ -240,6 +251,7 @@ function mismatches(snapshots: Iterable<Snapshot>): { count: number; first: unkn
     for (const [judge, live, oracle] of checks) {
       if (JSON.stringify(live) === JSON.stringify(oracle)) continue;
       if (judge === "latestPerName" && unstartedBesideStarted(snapshot.runs)) continue;
+      if (judge === "ciVerdict" && statusBesideRun(snapshot) && (live as CiVerdict).verdict !== "green") continue;
       count++;
       if (first.length < 5) first.push({ judge, snapshot, live, oracle });
     }
@@ -265,12 +277,21 @@ describe("check judges against their origin/main oracles", () => {
     expect(diverged.every((runs) => unstartedBesideStarted(runs) && pickJustified(runs))).toBe(true);
   });
 
-  it("ciVerdict diverges only where the pick may differ, and does diverge there", () => {
+  it("ciVerdict diverges only where the pick may differ or a status sits beside a run, and does diverge there", () => {
     const diverged = Array.from(sampledSnapshots(20_000, 2465)).filter((snapshot) => JSON.stringify(ciVerdict(snapshot)) !== JSON.stringify(oracleCiVerdict(snapshot)));
 
     expect(diverged.filter(unfinishedBesideAnother).length).toBeGreaterThan(0);
     expect(diverged.filter(completedTieOrNullStart).length).toBeGreaterThan(0);
-    expect(diverged.filter((snapshot) => !unfinishedBesideAnother(snapshot) && !completedTieOrNullStart(snapshot))).toEqual([]);
+    expect(diverged.filter(statusBesideRun).length).toBeGreaterThan(0);
+    expect(diverged.filter((snapshot) => !unfinishedBesideAnother(snapshot) && !completedTieOrNullStart(snapshot) && !statusBesideRun(snapshot))).toEqual([]);
+  });
+
+  it("ciVerdict is never green where a status sits beside a run and the oracle is not", () => {
+    const snapshots = [...exhaustiveSnapshots(), ...sampledSnapshots(20_000, 2465)].filter(statusBesideRun);
+    const greener = snapshots.filter((snapshot) => ciVerdict(snapshot).verdict === "green" && oracleCiVerdict(snapshot, specPick).verdict !== "green");
+
+    expect(snapshots.filter((snapshot) => oracleCiVerdict(snapshot, specPick).verdict === "green" && ciVerdict(snapshot).verdict !== "green").length).toBeGreaterThan(0);
+    expect(greener.slice(0, 3)).toEqual([]);
   });
 
   it("ciVerdict turns green only where every run of a diverging slot completed", () => {
@@ -279,10 +300,8 @@ describe("check judges against their origin/main oracles", () => {
     expect(newlyGreen.filter((snapshot) => unfinishedBesideAnother(snapshot) || !completedTieOrNullStart(snapshot))).toEqual([]);
   });
 
-  /** A success status on an unpinned context still overrides its runs, as on origin/main; TP-2485 tracks failing it closed. */
-  it("ciVerdict is never green while a run of a required context and app is unfinished, bar the TP-2485 status override", () => {
-    const statusOverride = ({ rules, statuses }: Snapshot) => statuses.some((status) => status.state === "success" && rules.contexts.includes(status.context) && !rules.pins?.[status.context]);
-    const open = (snapshot: Snapshot) => !statusOverride(snapshot) && requiredSlots(snapshot).some((slot) => slot.some(unfinished));
+  it("ciVerdict is never green while a run of a required context and app is unfinished", () => {
+    const open = (snapshot: Snapshot) => requiredSlots(snapshot).some((slot) => slot.some(unfinished));
     const greenWhileOpen = [...exhaustiveSnapshots(), ...sampledSnapshots(20_000, 2465)].filter((snapshot) => open(snapshot) && ciVerdict(snapshot).verdict === "green");
 
     expect(greenWhileOpen.slice(0, 3)).toEqual([]);
