@@ -1,11 +1,11 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
+import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, fixProofNeedsTests, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
-import { noReproOfLine, type FixProofUnverified } from "./fix-proof.js";
+import { noReproOfLine, type FixProofReadSchema, type FixProofUnverified } from "./fix-proof.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { isAdversaryHold } from "./hold-slots.js";
@@ -106,6 +106,19 @@ export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, {
   const policy = { ...(panelPolicy ?? panelPolicyFor(roles)), ...(profileInstalled && { installed: profileInstalled }) };
   const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), policy, undefined, rules, options);
   return panel === "on" || held !== undefined ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
+}
+
+/**
+ * `testOnlyProof` marks a test-only head proceeding on its vacuous proof, and `badFixProof` any other fix-proof line that makes the
+ * tests seat blocking, such as `unproven` or `error` (TP-4195); either way the panel plans a tests member to answer it.
+ */
+export const PROOF_PLAN_FIELDS = { testOnlyProof: z.literal(true).optional(), badFixProof: z.literal(true).optional() };
+
+/** The intent's proof fields from the predicate aggregate blocks the tests seat on, so the seat it blocks is always planned. */
+export function proofPlanFields(proof: z.infer<typeof FixProofReadSchema>, head: string, standing: ProofStanding): { testOnlyProof?: true; badFixProof?: true } {
+  if (standing.unverified === "no-repro-test-only") return { testOnlyProof: true };
+  const fixProof = proof.kind === "result" ? proof.line : undefined;
+  return fixProofNeedsTests({ head, fixProof, fixProofWaivedAt: standing.waivedAt }) ? { badFixProof: true } : {};
 }
 
 /** What every member's dispatch shares with the correctness reviewer's; members never write the owner brief. */
@@ -260,7 +273,8 @@ function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string 
 /** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
 function panelNone(verdict: PanelVerdictRecord): Verdict {
   if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
-  const reason = verdict.fixProofShortfall === true ? "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned" : "a blocking panel member gave no verdict";
+  const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
+  const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
   return { kind: "none", cause: "no-verdict", reason };
 }
 
