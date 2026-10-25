@@ -572,7 +572,8 @@ declare function parseReviewVerdicts(text: string): ReviewVerdictMatch[];
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
  *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
  *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
- *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone).
+ *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone)
+ *   and the label is not glued to an identifier character, as in `ci-policy-changes.ts` (see `ciPolicyLabelRest`).
  *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
  *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
  *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
