@@ -421,10 +421,13 @@ describe("the default setup runner", () => {
 
   it("kills a step that outlives its timeout", async () => {
     const dir = tmpdir("wt-run-");
-    const started = Date.now();
-    const result = await runSetupCommand(["sh", "-c", "sleep 30"], dir, 200);
-    expect(result.timedOut).toBe(true);
-    expect(Date.now() - started).toBeLessThan(10_000);
+    // The trap's exit code and output show SIGTERM ended the step, not its own sleep.
+    const result = await runSetupCommand(
+      ["sh", "-c", "trap 'echo got-term; exit 7' TERM; sleep 30 & wait"],
+      dir,
+      200
+    );
+    expect(result).toEqual({ exitCode: 7, timedOut: true, output: "got-term\n" });
   });
 
   it("passes the step PATH but not the rest of the broker environment", async () => {

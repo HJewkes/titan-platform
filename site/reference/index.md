@@ -74,6 +74,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `evidence`, `review-schema` |
 | [`pm`](/reference/pm) | Project-management schemas: the zod task schema and its type, as active-work stores tasks | none |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
+| `render-qa` | Render QA gate: in-page geometry inspection, cue moments and the persistence rule over any __titanMotion page | `frame-capture` |
 | [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `evidence`, `fix-proof`, `session-read` |
 | [`review-workflow`](/reference/review-workflow) | PR review as a resumable workflow over ports: preflight, heals, a failure taxonomy with a retry policy, and a typed outcome | `agent-dispatch`, `evidence`, `github`, `review-panel` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `review-panel`, `session-graph`, `session-read`, `store-sqlite` |

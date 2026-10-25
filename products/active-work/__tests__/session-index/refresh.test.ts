@@ -488,11 +488,12 @@ describe('withRefreshLock', () => {
 
     const second = withRefreshLock(fn, { signal: abort.signal, onWait });
     await vi.waitFor(() => expect(onWait).toHaveBeenCalled());
-    const started = Date.now();
     abort.abort(new Error('closing'));
+    // The abort settles the wait in microtasks; a wait that sat out its retry delay would still be pending at the next loop turn.
+    const nextTurn = new Promise((resolve) => setImmediate(() => resolve('still waiting')));
+    const settled = await Promise.race([second.catch((err: unknown) => err), nextTurn]);
 
-    await expect(second).rejects.toThrow('closing');
-    expect(Date.now() - started).toBeLessThan(500);
+    expect(settled).toMatchObject({ message: 'closing' });
     expect(fn).not.toHaveBeenCalled();
     await first.release();
   });

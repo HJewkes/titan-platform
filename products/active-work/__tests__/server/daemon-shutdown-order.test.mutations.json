@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the daemon's yield point waits on readers through an abort",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "  await (signal ? untilAborted(idle, signal) : idle);\n",
+      "replace": "  await idle;\n",
+      "kills": [
+        "daemon shutdown ordering a SIGTERM during a pass blocked at its yield point stops well under the cap"
+      ]
+    }
+  ]
+}
