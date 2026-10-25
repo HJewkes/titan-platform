@@ -18,9 +18,20 @@ const CODE_GRAPH_ENTRY = join(ROOT, "packages/code-graph/dist/index.js");
 const VITEST_TIMEOUT_SECONDS = 600;
 const VITEST_HEAP_MB = 4096;
 
-/** In the CI rule's scope: a graph-indexed source file whose code-graph role the rule does not exempt. */
-export function isLocChecked(path, rule, roleOf) {
-  return GRAPH_ROOT.test(path) && SOURCE_EXT.test(path) && !rule.excludeRoles.has(roleOf(path));
+// The languages code-graph's indexer walks (LANGUAGES in its indexer.ts); `typescript` covers .ts and .tsx only.
+const INDEXED_LANGUAGES = ["typescript", "python"];
+
+/**
+ * The CI rule's scope, built from the code that decides it: code-graph's ingest filter, its exclude-pattern
+ * matcher and its role classifier. Returns a predicate over repo-relative paths.
+ */
+export function locScope(graph, rule, roleOf) {
+  const excluders = graph.compilePatterns(rule.exclude);
+  return (path) =>
+    GRAPH_ROOT.test(path) &&
+    graph.shouldIncludeFile(path, INDEXED_LANGUAGES) &&
+    !graph.matchesAny(path, excluders) &&
+    !rule.excludeRoles.has(roleOf(path));
 }
 
 /** Non-blank line count, the same measure the code-graph `loc` metric uses. */
@@ -32,7 +43,7 @@ export function countLoc(content) {
 export function locRuleFrom(checkConfig) {
   const rule = checkConfig.rules.find((r) => r.id === LOC_RULE_ID);
   if (!rule) throw new Error(`${LOC_RULE_ID} not found in .codewatch/check.json`);
-  return { max: rule.max, exclude: new Set(rule.exclude ?? []), excludeRoles: new Set(rule.excludeRoles ?? []) };
+  return { max: rule.max, exclude: rule.exclude ?? [], excludeRoles: new Set(rule.excludeRoles ?? []) };
 }
 
 /**
@@ -48,9 +59,9 @@ export function roleClassifier(graph, root) {
 }
 
 /** Files over the cap; `readContent` maps a path to its content, or null when the file is gone. */
-export function locViolations(changed, rule, readContent, roleOf) {
+export function locViolations(changed, rule, readContent, inScope) {
   return changed
-    .filter((path) => isLocChecked(path, rule, roleOf) && !rule.exclude.has(path))
+    .filter(inScope)
     .flatMap((path) => {
       const content = readContent(path);
       const loc = content === null ? 0 : countLoc(content);
@@ -116,9 +127,10 @@ const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }
 
 async function overLoc(changed) {
   if (!existsSync(CODE_GRAPH_ENTRY)) throw new Error(`${CODE_GRAPH_ENTRY} not found; run pnpm build first`);
-  const roleOf = roleClassifier(await import(CODE_GRAPH_ENTRY), ROOT);
+  const graph = await import(CODE_GRAPH_ENTRY);
   const rule = locRuleFrom(JSON.parse(readFileSync(join(ROOT, ".codewatch/check.json"), "utf8")));
-  return locViolations(changed, rule, (path) => readFileSync(join(ROOT, path), "utf8"), roleOf);
+  const inScope = locScope(graph, rule, roleClassifier(graph, ROOT));
+  return locViolations(changed, rule, (path) => readFileSync(join(ROOT, path), "utf8"), inScope);
 }
 
 async function main() {

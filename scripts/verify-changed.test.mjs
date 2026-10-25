@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import * as graph from "../packages/code-graph/dist/index.js";
 import {
   countLoc,
-  isLocChecked,
   locRuleFrom,
+  locScope,
   locViolations,
   packageDirOf,
   planCommands,
@@ -17,7 +17,8 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const roleOf = roleClassifier(graph, ROOT);
-const rule = { max: 3, exclude: new Set(["packages/a/src/big.ts"]), excludeRoles: new Set(["test", "fixture"]) };
+const rule = { max: 3, exclude: ["packages/a/src/big.ts"], excludeRoles: new Set(["test", "fixture"]) };
+const inScope = locScope(graph, rule, roleOf);
 const lines = (n) => Array.from({ length: n }, (_, i) => `const v${i} = ${i};`).join("\n");
 
 describe("countLoc", () => {
@@ -27,8 +28,8 @@ describe("countLoc", () => {
   });
 });
 
-describe("isLocChecked", () => {
-  const checked = (path) => isLocChecked(path, rule, roleOf);
+describe("locScope", () => {
+  const checked = inScope;
 
   it("checks source under every root the CI graph indexes", () => {
     // Mutant caught: dropping apps/ passes a 351-line apps/console file that dag-check fails.
@@ -50,10 +51,27 @@ describe("isLocChecked", () => {
     expect(checked("packages/a/src/fixture/x.ts")).toBe(true);
   });
 
+  it("skips files code-graph never indexes: declarations, JS and excluded directories", () => {
+    // Mutant caught: an own extension regex that counts the committed api/*.d.ts reports CI never sees.
+    expect(checked("packages/a/api/index.d.ts")).toBe(false);
+    expect(checked("packages/a/src/x.mjs")).toBe(false);
+    expect(checked("packages/a/src/x.js")).toBe(false);
+    expect(checked("packages/a/vendor/x.ts")).toBe(false);
+    expect(checked("packages/a/src/x.tsx")).toBe(true);
+  });
+
+  it("matches excludes with code-graph's pattern semantics, globs included", () => {
+    // Mutant caught: exact-path Set lookup, which ignores a glob entry CI honours.
+    const globbed = locScope(graph, { ...rule, exclude: ["packages/a/src/gen/*"] }, roleOf);
+    expect(globbed("packages/a/src/gen/big.ts")).toBe(false);
+    expect(globbed("packages/a/src/big.ts")).toBe(true);
+    expect(checked("packages/a/src/big.ts")).toBe(false);
+  });
+
   it("follows the rule's excludeRoles rather than a fixed list", () => {
     // Mutant caught: ignoring excludeRoles and always exempting tests.
-    const strict = { ...rule, excludeRoles: new Set() };
-    expect(isLocChecked("packages/a/src/x.test.ts", strict, roleOf)).toBe(true);
+    const strict = locScope(graph, { ...rule, excludeRoles: new Set() }, roleOf);
+    expect(strict("packages/a/src/x.test.ts")).toBe(true);
   });
 });
 
@@ -69,7 +87,7 @@ describe("locRuleFrom", () => {
   it("reads max and excludes from the CI rule", () => {
     // Mutant caught: a hard-coded 350 would ignore the config.
     const config = { rules: [{ id: "other", max: 1 }, { id: "max-file-loc", max: 42, exclude: ["p/x.ts"], excludeRoles: ["test"] }] };
-    expect(locRuleFrom(config)).toEqual({ max: 42, exclude: new Set(["p/x.ts"]), excludeRoles: new Set(["test"]) });
+    expect(locRuleFrom(config)).toEqual({ max: 42, exclude: ["p/x.ts"], excludeRoles: new Set(["test"]) });
   });
 
   it("throws when the rule is missing", () => {
@@ -85,12 +103,13 @@ describe("locViolations", () => {
     "packages/a/src/big.ts": lines(9),
     "packages/a/src/over.test.ts": lines(9),
     "apps/console/server/over.ts": lines(4),
+    "packages/a/api/index.d.ts": lines(9),
   };
   const read = (path) => files[path] ?? null;
 
   it("flags only checked, non-excluded files strictly over the max", () => {
-    // Mutants caught: >= instead of >, ignoring exclude, ignoring the test-role skip.
-    const out = locViolations(Object.keys(files), rule, read, roleOf);
+    // Mutants caught: >= instead of >, ignoring exclude, ignoring the test-role skip, counting a .d.ts report.
+    const out = locViolations(Object.keys(files), rule, read, inScope);
     expect(out).toEqual([
       { path: "packages/a/src/over.ts", loc: 4, max: 3 },
       { path: "apps/console/server/over.ts", loc: 4, max: 3 },
@@ -99,7 +118,7 @@ describe("locViolations", () => {
 
   it("treats a missing file as empty", () => {
     // Mutant caught: crashing on a path deleted after the diff.
-    expect(locViolations(["packages/a/src/gone.ts"], rule, read, roleOf)).toEqual([]);
+    expect(locViolations(["packages/a/src/gone.ts"], rule, read, inScope)).toEqual([]);
   });
 });
 
