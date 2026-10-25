@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { discoverTranscripts, type DiscoveredTranscript } from '@titan-design/session-read';
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { rowsWrittenCounter } from './pass-metrics.js';
 import { runRefresh } from './refresh.js';
 
 /**
@@ -80,18 +81,15 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function totalChanges(): number {
-  return (graph.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
-}
-
 /** Rows the pass writes between two of its yields, and before the first and after the last. */
 async function measureChunks<T>(
   pass: (yieldPoint: () => Promise<void>) => Promise<T>,
 ): Promise<{ result: T; chunks: number[] }> {
+  const rowsWritten = rowsWrittenCounter(graph.db);
   const chunks: number[] = [];
-  let since = totalChanges();
+  let since = 0;
   const sample = (): void => {
-    const now = totalChanges();
+    const now = rowsWritten();
     chunks.push(now - since);
     since = now;
   };
