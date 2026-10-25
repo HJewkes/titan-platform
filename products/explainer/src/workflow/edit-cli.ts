@@ -102,23 +102,30 @@ function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
   }
 }
 
-/** The base run's script, resolved beats and, when the run holds them, the fill's generated slots. */
-function editBase(dataDir: string, view: RunView): EditBase & { resolved: Resolved } {
-  const { script, resolved, slots } = view.artifacts;
+type CheckBase = EditBase & { resolved: Resolved; pinned?: Record<string, unknown> };
+
+/**
+ * The base run's script, resolved beats, the generated slots it rendered with (its own pin, for a run from before
+ * resolve stored them) and its `slots` pin, when it holds them.
+ */
+function editBase(dataDir: string, view: RunView): CheckBase {
+  const { script, resolved, slots, "generated-slots": rendered = slots } = view.artifacts;
   if (script === undefined || resolved === undefined) throw new Error(`run ${view.runId} has no resolved script; an edit needs a run that finished resolve`);
   return withStore(dataDir, (store) => {
     const beats = ResolvedSchema.parse(JSON.parse(store.readText(resolved)));
-    const generated = slots === undefined ? {} : { generated: z.record(z.string(), z.unknown()).parse(JSON.parse(store.readText(slots))) };
-    return { runId: view.runId, scriptSha: script, script: JSON.parse(store.readText(script)), layers: new Map(beats.beats.map((b) => [b.id, b.layer])), resolved: beats, ...generated };
+    const readSlots = (sha: string) => z.record(z.string(), z.unknown()).parse(JSON.parse(store.readText(sha)));
+    const generated = rendered === undefined ? {} : { generated: readSlots(rendered) };
+    const pinned = slots === undefined ? {} : { pinned: readSlots(slots) };
+    return { runId: view.runId, scriptSha: script, script: JSON.parse(store.readText(script)), layers: new Map(beats.beats.map((b) => [b.id, b.layer])), resolved: beats, ...generated, ...pinned };
   });
 }
 
 /** What resolve would refuse in the edited script: the schema, the slot-overrides gate, then the template fill. */
-function scriptProblems(script: unknown, base: EditBase & { resolved: Resolved }, fill: FillCheck): string[] {
+function scriptProblems(script: unknown, base: CheckBase, fill: FillCheck): string[] {
   const parsed = ScriptSchema.safeParse(script);
   if (!parsed.success) return issues(parsed.error, "script");
   const overrides = slotOverrideProblems(parsed.data.beats, base.resolved.beats, loadBeatSpecs());
-  return overrides.length > 0 ? overrides : fill(parsed.data, base.resolved, base.generated);
+  return overrides.length > 0 ? overrides : fill(parsed.data, base.resolved, base.pinned);
 }
 
 interface Checked extends EditVerdict {

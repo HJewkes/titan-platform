@@ -6,9 +6,9 @@ import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-f
 import type { L0Check } from "../eval-l0.js";
 import { flowCheck } from "../lint-flow.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
-import { sha256 } from "./artifacts.js";
+import { ArtifactStore, sha256 } from "./artifacts.js";
 import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
-import { resumeVideo, runVideo } from "./host.js";
+import { openState, resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 
@@ -19,6 +19,15 @@ afterEach(() => fx.cleanup());
 const LEAD_ORDER = "\n## 8. Chapter order\n| Chapter | Question | Rows | Beat |\n|---|---|---|---|\n| ch1 | Why does the desk refuse a parcel? | §3.1 | verdict-card |\n";
 
 const row = (outcome: Awaited<ReturnType<typeof runVideo>>, stage: string) => outcome.report.rows.find((r) => r.stage === stage)!;
+
+function storeText(fx: Fixture, text: string, kind: string): string {
+  const db = openState(fx.dataDir);
+  try {
+    return new ArtifactStore(fx.dataDir, db).putText(text, kind, { runId: "test", stage: kind });
+  } finally {
+    db.close();
+  }
+}
 
 describe("explainer run", () => {
   it("runs every stage in order and ends with the MP4 linked into the theater", async () => {
@@ -310,6 +319,24 @@ describe("explainer run --from", () => {
     expect(second.report.linked).toEqual([{ runId: first.runId, usd: first.report.totals.usd }]);
   });
 
+  it("fills fresh at resolve after a base that went past resolve, since its stored generated slots are not a pin", async () => {
+    fx = fixture();
+    const bridge = fakeBridge();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const carried = await runVideo({ from: "tts", base: first.runId }, fakeHost(fx, fakeScriptModel(), bridge));
+    const script = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(first, "rewrite").outputs.script!), "utf8"));
+    const h1 = script.beats.find((beat: { id: string }) => beat.id === "h1");
+    h1.visual = { ...h1.visual, beat: "stat", labels: ["4 scans a minute"], cues: [] };
+    const restated = storeText(fx, `${JSON.stringify(script)}\n`, "script");
+
+    const third = await runVideo({ from: "resolve", to: "resolve", base: carried.runId, pins: { script: restated } }, fakeHost(fx, fakeScriptModel(), bridge));
+
+    expect(third.status, third.error).toBe("completed");
+    const generated = row(third, "resolve").outputs["generated-slots"]!;
+    expect(generated).not.toBe(row(first, "resolve").outputs["generated-slots"]);
+    expect(JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", generated), "utf8")).h1).toEqual({ figures: [expect.objectContaining({ id: "figures-1", value: 4 })] });
+  });
+
   it("refuses a --from whose base run never finished the stages before it, naming the stage", async () => {
     fx = fixture();
     const bridge = fakeBridge({ qaFails: true });
@@ -383,8 +410,8 @@ describe("bridged stages", () => {
 });
 
 describe("checks as stage steps", () => {
-  /** h1 shows a V6 card on "courier", a word h1 speaks in the draft and in its rewrite. */
-  const cued = () => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", cues: [{ action: "V6", target: "card", atCue: "courier" }] } } });
+  /** h1 lights its one row on "courier", a word h1 speaks in the draft and in its rewrite. */
+  const cued = () => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "list", cues: [{ action: "V6", target: "rows-1", atCue: "courier" }] } } });
 
   it("fails the tts stage when the voice has no phonemes for a word, before render", async () => {
     fx = fixture();

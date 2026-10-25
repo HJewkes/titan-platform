@@ -16,9 +16,17 @@ function compareRefusal(sides: readonly (Side | undefined)[]): string | undefine
   return lefts > COMPARE_ROWS_MAX ? `compare holds at most ${COMPARE_ROWS_MAX} rows, not ${lefts}` : undefined;
 }
 
+interface CompareRow {
+  id: string;
+  alias: string;
+  left: string;
+  right: string;
+}
+
 /**
- * `before:` labels on the left, `after:` on the right, the k-th of each paired as row k. Each label keeps its own
- * reveal on its own cue word, so a side lands when it is said.
+ * `before:` labels on the left, `after:` on the right, the k-th of each paired as row k. Scripts number compare cues
+ * per label (`rows-1` .. `rows-4`), so a row's id is its left label's number and its alias its right label's. Each
+ * label keeps its own reveal on its own cue word, so a side lands when it is said.
  */
 export function deriveCompare(beat: ScriptBeat): Derivation {
   const sides = beat.visual.labels.map(compareSide);
@@ -26,13 +34,15 @@ export function deriveCompare(beat: ScriptBeat): Derivation {
   if (refusal !== undefined) return { reason: refusal };
   const words = cueWords(beat, sides.length);
   const seen = { left: 0, right: 0 };
-  const rows: { id: string; left: string; right: string }[] = [];
+  const rows: CompareRow[] = [];
   const reveals: Reveal[] = sides.map((found, i) => {
     const { side, text } = found!;
     const k = (seen[side] += 1);
-    if (rows.length < k) rows.push({ id: `rows-${k}`, left: "", right: "" });
-    rows[k - 1]![side] = text;
-    return { target: `rows-${k}`, part: side, atCue: words[i]! };
+    if (rows.length < k) rows.push({ id: "", alias: "", left: "", right: "" });
+    const row = rows[k - 1]!;
+    row[side] = text;
+    row[side === "left" ? "id" : "alias"] = `rows-${i + 1}`;
+    return { target: `rows-${i + 1}`, part: side, atCue: words[i]! };
   });
   return { slots: { leftTitle: "Before", rightTitle: "After", rows }, reveals };
 }

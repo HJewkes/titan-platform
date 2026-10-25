@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * The slot schemas a beat spec's `slots` names (VT §5.3 "zod ref"): what the builder must fill
  * before a beat renders. A top-level array whose items carry an `id` is an emphasis target list:
- * a script cue's `target` names one of those ids (plan, owner override 1).
+ * a script cue's `target` names one of those ids, or an item's `alias` (plan, owner override 1).
  */
 
 const Id = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-case element id");
@@ -37,6 +37,9 @@ const ProofCheck = z.object({ id: Id, name: Label, base: z.enum(["fail", "pass",
 // A row's lane is the short chip a `<lane> · <text>` label names.
 const ListRow = z.object({ id: Id, text: Line, mark: z.enum(["tick", "cross", "risk", "open", "dot"]), lane: Label.max(12).optional() }).strict();
 
+// Cues number compare labels one by one, so a row is named by its left label's id and its right label's alias.
+const CompareRow = z.object({ id: Id, alias: Id.optional(), left: Line, right: Line }).strict();
+
 const items = (min: number, max: number) => z.array(Item).min(min).max(max);
 const graph = { nodes: z.array(Node).min(2).max(12), edges: z.array(Edge).max(16) };
 
@@ -57,7 +60,7 @@ export const BEAT_SLOTS = {
   schema: z.object({ tables: z.array(z.object({ id: Id, name: Label, columns: z.array(Label).min(1) }).strict()).min(1).max(6), relations: z.array(Edge).default([]) }).strict(),
   "code-walk": z.object({ path: z.string().min(1), language: Label, mode: z.enum(["plain", "diff"]), simplified: z.boolean(), lines: z.array(CodeLine).min(1).max(10) }).strict(),
   "algo-trace": z.object({ steps: z.array(z.object({ id: Id, state: z.array(Label).min(1), note: Line }).strict()).min(2).max(12) }).strict(),
-  compare: z.object({ leftTitle: Label, rightTitle: Label, rows: z.array(z.object({ id: Id, left: Line, right: Line }).strict()).min(1).max(4) }).strict(),
+  compare: z.object({ leftTitle: Label, rightTitle: Label, rows: z.array(CompareRow).min(1).max(4) }).strict(),
   "docs-vs-code": z.object({ docs: Line, source: Source, path: z.string().min(1), lines: z.array(CodeLine).min(1).max(6) }).strict(),
   "issue-pin": z.object({ title: Line.optional(), issues: z.array(z.object({ id: Id, title: Line, severity: Severity, pin: Id.optional() }).strict()).min(1).max(5) }).strict(),
   fix: z.object({ path: z.string().min(1), lines: z.array(CodeLine).min(1).max(10) }).strict(),
