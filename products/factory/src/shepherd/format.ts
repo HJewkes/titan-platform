@@ -7,6 +7,8 @@ import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import type { ThawResult } from "./thaw-command.js";
+import type { FixPrResult } from "./fix-pr-command.js";
+import type { Freeze } from "./freeze.js";
 import { lastAwaitClause } from "./none-reason.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
@@ -33,6 +35,7 @@ const FORMATTERS: Formatters = {
   "shepherd.repair-stop": formatRepairStops,
   "shepherd.freeze": formatRepoFreezes,
   "shepherd.thaw": formatThaw,
+  "shepherd.fix-pr": formatFixPr,
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
@@ -78,9 +81,20 @@ function formatRepairStops({ changed, stops }: RepairStopResult): string {
   return `${changed ? "changed; " : ""}${stops.length === 0 ? "no repair stops" : `repair stops:\n${lines.join("\n")}`}\n`;
 }
 
-function formatRepoFreezes({ detail, freezes }: RepoFreezeResult): string {
+function formatRepoFreezes({ detail, freezes, mainRed = [] }: RepoFreezeResult): string {
   const lines = freezes.map((frozen) => `${frozen.repo}  ${frozen.reason} (by ${frozen.actor}, since ${frozen.since})`);
-  return `${detail ? `${detail}\n` : ""}${freezes.length === 0 ? "no repo freezes" : `repo freezes:\n${lines.join("\n")}`}\n`;
+  const red = mainRed.length === 0 ? "" : `main-red freezes:\n${mainRed.map(mainRedLine).join("\n")}\n`;
+  return `${detail ? `${detail}\n` : ""}${freezes.length === 0 ? "no repo freezes" : `repo freezes:\n${lines.join("\n")}`}\n${red}`;
+}
+
+function mainRedLine({ repo, episode, redSha, frozenAt, fixTask, fixer, fixPr, fixPrActor }: Freeze): string {
+  const fix = fixPr === null ? "fix PR none" : `fix PR #${fixPr} (by ${fixPrActor ?? "unknown"})`;
+  return `${repo}  episode ${episode} red at ${redSha.slice(0, 7)} since ${frozenAt}; fix task ${fixTask ?? "none"}, fixer ${fixer ?? "none"}, ${fix}`;
+}
+
+function formatFixPr({ repo, pr, episode, redSha, marked, actor, supersededGates }: FixPrResult): string {
+  const head = marked ? `${repo}#${pr} marked by ${actor} as the fix PR of main-red episode ${episode}` : `${repo}#${pr} was already the fix PR of main-red episode ${episode}; nothing changed`;
+  return `${[`${head} (red at ${redSha})`, ...supersededGates.map((gate) => `superseded ${gate}`)].join("\n")}\n`;
 }
 
 function formatThaw({ repo, episode, redSha, actor, fixTask, closedGates, alert }: ThawResult): string {
