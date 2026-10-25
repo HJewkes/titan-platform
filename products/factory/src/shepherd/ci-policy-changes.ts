@@ -6,7 +6,7 @@ export interface CiPolicyFile {
 }
 
 /** One changed line: `-` removed from the base, `+` added at the head, `n` its 1-based line number on that side. */
-export interface CiPolicyLine {
+interface CiPolicyLine {
   side: "-" | "+";
   n: number;
   text: string;
