@@ -33,7 +33,7 @@ export const CiPolicySchema = z
 const CiPolicyLineSchema = z.strictObject({ side: z.enum(["-", "+"]), n: z.number().int().min(1), text: z.string() });
 
 /** The D21 card's lines as stored; any other shape, a pre-redesign record's included, reads as none, so the card falls back to the diff link and the gate stands. */
-const CiPolicyChangesSchema = z
+export const CiPolicyChangesSchema = z
   .array(z.strictObject({ path: z.string(), lines: z.array(CiPolicyLineSchema), omitted: z.number().int().min(0) }))
   .optional()
   .catch(undefined);

@@ -1640,6 +1640,16 @@ allows a merge; it only gates one:
 
 - `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
   a weaker CI policy.
+  Its approve-merge gate is the D21 card: it names the class and the weakened keys, then, for
+  each changed `.github/` file read at the base and at the head, every changed line of a
+  positional diff as `- L<n>:` (removed) or `+ L<n>:` (added). No line is picked by what it says,
+  so every changed line is shown or counted: a file shows at most 20 lines and the card 120, and
+  the rest is a count with a link to the diff. Each line is the PR author's, so it is stripped of
+  escape, control, bidi and zero-width characters and cut at 160 characters. A file that cannot
+  be read, or one past the first ten, is named on the card and in the gate's reason. A PR with
+  no `.github/` change, or a record whose lines cannot be read, gets a fixed line that sends the
+  owner to the diff. Only a changed-file list that was read in full can say no `.github/` file
+  changed; an unread list is named on the card, which then says no changed lines were read. Evidence from another head shows no card, and the gate still opens.
 - The label is read on every raw line, fenced, indented or commented out, and with any casing,
   decoration or punctuation, so a hidden or decorated `weakened` still reads weakened. Across
   several lines the strictest reading wins.
