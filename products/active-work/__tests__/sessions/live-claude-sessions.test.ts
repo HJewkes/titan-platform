@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { liveSessionIdsFrom } from '../../src/sessions/live-claude-sessions.js';
+import { liveSessionIdsFrom, procCommand } from '../../src/sessions/live-claude-sessions.js';
 
 let configDir: string;
 
@@ -87,5 +87,21 @@ describe('liveSessionIdsFrom', () => {
     });
 
     expect(await probe()).toEqual(new Set());
+  });
+});
+
+describe('procCommand', () => {
+  it('names the executable from argv[0] of /proc/<pid>/cmdline, not the thread name', () => {
+    const read = (file: string) => {
+      expect(file).toBe('/proc/321/cmdline');
+      return '/usr/bin/node\0/opt/claude/cli.js\0--resume\0';
+    };
+
+    expect(procCommand(321, read)).toBe('/usr/bin/node');
+  });
+
+  it('reports null when the cmdline is unreadable or empty', () => {
+    expect(procCommand(1, () => { throw new Error('ENOENT'); })).toBeNull();
+    expect(procCommand(1, () => '')).toBeNull();
   });
 });
