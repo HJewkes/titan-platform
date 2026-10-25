@@ -1,4 +1,5 @@
 import type { SessionScan, Snapshot, Spend, InstructionFile } from "./scan.js";
+import { TRIGGERS, type Trigger, type Wake } from "./wakes.js";
 
 export interface AuditedSession {
   /** The ~/.claude-profiles/<profile> directory the transcript sits under. */
@@ -20,10 +21,17 @@ interface Inventory {
   instructions: InstructionFile[];
 }
 
+interface SeatWakes {
+  sessions: number;
+  counts: Map<Trigger, number>;
+}
+
 interface AuditReport {
   spend: Map<string, RoleSpend>;
   inventory: Inventory[];
   carried: Map<string, Map<string, { raw: number; carried: number }>>;
+  /** Coordinator agent name to its wakes by trigger, summed over its sessions (generations) in the window. */
+  wakes: Map<string, SeatWakes>;
 }
 
 /** Role classes by agent name and project directory, as the TP-4164 plan section 0 defines them. */
@@ -52,8 +60,19 @@ function addCarried(into: Map<string, { raw: number; carried: number }>, from: S
   }
 }
 
-export function buildReport(sessions: readonly AuditedSession[]): AuditReport {
-  const report: AuditReport = { spend: new Map(), inventory: [], carried: new Map() };
+/** A session that started before the window still counts only the wakes stamped inside it; an unstamped wake counts. */
+function addWakes(into: Map<string, SeatWakes>, name: string, wakes: readonly Wake[], since: number): void {
+  const seat = into.get(name) ?? { sessions: 0, counts: new Map() };
+  seat.sessions += 1;
+  for (const { at, trigger } of wakes) {
+    if (Date.parse(at) < since) continue;
+    seat.counts.set(trigger, (seat.counts.get(trigger) ?? 0) + 1);
+  }
+  into.set(name, seat);
+}
+
+export function buildReport(sessions: readonly AuditedSession[], since = 0): AuditReport {
+  const report: AuditReport = { spend: new Map(), inventory: [], carried: new Map(), wakes: new Map() };
   const newest = new Map<string, Inventory>();
   for (const { profile, project, scan } of sessions) {
     if (scan.spend.calls === 0) continue;
@@ -63,6 +82,7 @@ export function buildReport(sessions: readonly AuditedSession[]): AuditReport {
     report.spend.set(role, spend);
     if (!report.carried.has(role)) report.carried.set(role, new Map());
     addCarried(report.carried.get(role)!, scan.carried);
+    if (role === "coordinator") addWakes(report.wakes, scan.name ?? "(unnamed)", scan.wakes, since);
     const key = `${profile}/${role}`;
     const held = newest.get(key);
     if (scan.snapshot && (!held || scan.snapshot.at > held.snapshot.at)) newest.set(key, { key, role, snapshot: scan.snapshot, instructions: scan.instructions });
@@ -104,8 +124,18 @@ function carriedLines(role: string, kinds: Map<string, { raw: number; carried: n
   ];
 }
 
+function wakeLines(wakes: AuditReport["wakes"]): string[] {
+  const total = (seat: SeatWakes): number => sum([...seat.counts.values()]);
+  const head = `${"coordinator".padEnd(20)}${["sessions", ...TRIGGERS, "total"].map((h) => h.padStart(10)).join("")}`;
+  const rows = [...wakes].sort(([a, x], [b, y]) => total(y) - total(x) || a.localeCompare(b));
+  const line = ([name, seat]: [string, SeatWakes]): string =>
+    `${name.padEnd(20)}${[seat.sessions, ...TRIGGERS.map((t) => seat.counts.get(t) ?? 0), total(seat)].map((n) => String(n).padStart(10)).join("")}`;
+  return ["wakes by trigger per coordinator (pushed messages, including those that rode along a busy turn)", head, ...rows.map(line)];
+}
+
 export function formatReport(report: AuditReport, days: number, top = 15): string {
   const lines = [`context-audit: last ${days} days`, ...spendLines(report.spend)];
+  if (report.wakes.size) lines.push("", ...wakeLines(report.wakes));
   for (const inv of report.inventory) lines.push("", ...inventoryLines(inv));
   for (const [role, kinds] of report.carried) lines.push("", ...carriedLines(role, kinds, top));
   return `${lines.join("\n")}\n`;

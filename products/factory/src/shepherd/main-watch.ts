@@ -69,6 +69,13 @@ export interface MainWatchPorts {
   send(seat: string, text: string): Promise<void>;
   /** The names `send` can reach now, by the send's own rule; absent, no red-event seat is checked. */
   liveNames?(): Promise<ReadonlySet<string>>;
+  /** The factory's own repo: each green sha on its main queues a redeploy, so a merge outside Shepherd's land still deploys; absent, only Shepherd's own merges do. */
+  deploy?: MainDeploy;
+}
+
+export interface MainDeploy {
+  repo: string;
+  queue(sha: string): Promise<{ detail: string }>;
 }
 
 export interface MainWatchDeps {
@@ -83,7 +90,7 @@ export interface MainWatchDeps {
 interface MainWatchNote {
   repo: string;
   sha: string;
-  outcome: "sent" | "unsent" | "expired" | "error";
+  outcome: "sent" | "unsent" | "expired" | "error" | "queued";
   detail: string;
   seat?: string;
 }
@@ -107,19 +114,22 @@ export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts,
     for (const alarm of alarms) log.error({ ...alarm }, `main CI watch ALARM: red events go to seat ${alarm.seat}, which no live agent-chat session holds`);
   };
   const tick = async (): Promise<void> => {
-    const repos = watchedRepos(services.seats());
+    const repos = watchedRepos(services.seats(), ports.deploy?.repo);
     await alarmOnChange(repos);
     for (const note of await sweepMain(deps, repos)) {
       if (note.outcome === "sent") log.info({ ...note }, "main CI watch sent a red event");
+      else if (note.outcome === "queued") log.info({ ...note }, "main CI watch queued a redeploy");
       else log.warn({ ...note }, "main CI watch");
     }
   };
   return { tick, close: () => ledger.close() };
 }
 
-/** Every seat's owned remotes, once each: the repos whose main a merge can land on outside a run. */
-function watchedRepos(book: SeatBook): string[] {
-  return [...new Set(book.seats.flatMap((seat) => seat.remotes))];
+/** Every seat's owned remotes and the deploy repo, once each: the repos whose main a merge can land on outside a run. */
+export function watchedRepos(book: SeatBook, deployRepo: string | undefined): string[] {
+  const repos = book.seats.flatMap((seat) => seat.remotes);
+  const unlisted = deployRepo !== undefined && !repos.some((repo) => sameRepo(repo, deployRepo));
+  return [...new Set(unlisted ? [...repos, deployRepo] : repos)];
 }
 
 /** A red-event seat no live session holds, with the repos whose red merges it is sent; none means it stands in as the hub seat. */
@@ -215,7 +225,19 @@ async function judgeSha(deps: MainWatchDeps, repo: string, row: WatchedSha, rule
     deps.ledger.settle(repo, row.sha, "expired");
     return [{ repo, sha: row.sha, outcome: "expired", detail: `no settled main CI run within ${MAIN_WATCH_WINDOW_MS / 3_600_000} h` }];
   }
-  return [];
+  return verdict.kind === "green" ? queueDeploy(deps.ports.deploy, repo, row.sha) : [];
+}
+
+const sameRepo = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/** Shepherd's own land already queued its sha, and the queue keeps it, so a repeat here changes nothing; a failed queue is not retried, as /health's origin lag reports the drift. */
+async function queueDeploy(deploy: MainDeploy | undefined, repo: string, sha: string): Promise<MainWatchNote[]> {
+  if (deploy === undefined || !sameRepo(repo, deploy.repo)) return [];
+  try {
+    return [{ repo, sha, outcome: "queued", detail: (await deploy.queue(sha)).detail }];
+  } catch (error) {
+    return [{ repo, sha, outcome: "error", detail: `the redeploy was not queued: ${failureOf(error)}` }];
+  }
 }
 
 /** A red sha past the window that still has no seat or no send goes quiet, so a dead broker cannot make the sweep send forever. */

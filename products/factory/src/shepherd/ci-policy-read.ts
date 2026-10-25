@@ -1,7 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { CiPolicy } from "@titan-design/session-read";
 import { statusOf } from "../required-checks.js";
-import { ciPolicyChanges, shownLine, type CiPolicyFile, type CiPolicyFileChange } from "./ci-policy-changes.js";
+import { CI_POLICY_UNREAD_PREFIX, ciPolicyChanges, shownLine, type CiPolicyFile, type CiPolicyFileChange } from "./ci-policy-changes.js";
 
 /** Folds case and trailing dots or spaces, which some filesystems ignore, so `.GitHub.` is still `.github`. */
 export function isGithubPath(path: string): boolean {
@@ -26,7 +26,7 @@ async function readSides(port: GitHubPort, { repo, base, head }: CiPolicyRefs, p
     const [before, after] = await Promise.all([port.getFile(repo, path, base), port.getFile(repo, path, head)]);
     return { file: { path, before: before?.content ?? "", after: after?.content ?? "" } };
   } catch (error) {
-    return { unread: `the CI-policy lines of ${shownLine(path)} are unreadable: ${statusOf(error)}` };
+    return { unread: `${CI_POLICY_UNREAD_PREFIX}${shownLine(path)} are unreadable: ${statusOf(error)}` };
   }
 }
 
@@ -35,7 +35,7 @@ async function readCiPolicyChanges(port: GitHubPort, refs: CiPolicyRefs, githubP
   const reads = await Promise.all(githubPaths.slice(0, MAX_CI_POLICY_FILES).map((path) => readSides(port, refs, path)));
   const unread = reads.flatMap((read) => ("unread" in read ? [read.unread] : []));
   const skipped = githubPaths.length - MAX_CI_POLICY_FILES;
-  if (skipped > 0) unread.push(`the CI-policy lines of ${skipped} more .github/ files were not read`);
+  if (skipped > 0) unread.push(`${CI_POLICY_UNREAD_PREFIX}${skipped} more .github/ files were not read`);
   return { changes: ciPolicyChanges(reads.flatMap((read) => ("file" in read ? [read.file] : []))), unread };
 }
 
