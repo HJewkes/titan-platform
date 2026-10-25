@@ -422,6 +422,8 @@ interface IndexOptions {
     indexToolSpans?: boolean;
     /** Store `context_block` audit rows. Default false. Turning it on later fills only bytes read after that; a rebuild fills the rest. */
     contextBlocks?: boolean;
+    /** Awaited between bounded synchronous steps so a daemon caller can hand the event loop to readers. Absent, each step runs in one go. */
+    yieldPoint?: () => Promise<void>;
 }
 interface RefreshOptions extends IndexOptions {
     /** Which sender profiles' chat verdicts count toward review rounds. Defaults to `reviewer` and `*-reviewer`. */

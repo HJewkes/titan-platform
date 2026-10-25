@@ -17,16 +17,70 @@ import type { SessionGraph } from "./graph.js";
  */
 export function applyDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource = {}): void {
   graph.db.transaction(() => {
-    applyFacts(graph.db, transcriptId, delta);
-    applySessions(graph.db, transcriptId, delta, source.account ?? null);
-    backfillClaudeAliases(graph.db, delta.sessions.map(s => s.sessionId));
-    applyAssets(graph.db, delta);
-    applyPhases(graph.db, transcriptId, delta);
-    applyLinkedRows(graph, transcriptId, delta);
-    applySpans(graph, transcriptId, delta, source.indexSdkPrompts ?? false);
-    applyReviewVerdicts(graph.db, transcriptId, delta);
-    applyAudit(graph.db, transcriptId, delta);
+    for (const step of deltaSteps(graph, transcriptId, delta, source)) step();
   })();
+}
+
+/**
+ * `applyDelta` with `yieldPoint` awaited between bounded steps, all inside one
+ * transaction held open across the yields, so the delta still commits or rolls
+ * back whole. One transcript's delta held the loop 95 to 148 ms locally and
+ * about 2.6 s on a loaded CI runner (TP-4175). Rows written so far are visible
+ * on this connection during a yield; the refresh lock keeps other writers out.
+ * Inside a caller's transaction it runs in one go, as a savepoint cannot span a yield safely.
+ */
+export async function applyDeltaYielding(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource, yieldPoint: () => Promise<void>): Promise<void> {
+  if (graph.db.inTransaction) return applyDelta(graph, transcriptId, delta, source);
+  graph.db.exec("BEGIN");
+  try {
+    for (const step of deltaSteps(graph, transcriptId, delta, source)) {
+      step();
+      await yieldPoint();
+    }
+    graph.db.exec("COMMIT");
+  } catch (err) {
+    rollbackIfOpen(graph.db);
+    throw err;
+  }
+}
+
+/** A failed COMMIT may already have rolled back on its own. */
+function rollbackIfOpen(db: Db): void {
+  if (db.inTransaction) db.exec("ROLLBACK");
+}
+
+/** Rows per step. Each list is applied in order, so slicing it changes no row: every statement reads what the slices before it wrote. */
+const STEP_ROWS = 500;
+
+function slices<T>(rows: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += STEP_ROWS) out.push(rows.slice(i, i + STEP_ROWS));
+  return out;
+}
+
+const LINKED_KEYS = ["turns", "humanEdits", "fileCheckpoints", "subagents", "subagentTranscripts", "edges"] as const;
+type LinkedRows = Pick<TranscriptDelta, (typeof LINKED_KEYS)[number]>;
+const NO_LINKED_ROWS: LinkedRows = { turns: [], humanEdits: [], fileCheckpoints: [], subagents: [], subagentTranscripts: [], edges: [] };
+
+/** Facts first, since every later step resolves its `fact_id` from them. */
+function* deltaSteps(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, source: DeltaSource): Generator<() => void> {
+  const { db } = graph;
+  for (const facts of slices(delta.facts)) yield () => applyFacts(db, transcriptId, facts);
+  yield () => {
+    applySessions(db, transcriptId, delta, source.account ?? null);
+    backfillClaudeAliases(db, delta.sessions.map(s => s.sessionId));
+    applyAssets(db, delta);
+    applyPhases(db, transcriptId, delta);
+  };
+  for (const key of LINKED_KEYS) {
+    for (const rows of slices<unknown>(delta[key])) yield () => applyLinkedRows(graph, transcriptId, { ...NO_LINKED_ROWS, [key]: rows });
+  }
+  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, source.indexSdkPrompts ?? false)).map(i => i.byteOffset));
+  for (const spans of slices(delta.spans)) yield () => applySpans(graph, transcriptId, spans, injectedLines);
+  yield () => {
+    applyReviewVerdicts(db, transcriptId, delta);
+    applyAudit(db, transcriptId, delta);
+  };
 }
 
 /** What discovery knows about the file that the lines themselves do not carry. */
@@ -52,13 +106,13 @@ const UPSERT_ECHO = `
  * equals the stored state is skipped without taking a `seq`; the state lives in a table rather
  * than in memory, so a chunked read keeps exactly the facts a whole-file read keeps.
  */
-function applyFacts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
+function applyFacts(db: Db, transcriptId: number, facts: TranscriptDelta["facts"]): void {
   const next = db.prepare("SELECT COALESCE(MAX(seq), -1) + 1 AS next FROM fact WHERE transcript_id = ?").get(transcriptId) as { next: number };
   const insert = db.prepare(INSERT_FACT);
   const readEcho = db.prepare<[number, string, string], { value: string }>(READ_ECHO);
   const upsertEcho = db.prepare(UPSERT_ECHO);
   let seq = next.next;
-  for (const f of delta.facts) {
+  for (const f of facts) {
     if (f.state) {
       const stored = readEcho.get(transcriptId, f.sessionId, f.state.key);
       if (stored?.value === f.state.value) continue;
@@ -179,7 +233,7 @@ function applyPhases(db: Db, transcriptId: number, delta: TranscriptDelta): void
   }
 }
 
-function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta): void {
+function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: LinkedRows): void {
   const { db } = graph;
   const factId = (byteOffset: number) => factIdFor(db, transcriptId, byteOffset);
 
@@ -211,9 +265,8 @@ function applyLinkedRows(graph: SessionGraph, transcriptId: number, delta: Trans
 }
 
 /** Prompt spans index only what the human typed; a line nobody typed indexes no prompt at all. */
-function applySpans(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, indexSdkPrompts: boolean): void {
-  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, indexSdkPrompts)).map(i => i.byteOffset));
-  for (const span of delta.spans) {
+function applySpans(graph: SessionGraph, transcriptId: number, spans: TranscriptDelta["spans"], injectedLines: ReadonlySet<number>): void {
+  for (const span of spans) {
     const isPrompt = span.field === "prompt";
     const text = !isPrompt ? span.text : injectedLines.has(span.byteOffset) ? "" : stripInjected(span.text);
     if (isPrompt && !text) continue;
