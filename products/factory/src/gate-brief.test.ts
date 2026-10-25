@@ -105,6 +105,13 @@ describe("the D21 owner card", () => {
     expect(ciPolicyCardLines(card, pr.repo, pr.pr)).toEqual(["Class D21 (CI policy weakened): permissions.", `No changed lines were read; read the diff: ${FILES}`]);
   });
 
+  it("says no lines were read, not that none changed, when the changed-file list itself was unread", () => {
+    const unknown = "the changed files of octo/demo#7 are unknown: the list is truncated";
+    const card = ciPolicyAt(weakened(["permissions"], { changedFilesUnread: unknown, record: { ciPolicyChanges: [] } }), HEAD)!;
+
+    expect(ciPolicyCardLines(card, pr.repo, pr.pr)).toEqual(["Class D21 (CI policy weakened): permissions.", `${unknown}.`, `No changed lines were read; read the diff: ${FILES}`]);
+  });
+
   it("names a .github/ file it could not read rather than saying none changed", () => {
     const lines = ciPolicyCardLines(cardOf([], ["the CI-policy lines of .github/a.yml are unreadable: 502", "required checks unreadable"]), pr.repo, pr.pr);
 
