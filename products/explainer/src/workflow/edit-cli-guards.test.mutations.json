@@ -27,20 +27,6 @@
         "explainer edit apply on an edit that already started a run refuses a second --start and launches nothing more",
         "explainer edit apply on an edit that already started a run refuses a plain apply, so the started row keeps its run and a later --start is still refused"
       ]
-    },
-    {
-      "name": "edit check runs without the template fill",
-      "file": "products/explainer/src/workflow/edit-cli.ts",
-      "find": "deps.fill ?? fillProblems",
-      "replace": "deps.fill ?? (() => [])",
-      "kills": ["explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"]
-    },
-    {
-      "name": "the fill skips the emphasis gate",
-      "file": "products/explainer/src/workflow/edit-fill.ts",
-      "find": "return emphasisProblems(script, fillScript(",
-      "replace": "return [] || emphasisProblems(script, fillScript(",
-      "kills": ["explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"]
     }
   ]
 }

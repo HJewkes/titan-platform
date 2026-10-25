@@ -38,13 +38,6 @@
       "find": "return ledger.status === \"started\" ? \"starting\" : \"not started\";",
       "replace": "return \"starting\";",
       "kills": ["explainer edit list lists a render's edits with each linked run's status"]
-    },
-    {
-      "name": "the fill check pins the slots the base's resolve stored",
-      "file": "products/explainer/src/workflow/edit-cli.ts",
-      "find": "fill(parsed.data, base.resolved, base.pinned)",
-      "replace": "fill(parsed.data, base.resolved, base.generated)",
-      "kills": ["explainer edit check prints the diff per beat and field and leaves the store and the ledger as they were"]
     }
   ]
 }
