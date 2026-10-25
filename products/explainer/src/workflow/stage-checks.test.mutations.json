@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "cue-resolution reads cut beats against words",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "return input.artifacts.resolved === undefined ? beats : keptBeats(",
+      "replace": "return input.artifacts.resolved !== null ? beats : keptBeats(",
+      "kills": [
+        "tts stage checks passes with a beat resolve cut, whose cue tts never voiced"
+      ]
+    }
+  ]
+}

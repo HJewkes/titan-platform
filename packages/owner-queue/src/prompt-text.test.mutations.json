@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "format characters pass through, so a bidi override reorders the owner's prompt",
+      "file": "packages/owner-queue/src/prompt-text.ts",
+      "find": "const INVISIBLE = /[\\p{Cc}\\p{Cf}]/gu;",
+      "replace": "const INVISIBLE = /[\\p{Cc}]/gu;",
+      "kills": ["promptLine strips or flattens a right-to-left override"]
+    },
+    {
+      "name": "line and paragraph separators survive as breaks",
+      "file": "packages/owner-queue/src/prompt-text.ts",
+      "find": "export const PROMPT_LINE_BREAK = /\\r\\n|[\\n\\r\\u0085\\u2028\\u2029]/;",
+      "replace": "export const PROMPT_LINE_BREAK = /\\r\\n|[\\n\\r\\u0085]/;",
+      "kills": ["PROMPT_LINE_BREAK splits at every break promptLine flattens, CRLF as one"]
+    }
+  ]
+}

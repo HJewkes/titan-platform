@@ -37,6 +37,8 @@ export * from "./rewrite-exports.js";
 export * from "./occupancy-exports.js";
 export * from "./emphasis-exports.js";
 export * from "./audition-exports.js";
+export { POSTER_FRACTION, POSTER_WIDTH, SIDECAR_STATUSES, VIDEO_META_SCHEMA, buildSidecar, classify, posterAt, type ExplainerBlock, type VideoSidecar } from "./video-sidecar.js";
+export { FINGERPRINT_SCHEMA, fingerprintOf, layoutKey, sidecarFingerprint, stockGrams, type BeatPrint, type Fingerprint, type FingerprintInput } from "./fingerprint.js";
 export * from "./workflow/index.js";
 export * from "./presets/daily/index.js";
 export { AaFloorSchema, floorSection, measureAaFloor, readFloor, writeFloorNotes, type AaFloor } from "./aa-floor.js";

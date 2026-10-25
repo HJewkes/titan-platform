@@ -87,7 +87,7 @@ describe("emphasis-target gate on the resolve stage", () => {
   it("is skipped with a note until the template fill supplies slots", () => {
     const { checks } = stageThenChecks({ script: json(cuedOnFigures("held")) });
 
-    expect(checks.notes).toEqual(["check emphasis-target skipped: no slots artifact"]);
+    expect(checks.notes).toEqual(["check emphasis-target skipped: no slots artifact", "check sim-check skipped: no sim-traces artifact"]);
   });
 
   it("resolves a cue against the beat spec the resolver chose for the beat", () => {

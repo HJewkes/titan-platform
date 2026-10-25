@@ -16,8 +16,8 @@ import { watchChangedPaths } from '../session-index/watch-paths.js';
 import { createDirtySet, type DirtySet, type DrainedDirtySet } from '../session-index/dirty-set.js';
 import { transcriptsFromDirty } from '../session-index/delta-pass.js';
 import { indexFreshness } from '../session-index/freshness.js';
-import { startCheckpointer } from '../session-index/checkpoint.js';
-import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import type { WorkspaceGraph } from '../session-index/graph.js';
+import { openLiveGraph, type LiveGraph } from '../session-index/live-graph.js';
 import { readMachinePressure, shouldHold } from '../utils/machine-pressure.js';
 import { readerGate } from '../session-index/reader-gate.js';
 import { startWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
@@ -218,9 +218,11 @@ export interface PassRunner {
  * Both kinds drain the dirty set only once the lock is held, and put it back if
  * the pass fails, so no reported change is lost. A delta pass never waits on the
  * lock: a reader is waiting on it, and the next pass picks the paths up.
+ * `currentGraph` is asked inside the lock, where a `miner rebuild` swap cannot
+ * be halfway done.
  */
 export function passRunner(
-  graph: WorkspaceGraph,
+  currentGraph: () => Promise<WorkspaceGraph>,
   dirty: DirtySet,
   log: WatchLogger,
   signal: AbortSignal,
@@ -229,15 +231,15 @@ export function passRunner(
   const sweep = episodeSweepPolicy();
   const measured = async (options: RefreshOptions): Promise<RefreshSummary> => {
     const { result, maxStallMs } = await measureLoopStall(() =>
-      runRefresh({ graph, yieldPoint: () => yieldToReaders(signal), ...options }),
+      runRefresh({ yieldPoint: () => yieldToReaders(signal), ...options }),
     );
     lastMaxLoopStallMs = maxStallMs;
     log.info(passLogLine(result, maxStallMs), 'session index pass');
     return result;
   };
-  const full = async (drained: DrainedDirtySet): Promise<RefreshSummary> => {
+  const full = async (graph: WorkspaceGraph, drained: DrainedDirtySet): Promise<RefreshSummary> => {
     try {
-      const result = await measured({ episodeSweep: sweep.next(), dirtyPaths: drained.paths });
+      const result = await measured({ graph, episodeSweep: sweep.next(), dirtyPaths: drained.paths });
       sweep.settle(result.episodeBacklog);
       return result;
     } catch (err) {
@@ -255,10 +257,11 @@ export function passRunner(
         onLockWait?.(false);
         const drained = dirty.drain();
         try {
-          if (kind === 'full') return await full(drained);
+          const graph = await currentGraph();
+          if (kind === 'full') return await full(graph, drained);
           const roots = claudeTranscriptRoots();
           const transcripts = await transcriptsFromDirty(graph, drained, roots);
-          return await measured({ mode: 'delta', transcripts, onIndexed });
+          return await measured({ graph, mode: 'delta', transcripts, onIndexed });
         } catch (err) {
           dirty.restore(drained);
           throw err;
@@ -324,23 +327,23 @@ export function startSessionIndexWatch(
     return null;
   }
 
-  let graph: WorkspaceGraph;
+  let live: LiveGraph;
   try {
-    graph = openGraph();
+    live = openLiveGraph({
+      onCheckpointerError: (err) =>
+        log.warn({ err }, 'session index checkpoint worker failed; checkpointing on the loop'),
+    });
   } catch (err) {
     log.warn({ err }, 'session index unavailable; transcript indexing disabled');
     return null;
   }
 
-  const checkpointer = startCheckpointer(graph.db, {
-    onError: (err) => log.warn({ err }, 'session index checkpoint worker failed; checkpointing on the loop'),
-  });
   const dirty = createDirtySet();
   const abort = new AbortController();
-  const runner = passRunner(graph, dirty, log, abort.signal);
+  const runner = passRunner(live.current, dirty, log, abort.signal);
   const scheduler = createScheduler(runner, dirty, log, abort.signal);
   const { workspace, watcher: workspaceWatcher } = startWorkspaceFreshness(
-    graph,
+    live.current,
     abort.signal,
     log,
   );
@@ -371,8 +374,7 @@ export function startSessionIndexWatch(
       stopPoll();
       for (const watcher of watchers) watcher.close();
       await Promise.all([scheduler.close(), workspace.idle()]);
-      await checkpointer.stop();
-      graph.db.close();
+      await live.close();
     },
   };
 }

@@ -13,13 +13,13 @@ import type { BridgeFile } from "./bridge.js";
 import { isCachedStage, NO_USAGE, STAGES, StageRecordSchema, type StageOutcome, type StageRecord, type Stop } from "./records.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { ChildStageFailure, runStageCached, type CacheDeps } from "./stage-cache.js";
-import { stageSpec, VariantSchema } from "./stage-spec.js";
+import { stageSpec, VariantSchema, type VideoRef } from "./stage-spec.js";
 import { failedRecord, stageRecord } from "./stage-workflows.js";
 import { GatherRequestSchema } from "./run-gather.js";
 
 export const VIDEO_WORKFLOW = "explainer-video";
 /** Bumped whenever the stage list or a stage's inputs change, so a run never replays under another shape. */
-export const VIDEO_WORKFLOW_VERSION = "tp4107";
+export const VIDEO_WORKFLOW_VERSION = "tp4018";
 
 /** Everything a run needs, stored as its one param, so a resumed run rebuilds the same routes. */
 export const RunPlanSchema = z.object({
@@ -97,6 +97,8 @@ export interface StageDeps {
   bridge: () => BridgeFile;
   cache: CacheDeps;
   stylePacks?: () => ReadonlyMap<string, StylePack>;
+  /** The video a parent run makes, with its runs, for the sheets stage's sidecar. */
+  video?: (runId: string) => VideoRef;
   /** The resolve stage's custom-layer builder, which goes into its key. */
   builder?: BuilderRef;
   /** Where the script's reflection chapter lands once export has run; absent means it lands nowhere. */
@@ -155,7 +157,7 @@ function reused(base: StageRecord, baseRunId: string | undefined, at: Date): Sta
   return { ...base, reusedFrom: base.reusedFrom ?? baseRunId ?? "base", cached: false, startedAt: now, endedAt: now, wallMs: 0, usage: NO_USAGE, retries: 0 };
 }
 
-async function runStage(input: StageInput, deps: StageDeps, now: () => Date): Promise<StageRecord> {
+async function runStage(input: StageInput, deps: StageDeps, now: () => Date, runId: string): Promise<StageRecord> {
   const { stage } = input;
   if (!isCachedStage(stage)) {
     const startedAt = now();
@@ -165,7 +167,7 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date): Pr
   const variantSha = deps.plan.variants[stage];
   const variant = variantSha ? { sha: variantSha, value: VariantSchema.parse(JSON.parse(deps.store.readText(variantSha))) } : undefined;
   const spec = stageSpec({
-    stage, artifacts: input.artifacts, settings: deps.plan, sample: deps.plan.samples[stage] ?? 0,
+    stage, artifacts: input.artifacts, settings: { ...deps.plan, ...(deps.video ? { video: () => deps.video!(runId) } : {}) }, sample: deps.plan.samples[stage] ?? 0,
     remainingUsd: input.remainingUsd, bridge: deps.bridge, ...(variant ? { variant } : {}), ...(deps.stylePacks ? { stylePacks: deps.stylePacks } : {}),
     ...(deps.builder ? { builder: deps.builder } : {}),
   });
@@ -180,7 +182,7 @@ export function stageRoute(deps: StageDeps): StepRoute {
     if (input.reuse) return { result: reused(input.reuse, deps.plan.baseRunId, now()) };
     const startedAt = now();
     try {
-      return { result: await runStage(input, deps, now) };
+      return { result: await runStage(input, deps, now, step.runId) };
     } catch (error) {
       const failed = error instanceof ChildStageFailure && error.record ? error.record : failedRecord(input.stage, startedAt, now(), error);
       writeJson(runPaths(deps.dataDir, step.runId).failed(input.stage), failed);

@@ -28,6 +28,8 @@ export { alarmKey, askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind
 export { collapseRepeats } from "./repeats.js";
 export type { RelationKeyKind } from "./keys.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
+export { PROMPT_LINE_BREAK, promptLine } from "./prompt-text.js";
+export type { PromptLineOptions } from "./prompt-text.js";
 export { rank } from "./rank.js";
 export { recheck } from "./recheck.js";
 export type { Recheck, RecheckCite, RecheckDrop, RecheckFlag, RecheckFlagKind } from "./recheck.js";
