@@ -24,13 +24,13 @@ const GRAPHQL_WRITE: SettingsWrite = { route: "rulesets", scope: "unknown" };
 /**
  * The one decision for every route into GitHub GraphQL. `texts` are the query texts the request sends, or null when
  * the guard cannot read them. A request passes only when its texts are read in full and name no ruleset mutation: an
- * unread text, or a reading `graphqlBranchWrites` calls unknown with no mutation named (a gh fill that may be the
- * whole name, an escape past the two layers GitHub decodes), is an unknown ruleset write.
+ * unread text, or any reading `graphqlBranchWrites` calls unknown (a gh fill that may be a whole name, an escape past
+ * the two layers GitHub decodes), is an unknown ruleset write, whatever other mutation the text also names.
  */
 function rulesetWrite(texts: string[] | null, fields: WordToken[] = []): boolean {
   if (texts === null) return true;
   const reading = graphqlBranchWrites(texts, fields);
-  return (reading.unknown && reading.mutations.length === 0) || reading.mutations.some((m) => RULESET_MUTATIONS.has(m));
+  return reading.unknown || reading.mutations.some((m) => RULESET_MUTATIONS.has(m));
 }
 
 const INPUT_RE = /^--input(?:=|$)/;
@@ -60,18 +60,20 @@ function ghQueryTexts(leaf: WordToken[], request: GhApiRequest): string[] | null
   return texts.some((t) => t.startsWith("@")) ? null : texts;
 }
 
-/** A gh endpoint known only at run time is not read here; TP-2707 d owns that reading. */
+/**
+ * Each reading adds a reason to deny and never replaces one: an endpoint that reads as GraphQL (`graphql/..%2Frepos/…`)
+ * may still route to a REST settings path, so the REST reading runs first, as `httpSettings` does for curl. A gh
+ * endpoint known only at run time is not read here; TP-2707 d owns that reading.
+ */
 function ghSettings(cmd: SimpleCommand): ClassifiedAction[] {
   const line = ghCommandLine(cmd.args);
   if (line.hidden || line.path.join(" ") !== "api") return [];
   const request = ghApiRequest(line.leaf);
   if (request.endpoint === null) return [];
-  if (isGraphqlEndpoint(request.endpoint)) {
-    const write = rulesetWrite(ghQueryTexts(line.leaf, request), request.fields);
-    return write ? [classified("bash.config.gh-api-graphql-ruleset", subject(GRAPHQL_WRITE))] : [];
-  }
   const write = apiSettingsWrite(request.endpoint, request.method);
-  return write ? [classified("bash.config.gh-api-ruleset", subject(write))] : [];
+  if (write) return [classified("bash.config.gh-api-ruleset", subject(write))];
+  const graphql = isGraphqlEndpoint(request.endpoint) && rulesetWrite(ghQueryTexts(line.leaf, request), request.fields);
+  return graphql ? [classified("bash.config.gh-api-graphql-ruleset", subject(GRAPHQL_WRITE))] : [];
 }
 
 /** `graphqlQueries` is null for a body read from a file or known only at run time, and for httpie items, never read. */

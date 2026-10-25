@@ -91,6 +91,66 @@ describe("githubSettings, a REST write to branch protection on any branch", () =
   });
 });
 
+/**
+ * Every gh REST deny row in this file and every gh-shaped deny route in api-rulesets.test.ts, as
+ * [options before, endpoint, options after]. Full URLs are left out: a `graphql/..%2F` prefix does not apply to them.
+ */
+const GH_REST_DENIES: Array<[string, string, string]> = [
+  ...DONE_WHEN_ROUTES.flatMap(([path]) => METHODS.map((m): [string, string, string] => [`-X ${m}`, path, ""])),
+  ["", "repos/o/r/rulesets", "-f name=x"],
+  ["--method=put", "repos/o/r/rulesets/1", "--input r.json"],
+  ["", "enterprises/e/rulesets", "-F enforcement=active"],
+  ['-X "$M"', "repos/o/r/rulesets/1", ""],
+  ["-X PATCH", "repos/o/r/x/../rulesets/1", ""],
+  ["-X DELETE", "repos/o/r/branches/main/protection", ""],
+  ["-X DELETE", "repos/o/r/branches/feat/x/protection", ""],
+  ["-X POST", "repos/o/r/branches/main/protection/enforce_admins", ""],
+  ...[
+    "repos/o/r/rulesets",
+    "repositories/123/rulesets/42",
+    "orgs/o/rulesets",
+    "enterprises/e/rulesets/7",
+    "repositories/123/branches/main/protection/enforce_admins",
+    "/repos/o/r/rulesets/1?per_page=1",
+    "repos/o/r//rulesets/1",
+    "REPOS/o/r/RuleSets/1",
+    "repos/o/r/rule%73ets/1",
+    "repos/o/r/branches/release/2.0/protection/enforce_admins",
+    "repos/o/r/branches/feat/x/protection/required_status_checks/contexts",
+    "repos/{owner}/{repo}/rulesets/1",
+    "repos/:owner/:repo/branches/main/protection",
+    "repos/o/r/%2e%2e/rulesets/1",
+    "repos/o/r/rulesets/%E0",
+    "repos/o/r/branches/main/./protection",
+    "repos/o/r/{branch}",
+    "{branch}/rulesets",
+  ].map((path): [string, string, string] => ["-X PUT", path, ""]),
+];
+
+describe("githubSettings, each reading adds a reason to deny", () => {
+  it.each(GH_REST_DENIES.flatMap(([before, path, after]) => ["", "graphql/..%2F"].map((prefix) => `gh api ${before} '${prefix}${path}' ${after}`)))(
+    "denies %s whether or not the endpoint also reads as GraphQL",
+    (command) => {
+      expect(settings(bash(command))).toEqual([expect.objectContaining({ spelling: "bash.config.gh-api-ruleset" })]);
+    },
+  );
+
+  it.each([
+    ["gh api -X DELETE 'graphql/..%2Frepos%2Fo%2Fr%2Frulesets%2F42'", "github:rulesets", "unknown"],
+    ["gh api -X PATCH 'graphql%2F..%2Frepos%2Fo%2Fr%2Frulesets%2F42' -f enforcement=disabled", "github:rulesets", "unknown"],
+    ["gh api -X PUT 'graphql/..%2F..%2Frepos/o/r/branches/main/protection'", "github:branch-protection", "unknown"],
+    ["gh api -X DELETE graphql/repos/o/r/rulesets/42", "github:rulesets", "repo"],
+  ])("denies the REST route behind a GraphQL-looking endpoint %s", (command, pattern, scope) => {
+    expect(settings(bash(command))).toEqual([expect.objectContaining({ spelling: "bash.config.gh-api-ruleset", subject: { pattern, scope } })]);
+  });
+
+  it("denies a filled ruleset name behind a decoy branch mutation", () => {
+    const command = `gh api graphql -F 'query=mutation{delete{branch}Ruleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}} # createRef'`;
+
+    expect(settings(bash(command))).toEqual([expect.objectContaining({ spelling: "bash.config.gh-api-graphql-ruleset" })]);
+  });
+});
+
 describe("githubSettings, a request that writes no ruleset or protection", () => {
   it.each([
     "gh api repos/o/r/rulesets",
