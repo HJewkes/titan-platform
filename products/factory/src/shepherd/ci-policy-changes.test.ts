@@ -71,14 +71,24 @@ describe("ciPolicyChanges", () => {
   });
 
   it("strips an ANSI escape, a bidi override and a carriage return from an author's head line and its path", () => {
-    const after = "  contents: \u001b[2K\u001b[1Gread‮\r\u0007\n";
+    const after = "  contents: \u001b[2K\u001b[1Gread\u202e\r\u0007\n";
 
     const [change] = ciPolicyChanges(["permissions"], [{ path: ".github/workflows/\u001b[31mci.yml", before: "", after }]);
 
     expect(change?.path).toBe(CI);
     expect(change?.added).toEqual(["  contents: read"]);
     // eslint-disable-next-line no-control-regex -- the assertion is that no control character survives
-    expect(JSON.stringify(change)).not.toMatch(/[\u0000-\u001f\u007f-\u009f‮]|\\u00/);
+    expect(JSON.stringify(change)).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u202e]|\\u00/);
+  });
+
+  it("strips a line or paragraph separator, so a head line cannot fake a removed, added or file line on the card", () => {
+    const after = `  X: \${{ secrets.A }}\u2028- contents: write\u2029.github/x.yml (permissions):`;
+
+    const [change] = ciPolicyChanges(["secrets"], [{ path: `.github/workflows/ci.yml\u2028+ contents: read`, before: "", after }]);
+
+    expect(change?.path).toBe(".github/workflows/ci.yml+ contents: read");
+    expect(change?.added).toEqual(["  X: ${{ secrets.A }}- contents: write.github/x.yml (permissions):"]);
+    expect(JSON.stringify(change)).not.toMatch(/[\u2028\u2029]/);
   });
 });
 

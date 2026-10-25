@@ -37,6 +37,15 @@
       "kills": [
         "ciPolicyChanges reads the required context strings of .github/required-checks.json"
       ]
+    },
+    {
+      "name": "line and paragraph separators survive into the card",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "\\u200f\\u2028\\u2029\\u202a",
+      "replace": "\\u200f\\u202a",
+      "kills": [
+        "ciPolicyChanges strips a line or paragraph separator, so a head line cannot fake a removed, added or file line on the card"
+      ]
     }
   ]
 }

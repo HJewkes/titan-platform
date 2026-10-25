@@ -30,7 +30,7 @@ export const MAX_LINE_CHARS = 160;
 // eslint-disable-next-line no-control-regex -- ANSI sequences are exactly what the owner prompt must not render
 const ANSI_SEQUENCE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|[@-Z\\-_])/g;
 // eslint-disable-next-line no-control-regex -- control characters are exactly what a prompt line refuses
-const CONTROL = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
 
 /** Escapes and control characters go before any matcher reads the line, so neither can hide a line from the card. */
 const cleanLine = (line: string): string => line.replace(ANSI_SEQUENCE, "").replace(/\t/g, "  ").replace(CONTROL, "").trimEnd();
