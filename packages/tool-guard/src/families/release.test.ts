@@ -115,13 +115,52 @@ describe("normal work classifies nothing", () => {
 describe("a name the local repository holds as a tag", () => {
   const tagged: ClassifyContext = { ...ctx, isTag: (dir, name) => dir === REPO && name === "rc1" };
   const push = (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, tagged).map((a) => a.spelling);
+  const TAG = "bash.release.git-push-tag";
+  const MAYBE = "bash.release.git-push-maybe-tag";
 
-  it.each(["git push origin rc1", "git push origin -d rc1", "git push origin HEAD:rc1", "git push origin +rc1:rc1"])("reads `%s` as a tag push", (command) => {
-    expect(push(command)).toEqual(["bash.release.git-push-tag"]);
+  it.each(["git push origin rc1", "git push origin -d rc1", "git push origin HEAD:rc1", "git push origin +rc1:rc1", "git push origin rc1:feat/x"])("reads `%s` as a tag push", (command) => {
+    expect(push(command)).toEqual([TAG]);
   });
 
-  it.each(["git push origin rc1:refs/heads/feat/x", 'git -C "$D" push origin rc1', "git push origin feat/rc1"])("does not read `%s` as a tag push", (command) => {
-    expect(push(command)).not.toContain("bash.release.git-push-tag");
+  it.each(["git push origin rc1:refs/heads/feat/x", "git push origin feat/rc1", "git push origin HEAD:feat/x", "git push origin HEAD~1:refs/heads/feat/x"])("does not read `%s` as a tag push", (command) => {
+    expect(push(command)).toEqual([]);
+  });
+
+  it.each([
+    ["git tag deploy-1 && git push origin deploy-1"],
+    ["git tag -a nightly -m x; git push origin nightly"],
+    ["git tag -f nightly HEAD && git push -f origin nightly"],
+    ["git tag --annotate --message=x nightly || true; git push origin nightly"],
+    ["git tag -d nightly; git push origin :nightly"],
+    ["git update-ref refs/tags/nightly HEAD && git push origin nightly"],
+    ["git checkout -b feat/y && git tag nightly && git push origin nightly"],
+    ["git checkout -b feat/y && git tag nightly; git push origin nightly"],
+  ])("reads a tag the line itself writes as a tag: `%s`", (command) => {
+    expect(push(command)).toEqual([TAG]);
+  });
+
+  it.each([
+    ['git tag "$T" && git push origin nightly'],
+    ["git update-ref --stdin < refs.txt; git push origin nightly"],
+    ['git -C "$D" push origin rc1'],
+    ['git -C "$D" push origin feat/x'],
+    ['cd "$X" && git push origin rc1'],
+    ["git --git-dir=.git push origin rc1"],
+    ["git --work-tree=. push origin feat/x"],
+  ])("reads a name it cannot look up as a possible tag: `%s`", (command) => {
+    expect(push(command)).toEqual([MAYBE]);
+  });
+
+  it.each([
+    ["git tag -l nightly; git push origin nightly"],
+    ["git tag --contains HEAD nightly; git push origin nightly"],
+    ["git tag; git push origin nightly"],
+    ["git tag other && git push origin nightly"],
+    ["git push origin nightly; git tag nightly"],
+    ['git -C "$D" push origin HEAD:refs/heads/feat/x'],
+    ['git -C "$D" push origin HEAD:feat/x'],
+  ])("does not read `%s` as a tag push", (command) => {
+    expect(push(command)).toEqual([]);
   });
 });
 

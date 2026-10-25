@@ -6,7 +6,7 @@ const SECTION = README.split(/^## /m).find((s) => s.startsWith("Known gaps (park
 
 const PARKED_TASKS = [
   "TP-2696", "TP-2700", "TP-2701", "TP-2702", "TP-2706", "TP-2708", "TP-2709", "TP-2711", "TP-2712",
-  "TP-2272", "TP-2273", "TP-2274", "TP-1517", "TP-1621", "TP-1630", "TP-1631", "TP-1632",
+  "TP-2272", "TP-2273", "TP-2274", "TP-1517", "TP-4177", "TP-1621", "TP-1630", "TP-1631", "TP-1632",
 ];
 
 describe("README known gaps", () => {

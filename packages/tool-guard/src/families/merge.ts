@@ -12,6 +12,7 @@ import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
 import { GIT_PUSH_LONG, resolveLong } from "./long-options.js";
+import { afterTagWrites } from "./tag-writes.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
 /** The Version Packages branch; merging it is a release, which the release family classifies. */
@@ -173,8 +174,8 @@ const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]/.tes
 
 const TAG_REF_RE = /^(?:refs\/)?tags\//;
 /**
- * Names shaped like a release tag: `v1`, `1.2.0`, and the `@scope/pkg@1.2.0` or `pkg@1.2.0` tags changesets writes. A name
- * the local repository holds as a tag reads as one too, whatever its shape.
+ * Names shaped like a release tag: `v1`, `1.2.0`, and the `@scope/pkg@1.2.0` or `pkg@1.2.0` tags changesets writes, which
+ * read as tags whatever the repository holds.
  */
 const RELEASE_NAME_RE = /^v\d|^\d+\.\d|@\d/;
 /** `-c push.followTags`, bare or with a value git reads as true, makes every push send its annotated tags. */
@@ -184,39 +185,63 @@ const resolvePushLong = resolveLong(GIT_PUSH_LONG, false);
 /** `git push`'s options, a unique prefix such as `--tag` or `--mirr` read as the option git runs. */
 export const readPushOptions = (args: WordToken[]): Options => readOptions(args, GIT_PUSH_VALUES, resolvePushLong);
 
-type TagLookup = (name: string) => boolean;
+/** Whether git will send a name to `refs/tags/`: known yes, known no, or unknown because the classifier cannot see the repository. */
+type TagAnswer = "tag" | "unknown" | "no";
+type TagLookup = (name: string) => TagAnswer;
 
-/** Whether `name` is a local tag where git runs; a directory the line leaves unknown is not looked in. */
-function tagLookup(git: GitInvocation, ctx: ClassifyContext): TagLookup {
-  const dir = git.otherPaths.length === 0 ? git.dir : null;
-  return (name) => dir !== null && ctx.isTag?.(dir, name) === true;
-}
+const RANK: Record<TagAnswer, number> = { no: 0, unknown: 1, tag: 2 };
+const strongest = (answers: TagAnswer[]): TagAnswer => answers.reduce<TagAnswer>((a, b) => (RANK[b] > RANK[a] ? b : a), "no");
 
 /**
- * A refspec that creates, moves or deletes a tag: a `tags/` destination, or an unqualified one that a tag source, a
- * release-shaped name or a local tag of either name sends there. Git sends an unqualified name that is a local tag to `refs/tags/`.
+ * The one tag oracle: the line's own `git tag` writes, then the repository git runs in. A directory the line leaves
+ * unknown, a `--git-dir` or `--work-tree`, or a tag the line writes at run time may hold any tag, as `headOf`'s unknown
+ * head may be any branch.
  */
-function updatesTag(spec: string, isTag: TagLookup): boolean {
+function tagLookup(git: GitInvocation, ctx: ClassifyContext): TagLookup {
+  const dir = git.otherPaths.length === 0 ? git.dir : null;
+  const written = ctx.lineTags;
+  return (name) => {
+    if (written !== undefined && written !== "any" && written.has(name)) return "tag";
+    if (dir === null || written === "any") return "unknown";
+    return ctx.isTag?.(dir, name) === true ? "tag" : "no";
+  };
+}
+
+/** A source git resolves by name, so a local tag of that name sends an unqualified destination to `refs/tags/`. */
+const resolvesByName = (src: string) => src !== "" && src !== "HEAD" && src !== "@" && !/[~^]|@\{/.test(src);
+
+/**
+ * Whether a refspec creates, moves or deletes a tag: a `tags/` destination or source, a release-shaped name, or an
+ * unqualified destination whose source resolves to a tag. Which ref a destination names on the remote is known only
+ * there, so a local tag of the destination's name counts, and an unknown repository does not.
+ */
+function refspecTag(spec: string, isTag: TagLookup): TagAnswer {
   const plain = spec.replace(/^\+/, "");
   const colon = plain.lastIndexOf(":");
   const src = colon >= 0 ? plain.slice(0, colon) : plain;
   const dest = colon >= 0 ? plain.slice(colon + 1) : plain;
-  if (TAG_REF_RE.test(dest)) return true;
-  if (/^(?:refs\/|heads\/)/.test(dest)) return false;
-  return TAG_REF_RE.test(src) || RELEASE_NAME_RE.test(dest) || [src, dest].some((name) => name !== "" && isTag(name));
+  if (TAG_REF_RE.test(dest)) return "tag";
+  if (/^(?:refs\/|heads\/)/.test(dest)) return "no";
+  if (TAG_REF_RE.test(src) || RELEASE_NAME_RE.test(dest)) return "tag";
+  if (dest === "") return "no";
+  if (src === "") return isTag(dest);
+  return strongest([resolvesByName(src) ? isTag(src) : "no", isTag(dest) === "tag" ? "tag" : "no"]);
 }
 
 /** `--tags`, `--follow-tags`, the `tag <name>` refspec form, or a refspec that updates a tag: charter hard stop tag-move. */
-function pushesTag(git: GitInvocation, options: Options, specs: string[], isTag: TagLookup): boolean {
-  if (hasFlag(options, "--tags", "--follow-tags") || git.config.some((c) => FOLLOW_TAGS_CONFIG_RE.test(c))) return true;
-  return specs.slice(0, -1).includes("tag") || specs.some((spec) => updatesTag(spec, isTag));
+function pushesTag(git: GitInvocation, options: Options, specs: string[], isTag: TagLookup): TagAnswer {
+  if (hasFlag(options, "--tags", "--follow-tags") || git.config.some((c) => FOLLOW_TAGS_CONFIG_RE.test(c))) return "tag";
+  if (specs.slice(0, -1).includes("tag")) return "tag";
+  return strongest(specs.map((spec) => refspecTag(spec, isTag)));
 }
+
+const TAG_SPELLINGS: Record<TagAnswer, SpellingId | null> = { tag: "bash.release.git-push-tag", unknown: "bash.release.git-push-maybe-tag", no: null };
 
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readPushOptions(git.subArgs);
   const specs = options.positionals.slice(1).flatMap((s) => literalSpec(s) ?? []);
-  const tag = pushesTag(git, options, specs, tagLookup(git, ctx)) ? [classified("bash.release.git-push-tag", { tool: "git" })] : [];
-  return [...tag, ...branchPush(git, options, ctx)];
+  const spelling = TAG_SPELLINGS[pushesTag(git, options, specs, tagLookup(git, ctx))];
+  return [...(spelling ? [classified(spelling, { tool: "git" })] : []), ...branchPush(git, options, ctx)];
 }
 
 function branchPush(git: GitInvocation, options: Options, ctx: ClassifyContext): ClassifiedAction[] {
@@ -314,4 +339,10 @@ function after(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext | und
 }
 
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */
-export const merge: Family = { names: set("gh", "git", "curl", "wget", "http", "https"), bash, after };
+/** A branch switch, then any tags the command writes, carried to later commands on the line. */
+function afterLine(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext | undefined {
+  const switchedCtx = after(cmd, line);
+  return afterTagWrites(cmd, switchedCtx ?? line) ?? switchedCtx;
+}
+
+export const merge: Family = { names: set("gh", "git", "curl", "wget", "http", "https"), bash, after: afterLine };

@@ -107,6 +107,20 @@ describe("handle: a tag push is the charter's tag-move hard stop", () => {
     expect(log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "REL-WK", "release", "bash.release.git-push-tag"]);
   });
 
+  it.each(["git tag deploy-1 && git push origin deploy-1", "git tag -a nightly -m x; git push origin nightly"])("denies `%s`, a tag the line itself creates", async (command) => {
+    const { stdout, log } = await handle(bash(command), {}, port());
+
+    expect(decisionOf(stdout)).toBe("deny");
+    expect(log[0]?.split("\t")[4]).toBe("bash.release.git-push-tag");
+  });
+
+  it("denies a push of a plain name from a directory it cannot read, and says how to name the branch", async () => {
+    const { stdout, log } = await handle(bash('git -C "$D" push origin feat/x'), {}, port());
+
+    expect(log[0]?.split("\t")[4]).toBe("bash.release.git-push-maybe-tag");
+    expect(stdout).toContain("HEAD:refs/heads/<branch>");
+  });
+
   it.each([
     ["git push origin feat/x", null],
     ["git push origin HEAD:main", "bash.merge.git-push-protected"],
