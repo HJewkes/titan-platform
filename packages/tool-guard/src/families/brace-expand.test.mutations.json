@@ -4,8 +4,8 @@
     {
       "name": "a nested comma marks every open brace as a list",
       "file": "packages/tool-guard/src/families/brace-expand.ts",
-      "find": "(open.at(-1) as { comma: boolean }).comma = true;",
-      "replace": "open.forEach((o) => { o.comma = true; });",
+      "find": "else if (c === \",\" && top) top.comma = true;",
+      "replace": "else if (c === \",\") open.forEach((o) => { o.comma = true; });",
       "kills": [
         "braceExpansions, the words bash makes expands a list inside literal braces"
       ]

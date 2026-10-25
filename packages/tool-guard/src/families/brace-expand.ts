@@ -17,10 +17,11 @@ function bracePairs(text: string): BracePair[] {
   const open: Array<{ at: number; comma: boolean }> = [];
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
+    const top = open.at(-1);
     if (c === "{" && text[i - 1] !== "$") open.push({ at: i, comma: false });
-    else if (c === "," && open.length > 0) (open.at(-1) as { comma: boolean }).comma = true;
-    else if (c === "}" && open.length > 0) {
-      const top = open.pop() as { at: number; comma: boolean };
+    else if (c === "," && top) top.comma = true;
+    else if (c === "}" && top) {
+      open.pop();
       pairs.push({ open: top.at, close: i, comma: top.comma });
     }
   }
