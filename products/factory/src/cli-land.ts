@@ -1,6 +1,7 @@
 import { probeHealth } from "@titan-design/daemon";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
+import { refusedWriteFallback } from "./cli-agent-env.js";
 import { formatGate } from "./cli-host-verbs.js";
 import { parsePort } from "./cli-options.js";
 import { postRpc } from "./cli-shepherd-rpc.js";
@@ -27,6 +28,7 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
     return verbs.setExit(EXIT.USAGE);
   }
   if (await probeHealth(opts.port)) return verbs.setExit(await landOnServer(verbs.io, opts.port, args));
+  if (await refusedWriteFallback(verbs, opts.port, "land")) return;
   await verbs.withHost((host) => landInProcess(host, verbs, args, opts.port));
 }
 
