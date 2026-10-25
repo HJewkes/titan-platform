@@ -9,8 +9,9 @@ import { loadBeatSpecs } from "../beat-load.js";
 import { ResolvedSchema } from "../resolve-stage.js";
 import { applyEdit, SlotEditSchema, type EditBase, type FieldChange, type SlotEdit } from "../slot-edit.js";
 import { slotOverrideProblems } from "../slot-overrides.js";
-import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
+import { ScriptSchema } from "../script-schema.js";
 import { ArtifactStore } from "./artifacts.js";
+import { fillProblems, type FillCheck } from "./edit-fill.js";
 import { EditLedgerSchema, editIdOf, editLogFile, ledgerFile, listLedgers, writeLedger, type EditLedger } from "./edit-ledger.js";
 import { dataDirOption } from "./run-cli.js";
 import { openState } from "./host.js";
@@ -27,11 +28,6 @@ const MAX_EDIT_BYTES = 256 * 1024;
 type Resolved = z.infer<typeof ResolvedSchema>;
 /** Launches `explainer <argv>` detached, its output appended to `logFile`; tests pass a fake. */
 export type DetachedSpawn = (argv: readonly string[], logFile: string) => void;
-/**
- * The template fill's verdict on the edited script: each problem the filled slots would raise (the whole parse and the
- * emphasis gate). TP-4134's `fillScript` plugs in here; until then `edit check` runs without it.
- */
-type FillCheck = (script: ScriptV1, resolved: Resolved) => string[];
 
 export interface EditCliDeps {
   out?: (text: string) => void;
@@ -117,11 +113,12 @@ function editBase(dataDir: string, view: RunView): EditBase & { resolved: Resolv
   });
 }
 
-/** What resolve would refuse in the edited script: the schema, the slot-overrides gate, and the fill when it exists. */
-function scriptProblems(script: unknown, resolved: Resolved, fill: FillCheck | undefined): string[] {
+/** What resolve would refuse in the edited script: the schema, the slot-overrides gate, then the template fill. */
+function scriptProblems(script: unknown, base: EditBase & { resolved: Resolved }, fill: FillCheck): string[] {
   const parsed = ScriptSchema.safeParse(script);
   if (!parsed.success) return issues(parsed.error, "script");
-  return [...slotOverrideProblems(parsed.data.beats, resolved.beats, loadBeatSpecs()), ...(fill?.(parsed.data, resolved) ?? [])];
+  const overrides = slotOverrideProblems(parsed.data.beats, base.resolved.beats, loadBeatSpecs());
+  return overrides.length > 0 ? overrides : fill(parsed.data, base.resolved, base.generated);
 }
 
 interface Checked extends EditVerdict {
@@ -129,18 +126,18 @@ interface Checked extends EditVerdict {
   view?: RunView;
 }
 
-function checkEdit(dataDir: string, edit: SlotEdit, fill: FillCheck | undefined): Checked {
+function checkEdit(dataDir: string, edit: SlotEdit, fill: FillCheck): Checked {
   const view = runView(dataDir, edit.base.runId);
   const base = editBase(dataDir, view);
   const applied = applyEdit(base, edit);
   if (!applied.ok) return { ok: false, problems: applied.problems, diff: [] };
-  const problems = scriptProblems(applied.script, base.resolved, fill);
+  const problems = scriptProblems(applied.script, base, fill);
   return { ok: problems.length === 0, editId: editIdOf(edit), problems, diff: applied.diff, script: applied.script, view };
 }
 
 function readAndCheck(file: string, dataDir: string, deps: EditCliDeps): { edit?: SlotEdit; checked: Checked } {
   const { edit, problems } = readEdit(file, deps);
-  return edit ? { edit, checked: checkEdit(dataDir, edit, deps.fill) } : { checked: { ok: false, problems, diff: [] } };
+  return edit ? { edit, checked: checkEdit(dataDir, edit, deps.fill ?? fillProblems) } : { checked: { ok: false, problems, diff: [] } };
 }
 
 const verdictOf = ({ ok, editId, problems, diff }: Checked): EditVerdict => ({ ok, ...(editId ? { editId } : {}), problems, diff });
@@ -159,16 +156,22 @@ interface Applied {
   started: boolean;
 }
 
+/** A refusal found after the edit's own checks pass, such as a second save of a started edit: exit 1, not usage. */
+class EditRefused extends Error {}
+
 function startedBefore(dataDir: string, editId: string): EditLedger | undefined {
   const ledger = readJson(ledgerFile(dataDir, editId), EditLedgerSchema);
   return ledger?.status === "started" ? ledger : undefined;
 }
 
-/** Stores the edited script and its ledger row; with `start`, launches the linked run from resolve, detached. */
+/**
+ * Stores the edited script and its ledger row; with `start`, launches the linked run from resolve, detached. A started
+ * row is never rewritten, with or without `start`: a rewrite would drop its run, and a later `--start` would launch a second.
+ */
 function storeEdit(dataDir: string, edit: SlotEdit, checked: Checked & { script: Record<string, unknown>; view: RunView }, start: boolean, deps: EditCliDeps): Applied {
   const editId = editIdOf(edit);
-  const earlier = start ? startedBefore(dataDir, editId) : undefined;
-  if (earlier) throw new Error(`edit ${editId} already started run ${earlier.runId ?? "(starting)"}; one save makes one run`);
+  const earlier = startedBefore(dataDir, editId);
+  if (earlier) throw new EditRefused(`edit ${editId} already started run ${earlier.runId ?? "(starting)"}; one save makes one run`);
   const text = `${JSON.stringify(checked.script, null, 2)}\n`;
   const scriptSha = withStore(dataDir, (store) => store.putText(text, "script", { runId: "input", stage: "edit" }));
   writeLedger(dataDir, {
@@ -273,7 +276,7 @@ export async function runEditCli(argv: readonly string[], deps: EditCliDeps = {}
   } catch (error) {
     if (error instanceof CommanderError) return error.exitCode === 0 ? EXIT.OK : EXIT.USAGE;
     io.err(`edit: ${error instanceof Error ? error.message : String(error)}\n`);
-    return EXIT.USAGE;
+    return error instanceof EditRefused ? EXIT.REFUSED : EXIT.USAGE;
   }
   return code;
 }

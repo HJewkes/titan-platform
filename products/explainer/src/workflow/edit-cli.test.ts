@@ -1,15 +1,15 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BeatWorker } from "../build/beat-worker.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
-import { EDIT_BUDGET_USD, runEditCli, type DetachedSpawn, type EditCliDeps } from "./edit-cli.js";
+import { EDIT_BUDGET_USD } from "./edit-cli.js";
+import { editHarness, out, recordingSpawn } from "./edit-cli.test-helpers.js";
 import { readLedger } from "./edit-ledger.js";
-import { openState, runVideo, type RunOutcome } from "./host.js";
+import { openState } from "./host.js";
 import { CUSTOM_LAYERS } from "./layer-build.js";
 import { RunPlanSchema } from "./pipeline.js";
-import type { RunReport } from "./report.js";
 import { runRunCli } from "./run-cli.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
@@ -17,37 +17,9 @@ import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, type Fixture
 let fx: Fixture;
 afterEach(() => fx.cleanup());
 
-const out = (report: RunReport, stage: string) => report.rows.find((r) => r.stage === stage)!.outputs;
 const figures = [{ id: "scan-rate", value: 4, label: "Scans a minute" }];
 
-interface Base {
-  result: RunOutcome;
-  scriptSha: string;
-  mp4Sha: string;
-}
-
-async function baseRun(extra: Parameters<typeof fakeHost>[3] = {}, model = fakeScriptModel()): Promise<Base> {
-  const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge(), extra));
-  return { result, scriptSha: out(result.report, "rewrite").script!, mp4Sha: out(result.report, "render").mp4! };
-}
-
-function editFile(base: Base, beats: Record<string, unknown>, name = "edit.json"): string {
-  const file = path.join(fx.workdir, name);
-  const edit = { schema: "explainer.slot-edit/v1", base: { runId: base.result.runId, scriptSha: base.scriptSha, mp4Sha: base.mp4Sha }, beats, createdAt: "2026-10-24T00:00:00Z" };
-  writeFileSync(file, JSON.stringify(edit));
-  return file;
-}
-
-async function cli(argv: string[], deps: EditCliDeps = {}): Promise<{ code: number; text: string }> {
-  const lines: string[] = [];
-  const code = await runEditCli(["edit", ...argv, "--data-dir", fx.dataDir], { out: (t) => lines.push(t), err: (t) => lines.push(t), ...deps });
-  return { code, text: lines.join("") };
-}
-
-function recordingSpawn(): { spawn: DetachedSpawn; launched: (readonly string[])[] } {
-  const launched: (readonly string[])[] = [];
-  return { spawn: (argv) => launched.push(argv), launched };
-}
+const { baseRun, editFile, cli } = editHarness(() => fx);
 
 /** Every file under the data dir with its size, and every run and artifact row: what a dry run must leave alone. */
 function snapshot(): unknown {
@@ -92,15 +64,17 @@ describe("explainer edit check", () => {
     expect(snapshot()).toEqual(before);
   });
 
-  it("refuses an override the beat's slot schema rejects, and adds the template fill's problems when a fill is given", async () => {
+  it("refuses an override the beat's slot schema rejects before the template fill runs", async () => {
     fx = fixture();
     const base = await baseRun();
     const file = editFile(base, { h1: { slots: { figures: [{ ...figures[0], label: "x".repeat(49) }] } } });
+    const filled: unknown[] = [];
 
-    const { code, text } = await cli(["check", file], { fill: () => ["beats.h1: the filled slots miss figures.0.unit"] });
+    const { code, text } = await cli(["check", file], { fill: (script) => (filled.push(script), []) });
 
     expect(code).toBe(1);
-    expect(JSON.parse(text).problems).toEqual([expect.stringMatching(/^beats\.h1\.visual\.slots\.figures\.0\.label: Too big/), "beats.h1: the filled slots miss figures.0.unit"]);
+    expect(JSON.parse(text).problems).toEqual([expect.stringMatching(/^beats\.h1\.visual\.slots\.figures\.0\.label: Too big/)]);
+    expect(filled).toEqual([]);
   });
 });
 

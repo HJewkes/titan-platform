@@ -796,16 +796,18 @@ new stage key.
   byte the base's outside each edited `visual.slots`/`visual.tune`, and a field diff against what the render saw
   (the run's `slots` artifact with the overrides laid over it).
   - `explainer edit check <edit.json|->` adds `ScriptSchema` and the `slot-overrides` gate and prints
-    `{ ok, editId, problems, diff }` as JSON; it writes nothing. TP-4134's template fill plugs in as the `fill` dep
-    (`FillCheck`): until it lands, check skips the filled-whole parse and the emphasis gate, which resolve still runs.
+    `{ ok, editId, problems, diff }` as JSON; it writes nothing. When the overrides pass, it runs TP-4134's `fillScript`
+    on the edited script (the base's `slots` artifact pinned, as at resolve) and the emphasis-target gate on the filled
+    slots, so a refused beat or a cue left with no element is refused here (`workflow/edit-fill.ts`).
   - `explainer edit apply <edit.json|-> [--start] [--json]` stores the script artifact (provenance
     `{ runId: "input", stage: "edit" }`) and writes `<data dir>/edits/<editId>.json` (base, video, new script sha,
     beats, `fromNote`, status `stored` or `started`, and the run id once known). `--start` launches
     `explainer run --from resolve --base <run> --pin script=<sha> --edit <editId> --budget-usd 0.25` detached, its
     output in `edits/<editId>.log`, and returns at once. The run pins the base's `custom-layers`, so a template edit
     never rebuilds a layer; its tts takes are all cached, so it voices nothing; it links its id into the ledger as it
-    starts, joins the base's video, and its report says which edit it carries. One save makes one run: an edit
-    already started is refused.
+    starts, joins the base's video, and its report says which edit it carries. One save makes one run: once the ledger
+    row is `started`, any later `apply` of the same edit, with or without `--start`, is refused (exit 1) and leaves the
+    row and its run id alone.
   - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
     status (`not started`, `starting` before the run links itself, then the workflow status).
 
