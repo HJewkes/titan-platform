@@ -68,6 +68,9 @@ function alphaNote(body: string): string {
 describe('workspace edges by diff', () => {
   it('leaves every edge row and the max edge id alone on passes over an unchanged workspace', async () => {
     await refreshWorkspace(graph, { activeRoot: root });
+    // As on the live graph, other writers' rows sit above the derived ones; without one, SQLite would
+    // hand a delete-all-and-reinsert pass the same rowids back.
+    graph.edges.assert({ sourceRef: 'session:s1', relation: 'touched', targetRef: 'task:AL-1' });
     const before = edgeRows(graph.db);
     const maxBefore = maxEdgeId();
 
