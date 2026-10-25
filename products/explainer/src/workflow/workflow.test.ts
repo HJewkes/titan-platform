@@ -381,8 +381,8 @@ describe("bridged stages", () => {
 });
 
 describe("checks as stage steps", () => {
-  /** h1 shows a V6 card on "courier", a word h1 speaks in the draft and in its rewrite. */
-  const cued = () => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", cues: [{ action: "V6", target: "card", atCue: "courier" }] } } });
+  /** h1 lights its one row on "courier", a word h1 speaks in the draft and in its rewrite. */
+  const cued = () => choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "list", cues: [{ action: "V6", target: "rows-1", atCue: "courier" }] } } });
 
   it("fails the tts stage when the voice has no phonemes for a word, before render", async () => {
     fx = fixture();
