@@ -24,7 +24,7 @@ export const CUSTOM_LAYERS = "custom-layers";
 /** Under the data dir: the cross-run build cache's pointers, by packet key. */
 export const LAYER_BUILDS_DIR = "layer-builds";
 /** Under a run's dir: one scratch dir per repaired build, by packet key, that the repair agent writes into. */
-export const LAYER_REPAIRS_DIR = "layer-repairs";
+const LAYER_REPAIRS_DIR = "layer-repairs";
 const BUILD_CONCURRENCY = 4;
 // The same input variable `codeStep` uses: an item step needs the whole StepResult, usage included, for the budget.
 const INPUT_VAR = "CODE_STEP_INPUT";

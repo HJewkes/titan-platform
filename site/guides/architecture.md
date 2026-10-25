@@ -214,6 +214,7 @@ graph TD
   evals --> storeSqlite
   evals --> workflow
   explainer --> agent
+  explainer --> agentDispatch
   explainer --> agentProtocol
   explainer --> appPaths
   explainer --> codeGraph
