@@ -27,6 +27,15 @@
       "kills": [
         "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof is reviewed to a MERGE once the owner waives that NO_REPRO, not sent back again"
       ]
+    },
+    {
+      "name": "panel members get no unverified standing, so their briefs read an unreadable proof as silence",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined",
+      "replace": "...(standing.waivedAt !== undefined",
+      "kills": [
+        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member briefs every member, not only correctness, that an unreadable proof is unverified"
+      ]
     }
   ]
 }
