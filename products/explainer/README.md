@@ -853,6 +853,22 @@ A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contrac
   tolerance and its `why`, and `fittedFrom`). `simDoctrineSha` is the sha a trace records as `doctrine`.
   `checkSims(SIM_MODELS, loadSims())` reports a model with no doctrine file (`E-SIM-NO-DOCTRINE`), a doctrine file
   with no model (`E-SIM-NO-MODEL`) and a doctrine statistic the model does not emit (`E-SIM-STAT-UNEMITTED`).
+- **Check.** A sim slot's `claim` is `{ fact, statistic, at }`: the claimed value is the gathered `number` fact
+  `fact`, the tolerance is the doctrine's for `statistic`, and `at` is the swept value whose run the claim is about.
+  The script cannot set either. `simCheck(trace, beat, facts, doctrine)` is pure and passes a claim the run reproduces
+  within its tolerance, edge included. Code holds the doctrine's tolerance between a floor and a ceiling:
+  `E-SIM-TOL-NOISE` when it is under 3 standard errors (`SIM_NOISE_SE`), `E-SIM-TOL-LOOSE` when it is over a tenth of
+  the claim (`MAX_SIM_TOLERANCE_REL`), and `E-SIM-CIRCULAR` when the statistic is one the model was fitted to
+  (`fittedFrom`). The other failures are `E-SIM-MISS`, `E-SIM-NO-FACT` and `E-SIM-NO-RUN`. A sim with no claim is
+  illustrative: it is swept and frozen but not checked, and its narration may not state a number
+  (`E-SIM-UNCHECKED-NUMBER`).
+- **Cut.** The resolve stage sweeps each `sim` beat (slots from the `slots` artifact under the owner's overrides),
+  stores each frozen trace and a `sim-traces` artifact (trace sha and verdict per beat), and cuts every failing beat:
+  it leaves `resolved.beats`, is listed in `resolved.cut` and in the notes, and tts voices none of them. The sim
+  registry is part of `resolveConfig`, so a tolerance edit re-keys the stage. Its checks are `sim-check` (reported)
+  and `sim-cut-orphan`, a gate that fails when the cuts leave a chapter with no beats. Every other consumer of
+  `resolved` reads `keptBeats`, the script's beats less `resolved.cut`: `slot-overrides`, `emphasis-target`, tts and
+  its `cue-resolution` gate skip a cut beat instead of failing on it.
 
 ## Composition page
 

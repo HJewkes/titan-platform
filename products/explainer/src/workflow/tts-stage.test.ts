@@ -147,6 +147,22 @@ describe("tts stage: per-beat rate and take cache", () => {
     expect(voice.calls).toEqual([]);
   });
 
+  it("voices no beat that resolve cut, and still voices the rest", async () => {
+    const { store, input, takesDir } = harness();
+    const voice = scriptedVoice();
+    const partial = JSON.parse(resolvedFor(twoBeats()));
+    partial.beats = partial.beats.filter((b: { id: string }) => b.id !== B2);
+    partial.cut = [{ id: B2, chapter: "ch1", code: "E-SIM-MISS", detail: "synthetic miss" }];
+    const next = { ...input, artifacts: { ...input.artifacts, resolved: store.putText(JSON.stringify(partial), "resolved", input.from) } };
+
+    const outcome = await runTtsStage(next, SPEECH, { engine: voice.engine, takesDir });
+
+    const voiced = WordsSchema(store.readText(outcome.outputs.words!)).beats.map((b) => b.id);
+    expect(voiced).toContain(B1);
+    expect(voiced).not.toContain(B2);
+    expect(textsOf(voice.calls).has("seven eight")).toBe(false);
+  });
+
   it("re-voices only the beat whose text changed, and keeps the untouched beat's audio byte for byte", async () => {
     const { store, input, takesDir } = harness();
     const voice = scriptedVoice();

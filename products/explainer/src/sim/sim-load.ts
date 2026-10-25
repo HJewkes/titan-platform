@@ -52,7 +52,8 @@ export interface SimIssue {
   message: string;
 }
 
-const defaultsOf = (spec: SimModelSpec): Record<string, number> => Object.fromEntries(Object.entries(spec.params).map(([name, param]) => [name, param.default]));
+/** A model's params at their doctrine defaults. */
+export const defaultsOf = (spec: SimModelSpec): Record<string, number> => Object.fromEntries(Object.entries(spec.params).map(([name, param]) => [name, param.default]));
 
 function unemitted(model: SimModel, spec: SimModelSpec): SimIssue[] {
   const emitted = runPure(model, defaultsOf(spec), `check:${spec.id}`).stats;
