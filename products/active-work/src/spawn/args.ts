@@ -1,10 +1,10 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 import { UsageError } from '../errors.js';
 import { runSpawn, type BriefSource, type SpawnDeps, type SpawnPlan } from './run.js';
 
-export const LEAST_USED = 'least-used';
+const LEAST_USED = 'least-used';
 
-export interface SpawnFlags {
+interface SpawnFlags {
   host?: string;
   account?: string;
   briefFile?: string;
@@ -15,7 +15,7 @@ export interface SpawnFlags {
   remoteControl?: boolean;
 }
 
-export function briefSource(flags: SpawnFlags): BriefSource {
+function briefSource(flags: SpawnFlags): BriefSource {
   if (flags.briefFile !== undefined && flags.briefStdin === true) {
     throw new UsageError('pass one of --brief-file and --brief-stdin, not both');
   }
@@ -24,7 +24,7 @@ export function briefSource(flags: SpawnFlags): BriefSource {
   throw new UsageError('a brief is required: pass --brief-file <path> or --brief-stdin');
 }
 
-export function toPlan(name: string, profile: string, flags: SpawnFlags, shellCwd: string): SpawnPlan {
+function toPlan(name: string, profile: string, flags: SpawnFlags, shellCwd: string): SpawnPlan {
   return {
     name,
     profile,

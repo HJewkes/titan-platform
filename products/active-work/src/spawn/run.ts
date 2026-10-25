@@ -58,7 +58,7 @@ function isExecutableFile(path: string): boolean {
 }
 
 /** `AGENT_CHAT_BIN` wins; otherwise the shell's own PATH, since this runs from a terminal or an agent's Bash, never a daemon. */
-export function findAgentChat(env: NodeJS.ProcessEnv): string {
+function findAgentChat(env: NodeJS.ProcessEnv): string {
   if (env.AGENT_CHAT_BIN) return env.AGENT_CHAT_BIN;
   const found = (env.PATH ?? '')
     .split(delimiter)
