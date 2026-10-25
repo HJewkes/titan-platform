@@ -229,23 +229,17 @@ export function passRunner(
 ): PassRunner {
   let lastMaxLoopStallMs: number | null = null;
   const sweep = episodeSweepPolicy();
-  const measured = async (
-    graph: WorkspaceGraph,
-    options: RefreshOptions,
-  ): Promise<RefreshSummary> => {
+  const measured = async (options: RefreshOptions): Promise<RefreshSummary> => {
     const { result, maxStallMs } = await measureLoopStall(() =>
-      runRefresh({ graph, yieldPoint: () => yieldToReaders(signal), ...options }),
+      runRefresh({ yieldPoint: () => yieldToReaders(signal), ...options }),
     );
     lastMaxLoopStallMs = maxStallMs;
     log.info(passLogLine(result, maxStallMs), 'session index pass');
     return result;
   };
-  const full = async (
-    graph: WorkspaceGraph,
-    drained: DrainedDirtySet,
-  ): Promise<RefreshSummary> => {
+  const full = async (graph: WorkspaceGraph, drained: DrainedDirtySet): Promise<RefreshSummary> => {
     try {
-      const result = await measured(graph, { episodeSweep: sweep.next(), dirtyPaths: drained.paths });
+      const result = await measured({ graph, episodeSweep: sweep.next(), dirtyPaths: drained.paths });
       sweep.settle(result.episodeBacklog);
       return result;
     } catch (err) {
@@ -267,7 +261,7 @@ export function passRunner(
           if (kind === 'full') return await full(graph, drained);
           const roots = claudeTranscriptRoots();
           const transcripts = await transcriptsFromDirty(graph, drained, roots);
-          return await measured(graph, { mode: 'delta', transcripts, onIndexed });
+          return await measured({ graph, mode: 'delta', transcripts, onIndexed });
         } catch (err) {
           dirty.restore(drained);
           throw err;

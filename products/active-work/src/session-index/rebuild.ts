@@ -18,7 +18,7 @@ import { runRefresh, withRefreshLock, type RefreshLockOptions } from './refresh.
  * inode check in `live-graph.ts`.
  */
 
-export interface RebuildOptions {
+interface RebuildOptions {
   /** Continue a `.next` left by a rebuild that stopped; without it an existing `.next` is refused. */
   resume?: boolean;
   /** Swap even when the turn and request totals differ. */
@@ -27,7 +27,7 @@ export interface RebuildOptions {
   lock?: Pick<RefreshLockOptions, 'onWait'>;
 }
 
-export interface RebuildSummary {
+interface RebuildSummary {
   nextPath: string;
   /** The old file, kept by a hard link; null when no swap happened. */
   backupPath: string | null;
