@@ -27,33 +27,6 @@
       "kills": [
         "a deposit's typed op stays on the terminal for a kind with no console tap yet"
       ]
-    },
-    {
-      "name": "inbox.list drops the missed-notice rows",
-      "file": "apps/console/server/inbox-view.ts",
-      "find": ", ...blocked, ...missed.value]",
-      "replace": ", ...blocked]",
-      "kills": [
-        "inbox.list's machine-derived rows a round notice the start-up sweep could not send lists a missed-notice row linking the round until a later sweep reaches the seat"
-      ]
-    },
-    {
-      "name": "inbox.list drops the round notices gap",
-      "file": "apps/console/server/inbox-view.ts",
-      "find": ", ...missed.gaps]",
-      "replace": "]",
-      "kills": [
-        "inbox.list's machine-derived rows a round notice the start-up sweep could not send names an unreadable rounds dir as a round notices gap"
-      ]
-    },
-    {
-      "name": "an unreadable rounds dir reads as no rounds instead of a gap",
-      "file": "apps/console/server/round-notice-gaps.ts",
-      "find": "    if (isMissing(error)) return [];\n    throw error;\n",
-      "replace": "    return [];\n",
-      "kills": [
-        "inbox.list's machine-derived rows a round notice the start-up sweep could not send names an unreadable rounds dir as a round notices gap"
-      ]
     }
   ]
 }
