@@ -847,7 +847,7 @@ new stage key.
   byte the base's outside each edited `visual.slots`/`visual.tune`, and a field diff against what the render saw
   (the run's `generated-slots`, else its `slots` pin, with the overrides laid over it).
   - `explainer edit check <edit.json|->` adds `ScriptSchema` and the `slot-overrides` gate and prints
-    `{ ok, editId, problems, diff }` as JSON; it writes nothing. When the overrides pass, it runs TP-4134's `fillScript`
+    `{ ok, editId, problems, diff }` as JSON; it writes nothing: no file under the data dir (cache, lock, ledger or artifact) is created or changed, which a test checks by snapshotting the tree. When the overrides pass, it runs TP-4134's `fillScript`
     on the edited script (the base's `slots` artifact pinned, as at resolve) and the emphasis-target gate on the filled
     slots, so a refused beat or a cue left with no element is refused here (`workflow/edit-fill.ts`).
   - `explainer edit apply <edit.json|-> [--start] [--json]` stores the script artifact (provenance
@@ -863,7 +863,8 @@ new stage key.
     status (`not started`, `starting` before the run links itself, then the workflow status).
   - `explainer props --mp4-sha <sha> [--json]` (`workflow/props-cli.ts`, `workflow/beat-props.ts`) is the props
     panel's read model. It finds the newest run whose export linked that mp4 (the theater file's sha256 is the run's
-    `mp4` artifact sha), or prints `{ found: false }`. For each template beat resolve kept (cut and custom-layer beats
+    `mp4` artifact sha), or prints `{ found: false }`. A found result carries `scriptSha`, the run's `script` artifact sha, which is the
+    `base.scriptSha` an `explainer.slot-edit/v1` draft names. For each template beat resolve kept (cut and custom-layer beats
     are left out) it gives `id`, `chapter`, the drawn `spec` and its `slots` ref, `schema` (`z.toJSONSchema` of
     `BEAT_SLOTS[ref]`, input side), `value` (`fillScript` with the run's `slots` artifact pinned and the owner's
     overrides laid over it), `overridden` fields, `locked` ids (the ids its cues target), `startS`/`endS` from the

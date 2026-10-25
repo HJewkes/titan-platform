@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,13 +21,13 @@ const figures = [{ id: "scan-rate", value: 4, label: "Scans a minute" }];
 
 const { baseRun, editFile, cli } = editHarness(() => fx);
 
-/** Every file under the data dir with its size, and every run and artifact row: what a dry run must leave alone. */
+/** Every file under the data dir with its bytes and mtime, and every run and artifact row: what a dry run must leave alone. */
 function snapshot(): unknown {
   const files = readdirSync(fx.dataDir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile() && !e.name.startsWith("state.sqlite3"));
   const db = openState(fx.dataDir);
   try {
     const rows = db.prepare("SELECT (SELECT count(*) FROM explainer_artifacts) AS artifacts, (SELECT count(*) FROM workflow_run) AS runs").get();
-    return { files: files.map((e) => path.join(e.parentPath, e.name)).sort(), rows };
+    return { files: files.map((e) => path.join(e.parentPath, e.name)).sort().map((file) => ({ file, bytes: readFileSync(file).toString("base64"), mtimeMs: statSync(file).mtimeMs })), rows };
   } finally {
     db.close();
   }
