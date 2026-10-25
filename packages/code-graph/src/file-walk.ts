@@ -32,6 +32,8 @@ async function collectFiles(
   out: string[],
 ): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
+  // A virtualenv can carry any name; its marker file is the reliable signal.
+  if (dir !== rootDir && entries.some((e) => e.name === "pyvenv.cfg" && e.isFile())) return;
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     // Prune excluded directories (node_modules, dist, .git, …) instead of
