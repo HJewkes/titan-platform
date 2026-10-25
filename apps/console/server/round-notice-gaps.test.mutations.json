@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a failed sweep send leaves no record, so no row shows",
+      "file": "apps/console/server/round-asker.ts",
+      "find": "  if (!deps.live) await recordNoticeFailure(",
+      "replace": "  if (deps.live) await recordNoticeFailure(",
+      "kills": [
+        "missed round-notice rows in the inbox shows one row naming the round, the seat and the error when the sweep's retry fails too",
+        "missed round-notice rows in the inbox shows no row when only the live send failed and the sweep's retry reached the seat",
+        "missed round-notice rows in the inbox clears the row once a later sweep reaches the seat",
+        "missed round-notice rows in the inbox names the latest error when a later sweep fails again"
+      ]
+    },
+    {
+      "name": "a live send failure is recorded too, so a retried notice still shows a row",
+      "file": "apps/console/server/round-asker.ts",
+      "find": "  if (!deps.live) await recordNoticeFailure(",
+      "replace": "  await recordNoticeFailure(",
+      "kills": [
+        "missed round-notice rows in the inbox shows no row when only the live send failed and the sweep's retry reached the seat"
+      ]
+    },
+    {
+      "name": "a later successful send leaves the failure record in place",
+      "file": "apps/console/server/round-asker.ts",
+      "find": "  await clearNoticeFailure(dir, seat);\n",
+      "replace": "",
+      "kills": [
+        "missed round-notice rows in the inbox clears the row once a later sweep reaches the seat"
+      ]
+    },
+    {
+      "name": "a second failure keeps the first record instead of the latest error",
+      "file": "apps/console/server/round-notice-gaps.ts",
+      "find": "  await rm(file, { force: true });\n  await writeJsonOnce(",
+      "replace": "  await writeJsonOnce(",
+      "kills": [
+        "missed round-notice rows in the inbox names the latest error when a later sweep fails again"
+      ]
+    },
+    {
+      "name": "the row drops the seat's error text",
+      "file": "apps/console/server/round-notice-gaps.ts",
+      "find": "observed: `notice failed after the start-up sweep's retry: ${error}`",
+      "replace": "observed: \"notice failed after the start-up sweep's retry\"",
+      "kills": [
+        "missed round-notice rows in the inbox shows one row naming the round, the seat and the error when the sweep's retry fails too",
+        "missed round-notice rows in the inbox names the latest error when a later sweep fails again"
+      ]
+    }
+  ]
+}

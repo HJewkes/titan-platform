@@ -36,6 +36,15 @@
       "kills": [
         "provablyIndependent refuses a reviewer whose spawner has no stored lineage"
       ]
+    },
+    {
+      "name": "an incomplete lineage is walked as if it held every generation",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (!lineage.complete) return false;",
+      "replace": "if (lineage.rows.length === 0) return false;",
+      "kills": [
+        "provablyIndependent over retired generations proves nothing from a lineage the broker could not complete with retired rows, however clear its rows look"
+      ]
     }
   ]
 }
