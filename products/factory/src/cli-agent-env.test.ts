@@ -29,12 +29,12 @@ function countingSetup(): { deps: CliDeps; dbPath: string; calls: string[] } {
   const calls: string[] = [];
   const fixture = shepherdFixture();
   fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
-  const wire = new Proxy(fixture.fake.wire, {
+  const wire = new Proxy<GitHubWire>(fixture.fake.wire, {
     get: (target, key) => {
-      const value = Reflect.get(target, key) as unknown;
-      return typeof value === "function" ? (...args: unknown[]) => (calls.push(String(key)), (value as (...a: unknown[]) => unknown).apply(target, args)) : value;
+      const value: unknown = Reflect.get(target, key);
+      return typeof value === "function" ? (...args: unknown[]) => (calls.push(String(key)), Reflect.apply(value, target, args)) : value;
     },
-  }) as GitHubWire;
+  });
   const counted = shepherdFixture({ port: githubPort(wire) });
   return { deps: { workflows: counted.workflows, routes: counted.routes, host: { gatePollMs: 5 }, logger: silentLogger, serveWaitMs: 50 }, dbPath: join(dir, "state", "factory.sqlite3"), calls };
 }
