@@ -5,6 +5,7 @@ import { holdSlotsMigration, parkSettledMigration, registrationFactsMigration } 
 import { reclassMarkMigration, shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
@@ -598,7 +599,7 @@ describe("shepherd store ref", () => {
 describe("settled park markers", () => {
   const db = () => {
     const opened = openDatabase(":memory:");
-    runMigrations(opened, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19), parkSettledMigration(21)]);
+    runMigrations(opened, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19), parkSettledMigration(21), mergeBaseExceptionMigration(42)]);
     return opened;
   };
   const openWithMarkers = (on = db()) => new ShepherdStore(on, () => Date.parse("2026-01-01T00:00:00Z"));
