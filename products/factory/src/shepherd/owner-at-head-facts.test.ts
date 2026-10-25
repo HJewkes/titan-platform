@@ -36,7 +36,7 @@ describe("the approve-merge gate land opens from Shepherd's options", () => {
   it("marks a malformed CI-policy line, unread changed files and malformed evidence", () => {
     expect(rowOfGate(mergeWith({ ciPolicy: { kind: "malformed" } })).row).toBe("ci-policy-malformed");
     expect(rowOfGate(mergeWith({ changedFilesUnread: "the files API failed" })).row).toBe("files-unread");
-    expect(rowOfGate(() => ({ kind: "MERGE", headSha: HEAD, evidence: { head: HEAD } }) as Verdict).row).toBe("files-unread");
+    expect(rowOfGate((): Verdict => ({ kind: "MERGE", headSha: HEAD, evidence: { head: HEAD } })).row).toBe("files-unread");
   });
 
   it("marks a repo skill change", () => {
