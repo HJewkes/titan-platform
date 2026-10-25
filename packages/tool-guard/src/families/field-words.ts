@@ -33,7 +33,7 @@ function zshModified(word: WordToken): boolean {
 /** The characters of `word` outside its variables, by index, and those of them read outside quotes and escapes. */
 function bareOutsideRefs(word: WordToken): { kept: number[]; bare: number[] } {
   const spans = bareSpans(word);
-  const kept = Array.from(word.value, (_, i) => i).filter((i) => !word.refs.some((r) => r.start <= i && i < r.end));
+  const kept = Array.from({ length: word.value.length }, (_, i) => i).filter((i) => !word.refs.some((r) => r.start <= i && i < r.end));
   return { kept, bare: kept.filter((i) => spans.some(([start, end]) => start <= i && i < end)) };
 }
 

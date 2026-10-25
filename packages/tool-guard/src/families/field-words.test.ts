@@ -17,6 +17,7 @@ describe("expandsAtRunTime reads only characters outside quotes", () => {
     ["a bare glob before a quoted part", 'a*"b"', true],
     ["a bare = leading a spliced word", "=ls'x'", true],
     ["a bare brace list after an escape", "\\q{a,b}", true],
+    ["a bare glob after a quoted character outside the BMP", "'\u{1F600}'*", true],
   ])("%s: %s reads %s", (_scenario, src, expands) => {
     expect(expandsAtRunTime(word(src))).toBe(expands);
   });
@@ -30,9 +31,9 @@ describe("expandsAtRunTime reads only characters outside quotes", () => {
   });
 
   it("counts a spliced word as bare throughout once its value is rewritten after lexing", () => {
-    const quoted = word("query='{viewer{login}}'");
+    const spliced = word("x'ab'");
 
-    expect(expandsAtRunTime({ ...quoted, value: quoted.value.slice(1) })).toBe(true);
+    expect(expandsAtRunTime({ ...spliced, value: "x*ab" })).toBe(true);
   });
 
   it("keeps a field's key when only its quoted value holds braces", () => {

@@ -22,12 +22,12 @@
       ]
     },
     {
-      "name": "a span's end index counts as bare",
+      "name": "characters are indexed by code point while spans index UTF-16 units",
       "file": "packages/tool-guard/src/families/field-words.ts",
-      "find": "spans.some(([start, end]) => start <= i && i < end)",
-      "replace": "spans.some(([start, end]) => start <= i && i <= end)",
+      "find": "Array.from({ length: word.value.length }, (_, i) => i)",
+      "replace": "Array.from(word.value, (_, i) => i)",
       "kills": [
-        "expandsAtRunTime reads only characters outside quotes a glob character quoted between bare text: a\"*\"b reads false"
+        "expandsAtRunTime reads only characters outside quotes a bare glob after a quoted character outside the BMP: '😀'* reads true"
       ]
     },
     {
