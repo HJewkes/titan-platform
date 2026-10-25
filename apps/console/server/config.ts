@@ -142,7 +142,7 @@ export function resolveConfig(
   machine: Machine = hostMachine,
 ): ConsoleConfig {
   const stateDir = expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home);
-  const agentChat = agentChatBinFrom(env, home, machine.isExecutable ?? hostIsExecutable);
+  const bins = cliBinsFrom(env, home, machine.isExecutable ?? hostIsExecutable);
   const config: ConsoleConfig = {
     port: portFrom(env, "TITAN_CONSOLE_PORT", DEFAULT_CONSOLE_PORT),
     storyPort: storyPortFrom(env),
@@ -152,8 +152,7 @@ export function resolveConfig(
     factoryPort: portFrom(env, "TITAN_CONSOLE_FACTORY_PORT", FACTORY_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
     agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
-    ...agentChat,
-    ...explainerBinFrom(env, home, machine.isExecutable ?? hostIsExecutable),
+    ...bins,
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
@@ -241,6 +240,11 @@ function agentChatBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: Is
 function explainerBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "explainerBin"> {
   const bin = resolveCommand(expandHome(env.TITAN_CONSOLE_EXPLAINER_BIN || "explainer", home), env.PATH, isExecutable);
   return bin !== null && path.isAbsolute(bin) ? { explainerBin: bin } : {};
+}
+
+/** The CLIs the console runs, each resolved on PATH once at start. */
+function cliBinsFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "agentChatBin" | "explainerBin" | "startupWarnings"> {
+  return { ...agentChatBinFrom(env, home, isExecutable), ...explainerBinFrom(env, home, isExecutable) };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */
