@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AMBIGUOUS_LONG, CURL_LONG, GIT_PUSH_LONG, GIT_TAG_LONG, WGET_LONG, resolveLong } from "./long-options.js";
+import { AMBIGUOUS_LONG, CURL_LONG, GIT_PUSH_LONG, WGET_LONG, resolveLong } from "./long-options.js";
 
 const curl = resolveLong(CURL_LONG, true);
 const wget = resolveLong(WGET_LONG, false);
@@ -46,7 +46,6 @@ describe("the option tables match the binaries they were read from", () => {
     ["curl", CURL_LONG, curl],
     ["wget", WGET_LONG, wget],
     ["git push", GIT_PUSH_LONG, gitPush],
-    ["git tag", GIT_TAG_LONG, resolveLong(GIT_TAG_LONG, false)],
   ])("every %s name resolves to itself", (_tool, table, resolve) => {
     expect(table.names.filter((n) => resolve(`--${n}`) !== `--${n}`)).toEqual([]);
   });

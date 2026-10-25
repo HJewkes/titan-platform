@@ -91,13 +91,9 @@ interface ClassifyContext {
         chain: Chain;
         fallback: ClassifyContext;
     };
-    /** Set by the classifier once the line runs `git tag` or `git update-ref` on a tag: the names it writes. */
-    lineTags?: LineTags;
     /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
     httpConfigUnseen?: true;
 }
-/** Tag names a line writes before a later command runs; `"any"` when one is known only at run time. */
-type LineTags = ReadonlySet<string> | "any";
 type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
 /** What an event would do, with no actor attached. */
 interface ClassifiedAction {
@@ -188,11 +184,6 @@ declare const SPELLINGS: {
     readonly "bash.release.wrangler-deploy": SpellingRow;
     readonly "bash.release.version-packages-merge": SpellingRow;
     readonly "bash.release.git-push-tag": SpellingRow;
-    readonly "bash.release.git-push-maybe-tag": {
-        readonly remedy: "Git may send this name to a tag, which only the release workflow pushes. To push a branch, name it as HEAD:refs/heads/<branch>, from a directory the command names literally.";
-        readonly family: FamilyName;
-        readonly action: GuardedAction;
-    };
     readonly "bash.egress.gh-gist": SpellingRow;
     readonly "bash.egress.curl-upload": SpellingRow;
     readonly "bash.egress.wget-upload": SpellingRow;

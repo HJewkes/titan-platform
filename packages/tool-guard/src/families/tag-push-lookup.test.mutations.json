@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bare version number is not read as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "return RELEASE_NUMBER_RE.test(dest) || isTag(dest)",
+      "replace": "return isTag(dest)",
+      "kills": [
+        "a bare version number reads `git push origin 1.2.0` as a tag push"
+      ]
+    },
+    {
+      "name": "a directory the line leaves unknown is looked in anyway",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  return (name) => dir !== null && ctx.isTag?.(dir, name) === true;",
+      "replace": "  return (name) => ctx.isTag?.(dir ?? git.dir ?? \"\", name) === true;",
+      "kills": [
+        "a name the local repository holds as a tag falls back to the name shapes from a directory it cannot name: `git -C \"$D\" push origin rc1`"
+      ]
+    },
+    {
+      "name": "a heads/-qualified destination still reads a local tag source",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  if (dest === \"\" || /^(?:refs\\/|heads\\/)/.test(dest)) return false;",
+      "replace": "  if (dest === \"\") return false;",
+      "kills": [
+        "a name the local repository holds as a tag leaves `git push origin rc1:refs/heads/feat/x` alone",
+        "a name the local repository holds as a tag leaves `git push origin rc1:heads/feat/x` alone"
+      ]
+    },
+    {
+      "name": "git push long options are read only when spelled in full",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "readOptions(args, GIT_PUSH_VALUES, resolvePushLong)",
+      "replace": "readOptions(args, GIT_PUSH_VALUES)",
+      "kills": [
+        "git push long options read by unique prefix reads `git push --tag origin` as a tag push",
+        "git push long options read by unique prefix reads `git push --fol origin feat/x` as a tag push"
+      ]
+    },
+    {
+      "name": "packed-refs is not read",
+      "file": "packages/tool-guard/src/context.ts",
+      "find": "  return rfs.isFile(packed) && rfs.readHead(packed, PACKED_REFS_CAP)",
+      "replace": "  return false && rfs.readHead(packed, PACKED_REFS_CAP)",
+      "kills": [
+        "nodeContext tag lookup over a real temp directory finds loose and packed tags in a worktree's common directory, and only names inside the tag tree"
+      ]
+    }
+  ]
+}

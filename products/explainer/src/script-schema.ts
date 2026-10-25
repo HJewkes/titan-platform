@@ -135,6 +135,10 @@ const ScriptVisualSchema = z
     chips: z.array(z.object({ kind: z.enum(CHIP_KINDS), text: Text, fact_id: Id.optional() }).strict()).default([]),
     labels: z.array(Text).default([]),
     code: CodeRef.optional(),
+    // Owner overrides on a template beat: top-level slot fields, each replacing the generated value whole.
+    slots: z.record(z.string(), z.unknown()).optional(),
+    // Tuning constants a page kind reads; carried untouched until kinds declare a tune schema.
+    tune: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])).optional(),
   })
   .strict();
 
@@ -247,6 +251,12 @@ const ScriptShape = z
 
 /** `script/v1`: one two-track script, a narration track and a visual track per beat. */
 export const ScriptSchema = ScriptShape.superRefine(checkReferences);
+
+// Owner-only fields: a drafting model never sees them, and a reply naming them loses them as unknown keys.
+const DraftBeatSchema = ScriptBeatSchema.extend({ visual: ScriptVisualSchema.omit({ slots: true, tune: true }) });
+
+/** `script/v1` as the script-drafting model is shown it and its reply is parsed: without the owner's slot overrides. */
+export const DraftScriptSchema = ScriptShape.extend({ beats: z.array(DraftBeatSchema).min(1) }).superRefine(checkReferences);
 
 export type ScriptV1 = z.infer<typeof ScriptSchema>;
 export type ScriptChapter = ScriptV1["chapters"][number];

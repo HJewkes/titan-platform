@@ -25,14 +25,9 @@ export interface ClassifyContext {
    * sees. A field rather than identity, so a step that copies the state keeps it.
    */
   chainTrust?: { chain: Chain; fallback: ClassifyContext };
-  /** Set by the classifier once the line runs `git tag` or `git update-ref` on a tag: the names it writes. */
-  lineTags?: LineTags;
   /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
   httpConfigUnseen?: true;
 }
-
-/** Tag names a line writes before a later command runs; `"any"` when one is known only at run time. */
-export type LineTags = ReadonlySet<string> | "any";
 
 export type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
 

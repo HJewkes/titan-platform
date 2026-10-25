@@ -16,8 +16,6 @@ const MERGE =
   "Merging into a protected branch is resolved by the owner or the reviewed merge path. Push your branch, open a pull request and report it.";
 const RELEASE =
   "Publishing, releasing and deploying go through the release workflow the owner approves. Stop and report what is ready to ship.";
-const MAYBE_TAG =
-  "Git may send this name to a tag, which only the release workflow pushes. To push a branch, name it as HEAD:refs/heads/<branch>, from a directory the command names literally.";
 const EGRESS =
   "Sending data to a host off the allowlist is owner-only. Keep the data local and ask the owner to send it.";
 
@@ -86,7 +84,6 @@ export const SPELLINGS = {
   "bash.release.wrangler-deploy": release(),
   "bash.release.version-packages-merge": release(),
   "bash.release.git-push-tag": release(),
-  "bash.release.git-push-maybe-tag": { ...release(), remedy: MAYBE_TAG },
   "bash.egress.gh-gist": egress(),
   "bash.egress.curl-upload": egress(),
   "bash.egress.wget-upload": egress(),

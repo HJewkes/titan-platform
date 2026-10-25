@@ -98,12 +98,6 @@ export const GIT_PUSH_LONG = table(`
   no-verbose no-verify porcelain progress prune push-option= quiet receive-pack= recurse-submodules= repo= set-upstream signed tags thin
   verbose verify`);
 
-/** Every long option `git tag` 2.53.0 accepts, as `git tag --git-completion-helper-all` lists them; `=` as above. */
-export const GIT_TAG_LONG = table(`
-  annotate cleanup= color column contains create-reflog delete edit file= force format= ignore-case list local-user= merged message=
-  no-annotate no-cleanup no-color no-column no-contains no-create-reflog no-edit no-file no-force no-format no-ignore-case no-local-user
-  no-merged no-omit-empty no-points-at no-sign no-sort omit-empty points-at sign sort= trailer= verify with without`);
-
 /**
  * Maps a `--flag` to the table entry it names: an exact match wins, then a unique prefix, as getopt_long and older
  * curl both read one. Several prefix matches give AMBIGUOUS_LONG; none leaves the flag as given.

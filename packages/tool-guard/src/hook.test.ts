@@ -99,39 +99,6 @@ describe("handle: the deny log line", () => {
   });
 });
 
-describe("handle: a tag push is the charter's tag-move hard stop", () => {
-  it.each(["git push origin v1", "git push origin refs/tags/v1", "git push --tags", "git push --follow-tags"])("denies `%s` as a release", async (command) => {
-    const { stdout, log } = await handle(bash(command), {}, port());
-
-    expect(decisionOf(stdout)).toBe("deny");
-    expect(log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "REL-WK", "release", "bash.release.git-push-tag"]);
-  });
-
-  it.each(["git tag deploy-1 && git push origin deploy-1", "git tag -a nightly -m x; git push origin nightly"])("denies `%s`, a tag the line itself creates", async (command) => {
-    const { stdout, log } = await handle(bash(command), {}, port());
-
-    expect(decisionOf(stdout)).toBe("deny");
-    expect(log[0]?.split("\t")[4]).toBe("bash.release.git-push-tag");
-  });
-
-  it("denies a push of a plain name from a directory it cannot read, and says how to name the branch", async () => {
-    const { stdout, log } = await handle(bash('git -C "$D" push origin feat/x'), {}, port());
-
-    expect(log[0]?.split("\t")[4]).toBe("bash.release.git-push-maybe-tag");
-    expect(stdout).toContain("HEAD:refs/heads/<branch>");
-  });
-
-  it.each([
-    ["git push origin feat/x", null],
-    ["git push origin HEAD:main", "bash.merge.git-push-protected"],
-  ])("keeps today's verdict for the branch push `%s`", async (command, spelling) => {
-    const { stdout, log } = await handle(bash(command), {}, port());
-
-    expect(log[0]?.split("\t")[4] ?? null).toBe(spelling);
-    expect(decisionOf(stdout)).toBe(spelling === null ? null : "deny");
-  });
-});
-
 describe("handle: failure policy", () => {
   it("passes non-JSON stdin and logs one shape error without the input", async () => {
     const raw = "not json zq-raw-" + "input";
@@ -427,41 +394,6 @@ describe("nodeContext over a real temp directory", () => {
 
     expect(ctx.readHead(path.join(home, "app/src"))).toBe("main");
     expect(ctx.readHead(path.join(home, "wt"))).toBe("feat/x");
-  });
-
-  function worktreeWithTags(home: string): string {
-    fs.mkdirSync(path.join(home, "app/.git/refs/tags/@scope"), { recursive: true });
-    fs.writeFileSync(path.join(home, "app/.git/HEAD"), "ref: refs/heads/main\n");
-    fs.writeFileSync(path.join(home, "app/.git/refs/tags/rc1"), "1".repeat(40) + "\n");
-    fs.writeFileSync(path.join(home, "app/.git/refs/tags/@scope/a"), "1".repeat(40) + "\n");
-    fs.writeFileSync(path.join(home, "app/.git/packed-refs"), `# pack-refs with: peeled fully-peeled sorted\n${"2".repeat(40)} refs/tags/nightly\n^${"3".repeat(40)}\n`);
-    fs.mkdirSync(path.join(home, "app/.git/worktrees/wt"), { recursive: true });
-    fs.writeFileSync(path.join(home, "app/.git/worktrees/wt/HEAD"), "ref: refs/heads/feat/x\n");
-    fs.writeFileSync(path.join(home, "app/.git/worktrees/wt/commondir"), "../..\n");
-    fs.mkdirSync(path.join(home, "wt"));
-    fs.writeFileSync(path.join(home, "wt/.git"), "gitdir: ../app/.git/worktrees/wt\n");
-    return path.join(home, "wt");
-  }
-
-  it("finds loose and packed tags in a worktree's common directory, and only names inside the tag tree", () => {
-    const home = tempHome();
-    const wt = worktreeWithTags(home);
-    const ctx = nodeContext(home);
-
-    expect(["rc1", "@scope/a", "nightly", "feat/x", "../../HEAD", "@scope", "rc1/"].map((name) => ctx.isTag?.(wt, name))).toEqual([true, true, true, false, false, false, false]);
-    expect(ctx.isTag?.(path.join(home, "app"), "nightly")).toBe(true);
-  });
-
-  it("denies a push of a local tag whose name is not release-shaped, and allows the branch beside it", async () => {
-    const home = tempHome();
-    const wt = worktreeWithTags(home);
-    const context = nodeContext(home);
-
-    const tag = await handle(bash("git push origin rc1", { cwd: wt }), {}, port({ context }));
-    const branch = await handle(bash("git push origin feat/x", { cwd: wt }), {}, port({ context }));
-
-    expect(tag.log[0]?.split("\t")[4]).toBe("bash.release.git-push-tag");
-    expect([decisionOf(tag.stdout), decisionOf(branch.stdout)]).toEqual(["deny", null]);
   });
 
   it("reads scripts that are regular files only, and refuses any other", () => {
