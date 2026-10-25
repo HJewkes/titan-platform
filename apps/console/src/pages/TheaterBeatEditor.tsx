@@ -6,13 +6,13 @@ import { SlotForm } from "./SlotForm.js";
 import { formatAt } from "./TheaterComment.js";
 import { beatAt, changedFields, controlOf, idsIn, placeProblems, type Fields } from "./slot-form.js";
 
-export type BeatProps = NonNullable<ConsoleCommands["videos.props"]["result"]["props"]>;
-export type Beat = BeatProps["beats"][number];
+type BeatProps = NonNullable<ConsoleCommands["videos.props"]["result"]["props"]>;
+type Beat = BeatProps["beats"][number];
 type Verdict = NonNullable<ConsoleCommands["videos.edit-check"]["result"]["verdict"]>;
 type Check = { status: "idle" } | { status: "checking" } | { status: "checked"; verdict: Verdict | null; gaps: readonly string[] } | { status: "failed"; error: string };
 
 /** Long enough that a word typed on a phone keyboard is one check, short enough that the verdict follows the typing. */
-export const CHECK_DEBOUNCE_MS = 400;
+const CHECK_DEBOUNCE_MS = 400;
 
 /** The draft through `videos.edit-check` once typing pauses; nothing is sent while the draft equals the render. */
 function useEditCheck(videoId: string, props: BeatProps, beatId: string, slots: Fields): Check {
@@ -80,7 +80,7 @@ interface EditorProps {
 }
 
 /** One template beat's slots as a form over the paused still. Save is shown, and stays off until explainer says a render reads edits. */
-export function TheaterBeatEditor({ videoId, props, beat, onClose }: EditorProps): ReactNode {
+function TheaterBeatEditor({ videoId, props, beat, onClose }: EditorProps): ReactNode {
   const [draft, setDraft] = useState<Fields>(beat.value);
   const control = useMemo(() => controlOf(beat.schema), [beat.schema]);
   const changed = changedFields(beat.value, draft);

@@ -28,7 +28,7 @@ export function startTimeOf(query: string | undefined): number | null {
 }
 
 /** `edit=1` beside `t=`: open the beat editor on the beat under that time. */
-export function editTimeOf(query: string | undefined): number | null {
+function editTimeOf(query: string | undefined): number | null {
   return new URLSearchParams(query ?? "").get("edit") === "1" ? startTimeOf(query) : null;
 }
 

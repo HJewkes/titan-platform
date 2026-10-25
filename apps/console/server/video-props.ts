@@ -14,7 +14,7 @@ import { locateVideo, videoCatalog, type VideoCatalog } from "./videos.js";
 
 export const EXPLAINER_NOT_FOUND = "explainer is not on PATH, so beat props are not shown; set TITAN_CONSOLE_EXPLAINER_BIN to its absolute path";
 export const NOT_FROM_EXPLAINER = "not made by explainer run, so it has no beat props";
-export const NO_SCRIPT_SHA = "this explainer does not report the run's script sha, so drafts are not checked (TP-4263)";
+const NO_SCRIPT_SHA = "this explainer does not report the run's script sha, so drafts are not checked (TP-4263)";
 const NOT_FOUND = "Video not found";
 const CLI_TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the beat editor's Save button is not capped to its row",
+      "file": "apps/console/src/pages/TheaterBeatEditor.tsx",
+      "find": "<Button isDisabled className=\"max-w-full\" testID=\"beat-editor-save\">",
+      "replace": "<Button isDisabled testID=\"beat-editor-save\">",
+      "kills": [
+        "keeps the beat editor's fields, row buttons and save row inside the page"
+      ]
+    },
+    {
+      "name": "a row's Remove button is not capped to its row",
+      "file": "apps/console/src/pages/SlotForm.tsx",
+      "find": "isDisabled={!canRemoveRow(rows, index, control, locked)} className=\"max-w-full\"",
+      "replace": "isDisabled={!canRemoveRow(rows, index, control, locked)}",
+      "kills": [
+        "keeps the beat editor's fields, row buttons and save row inside the page"
+      ]
+    }
+  ]
+}

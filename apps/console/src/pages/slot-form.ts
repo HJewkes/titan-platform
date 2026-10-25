@@ -24,7 +24,7 @@ export interface Field {
 export type Fields = Record<string, unknown>;
 
 /** A beat's span on the render. */
-export interface BeatSpan {
+interface BeatSpan {
   id: string;
   startS: number;
   endS: number;
@@ -94,7 +94,7 @@ export function uniqueId(taken: ReadonlySet<string>, stem = "row"): string {
 }
 
 /** A blank value for a control; an object gets its required fields only, and an `id` field a fresh unique id. */
-export function blankOf(control: Control, taken: ReadonlySet<string>): unknown {
+function blankOf(control: Control, taken: ReadonlySet<string>): unknown {
   switch (control.kind) {
     case "text":
       return "";
@@ -151,7 +151,7 @@ export function beatAt<Beat extends BeatSpan>(beats: readonly Beat[], seconds: n
   return beats.find((beat) => beat.startS <= seconds && seconds < beat.endS) ?? null;
 }
 
-export interface PlacedProblems {
+interface PlacedProblems {
   /** Keyed by the path under the beat's slots, such as `rows.1.left`. */
   byPath: ReadonlyMap<string, readonly string[]>;
   /** Problems that name no slot field of this beat: a fill refusal, a cue, another beat. */

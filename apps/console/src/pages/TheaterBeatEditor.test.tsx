@@ -11,7 +11,8 @@ import { AnswerSourceProvider } from "../data/submit.js";
 const VIDEO_ID = "v_0123456789abcdef0123";
 const VIDEO = { id: VIDEO_ID, title: "relay-explainer.mp4", group: "orbit/render", bytes: 5_500_000, modifiedAt: "2031-03-05T10:00:00.000Z", captions: false, renderNotes: false, noteCount: 0, verdict: null };
 const MP4_SHA = "e".repeat(64);
-const { found: _found, videoId: _video, ...PROPS } = JSON.parse(PROPS_JSON) as Record<string, unknown>;
+/** The fake explainer's props as `videos.props` returns them: without `found` or explainer's own video id. */
+const PROPS = Object.fromEntries(Object.entries(JSON.parse(PROPS_JSON) as Record<string, unknown>).filter(([key]) => key !== "found" && key !== "videoId"));
 
 type Call = { name: string; args: unknown };
 type Tap = (args: unknown) => Promise<JsonEnvelope<unknown>>;
