@@ -4,16 +4,14 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { discoverTranscripts, type DiscoveredTranscript } from '@titan-design/session-read';
-import { measureLoopStall } from '../server/session-index-watch.js';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
 
 /**
- * A pass over 500 dirty transcripts, measured the way the daemon logs it. On
- * main's source the rollup ran as one synchronous transaction and stalled the
- * loop about 2.5 s on this fixture; sliced, the longest stall is 80 to 130 ms.
- * The 1 s bound is the plan's: about 7x above the sliced stall for a loaded
- * runner, and 2.5x below the unsliced one for a fast one.
+ * A pass over 500 dirty transcripts. Run as one synchronous transaction, the
+ * rollup held the loop about 2.5 s on this fixture; sliced, the longest chunk
+ * is 80 to 250 ms. The 1 s bound is the plan's: well above the sliced chunk,
+ * and 2.5x below the unsliced one for a fast machine.
  */
 
 const TRANSCRIPTS = 500;
@@ -83,17 +81,43 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * The longest synchronous chunk `fn` holds the loop for, in this thread's CPU
+ * time. The daemon logs wall-clock loop delay (`measureLoopStall`), but on a
+ * loaded CI runner that also counts time the OS keeps the thread off the CPU:
+ * chunks of about 250 ms read as 2.6 to 3.3 s stalls there (TP-4199). A timer
+ * fires between chunks, so the CPU time spent between two firings is at most
+ * one chunk plus the sub-millisecond work around it.
+ */
+async function measureLongestChunk<T>(fn: () => Promise<T>): Promise<{ result: T; maxChunkMs: number }> {
+  let maxMicros = 0;
+  let since = process.threadCpuUsage();
+  const sample = (): void => {
+    const spent = process.threadCpuUsage(since);
+    maxMicros = Math.max(maxMicros, spent.user + spent.system);
+    since = process.threadCpuUsage();
+  };
+  const timer = setInterval(sample, 1);
+  try {
+    const result = await fn();
+    sample();
+    return { result, maxChunkMs: Math.round(maxMicros / 1_000) };
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 function deltaPass() {
   return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, skipWorkspace: true });
 }
 
 describe('session index pass over 500 dirty transcripts', () => {
   it('a delta pass never stalls the event loop for a second', SLOW_FIXTURE, async () => {
-    const { result, maxStallMs } = await measureLoopStall(deltaPass);
+    const { result, maxChunkMs } = await measureLongestChunk(deltaPass);
 
     expect(result.indexed).toBe(TRANSCRIPTS);
     expect(result.turnsRolledUp).toBe(TRANSCRIPTS * EXCHANGES);
-    expect(maxStallMs).toBeLessThanOrEqual(STALL_BOUND_MS);
+    expect(maxChunkMs).toBeLessThanOrEqual(STALL_BOUND_MS);
   });
 
   it('a pass resuming unfinished turns never stalls the event loop for a second', SLOW_FIXTURE, async () => {
@@ -101,7 +125,7 @@ describe('session index pass over 500 dirty transcripts', () => {
     // What a pass killed between its scan and its rollup leaves behind (TP-875).
     graph.db.prepare('UPDATE turn SET ended_at = NULL').run();
 
-    const { result, maxStallMs } = await measureLoopStall(() =>
+    const { result, maxChunkMs } = await measureLongestChunk(() =>
       runRefresh({
         graph,
         root: corpus,
@@ -114,6 +138,6 @@ describe('session index pass over 500 dirty transcripts', () => {
 
     expect(result.turnsRolledUp).toBe(TRANSCRIPTS * EXCHANGES);
     expect(graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get()).toEqual({ n: 0 });
-    expect(maxStallMs).toBeLessThanOrEqual(STALL_BOUND_MS);
+    expect(maxChunkMs).toBeLessThanOrEqual(STALL_BOUND_MS);
   });
 });
