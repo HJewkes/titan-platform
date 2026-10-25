@@ -4,7 +4,7 @@ import { EXIT } from "./exit-codes.js";
 import { probeServe } from "./serve-probe.js";
 
 /** An agent holds no write credentials of its own: its writes go through serve, which does. */
-export const inAgentEnv = (env: NodeJS.ProcessEnv): boolean => Boolean(env.AGENT_CHAT_AGENT_ID);
+const inAgentEnv = (env: NodeJS.ProcessEnv): boolean => Boolean(env.AGENT_CHAT_AGENT_ID);
 
 /**
  * True when this verb must not run its in-process fallback: an agent env with no serve answering.
