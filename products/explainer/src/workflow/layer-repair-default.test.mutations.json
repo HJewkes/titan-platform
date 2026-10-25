@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the agent-chat repairer turns on by default when AGENT_CHAT_BIN is set",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "from \"./run-gather.js\";\n\n// Repairs only when the host passes a repairer: the installed beat-builder profile predates TP-2608's TSX variant.\nfunction layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {\n  const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : {};",
+      "replace": "from \"./run-gather.js\";\nimport { agentChatRepairer as auto } from \"../build/agent-chat-repairer.js\";\n\nfunction layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {\n  const bin = process.env.AGENT_CHAT_BIN;\n  const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : bin ? { repairer: auto({ agentChatBin: bin }) } : {};",
+      "kills": [
+        "the host's repairer until TP-2608's profile lands makes no repair spawn when the host passes no repairer, even with agent-chat on PATH and AGENT_CHAT_BIN set"
+      ]
+    }
+  ]
+}

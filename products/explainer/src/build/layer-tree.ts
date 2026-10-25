@@ -8,7 +8,7 @@ export interface BuiltLayer {
   build: LayerBuild;
 }
 
-const SAFE_FILE_STEM = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+export const SAFE_FILE_STEM = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** The `custom-layers` tree: one `<beat>.tsx` per built layer and a `layers.json` naming each layer's anchors and element ids. */
 export function layerTreeFiles(builder: BuilderRef, layers: readonly BuiltLayer[]): Map<string, string> {
@@ -20,6 +20,7 @@ export function layerTreeFiles(builder: BuilderRef, layers: readonly BuiltLayer[
     builder,
     layers: sorted.map(({ beatId, key, build }) => ({
       beat: beatId, module: `${beatId}.tsx`, key, anchors: build.anchors, elements: build.elements, ...(build.sessionId ? { sessionId: build.sessionId } : {}),
+      ...(build.repairSessionId ? { repairSessionId: build.repairSessionId } : {}),
     })),
   };
   const files = new Map(sorted.map(({ beatId, build }) => [`${beatId}.tsx`, build.module]));
