@@ -803,6 +803,11 @@ new stage key.
   chapters are listed in a note and not capped.
 - **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,
   layer and anchors, plus every budget row.
+- **Variety (reported, TP-4019).** `variety-top-component`, `variety-component-run`, `variety-template-share`,
+  `variety-framing-run`, `variety-min-framings` and `variety-cast-in-motion` read `resolved` against the profile's
+  `layers.componentMaxShare`, `layers.templateMaxShare` and `variety.minFramings`, plus a run of at most 2 components
+  and 1 framing. Each detail names the beats a fix would change. None is a gate yet; cast-in-motion counts the
+  `E-RESOLVE-STILL-MOTION` beats the resolver already refuses.
 - **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
   chose. It is skipped with a note until a `slots` artifact exists; template fill (TP-2614 D3) will write one.
   `word-budget` fails on any beat or block over its cap. `slot-overrides` refuses an owner override the chosen beat

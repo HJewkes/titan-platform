@@ -17,6 +17,7 @@ import { labelConventionsVerdict } from "../label-conventions.js";
 import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
+import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
 import { doctrineG2p } from "./voice-g2p.js";
 import type { ArtifactStore } from "./artifacts.js";
@@ -164,6 +165,12 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   ],
   eval: [],
   resolve: [
+    { name: "variety-top-component", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:top-component") },
+    { name: "variety-component-run", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:component-run") },
+    { name: "variety-template-share", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:template-share") },
+    { name: "variety-framing-run", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:framing-run") },
+    { name: "variety-min-framings", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:min-framings") },
+    { name: "variety-cast-in-motion", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:cast-in-motion") },
     { name: "emphasis-target", gate: true, reads: ["script", "resolved", "slots"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
     { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
     { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
