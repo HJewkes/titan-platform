@@ -56,3 +56,24 @@ describe("bridge host file after the tts port", () => {
     }
   });
 });
+
+describe("sheets stage spec", () => {
+  const sheetsSpec = (params?: Variant["params"]) => {
+    const variant = params ? { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "sheets" as const, name: "v", params } } : undefined;
+    const settings = { ...SETTINGS, video: () => ({ id: "vid", runIds: ["r1", "r2"] }) };
+    return stageSpec({ stage: "sheets", artifacts: { mp4: "a".repeat(64), script: "c".repeat(64), qa: "d".repeat(64) }, settings, sample: 0, remainingUsd: 1, bridge: BRIDGE, ...(variant ? { variant } : {}) });
+  };
+
+  it("reads the MP4, the script and any optional input given, and keys on the video's runs, take and status", () => {
+    const spec = sheetsSpec();
+
+    expect(spec.inputs).toEqual({ mp4: "a".repeat(64), script: "c".repeat(64), qa: "d".repeat(64) });
+    expect(spec.config.video).toEqual({ id: "vid", runIds: ["r1", "r2"] });
+    expect(spec.config.sheets).toMatchObject({ take: "v1", status: "review", stem: "demo" });
+    expect(sheetsSpec({ take: "v2", status: "draft" }).config.sheets).toMatchObject({ take: "v2", status: "draft" });
+  });
+
+  it("refuses a sheets variant param other than take and status", () => {
+    expect(() => sheetsSpec({ workers: 4 })).toThrow(/workers/);
+  });
+});
