@@ -754,6 +754,33 @@ new stage key.
   are the owner's: the script stage's prompt shape (`DraftScriptSchema`) leaves them out, and a draft reply naming
   them loses them as `script-unknown-keys`.
 
+### Template fill
+
+`fillScript(script, resolved, { specs, pinned?, code? })` (`template-fill/`, TP-4134) turns each template beat of a
+`script/v1` and its `resolved` row into storyboard slot props, parsed by the beat spec's slot schema through
+`parseBeatSlots`. It is pure: the caller passes the beat specs, a pinned `slots` artifact and the code source
+(`codeSource(code)`). No stage calls it yet; TP-2992 S3 builds the storyboard from it.
+
+- **Layers.** The derived slots (or the pinned entry for the beat, which replaces them), then resolver `slots`, then
+  the owner's `visual.slots` through `withSlotOverrides`, the same call the emphasis gate makes. `generated` is every
+  layer under the owner's; `overridden` names the owner's fields.
+- **Derivation.** `DERIVERS` holds one row per `BEAT_SLOTS` ref, so a new ref without a row fails typecheck. The rows
+  port the spike sample builder's label conventions: a list row's mark is its first word (`tick`, `cross`, `risk`, `open`,
+  `dot`) and `<lane> · <text>` names its lane; `name: number` labels chart as bars, or as a line when there are 3 or
+  more and every name is a date; `before:` and `after:` labels pair by order into compare rows; 2 to 5 labels make a
+  map path. Refs whose slots carry structure a label does not hold (gantt, schema, sim and the like) derive nothing
+  and need `visual.slots` or a pin.
+- **Element ids** follow the cue convention: item n of field f is `f-n`, so a script cue's `rows-2` target names it.
+  Each element's cue word is the first cue whose target ends in `-n`; a missing one takes the one before it, and the
+  first defaults to the first spoken word. `reveals` lists them; `hints.placeholder` is set when the first lands past
+  30 % of the words.
+- **Continuation.** A later beat in a chapter that names the lead's `list`, `verdict-card` or `issue-pin` spec keeps
+  the lead's heading and its last rows (renamed `held-n`, shown from the first word), up to 3 rows with its own.
+- **Fallback.** Slots that do not parse, or a deriver that cannot read the beat, draw the beat as a `list` of its
+  labels and record `fallback: { from, reason }`; a button with no action draws as `outro`. A beat with
+  `visual.slots` never falls back: its refusal names the fields. Every refusal is listed in one `FillError`. Custom
+  beats are listed in `custom`, not filled.
+
 ### The sim kit
 
 A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contract, in TypeScript only:

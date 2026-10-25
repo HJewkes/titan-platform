@@ -34,6 +34,9 @@ const Point = z.object({ id: Id, label: Label, value: z.number() }).strict();
 const Finding = z.object({ id: Id, title: Line, severity: Severity, status: z.enum(["open", "fixed", "waived"]), round: z.number().int().positive().optional() }).strict();
 const ProofCheck = z.object({ id: Id, name: Label, base: z.enum(["fail", "pass", "absent"]), head: z.enum(["fail", "pass"]) }).strict();
 
+// A row's lane is the short chip a `<lane> · <text>` label names.
+const ListRow = z.object({ id: Id, text: Line, mark: z.enum(["tick", "cross", "risk", "open", "dot"]), lane: Label.max(12).optional() }).strict();
+
 const items = (min: number, max: number) => z.array(Item).min(min).max(max);
 const graph = { nodes: z.array(Node).min(2).max(12), edges: z.array(Edge).max(16) };
 
@@ -47,7 +50,7 @@ export const BEAT_SLOTS = {
   "user-flow": z.object({ actor: Label, steps: items(2, 6) }).strict(),
   misconception: z.object({ belief: Line, reality: Line, source: Source.optional() }).strict(),
   stakes: z.object({ cost: Line, figures: z.array(Figure).max(2).default([]) }).strict(),
-  map: z.object({ ...graph, focus: Id.optional() }).strict(),
+  map: z.object({ title: Label.optional(), ...graph, focus: Id.optional() }).strict(),
   "info-flow": z.object({ ...graph, token: Label.optional() }).strict(),
   "request-walk": z.object({ ...graph, request: Line, hops: z.array(Id).min(1) }).strict(),
   sequence: z.object({ actors: z.array(Node).min(2).max(6), messages: z.array(Edge).min(1).max(12) }).strict(),
@@ -56,7 +59,7 @@ export const BEAT_SLOTS = {
   "algo-trace": z.object({ steps: z.array(z.object({ id: Id, state: z.array(Label).min(1), note: Line }).strict()).min(2).max(12) }).strict(),
   compare: z.object({ leftTitle: Label, rightTitle: Label, rows: z.array(z.object({ id: Id, left: Line, right: Line }).strict()).min(1).max(4) }).strict(),
   "docs-vs-code": z.object({ docs: Line, source: Source, path: z.string().min(1), lines: z.array(CodeLine).min(1).max(6) }).strict(),
-  "issue-pin": z.object({ issues: z.array(z.object({ id: Id, title: Line, severity: Severity, pin: Id.optional() }).strict()).min(1).max(5) }).strict(),
+  "issue-pin": z.object({ title: Line.optional(), issues: z.array(z.object({ id: Id, title: Line, severity: Severity, pin: Id.optional() }).strict()).min(1).max(5) }).strict(),
   fix: z.object({ path: z.string().min(1), lines: z.array(CodeLine).min(1).max(10) }).strict(),
   chapter: z.object({ n: z.number().int().positive(), title: Label, question: Line.optional() }).strict(),
   history: z.object({ events: z.array(z.object({ id: Id, date: Day, text: Line }).strict()).min(2).max(8) }).strict(),
@@ -71,8 +74,8 @@ export const BEAT_SLOTS = {
   scorecard: z.object({ rows: z.array(z.object({ id: Id, label: Label, call: Label, reason: Line.optional() }).strict()).min(2).max(8) }).strict(),
   "reading-list": z.object({ items: z.array(z.object({ id: Id, path: z.string().min(1), why: Line }).strict()).min(1).max(6) }).strict(),
   "fact-flash": z.object({ facts: items(1, 4) }).strict(),
-  chart: z.object({ kind: z.enum(["bar", "line", "spark", "gauge"]), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12) }).strict(),
-  list: z.object({ title: Label.optional(), rows: z.array(z.object({ id: Id, text: Line, mark: z.enum(["tick", "cross", "risk", "open", "dot"]) }).strict()).min(1).max(5) }).strict(),
+  chart: z.object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12) }).strict(),
+  list: z.object({ title: Label.optional(), rows: z.array(ListRow).min(1).max(5) }).strict(),
   "verdict-card": z.object({ verdict: Line, call: Label, reasons: items(1, 3) }).strict(),
   "change-group": z.object({ groups: z.array(z.object({ id: Id, title: Label, why: Line, files: z.array(z.string().min(1)).min(1), pin: Id.optional() }).strict()).min(2).max(4) }).strict(),
   "diff-map": z.object({ nodes: z.array(Node.extend({ change: Change })).min(2).max(12), edges: z.array(Edge.extend({ change: Change })).max(16) }).strict(),
