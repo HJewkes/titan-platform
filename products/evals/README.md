@@ -46,6 +46,23 @@ titan-evals review-pr cases --corpus corpus.jsonl --repo owner/repo=<clone> \
   `cases/*.json`, `suite.json` (sorted case hashes plus the checks in `src/review-pr/checks.ts`)
   and `manifest.json` (counts by kind, skipped rows by reason, excluded cases by reason).
 
+`titan-evals history build` is the history corpus builder (TP-949). It makes no `gh` or
+GraphQL call; mirrors fetch over git smart HTTP unless `--no-fetch` is given.
+
+```sh
+titan-evals history build --until 2026-10-11T00:00:00Z --out <dir outside every repo> \
+  [--repo owner/repo]... [--graph <path>] [--mirrors <dir>] [--active-work-root <dir>] [--no-fetch]
+titan-evals history v2-parity --gh-cache <dir> --cases cases.v2.jsonl --as-of 2026-09-28T13:30:00Z
+```
+
+- `build` lists merged PRs at or before `--until` from the session graph (`mode=ro`) and computes
+  each PR's shas, paths, test paths and size band from a bare mirror holding `refs/pull/*/head`.
+  Default repos: the five label-v2 repos plus `HJewkes/titan-design`.
+- It writes `cases.jsonl` (canonical, sorted) and `summary.json` (`build_id`, per-repo counts, PRs
+  `missing` facts and `excluded` as private, by reason) into an empty `--out` outside every work
+  tree. Two `--no-fetch` runs with one `--until` are byte-identical.
+- `v2-parity` recomputes label v2 from the cached REST JSON only and exits 1 on any mismatch.
+
 `fixtures/measurement-audit/` is the second unit. It scores the `titan.measurement-audit/v1`
 report that `titan-factory audit <area>` writes. The gold case is the Shepherd measurement audit:
 44 metrics, each with a name, aliases, its definition and key words, and 11 capture gaps.

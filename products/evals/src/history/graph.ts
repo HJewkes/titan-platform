@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { readOnlyUri } from "../corpus/factory-db.js";
 
-interface MergedPr {
+export interface MergedPr {
   /** The allowlist's spelling of the repo, so later stages key on one form whatever case the graph stored. */
   repo: string;
   number: number;

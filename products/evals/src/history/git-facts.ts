@@ -37,13 +37,16 @@ export interface CommitFacts {
   size_band: SizeBand;
 }
 
-type MissingReason = "not-on-main" | "no-pull-head" | "no-merge-base" | "no-diff";
+export type MissingReason = "not-on-main" | "no-pull-head" | "no-merge-base" | "no-diff";
 
 type FactsResult = { facts: CommitFacts } | { missing: MissingReason };
 
 const squashNumber = (subject: string): number | undefined => mapMatch(/\(#(\d+)\)\s*$/.exec(subject));
 const mergeNumber = (subject: string): number | undefined => mapMatch(/^Merge pull request #(\d+)\b/.exec(subject));
 const mapMatch = (match: RegExpExecArray | null): number | undefined => (match?.[1] === undefined ? undefined : Number(match[1]));
+
+/** The PR number a main-line subject names, from a squash `(#N)` suffix or a `Merge pull request #N` subject. */
+export const landedPrNumber = (subject: string): number | undefined => squashNumber(subject) ?? mergeNumber(subject);
 
 /**
  * The commit on main that landed PR `number`, with its first parent. A later commit can reuse the
