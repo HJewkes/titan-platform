@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PerformanceObserver, type PerformanceEntry } from 'node:perf_hooks';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { discoverTranscripts, type DiscoveredTranscript } from '@titan-design/session-read';
@@ -88,23 +89,51 @@ afterEach(() => {
  * chunks of about 250 ms read as 2.6 to 3.3 s stalls there (TP-4199). A timer
  * fires between chunks, so the CPU time spent between two firings is at most
  * one chunk plus the sub-millisecond work around it.
+ *
+ * GC pauses in each interval are subtracted. A threads-pool worker's heap
+ * still holds garbage from the files it ran before this one, so a major GC
+ * there costs the heap's size, not the pass's. On CI a resume pass read 1348 ms
+ * where it reads under 30 ms with no GC locally.
  */
 async function measureLongestChunk<T>(fn: () => Promise<T>): Promise<{ result: T; maxChunkMs: number }> {
-  let maxMicros = 0;
+  const intervals: CpuInterval[] = [];
+  const gcs: PerformanceEntry[] = [];
+  const observer = new PerformanceObserver((list) => gcs.push(...list.getEntries()));
+  observer.observe({ entryTypes: ['gc'] });
   let since = process.threadCpuUsage();
+  let sinceAt = performance.now();
   const sample = (): void => {
     const spent = process.threadCpuUsage(since);
-    maxMicros = Math.max(maxMicros, spent.user + spent.system);
+    const now = performance.now();
+    intervals.push({ start: sinceAt, end: now, cpuMs: (spent.user + spent.system) / 1_000 });
     since = process.threadCpuUsage();
+    sinceAt = now;
   };
   const timer = setInterval(sample, 1);
   try {
     const result = await fn();
     sample();
-    return { result, maxChunkMs: Math.round(maxMicros / 1_000) };
+    // Node queues a GC's entry on the loop after the pause, so let the last ones land.
+    await new Promise((resolve) => setImmediate(resolve));
+    gcs.push(...observer.takeRecords());
+    const chunks = intervals.map((interval) => interval.cpuMs - gcMsWithin(gcs, interval));
+    return { result, maxChunkMs: Math.round(Math.max(0, ...chunks)) };
   } finally {
     clearInterval(timer);
+    observer.disconnect();
   }
+}
+
+interface CpuInterval {
+  start: number;
+  end: number;
+  cpuMs: number;
+}
+
+function gcMsWithin(gcs: readonly PerformanceEntry[], { start, end }: CpuInterval): number {
+  let ms = 0;
+  for (const gc of gcs) ms += Math.max(0, Math.min(end, gc.startTime + gc.duration) - Math.max(start, gc.startTime));
+  return ms;
 }
 
 function deltaPass() {
