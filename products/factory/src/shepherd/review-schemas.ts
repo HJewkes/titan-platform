@@ -30,6 +30,14 @@ export const CiPolicySchema = z
   .optional()
   .catch(() => CI_POLICY_MALFORMED);
 
+const CiPolicyLineSchema = z.strictObject({ side: z.enum(["-", "+"]), n: z.number().int().min(1), text: z.string() });
+
+/** The D21 card's lines as stored; any other shape, a pre-redesign record's included, reads as none, so the card falls back to the diff link and the gate stands. */
+const CiPolicyChangesSchema = z
+  .array(z.strictObject({ path: z.string(), lines: z.array(CiPolicyLineSchema), omitted: z.number().int().min(0) }))
+  .optional()
+  .catch(undefined);
+
 const CheckRunFact = z.looseObject({ name: z.string(), appId: z.number(), headSha: z.string(), conclusion: z.string().nullable() });
 const CarryFact = z.looseObject({ fromHead: z.string(), head: z.string(), headTree: z.string(), mergeTree: z.string() });
 
@@ -69,6 +77,7 @@ const EvidenceRecordSchema = z.looseObject({
   decision: GateDecisionSchema,
   carry: CarryFact.optional(),
   ciPolicy: CiPolicySchema,
+  ciPolicyChanges: CiPolicyChangesSchema,
 });
 
 /** The evidence step's output: the facts observed at one head and the record of what they decided. */
