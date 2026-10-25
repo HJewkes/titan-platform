@@ -18,14 +18,14 @@
  * has no console action.
  */
 import { z } from "zod";
-import { ownerOpSchema } from "@titan-design/owner-queue";
+import { MERGE_WAITS, ownerOpSchema } from "@titan-design/owner-queue";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import type { DecisionItem, DecisionLog, DecisionLogResult } from "./decision-log.js";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { nextStateOf, type NextState } from "./inbox-next.js";
-import { opReadBackOf, postedOp, type OpAction, type OpReadBack } from "./inbox-op.js";
+import { opReadBackOf, postedOp, type MergeWait, type OpAction, type OpReadBack } from "./inbox-op.js";
 import { readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
@@ -113,9 +113,10 @@ const prBaseOf = (item: InboxItem, action: PostedAction | G10Action) => ({ repo:
  * A g10 release reads the PR's timeline for its verdicts and an op reads the factory's preview; every other read-back comes
  * from the item alone. A string is the reason there is nothing to do.
  */
-async function readBackOf(sources: InboxSources, item: InboxItem, action: ConsoleAction): Promise<ReadBack | string> {
+async function readBackOf(sources: InboxSources, item: InboxItem, action: ConsoleAction, waitFor?: MergeWait): Promise<ReadBack | string> {
+  if (waitFor !== undefined && action.kind !== "owner-op") return "only a merge-at-head tap waits for the adversary loop";
   if (action.kind === "answer-chat") return chatReadBackOf(item, action);
-  if (action.kind === "owner-op") return opReadBackOf(sources.shepherd, item, action);
+  if (action.kind === "owner-op") return opReadBackOf(sources.shepherd, item, action, waitFor);
   if (action.kind === "hold-release") return { ...prBaseOf(item, action), ...g10Signal((await sources.shepherd.timeline(action.repo, action.pr)).entries, action) };
   const at = `${action.repo}#${action.pr} at ${short(action.headSha)}`;
   if (action.kind === "owner-release") return { ...prBaseOf(item, action), effect: `Release the owner-asked hold on ${at}` };
@@ -137,11 +138,11 @@ async function liveItem(sources: InboxSources, itemId: string): Promise<{ item: 
   return item === undefined ? refuse(`no inbox item ${itemId}; it may have been answered, read the inbox again`) : { item, readAt: list.readAt };
 }
 
-async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, itemId: string): Promise<PrepareResult> {
+async function prepare(ctx: Omit<ActContext, "issuedAt">, store: PreparedStore, { itemId, waitFor }: Pick<Tap, "itemId" | "waitFor">): Promise<PrepareResult> {
   const { item, readAt } = await liveItem(ctx.sources, itemId);
   const { action } = item;
   if (!isConsoleAction(action, ctx.options.answerer)) return { status: "no-action", itemId, action, reason: noActionReason(action) };
-  const readBack = await readBackOf(ctx.sources, item, action);
+  const readBack = await readBackOf(ctx.sources, item, action, waitFor);
   if (typeof readBack === "string") return { status: "no-action", itemId, action, reason: readBack };
   const confirm = itemDigest(item, readAt, readBack);
   const expiresAt = ctx.now() + CONFIRM_TTL_MS;
@@ -167,7 +168,7 @@ async function writeItemRecord(ctx: ActContext, file: string, tap: Tap, prepared
   const { item } = await liveItem(ctx.sources, prepared.key);
   const { action } = item;
   if (!isConsoleAction(action, ctx.options.answerer)) return refuse(CHANGED);
-  const readBack = await readBackOf(ctx.sources, item, action);
+  const readBack = await readBackOf(ctx.sources, item, action, tap.waitFor);
   if (typeof readBack === "string" || itemDigest(item, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
   const target = action.kind === "owner-op" && "proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action };
@@ -196,6 +197,21 @@ function textFor(action: ConsoleAction, text: string | undefined): string | unde
 const resolvedMessage = (record: ActionRecord): string =>
   !isOpRecord(record) && record.action.kind === "resolve-gate" && record.action.decision === "await-new-head" ? "Waiting for the implementer's next pushed head; nothing merged" : "Merge approved";
 
+type OpOutcome = Extract<Outcome, { status: "accepted" | "approved" | "pr-closed" | "pause-cleared" }>;
+
+function opMessageOf(outcome: OpOutcome): string {
+  switch (outcome.status) {
+    case "accepted":
+      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
+    case "approved":
+      return "Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you";
+    case "pr-closed":
+      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
+    case "pause-cleared":
+      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
+  }
+}
+
 function messageOf(outcome: Outcome, record: ActionRecord): string {
   switch (outcome.status) {
     case "answered":
@@ -205,11 +221,10 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "resolved":
       return resolvedMessage(record);
     case "accepted":
-      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
+    case "approved":
     case "pr-closed":
-      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
     case "pause-cleared":
-      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
+      return opMessageOf(outcome);
     case "released":
       return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
     case "already":
@@ -267,6 +282,8 @@ interface Tap {
   itemId: string;
   confirm: string;
   text?: string;
+  /** A merge-at-head on a g10-held PR: approve now and leave the merge until the adversary loop closes MERGE at this head. */
+  waitFor?: MergeWait;
 }
 
 async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<ActResult> {
@@ -279,7 +296,7 @@ async function act(ctx: ActContext, store: PreparedStore, tap: Tap): Promise<Act
   return { actionId: tap.confirm, outcome, message: messageOf(outcome, record), ...(log !== undefined && { log }), ...(next !== undefined && { next }) };
 }
 
-const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "pr-closed", "pause-cleared", "already"]);
+const LANDED: ReadonlySet<Outcome["status"]> = new Set(["resolved", "released", "accepted", "approved", "pr-closed", "pause-cleared", "already"]);
 
 /** Only a landed tap on a PR has a next state to read; an answer to an agent has no run. */
 function nextAfter(sources: InboxSources, record: ActionRecord, outcome: Outcome): Promise<NextState | undefined> {
@@ -300,17 +317,17 @@ export function inboxActionCommands(sources: InboxSources, options: InboxActionO
     "inbox.prepare": readCommand({
       name: "inbox.prepare",
       description: "Re-read one inbox item and return the read-back of what its tap does, with a confirm digest valid five minutes",
-      args: z.strictObject({ itemId: z.string().min(1).max(512) }),
+      args: z.strictObject({ itemId: z.string().min(1).max(512), waitFor: z.enum(MERGE_WAITS).optional() }),
       result: z.custom<PrepareResult>(),
-      run: ({ itemId }) => {
+      run: (args) => {
         assertOn(options);
-        return prepare({ options, sources, now }, store, itemId);
+        return prepare({ options, sources, now }, store, args);
       },
     }),
     "inbox.act": ownerWriteCommand({
       name: "inbox.act",
       description: "Do what a prepared inbox item's read-back said: write its action record once and post it to the factory, an answer to the broker, or a g10 release to Shepherd",
-      args: z.strictObject({ itemId: z.string().min(1).max(512), confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional() }),
+      args: z.strictObject({ itemId: z.string().min(1).max(512), confirm: z.string().regex(CONFIRM), text: z.string().max(MAX_ANSWER).optional(), waitFor: z.enum(MERGE_WAITS).optional() }),
       result: z.custom<ActResult>(),
       ownerWrite: true,
       run: (args, ctx) => {

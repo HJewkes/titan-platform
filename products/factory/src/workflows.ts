@@ -197,7 +197,8 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
 function holdSatisfierFor(deps: FactoryRouteDeps): HoldSatisfier | undefined {
   const dispatch = deps.review?.dispatch;
   if (!deps.review || !dispatch) return undefined;
-  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), reader: deps.review.reader, carry: (input) => carry(input, deps.review?.carry) });
+  const { lineage, reader } = deps.review;
+  return holdSatisfier({ store: () => deps.store.get(), roster: () => dispatch.roster(), lineage, reader, carry: (input) => carry(input, deps.review?.carry) });
 }
 
 /** All or none: a bind that throws unbinds the refs bound before it, so no store stays bound to a database the host never opened. */
@@ -250,7 +251,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef
   const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, liveField(config, "shepherd.review.fallbackConfigDirs"), under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  const wiring = { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }) };
+  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }) };
   return withHoldAdversary(wiring, holdAdversary(review, config, under));
 }
 

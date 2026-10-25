@@ -44,6 +44,12 @@ describe("the G10 hold Shepherd places at registration on the gate-resolve closu
     expect(await holdFor([file("products/factory/src/shepherd/gate-resolve-repo.test-helpers.ts", 1)])).toBe("g10-adversary: policy touch");
   });
 
+  it("holds a rename of gate-resolve-sites.test.ts out of the check g10-adversary by its old path", async () => {
+    const renamed: PrFile = { path: "products/factory/src/shepherd/other.test.ts", previousPath: "products/factory/src/shepherd/gate-resolve-sites.test.ts", status: "renamed", additions: 0, deletions: 0 };
+
+    expect(await holdFor([renamed])).toBe("g10-adversary: policy touch");
+  });
+
   it("leaves a change to only another policy-named test file unheld", async () => {
     expect(await holdFor([file("products/factory/src/shepherd/gate-resolve-proof.test.ts", 3)])).toBeUndefined();
   });

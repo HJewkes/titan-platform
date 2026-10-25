@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { listAgents, retire } from "./agents.js";
+import { listAgentLineage, listAgents, retire } from "./agents.js";
 import { DispatchError, DispatchTimeoutError } from "./dispatch.js";
 import { installExecutable } from "./test-support.js";
 
@@ -113,6 +113,7 @@ describe("listAgents", () => {
     ["account", 1],
     ["teleportFrom", {}],
     ["predecessor", 7],
+    ["retired", "yes"],
   ])("keeps a row whose optional %s is %j but drops that field", async (field, value) => {
     const bin = printing([row({ [field]: value })]);
 
@@ -139,6 +140,15 @@ describe("listAgents", () => {
     const [kept] = await listAgents(bin, 10_000);
 
     expect(kept).not.toHaveProperty("predecessor");
+  });
+
+  it("passes through the marker on a retired generation's row", async () => {
+    const bin = printing([row({ state: "retired", retired: true })]);
+
+    const [kept] = await listAgents(bin, 10_000, { includeRetired: true });
+
+    expect(kept).toHaveProperty("retired", true);
+    expect(recordedArgv()).toEqual(["agent", "ls", "--json", "--include-retired"]);
   });
 
   it("skips a row missing a field it relies on, rather than guessing its status", async () => {
@@ -175,6 +185,38 @@ describe("listAgents", () => {
     clearTimeout(ticker);
 
     expect(order).toEqual(["tick", "roster"]);
+  });
+});
+
+describe("listAgentLineage", () => {
+  /** An agent-chat built before `--include-retired`: commander refuses the flag, and the plain roster still answers. */
+  function predatingIncludeRetired(rows: unknown[]): string {
+    const file = join(dir, "roster.json");
+    writeFileSync(file, JSON.stringify(rows));
+    return fakeAgentChat(
+      `for a in "$@"; do [ "$a" = --include-retired ] && { echo "error: unknown option '--include-retired'" >&2; exit 1; }; done\ncat "${file}"\n`,
+    );
+  }
+
+  it("asks for retired generations too and calls the lineage complete", async () => {
+    const rows = [row({ state: "retired", retired: true }), row({ name: "item-7" })];
+    const bin = printing(rows);
+
+    expect(await listAgentLineage(bin, 10_000)).toEqual({ rows, complete: true });
+    expect(recordedArgv()).toEqual(["agent", "ls", "--json", "--include-retired"]);
+  });
+
+  it("falls back to the plain roster, marked incomplete, on an agent-chat that predates the flag", async () => {
+    const bin = predatingIncludeRetired([row()]);
+
+    expect(await listAgentLineage(bin, 10_000)).toEqual({ rows: [row()], complete: false });
+    expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
+  });
+
+  it("keeps any other refusal a refusal rather than an incomplete lineage", async () => {
+    const bin = fakeAgentChat(`echo "error: unknown option '--json'" >&2\nexit 1\n`);
+
+    await expect(listAgentLineage(bin, 10_000)).rejects.toThrow(/unknown option '--json'/);
   });
 });
 
