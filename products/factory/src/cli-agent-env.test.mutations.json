@@ -18,6 +18,15 @@
       "kills": [
         "land exits UNAVAILABLE and makes no GitHub call"
       ]
+    },
+    {
+      "name": "resume skips the agent-env refusal",
+      "file": "products/factory/src/cli-host-verbs.ts",
+      "find": "if (refusedAgentWrite(verbs, \"resume\")) return;",
+      "replace": "",
+      "kills": [
+        "resume stays refused while something answers /health, since it has no serve route"
+      ]
     }
   ]
 }

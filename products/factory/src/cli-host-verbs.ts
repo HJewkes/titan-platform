@@ -1,7 +1,7 @@
 import { consoleLogger } from "@titan-design/daemon";
 import type { Command } from "commander";
 import type { CliDeps, Verbs } from "./cli.js";
-import { refusedWriteFallback } from "./cli-agent-env.js";
+import { refusedAgentWrite } from "./cli-agent-env.js";
 import { parsePort } from "./cli-options.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { EXIT } from "./exit-codes.js";
@@ -17,9 +17,8 @@ export function registerResume(program: Command, verbs: Verbs): void {
   program
     .command("resume")
     .description("drive every unfinished run until it ends or waits on a human, then list open gates")
-    .option("--port <n>", "port titan-factory serve listens on; an agent env refuses to drive runs here when none answers", parsePort, FACTORY_PORT)
-    .action(async (opts: { port: number }) => {
-      if (await refusedWriteFallback(verbs, opts.port, "resume")) return;
+    .action(async () => {
+      if (refusedAgentWrite(verbs, "resume")) return;
       await withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK));
     });
 }
@@ -32,9 +31,8 @@ export function registerGate(program: Command, verbs: Verbs): void {
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
-    .option("--port <n>", "port titan-factory serve listens on; an agent env refuses to resolve here when none answers", parsePort, FACTORY_PORT)
-    .action(async (runId: string, stepId: string, opts: { json: string; port: number }) => {
-      if (await refusedWriteFallback(verbs, opts.port, "gate resolve")) return;
+    .action(async (runId: string, stepId: string, opts: { json: string }) => {
+      if (refusedAgentWrite(verbs, "gate resolve")) return;
       await withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, routes.shepherd && evidenceSources(routes.shepherd)));
     });
 }

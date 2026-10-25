@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { createServer as createHttp } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -59,8 +60,9 @@ describe("write verbs in an agent env with no serve answering", () => {
     ["shepherd resync", (port) => ["shepherd", "resync", "--port", port]],
     ["shepherd repair-go", (port) => ["shepherd", "repair-go", `${REPO}#1`, "--port", port]],
     ["shepherd repair-stop", (port) => ["shepherd", "repair-stop", `${REPO}#1`, "--reason", "demo", "--port", port]],
-    ["resume", (port) => ["resume", "--port", port]],
-    ["gate resolve", (port) => ["gate", "resolve", "run-1", "step-1", "--json", "{}", "--port", port]],
+    ["resume", () => ["resume"]],
+    ["gate resolve", () => ["gate", "resolve", "run-1", "step-1", "--json", "{}"]],
+    ["toolchain fanout", () => ["toolchain", "fanout"]],
   ];
 
   it.each(writes)("%s exits UNAVAILABLE and makes no GitHub call", async (verb, argvOf) => {
@@ -69,9 +71,18 @@ describe("write verbs in an agent env with no serve answering", () => {
     const result = await cli(["--db", dbPath, ...argvOf(String(await deadPort()))], deps, AGENT);
 
     expect(result.code).toBe(EXIT.UNAVAILABLE);
-    expect(result.err).toContain("connection refused, so serve is down");
     expect(result.err).toContain("would write in-process, which an agent env refuses");
     expect(calls).toEqual([]);
+  });
+
+  it("resume stays refused while something answers /health, since it has no serve route", async () => {
+    const { deps, dbPath } = countingSetup();
+    const serve = createHttp((_req, res) => void res.writeHead(200, { "content-type": "application/json" }).end("{}"));
+    await new Promise<void>((resolve) => serve.listen(0, "127.0.0.1", resolve));
+
+    const result = await cli(["--db", dbPath, "resume"], deps, AGENT).finally(() => serve.close());
+
+    expect(result.code).toBe(EXIT.UNAVAILABLE);
   });
 
   it("repair-stops, a read, still falls back to the database here", async () => {

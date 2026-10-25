@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,20 +152,14 @@ describe("titan-factory resume and gate resolve", () => {
     expect(changed.err).toContain(`no gate with id ${runId}/approve-publish:1`);
   });
 
-  it("gate resolve from an agent-chat agent's shell is refused and the gate stays pending", async () => {
+  it("gate resolve from an agent-chat agent's shell is refused before any in-process write and the gate stays pending", async () => {
     const dbPath = dbFile();
     const runId = await pausedRun(dbPath);
 
-    // A serve is answering, so the agent-env fallback refusal stays out of the way and the coordinator refusal is what is under test.
-    const serve = createServer((_req, res) => void res.writeHead(200, { "content-type": "application/json" }).end("{}"));
-    await new Promise<void>((resolve) => serve.listen(0, "127.0.0.1", resolve));
-    const address = serve.address();
-    const port = String(address !== null && typeof address === "object" ? address.port : 0);
+    const { code, err } = await cliWithEnv(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
 
-    const { code, err } = await cliWithEnv(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}', "--port", port).finally(() => serve.close());
-
-    expect(code).toBe(EXIT.FAILURE);
-    expect(err).toContain("refused a resolution by coordinator");
+    expect(code).toBe(EXIT.UNAVAILABLE);
+    expect(err).toContain("an agent env refuses");
     expect(gateAt(dbPath, `${runId}/approve-publish`)).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 

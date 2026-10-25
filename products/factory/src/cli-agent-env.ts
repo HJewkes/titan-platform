@@ -18,3 +18,14 @@ export async function refusedWriteFallback(verbs: Verbs, port: number, verb: str
   verbs.setExit(EXIT.UNAVAILABLE);
   return true;
 }
+
+/**
+ * For a write verb with no serve route: its in-process run is its only path, so an agent env never takes it, whatever answers on a port.
+ * True when it has printed the refusal and set the exit.
+ */
+export function refusedAgentWrite(verbs: Verbs, verb: string): boolean {
+  if (!inAgentEnv(verbs.io.env)) return false;
+  verbs.io.stderr(`error: ${verb} has no titan-factory serve route and would write in-process, which an agent env refuses, so nothing was done\n`);
+  verbs.setExit(EXIT.UNAVAILABLE);
+  return true;
+}

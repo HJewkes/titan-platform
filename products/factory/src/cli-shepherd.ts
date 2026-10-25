@@ -193,7 +193,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
 
-/** The commands whose in-process fallback reaches a GitHub or release port; repair-stop writes only when its action is not `list`. */
+/** The commands whose in-process fallback writes, the ones the brief names; repair-stop writes only when its action is not `list`. */
 const PORT_WRITES: ReadonlySet<ShepherdCommandName> = new Set(["shepherd.merge", "shepherd.review", "shepherd.release", "shepherd.hold", "shepherd.resync", "shepherd.repair-stop"]);
 
 const writesPort = (name: ShepherdCommandName, args: object): boolean => PORT_WRITES.has(name) && (args as { action?: string }).action !== "list";

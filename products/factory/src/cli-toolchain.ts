@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import type { Verbs } from "./cli.js";
+import { refusedAgentWrite } from "./cli-agent-env.js";
 import { EXIT } from "./exit-codes.js";
 import type { FactoryRoutes } from "./host.js";
 import type { ShepherdServices } from "./shepherd/services.js";
@@ -16,6 +17,7 @@ export function registerToolchain(program: Command, verbs: Verbs): void {
     .option("--dry-run", "list the PRs it would open and write nothing")
     .action(async (opts: { dryRun?: boolean }) => {
       if (opts.dryRun) return verbs.setExit(await dryRun(verbs));
+      if (refusedAgentWrite(verbs, "toolchain fanout")) return;
       await verbs.withHost(async (host, routes) => {
         const notes = await sweepToolchain(host, shepherdOf(routes));
         verbs.io.stdout(formatNotes(notes));
