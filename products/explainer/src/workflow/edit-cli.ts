@@ -67,7 +67,7 @@ function readEdit(file: string, deps: EditCliDeps): { edit?: SlotEdit; problems:
   return parsed.success ? { edit: parsed.data, problems: [] } : { problems: issues(parsed.error) };
 }
 
-interface RunView {
+export interface RunView {
   runId: string;
   status: string;
   videoId: string;
@@ -78,7 +78,7 @@ interface RunView {
 }
 
 /** A finished `explainer-video` run as an edit drafted over it sees it. */
-function runView(dataDir: string, runId: string): RunView {
+export function runView(dataDir: string, runId: string): RunView {
   const db = openState(dataDir);
   try {
     const runs = new WorkflowRunStore(db);
@@ -93,7 +93,7 @@ function runView(dataDir: string, runId: string): RunView {
   }
 }
 
-function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
+export function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
   const db = openState(dataDir);
   try {
     return use(new ArtifactStore(dataDir, db));
@@ -103,7 +103,7 @@ function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
 }
 
 /** The base run's script, resolved beats and, when the run holds them, the fill's generated slots. */
-function editBase(dataDir: string, view: RunView): EditBase & { resolved: Resolved } {
+export function editBase(dataDir: string, view: RunView): EditBase & { resolved: Resolved } {
   const { script, resolved, slots } = view.artifacts;
   if (script === undefined || resolved === undefined) throw new Error(`run ${view.runId} has no resolved script; an edit needs a run that finished resolve`);
   return withStore(dataDir, (store) => {
