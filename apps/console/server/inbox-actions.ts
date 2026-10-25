@@ -30,7 +30,7 @@ import type { BrokerVerdicter, VerdictOutcome } from "./broker-verdict.js";
 import { APPROVE_AT_SESSION, approveChatReadBackOf, dispatchVerdict, verdictFor, isApproveChatReadBack, verdictMessageOf, VERDICTS, type ApproveChatAction, type ApproveChatReadBack } from "./inbox-approve-chat.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { nextStateOf, type NextState } from "./inbox-next.js";
-import { opReadBackOf, postedOp, type MergeWait, type OpAction, type OpReadBack } from "./inbox-op.js";
+import { movedMessage, opMessageOf, opReadBackOf, postedOp, type MergeWait, type OpAction, type OpReadBack } from "./inbox-op.js";
 import { CONSOLE_DECISION_IDS, readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
@@ -239,29 +239,6 @@ const RESOLVED_MESSAGE: Record<ConsoleDecision, string> = {
 
 const resolvedMessage = (record: ActionRecord): string => (!isOpRecord(record) && record.action.kind === "resolve-gate" ? RESOLVED_MESSAGE[record.action.decision] : RESOLVED_MESSAGE.merge);
 
-type OpOutcome = Extract<Outcome, { status: "accepted" | "approved" | "pr-closed" | "pause-cleared" | "retired" }>;
-
-/** What a typed owner op's landed effect did. */
-function opMessageOf(outcome: OpOutcome): string {
-  switch (outcome.status) {
-    case "accepted":
-      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
-    case "approved":
-      return "Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you";
-    case "pr-closed":
-      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
-    case "pause-cleared":
-      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
-    case "retired":
-      return [`Retired ${outcome.name}`, ...outcome.caveats].join("; ");
-  }
-}
-
-function movedMessage(outcome: Extract<Outcome, { status: "moved" }>): string {
-  if (outcome.currentAgentId !== undefined) return `The name is now a different agent (${short(outcome.currentAgentId)}), read again`;
-  return outcome.currentPause === undefined ? `PR moved to ${short(outcome.currentHead)}, read again` : `A deploy pause from ${outcome.currentPause} stands instead and is kept, read again`;
-}
-
 function messageOf(outcome: Outcome, record: ActionRecord): string {
   if (!isOpRecord(record) && record.action.kind === "approve-chat") return verdictMessageOf(outcome, record, record.action.msgId);
   switch (outcome.status) {
@@ -276,9 +253,8 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "pr-closed":
     case "pause-cleared":
     case "retired":
-      return opMessageOf(outcome);
     case "released":
-      return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
+      return opMessageOf(outcome);
     case "already":
       return "Already done by this confirmation";
     case "moved":

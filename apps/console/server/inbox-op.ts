@@ -10,6 +10,7 @@
  */
 import type { MERGE_WAITS, OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { holdClassOf, type InboxItem } from "./inbox-view.js";
+import type { ActionOutcome } from "./owner-action.js";
 import type { OpPreview, ShepherdSource } from "./shepherd.js";
 
 export type OpAction = Extract<InboxItem["action"], { kind: "owner-op" }>;
@@ -149,4 +150,29 @@ export function postedOp(op: OwnerOp, readBack: OpReadBack): OwnerOp {
   if (!("headSha" in op && "pr" in op && "headSha" in readBack)) return op;
   if (op.kind !== "merge-at-head") return { ...op, headSha: readBack.headSha };
   return { kind: op.kind, repo: op.repo, pr: op.pr, headSha: readBack.headSha, ...(readBack.waitFor && { waitFor: readBack.waitFor }) };
+}
+
+type OpOutcome = Extract<ActionOutcome, { status: "accepted" | "approved" | "pr-closed" | "pause-cleared" | "retired" | "released" }>;
+
+/** What a typed owner op's, or a hold release's, landed effect did. */
+export function opMessageOf(outcome: OpOutcome): string {
+  switch (outcome.status) {
+    case "accepted":
+      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;
+    case "approved":
+      return "Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you";
+    case "pr-closed":
+      return `PR closed at ${short(outcome.closedHead)}; its branch is kept`;
+    case "pause-cleared":
+      return outcome.stillHeld === null ? "Deploy pause cleared; the deploy pacer may deploy within about a minute" : `Deploy pause cleared; deploys stay held by hand: ${outcome.stillHeld}`;
+    case "retired":
+      return [`Retired ${outcome.name}`, ...outcome.caveats].join("; ");
+    case "released":
+      return outcome.stillHeld === null ? "Hold released" : `Hold released; the PR is still held: ${outcome.stillHeld}`;
+  }
+}
+
+export function movedMessage(outcome: Extract<ActionOutcome, { status: "moved" }>): string {
+  if (outcome.currentAgentId !== undefined) return `The name is now a different agent (${short(outcome.currentAgentId)}), read again`;
+  return outcome.currentPause === undefined ? `PR moved to ${outcome.currentHead === null ? "an unknown head" : short(outcome.currentHead)}, read again` : `A deploy pause from ${outcome.currentPause} stands instead and is kept, read again`;
 }
