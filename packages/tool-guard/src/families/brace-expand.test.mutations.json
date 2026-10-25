@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a nested comma marks every open brace as a list",
+      "file": "packages/tool-guard/src/families/brace-expand.ts",
+      "find": "(open.at(-1) as { comma: boolean }).comma = true;",
+      "replace": "open.forEach((o) => { o.comma = true; });",
+      "kills": [
+        "braceExpansions, the words bash makes expands a list inside literal braces"
+      ]
+    },
+    {
+      "name": "a parameter expansion reads as a list",
+      "file": "packages/tool-guard/src/families/brace-expand.ts",
+      "find": "if (c === \"{\" && text[i - 1] !== \"$\")",
+      "replace": "if (c === \"{\")",
+      "kills": [
+        "braceExpansions, the words bash makes leaves a parameter expansion as written"
+      ]
+    },
+    {
+      "name": "sequences are not expanded",
+      "file": "packages/tool-guard/src/families/brace-expand.ts",
+      "find": "const items = pair.comma ? listItems(body) : sequenceItems(body);",
+      "replace": "const items = pair.comma ? listItems(body) : null;",
+      "kills": [
+        "braceExpansions, the words bash makes expands an integer sequence"
+      ]
+    },
+    {
+      "name": "list items split at nested commas",
+      "file": "packages/tool-guard/src/families/brace-expand.ts",
+      "find": "else if (body[i] === \",\" && depth === 0)",
+      "replace": "else if (body[i] === \",\")",
+      "kills": [
+        "braceExpansions, the words bash makes expands a nested list"
+      ]
+    },
+    {
+      "name": "the word cap is not enforced",
+      "file": "packages/tool-guard/src/families/brace-expand.ts",
+      "find": "    if (words.length + pending.length > BRACE_EXPANSION_CAP) return null;\n",
+      "replace": "",
+      "kills": [
+        "braceExpansions, past what it lists reads more words than the cap as unknown"
+      ]
+    }
+  ]
+}

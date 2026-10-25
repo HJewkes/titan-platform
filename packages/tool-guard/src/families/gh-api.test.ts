@@ -112,6 +112,9 @@ describe("ghApiRequest graphql query", () => {
     ['gh api graphql -F "q$K"'],
     ["gh api graphql -f query='{ viewer { login } }' -F n=$N"],
     ["gh api graphql -f query='{ viewer { login } }' -H $H"],
+    ['gh api graphql.json -f query="$Q"'],
+    ['gh api https://ghe.example/api/graphql.json -f query="$Q"'],
+    ['gh api repos/../graphql -f query="$Q"'],
   ])("%s carries an unknown query", (line) => {
     expect(request(line).queryUnknown).toBe(true);
   });
@@ -122,20 +125,34 @@ describe("ghApiRequest graphql query", () => {
     ['gh api graphql -f query="{ viewer { login } }" -F owner="$O"'],
     ['gh api repos/o/r/issues -f query="$Q"'],
     ['gh api graphqlx -f query="$Q"'],
+    ['gh api repos/o/r/graphql.json -f query="$Q"'],
     ['gh api graphql -F query=@"$F"'],
     ['gh api graphql -F "x$K"'],
   ])("%s carries no unknown query", (line) => {
     expect(request(line).queryUnknown).toBe(false);
   });
 
-  it.each(["graphql", "/graphql", "graphql/", "https://api.github.com/graphql", "https://ghe.example/api/graphql", "graphql?x=1", "GraphQL"])(
+  it.each([
+    "graphql",
+    "/graphql",
+    "graphql/",
+    "https://api.github.com/graphql",
+    "https://ghe.example/api/graphql",
+    "graphql?x=1",
+    "GraphQL",
+    "graphql.json",
+    "graphql;x",
+    "https://api.github.com/%67raphql",
+    "https://ghe.example/api/graphql.json",
+    "repos/../graphql",
+  ])(
     "%s is the graphql endpoint",
     (endpoint) => {
       expect(isGraphqlEndpoint(endpoint)).toBe(true);
     },
   );
 
-  it.each(["graphqlx", "repos/o/r/graphql", "https://api.github.com/repos/o/r", "x/graphql"])("%s is not the graphql endpoint", (endpoint) => {
+  it.each(["graphqlx", "repos/o/r/graphql", "https://api.github.com/repos/o/r", "x/graphql", "repos/o/r/graphql.json"])("%s is not the graphql endpoint", (endpoint) => {
     expect(isGraphqlEndpoint(endpoint)).toBe(false);
   });
 

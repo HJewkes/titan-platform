@@ -2,50 +2,49 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the family matches mutation names in raw text, undecoded and unbounded",
+      "name": "an unknown reading that names no mutation passes",
       "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "texts === null || graphqlBranchWrites(texts, fields).mutations.some((m) => RULESET_MUTATIONS.has(m));",
-      "replace": "texts === null || texts.some((t) => [...RULESET_MUTATIONS].some((m) => t.includes(m)));",
+      "find": "(reading.unknown && reading.mutations.length === 0) || ",
+      "replace": "",
       "kills": [
-        "githubSettings, a GraphQL ruleset mutation passes gh api graphql -f 'query=mutation{deleteRepositoryRulesetX(input:{repositoryRulesetId:\"RRS\"}){clientMutationId}}'"
+        "githubSettings, a GraphQL request it cannot read in full denies gh api graphql -F 'query=mutation{{owner}(input:{repositoryRulesetId:\"RRS_x\"}){clientMutationId}}'"
       ]
     },
     {
-      "name": "an unreadable GraphQL query reads as no ruleset mutation",
+      "name": "an unread GraphQL query reads as no ruleset mutation",
       "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "  texts === null || graphqlBranchWrites(",
-      "replace": "  texts !== null && graphqlBranchWrites(",
+      "find": "  if (texts === null) return true;",
+      "replace": "  if (texts === null) return false;",
       "kills": [
         "githubSettings, a GraphQL ruleset mutation bash.config.curl-graphql-ruleset: curl -d @q.json https://api.github.com/graphql",
         "githubSettings, a GraphQL ruleset mutation bash.config.gh-api-graphql-ruleset: gh api graphql --input q.json"
       ]
     },
     {
-      "name": "gh reads only a run-time query as unread, not query=@f or --input",
+      "name": "a gh query field the shell rewrites is not brace-expanded",
       "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "  const unread = request.queryUnknown || texts.some((t) => t.startsWith(\"@\")) || leaf.some((w) => INPUT_RE.test(w.value));",
-      "replace": "  const unread = request.queryUnknown;",
+      "find": "  if (!expandsAtRunTime(field)) return [field.value];",
+      "replace": "  if (field.value !== \"\") return [field.value];",
       "kills": [
-        "githubSettings, a GraphQL ruleset mutation bash.config.gh-api-graphql-ruleset: gh api graphql -F query=@q.graphql",
-        "githubSettings, a GraphQL ruleset mutation bash.config.gh-api-graphql-ruleset: gh api graphql --input q.json"
+        "githubSettings, a GraphQL request it cannot read in full denies gh api graphql -f {query,variables}='mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:\"X\"}){clientMutationId}}'"
       ]
     },
     {
-      "name": "a gh query known only at run time reads as no query",
-      "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "  const unread = request.queryUnknown || ",
-      "replace": "  const unread = ",
+      "name": "a curl body the shell rewrites is read as written",
+      "file": "packages/tool-guard/src/families/curl-bodies.ts",
+      "find": "value.dynamic || expandsAtRunTime(value) ||",
+      "replace": "value.dynamic ||",
       "kills": [
-        "githubSettings, a GraphQL ruleset mutation bash.config.gh-api-graphql-ruleset: gh api graphql -f query=\"$(cat q.graphql)\""
+        "githubSettings, a GraphQL request it cannot read in full denies a curl body brace expansion rewrites"
       ]
     },
     {
-      "name": "gh reads GraphQL only on the paths isGraphqlEndpoint names",
+      "name": "the family matches mutation names in raw text, undecoded and unbounded",
       "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "  return isGitHubGraphql(literalUrl(",
-      "replace": "  return path === \"\" && isGitHubGraphql(literalUrl(",
+      "find": "reading.mutations.some((m) => RULESET_MUTATIONS.has(m));",
+      "replace": "texts.some((t) => [...RULESET_MUTATIONS].some((m) => t.includes(m)));",
       "kills": [
-        "githubSettings, a GraphQL ruleset mutation bash.config.gh-api-graphql-ruleset: gh api 'graphql;x' -f query='mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:\"RRS\"}){clientMutationId}}'"
+        "githubSettings, a GraphQL ruleset mutation passes gh api graphql -f 'query=mutation{deleteRepositoryRulesetX(input:{repositoryRulesetId:\"RRS\"}){clientMutationId}}'"
       ]
     }
   ]

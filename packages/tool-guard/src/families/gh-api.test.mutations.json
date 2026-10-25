@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "queryUnknown is gated on the narrow GRAPHQL_RE again",
+      "file": "packages/tool-guard/src/families/gh-api.ts",
+      "find": "queryUnknown: (endpoint === null || isGraphqlEndpoint(endpoint))",
+      "replace": "queryUnknown: (endpoint === null || GRAPHQL_RE.test(endpoint))",
+      "kills": [
+        "ghApiRequest graphql query gh api graphql.json -f query=\"$Q\" carries an unknown query"
+      ]
+    },
+    {
+      "name": "isGraphqlEndpoint reads only GRAPHQL_RE",
+      "file": "packages/tool-guard/src/families/gh-api.ts",
+      "find": "  return isGitHubGraphql(literalUrl(",
+      "replace": "  return path === \"\" && isGitHubGraphql(literalUrl(",
+      "kills": [
+        "ghApiRequest graphql query graphql.json is the graphql endpoint"
+      ]
+    },
+    {
+      "name": "a GHES full URL keeps its api/ prefix",
+      "file": "packages/tool-guard/src/families/gh-api.ts",
+      "find": ".replace(/^\\/*(?:api\\/)?/i, \"\")",
+      "replace": ".replace(/^\\/*/, \"\")",
+      "kills": [
+        "ghApiRequest graphql query https://ghe.example/api/graphql.json is the graphql endpoint"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,6 @@
 import { isCaseUnsure } from "../shell/case-attrs.js";
 import type { WordToken } from "../shell/lexer.js";
 import { isGitHubGraphql } from "./curl-graphql.js";
-import { expandsAtRunTime } from "./field-words.js";
 import { set } from "./options.js";
 import type { Option } from "./options.js";
 
@@ -164,23 +163,8 @@ function methodOf(reading: LeafReading, leaf: WordToken[], fields: WordToken[]):
   return fields.length > 0 || reading.opts.some((o) => o.flag === "--input") ? "POST" : "GET";
 }
 
-/** A key the shell cannot rewrite; `literalKey` is null for any word that expands, so the written key is read here. */
-const PLAIN_KEY_RE = /^[\w.[\]-]*$/;
-
-/**
- * A field the shell rewrites (brace, glob, tilde, `=cmd`) is read as some other text than written, so it carries an
- * unknown query when its key is `query` or may become it.
- */
-function rewrittenQueryField(field: WordToken): boolean {
-  if (!expandsAtRunTime(field)) return false;
-  const eq = field.value.indexOf("=");
-  const key = eq < 0 ? field.value : field.value.slice(0, eq);
-  return key === "query" || !PLAIN_KEY_RE.test(key);
-}
-
 /** A dynamic `query=` field, or one whose written key may still become `query`; an `@file` read stays unread. */
 function queryFieldUnknown(field: WordToken): boolean {
-  if (rewrittenQueryField(field)) return true;
   if (!unsure(field)) return false;
   const prefix = literalPrefix(field);
   const eq = prefix.indexOf("=");

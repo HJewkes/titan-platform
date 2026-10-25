@@ -133,6 +133,8 @@ describe("githubSettings, a GraphQL request it cannot read in full", () => {
     `gh api graphql -f 'query=mutation{${BS}${BS}${BS}${BS}u0064eleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}'`,
     `gh api graphql -fquery=mutation{delete{,Repository}Ruleset'(input:{repositoryRulesetId:"X"}){clientMutationId}}'`,
     `gh api graphql -f query=mutation{delete{,Repository}Ruleset'(input:{repositoryRulesetId:"X"}){clientMutationId}}'`,
+    `gh api graphql -f {query,variables}='mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:"X"}){clientMutationId}}'`,
+    `gh api graphql -f query=${"{a,b}".repeat(9)}`,
   ])("denies %s", (command) => {
     expect(settings(bash(command))).toEqual([expect.objectContaining({ spelling: "bash.config.gh-api-graphql-ruleset", subject: RULESET })]);
   });
@@ -146,6 +148,8 @@ describe("githubSettings, a GraphQL request it cannot read in full", () => {
   it.each([
     "gh api graphql.json -f query='{viewer{login}}'",
     "gh api graphql -f query='{viewer{login}}' -F owner='{owner}'",
+    `gh api graphql -f query=mutation{update{Issue,PullRequest}'(input:{id:"X"}){clientMutationId}}'`,
+    `gh api graphql -f query=${"{a,b}".repeat(8)}`,
     'gh api graphqlx -f query="$Q"',
     'gh api repos/o/r/graphql.json -f query="$Q"',
     `curl ${API}/graphql --json '{"query":"{viewer{login}}"}'`,

@@ -4,7 +4,9 @@ import { classified } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { apiSettingsWrite } from "./api-rulesets.js";
 import type { SettingsWrite } from "./api-rulesets.js";
+import { braceExpansions } from "./brace-expand.js";
 import { graphqlQueries, isGitHubGraphql } from "./curl-graphql.js";
+import { expandsAtRunTime } from "./field-words.js";
 import { ghApiRequest, isGraphqlEndpoint } from "./gh-api.js";
 import type { GhApiRequest } from "./gh-api.js";
 import { ghCommandLine } from "./gh-words.js";
@@ -34,17 +36,28 @@ function rulesetWrite(texts: string[] | null, fields: WordToken[] = []): boolean
 const INPUT_RE = /^--input(?:=|$)/;
 
 /**
- * The `query=` texts a gh GraphQL call sends, as written. Null when gh reads a query from a file (`query=@f`,
- * `--input`) or the shell decides or rewrites it at run time (`queryUnknown`). A gh fill in a read text may become any
- * text, a whole mutation name included; `rulesetWrite` reads that from `graphqlBranchWrites`.
+ * The field words the shell may pass for one field. The lexer keeps no record of which characters partial quotes
+ * cover, so a word not wholly quoted is read both as written and as each word brace expansion makes of it read bare:
+ * a brace in its key or value may spell `query=` or a mutation name. Null past the expansion cap.
+ */
+function shellWords(field: WordToken): string[] | null {
+  if (!expandsAtRunTime(field)) return [field.value];
+  const expanded = braceExpansions(field.value);
+  return expanded === null ? null : [field.value, ...expanded];
+}
+
+const queryValue = (word: string) => (word.startsWith("query=") ? [word.slice("query=".length)] : []);
+
+/**
+ * The `query=` texts a gh GraphQL call sends. Null when gh reads a query from a file (`query=@f`, `--input`), the
+ * shell decides one at run time (`queryUnknown`), or a field's brace expansion passes the cap. A gh fill in a read
+ * text may become any text, a whole mutation name included; `rulesetWrite` reads that from `graphqlBranchWrites`.
  */
 function ghQueryTexts(leaf: WordToken[], request: GhApiRequest): string[] | null {
-  const texts = request.fields.flatMap((f) => {
-    const eq = f.value.indexOf("=");
-    return eq >= 0 && f.value.slice(0, eq) === "query" ? [f.value.slice(eq + 1)] : [];
-  });
-  const unread = request.queryUnknown || texts.some((t) => t.startsWith("@")) || leaf.some((w) => INPUT_RE.test(w.value));
-  return unread ? null : texts;
+  const words = request.fields.map(shellWords);
+  if (request.queryUnknown || words.includes(null) || leaf.some((w) => INPUT_RE.test(w.value))) return null;
+  const texts = words.flatMap((w) => (w ?? []).flatMap(queryValue));
+  return texts.some((t) => t.startsWith("@")) ? null : texts;
 }
 
 /** A gh endpoint known only at run time is not read here; TP-2707 d owns that reading. */
