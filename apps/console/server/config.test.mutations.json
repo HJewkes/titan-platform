@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a relative explainer path is dropped, so the panel says not found instead of naming it",
+      "name": "a relative explainer path is dropped, so the panel cannot name it",
       "file": "apps/console/server/config.ts",
       "find": "return bin === null ? {} : { explainerBin: bin };",
       "replace": "return bin === null || !path.isAbsolute(bin) ? {} : { explainerBin: bin };",
