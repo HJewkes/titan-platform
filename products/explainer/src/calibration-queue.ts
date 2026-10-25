@@ -15,7 +15,7 @@ export const AGREEMENT_BAR = 0.8;
 export const MIN_LABELS_PER_JUDGE = 5;
 export const QUEUE_SIZE = 20;
 /** Chapters asked "clear on one hearing?" on top of the queue, so no judge loses a label to them. */
-export const LISTENER_ITEMS = 3;
+const LISTENER_ITEMS = 3;
 
 /** Where an output came from; a holdout or owner-named case never reaches the queue. */
 export interface CaseRef {

@@ -31,7 +31,7 @@ export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
 }
 
 /** One labelled threshold example for the listener screen: the owner's yes or no beside the chapter's density. */
-export interface ListenerLabel {
+interface ListenerLabel {
   case: string;
   chapter: string;
   density: number;
