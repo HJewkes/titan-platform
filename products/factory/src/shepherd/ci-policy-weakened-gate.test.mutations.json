@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a ci-policy-weakened gate reads as an ordinary land gate",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": "match[4] === \"ci-policy-weakened\";",
+      "replace": "match[4] === \"ci-policy-weakened-x\";",
+      "kills": [
+        "an owner merge approval meeting a CI-policy-weakened gate asks the owner again at a ci-policy-weakened gate, even when the head is an empty-remerge merge-up",
+        "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"
+      ]
+    },
+    {
+      "name": "an earlier approval stands at a ci-policy-weakened gate",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": "const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);",
+      "replace": "const standing = !isSkillPathGate(prompt) && carry.reviewedMerge(asked);",
+      "kills": [
+        "an owner merge approval meeting a CI-policy-weakened gate asks the owner again at a ci-policy-weakened gate, even when the head is an empty-remerge merge-up"
+      ]
+    },
+    {
+      "name": "an approval given at a ci-policy-weakened gate is kept to follow",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": "if (ciPolicyWeakened) approved = undefined;\n    else if",
+      "replace": "if",
+      "kills": [
+        "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"
+      ]
+    },
+    {
+      "name": "the approve-merge ask never reads the D21 row",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "const ciPolicyWeakened = rule.table === \"shepherd-merge-guard\" && rule.rowId === \"ci-policy-weakened\";",
+      "replace": "const ciPolicyWeakened = false;",
+      "kills": [
+        "the approve-merge brief at a CI-policy-weakened gate recommends nothing on a reviewer's MERGE and sends the owner to the card and the diff"
+      ]
+    },
+    {
+      "name": "the merge option stays recommended at a D21 gate",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "skills.length === 0 && !target.ciPolicyWeakened },",
+      "replace": "skills.length === 0 },",
+      "kills": [
+        "the approve-merge brief at a CI-policy-weakened gate recommends nothing on a reviewer's MERGE and sends the owner to the card and the diff"
+      ]
+    }
+  ]
+}

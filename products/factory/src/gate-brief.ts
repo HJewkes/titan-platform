@@ -93,6 +93,8 @@ interface ApproveMergeTarget extends PrHead {
   carriedFrom?: string;
   ownerBrief?: OwnerBrief;
   skillPaths?: readonly string[];
+  /** The merge guard's D21 row: the reviewer judged CI policy weakened, so their MERGE recommends nothing. */
+  ciPolicyWeakened?: boolean;
   /** Offers `send-back`, whose answer must carry the owner's note; only `shepherd.consoleAnswers` turns it on. */
   sendBack?: boolean;
 }
@@ -136,7 +138,7 @@ export function approveMergeDecision(target: ApproveMergeTarget) {
   const { schema, questions } = decisionGate({
     question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : oneLine(asked, MAX_QUESTION),
     options: [
-      { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge && skills.length === 0 },
+      { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge && skills.length === 0 && !target.ciPolicyWeakened },
       { id: "abandon", label: "Abandon the PR" },
       ...sendBack,
     ],
@@ -146,9 +148,16 @@ export function approveMergeDecision(target: ApproveMergeTarget) {
   return { schema: checked, brief: skills.length > 0 ? skillMergeBrief(target, skills, questions) : mergeBrief(target, questions) };
 }
 
-function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
+const CI_POLICY_WEAKENED_VERDICT = "The reviewer judged CI policy weakened; read the card and the diff; no recommendation.";
+
+function mergeVerdict(target: ApproveMergeTarget): string {
+  if (target.ciPolicyWeakened) return CI_POLICY_WEAKENED_VERDICT;
   const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
-  const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
+  return target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
+}
+
+function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
+  const verdict = mergeVerdict(target);
   return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
 }
 
