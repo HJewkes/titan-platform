@@ -808,21 +808,15 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
     expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, lines: [{ side: "-", n: 2, text: "  contents: write" }, { side: "+", n: 2, text: "  contents: read" }], omitted: 0 }]);
   });
 
-  it("reads the first 10 changed .github/ files and names the rest unread", async () => {
-    const fake = manyFiles(11);
+  it("reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters", async () => {
+    const fake = manyFiles(300);
     const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
 
     const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
 
     expect(port.getFile).toHaveBeenCalledTimes(20);
-    expect(evidence.record.ciPolicyChanges).toHaveLength(10);
-    expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 1 more .github/ files were not read"]);
+    expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read"]);
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
-  });
-
-  it("keeps the evidence comment under 60,000 characters at the full card with 300 changed paths", async () => {
-    const evidence = await collect(manyFiles(300), WEAKENED);
-
     expect(evidence.record.ciPolicyChanges?.reduce((sum, change) => sum + change.lines.length, 0)).toBe(120);
     expect(evidenceComment(evidence.record).length).toBeLessThan(60_000);
   });

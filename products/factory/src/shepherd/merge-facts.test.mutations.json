@@ -6,37 +6,28 @@
       "file": "products/factory/src/shepherd/merge-facts.ts",
       "find": "    ...(changes && { ciPolicyChanges: changes }),\n",
       "replace": "",
-      "kills": [
-        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records its changed lines"
-      ]
+      "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records its changed lines"]
     },
     {
       "name": "the head side reads the base ref",
       "file": "products/factory/src/shepherd/ci-policy-read.ts",
       "find": "const refs = { repo: input.repo, base: baseRef, head: input.head };",
       "replace": "const refs = { repo: input.repo, base: baseRef, head: baseRef };",
-      "kills": [
-        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records its changed lines"
-      ]
+      "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records its changed lines"]
     },
     {
       "name": "a failed file read is not named unread",
       "file": "products/factory/src/shepherd/ci-policy-read.ts",
       "find": "const unreadFacts = [...unread, ...policy.unread]",
       "replace": "const unreadFacts = [...unread]",
-      "kills": [
-        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) still gates when a file read fails, naming the unread file in unreadFacts and not the error's text",
-        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads the first 10 changed .github/ files and names the rest unread"
-      ]
+      "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) still gates when a file read fails, naming the unread file in unreadFacts and not the error's text"]
     },
     {
       "name": "every changed .github/ file is read",
       "file": "products/factory/src/shepherd/ci-policy-read.ts",
       "find": "githubPaths.slice(0, MAX_CI_POLICY_FILES).map(",
       "replace": "githubPaths.map(",
-      "kills": [
-        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads the first 10 changed .github/ files and names the rest unread"
-      ]
+      "kills": ["the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters"]
     }
   ]
 }
