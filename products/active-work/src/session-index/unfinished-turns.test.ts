@@ -90,4 +90,25 @@ describe('sliced rollup', () => {
     expect(yields).toBe(SESSIONS.length * 2);
     expect(unfinishedTurns()).toEqual({ n: 0 });
   });
+
+  it('hands the loop back before the first rollup', async () => {
+    await unfinishedSessions();
+    const unfinishedAtYield: unknown[] = [];
+
+    await rollupUnfinishedTurns(graph, async () => {
+      unfinishedAtYield.push(unfinishedTurns());
+    });
+
+    expect(unfinishedAtYield[0]).toEqual({ n: SESSIONS.length });
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+
+  it('rolls up a turn whose facts another session carries', async () => {
+    await unfinishedSessions();
+    graph.db.prepare("UPDATE fact SET session_id = 'sess-z' WHERE session_id = 'sess-c'").run();
+
+    await rollupUnfinishedTurns(graph, async () => {});
+
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
 });

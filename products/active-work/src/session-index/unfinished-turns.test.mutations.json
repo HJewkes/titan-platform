@@ -25,7 +25,17 @@
       "find": "    cursor = page[page.length - 1].rowid;\n    await yieldPoint();\n",
       "replace": "    cursor = page[page.length - 1].rowid;\n",
       "kills": [
-        "sliced rollup gathers unfinished turns a page at a time, yielding after each page"
+        "sliced rollup gathers unfinished turns a page at a time, yielding after each page",
+        "sliced rollup hands the loop back before the first rollup"
+      ]
+    },
+    {
+      "name": "the gather drops the sessions that own an unfinished turn's facts",
+      "file": "products/active-work/src/session-index/unfinished-turns.ts",
+      "find": "    for (const row of owners.all(promptIds)) sessions.add(row.session_id);\n",
+      "replace": "",
+      "kills": [
+        "sliced rollup rolls up a turn whose facts another session carries"
       ]
     }
   ]
