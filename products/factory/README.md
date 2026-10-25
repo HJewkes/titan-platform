@@ -151,7 +151,8 @@ the first 16 hex characters of sha256 over the SPKI DER. `owner-presence sign --
 statement bytes on stdin, shows the dialog with the reason, and prints a base64url DER ECDSA P-256
 SHA-256 signature that `crypto.verify("sha256", bytes, { key: pem, dsaEncoding: "der" }, sig)`
 accepts. `--tag <tag>` picks `<tag>.se` instead, so a probe key never touches the owner key. In code,
-`signStatement(bytes, reason)` runs `sign` through the same path checks as `confirmOwner`.
+`signStatement(bytes, reason)` runs `sign` after the path checks above, and `ownerKeyId()` runs
+`pubkey --id` after the same checks.
 
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
