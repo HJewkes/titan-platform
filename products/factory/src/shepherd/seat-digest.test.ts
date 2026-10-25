@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
@@ -123,6 +123,57 @@ describe("seat digests", () => {
     expect(ports.sent[2]!.text).toContain("Open: none.");
   });
 
+  it("after the first digest lists only new open items, folding the unchanged ones into one count line", async () => {
+    const ports = fakePorts();
+    const memory = memoryMap();
+
+    await sendSeatDigests([gated(1, "approve-merge"), gated(2, "approve-merge")], ports, memory);
+    await sendSeatDigests([gated(1, "approve-merge"), gated(2, "approve-merge"), gated(3, "sh-sent-back")], ports, memory);
+
+    expect(ports.sent[0]!.text).toContain("titan-factory gate resolve run-1 approve-merge");
+    expect(ports.sent[0]!.text).toContain("titan-factory gate resolve run-2 approve-merge");
+    const delta = ports.sent[1]!.text;
+    expect(delta).toContain("New:\n- acme/widgets#3 waits on sh-sent-back: `titan-factory gate resolve run-3 sh-sent-back --json '<payload>'`");
+    expect(delta).not.toContain("run-1");
+    expect(delta).not.toContain("run-2");
+    expect(delta).toContain("Still open: 2 unchanged; `titan-factory shepherd waiting` lists them.");
+  });
+
+  it("names the PRs whose open items cleared on one line", async () => {
+    const ports = fakePorts();
+    const memory = memoryMap();
+
+    await sendSeatDigests([gated(1, "approve-merge"), gated(2, "approve-merge"), gated(3, "approve-merge:1")], ports, memory);
+    await sendSeatDigests([plain(row(1)), plain(row(2)), gated(3, "approve-merge:1")], ports, memory);
+
+    expect(ports.sent[1]!.text).toContain("Cleared: acme/widgets#1, acme/widgets#2\nStill open: 1 unchanged");
+  });
+
+  it("collapses three new gates on one step into one line that still carries each resolve command", async () => {
+    const ports = fakePorts();
+    const memory = memoryMap();
+    await sendSeatDigests([gated(9, "approve-merge")], ports, memory);
+
+    await sendSeatDigests([gated(9, "approve-merge"), gated(1, "main-red-again"), gated(2, "main-red-again"), gated(3, "main-red-again"), gated(4, "ci-failed"), gated(5, "ci-failed")], ports, memory);
+
+    const lines = ports.sent[1]!.text.split("\n");
+    const burst = lines.filter((line) => line.includes("main-red-again"));
+    expect(burst).toHaveLength(1);
+    expect(burst[0]).toMatch(/^- 3 wait on main-red-again: acme\/widgets#1, acme\/widgets#2, acme\/widgets#3; resolve each with /);
+    for (const n of [1, 2, 3]) expect(burst[0]).toContain(`\`titan-factory gate resolve run-${n} main-red-again --json '<payload>'\``);
+    expect(lines.filter((line) => line.includes("waits on ci-failed"))).toHaveLength(2);
+  });
+
+  it("reads memory written before deltas, counting a cleared item it has no PR ref for", async () => {
+    const ports = fakePorts();
+    const memory = memoryMap();
+    memory.set("widgets-coord", { open: ["gate:run-1/approve-merge", "gate:run-2/approve-merge"], finished: [] });
+
+    await sendSeatDigests([gated(2, "approve-merge")], ports, memory);
+
+    expect(ports.sent[0]!.text).toContain("Cleared: 1 item from before deltas\nStill open: 1 unchanged");
+  });
+
   it("names a told ci-failed fix round with no wake, and drops it once the head moves", async () => {
     const ports = fakePorts();
     const memory = memoryMap();
@@ -196,5 +247,15 @@ describe("fileSeatDigestMemory", () => {
 
     expect(before.sent).toHaveLength(1);
     expect(after.sent).toHaveLength(0);
+  });
+
+  it("loads a file written before deltas, without refs, and sends nothing while its state is unchanged", async () => {
+    dir = mkdtempSync(join(tmpdir(), "seat-digest-"));
+    writeFileSync(join(dir, "seat-digest.json"), JSON.stringify({ "widgets-coord": { open: ["gate:run-1/approve-merge"], finished: [] } }));
+    const ports = fakePorts();
+
+    await sendSeatDigests([gated(1, "approve-merge")], ports, fileSeatDigestMemory(dir));
+
+    expect(ports.sent).toHaveLength(0);
   });
 });
