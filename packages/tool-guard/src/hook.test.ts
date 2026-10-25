@@ -434,7 +434,7 @@ describe("nodeContext over a real temp directory", () => {
     const wt = worktreeWithTags(home);
     const ctx = nodeContext(home);
 
-    expect(["rc1", "@scope/a", "nightly", "feat/x", "../HEAD", "@scope", "rc1/"].map((name) => ctx.isTag?.(wt, name))).toEqual([true, true, true, false, false, false, false]);
+    expect(["rc1", "@scope/a", "nightly", "feat/x", "../../HEAD", "@scope", "rc1/"].map((name) => ctx.isTag?.(wt, name))).toEqual([true, true, true, false, false, false, false]);
     expect(ctx.isTag?.(path.join(home, "app"), "nightly")).toBe(true);
   });
 
