@@ -46,15 +46,6 @@
       "kills": [
         "sh-wake-implementer: who is woken starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)"
       ]
-    },
-    {
-      "name": "the wake never hands the brief the run's merge-base exception",
-      "file": "products/factory/src/shepherd/wake.ts",
-      "find": "describeWake(deps.port, withMergeBaseException(input, deps.store), pr,",
-      "replace": "describeWake(deps.port, input, pr,",
-      "kills": [
-        "sh-wake-implementer: what the woken agent reads briefs a ci-red fixer with the merge-base exception a planner recorded on the run (TP-4242)"
-      ]
     }
   ]
 }

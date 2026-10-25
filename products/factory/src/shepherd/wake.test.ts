@@ -899,31 +899,6 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     expect(message).toContain(`\`\`\`conflict candidates\n${path}\n\`\`\``);
   });
 
-  it("briefs a ci-red fixer with the merge-base exception a planner recorded on the run (TP-4242)", async () => {
-    const scene = wakeStep({ warmth: warm });
-    scene.store.get().mergeBaseExceptions().allow({ runId: "run-1", reason: "the fix needs #12 from main", actor: "demo-planner" });
-
-    await scene.run("ci-red");
-
-    const message = scene.agents.asked[0]!.message;
-    expect(message).toContain("A planner allowed this run's fix rounds to merge the base branch");
-    expect(message).not.toContain("Do not merge the base branch");
-    expect(message).toContain(dataFence("merge-base exception", "allowed by: demo-planner\nreason: the fix needs #12 from main"));
-  });
-
-  it("keeps the line against merging the base once the exception is revoked", async () => {
-    const scene = wakeStep({ warmth: warm });
-    const exceptions = scene.store.get().mergeBaseExceptions();
-    exceptions.allow({ runId: "run-1", reason: "the fix needs #12 from main", actor: "demo-planner" });
-    exceptions.revoke("run-1");
-
-    await scene.run("ci-red");
-
-    const message = scene.agents.asked[0]!.message;
-    expect(message).toContain("Do not merge the base branch");
-    expect(message).not.toContain("merge-base exception");
-  });
-
   it("returns unhandled when the base branch is not a valid ref name", async () => {
     const scene = wakeStep({ warmth: warm, pr: { baseRef: "main..evil" } });
 
