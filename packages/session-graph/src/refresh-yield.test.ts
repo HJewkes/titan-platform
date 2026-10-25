@@ -45,7 +45,7 @@ function dumpAll(graph: SessionGraph): Record<string, string> {
   return Object.fromEntries(tables.map(({ name }) => [name, JSON.stringify(rows(name).map(strip))]));
 }
 
-const count = (graph: SessionGraph, sql: string) => graph.db.prepare<[], { n: number }>(sql).get()?.n;
+const count = (graph: SessionGraph, sql: string): number => graph.db.prepare<[], { n: number }>(sql).get()?.n ?? 0;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), "titan-session-graph-yield-"));
