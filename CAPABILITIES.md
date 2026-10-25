@@ -1441,6 +1441,7 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `beatSpecFor` rejects an unknown beat,
 `parseBeatSlots` rejects bad slots and duplicate emphasis ids,
 `cueElement` resolves a cue target to exactly one emphasis element, and
+`fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
