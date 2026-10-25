@@ -283,9 +283,9 @@ describe("staleEpisodeSessions", () => {
   });
 
   it("a paged sweep yields after each page and lists what one whole-graph call lists, in its order", async () => {
-    addWorker("older", at(0));
-    insertSession(fixture.graph.db, { sessionId: "newer" });
-    insertRequest(fixture.graph.db, { sessionId: "newer", ts: at(3) });
+    addWorker("early", at(0));
+    insertSession(fixture.graph.db, { sessionId: "late" });
+    insertRequest(fixture.graph.db, { sessionId: "late", ts: at(3) });
     addWorker("current", at(1));
     writeEpisodes(fixture.graph, ["current"]);
     let yields = 0;
@@ -293,7 +293,7 @@ describe("staleEpisodeSessions", () => {
     const paged = await staleEpisodeSessionsYielding(fixture.graph.db, async () => void (yields += 1), 1);
 
     expect(paged).toEqual(staleEpisodeSessions(fixture.graph.db));
-    expect(paged).toEqual(["newer", "older"]);
+    expect(paged).toEqual(["late", "early"]);
     expect(yields).toBe(3);
   });
 
