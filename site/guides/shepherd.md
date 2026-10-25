@@ -714,6 +714,9 @@ titan-factory shepherd list --state all        # active (default), finished or a
 titan-factory shepherd timeline owner/repo#123
 titan-factory shepherd timeline owner/repo#123 --last 8 --width 300
 titan-factory shepherd wait owner/repo#123 --until merging,done --timeout 900
+titan-factory shepherd watch owner/repo#123 --on merged,stopped,gated
+titan-factory shepherd watch --list
+titan-factory shepherd unwatch owner/repo#123
 ```
 
 ```
@@ -762,6 +765,21 @@ row's phase is one of `--until`. It exits 1, with the reason on stderr, when the
 `done`, `failed` or `cancelled` and that phase is not in `--until`, or when `--timeout` seconds
 (default 900) pass; the timeout message names the last phase seen. An unknown phase in
 `--until` exits 2 before any poll.
+
+`shepherd watch <ref> [--on <events>] [--seat <name>]` replaces a seat's Monitor loop or
+`shepherd wait` run on a registered PR (`products/factory/src/shepherd/watch-list.ts`). It records
+a watch through serve when one answers, else in the database here. `--on` takes `merged`, `stopped`
+and `gated`, all three by default. While the watch stands, those events are prompt-class in the seat
+digest's `shepherd.seatDigest.pacing`: they go out once `settleMs` has passed, not at `flushMs`.
+`--seat` names a seat from the seat book that gets a copy of the run's digest lines, routed to a
+live seat the way digests are; the run's own seat keeps them. The watching seat, the `--seat` one
+or else the run's own, is the one whose digest is paced promptly. `--on` decides only that pacing:
+the watching seat is told the run's end whichever it is, and the watch is dropped once that seat
+knows it, from a digest that carried the end or an earlier one, or at once for a run that ended
+with no outcome to tell. A seat with no digest memory yet is still told. Watches live in the factory database, so they survive a serve restart. A PR Shepherd
+has not registered, one whose run has already finished, or a `--seat` outside the seat book exits
+1 with the reason. `shepherd unwatch <ref>` drops a watch, and
+`shepherd watch --list` prints every watch.
 
 `shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and
 PR, head, task, age in hours and held reason. It builds on the same rows as `status` and writes
