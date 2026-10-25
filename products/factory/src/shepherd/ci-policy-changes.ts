@@ -23,6 +23,9 @@ export const MAX_LINES_PER_FILE = 20;
 export const MAX_LINES_PER_CARD = 120;
 export const MAX_LINE_CHARS = 160;
 
+/** Opens each unread fact of a D21 file read, so the card can name those files beside the lines it did read. */
+export const CI_POLICY_UNREAD_PREFIX = "the CI-policy lines of ";
+
 /** Every line is author-written and reaches the owner's prompt, so escape sequences and bidi overrides go before anything else. */
 // eslint-disable-next-line no-control-regex -- ANSI sequences are exactly what the owner prompt must not render
 const ANSI_SEQUENCE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/gu;

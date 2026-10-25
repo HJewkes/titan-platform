@@ -3,7 +3,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { GateRule } from "@titan-design/hitl";
 import type { OwnerBrief } from "@titan-design/review-panel";
 import { AUTHORITY_TABLE_NAME, type WorkflowContext } from "@titan-design/workflow";
-import { SEND_BACK, approveMergeDecision, ownerBriefLines, skillChangeNote } from "../gate-brief.js";
+import { SEND_BACK, approveMergeDecision, ciPolicyCardLines, ownerBriefLines, skillChangeNote, type CiPolicyCard } from "../gate-brief.js";
 import type { PolicyRule } from "../gate-policy.js";
 import type { FailingCheck } from "./land-ci.js";
 
@@ -44,6 +44,8 @@ interface ApproveMergeFacts {
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at this head; any one drops the merge recommendation and links the diff. */
   skillPathsAt?: (headSha: string) => readonly string[];
+  /** A weakened CI-policy line at this head, which makes the gate the D21 owner card with every changed `.github/` line. */
+  ciPolicyAt?: (headSha: string) => CiPolicyCard | undefined;
   /** Whether this gate offers `send-back`; read once per gate, before it opens, as a step the caller records. Absent, never. */
   sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
 }
@@ -54,11 +56,13 @@ export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { re
   const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
   const ciPolicyWeakened = rule.table === "shepherd-merge-guard" && rule.rowId === "ci-policy-weakened";
   const reviewedMerge = facts.reviewedMerge?.(headSha) ?? false;
-  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge, ownerBrief, skillPaths, ciPolicyWeakened, sendBack });
+  const ciPolicy = facts.ciPolicyAt?.(headSha);
+  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge, ownerBrief, skillPaths, ciPolicyWeakened, ...(ciPolicy && { ciPolicy }), sendBack });
   const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
   const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
   const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
-  return { prompt: [asked, ...skillLines, ...briefLines].join("\n"), schema, brief };
+  const cardLines = ciPolicy ? ["", ...ciPolicyCardLines(ciPolicy, repo, pr)] : [];
+  return { prompt: [asked, ...skillLines, ...briefLines, ...cardLines].join("\n"), schema, brief };
 }
 
 /** TP-1904's mechanical merges and pr-gone abandons; `deviceGateAuthorize` admits the coordinator only on that evidence. */
