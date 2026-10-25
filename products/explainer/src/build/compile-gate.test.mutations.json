@@ -7,9 +7,9 @@
       "find": "allowed.includes(path) ?",
       "replace": "true ?",
       "kills": [
-        "refuses a static import outside the allowlist",
-        "refuses a dynamic import and a require outside the allowlist",
-        "refuses a react-ui entry point other than motion"
+        "compileLayer refuses a static import outside the allowlist",
+        "compileLayer refuses a dynamic import and a require outside the allowlist",
+        "compileLayer refuses a react-ui entry point other than motion"
       ]
     },
     {
@@ -18,9 +18,9 @@
       "find": "bundle: true,",
       "replace": "bundle: false,",
       "kills": [
-        "refuses a static import outside the allowlist",
-        "refuses a dynamic import and a require outside the allowlist",
-        "refuses a react-ui entry point other than motion"
+        "compileLayer refuses a static import outside the allowlist",
+        "compileLayer refuses a dynamic import and a require outside the allowlist",
+        "compileLayer refuses a react-ui entry point other than motion"
       ]
     }
   ]
