@@ -22,7 +22,7 @@ export function strictestMode(a: DeciderMode, b: DeciderMode): DeciderMode {
 function foldRows(rows: readonly CategoryPolicy[]): CategoryPolicy[] {
   const folded = new Map<string, CategoryPolicy>();
   for (const row of rows) {
-    const key = categoryKey(row.category);
+    const key = policyCategory(row.category);
     const seen = folded.get(key);
     folded.set(
       key,
@@ -57,6 +57,14 @@ export function categoryKey(text: string): string {
   return normalizeKey(text) || text.trim().toLowerCase();
 }
 
+/** The ledger's own fallback for a row with no category; a blank name lands here so the schema's non-empty category always holds. */
+const FALLBACK_CATEGORY = "other";
+
+/** The key a policy row and a score bucket use: `categoryKey`, or `other` for a blank name. */
+export function policyCategory(text: string): string {
+  return categoryKey(text) || FALLBACK_CATEGORY;
+}
+
 /** Always-ask and unlock-table categories: their mode is `off` and nothing raises it. */
 export function isLockedCategory(
   category: string,
@@ -85,7 +93,7 @@ export function categoryPolicy(
   policy: RoutingPolicy,
   category: string
 ): CategoryPolicy {
-  const key = categoryKey(category);
+  const key = policyCategory(category);
   const row =
     foldRows(policy.categories).find((c) => c.category === key) ??
     CategoryPolicySchema.parse({ category: key });
@@ -106,11 +114,11 @@ export function setCategoryMode(
     throw new Error(`category "${category}" is always-ask and stays off`);
   const row = {
     ...categoryPolicy(policy, category),
-    category: categoryKey(category),
+    category: policyCategory(category),
     mode,
   };
   const rest = policy.categories.filter(
-    (c) => categoryKey(c.category) !== row.category
+    (c) => policyCategory(c.category) !== row.category
   );
   return { ...policy, categories: [...rest, row] };
 }
