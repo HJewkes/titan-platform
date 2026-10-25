@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // A stand-in `explainer` for console tests and screenshots: canned synthetic props, and an `edit check` that applies
 // a draft to them and reports length, row-count and locked-id problems the way the real CLI words them.
-// FAKE_EXPLAINER_PROPS=unknown answers found:false; =fail exits 2. FAKE_EXPLAINER_LOG appends each argv and stdin.
+// EXPLAINER_FAKE_PROPS=unknown answers found:false; =fail exits 2. EXPLAINER_FAKE_LOG appends each argv, stdin and
+// the TITAN_CONSOLE_* names that reached it, which must be none.
 import { appendFileSync, readFileSync } from "node:fs";
 
 const props = JSON.parse(readFileSync(new URL("./props.json", import.meta.url), "utf8"));
 const argv = process.argv.slice(2);
 const stdin = argv.includes("-") ? readFileSync(0, "utf8") : "";
-if (process.env.FAKE_EXPLAINER_LOG) appendFileSync(process.env.FAKE_EXPLAINER_LOG, `${JSON.stringify({ argv, stdin })}\n`);
+if (process.env.EXPLAINER_FAKE_LOG) appendFileSync(process.env.EXPLAINER_FAKE_LOG, `${JSON.stringify({ argv, stdin, consoleEnv: Object.keys(process.env).filter((name) => name.startsWith("TITAN_CONSOLE_")), dataHome: process.env.XDG_DATA_HOME })}\n`);
 
 const print = (value) => process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 
@@ -44,11 +45,11 @@ function check(edit) {
 }
 
 if (argv[0] === "props") {
-  if (process.env.FAKE_EXPLAINER_PROPS === "fail") {
+  if (process.env.EXPLAINER_FAKE_PROPS === "fail") {
     process.stderr.write("props: run run-synthetic-0001 has no words artifact\n");
     process.exit(2);
   }
-  print(process.env.FAKE_EXPLAINER_PROPS === "unknown" ? { found: false } : props);
+  print(process.env.EXPLAINER_FAKE_PROPS === "unknown" ? { found: false } : props);
 } else if (argv[0] === "edit" && argv[1] === "check") {
   const verdict = check(JSON.parse(stdin));
   print(verdict);

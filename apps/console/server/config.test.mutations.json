@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a relative explainer path is kept and would run against the daemon's cwd",
+      "name": "a relative explainer path is dropped, so the panel says not found instead of naming it",
       "file": "apps/console/server/config.ts",
-      "find": "return bin !== null && path.isAbsolute(bin) ? { explainerBin: bin } : {};",
-      "replace": "return bin !== null ? { explainerBin: bin } : {};",
+      "find": "return bin === null ? {} : { explainerBin: bin };",
+      "replace": "return bin === null || !path.isAbsolute(bin) ? {} : { explainerBin: bin };",
       "kills": [
-        "leaves the binary unset when the name is not on PATH or the path is relative, so the props panel shows a gap"
+        "keeps a relative path as given, so the props panel's gap names it"
       ]
     },
     {
@@ -16,7 +16,8 @@
       "find": "expandHome(env.TITAN_CONSOLE_EXPLAINER_BIN || \"explainer\", home)",
       "replace": "expandHome(\"explainer\", home)",
       "kills": [
-        "resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given"
+        "resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given",
+        "keeps a relative path as given, so the props panel's gap names it"
       ]
     }
   ]

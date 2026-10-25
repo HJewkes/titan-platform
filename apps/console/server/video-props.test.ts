@@ -27,7 +27,7 @@ beforeEach(async () => {
   log = path.join(dir, "argv.jsonl");
   await mkdir(path.join(root, "orbit"), { recursive: true });
   await writeFile(path.join(root, "orbit", "cut.mp4"), SYNTHETIC_MP4);
-  vi.stubEnv("FAKE_EXPLAINER_LOG", log);
+  vi.stubEnv("EXPLAINER_FAKE_LOG", log);
 });
 
 afterEach(async () => {
@@ -38,7 +38,7 @@ afterEach(async () => {
 const cutId = () => videoId(root, path.join("orbit", "cut.mp4"));
 /** `null` serves the commands with no binary, as a config that found none does. */
 const commands = (bin: string | null = FAKE_EXPLAINER) => videoPropsCommands(videoCatalog({ roots: [root] }), bin ?? undefined, () => AT);
-const calls = async (): Promise<{ argv: string[]; stdin: string }[]> => (await readFile(log, "utf8")).trimEnd().split("\n").map((line) => JSON.parse(line));
+const calls = async (): Promise<{ argv: string[]; stdin: string; consoleEnv: string[]; dataHome?: string }[]> => (await readFile(log, "utf8")).trimEnd().split("\n").map((line) => JSON.parse(line));
 
 async function props(bin?: string | null) {
   const { envelope } = await invokeCommand(commands(bin)["videos.props"], { videoId: cutId() }, context);
@@ -76,7 +76,7 @@ describe("videos.props", () => {
   });
 
   it("answers a gap line when explainer did not make the render", async () => {
-    vi.stubEnv("FAKE_EXPLAINER_PROPS", "unknown");
+    vi.stubEnv("EXPLAINER_FAKE_PROPS", "unknown");
 
     const result = await props();
 
@@ -84,11 +84,48 @@ describe("videos.props", () => {
   });
 
   it("names the exit code and the first stderr line when props fails", async () => {
-    vi.stubEnv("FAKE_EXPLAINER_PROPS", "fail");
+    vi.stubEnv("EXPLAINER_FAKE_PROPS", "fail");
 
     const result = await props();
 
     expect(result.gaps).toEqual(["explainer props exited 2: props: run run-synthetic-0001 has no words artifact"]);
+  });
+
+  it("passes the CLI its data-dir variables and none of the daemon's TITAN_CONSOLE_* settings", async () => {
+    vi.stubEnv("TITAN_CONSOLE_TOKEN", "synthetic-not-a-secret");
+    vi.stubEnv("XDG_DATA_HOME", "/synthetic/data");
+
+    await props();
+
+    const [call] = await calls();
+    expect(call!.consoleEnv).toEqual([]);
+    expect(call!.dataHome).toBe("/synthetic/data");
+  });
+
+  it("runs the CLI once when the same render is opened again, and again after a failed read", async () => {
+    const served = commands();
+    const open = () => invokeCommand(served["videos.props"], { videoId: cutId() }, context);
+
+    await open();
+    await open();
+    const afterAnswer = (await calls()).length;
+    vi.stubEnv("EXPLAINER_FAKE_PROPS", "fail");
+    const failing = commands();
+    await invokeCommand(failing["videos.props"], { videoId: cutId() }, context);
+    await invokeCommand(failing["videos.props"], { videoId: cutId() }, context);
+
+    expect(afterAnswer).toBe(1);
+    expect((await calls()).length).toBe(3);
+  });
+
+  it("names a relative TITAN_CONSOLE_EXPLAINER_BIN in its own gap and runs nothing", async () => {
+    const read = await props("bin/explainer");
+    const check = await editCheck({ "b-list": { slots: { title: "Ready" } } }, "bin/explainer");
+
+    const gap = 'TITAN_CONSOLE_EXPLAINER_BIN must be an absolute path, got "bin/explainer"';
+    expect(read.gaps).toEqual([gap]);
+    expect(check).toMatchObject({ ok: true, data: { verdict: null, gaps: [gap] } });
+    await expect(readFile(log, "utf8")).rejects.toThrow(/ENOENT/);
   });
 
   it("refuses an id the catalog does not hold without running explainer", async () => {

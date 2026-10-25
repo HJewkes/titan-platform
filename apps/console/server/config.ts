@@ -233,13 +233,10 @@ function agentChatBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: Is
   return { startupWarnings: [`${AGENT_CHAT_NOT_FOUND} (looked for "${named}")`] };
 }
 
-/**
- * Resolved once, as agent-chat is. Not found, or a relative path that would run against the daemon's cwd, leaves the
- * props panel's gap line to say so rather than refusing to start.
- */
+/** Resolved once, as agent-chat is. A relative path is kept so the props panel's gap line names it; not found leaves it unset. */
 function explainerBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "explainerBin"> {
   const bin = resolveCommand(expandHome(env.TITAN_CONSOLE_EXPLAINER_BIN || "explainer", home), env.PATH, isExecutable);
-  return bin !== null && path.isAbsolute(bin) ? { explainerBin: bin } : {};
+  return bin === null ? {} : { explainerBin: bin };
 }
 
 /** The CLIs the console runs, each resolved on PATH once at start. */

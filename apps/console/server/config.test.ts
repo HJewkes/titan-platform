@@ -171,12 +171,17 @@ describe("console explainer binary", () => {
     expect(resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "~/bin/explainer" }, HOME, "linux", machine()).explainerBin).toBe(path.join(HOME, "bin", "explainer"));
   });
 
-  it("leaves the binary unset when the name is not on PATH or the path is relative, so the props panel shows a gap", () => {
+  it("leaves the binary unset when the name is not on PATH, with no start-up warning of its own", () => {
     const missing = resolveConfig({ PATH }, HOME, "linux", machine("/opt/video/bin/other"));
+
+    expect(missing.explainerBin).toBeUndefined();
+    expect(missing.startupWarnings).toEqual([expect.stringContaining(AGENT_CHAT_NOT_FOUND)]);
+  });
+
+  it("keeps a relative path as given, so the props panel's gap names it", () => {
     const relative = resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "bin/explainer" }, HOME, "linux", machine("/opt/video/bin/explainer"));
 
-    expect([missing.explainerBin, relative.explainerBin]).toEqual([undefined, undefined]);
-    expect(missing.startupWarnings).toEqual([expect.stringContaining(AGENT_CHAT_NOT_FOUND)]);
+    expect(relative.explainerBin).toBe("bin/explainer");
   });
 });
 
