@@ -124,3 +124,13 @@ export const CI_BACKLOG_CEILING_FACTOR = 3;
  * second read, or a read that hit a 5xx. A queue backlog leaves all three standing long after the checks go green.
  */
 export const CI_WAIT_ATTEMPTS = 3;
+
+/** A timed-out window is waited out again in a fresh `ci-wait` step, up to `CI_WAIT_ATTEMPTS` in a row; any other read starts the count over. */
+export function waitsAgain(ci: { timedOut?: { afterMs: number; reason: string } }, count: { timeouts: number }): boolean {
+  if (ci.timedOut === undefined) {
+    count.timeouts = 0;
+    return false;
+  }
+  if (++count.timeouts >= CI_WAIT_ATTEMPTS) throw new Error(`ci-wait timed out after ${ci.timedOut.afterMs} ms on each of ${CI_WAIT_ATTEMPTS} attempts: ${ci.timedOut.reason}`);
+  return true;
+}

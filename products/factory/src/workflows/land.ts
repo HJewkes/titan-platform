@@ -9,7 +9,7 @@ import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, t
 import { landedOf, type LandedPr } from "./land-landed.js";
 import { approveMergeGate, askedApproval, type ApprovalSource, type AskApproval } from "./land-approval.js";
 import type { CiSnapshot, FailingCheck } from "./land-ci.js";
-import { CI_WAIT_ATTEMPTS, budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
+import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, waitsAgain, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS } from "./land-update.js";
 import { rerunOrphaned } from "./land-orphan.js";
@@ -166,16 +166,6 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
 async function rebased(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<boolean> {
   if (ci.verdict !== "green" || ci.baseRef === undefined || ci.baseRef === state.rules.base) return false;
   state.rules = await step(ctx, roundId("land-rules", state.round, ++state.rulesReads), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  return true;
-}
-
-/** A timed-out window is waited out again in a fresh `ci-wait` step, up to `CI_WAIT_ATTEMPTS` in a row; any other read starts the count over. */
-function waitsAgain(ci: CiSnapshot, state: LandState): boolean {
-  if (ci.timedOut === undefined) {
-    state.timeouts = 0;
-    return false;
-  }
-  if (++state.timeouts >= CI_WAIT_ATTEMPTS) throw new Error(`ci-wait timed out after ${ci.timedOut.afterMs} ms on each of ${CI_WAIT_ATTEMPTS} attempts: ${ci.timedOut.reason}`);
   return true;
 }
 
