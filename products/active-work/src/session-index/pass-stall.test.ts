@@ -11,13 +11,13 @@ import { runRefresh } from './refresh.js';
 /**
  * A pass over 500 dirty transcripts, measured the way the daemon logs it. On
  * main's source the rollup ran as one synchronous transaction and stalled the
- * loop about 3 s on this fixture; sliced, the longest stall is tens of
- * milliseconds. The 1 s bound is the plan's, and leaves more than 10x headroom
- * above the sliced stall for a loaded runner.
+ * loop about 2.5 s on this fixture; sliced, the longest stall is 80 to 130 ms.
+ * The 1 s bound is the plan's: about 7x above the sliced stall for a loaded
+ * runner, and 2.5x below the unsliced one for a fast one.
  */
 
 const TRANSCRIPTS = 500;
-const EXCHANGES = 150;
+const EXCHANGES = 250;
 const STALL_BOUND_MS = 1_000;
 const SLOW_FIXTURE = { timeout: 600_000 };
 
