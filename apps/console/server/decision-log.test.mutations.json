@@ -24,11 +24,31 @@
       ]
     },
     {
-      "name": "the decisions line skips the shared cleaner and keeps a bidi override",
+      "name": "the decisions line keeps the raw summary and ids and keeps a bidi override",
       "file": "apps/console/server/decision-log.ts",
-      "find": "  const line = promptLine(raw);",
-      "replace": "  const line = raw;",
-      "kills": ["decisions class and line writes the summary and the note on one plain line when they carry a right-to-left override"]
+      "find": "[item.summary, item.id, answer.by.id, answer.by.channel].map((field) => promptLine(field));",
+      "replace": "[item.summary, item.id, answer.by.id, answer.by.channel];",
+      "kills": [
+        "decisions class and line writes the summary and the note on one plain line when they carry a right-to-left override"
+      ]
+    },
+    {
+      "name": "the decisions line keeps the raw note and keeps a bidi override",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "answer.text === undefined ? undefined : promptLine(answer.text);",
+      "replace": "answer.text;",
+      "kills": [
+        "decisions class and line writes the summary and the note on one plain line when they carry a right-to-left override"
+      ]
+    },
+    {
+      "name": "the decisions line keeps a picked label's terminator",
+      "file": "apps/console/server/decision-log.ts",
+      "find": "pickedLabels(item, answer).map((label) => promptLine(label));",
+      "replace": "pickedLabels(item, answer);",
+      "kills": [
+        "decisions class and line keeps the owner's pick and note when an escape opened in the summary closes in a label"
+      ]
     }
   ]
 }
