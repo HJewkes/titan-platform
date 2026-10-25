@@ -847,6 +847,15 @@ new stage key.
     row and its run id alone.
   - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
     status (`not started`, `starting` before the run links itself, then the workflow status).
+  - `explainer props --mp4-sha <sha> [--json]` (`workflow/props-cli.ts`, `workflow/beat-props.ts`) is the props
+    panel's read model. It finds the newest run whose export linked that mp4 (the theater file's sha256 is the run's
+    `mp4` artifact sha), or prints `{ found: false }`. For each template beat resolve kept (cut and custom-layer beats
+    are left out) it gives `id`, `chapter`, the drawn `spec` and its `slots` ref, `schema` (`z.toJSONSchema` of
+    `BEAT_SLOTS[ref]`, input side), `value` (`fillScript` with the run's `slots` artifact pinned and the owner's
+    overrides laid over it), `overridden` fields, `locked` ids (the ids its cues target), `startS`/`endS` from the
+    `words` artifact, and `stillS`, the later of `endS - 0.3` and its last cue. `saveBack { enabled, reason }` is on
+    only once render is in process and draws from the fill; until TP-2992 S3 it reads "renders ignore edits until
+    TP-2992 S3". Tune schemas join each beat when page kinds declare them (H1).
 
 ### Template fill
 

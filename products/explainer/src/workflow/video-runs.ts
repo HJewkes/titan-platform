@@ -12,7 +12,7 @@ export function videoIdOf(runs: WorkflowRunStore, run: WorkflowRun, seen = new S
   return base ? videoIdOf(runs, base, seen.add(run.id)) : run.id;
 }
 
-const videoRuns = (runs: WorkflowRunStore): WorkflowRun[] =>
+export const videoRuns = (runs: WorkflowRunStore): WorkflowRun[] =>
   runs.listByStatus(["running", "paused", "recovery_required", "completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
 
 export const runsOfVideo = (runs: WorkflowRunStore, videoId: string): WorkflowRun[] =>
