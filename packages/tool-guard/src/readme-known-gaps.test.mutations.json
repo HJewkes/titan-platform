@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the tag-push gaps row is dropped from the README",
+      "file": "packages/tool-guard/README.md",
+      "find": "| TP-4177 | a tag only the remote holds",
+      "replace": "| TP-4177a | a tag only the remote holds",
+      "kills": [
+        "README known gaps lists TP-4177"
+      ]
+    }
+  ]
+}

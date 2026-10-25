@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the git push table loses --tags, so --tag resolves elsewhere",
+      "file": "packages/tool-guard/src/families/long-options.ts",
+      "find": "set-upstream signed tags thin",
+      "replace": "set-upstream signed thin",
+      "kills": [
+        "the option tables match the binaries they were read from holds every git push 2.53.0 long option, and reads its prefixes as git does"
+      ]
+    }
+  ]
+}
