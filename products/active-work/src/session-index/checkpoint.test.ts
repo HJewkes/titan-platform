@@ -73,6 +73,8 @@ afterEach(() => {
 
 describe('index checkpoints run off the event loop', () => {
   it('the loop connection neither autocheckpoints nor syncs each commit', async () => {
+    graph.db.pragma('synchronous = FULL');
+
     const checkpointer = startCheckpointer(graph.db);
 
     expect(graph.db.pragma('wal_autocheckpoint', { simple: true })).toBe(0);

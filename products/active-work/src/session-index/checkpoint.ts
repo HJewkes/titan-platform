@@ -9,12 +9,14 @@ import { Worker } from 'node:worker_threads';
  * SQLite's autocheckpoint runs inside the commit that crosses the threshold, on
  * whatever thread committed: here, the JS loop. Each one fsyncs the WAL and then
  * the database, so on a contended disk one commit stalled the loop for twice a
- * slow fsync. Under `synchronous = FULL` every commit fsynced the WAL as well.
+ * slow fsync.
  *
- * So the loop's connection stops checkpointing and stops syncing commits, and a
+ * So the loop's connection stops checkpointing, and a
  * worker thread with its own connection runs a PASSIVE checkpoint on a timer.
  * PASSIVE never waits on the writer and never blocks it, so the two run side by
- * side. `synchronous = NORMAL` in WAL mode keeps the file consistent through any
+ * side. The loop's connection also pins `synchronous = NORMAL`, which the
+ * driver's build already picks for a WAL file, because under FULL every commit
+ * would fsync the WAL on the loop instead. NORMAL in WAL mode keeps the file consistent through any
  * crash; what an OS crash or power loss can drop is the last commits since a
  * checkpoint. The index is derived: each transcript's watermark commits in the
  * same transaction as its rows, so a dropped commit drops its watermark too and
