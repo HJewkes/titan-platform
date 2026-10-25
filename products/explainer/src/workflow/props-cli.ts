@@ -12,7 +12,7 @@ import { videoRuns } from "./video-runs.js";
 const EXIT = { OK: 0, USAGE: 2 } as const;
 const SHA = /^[0-9a-f]{64}$/;
 
-type PropsResult = { found: false } | { found: true; runId: string; videoId: string; saveBack: SaveBack; beats: BeatProps[] };
+type PropsResult = { found: false } | { found: true; runId: string; videoId: string; scriptSha: string; saveBack: SaveBack; beats: BeatProps[] };
 
 interface PropsCliDeps {
   out?: (text: string) => void;
@@ -32,7 +32,7 @@ function runOfMp4(dataDir: string, mp4Sha: string): string | undefined {
   }
 }
 
-/** What the props panel edits on the render with this sha; `found: false` when no explainer run exported it. */
+/** What the props panel edits on the render with this sha, with the run's script sha as the base an edit names; `found: false` when no explainer run exported it. */
 function readProps(dataDir: string, mp4Sha: string): PropsResult {
   const runId = runOfMp4(dataDir, mp4Sha);
   if (runId === undefined) return { found: false };
@@ -46,7 +46,7 @@ function readProps(dataDir: string, mp4Sha: string): PropsResult {
     words: withStore(dataDir, (store) => JSON.parse(store.readText(words))),
     ...(base.generated ? { generated: base.generated } : {}),
   });
-  return { found: true, runId, videoId: view.videoId, saveBack: saveBackOf(), beats };
+  return { found: true, runId, videoId: view.videoId, scriptSha: base.scriptSha, saveBack: saveBackOf(), beats };
 }
 
 const mp4Sha = (text: string): string => {

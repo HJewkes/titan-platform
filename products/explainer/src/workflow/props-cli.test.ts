@@ -8,7 +8,7 @@ import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./
 let fx: Fixture;
 afterEach(() => fx.cleanup());
 
-const { baseRun } = editHarness(() => fx);
+const { baseRun, editFile, cli } = editHarness(() => fx);
 
 async function props(mp4Sha: string): Promise<{ code: number; result: Record<string, unknown> }> {
   const lines: string[] = [];
@@ -41,6 +41,18 @@ describe("explainer props --mp4-sha", () => {
     expect(result).toMatchObject({ found: true, runId: rerun.runId });
   });
 
+  it("reports the script artifact sha, and an edit drafted on it passes edit check", async () => {
+    fx = fixture();
+    const base = await baseRun();
+
+    const { result } = await props(base.mp4Sha);
+    const file = editFile({ ...base, scriptSha: String(result.scriptSha) }, { h1: { slots: { figures: [{ id: "scan-rate", value: 4, label: "Scans a minute" }] } } });
+    const checked = await cli(["check", file]);
+
+    expect(result.scriptSha).toBe(base.scriptSha);
+    expect(JSON.parse(checked.text)).toMatchObject({ ok: true, problems: [] });
+  });
+
   it("answers found: false for an mp4 no explainer run exported", async () => {
     fx = fixture();
     await baseRun();
@@ -49,5 +61,6 @@ describe("explainer props --mp4-sha", () => {
 
     expect(code).toBe(0);
     expect(result).toEqual({ found: false });
+    expect(result).not.toHaveProperty("scriptSha");
   });
 });
