@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "skip the broker-row kind check in prepare",
+      "file": "apps/console/server/inbox-approve-chat.ts",
+      "find": "if (row.kind === \"approval_request\") {",
+      "replace": "if (row.kind !== \"endorse_request\") {",
+      "kills": [
+        "inbox approve-chat prepare gives a needs-grant notice that the factory also shapes approve no tap"
+      ]
+    }
+  ]
+}

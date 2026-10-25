@@ -335,10 +335,10 @@ describe("actionFor", () => {
     expect(action).toMatchObject({ kind: "terminal", command: `titan-factory gate resolve ${RUN_PLAIN} sh-sent-back --json '<payload>'` });
   });
 
-  it("leaves an agent's approval request on its own session", () => {
+  it("points an agent's approval request at its broker row, which inbox.prepare reads back", () => {
     const approval = item("chat:msg-8", { sources: [{ system: "agent-chat", ref: "msg-8" }], kind: "approve" });
 
-    expect(actionFor(approval, undefined).action.kind).toBe("terminal");
+    expect(actionFor(approval, undefined).action).toEqual({ kind: "approve-chat", msgId: "msg-8" });
   });
 
   it("holds a gate on a replay-diverged run to Morning while TP-3918 is open, and still taps a healthy one", () => {

@@ -64,6 +64,7 @@ const VERB: Record<InboxAction["kind"], string> = {
   "hold-release": "Release hold",
   "owner-op": "Confirm",
   "answer-chat": "Answer",
+  "approve-chat": "Approve",
   "open-round": "Open round",
   open: "Open",
   terminal: "Run on terminal",
