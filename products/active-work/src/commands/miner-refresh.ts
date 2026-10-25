@@ -58,6 +58,7 @@ const ResultSchema = z.object({
   turnsRolledUp: z.number(),
   tasksRequested: z.number(),
   tasksApplied: z.number(),
+  prsPolled: z.number(),
   workspace: WorkspaceSchema.nullable(),
   preserved: z.object({ restored: z.number(), merged: z.number(), skipped: z.number() }),
   errors: z.array(z.string()),

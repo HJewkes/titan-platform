@@ -137,6 +137,8 @@ export interface RefreshSummary {
   /** Task ids handed to the resolver, and rows it wrote. */
   tasksRequested: number;
   tasksApplied: number;
+  /** PRs this pass asked `gh` about: only open and never-checked ones (TP-887). */
+  prsPolled: number;
   /** The workspace half of the pass (TP-24); null when skipped. */
   workspace: WorkspaceRefreshSummary | null;
   /** Non-derivable rows put back after the pass (TP-41). */
@@ -342,6 +344,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
     const offsetsBefore = snapshotOffsets(graph);
     phases.discover = lap();
     const prErrors: string[] = [];
+    let prsPolled = 0;
     const summary = await refreshCorpus(graph, visiting, {
       full: options.full,
       verifyHash: verify,
@@ -350,7 +353,13 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       resolveOrigins: agentChatOriginResolver(undefined, options.taskRoot),
       resolvePrs: options.skipPrOutcomes
         ? undefined
-        : ghPrResolver(graph, { run: options.runGh, errors: prErrors }),
+        : ghPrResolver(graph, {
+            run: options.runGh,
+            errors: prErrors,
+            onPolled: (count) => {
+              prsPolled += count;
+            },
+          }),
       facetLimit: options.facetLimit,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
@@ -407,6 +416,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       turnsRolledUp: summary.turnsRolledUp + resumedTurns,
       tasksRequested: summary.tasks.requested,
       tasksApplied: summary.tasks.applied,
+      prsPolled,
       workspace,
       preserved,
       errors: [
