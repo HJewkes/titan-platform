@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 import config from "../vitest.config.ts";
-import { readWorkspace, testScope } from "./test-scope.mjs";
+import { readWorkspace, testScope, vitestArgs } from "./test-scope.mjs";
 import { WAIT_BUDGET_MS } from "./wait-budget.mjs";
 
 const VITEST_DEFAULT_TIMEOUT_MS = 5_000;
@@ -26,7 +26,19 @@ it("sizes in-test waits for a loaded runner and keeps them under the test timeou
   expect(WAIT_BUDGET_MS).toBeLessThan(config.test.testTimeout);
   expect(config.test.expect.poll.timeout).toBe(WAIT_BUDGET_MS);
   expect(config.test.setupFiles).toContain("scripts/vitest-wait-budget.mjs");
-  for (const project of config.test.projects) expect(project.test.setupFiles, project.test.name).toBeUndefined();
+  // extends: true appends a project's setupFiles to the root's, so active-work's sandbox-home adds and replaces nothing.
+  const ACTIVE_WORK_SETUP = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+  for (const project of config.test.projects) {
+    const expected = project.test.name.startsWith("active-work") ? ACTIVE_WORK_SETUP : undefined;
+    expect(project.test.setupFiles, project.test.name).toEqual(expected);
+  }
+});
+
+// A scoped CI run selects projects by name; one left off the list silently runs none of its tests.
+it("names every project in a scoped CI run", () => {
+  const scoped = vitestArgs({ mode: "scoped", dirs: [] });
+  const named = scoped.flatMap((arg, i) => (scoped[i - 1] === "--project" ? [arg] : []));
+  expect(named.sort()).toEqual(config.test.projects.map((project) => project.test.name).sort());
 });
 
 // A second setupFiles key once replaced the first, so the factory setup stopped loading and serve-bot read the real

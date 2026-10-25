@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { forceRerunTriggers, packageDirOf, repoTierDirs, resolveBase, vitestArgs } from "./test-affected.mjs";
 
-const PLAIN = ["run", "--changed", "origin/main", "--passWithNoTests", "--project", "threads", "--project", "forks"];
+const PLAIN = [
+  "run",
+  "--changed",
+  "origin/main",
+  "--passWithNoTests",
+  ...["threads", "forks", "active-work", "active-work-forks"].flatMap((project) => ["--project", project]),
+];
 
 describe("project selection", () => {
   const repoDirs = repoTierDirs();
