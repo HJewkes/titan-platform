@@ -38,7 +38,8 @@ type Rec = Record<string, unknown>;
 const CARRIED_ATTACHMENTS = new Set(["skill_listing", "deferred_tools_record", "deferred_tools_delta", "queued_command", "file", "instructions", "mcp_instructions_delta", "total_tokens_reminder"]);
 const SUBCOMMANDED = new Set(["git", "gh", "agent-chat", "active-work", "npm", "pnpm", "npx", "bun"]);
 
-const rec = (value: unknown): Rec => (value && typeof value === "object" && !Array.isArray(value) ? (value as Rec) : {});
+const isRec = (value: unknown): value is Rec => typeof value === "object" && value !== null && !Array.isArray(value);
+const rec = (value: unknown): Rec => (isRec(value) ? value : {});
 const num = (value: unknown): number => (typeof value === "number" ? value : 0);
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);

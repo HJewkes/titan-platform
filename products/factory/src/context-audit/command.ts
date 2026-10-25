@@ -49,7 +49,7 @@ function contextAudit(opts: ContextAuditOpts, { io, setExit }: Verbs, now: () =>
   const root = opts.root ?? path.join(io.env.HOME || homedir(), ".claude-profiles");
   const report = buildReport(readSessions(root, now() - opts.days * DAY_MS));
   if (!opts.assertRule) return io.stdout(formatReport(report, opts.days));
-  const [marker, roles] = opts.assertRule as [string, string];
+  const [marker = "", roles = ""] = opts.assertRule;
   const result = assertRule(report, marker, roles.split(",").map((r) => r.trim()).filter(Boolean));
   io.stdout(`${result.lines.join("\n")}\n`);
   setExit(result.ok ? EXIT.OK : EXIT.FAILURE);
