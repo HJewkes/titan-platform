@@ -12,7 +12,7 @@ import { mkdir, open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { LedgerRowSchema, isExcluded, type LedgerRowWire } from "@titan-design/decider";
-import type { OwnerAnswer, OwnerItem } from "@titan-design/owner-queue";
+import { promptLine, type OwnerAnswer, type OwnerItem } from "@titan-design/owner-queue";
 
 export const ANSWERS_FILE = "answers.jsonl";
 /** Kept out of `answers.jsonl`, whose rows are all decider ledger rows. */
@@ -93,10 +93,6 @@ function pickedLabels(item: DecisionItem, answer: DecisionAnswer): string[] {
   return ids.map((id) => item.options?.find((option) => option.id === id)?.label ?? id);
 }
 
-// eslint-disable-next-line no-control-regex -- control characters are exactly what is being removed
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
-const oneLine = (text: string): string => text.replace(CONTROL, " ");
-
 /** One unnumbered bullet, so it never collides with the numbered items written by hand. */
 export function decisionLine(item: DecisionItem, answer: DecisionAnswer): string {
   const picks = pickedLabels(item, answer);
@@ -104,7 +100,7 @@ export function decisionLine(item: DecisionItem, answer: DecisionAnswer): string
   const note = picks.length > 0 && answer.text !== undefined ? `; "${answer.text}"` : "";
   const time = new Date(answer.at).toISOString().slice(11, 16);
   const raw = `- ${time}Z ${decisionsClass(item, answer) ?? "answer"}: ${item.summary} → ${pick}${note} (item ${item.id}, by ${answer.by.id} via ${answer.by.channel})`;
-  const line = oneLine(raw);
+  const line = promptLine(raw);
   return line.length <= MAX_LINE_CHARS ? line : `${line.slice(0, MAX_LINE_CHARS - 1)}…`;
 }
 

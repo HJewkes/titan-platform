@@ -18,8 +18,8 @@
     {
       "name": "line and paragraph separators pass through unmarked",
       "file": "products/factory/src/shepherd/ci-policy-changes.ts",
-      "find": ".replace(SEPARATOR, SEPARATOR_MARK)",
-      "replace": "",
+      "find": "{ lineBreak: SEPARATOR_MARK }",
+      "replace": "{}",
       "kills": ["ciPolicyChanges marks NEL and the line and paragraph separators in place, so line numbers still match the YAML"]
     },
     {

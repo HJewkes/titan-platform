@@ -48,6 +48,12 @@ describe("ciPolicyChanges", () => {
     expect(invisible?.lines).toEqual([{ side: "-", n: 1, text: "on: pull_request_target" }, { side: "+", n: 1, text: "on: pull_request_target" }]);
   });
 
+  it("strips tag characters and soft hyphens, which hide text the owner would otherwise approve unseen", () => {
+    const [change] = ciPolicyChanges([file("", "  contents: re\u00adad\u{e0001}\u{e0077}\u{e0072}\u{e0069}\u{e0074}\u{e0065}\n")]);
+
+    expect(change?.lines).toEqual([{ side: "+", n: 1, text: "  contents: read" }]);
+  });
+
   it("shows 20 changed lines per file and 120 across files, and counts the rest", () => {
     const files = Array.from({ length: 8 }, (_, i) => file("", Array.from({ length: 25 }, (_, j) => `k${j}: ${i}`).join("\n"), `.github/w${i}.yml`));
 
