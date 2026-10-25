@@ -11,10 +11,11 @@ import { citationRefusals, codeSource } from "./resolve-citation.js";
 import { CONTENT_SHAPES, RESOLVE_ROWS, type ResolveRow } from "./resolve-tables.js";
 import { BEAT_FUNCTIONS, FRAMINGS, ScriptSchema, VISUAL_LAYERS, type ScriptV1 } from "./script-schema.js";
 import { loadSims } from "./sim/sim-load.js";
-import { SIM_BEAT, SimTracesSchema, runSimPass, shippedSims, type SimRegistry } from "./sim/sim-resolve.js";
+import { SIM_BEAT, SimTracesSchema, runSimPass, shippedSims, type SimRegistry, type SimSlotsFill } from "./sim/sim-resolve.js";
 import { slotOverrideProblems } from "./slot-overrides.js";
 import { loadSpeechBands } from "./speech-bands.js";
-import { FillError, fillScript, type FilledScript } from "./template-fill/fill.js";
+import { FillError, fillBeat, fillScript, type FillContext, type FilledBeat, type FilledScript, type FillRefusal } from "./template-fill/fill.js";
+import { beatScope } from "./template-fill/scope.js";
 import { shippedVisualRouter } from "./visual-router.js";
 import { sha256 } from "./workflow/artifacts.js";
 import type { ModelStageInput } from "./workflow/model-stages.js";
@@ -97,10 +98,15 @@ const parsePin = (text: string | undefined): Pin => (text === undefined ? undefi
  * The template fill over the kept beats, with the run's cited code and the owner's `slots` pin, the same inputs the
  * render fills from; a refusal is returned for the gate to name.
  */
+const fillContext = (code: string | undefined, pinned: Pin): FillContext => ({
+  specs: loadBeatSpecs(),
+  ...(code === undefined ? {} : { code: codeSource(code) }),
+  ...(pinned === undefined ? {} : { pinned }),
+});
+
 function templateFill(script: ScriptV1, resolved: Pick<Resolved, "beats" | "cut">, code: string | undefined, pinned: Pin): FilledScript | FillError {
   try {
-    const context = { specs: loadBeatSpecs(), ...(code === undefined ? {} : { code: codeSource(code) }), ...(pinned === undefined ? {} : { pinned }) };
-    return fillScript({ ...script, beats: keptBeats(script.beats, resolved) }, resolved, context);
+    return fillScript({ ...script, beats: keptBeats(script.beats, resolved) }, resolved, fillContext(code, pinned));
   } catch (error) {
     if (error instanceof FillError) return error;
     throw error;
@@ -119,17 +125,34 @@ function generatedSlots(filled: FilledScript | FillError): string | undefined {
 
 type CutBeat = z.infer<typeof CutBeatSchema>;
 
+const simSlotsFill = (found: FilledBeat | FillRefusal): SimSlotsFill => {
+  if ("detail" in found) return { problem: found.detail };
+  return found.fallback === undefined ? { slots: found.slots } : { problem: `the fill fell back to ${found.spec}: ${found.fallback.reason}` };
+};
+
+/**
+ * Each sim beat's slots as the template fill draws them: the pin's entry (else the generated layer), then the owner's
+ * overrides. The whole-script fill needs the cut list the sims decide, so the sim beats are filled alone first; a sim
+ * opens no chapter stage and continues none, so alone each fills as it does in the whole script.
+ */
+function simSlotsByFill(script: ScriptV1, simBeats: Resolved["beats"], read: (name: string) => string | undefined): Map<string, SimSlotsFill> {
+  const context = fillContext(read("code"), parsePin(read("slots")));
+  const rows = new Map(simBeats.map((row) => [row.id, row]));
+  const beats = script.beats.filter((beat) => rows.has(beat.id));
+  return new Map(beats.map((beat) => [beat.id, simSlotsFill(fillBeat(beat, rows.get(beat.id)!, beatScope(script, beat, context.code), context))]));
+}
+
 /**
  * Sweeps and checks each sim beat, storing its frozen trace and the `sim-traces` artifact, and cuts every beat whose
- * sim fails: before tts, so a cut beat is never voiced.
+ * sim fails or has no slots to sweep: before tts, so a cut beat is never voiced.
  */
 function cutFailingSims(script: ScriptV1, beats: Resolved["beats"], input: ModelStageInput, sims: SimRegistry, read: (name: string) => string | undefined) {
-  const simIds = new Set(beats.filter((beat) => beat.beat === SIM_BEAT).map((beat) => beat.id));
-  if (simIds.size === 0) return { kept: beats, cut: [] as CutBeat[], notes: [] as string[], simTraces: undefined as string | undefined };
-  const slots = read("slots");
+  const simBeats = beats.filter((beat) => beat.beat === SIM_BEAT);
+  if (simBeats.length === 0) return { kept: beats, cut: [] as CutBeat[], notes: [] as string[], simTraces: undefined as string | undefined };
+  const filled = simSlotsByFill(script, simBeats, read);
   const pass = runSimPass({
-    beats: script.beats.filter((beat) => simIds.has(beat.id)),
-    slots: slots === undefined ? undefined : z.record(z.string(), z.unknown()).parse(JSON.parse(slots)),
+    beats: script.beats.filter((beat) => filled.has(beat.id)),
+    filled,
     facts: read("facts"),
     registry: sims,
     putTrace: (json) => input.store.putText(json, "sim-trace", input.from),
@@ -139,8 +162,7 @@ function cutFailingSims(script: ScriptV1, beats: Resolved["beats"], input: Model
     const verdict = failed.get(beat.id);
     return verdict ? [{ id: beat.id, chapter: beat.chapter, code: verdict.code ?? "E-SIM-MISS", detail: verdict.detail }] : [];
   });
-  const unslottedNote = `sim beats ${pass.unslotted.join(", ")} have no sim slots at resolve: not swept or checked`;
-  const notes = [...cut.map((beat) => `sim beat ${beat.id} cut (${beat.code}): ${beat.detail}`), ...(pass.unslotted.length ? [unslottedNote] : [])];
+  const notes = cut.map((beat) => `sim beat ${beat.id} cut (${beat.code}): ${beat.detail}`);
   const simTraces = input.store.putText(`${JSON.stringify(pass.traces, null, 2)}\n`, "sim-traces", input.from);
   return { kept: beats.filter((beat) => !failed.has(beat.id)), cut, notes, simTraces };
 }

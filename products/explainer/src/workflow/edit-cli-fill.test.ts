@@ -41,4 +41,18 @@ describe("explainer edit check through the template fill", () => {
     expect(code).toBe(1);
     expect(JSON.parse(text).problems).toEqual(["beats.h1.visual.cues.0: no-element: rows-1 names no element of beat spec stat"]);
   });
+
+  it("passes an edit on a base whose resolve cut a sim beat, filling only the beats it kept", async () => {
+    fx = fixture();
+    const cue = (target: string) => ({ action: "V6", target, atCue: "desk" });
+    // A sim beat with no slots pin and no visual.slots has nothing to sweep, so the base's resolve cuts it.
+    const stat = { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "stat", labels: ["4 scans a minute"], cues: [cue("figures-1")] };
+    const sim = { assertion: "Retries settle near four tries", job: "numbers", beat: "sim", labels: ["Tries per parcel"], cues: [cue("readouts-1")] };
+    const base = await baseRun({}, fakeScriptModel(choppy({ h1: { visual: stat }, h2: { visual: sim } }), { asWritten: true }));
+
+    const { code, text } = await cli(["check", editFile(base, { h1: { slots: { figures: [{ ...figures[0], id: "figures-1" }] } } })]);
+
+    expect(JSON.parse(text).problems).toEqual([]);
+    expect(code).toBe(0);
+  });
 });
