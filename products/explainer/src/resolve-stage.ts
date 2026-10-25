@@ -170,7 +170,7 @@ export function runResolveStage(input: ModelStageInput, config: { doctrine: stri
   const unplacedNote = `no block cap for chapters ${unplaced.join(", ")}: no block of ${script.profile} has that id`;
   const unlinkedNote = `no chapter link for companion-link beats ${linked.unlinked.join(", ")}: the chapter-links artifact lacks their chapters`;
   const notes = [`${beats.length} beats resolved by rows ${rowsUsed.join(", ")}`, ...(unplaced.length ? [unplacedNote] : []), ...(linked.unlinked.length ? [unlinkedNote] : []), ...simNotes];
-  const fill = generated === undefined ? {} : { "generated-slots": store.putText(generated, "generated-slots", input.from) };
+  const fill: Record<string, string> = generated === undefined ? {} : { "generated-slots": store.putText(generated, "generated-slots", input.from) };
   const outputs = { resolved: sha, ...(simTraces ? { "sim-traces": simTraces } : {}), ...fill };
   return { outputs, notes };
 }
