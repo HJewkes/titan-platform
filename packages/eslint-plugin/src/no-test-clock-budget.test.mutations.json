@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any if or ternary counts as a bench gate",
+      "file": "packages/eslint-plugin/src/no-test-clock-budget.ts",
+      "find": "      if (BENCH.test(source.getText(at.test))) return true;",
+      "replace": "      return true;",
+      "kills": [
+        "no-test-clock-budget invalid a limit behind an if on another condition"
+      ]
+    },
+    {
+      "name": "a call to a local function carries no clock from its return",
+      "file": "packages/eslint-plugin/src/no-test-clock-budget.ts",
+      "find": "  return isFlow(callee) && callee.type === \"Identifier\" && readsClock(callee, walk, path);",
+      "replace": "  return false;",
+      "kills": [
+        "no-test-clock-budget invalid a ratio of best-of-N times from a local helper",
+        "no-test-clock-budget invalid a time a declared function returns in an object"
+      ]
+    },
+    {
+      "name": "a property read follows every property of the object",
+      "file": "packages/eslint-plugin/src/no-test-clock-budget.ts",
+      "find": "  if (key !== undefined && (prop.computed === true || keyOf(prop.key) !== key)) return false;",
+      "replace": "",
+      "kills": [
+        "no-test-clock-budget valid another property of a value that holds a time"
+      ]
+    }
+  ]
+}

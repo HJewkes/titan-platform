@@ -9,6 +9,17 @@
       "kills": [
         "LinearRegExp agrees with RegExp on 400 random sources, under each of its flags, on every input up to 4 characters"
       ]
+    },
+    {
+      "name": "LinearRegExp tests with the backtracking native RegExp instead of its NFA",
+      "file": "packages/fix-proof/src/linear-regexp.ts",
+      "find": "this.#matches = matches ?? cachedCompile(source, flags);",
+      "replace": "this.#matches = matches ?? ((native) => (input: string) => native.test(input))(new RegExp(source, flags));",
+      "kills": [
+        "LinearRegExp grows linearly with the path for d/ and 20 stars",
+        "LinearRegExp grows linearly with the path for 12 globstar segments",
+        "LinearRegExp counts steps in proportion to the input it reads"
+      ]
     }
   ]
 }

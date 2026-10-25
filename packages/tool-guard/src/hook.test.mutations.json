@@ -29,6 +29,15 @@
       "kills": [
         "handle: a push rerouted by the command's own config denies a feature-branch push that -c remote.origin.push maps onto main"
       ]
+    },
+    {
+      "name": "matchGuarded tests every pattern again for a path it already answered",
+      "file": "packages/tool-guard/src/paths.ts",
+      "find": "  if (known !== undefined) return known;\n",
+      "replace": "",
+      "kills": [
+        "handle over real script files behind dynamic wrapper words, case folding on refuses scripts past the line's budget, names the script to split off, and each half then passes"
+      ]
     }
   ]
 }

@@ -174,6 +174,15 @@ interface Run {
   generation: number;
 }
 
+let steps = 0;
+
+/**
+ * The NFA steps every LinearRegExp has simulated in this process: one per state a closure visits and one per state a
+ * character is tested against. A test reads it before and after a match to assert counted work, which no load on the
+ * machine moves, where a timing ratio would flake (TP-4262).
+ */
+export const linearRegExpSteps = (): number => steps;
+
 const stateSet = (capacity: number): StateSet => ({ items: new Int32Array(capacity), size: 0 });
 
 function newRun(states: readonly State[], edges: number, length: number): Run {
@@ -187,6 +196,7 @@ function close(run: Run, from: number, position: number, into: StateSet): boolea
   run.stack[top++] = from;
   while (top > 0) {
     const at = run.stack[--top]!;
+    steps += 1;
     if (run.marks[at] === run.generation) continue;
     run.marks[at] = run.generation;
     const state = run.states[at]!;
@@ -211,6 +221,7 @@ function advance(run: Run, current: StateSet, char: string, position: number, ne
   let matched = false;
   for (let i = 0; i < current.size; i += 1) {
     const state = run.states[current.items[i]!]!;
+    steps += 1;
     if (state.kind === "char" && state.test(char)) matched = close(run, state.next, position + 1, next) || matched;
   }
   return matched;

@@ -1,5 +1,13 @@
+import { LINEAR_WORK_LIMIT, callMeter, countCalls, linearWork } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { compileGlobs, expandBraces } from "./glob.js";
+
+/** The primitives brace expansion reads and builds with; their calls count its work on any machine (TP-4262). */
+const EXPANSION_WORK = [[Array.prototype, "push"], [String.prototype, "split"], [RegExp.prototype, "exec"]] as const;
+/** Refusing past the cap took 530 and 608 calls (257 alternatives built); building the whole product takes far more. */
+const REFUSAL_CALLS = 2_000;
+/** A glob refused for its size or group count is refused unread: no counted call at all. */
+const UNREAD_CALLS = 10;
 
 describe("compileGlobs", () => {
   const isTest = compileGlobs(["**/*.{test,spec}.{ts,tsx,mts,js,mjs}"]);
@@ -29,18 +37,18 @@ describe("compileGlobs", () => {
 
   it("rejects a huge brace product before building it", () => {
     const alternatives = (count: number): string => `{${Array.from({ length: count }, (_, i) => `a${i}`).join(",")}}`;
-    const started = performance.now();
-    expect(() => expandBraces(`${alternatives(4096)}${alternatives(256)}`)).toThrow(Error);
-    expect(() => expandBraces(`${alternatives(30)}${alternatives(30)}`)).toThrow(/256/);
-    expect(performance.now() - started).toBeLessThan(50);
+    const calls = countCalls(EXPANSION_WORK, () => {
+      expect(() => expandBraces(`${alternatives(4096)}${alternatives(256)}`)).toThrow(Error);
+      expect(() => expandBraces(alternatives(64).repeat(3))).toThrow(/256/);
+    }, REFUSAL_CALLS);
+    expect(calls).toBeLessThanOrEqual(REFUSAL_CALLS);
   });
 
   it("rejects nested groups early", () => {
     const inner = `{${Array.from({ length: 8 }, (_, i) => `b${i}`).join(",")}}`;
     const glob = `{${Array.from({ length: 8 }, (_, i) => `a${i}${inner}`).join(",")}}${inner}`;
-    const started = performance.now();
-    expect(() => expandBraces(glob)).toThrow(/256/);
-    expect(performance.now() - started).toBeLessThan(50);
+    const calls = countCalls(EXPANSION_WORK, () => expect(() => expandBraces(glob)).toThrow(/256/), REFUSAL_CALLS);
+    expect(calls).toBeLessThanOrEqual(REFUSAL_CALLS);
   });
 
   it("expands nested and empty alternatives", () => {
@@ -53,10 +61,11 @@ describe("compileGlobs", () => {
     ["20000 single-choice groups", "{a}".repeat(20000)],
     ["a 2KB glob", "a".repeat(2048)],
   ])("rejects %s before expanding", (_name, glob) => {
-    const started = performance.now();
-    expect(() => expandBraces(glob)).toThrow(Error);
-    expect(() => compileGlobs([glob])).toThrow(Error);
-    expect(performance.now() - started).toBeLessThan(50);
+    const calls = countCalls(EXPANSION_WORK, () => {
+      expect(() => expandBraces(glob)).toThrow(Error);
+      expect(() => compileGlobs([glob])).toThrow(Error);
+    }, UNREAD_CALLS);
+    expect(calls).toBeLessThanOrEqual(UNREAD_CALLS);
   });
 
   it("accepts 32 brace groups", () => {
@@ -92,16 +101,26 @@ function seededRandom(seed: number): (below: number) => number {
 
 describe("compileGlobs on hostile globs", () => {
   it.each([
-    ["d/ and 20 stars", `d/${"*".repeat(20)}x`, `d/${"a".repeat(40)}`],
-    ["12 globstar segments", `${"**/".repeat(12)}x`, `${"a/".repeat(40)}b`],
-    ["10 globstar-a runs", "**a".repeat(10), `${"a".repeat(40)}b`],
-    ["10 star-a runs", `d/${"*a".repeat(10)}`, `d/${"a".repeat(40)}b`],
-    ["alternating globstar and star segments", `${"**/*/".repeat(8)}x`, `${"a/".repeat(40)}b`],
-  ])("rejects a non-matching path quickly for %s", (_name, glob, path) => {
+    ["d/ and 20 stars", `d/${"*".repeat(20)}x`, (n: number) => `d/${"a".repeat(n)}`],
+    ["12 globstar segments", `${"**/".repeat(12)}x`, (n: number) => `${"a/".repeat(n)}b`],
+    ["10 globstar-a runs", "**a".repeat(10), (n: number) => `${"a".repeat(n)}b`],
+    ["10 star-a runs", `d/${"*a".repeat(10)}`, (n: number) => `d/${"a".repeat(n)}b`],
+    ["alternating globstar and star segments", `${"**/*/".repeat(8)}x`, (n: number) => `${"a/".repeat(n)}b`],
+  ])("rejects a non-matching path in steps linear in its length for %s", (_name, glob, path) => {
     const matches = compileGlobs([glob]);
-    const started = performance.now();
-    expect(matches(path)).toBe(false);
-    expect(performance.now() - started).toBeLessThan(200);
+    const results: boolean[] = [];
+    // The NFA reads each character once through charAt; a backtracking RegExp reads none through it, and fails at size 1.
+    const steps = callMeter([[String.prototype, "charAt"]]);
+    try {
+      const { ratio } = linearWork((n) => {
+        const input = path(n);
+        return () => void results.push(matches(input));
+      }, { from: 1, to: 1024, meter: steps.calls });
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      steps.restore();
+    }
+    expect(results.every((matched) => !matched)).toBe(true);
   });
 
   it.each([
