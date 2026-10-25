@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { OVERLAY_SHAPES, fixProofNeedsTests, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -34,7 +34,7 @@ import { fixFirstCount } from "./wake-brief.js";
 import { convergenceFields } from "./fix-first-trail.js";
 import { SCOPED_REREVIEW_INPUT, scopeModeOf, scopedBriefFields, scopedRereviewOf, scopedResultFields, type ScopedRereviewWiring } from "./review-scope-round.js";
 import { SCOPE_CHECK_STEPS, scopeCheckModeOf, scopeCheckRoute, scopeRoundOf, type ScopeCheckWiring } from "./scope-check-round.js";
-import { FIX_PROOF_STEPS, readFixProofAt, workflowCiFieldOf } from "./fix-proof.js";
+import { FIX_PROOF_STEPS, readFixProofAt, workflowCiFieldOf, type FixProofReadSchema } from "./fix-proof.js";
 import { PROOF_WAIVER_STEPS, fixProofRoutes, proofStandingAt } from "./proof-waiver.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STEP } from "./review-steps.js";
@@ -42,7 +42,7 @@ import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import { withoutPlan, type HoldMember, type PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, panelOn, panelReview, panelVerdictRoute, plannedPanel, type MemberBase, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
 import { CI_UNREAD_STEPS, ciUnreadRoute } from "./ci-unread.js";
-import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict } from "./take-verdict.js";
+import { LATE_VERDICT_STEP, SEAT_RECHECK_STEP, asksOwnerBrief, mergeVerdict, recheckSeat, takeVerdict, type ProofStanding } from "./take-verdict.js";
 import { NO_REVIEWER_STEPS, noReviewerRoutes } from "./no-reviewer-hold.js";
 import { notReviewed } from "./not-reviewed.js";
 import { ciChecksAt } from "./green-checks.js";
@@ -104,8 +104,11 @@ type AcceptedVerdict = PanelAcceptedVerdict & {
 export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string; notice?: string; resetsAt?: number };
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
-/** `testOnlyProof` marks a test-only head proceeding on its vacuous proof, so the panel plans a tests member to answer it. */
-const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional(), cause: ReviewCauseSchema.optional(), testOnlyProof: z.literal(true).optional() });
+/**
+ * `testOnlyProof` marks a test-only head proceeding on its vacuous proof, and `badFixProof` any other fix-proof line that makes the
+ * tests seat blocking, such as `unproven` or `error` (TP-4195); either way the panel plans a tests member to answer it.
+ */
+const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional(), cause: ReviewCauseSchema.optional(), testOnlyProof: z.literal(true).optional(), badFixProof: z.literal(true).optional() });
 /**
  * `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. `external` starts nobody.
  * `account` is the Claude config directory the reviewer bills, set only when review accounts are wired.
@@ -332,6 +335,13 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal), () => true);
 }
 
+/** The intent fields that make the panel plan a tests member: the same predicate aggregate blocks on, so its tests seat is never unplanned. */
+function proofPlanFields(proof: z.infer<typeof FixProofReadSchema>, head: string, standing: ProofStanding): { testOnlyProof?: true; badFixProof?: true } {
+  if (standing.unverified === "no-repro-test-only") return { testOnlyProof: true };
+  const line = proof.kind === "result" ? proof.line : undefined;
+  return fixProofNeedsTests({ head, fixProof: line, fixProofWaivedAt: standing.waivedAt }) ? { badFixProof: true } : {};
+}
+
 /**
  * Read the head's fix-proof result, record which reviewer this head gets, start or adopt it, wait for its verdict, and take a
  * MERGE through the evidence step. A vacuous or test-less proof ends the review as NO_REPRO before any reviewer is started, unless
@@ -347,7 +357,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if ("ended" in gated) return gated.ended;
   const { standing } = gated;
   if (request.seatHeld?.head === target.head && recordsRecheck(ctx, target.head)) return recheckSeat(ctx, target, request.seatHeld, standing);
-  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...(standing.unverified === "no-repro-test-only" && { testOnlyProof: true }) }, Intended);
+  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }), ...proofPlanFields(proof, target.head, standing) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : notReviewed(ctx, target, intent);
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined, DEFAULT_ACCOUNT, standing);
   const fixFirsts = fixFirstCount(ctx);
