@@ -1,3 +1,4 @@
+import { expandsAtRunTime } from "./field-words.js";
 import type { Option, Options } from "./options.js";
 
 /** The literal body texts curl sends, or null when any comes from a file, a config file or run-time text. */
@@ -12,8 +13,9 @@ export function curlBodies(o: Options, bodyFlags: readonly string[]): string[] |
   return texts;
 }
 
+/** A word the shell rewrites (brace, glob, tilde) is sent as other text than written, or as more words. */
 function curlBodyText({ flag, value }: Option): string | null {
-  if (!value || value.dynamic || flag === "-T" || flag === "--upload-file") return null;
+  if (!value || value.dynamic || expandsAtRunTime(value) || flag === "-T" || flag === "--upload-file") return null;
   return curlReadsFile(flag, value.value) ? null : value.value;
 }
 

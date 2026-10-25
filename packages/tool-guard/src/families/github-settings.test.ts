@@ -112,6 +112,48 @@ describe("githubSettings, a request that writes no ruleset or protection", () =>
   });
 });
 
+describe("githubSettings, a GraphQL request it cannot read in full", () => {
+  const RULESET = { pattern: "github:rulesets", scope: "unknown" };
+  const WIDE = ["graphql.json", "'graphql;x'", `${API}/%67raphql`, "https://ghe.example/api/graphql.json"];
+  const fill = (name: string) => `gh api graphql -F 'query=mutation{${name}(input:{repositoryRulesetId:"RRS_x"}){clientMutationId}}'`;
+
+  it.each([
+    ...WIDE.flatMap((e) => [
+      `gh api ${e} -f query="$Q"`,
+      `gh api ${e} -f "$K=mutation{x}"`,
+      `ARGS='-f query=mutation{x}'; gh api ${e} $ARGS`,
+      `gh api ${e} "$X" -f query='{viewer{login}}'`,
+      `gh api ${e} -f query="$(cat q.graphql)"`,
+    ]),
+    'gh api repos/../graphql -f query="$Q"',
+    `git checkout -b deleteRepositoryRuleset; ${fill("{branch}")}`,
+    `GH_REPO=o/deleteRepositoryRuleset ${fill("{repo}")}`,
+    fill("{owner}"),
+    fill(":branch"),
+    `gh api graphql -f 'query=mutation{${BS}${BS}${BS}${BS}u0064eleteRepositoryRuleset(input:{repositoryRulesetId:"RRS"}){clientMutationId}}'`,
+    `gh api graphql -fquery=mutation{delete{,Repository}Ruleset'(input:{repositoryRulesetId:"X"}){clientMutationId}}'`,
+    `gh api graphql -f query=mutation{delete{,Repository}Ruleset'(input:{repositoryRulesetId:"X"}){clientMutationId}}'`,
+  ])("denies %s", (command) => {
+    expect(settings(bash(command))).toEqual([expect.objectContaining({ spelling: "bash.config.gh-api-graphql-ruleset", subject: RULESET })]);
+  });
+
+  it("denies a curl body brace expansion rewrites", () => {
+    const command = `curl ${API}/graphql --json '{"query":"mutation{delete'{,Repository}'Ruleset(input:{repositoryRulesetId:${BS}"X${BS}"}){clientMutationId}}"}'`;
+
+    expect(settings(bash(command))).toEqual([expect.objectContaining({ spelling: "bash.config.curl-graphql-ruleset", subject: RULESET })]);
+  });
+
+  it.each([
+    "gh api graphql.json -f query='{viewer{login}}'",
+    "gh api graphql -f query='{viewer{login}}' -F owner='{owner}'",
+    'gh api graphqlx -f query="$Q"',
+    'gh api repos/o/r/graphql.json -f query="$Q"',
+    `curl ${API}/graphql --json '{"query":"{viewer{login}}"}'`,
+  ])("passes %s", (command) => {
+    expect(settings(bash(command))).toEqual([]);
+  });
+});
+
 describe("githubSettings, a GraphQL ruleset mutation", () => {
   const RULESET = { pattern: "github:rulesets", scope: "unknown" };
 

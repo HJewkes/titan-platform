@@ -21,30 +21,22 @@ const GRAPHQL_WRITE: SettingsWrite = { route: "rulesets", scope: "unknown" };
 
 /**
  * The one decision for every route into GitHub GraphQL. `texts` are the query texts the request sends, or null when
- * the guard cannot read them: an unread query may carry any mutation, so it is an unknown ruleset write.
+ * the guard cannot read them. A request passes only when its texts are read in full and name no ruleset mutation: an
+ * unread text, or a reading `graphqlBranchWrites` calls unknown with no mutation named (a gh fill that may be the
+ * whole name, an escape past the two layers GitHub decodes), is an unknown ruleset write.
  */
-const rulesetWrite = (texts: string[] | null, fields: WordToken[] = []) =>
-  texts === null || graphqlBranchWrites(texts, fields).mutations.some((m) => RULESET_MUTATIONS.has(m));
-
-const literalUrl = (value: string): WordToken =>
-  ({ type: "word", value, typed: value, dynamic: false, quoted: true, spliced: false, computed: false, refs: [], subs: [], cuts: [] });
-
-/**
- * gh resolves a relative endpoint against the API root, and GHES serves GraphQL under `api/`, so the endpoint reaches
- * GraphQL whenever the same path would for curl: `graphql.json`, `graphql;x` and `%67raphql` included.
- */
-function ghReachesGraphql(endpoint: string): boolean {
-  if (isGraphqlEndpoint(endpoint)) return true;
-  const path = endpoint.replace(/^[a-z][\w+.-]*:\/\/[^/]*/i, "").replace(/^\/*(?:api\/)?/i, "");
-  return isGitHubGraphql(literalUrl(`https://api.github.com/${path}`));
+function rulesetWrite(texts: string[] | null, fields: WordToken[] = []): boolean {
+  if (texts === null) return true;
+  const reading = graphqlBranchWrites(texts, fields);
+  return (reading.unknown && reading.mutations.length === 0) || reading.mutations.some((m) => RULESET_MUTATIONS.has(m));
 }
 
 const INPUT_RE = /^--input(?:=|$)/;
 
 /**
- * The `query=` texts a gh GraphQL call sends, as written: an expansion inside a value only adds text around a written
- * name, and gh's placeholder fills leave the name alone. Null when gh reads a query from a file (`query=@f`, `--input`)
- * or the shell decides it at run time (`queryUnknown`: a run-time value or key, or a word that may carry a flag).
+ * The `query=` texts a gh GraphQL call sends, as written. Null when gh reads a query from a file (`query=@f`,
+ * `--input`) or the shell decides or rewrites it at run time (`queryUnknown`). A gh fill in a read text may become any
+ * text, a whole mutation name included; `rulesetWrite` reads that from `graphqlBranchWrites`.
  */
 function ghQueryTexts(leaf: WordToken[], request: GhApiRequest): string[] | null {
   const texts = request.fields.flatMap((f) => {
@@ -61,7 +53,7 @@ function ghSettings(cmd: SimpleCommand): ClassifiedAction[] {
   if (line.hidden || line.path.join(" ") !== "api") return [];
   const request = ghApiRequest(line.leaf);
   if (request.endpoint === null) return [];
-  if (ghReachesGraphql(request.endpoint)) {
+  if (isGraphqlEndpoint(request.endpoint)) {
     const write = rulesetWrite(ghQueryTexts(line.leaf, request), request.fields);
     return write ? [classified("bash.config.gh-api-graphql-ruleset", subject(GRAPHQL_WRITE))] : [];
   }
