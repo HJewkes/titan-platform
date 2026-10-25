@@ -19,6 +19,7 @@ export const FROZEN_HOST_WRITE_VERBS: ReadonlySet<string> = new Set([
   "shepherd freeze",
   "shepherd unfreeze",
   "shepherd thaw",
+  "shepherd fix-pr",
 ]);
 
 export class FrozenHostError extends Error {}
