@@ -9,7 +9,7 @@ import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, t
 import { landedOf, type LandedPr } from "./land-landed.js";
 import { approveMergeGate, askedApproval, type ApprovalSource, type AskApproval } from "./land-approval.js";
 import type { CiSnapshot, FailingCheck } from "./land-ci.js";
-import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
+import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, waitsAgain, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS } from "./land-update.js";
 import { rerunOrphaned } from "./land-orphan.js";
@@ -20,7 +20,7 @@ export { afterWrite } from "./land-ci-wait.js";
 export { sleep } from "./deadline.js";
 export { codeRoute, landRoutes, type LandDeps, type Timing } from "./land-routes.js";
 export { DEVICE_CHECK, SET_ANSWER_ORIGIN, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
-export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
+export { CI_BACKLOG_CEILING_FACTOR, CI_WAIT_ATTEMPTS, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -127,6 +127,8 @@ interface LandState {
   /** Merge steps that waited on a hold cost no cycle either: only the owner's release ends that wait, so no count may fail it (TP-4082). */
   helds: number;
   orphanReruns: number;
+  /** ci-wait windows in a row that timed out on a wait only GitHub ends. */
+  timeouts: number;
   hold: SettleHold;
 }
 
@@ -139,13 +141,14 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
   const state: LandState = {
-    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, helds: 0, orphanReruns: 0, cycle: 0, updates: 0, retries: 0,
+    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, helds: 0, orphanReruns: 0, timeouts: 0, cycle: 0, updates: 0, retries: 0,
     bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0,
     trusted: new Set(), trustedBy: "human", trustedOn: rules.base,
   };
   for (;;) {
     if (state.cycle - state.settles - state.helds >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: state.rules.contexts, strict: state.rules.strict }, CiSnapshotResult);
+    if (waitsAgain(ci, state)) continue;
     if (ci.orphaned?.length) {
       await rerunOrphaned(ctx, roundId("ci-orphan-rerun", round, state.orphanReruns++), { repo: input.repo, pr: input.pr, headSha: ci.headSha, jobs: ci.orphaned });
       continue;

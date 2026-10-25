@@ -315,6 +315,18 @@ describe("durable harness dispatch", () => {
     expect(start).not.toHaveBeenCalled();
   });
 
+  it("persists a Codex version probe that cannot spawn the CLI as a terminal failure", async () => {
+    const start = vi.fn();
+    const missing = Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
+    const adapter = createCodexExecAdapter({ auth: "cached-cli" }, { inspectVersion: async () => { throw missing; }, start });
+    const { dispatcher, ledger } = setup(adapter);
+    const ack = await dispatcher.dispatch({ executionId: "no-codex", requestKey: "request-no-codex", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed", reason: expect.stringMatching(/^harness_mismatch: could not verify Codex CLI version: spawn codex ENOENT/) } });
+    expect(ledger.get("no-codex")?.phase).toBe("failed");
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("keeps the spend of a harness failure on the failed terminal", async () => {
     const { dispatcher, ledger } = setup(controlledAdapter(async () => invalidOutput([spend])));
     const ack = await dispatcher.dispatch({ executionId: "spent", requestKey: "request-spent", request: request() });

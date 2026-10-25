@@ -17,8 +17,7 @@
       "find": "? noReproOfLine(line, head) : undefined",
       "replace": "? { kind: \"NO_REPRO\", headSha: head, result: line } : undefined",
       "kills": [
-        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof goes back as the proof's NO_REPRO when its intent, recorded before TP-4058, planned no tests member",
-        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member keeps an errored proof's unverified review, never turning it into a NO_REPRO the fixer cannot answer"
+        "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member a test-only head that proceeds on a vacuous proof goes back as the proof's NO_REPRO when its intent, recorded before TP-4058, planned no tests member"
       ]
     },
     {

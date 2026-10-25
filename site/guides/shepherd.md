@@ -1530,6 +1530,19 @@ minutes). Past that ceiling the step fails with a reason that names the CI backl
 wait at once, and a required check that never reported still times out at 45 minutes. A restarted step
 repeats from a fresh clock, so a crash can lengthen the wait but never shorten the decision.
 
+A queue backlog also leaves waits behind that only GitHub can end. Shepherd waits those out again
+instead of failing the run. If the last read before the timeout saw `mergeable_state unknown`, saw an
+open repo's first or changed run set (`waiting on a second read that sees the same check-runs`), or
+failed with an HTTP 5xx, the step returns that read marked as timed out. Land then waits again in a
+fresh `ci-wait` step, up to 3 windows in a row (`CI_WAIT_ATTEMPTS`). Any read that has not timed out
+starts the count over. Once the PR settles green, the run goes on to review with no re-register. A red
+check still ends the wait at once. When all 3 windows time out, the run fails as a `ci-timeout`:
+`ci-wait timed out after 2700000 ms on each of 3 attempts: <last read>`. Each timed-out window shows on
+`titan-factory shepherd timeline` as a `ci-timeout` event, for example `ci-timeout <at>: attempt 1 of 3,
+waiting again: ci-wait:0 timed out after 2700000 ms, waiting on mergeable_state unknown (by shepherd)`.
+A 5xx with no earlier read that answered has no head to return, so it still fails at the first
+timeout.
+
 GitHub can leave a job queued or in progress after the workflow run that owns it has completed. That job
 never reports, but it reads as a backlog, so before this check the wait ran on toward the 135-minute
 ceiling with the merge train held. Now, once a check has waited 5 minutes, `ci-wait` reads its workflow
