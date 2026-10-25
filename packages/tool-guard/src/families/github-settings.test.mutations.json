@@ -27,6 +27,24 @@
       "kills": [
         "githubSettings, a GraphQL ruleset mutation passes gh api graphql -f query='{viewer{login}}' -f note=deleteRepositoryRuleset"
       ]
+    },
+    {
+      "name": "an unreadable GitHub GraphQL body reads as no ruleset mutation",
+      "file": "packages/tool-guard/src/families/github-settings.ts",
+      "find": "  return queries === null || namesRulesetMutation(queries);",
+      "replace": "  return namesRulesetMutation(queries ?? []);",
+      "kills": [
+        "githubSettings, a GraphQL ruleset mutation bash.config.curl-graphql-ruleset: curl -d @q.json https://api.github.com/graphql"
+      ]
+    },
+    {
+      "name": "gh reads GraphQL only on the paths isGraphqlEndpoint names",
+      "file": "packages/tool-guard/src/families/github-settings.ts",
+      "find": "  return isGitHubGraphql(literalUrl(",
+      "replace": "  return path === \"\" && isGitHubGraphql(literalUrl(",
+      "kills": [
+        "githubSettings, a GraphQL ruleset mutation bash.config.gh-api-graphql-ruleset: gh api 'graphql;x' -f query='mutation{deleteRepositoryRuleset(input:{repositoryRulesetId:\"RRS\"}){clientMutationId}}'"
+      ]
     }
   ]
 }
