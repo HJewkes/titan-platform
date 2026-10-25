@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the recommendation is read from the last sentence instead of the first",
+      "file": "packages/decider/src/ask-lint.ts",
+      "find": "  return text.split(/[.?!](?:\\s|$)/)[0] ?? \"\";",
+      "replace": "  return text.split(/[.?!](?:\\s|$)/).at(-1) ?? \"\";",
+      "kills": [
+        "linear time and two false positives (TP-1684) lints a 50 kB token with no spaces in bounded time"
+      ]
+    }
+  ]
+}

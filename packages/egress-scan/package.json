@@ -37,6 +37,9 @@
   "dependencies": {
     "@titan-design/fix-proof": "workspace:^"
   },
+  "devDependencies": {
+    "@titan-design/test-kit": "workspace:*"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
