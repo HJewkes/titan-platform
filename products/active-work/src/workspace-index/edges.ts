@@ -116,11 +116,11 @@ function currentEdges(graph: WorkspaceGraph): CurrentEdge[] {
   const relations = Object.values(RELATIONS);
   const placeholders = relations.map(() => '?').join(', ');
   return graph.db
-    .prepare(
+    .prepare<string[], CurrentEdge>(
       `SELECT edge_id AS edgeId, source_ref AS sourceRef, relation, target_ref AS targetRef
          FROM edge WHERE relation IN (${placeholders}) AND t_expired IS NULL`,
     )
-    .all(...relations) as CurrentEdge[];
+    .all(...relations);
 }
 
 function countByRelation(edges: Iterable<DerivedEdge>): EdgeCounts {
