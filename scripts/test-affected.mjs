@@ -54,7 +54,8 @@ export function repoTierDirs(root = ROOT) {
 }
 
 export function vitestArgs(base, changed, repoDirs) {
-  const args = ["run", "--changed", base, "--passWithNoTests", "--project", "threads", "--project", "forks"];
+  const projects = ["threads", "forks", "active-work", "active-work-forks"];
+  const args = ["run", "--changed", base, "--passWithNoTests", ...projects.flatMap((project) => ["--project", project])];
   const touchesRepoTier = changed.some((path) => repoDirs.has(packageDirOf(path)));
   return touchesRepoTier ? [...args, "--project", "repo"] : args;
 }
