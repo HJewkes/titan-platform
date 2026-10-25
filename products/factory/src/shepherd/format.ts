@@ -7,6 +7,7 @@ import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import type { ThawResult } from "./thaw-command.js";
+import type { WatchResult } from "./watch-command.js";
 import type { FixPrResult } from "./fix-pr-command.js";
 import type { Freeze } from "./freeze.js";
 import { lastAwaitClause } from "./none-reason.js";
@@ -40,6 +41,7 @@ const FORMATTERS: Formatters = {
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
   "shepherd.prs": formatPrs,
+  "shepherd.watch": formatWatches,
 };
 
 const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;
@@ -79,6 +81,11 @@ function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
 function formatRepairStops({ changed, stops }: RepairStopResult): string {
   const lines = stops.map((stop) => `${stop.repo}${stop.scope.startsWith("#") ? "" : ":"}${stop.scope}  ${stop.reason} (by ${stop.actor}, ${stop.at})`);
   return `${changed ? "changed; " : ""}${stops.length === 0 ? "no repair stops" : `repair stops:\n${lines.join("\n")}`}\n`;
+}
+
+function formatWatches({ changed, watches }: WatchResult): string {
+  const lines = watches.map((watch) => `${watch.repo}#${watch.pr}  on ${watch.on.join(",")}  to ${watch.seat ?? "its digest seat"} (by ${watch.actor}, ${watch.at})`);
+  return `${changed ? "changed; " : ""}${watches.length === 0 ? "no watches" : `watches:\n${lines.join("\n")}`}\n`;
 }
 
 function formatRepoFreezes({ detail, freezes, mainRed = [] }: RepoFreezeResult): string {

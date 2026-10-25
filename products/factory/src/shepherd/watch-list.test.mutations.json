@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a watched run's end waits for the batch flush like any other",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "    prompt: [...delta.added.map((item) => item.key), ...ended(fresh.filter(watchedEnd))],",
+      "replace": "    prompt: delta.added.map((item) => item.key),",
+      "kills": [
+        "watched runs in the seat digest sends a watched run's merge once it settles, not at the 30-minute batch flush",
+        "watched runs in the seat digest carries an unwatched merge along on the digest a watched merge brings",
+        "watched runs in the seat digest keeps the watch while the digest is held, and drops it once the digest that reports the merge is sent"
+      ]
+    }
+  ]
+}

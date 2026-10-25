@@ -16,6 +16,7 @@ import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
 import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
 import type { DigestPacer, DigestPacing, PendingItems } from "./seat-digest-pace.js";
+import { digestWatches, watchedEvents, watchedSeat, type DigestWatches } from "./watch-list.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
 export const SEAT_DIGEST_MS = 60_000;
@@ -66,6 +67,8 @@ interface SeatView {
   finished: DigestItem[];
   /** Every finished run read, with or without an outcome to report, so the next sweep need not read it again. */
   settled: string[];
+  /** The keys of open and finished items a seat's watch asked for, which are prompt-class whatever their kind. */
+  watched: string[];
 }
 
 const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back"]);
@@ -104,12 +107,12 @@ function finishedItem(row: WatchRow): DigestItem | undefined {
  * Each seat's open items and finished runs, from the watch rows; a run no seat is named for is left out. A `quiet` run is
  * settled without a line, so the seat neither hears of it nor reads it again.
  */
-function seatViews(inputs: readonly DigestInput[], seatOf: SeatOf, quiet: (input: DigestInput) => boolean): Map<string, SeatView> {
+function seatViews(inputs: readonly DigestInput[], seatOf: SeatOf, quiet: (input: DigestInput) => boolean, watches?: DigestWatches): Map<string, SeatView> {
   const views = new Map<string, SeatView>();
   for (const input of inputs) {
     const seat = seatOf(input.row);
     if (seat === undefined) continue;
-    const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [] }).get(seat)!;
+    const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [], watched: [] }).get(seat)!;
     if (quiet(input)) {
       if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
       continue;
@@ -118,9 +121,18 @@ function seatViews(inputs: readonly DigestInput[], seatOf: SeatOf, quiet: (input
     if (open) view.open.push(open);
     const finished = finishedItem(input.row);
     if (finished) view.finished.push(finished);
+    view.watched.push(...watchedKeys(watches, input.row, open, finished));
     if (FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
   }
   return views;
+}
+
+/** The items of a watched run whose event its watch names: an open gate for `gated`, an outcome for `merged` or `stopped`. */
+function watchedKeys(watches: DigestWatches | undefined, row: WatchRow, open: DigestItem | undefined, finished: DigestItem | undefined): string[] {
+  const watch = watches?.of(row.runId);
+  if (watch === undefined) return [];
+  const shown = watchedEvents(watch, row);
+  return [...(open && shown.includes("gated") ? [open.key] : []), ...(finished && shown.some((event) => event !== "gated") ? [finished.key] : [])];
 }
 
 /** A seat seen for the first time has its finished runs taken as already known, so a first sweep does not replay history. */
@@ -129,10 +141,15 @@ function freshRuns(view: SeatView, last: SeatState | undefined): DigestItem[] {
   return view.finished.filter((item) => !known.has(item.key));
 }
 
-/** A new open item, a moved one included, is prompt-class; a cleared item or a finished run is batch-class. */
+/** A new open item, a moved one included, and a watched run's end are prompt-class; a cleared item or another finished run is batch-class. */
 function pendingItems(view: SeatView, fresh: readonly DigestItem[], last: SeatState | undefined): PendingItems {
   const delta = digestDelta(view.open, fresh, last);
-  return { prompt: delta.added.map((item) => item.key), batch: [...delta.cleared.map((key) => `cleared:${key}`), ...fresh.map((item) => `finished:${item.key}`)] };
+  const watchedEnd = (item: DigestItem): boolean => view.watched.includes(item.key);
+  const ended = (items: readonly DigestItem[]): string[] => items.map((item) => `finished:${item.key}`);
+  return {
+    prompt: [...delta.added.map((item) => item.key), ...ended(fresh.filter(watchedEnd))],
+    batch: [...delta.cleared.map((key) => `cleared:${key}`), ...ended(fresh.filter((item) => !watchedEnd(item)))],
+  };
 }
 
 /** Finished runs stay known once heard of, because a sweep reads only the finished runs its seat has not heard of. */
@@ -169,6 +186,8 @@ interface DigestRoutes {
   unsendable: ReadonlyMap<string, string>;
   /** The run's own seat when its digest goes to a fallback because that seat holds no live session. */
   reroutedFrom?: SeatOf;
+  /** The seats' watches: a watched event is prompt-class, and a watch is dropped once its run's end is told. */
+  watches?: DigestWatches;
 }
 
 const finishedAt = ({ row, run }: DigestInput): string => run.completedAt ?? row.phaseSince;
@@ -211,7 +230,7 @@ export async function sendSeatDigests(
   const sent: string[] = [];
   const failed: { seat: string; cause: string }[] = [];
   const unsendable = routes.unsendable ?? new Map<string, string>();
-  for (const [seat, view] of seatViews(inputs, routes.seatOf ?? repoSeats(ports.seatLookup()), rerouteQuiet(routes, memory, now))) {
+  for (const [seat, view] of seatViews(inputs, routes.seatOf ?? repoSeats(ports.seatLookup()), rerouteQuiet(routes, memory, now), routes.watches)) {
     const last = memory.get(seat);
     const fresh = freshRuns(view, last);
     const text = digestText(seat, view.open, fresh, last);
@@ -225,6 +244,7 @@ export async function sendSeatDigests(
     try {
       if (text !== undefined) await ports.send(seat, text);
       if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
+      routes.watches?.drop(view.settled);
       if (text !== undefined) sent.push(seat);
     } catch (error) {
       failed.push({ seat, cause: error instanceof Error ? error.message : String(error) });
@@ -285,10 +305,18 @@ async function liveSeats(runs: readonly { repo: string; runId: string }[], chose
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
 export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now = new Date(), pacer?: DigestPacer): Promise<DigestOutcome> {
-  const routes = await runSeats(services.store.get(), ports);
+  const store = services.store.get();
+  const routes = withWatches(await runSeats(store, ports), digestWatches(store));
   const reads = digestReads(memory, routes.seatOf);
-  const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration, runFinished(status)));
+  const watched = (runId: string): boolean => routes.watches.of(runId) !== undefined;
+  const inputs = await rowsWithRuns(host, services, (registration, status) => watched(registration.runId) || reads(registration, runFinished(status)));
   return sendSeatDigests(inputs, ports, memory, routes, now, pacer);
+}
+
+/** A watched run is read until its watch drops, and a watch that names a seat sends the run's lines there, never rerouted. */
+function withWatches(routes: DigestRoutes, watches: DigestWatches): DigestRoutes & { watches: DigestWatches } {
+  const named = (run: { runId: string }): boolean => (watches.of(run.runId)?.seat ?? null) !== null;
+  return { ...routes, seatOf: watchedSeat(routes.seatOf, watches), reroutedFrom: (run) => (named(run) ? undefined : routes.reroutedFrom?.(run)), watches };
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);
