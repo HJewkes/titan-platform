@@ -25,7 +25,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type 
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x10", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x10b", sheets: "x10",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
@@ -37,7 +37,7 @@ const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly stri
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  qa: ["timeline", "resolved"], sheets: ["render-json", "resolved", "slots", "qa", "visual"],
+  qa: ["timeline", "resolved", "visual", "code", "slots"], sheets: ["render-json", "resolved", "slots", "qa", "visual"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */

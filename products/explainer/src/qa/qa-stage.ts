@@ -9,6 +9,7 @@ import type { ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import type { StageOutcome } from "../workflow/records.js";
 import type { QaEngine, QaPage } from "./qa-engine.js";
+import { leadLineBeats } from "./qa-lead-lines.js";
 import { qaReport, qaSummary } from "./qa-report.js";
 import { qaCues, qaMoments, timelineFromArtifact, timelineFromWords, timelineS, type QaTimeline } from "./qa-timeline.js";
 import type { QaGate } from "./gate-profile.js";
@@ -70,14 +71,14 @@ interface Inspection {
 }
 
 /** Seeks to every cue moment, holds what persists under the profile's gating kinds, and crops each held error. */
-async function inspectPage(engine: QaEngine, url: string, timeline: QaTimeline, config: QaConfig, cropDir: string): Promise<Inspection> {
+async function inspectPage(engine: QaEngine, url: string, timeline: QaTimeline, config: QaConfig, cropDir: string, lead: Set<string>): Promise<Inspection> {
   const options: InspectOptions = { ...DEFAULT_OPTIONS, ...config.inspect };
   const cues = qaCues(timeline);
   const moments = qaMoments(timeline);
   const page = await engine.open(url, options, cues);
   try {
     const frames = await sampleFrames(page, moments, options);
-    addLateFill(frames, cues, new Map(timeline.beats.map((beat) => [beat.id, beat.durationS])));
+    addLateFill(frames.filter((frame) => !lead.has(frame.beat)), cues, new Map(timeline.beats.map((beat) => [beat.id, beat.durationS])));
     const held = classify(frames, { gate: config.gate });
     if (held.errors.length > 0) await page.crops(held.errors, cropDir, options);
     return { held, moments: moments.length };
@@ -91,7 +92,7 @@ async function servedInspection(input: QaInput, engine: QaEngine, timeline: QaTi
   const query = pageQuery(input, tree, config);
   const served = await serveTree(tree);
   try {
-    return await inspectPage(engine, `${served.origin}/${query}`, timeline, config, path.join(scratch, "crops"));
+    return await inspectPage(engine, `${served.origin}/${query}`, timeline, config, path.join(scratch, "crops"), leadLineBeats(input));
   } finally {
     await served.close();
   }

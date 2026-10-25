@@ -33,20 +33,21 @@ const FROM = { runId: "qa-test", stage: "qa" };
 const TIMELINE = { durationS: 4, beats: [{ id: "b1", kind: "title", startS: 0, durationS: 4, slots: {} }] };
 const CONFIG: QaConfig = { sha: "f".repeat(64), gate: [...ERROR_KINDS], inspect: {} };
 
-function artifacts(): Record<string, string> {
+function artifacts(timeline: object = TIMELINE): Record<string, string> {
   const page = path.join(root, "page");
   mkdirSync(page, { recursive: true });
   writeFileSync(path.join(page, "index.html"), "<!doctype html><title>fixture</title>\n");
   const mp4 = path.join(root, "video.mp4");
   writeFileSync(mp4, JSON.stringify({ durationS: TIMELINE.durationS }));
   return {
-    mp4: store.putFile(mp4, "mp4", FROM), page: store.putTree(page, "page", FROM), timeline: store.putText(JSON.stringify(TIMELINE), "timeline", FROM),
+    mp4: store.putFile(mp4, "mp4", FROM), page: store.putTree(page, "page", FROM), timeline: store.putText(JSON.stringify(timeline), "timeline", FROM),
     words: store.putText("{}", "words", FROM), script: store.putText("{}", "script", FROM),
   };
 }
 
-async function runQa(options: FakeQaOptions) {
-  const inputs = artifacts();
+async function runQa(options: FakeQaOptions, extra: (inputs: Record<string, string>) => Record<string, string> = () => ({}), timeline?: object) {
+  const base = artifacts(timeline);
+  const inputs = { ...base, ...extra(base) };
   const outcome = await runQaStage({ artifacts: inputs, store, from: FROM, remainingUsd: 0 }, CONFIG, fakeQa(options));
   const report = QaReportSchema.parse(JSON.parse(store.readText(outcome.outputs.qa!)));
   const { checks } = runStageChecks("qa", { artifacts: { ...inputs, ...outcome.outputs }, store, l0Checks: [] });
@@ -82,6 +83,26 @@ describe("qa stage", () => {
     const { checks } = await runQa({ skewS });
 
     expect(checks["mp4-duration"]).toMatchObject({ gate: true, pass });
+  });
+});
+
+describe("qa stage late-fill on a lead-line beat", () => {
+  /** The verdict card: its lead line alone on stage, with a cue still to come past the settled end. */
+  const VERDICT = { durationS: 4, beats: [{ id: "b1-verdict", kind: "verdict", startS: 0, durationS: 4, slots: {}, cues: { reasons: 3.9 } }] };
+  const visual = (qaLeadLine: boolean) => () => ({ visual: store.putText(JSON.stringify({ beats: [{ id: "b1-verdict", ...(qaLeadLine ? { qaLeadLine } : {}) }] }), "visual", FROM) });
+
+  it("passes held-errors when visual marks the beat qaLeadLine, as the spike's qa skips it", async () => {
+    const { report, checks } = await runQa({ contentRuns: 1 }, visual(true), VERDICT);
+
+    expect(report.errors).toEqual([]);
+    expect(checks["held-errors"]).toMatchObject({ gate: true, pass: true });
+  });
+
+  it("fails held-errors on late-fill when the same beat carries no qaLeadLine", async () => {
+    const { report, checks } = await runQa({ contentRuns: 1 }, visual(false), VERDICT);
+
+    expect(report.errors).toEqual([expect.objectContaining({ kind: "late-fill", beat: "b1-verdict", ts: [2, 3.8] })]);
+    expect(checks["held-errors"]).toMatchObject({ gate: true, pass: false });
   });
 });
 

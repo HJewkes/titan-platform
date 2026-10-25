@@ -197,15 +197,15 @@ export function runResolveStage(input: ModelStageInput, config: { doctrine: stri
   return { outputs, notes };
 }
 
-const readJson = (input: CheckInput, name: string): unknown => JSON.parse(input.store.readText(input.artifacts[name]!));
+const readJson = (input: Pick<CheckInput, "artifacts" | "store">, name: string): unknown => JSON.parse(input.store.readText(input.artifacts[name]!));
 
 const BoxSchema = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() });
 const LayoutSchema = z.object({ stage: z.object({ width: z.number(), height: z.number() }), boxes: z.record(z.string(), z.record(z.string(), BoxSchema)) });
 
-const readCode = (input: CheckInput): string | undefined => (input.artifacts.code === undefined ? undefined : input.store.readText(input.artifacts.code));
+const readCode = (input: Pick<CheckInput, "artifacts" | "store">): string | undefined => (input.artifacts.code === undefined ? undefined : input.store.readText(input.artifacts.code));
 
 /** The fill the gates read: the one the body ran, recomputed from the script, resolved beats, code and `slots` pin. */
-function fillAtResolve(input: CheckInput): FilledScript | FillError {
+export function fillAtResolve(input: Pick<CheckInput, "artifacts" | "store">): FilledScript | FillError {
   const script = ScriptSchema.parse(readJson(input, "script"));
   const pinned = input.artifacts.slots === undefined ? undefined : parsePin(input.store.readText(input.artifacts.slots));
   return templateFill(script, ResolvedSchema.parse(readJson(input, "resolved")), readCode(input), pinned);

@@ -250,7 +250,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
-| `qa` | in-process, no model call: render-qa's cue-moment gate over the served page tree in Chromium, the gate profile's verdict, and ffprobe for the MP4's length (below) | mp4, words, script, page (+ timeline, resolved when a run has them) → qa, qa-crops |
+| `qa` | in-process, no model call: render-qa's cue-moment gate over the served page tree in Chromium, the gate profile's verdict, and ffprobe for the MP4's length (below) | mp4, words, script, page (+ timeline, resolved, visual, code, slots when a run has them) → qa, qa-crops |
 | `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-json, qa, visual when a run has them) → sidecar, poster, fingerprint |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
@@ -369,7 +369,8 @@ still has a `sheets` block is refused: delete it, along with its `sheets.sh` and
 back) with the `script` cues resolved by `cueResolverFromWords` over the beats `keptBeats` keeps. It materialises the
 `page` tree, serves it on loopback (`serveTree`) and opens the composition page with `?timeline=` or, without a
 timeline, the bridged spike page with `?page=<theater stem>`. At every render-qa cue moment it runs `inspectAt`, then
-`addLateFill` and `classify` with the gate profile's gating kinds, writes an annotated crop per held error (at most 8
+`addLateFill` over every beat but the lead-line beats (`leadLineBeats`: `qaLeadLine` in a bridged render's `visual`,
+else the template fill's `qaLeadLine` hint, as the spike's `examples/qa.ts` skips a verdict card) and `classify` with the gate profile's gating kinds, writes an annotated crop per held error (at most 8
 per kind) as the `qa-crops` tree, reads the MP4's length through ffprobe, and writes `qa.json` (`explainer.qa/v1`:
 `pass`, `profile`, `gateProfileSha`, `gate`, `timeline`, `moments`, `errorCounts`, `infoCounts`, `errors` and `info`
 by beat with `kind`, `ts`, `at`, `reason`, `el`, `text` and `crop`, `mp4 { durationS, timelineS, frameS }`, `notes`).

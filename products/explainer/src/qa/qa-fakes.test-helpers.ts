@@ -19,6 +19,8 @@ export interface FakeQaOptions {
   findingsAt?: (t: number) => Finding[];
   /** Seconds added to the MP4's own length, as a render that drifted from its timeline would. */
   skewS?: number;
+  /** The text runs drawn at every time; 3 by default, 1 for a stage holding only its lead line. */
+  contentRuns?: number;
 }
 
 /** The fake render's MP4 is JSON naming its own length (run-fakes.test-helpers' render.ts writes it). */
@@ -39,7 +41,8 @@ export function fakeQa(options: FakeQaOptions = {}): FakeQa {
       return {
         inspectAt: async (t) => {
           inspected.push(t);
-          return { textRuns: 3, contentRuns: 3, findings: options.findingsAt?.(t) ?? [] };
+          const runs = options.contentRuns ?? 3;
+          return { textRuns: runs, contentRuns: runs, findings: options.findingsAt?.(t) ?? [] };
         },
         crops: async (errors, dir) => {
           mkdirSync(dir, { recursive: true });

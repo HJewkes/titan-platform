@@ -19,6 +19,15 @@
         "qa stage fails mp4-duration when the MP4 runs 0.034 s past its timeline",
         "qa stage passes mp4-duration when the MP4 runs 0.033 s past its timeline"
       ]
+    },
+    {
+      "name": "qa runs late-fill over lead-line beats too",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "addLateFill(frames.filter((frame) => !lead.has(frame.beat)), cues",
+      "replace": "addLateFill(frames, cues",
+      "kills": [
+        "qa stage late-fill on a lead-line beat passes held-errors when visual marks the beat qaLeadLine, as the spike's qa skips it"
+      ]
     }
   ]
 }
