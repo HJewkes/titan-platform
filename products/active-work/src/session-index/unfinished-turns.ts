@@ -11,7 +11,7 @@ const FACT_OWNERS = `
   WHERE prompt_id IN (SELECT value FROM json_each(?))`;
 
 /** One page's selection costs about a millisecond locally (TP-4200). */
-export const UNFINISHED_PAGE_TURNS = 1_000;
+const UNFINISHED_PAGE_TURNS = 1_000;
 
 interface UnfinishedTurn {
   id: number;
