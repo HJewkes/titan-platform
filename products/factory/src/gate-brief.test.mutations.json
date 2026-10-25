@@ -30,11 +30,11 @@
       "kills": ["the D21 owner card flattens a stored line holding a newline or escape, so it cannot pose as another line of the prompt"]
     },
     {
-      "name": "the summary leaves out the class and keys",
+      "name": "an unread changed-file list reads as no .github/ change",
       "file": "products/factory/src/gate-brief.ts",
-      "find": "(target.ciPolicy ? `CI policy weakened: ${target.ciPolicy.keys.join(\", \")}. ${detail}` : detail)",
-      "replace": "detail",
-      "kills": ["the D21 owner card names the class and the keys ahead of the reason in the summary"]
+      "find": "const changes = filesUnread === undefined ? stored.record?.ciPolicyChanges : undefined;",
+      "replace": "const changes = stored.record?.ciPolicyChanges;",
+      "kills": ["the D21 owner card says no lines were read, not that none changed, when the changed-file list itself was unread"]
     }
   ]
 }
