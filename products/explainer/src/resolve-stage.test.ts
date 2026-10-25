@@ -61,7 +61,7 @@ describe("resolve stage", () => {
     const { s, outcome } = stageThenChecks({ script: json(choppy()) });
 
     const resolved = ResolvedSchema.parse(JSON.parse(s.store.readText(outcome.outputs.resolved!)));
-    expect(s.writes).toEqual(["resolved", "slots"]);
+    expect(s.writes).toEqual(["resolved", "generated-slots"]);
     expect(resolved.profile).toBe("repo-tour");
     expect(resolved.beats.map((beat) => beat.beat)).toEqual(Array(12).fill("stat"));
     expect(resolved.budgets.filter((row) => row.scope === "beat")).toHaveLength(12);

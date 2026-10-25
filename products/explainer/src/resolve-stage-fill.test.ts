@@ -14,7 +14,8 @@ function filledThenChecks(texts: Record<string, string>) {
   const inputs = Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, sha256(text)]));
   const outcome = runResolveStage({ artifacts: inputs, store, from: { runId: "r", stage: "resolve" }, remainingUsd: 1 }, resolveConfig());
   const checks = runStageChecks("resolve", { artifacts: { ...inputs, ...outcome.outputs }, store, l0Checks: [] });
-  const slots = outcome.outputs.slots === undefined ? undefined : JSON.parse(store.readText(outcome.outputs.slots));
+  const generated = outcome.outputs["generated-slots"];
+  const slots = generated === undefined ? undefined : JSON.parse(store.readText(generated));
   return { writes, outcome, checks, slots, check: (name: string) => checks.checks.find((check) => check.name === name) };
 }
 
@@ -36,17 +37,30 @@ describe("resolve stores the template fill's slots", () => {
     expect(check("emphasis-target")).toEqual({ name: "emphasis-target", gate: true, pass: true, detail: "0 of 1 emphasis cues fail" });
   });
 
-  it("writes no slots output when a slots pin is present, so the pin's sha stands", () => {
+  it("fills over a slots pin and never writes slots, so the pin's sha stands", () => {
     // Arrange
-    const pin = json({ b1: { rows: [{ id: "rows-2", text: "Pinned row", mark: "dot" }] } });
+    const pinned = { rows: [{ id: "rows-2", text: "Pinned row", mark: "dot" }] };
 
     // Act
-    const { writes, outcome, check } = filledThenChecks({ script: scriptOf(listBeat), slots: pin });
+    const { writes, outcome, slots, check } = filledThenChecks({ script: scriptOf(listBeat), slots: json({ b1: pinned }) });
 
     // Assert
     expect(outcome.outputs).not.toHaveProperty("slots");
-    expect(writes).toEqual(["resolved"]);
+    expect(writes).toEqual(["resolved", "generated-slots"]);
+    expect(slots).toEqual({ b1: pinned });
     expect(check("emphasis-target")).toMatchObject({ pass: true });
+  });
+
+  it("reads a carried generated-slots artifact as nothing, filling fresh from the script", () => {
+    // Arrange
+    const stale = json({ b1: { title: "Stale", rows: [{ id: "rows-1", text: "Stale row", mark: "dot" }] } });
+
+    // Act
+    const { slots, check } = filledThenChecks({ script: scriptOf(listBeat), "generated-slots": stale });
+
+    // Assert
+    expect(slots.b1.rows.map((row: { text: string }) => row.text)).toEqual(["Two lanes", "One queue"]);
+    expect(check("emphasis-target")).toMatchObject({ pass: true, detail: "0 of 1 emphasis cues fail" });
   });
 
   it("lights the fourth label of a four-label compare, since compare ids are numbered per label", () => {
@@ -88,5 +102,19 @@ describe("template-fill gate on the resolve stage", () => {
     expect(check("slot-overrides")).toMatchObject({ pass: true });
     expect(check("template-fill")).toMatchObject({ gate: true, pass: false, detail: expect.stringMatching(/^template fill refused 1 beat: b2 \(visual\.slots leave compare invalid/) });
     expect(slots).toBeUndefined();
+    expect(check("emphasis-target")).toMatchObject({ pass: false, detail: expect.stringContaining("the template fill refused") });
+  });
+
+  it("passes a partial override on a beat whose slots come from the pin, as the render fills it", () => {
+    // Arrange
+    const pinned = filledThenChecks({ script: scriptOf(compareBeat(PAIRED)) }).slots;
+    const unpaired = { ...compareBeat(["One queue", "Two lanes"], []), slots: { leftTitle: "Old desk" } };
+
+    // Act
+    const { check, slots } = filledThenChecks({ script: scriptOf(unpaired), slots: json(pinned) });
+
+    // Assert
+    expect(check("template-fill")).toMatchObject({ gate: true, pass: true, detail: "1 beats filled, 0 by fallback" });
+    expect(slots).toEqual(pinned);
   });
 });

@@ -171,7 +171,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "variety-framing-run", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:framing-run") },
     { name: "variety-min-framings", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:min-framings") },
     { name: "variety-cast-in-motion", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:cast-in-motion") },
-    { name: "emphasis-target", gate: true, reads: ["script", "resolved", "slots"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
+    { name: "emphasis-target", gate: true, reads: ["script", "resolved"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
     { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
     { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
     { name: "template-fill", gate: true, reads: ["script", "resolved"], run: templateFillVerdict },

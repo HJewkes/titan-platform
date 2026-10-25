@@ -73,8 +73,6 @@ interface RunView {
   videoId: string;
   /** Every artifact the run holds: its plan's, then each finished stage's outputs, later stages winning. */
   artifacts: Record<string, string>;
-  /** The `slots` pin the run started with, if any; what resolve stored is not a pin. */
-  pinnedSlots?: string;
   profile?: string;
   theater?: string;
 }
@@ -89,8 +87,7 @@ function runView(dataDir: string, runId: string): RunView {
     const plan = planOf(run);
     const artifacts = stageRecords(run).reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...plan.artifacts });
     const where = { ...(plan.profile ? { profile: plan.profile } : {}), ...(plan.theater ? { theater: plan.theater } : {}) };
-    const pinnedSlots = plan.artifacts.slots === undefined ? {} : { pinnedSlots: plan.artifacts.slots };
-    return { runId, status: run.status, videoId: videoIdOf(runs, run), artifacts, ...pinnedSlots, ...where };
+    return { runId, status: run.status, videoId: videoIdOf(runs, run), artifacts, ...where };
   } finally {
     db.close();
   }
@@ -107,15 +104,18 @@ function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
 
 type CheckBase = EditBase & { resolved: Resolved; pinned?: Record<string, unknown> };
 
-/** The base run's script, resolved beats, the slots it rendered with and the slots pin it started with, when it holds them. */
+/**
+ * The base run's script, resolved beats, the generated slots it rendered with (its own pin, for a run from before
+ * resolve stored them) and its `slots` pin, when it holds them.
+ */
 function editBase(dataDir: string, view: RunView): CheckBase {
-  const { script, resolved, slots } = view.artifacts;
+  const { script, resolved, slots, "generated-slots": rendered = slots } = view.artifacts;
   if (script === undefined || resolved === undefined) throw new Error(`run ${view.runId} has no resolved script; an edit needs a run that finished resolve`);
   return withStore(dataDir, (store) => {
     const beats = ResolvedSchema.parse(JSON.parse(store.readText(resolved)));
     const readSlots = (sha: string) => z.record(z.string(), z.unknown()).parse(JSON.parse(store.readText(sha)));
-    const generated = slots === undefined ? {} : { generated: readSlots(slots) };
-    const pinned = view.pinnedSlots === undefined ? {} : { pinned: readSlots(view.pinnedSlots) };
+    const generated = rendered === undefined ? {} : { generated: readSlots(rendered) };
+    const pinned = slots === undefined ? {} : { pinned: readSlots(slots) };
     return { runId: view.runId, scriptSha: script, script: JSON.parse(store.readText(script)), layers: new Map(beats.beats.map((b) => [b.id, b.layer])), resolved: beats, ...generated, ...pinned };
   });
 }

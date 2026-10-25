@@ -2,30 +2,30 @@
   "v": 1,
   "mutations": [
     {
-      "name": "resolve stores no slots artifact",
+      "name": "resolve stores no generated-slots artifact",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "const slots = artifacts.slots === undefined ? generatedSlots(script, resolved, read(\"code\")) : undefined;",
-      "replace": "const slots: string | undefined = undefined;",
+      "find": "const generated = generatedSlots(templateFill(script, resolved, read(\"code\"), parsePin(read(\"slots\"))));",
+      "replace": "const generated: string | undefined = undefined;",
       "kills": [
         "resolve stores the template fill's slots writes each beat's generated slots by beat id when no slots pin is present, and the emphasis gate runs on them"
       ]
     },
     {
-      "name": "resolve overwrites a slots pin",
+      "name": "the body fills without the slots pin",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "const slots = artifacts.slots === undefined ? generatedSlots(",
-      "replace": "const slots = true ? generatedSlots(",
+      "find": "read(\"code\"), parsePin(read(\"slots\"))));",
+      "replace": "read(\"code\"), undefined));",
       "kills": [
-        "resolve stores the template fill's slots writes no slots output when a slots pin is present, so the pin's sha stands"
+        "resolve stores the template fill's slots fills over a slots pin and never writes slots, so the pin's sha stands"
       ]
     },
     {
-      "name": "template-fill registered as reported, not a gate",
-      "file": "products/explainer/src/workflow/stage-checks.ts",
-      "find": "{ name: \"template-fill\", gate: true,",
-      "replace": "{ name: \"template-fill\", gate: false,",
+      "name": "the gates fill without the slots pin",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return templateFill(script, ResolvedSchema.parse(readJson(input, \"resolved\")), readCode(input), pinned);",
+      "replace": "return templateFill(script, ResolvedSchema.parse(readJson(input, \"resolved\")), readCode(input), undefined);",
       "kills": [
-        "template-fill gate on the resolve stage fails the stage on an override that leaves the fill invalid, naming the beat"
+        "template-fill gate on the resolve stage passes a partial override on a beat whose slots come from the pin, as the render fills it"
       ]
     },
     {
@@ -40,8 +40,8 @@
     {
       "name": "fallback beats read against the resolver's spec",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "chosen.set(beat.id, beat.spec);",
-      "replace": "chosen.set(beat.id, beat.fallback.from);",
+      "find": "beat: drawn.get(id) ?? chosen.get(id) ?? visual.beat",
+      "replace": "beat: chosen.get(id) ?? visual.beat",
       "kills": [
         "template-fill gate on the resolve stage passes a beat that falls back and names the fallback, its cues read against the list it draws"
       ]

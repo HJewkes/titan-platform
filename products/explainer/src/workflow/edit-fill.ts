@@ -9,7 +9,7 @@ type Resolved = z.infer<typeof ResolvedSchema>;
 
 /**
  * The template fill's verdict on an edited script: each problem the filled slots raise. `pinned` is the base run's
- * `slots` pin, not the slots its resolve stored, which stands in for the derived layer as it does at resolve.
+ * `slots` artifact, which stands in for the derived layer as it does at resolve.
  */
 export type FillCheck = (script: ScriptV1, resolved: Resolved, pinned?: Readonly<Record<string, unknown>>) => string[];
 

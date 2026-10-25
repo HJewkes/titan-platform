@@ -247,7 +247,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
-| `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, slots (unless pinned), custom-layers |
+| `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render`, `qa` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
 | `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-json, qa, visual when a run has them) → sidecar, poster, fingerprint |
@@ -802,16 +802,18 @@ new stage key.
   profile block is also held to that block's longest airtime at the fastest rate its beat types allow. Other
   chapters are listed in a note and not capped.
 - **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,
-  layer and anchors, plus every budget row. Unless a `slots` pin is present, resolve also stores `slots`: the template
-  fill's `generated` slots by beat id, before the owner's overrides (below). A refused fill stores none.
+  layer and anchors, plus every budget row. Resolve also stores `generated-slots`: the template fill's `generated`
+  slots by beat id (a `slots` pin's entries included), before the owner's overrides (below). A refused fill stores
+  none. It is never named `slots`, which is only ever the owner's pin, so a later run that carries it forward still
+  fills fresh.
 - **Variety (reported, TP-4019).** `variety-top-component`, `variety-component-run`, `variety-template-share`,
   `variety-framing-run`, `variety-min-framings` and `variety-cast-in-motion` read `resolved` against the profile's
   `layers.componentMaxShare`, `layers.templateMaxShare` and `variety.minFramings`, plus a run of at most 2 components
   and 1 framing. Each detail names the beats a fix would change. None is a gate yet; cast-in-motion counts the
   `E-RESOLVE-STILL-MOTION` beats the resolver already refuses.
-- **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
-  chose, over the `slots` artifact with the owner's overrides laid on. A beat whose slots do not parse under the chosen
-  spec, and which the fill drew as a fallback, is read against the fallback's spec. `word-budget` fails on any beat or
+- **Gates.** Every gate that reads the fill reruns it with the `slots` pin, as the body did. `emphasis-target` runs
+  `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the fill drew (a fallback's included), over the
+  filled slots with the owner's overrides laid on; a refused fill fails it. `word-budget` fails on any beat or
   block over its cap. `slot-overrides` refuses an owner override the chosen beat spec would not accept (below).
   `template-fill` fails when `fillScript` refuses a beat, naming it; a fallback passes and is listed in the detail.
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
@@ -829,10 +831,10 @@ new stage key.
   edit's `scriptSha`, a beat the script lacks, a beat whose resolved layer is not `template`, an edit that changes
   nothing, and a slot change that drops an element a cue targets, naming the cue. It returns the new script, byte for
   byte the base's outside each edited `visual.slots`/`visual.tune`, and a field diff against what the render saw
-  (the run's `slots` artifact with the overrides laid over it).
+  (the run's `generated-slots`, else its `slots` pin, with the overrides laid over it).
   - `explainer edit check <edit.json|->` adds `ScriptSchema` and the `slot-overrides` gate and prints
     `{ ok, editId, problems, diff }` as JSON; it writes nothing. When the overrides pass, it runs TP-4134's `fillScript`
-    on the edited script (the base's own `slots` pin, if it had one, pinned as at resolve; the slots its resolve stored are not a pin) and the emphasis-target gate on the filled
+    on the edited script (the base's `slots` artifact pinned, as at resolve) and the emphasis-target gate on the filled
     slots, so a refused beat or a cue left with no element is refused here (`workflow/edit-fill.ts`).
   - `explainer edit apply <edit.json|-> [--start] [--json]` stores the script artifact (provenance
     `{ runId: "input", stage: "edit" }`) and writes `<data dir>/edits/<editId>.json` (base, video, new script sha,
@@ -851,7 +853,7 @@ new stage key.
 `fillScript(script, resolved, { specs, pinned?, code? })` (`template-fill/`, TP-4134) turns each template beat of a
 `script/v1` and its `resolved` row into storyboard slot props, parsed by the beat spec's slot schema through
 `parseBeatSlots`. It is pure: the caller passes the beat specs, a pinned `slots` artifact and the code source
-(`codeSource(code)`). The resolve stage stores its `generated` slots and gates on it (above); TP-2992 S3 builds the
+(`codeSource(code)`). The resolve stage stores its `generated` slots as `generated-slots` and gates on the fill (above); TP-2992 S3 builds the
 storyboard from it.
 
 - **Layers.** The derived slots (or the pinned entry for the beat, which replaces them), then resolver `slots`, then

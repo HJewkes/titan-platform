@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { loadBeatSpecs, parseBeatSlots } from "./beat-load.js";
+import { loadBeatSpecs } from "./beat-load.js";
 import { COMPONENT_MATURITIES, SPEECH_BANDS, type BeatSpec } from "./beat-schema.js";
 import type { EmphasisGateInput } from "./emphasis-gate.js";
 import { canonicalJson } from "./eval-store.js";
@@ -12,7 +12,7 @@ import { CONTENT_SHAPES, RESOLVE_ROWS, type ResolveRow } from "./resolve-tables.
 import { BEAT_FUNCTIONS, FRAMINGS, ScriptSchema, VISUAL_LAYERS, type ScriptV1 } from "./script-schema.js";
 import { loadSims } from "./sim/sim-load.js";
 import { SIM_BEAT, SimTracesSchema, runSimPass, shippedSims, type SimRegistry } from "./sim/sim-resolve.js";
-import { slotOverrideProblems, withSlotOverrides } from "./slot-overrides.js";
+import { slotOverrideProblems } from "./slot-overrides.js";
 import { loadSpeechBands } from "./speech-bands.js";
 import { FillError, fillScript, type FilledScript } from "./template-fill/fill.js";
 import { shippedVisualRouter } from "./visual-router.js";
@@ -89,10 +89,18 @@ function linkCompanionCards(beats: readonly ResolvedBeat[], chapterLinks: string
   return { beats: linked, unlinked };
 }
 
-/** The template fill over the kept beats, with the run's cited code; a refusal is returned for the gate to name. */
-function templateFill(script: ScriptV1, resolved: Pick<Resolved, "beats" | "cut">, code: string | undefined): FilledScript | FillError {
+type Pin = Readonly<Record<string, unknown>> | undefined;
+
+const parsePin = (text: string | undefined): Pin => (text === undefined ? undefined : z.record(z.string(), z.unknown()).parse(JSON.parse(text)));
+
+/**
+ * The template fill over the kept beats, with the run's cited code and the owner's `slots` pin, the same inputs the
+ * render fills from; a refusal is returned for the gate to name.
+ */
+function templateFill(script: ScriptV1, resolved: Pick<Resolved, "beats" | "cut">, code: string | undefined, pinned: Pin): FilledScript | FillError {
   try {
-    return fillScript({ ...script, beats: keptBeats(script.beats, resolved) }, resolved, { specs: loadBeatSpecs(), ...(code === undefined ? {} : { code: codeSource(code) }) });
+    const context = { specs: loadBeatSpecs(), ...(code === undefined ? {} : { code: codeSource(code) }), ...(pinned === undefined ? {} : { pinned }) };
+    return fillScript({ ...script, beats: keptBeats(script.beats, resolved) }, resolved, context);
   } catch (error) {
     if (error instanceof FillError) return error;
     throw error;
@@ -100,11 +108,11 @@ function templateFill(script: ScriptV1, resolved: Pick<Resolved, "beats" | "cut"
 }
 
 /**
- * Each template beat's generated slots by beat id, before the owner's overrides, which the emphasis-target gate lays
- * on. A refused fill gives none, so the template-fill gate, not the body, names the refused beats.
+ * Each template beat's generated slots by beat id, before the owner's overrides. Stored as `generated-slots`, never
+ * `slots`: a later run that carries it forward must not read it as a pin. A refused fill gives none, so the
+ * template-fill gate, not the body, names the refused beats.
  */
-function generatedSlots(script: ScriptV1, resolved: Resolved, code: string | undefined): string | undefined {
-  const filled = templateFill(script, resolved, code);
+function generatedSlots(filled: FilledScript | FillError): string | undefined {
   if (filled instanceof FillError) return undefined;
   return `${JSON.stringify(Object.fromEntries(filled.beats.map((beat) => [beat.id, beat.generated])), null, 2)}\n`;
 }
@@ -157,12 +165,13 @@ export function runResolveStage(input: ModelStageInput, config: { doctrine: stri
   const { rows, unplaced } = scriptBudgets({ ...script, beats: keptBeats(script.beats, { cut }) }, beats, loadBeatSpecs());
   const resolved: Resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats, budgets: rows, ...(cut.length ? { cut } : {}) };
   const sha = store.putText(`${JSON.stringify(resolved, null, 2)}\n`, "resolved", input.from);
-  const slots = artifacts.slots === undefined ? generatedSlots(script, resolved, read("code")) : undefined;
+  const generated = generatedSlots(templateFill(script, resolved, read("code"), parsePin(read("slots"))));
   const rowsUsed = [...new Set(beats.map((beat) => beat.row))];
   const unplacedNote = `no block cap for chapters ${unplaced.join(", ")}: no block of ${script.profile} has that id`;
   const unlinkedNote = `no chapter link for companion-link beats ${linked.unlinked.join(", ")}: the chapter-links artifact lacks their chapters`;
   const notes = [`${beats.length} beats resolved by rows ${rowsUsed.join(", ")}`, ...(unplaced.length ? [unplacedNote] : []), ...(linked.unlinked.length ? [unlinkedNote] : []), ...simNotes];
-  const outputs = { resolved: sha, ...(simTraces ? { "sim-traces": simTraces } : {}), ...(slots === undefined ? {} : { slots: store.putText(slots, "slots", input.from) }) };
+  const fill = generated === undefined ? {} : { "generated-slots": store.putText(generated, "generated-slots", input.from) };
+  const outputs = { resolved: sha, ...(simTraces ? { "sim-traces": simTraces } : {}), ...fill };
   return { outputs, notes };
 }
 
@@ -173,42 +182,27 @@ const LayoutSchema = z.object({ stage: z.object({ width: z.number(), height: z.n
 
 const readCode = (input: CheckInput): string | undefined => (input.artifacts.code === undefined ? undefined : input.store.readText(input.artifacts.code));
 
-const parses = (specs: ReadonlyMap<string, BeatSpec>, type: string, slots: unknown): boolean => {
-  try {
-    parseBeatSlots(specs, type, slots);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/**
- * The spec each beat's slots were filled for: the resolver's choice, unless they do not parse under it and the
- * template fill fell back, as it does for slots resolve stored. A pin valid for the chosen spec keeps that spec.
- */
-function filledSpecs(script: ScriptV1, resolved: Resolved, slots: Readonly<Record<string, unknown>>, code: string | undefined): Map<string, string> {
-  const chosen = new Map(resolved.beats.map((beat) => [beat.id, beat.beat]));
-  const filled = templateFill(script, resolved, code);
-  if (filled instanceof FillError) return chosen;
-  const specs = loadBeatSpecs();
-  for (const beat of filled.beats) {
-    if (beat.fallback !== undefined && !parses(specs, beat.fallback.from, slots[beat.id])) chosen.set(beat.id, beat.spec);
-  }
-  return chosen;
+/** The fill the gates read: the one the body ran, recomputed from the script, resolved beats, code and `slots` pin. */
+function fillAtResolve(input: CheckInput): FilledScript | FillError {
+  const script = ScriptSchema.parse(readJson(input, "script"));
+  const pinned = input.artifacts.slots === undefined ? undefined : parsePin(input.store.readText(input.artifacts.slots));
+  return templateFill(script, ResolvedSchema.parse(readJson(input, "resolved")), readCode(input), pinned);
 }
 
 /**
- * What the emphasis-target gate reads at resolve: the script's cues on the beat specs their slots were filled for, the
- * template fill's slots by beat id, and the element boxes once a `layout` artifact exists.
+ * What the emphasis-target gate reads at resolve: the script's cues on the beat specs the template fill drew, a
+ * fallback's included, the filled slots with the owner's overrides laid on, and the element boxes once a `layout`
+ * artifact exists. A refused fill throws, failing the gate beside the template-fill gate that names the beats.
  */
 export function readEmphasisInput(input: CheckInput): EmphasisGateInput {
+  const filled = fillAtResolve(input);
+  if (filled instanceof FillError) throw new Error("the template fill refused; the template-fill gate names the beats");
   const script = ScriptSchema.parse(readJson(input, "script"));
-  const filled = z.record(z.string(), z.unknown()).parse(readJson(input, "slots"));
-  const visuals = new Map(script.beats.map(({ id, visual }) => [id, visual]));
-  const slots = Object.fromEntries(Object.entries(filled).map(([id, value]) => [id, withSlotOverrides(visuals.get(id) ?? {}, value)]));
   const resolved = ResolvedSchema.parse(readJson(input, "resolved"));
-  const chosen = filledSpecs(script, resolved, slots, readCode(input));
-  const beats = keptBeats(script.beats, resolved).map(({ id, visual }) => ({ id, visual: { ...visual, beat: chosen.get(id) ?? visual.beat } }));
+  const drawn = new Map(filled.beats.map((beat) => [beat.id, beat.spec]));
+  const chosen = new Map(resolved.beats.map((beat) => [beat.id, beat.beat]));
+  const beats = keptBeats(script.beats, resolved).map(({ id, visual }) => ({ id, visual: { ...visual, beat: drawn.get(id) ?? chosen.get(id) ?? visual.beat } }));
+  const slots = Object.fromEntries(filled.beats.map((beat) => [beat.id, beat.slots]));
   const layout = input.artifacts.layout === undefined ? undefined : LayoutSchema.parse(readJson(input, "layout"));
   return { beats, specs: loadBeatSpecs(), slots, ...(layout ? { layout } : {}) };
 }
@@ -220,8 +214,7 @@ const fallbackLine = (beat: FilledScript["beats"][number]): string => `${beat.id
  * fallback passes and is named in the detail; a refused beat fails the stage.
  */
 export function templateFillVerdict(input: CheckInput): { pass: boolean; detail: string } {
-  const script = ScriptSchema.parse(readJson(input, "script"));
-  const filled = templateFill(script, ResolvedSchema.parse(readJson(input, "resolved")), readCode(input));
+  const filled = fillAtResolve(input);
   if (filled instanceof FillError) return { pass: false, detail: filled.message };
   const fallbacks = filled.beats.filter((beat) => beat.fallback !== undefined).map(fallbackLine);
   const shown = fallbacks.slice(0, 5).join("; ") + (fallbacks.length > 5 ? ` and ${fallbacks.length - 5} more` : "");
