@@ -1,5 +1,6 @@
 import { toJSONSchema, z } from "zod";
 import { LedgerOptionSchema } from "./ledger.js";
+import { policyCategory } from "./normalize.js";
 import { checkUnlock } from "./unlock.js";
 
 /** The confidence a reply needs in a category with no policy row (plan 3.3). */
@@ -67,8 +68,13 @@ export function decideJsonSchemas(): { input: Record<string, unknown>; reply: Re
   };
 }
 
+/** Rows match on `policyCategory`, so `Tech Design` reads `tech_design`; when several spellings match, the strictest threshold wins. */
 export function minConfidenceFor(category: string, policy: DecidePolicy): number {
-  return policy.categories?.[category]?.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+  const key = policyCategory(category);
+  const matches = Object.entries(policy.categories ?? {}).flatMap(([name, row]) =>
+    policyCategory(name) === key && row.minConfidence !== undefined ? [row.minConfidence] : []
+  );
+  return matches.length > 0 ? Math.max(...matches) : DEFAULT_MIN_CONFIDENCE;
 }
 
 function citationErrors(reply: DecideReply, input: DecideInput): string[] {

@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a dense chapter keeps its items",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "c.failure === null && c.density <= maxDensity",
+      "replace": "c.failure === null",
+      "kills": [
+        "explainer eval calibrate queue under --max-density, drops a dense chapter's cold and l1 items and a dense script's rubric items"
+      ]
+    },
+    {
+      "name": "the round number is always 1",
+      "file": "products/explainer/src/calibration-round.ts",
+      "find": "round: options.round,",
+      "replace": "round: 1,",
+      "kills": [
+        "explainer eval calibrate queue orders the clearest video first, then the pairs, and writes the round number and minutes per kind of item"
+      ]
+    },
+    {
+      "name": "a bench row's eval_version is dropped",
+      "file": "products/explainer/src/calibration-sources.ts",
+      "find": "evalVersion: r.eval_version ?? \"\"",
+      "replace": "evalVersion: \"\"",
+      "kills": [
+        "explainer eval calibrate queue queues each question once, from the judge's own latest verdict, and names the config and run it came from",
+        "explainer eval calibrate agreement pools rounds given as repeated --key and --feedback, naming them, and leaves a judge's older version out"
+      ]
+    },
+    {
+      "name": "unpaired keys and feedback are accepted",
+      "file": "products/explainer/src/eval-calibrate-judges-cli.ts",
+      "find": "flags.key.length === 0 || flags.key.length !== flags.feedback.length",
+      "replace": "flags.key.length === 0",
+      "kills": [
+        "explainer eval calibrate agreement refuses keys and feedback files that do not pair up, or a round given twice"
+      ]
+    },
+    {
+      "name": "a pooled record does not name its rounds",
+      "file": "products/explainer/src/eval-calibrate-judges-cli.ts",
+      "find": "...(names.length > 1 ? { rounds: names } : {})",
+      "replace": "...{}",
+      "kills": [
+        "explainer eval calibrate agreement pools rounds given as repeated --key and --feedback, naming them, and leaves a judge's older version out"
+      ]
+    }
+  ]
+}

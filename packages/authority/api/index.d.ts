@@ -15,6 +15,8 @@ declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer"
 declare const QUESTION_CONDITION_KINDS: readonly ["gate-rule-is-question", "category-mode-auto"];
 /** Facts a conditional rule checks on the request; the rule applies only when every one holds. */
 declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "gate-rule-is-question", "category-mode-auto"];
+/** What made an agent identity tainted; `inbound-message` is reserved for an external door that does not exist yet. */
+declare const TAINT_KINDS: readonly ["web-fetch", "web-search", "external-tool", "inbound-message", "untrusted-item", "inherited"];
 type ActorClass = (typeof ACTOR_CLASSES)[number];
 type ResolverClass = (typeof RESOLVER_CLASSES)[number];
 type DelegateResolverClass = (typeof DELEGATE_RESOLVER_CLASSES)[number];
@@ -24,6 +26,7 @@ type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 type MergeConditionKind = (typeof MERGE_CONDITION_KINDS)[number];
 type QuestionConditionKind = (typeof QUESTION_CONDITION_KINDS)[number];
 type ConditionKind = (typeof CONDITION_KINDS)[number];
+type TaintKind = (typeof TAINT_KINDS)[number];
 
 interface AgentIdentity {
     agentId: string;
@@ -173,6 +176,23 @@ interface PolicyTable {
 /** Validates a table: every (action, actor) pair has exactly one unconditional rule, and only owner classes resolve gates. */
 declare const policyTableSchema: z.ZodType<PolicyTable>;
 
+/** Long enough for a tool name, a host, an item id or an agent id; short enough that fetched content never fits. */
+declare const TAINT_REF_MAX_LENGTH = 200;
+/** One reason an agent identity is tainted. `ref` is a short safe label, never fetched content. */
+declare const taintSourceSchema: z.ZodObject<{
+    kind: z.ZodEnum<{
+        "web-fetch": "web-fetch";
+        "web-search": "web-search";
+        "external-tool": "external-tool";
+        "inbound-message": "inbound-message";
+        "untrusted-item": "untrusted-item";
+        inherited: "inherited";
+    }>;
+    ref: z.ZodString;
+    at: z.ZodISODateTime;
+}, z.core.$strict>;
+type TaintSource = z.infer<typeof taintSourceSchema>;
+
 interface AuthorityRequest {
     action: ActionClass;
     actor: {
@@ -208,4 +228,4 @@ declare function canResolve(table: PolicyTable, ruleId: string, resolver: {
 /** The owner-approved decision table, validated on load. The same data ships as `@titan-design/authority/table.json`. */
 declare const DEFAULT_TABLE: PolicyTable;
 
-export { ACTION_CLASSES, ACTOR_CLASSES, type ActionClass, type ActorClass, type AgentIdentity, type AuthorityRequest, CONDITION_KINDS, type CarryFact, type CheckRunFact, type ConditionFacts, type ConditionKind, DEFAULT_TABLE, DELEGATE_RESOLVER_CLASSES, type Decision, type DelegateResolverClass, EVIDENCE_KINDS, type EvidenceKind, MERGE_CONDITION_KINDS, type MergeConditionKind, type MergeFacts, type PolicyTable, QUESTION_CONDITION_KINDS, type QuestionConditionKind, type QuestionFacts, RESOLVER_CLASSES, type ResolverClass, type Rule, VERDICTS, type Verdict, canResolve, evaluate, isCarryFencedPath, policyTableSchema, unmetConditions };
+export { ACTION_CLASSES, ACTOR_CLASSES, type ActionClass, type ActorClass, type AgentIdentity, type AuthorityRequest, CONDITION_KINDS, type CarryFact, type CheckRunFact, type ConditionFacts, type ConditionKind, DEFAULT_TABLE, DELEGATE_RESOLVER_CLASSES, type Decision, type DelegateResolverClass, EVIDENCE_KINDS, type EvidenceKind, MERGE_CONDITION_KINDS, type MergeConditionKind, type MergeFacts, type PolicyTable, QUESTION_CONDITION_KINDS, type QuestionConditionKind, type QuestionFacts, RESOLVER_CLASSES, type ResolverClass, type Rule, TAINT_KINDS, TAINT_REF_MAX_LENGTH, type TaintKind, type TaintSource, VERDICTS, type Verdict, canResolve, evaluate, isCarryFencedPath, policyTableSchema, taintSourceSchema, unmetConditions };

@@ -7,6 +7,7 @@ import { INBOUND_BROADCAST_MIGRATION_NAME, applyInboundBroadcastSchema } from ".
 import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./review-schema.js";
 import { REQUEST_COST_BOUNDARY_MIGRATION_NAME, applyRequestCostBoundary } from "./audit-schema-v10.js";
 import { PRICE_LONG_PROMPT_MIGRATION_NAME, applyPriceLongPrompt } from "./price-long-prompt-schema.js";
+import { ECHO_STATE_MIGRATION_NAME, ECHO_STATE_TABLE, applyEchoStateSchema } from "./echo-state-schema.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, hasTable, kitMigration, type Db, type Migration } from "@titan-design/store-sqlite";
 
@@ -160,6 +161,8 @@ const ALWAYS_DERIVED = [
   "subagent",
   ...AUDIT_TABLES,
   FACET_TABLE,
+  // Cleared with `fact`: state left behind would suppress every echo of the rebuild.
+  ECHO_STATE_TABLE,
   ...ORIGIN_TABLES,
   EPISODE_TABLE,
   "session_model_usage",
@@ -204,4 +207,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 11, name: ORIGIN_EXPERIMENT_MIGRATION_NAME, up: applyOriginExperimentSchema },
   { version: 12, name: INBOUND_BROADCAST_MIGRATION_NAME, up: applyInboundBroadcastSchema },
   { version: 13, name: PRICE_LONG_PROMPT_MIGRATION_NAME, up: applyPriceLongPrompt },
+  { version: 14, name: ECHO_STATE_MIGRATION_NAME, up: applyEchoStateSchema },
 ];

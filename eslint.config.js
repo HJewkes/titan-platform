@@ -43,6 +43,8 @@ export default tseslint.config(
       "scripts/fixtures/events-api/**",
       // Holds a deliberate Date.now(); scripts/eslint-recommended.test.mjs lints it from its own directory.
       "scripts/fixtures/wall-clock/**",
+      // Holds a deliberate bare gray-matter import; scripts/eslint-recommended.test.mjs lints it from its own directory.
+      "scripts/fixtures/gray-matter/**",
     ],
   },
   js.configs.recommended,
@@ -65,6 +67,17 @@ export default tseslint.config(
   {
     files: ["**/products/explainer/src/**", "**/ui/beats/**", "**/motion/**"],
     rules: { "titan/no-wall-clock-motion": ["error", { paths: MOTION_PATHS }] },
+  },
+  // A bare gray-matter import evaluates `---js` frontmatter; only the wrapper sets the safe engines (TP-1007).
+  {
+    files: ["products/active-work/**"],
+    ignores: ["products/active-work/src/utils/gray-matter-io.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { paths: [{ name: "gray-matter", message: "Import parseFrontmatter and friends from src/utils/gray-matter-io.ts: a bare gray-matter import executes `---js` frontmatter." }] },
+      ],
+    },
   },
   { languageOptions: { globals: globals.node } },
   { files: ["apps/*/src/**"], languageOptions: { globals: globals.browser } },

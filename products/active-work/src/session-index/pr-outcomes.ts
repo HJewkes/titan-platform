@@ -29,6 +29,8 @@ export interface PrOutcomeOptions {
   errors?: string[];
   /** Clock for the failure backoff; tests replace it. */
   now?: () => number;
+  /** Told how many PRs each call asks `gh` about, so the pass log can carry it. */
+  onPolled?: (count: number) => void;
 }
 
 /** Failure times outlive a resolver: each refresh pass builds a new one inside one daemon. */
@@ -126,6 +128,7 @@ export function ghPrResolver(graph: WorkspaceGraph, options: PrOutcomeOptions = 
   const now = options.now ?? Date.now;
   return async (prs: readonly PrKey[]): Promise<PrResolution> => {
     const queue = selectPrs(graph, prs, options.limit ?? PR_OUTCOME_BATCH, now());
+    options.onPolled?.(queue.length);
     const resolved = new Map<string, ResolvedPr>();
     const worker = async (): Promise<void> => {
       for (let pr = queue.shift(); pr; pr = queue.shift()) {

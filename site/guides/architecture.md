@@ -35,6 +35,7 @@ graph TD
     locator["locator"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
+    reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
     testKit["test-kit"]
@@ -104,11 +105,13 @@ graph TD
   agent --> agentProtocol
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> evidence
+  codeGraph --> fixProof
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
@@ -141,6 +144,7 @@ graph TD
   registry --> rpcProtocol
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewBurden --> fixProof
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
@@ -171,11 +175,13 @@ graph TD
   styleChecker --> styleProfile
   throughput --> evidence
   toolGuard --> authority
+  toolGuard --> fixProof
   workflow --> agent
   workflow --> agentProtocol
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  activeWork --> agentDispatch
   activeWork --> agentProtocol
   activeWork --> clusterPkg
   activeWork --> daemon
@@ -279,6 +285,7 @@ graph TD
   console --> coordinator
   console --> daemon
   console --> decider
+  console --> fixProof
   console --> github
   console --> ownerQueue
   console --> pm

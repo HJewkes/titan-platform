@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the delta pass opts back in to tool spans and context blocks",
+      "file": "products/active-work/src/session-index/delta-pass.ts",
+      "find": "indexTranscript(graph, transcript)",
+      "replace": "indexTranscript(graph, transcript, { indexToolSpans: true, contextBlocks: true })",
+      "kills": [
+        "delta pass stores no tool span or context block for bytes a delta pass indexes"
+      ]
+    },
+    {
+      "name": "the delta pass reports no rows written",
+      "file": "products/active-work/src/session-index/delta-pass.ts",
+      "find": "    rowsWritten: rowsWritten(),\n",
+      "replace": "    rowsWritten: 0,\n",
+      "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
+    },
+    {
+      "name": "the full pass reports no rows written",
+      "file": "products/active-work/src/session-index/refresh.ts",
+      "find": "      rowsWritten: rowsWritten(),\n",
+      "replace": "      rowsWritten: 0,\n",
+      "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
+    },
+    {
+      "name": "the database size counts pages, not bytes",
+      "file": "products/active-work/src/session-index/pass-metrics.ts",
+      "find": "page_count * page_size AS n",
+      "replace": "page_count AS n",
+      "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
+    }
+  ]
+}

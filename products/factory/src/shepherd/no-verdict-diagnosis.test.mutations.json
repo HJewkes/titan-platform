@@ -40,6 +40,15 @@
       "kills": [
         "a diagnosis planner the spawn gate defers (TP-4157) does not ask again after a refusal that is no deferral"
       ]
+    },
+    {
+      "name": "a round where every reviewer answered reads as one that dispatched nobody",
+      "file": "products/factory/src/shepherd/no-verdict-diagnosis.ts",
+      "find": "  if (reviewers.length === 0) return",
+      "replace": "  if (true) return",
+      "kills": [
+        "the diagnosis planner's spawn says the aggregate withheld the verdict, not a reviewer, when every dispatched reviewer answered (TP-4195)"
+      ]
     }
   ]
 }

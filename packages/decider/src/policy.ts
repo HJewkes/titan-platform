@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ALWAYS_ASK, type AlwaysAskEntry } from "./always-ask.js";
-import { DEFAULT_MIN_CONFIDENCE } from "./contract.js";
-import { normalizeKey } from "./normalize.js";
+import { DEFAULT_MIN_CONFIDENCE, type DecidePolicy } from "./contract.js";
+import { categoryKey, policyCategory } from "./normalize.js";
 import { UNLOCK_CATEGORIES } from "./unlock.js";
 
 export const DECIDER_MODES = ["off", "shadow", "auto"] as const;
@@ -52,19 +52,6 @@ export const RoutingPolicySchema = z.object({
 });
 export type RoutingPolicy = z.output<typeof RoutingPolicySchema>;
 
-/** The normalized key, or the trimmed lowercase text when normalizing would empty it, so a symbol-only name never collapses to "". */
-export function categoryKey(text: string): string {
-  return normalizeKey(text) || text.trim().toLowerCase();
-}
-
-/** The ledger's own fallback for a row with no category; a blank name lands here so the schema's non-empty category always holds. */
-const FALLBACK_CATEGORY = "other";
-
-/** The key a policy row and a score bucket use: `categoryKey`, or `other` for a blank name. */
-export function policyCategory(text: string): string {
-  return categoryKey(text) || FALLBACK_CATEGORY;
-}
-
 /** Always-ask and unlock-table categories: their mode is `off` and nothing raises it. */
 export function isLockedCategory(
   category: string,
@@ -101,6 +88,15 @@ export function categoryPolicy(
     ...row,
     category: key,
     mode: isLockedCategory(key) ? "off" : row.mode,
+  };
+}
+
+/** The thresholds `validate` reads, keyed the way `categoryPolicy` folds rows, so both agree on a category's minConfidence. */
+export function decidePolicyFrom(policy: RoutingPolicy): DecidePolicy {
+  return {
+    categories: Object.fromEntries(
+      foldRows(policy.categories).map((row) => [row.category, { minConfidence: row.minConfidence }])
+    ),
   };
 }
 

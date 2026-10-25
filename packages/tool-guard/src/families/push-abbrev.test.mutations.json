@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "git push long options are not resolved from a prefix",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  const options = readOptions(git.subArgs, GIT_PUSH_VALUES, resolvePushLong);",
+      "replace": "  const options = readOptions(git.subArgs, GIT_PUSH_VALUES);",
+      "kills": [
+        "an abbreviated git push long option reads --ta as --tags, a tag push",
+        "an abbreviated git push long option reads --al as --all, a push of every branch",
+        "handle: an abbreviated git push long option denies git push origin feat/x --ta"
+      ]
+    },
+    {
+      "name": "an ambiguous git push option prefix passes",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  if (hasFlag(options, AMBIGUOUS_LONG)) return [classified(\"bash.merge.git-push-protected\", { branch: UNKNOWN })];\n",
+      "replace": "",
+      "kills": [
+        "an abbreviated git push long option reads the ambiguous --t, --tags or --thin as a push to an unknown branch",
+        "handle: an abbreviated git push long option denies git push --t origin feat/x"
+      ]
+    },
+    {
+      "name": "an abbreviated --repo takes no value",
+      "file": "packages/tool-guard/src/families/long-options.ts",
+      "find": "  verbose quiet repo= all",
+      "replace": "  verbose quiet repo all",
+      "kills": [
+        "an abbreviated git push long option reads the word after an abbreviated --repo as its value, so main names the remote"
+      ]
+    }
+  ]
+}

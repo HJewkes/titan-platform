@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { SessionEvent } from "./events.js";
-import { LineReader } from "./line-reader.js";
+import { DEFAULT_EMIT_POLICY, LineReader, type EmitPolicy } from "./line-reader.js";
 import type { Json } from "./text.js";
 
 /**
@@ -172,9 +172,9 @@ export function offsetAfterLine(lines: Record<string, unknown>[], count: number)
 }
 
 /** Every event the reader emits for `lines`, without folding, so a test can see one line's rows. */
-export function eventsForLines(lines: Record<string, unknown>[]): SessionEvent[] {
+export function eventsForLines(lines: Record<string, unknown>[], policy: EmitPolicy = DEFAULT_EMIT_POLICY): SessionEvent[] {
   const events: SessionEvent[] = [];
-  const reader = new LineReader((event) => events.push(event));
+  const reader = new LineReader((event) => events.push(event), null, null, "", policy);
   let byteOffset = 0;
   for (const line of lines) {
     const byteLength = Buffer.byteLength(JSON.stringify(line), "utf8");

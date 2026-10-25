@@ -9,7 +9,7 @@ import { loadSeatBook } from "./shepherd/seats.js";
  * the notices' fallback seats (`shepherd.redSeat`, `shepherd.hubSeat`) are re-read per sweep.
  */
 export function configuredSeatDigest(env: NodeJS.ProcessEnv): SeatDigestPorts | undefined {
-  const { agentChatBin } = loadConfig(configPath(env)).shepherd ?? {};
+  const { agentChatBin, seatDigest } = loadConfig(configPath(env)).shepherd ?? {};
   if (!agentChatBin) return undefined;
   const agents = agentChatAgents(agentChatBin, { timeoutMs: AGENT_CALL_TIMEOUT_MS });
   const shepherd = () => loadConfig(configPath(env)).shepherd ?? {};
@@ -24,5 +24,6 @@ export function configuredSeatDigest(env: NodeJS.ProcessEnv): SeatDigestPorts | 
       return fallbackSeats({ hubSeat, redSeat }, repo);
     },
     send: (seat, text) => agents.message(seat, text),
+    ...(seatDigest?.pacing && { pacing: seatDigest.pacing }),
   };
 }

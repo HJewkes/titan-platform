@@ -94,4 +94,11 @@ describe("allow globs", () => {
   ])("turns %s into an AllowFileError, never a raw error", (_name, glob) => {
     expect(() => parseAllow(`${glob} home-path TP-1 reason`)).toThrow(AllowFileError);
   });
+
+  it("checks a non-matching path quickly against a line of twenty stars", () => {
+    const allow = parseAllow(`d/${"*".repeat(20)}x home-path TP-1 reason`);
+    const started = performance.now();
+    expect(isAllowed(allow, `d/${"a".repeat(40)}`, "home-path")).toBe(false);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
 });

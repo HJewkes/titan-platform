@@ -20,6 +20,11 @@ export interface CommitStatus {
   context: string;
   /** `success`, `pending`, `failure` or `error`. */
   state: string;
+  /** The link `gh pr checks` prints; absent when the wire does not report it, null when the poster set none. */
+  targetUrl?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 /** A commit on the default branch with its full message, subject line first. */
@@ -62,6 +67,10 @@ export interface CheckRun {
   status: string;
   conclusion: string | null;
   startedAt: string | null;
+  /** Null until the run completes. */
+  completedAt: string | null;
+  /** The run's `output.title`, which `gh pr checks` prints as a check's description; null when the run set none. */
+  title: string | null;
   /** The commit the run checked; a run at any other sha says nothing about this head. */
   headSha: string;
   /** The GitHub App that posted the run; a required context counts only from an allowed app. */
