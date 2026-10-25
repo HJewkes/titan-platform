@@ -38,8 +38,8 @@ describe("a $( ) in a subscript whose ) a case pattern or heredoc body holds", (
   });
 
   it.each([
-    ["a word ending in case", "((1)); a[$(showcase)]=x # c"],
-    ["a word starting with case", "((1)); a[$(cases)]=x # c"],
+    ["a word ending in case", "((1)); a[$(showcase 'x')]=x # c"],
+    ["a word starting with case", "((1)); a[$(cases 'x')]=x # c"],
     ["a shift inside $(( ))", "((1)); a[$((1<<2))]=x # c"],
     ["a plain $( )", "((1)); a[$(f)]=x # c"],
     ["a case statement around the subscript", "case $x in a) arr[$(f)]=x ;; esac # c"],
