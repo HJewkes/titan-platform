@@ -124,7 +124,7 @@ interface RiskRead {
 
 export function riskFactsOf({ paths, changedLines, unread, ciPolicy, visualPaths, ownerHold }: RiskRead): RiskFacts {
   const ownerPacket = paths.filter((path) => OWNER_PACKET_FILES.includes(folded(path)));
-  const touches = shepherdPathTouches(paths);
+  const touches = shepherdPathTouches(paths.map((path) => ({ path })));
   const visual = visualPaths === undefined ? [] : visualMatches(paths, visualPaths);
   return { paths, touches, ownerPacket, skillPaths: skillPathsIn(paths), ...(ciPolicy && { ciPolicy }), visual, ownerHold, changedLines, unread };
 }
