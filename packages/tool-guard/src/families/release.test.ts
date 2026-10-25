@@ -131,7 +131,7 @@ describe("a name the local repository holds as a tag", () => {
     ["git tag -a nightly -m x; git push origin nightly"],
     ["git tag -f nightly HEAD && git push -f origin nightly"],
     ["git tag --annotate --message=x nightly || true; git push origin nightly"],
-    ["git tag -d nightly; git push origin :nightly"],
+    ["git tag -d old nightly; git push origin :nightly"],
     ["git update-ref refs/tags/nightly HEAD && git push origin nightly"],
     ["git checkout -b feat/y && git tag nightly && git push origin nightly"],
     ["git checkout -b feat/y && git tag nightly; git push origin nightly"],
