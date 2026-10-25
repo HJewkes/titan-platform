@@ -6,6 +6,7 @@ import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
+import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
@@ -125,6 +126,7 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
     actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
     client: factoryOwnerAction(config.factoryPort),
     answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    verdicter: brokerVerdicter({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
   };
 }
 
