@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the min bound is never checked",
+      "file": "products/explainer/src/sim/sim-resolve.ts",
+      "find": "value >= bounds.min && value <= bounds.max",
+      "replace": "value <= bounds.max",
+      "kills": ["sweepBeat doctrine bounds refuses a sweep that starts below the min before the model runs, naming the param"]
+    },
+    {
+      "name": "the max bound is never checked",
+      "file": "products/explainer/src/sim/sim-resolve.ts",
+      "find": "value >= bounds.min && value <= bounds.max",
+      "replace": "value >= bounds.min",
+      "kills": ["sweepBeat doctrine bounds refuses a fixed param above its max"]
+    },
+    {
+      "name": "swept values are not bounds-checked",
+      "file": "products/explainer/src/sim/sim-resolve.ts",
+      "find": "...sweep.values.map(",
+      "replace": "...[].map(",
+      "kills": ["sweepBeat doctrine bounds refuses a sweep that starts below the min before the model runs, naming the param"]
+    }
+  ]
+}

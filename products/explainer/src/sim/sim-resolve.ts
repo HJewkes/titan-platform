@@ -53,13 +53,27 @@ export interface SimPass {
   traces: SimTraces;
 }
 
+/** The first param or swept value outside the doctrine's [min, max], named with its bound, or undefined when all lie within. */
+function outOfBounds(spec: SimModelSpec, params: Readonly<Record<string, number>>, sweep: { param: string; values: readonly number[] }): string | undefined {
+  const checked = [...Object.entries(params).map(([name, value]) => ({ name, value, kind: "param" })), ...sweep.values.map((value) => ({ name: sweep.param, value, kind: "swept value" }))];
+  for (const { name, value, kind } of checked) {
+    const bounds = Object.hasOwn(spec.params, name) ? spec.params[name] : undefined;
+    if (bounds && !(value >= bounds.min && value <= bounds.max)) return `${kind} ${name} = ${value} lies outside the doctrine bounds [${bounds.min}, ${bounds.max}]`;
+  }
+  return undefined;
+}
+
 function sweepBeat(beat: SimBeat, facts: ReadonlyMap<string, number>, input: SimPassInput): { verdict: SimVerdict; sha?: string } {
   const { model: id, seed, params, sweep } = beat.slots;
   const model = Object.hasOwn(input.registry.models, id) ? input.registry.models[id] : undefined;
   const spec = input.registry.specs.get(id);
   if (!model || !spec) return { verdict: simFailure(beat.id, "E-SIM-NO-RUN", `sim model ${id} is not in both SIM_MODELS and doctrine/sims`) };
+  const axis = { param: sweep.param, values: sweepValues(sweep) };
+  const merged = { ...defaultsOf(spec), ...params };
+  const refusal = outOfBounds(spec, merged, axis);
+  if (refusal) return { verdict: simFailure(beat.id, "E-SIM-NO-RUN", `sim ${id} did not run: ${refusal}`) };
   try {
-    const swept = sweepSim(model, { ...defaultsOf(spec), ...params }, { param: sweep.param, values: sweepValues(sweep) }, seed);
+    const swept = sweepSim(model, merged, axis, seed);
     const frozen = freezeSim(swept, simDoctrineSha(spec));
     return { verdict: simCheck(frozen.trace, beat, facts, spec), sha: input.putTrace(frozen.json) };
   } catch (error) {
