@@ -25,6 +25,8 @@ const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: tru
 const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
 const UNVERIFIED_BRIEF = "Shepherd marks this head's fix-proof unverified";
+const UNREAD_BRIEF = "could not read a fix-proof result for this head";
+const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base";
 const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status: "modified" };
 
 /** The fake PR's base is `main`, so this is the repo running fix-proof on every PR into it. */
@@ -382,6 +384,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(proof).toEqual({ kind: "skipped", reason: "kind feature" });
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
     expect(spawns).toHaveLength(1);
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
   });
 
   it("runs the gate for a fix/ branch registered with kind feature", async () => {
@@ -405,6 +408,8 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
     expect(spawns).toHaveLength(1);
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProof");
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
   });
 
   it("records an error proof, not missing, when the head's exec jobs ran but the judge never did", async () => {
@@ -413,6 +418,15 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(proof).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
     expect(fixProofStanding(FixProofReadSchema.parse(proof), H)).toEqual({ unverified: "unread" });
     expect(verdicts).not.toContainEqual(expect.objectContaining({ kind: "NO_REPRO" }));
+  });
+
+  it("briefs the reviewer that an unreadable fix-proof is unverified and blocks without an added failing test", async () => {
+    const { spawns, inputs } = await review({ kind: "correctness", runs: execRuns() });
+
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "unread" });
+    expect(spawns[0]?.brief).toContain(UNREAD_BRIEF);
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_RULE);
+    expect(spawns[0]?.brief).not.toContain("Do not rerun");
   });
 
   it("records an error proof when a [skip ci] head has no Actions run in a repo with the fix-proof workflow", async () => {
@@ -452,6 +466,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "untrusted" });
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
     expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_RULE);
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: expect.stringMatching(/^untrusted \(/) });
   });
 
@@ -462,6 +477,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "error" });
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
     expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_RULE);
     expect(spawns[0]?.brief).not.toContain("Do not rerun");
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
@@ -530,6 +546,17 @@ describe("sh-fix-proof in reviewPhase", () => {
 
       expect(spawns).toHaveLength(2);
       expect(verdicts).toEqual([expect.objectContaining({ kind: "none", cause: "no-verdict" })]);
+    });
+
+    it("briefs every member, not only correctness, that an unreadable proof is unverified", async () => {
+      const { spawns, inputs } = await review({ kind: "correctness", panel: "on", runs: execRuns(), files: SECURITY_FILES });
+
+      expect(spawns).toHaveLength(2);
+      expect(Object.entries(inputs).filter(([id]) => id.startsWith(`sh-review:${H}:`))).toEqual([[`sh-review:${H}:adversary`, expect.objectContaining({ fixProofUnverified: "unread" })]]);
+      for (const spawn of spawns) {
+        expect(spawn.brief).toContain(UNREAD_BRIEF);
+        expect(spawn.brief).toContain(UNVERIFIED_RULE);
+      }
     });
 
     describe("a test-only head that proceeds on a vacuous proof", () => {
