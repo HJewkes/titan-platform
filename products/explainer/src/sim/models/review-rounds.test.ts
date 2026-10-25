@@ -92,9 +92,9 @@ describe("review-rounds params the model cannot run", () => {
     }).traces.verdicts[0];
 
   it.each([
-    ["a sweep of q from 0, which would never end a PR", slots({}, { param: "q", from: 0, to: 0.5 }), /needs q/],
-    ["a sweep of q from under its floor", slots({}, { param: "q", from: 0.01, to: 0.5 }), /needs q/],
-    ["prs far above its max", slots({ prs: 1e9 }, { param: "p1", from: 0.3, to: 0.6 }), /needs a whole prs/],
+    ["a sweep of q from 0, which would never end a PR", slots({}, { param: "q", from: 0, to: 0.5 }), /swept value q = 0 .*doctrine bounds/],
+    ["a sweep of q from under its floor", slots({}, { param: "q", from: 0.01, to: 0.5 }), /swept value q = 0\.01 .*doctrine bounds/],
+    ["prs far above its max", slots({ prs: 1e9 }, { param: "p1", from: 0.3, to: 0.6 }), /param prs = 1000000000 .*doctrine bounds/],
   ])("cuts %s as E-SIM-NO-RUN", (_, filled, detail) => {
     expect(verdictOf(filled)).toMatchObject({ pass: false, code: "E-SIM-NO-RUN", detail: expect.stringMatching(detail) });
   });
