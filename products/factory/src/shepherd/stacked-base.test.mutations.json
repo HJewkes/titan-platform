@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Shepherd's land options never re-read a refused fix-proof",
+      "file": "products/factory/src/shepherd/pr.ts",
+      "find": "const options = withReboundProof(shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase), run.target, verdictFor, checkedBase);",
+      "replace": "const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on the panel's MERGE until a main-bound fix-proof line at the head is read",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when only the refused line stands at the head"
+      ]
+    },
+    {
+      "name": "the re-read takes the refused line itself as bound",
+      "file": "products/factory/src/shepherd/rebound-proof.ts",
+      "find": "if (line !== undefined && !isRefusal(line)) return line;",
+      "replace": "if (line !== undefined) return line;",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on the panel's MERGE until a main-bound fix-proof line at the head is read",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when only the refused line stands at the head"
+      ]
+    },
+    {
+      "name": "the guard holds a merge into the refused parent branch too",
+      "file": "products/factory/src/shepherd/rebound-proof.ts",
+      "find": "return into !== undefined && into === decidedBase() && reads",
+      "replace": "return into !== undefined && reads",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) reads nothing again and merges on a seat that merges into the parent branch the proof was refused on"
+      ]
+    },
+    {
+      "name": "an allow into main on an unread proof is never gated",
+      "file": "products/factory/src/shepherd/rebound-proof.ts",
+      "find": "if (decision.outcome !== \"allow\" || into === undefined) return decision;",
+      "replace": "if (decision.outcome !== \"allow\" || into === undefined || into !== undefined) return decision;",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when only the refused line stands at the head"
+      ]
+    },
+    {
+      "name": "the refusal names the stacked base, not the default branch",
+      "file": "products/factory/src/shepherd/rebound-proof.ts",
+      "find": "base \\S+ is not ([^\\s)]+)/;",
+      "replace": "base (\\S+) is not [^\\s)]+/;",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on the panel's MERGE until a main-bound fix-proof line at the head is read",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when only the refused line stands at the head"
+      ]
+    }
+  ]
+}

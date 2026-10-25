@@ -223,13 +223,18 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     expect(reads.every((read) => (read.data as { result?: { bound?: boolean } }).result?.bound === false)).toBe(true);
   });
 
-  it("reads nothing again on a seat that decides on the parent branch the proof was refused on", async () => {
+  it("reads nothing again and merges on a seat that merges into the parent branch the proof was refused on", async () => {
     const w = refused({ ...AUTO, featureBase: true });
+    const served = w.fake.onGetPr;
+    w.fake.onGetPr = (pr) => {
+      served?.(pr);
+      w.fake.rules.contexts = ["validate"];
+    };
 
-    await vi.waitFor(() => expect(mergePolicies(w).length).toBeGreaterThan(0));
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
+    expect(w.mergedInto).toEqual([PARENT]);
     expect(reboundReads(w)).toEqual([]);
-    expect(JSON.stringify(mergePolicies(w)[0]!.data)).not.toContain("no fix-proof line against");
   });
 });
 

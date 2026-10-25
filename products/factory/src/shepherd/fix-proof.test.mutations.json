@@ -37,6 +37,15 @@
       "kills": [
         "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member briefs every member, not only correctness, that an unreadable proof is unverified"
       ]
+    },
+    {
+      "name": "a skipped judge from a non-base edit counts as a fix-proof run",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": " && run.headSha === head && run.conclusion !== \"skipped\";",
+      "replace": " && run.headSha === head;",
+      "kills": [
+        "sh-fix-proof in reviewPhase records a refused proof's own message in the MERGE's standing, and reads past a skipped judge from a later edit"
+      ]
     }
   ]
 }
