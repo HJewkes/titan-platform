@@ -89,6 +89,7 @@ function settledSample(ts: readonly number[], settledS: number): number | undefi
  */
 export function sweepMoments<B extends MomentBeat>(beats: readonly B[], options: SweepOptions<B> = {}): Moment[] {
   const hz = options.hz ?? SWEEP_HZ
+  if (!Number.isFinite(hz) || hz <= 0) throw new RangeError(`sweep hz must be a positive number, got ${hz}`)
   let startS = 0
   return beats.flatMap((beat) => {
     const endS = startS + beat.durationS

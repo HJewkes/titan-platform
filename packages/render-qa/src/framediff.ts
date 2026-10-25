@@ -20,11 +20,14 @@ export function changedShare(a: Uint8Array, b: Uint8Array): number {
   return changed / a.length
 }
 
-export async function* spawnFfmpeg(args: readonly string[]): AsyncIterable<Uint8Array> {
-  const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+/** `bin` is the ffmpeg to run; a binary that cannot start (missing, not executable) rejects like a failed run. */
+export async function* spawnFfmpeg(args: readonly string[], bin = 'ffmpeg'): AsyncIterable<Uint8Array> {
+  const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   let stderr = ''
   proc.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()))
   const exited = new Promise<number | null>((resolve, reject) => proc.on('error', reject).on('close', resolve))
+  // A spawn error fires while stdout is still being read; without a handler now it is unhandled and kills the process.
+  exited.catch(() => undefined)
   yield* proc.stdout as AsyncIterable<Buffer>
   const code = await exited
   if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${stderr.trim()}`)

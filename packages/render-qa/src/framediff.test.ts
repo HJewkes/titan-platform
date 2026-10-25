@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll as after, beforeAll as before, describe, test } from 'vitest'
-import { FRAMEDIFF_HEIGHT, FRAMEDIFF_WIDTH, frameDiffs } from './framediff.js'
+import { FRAMEDIFF_HEIGHT, FRAMEDIFF_WIDTH, frameDiffs, spawnFfmpeg } from './framediff.js'
 
 const FFMPEG_TIMEOUT_MS = 60_000
 const FPS = 30
@@ -57,6 +57,23 @@ describe('frameDiffs on clips ffmpeg makes', { timeout: FFMPEG_TIMEOUT_MS }, () 
 })
 
 describe('frameDiffs through the exec seam', () => {
+  // catches: the spawn error rejected a promise with no handler yet, so a missing ffmpeg killed the process
+  test('an ffmpeg that cannot start rejects the diff instead of crashing the process', async () => {
+    const missing = join(dir, 'no-such-ffmpeg')
+    const unhandled: unknown[] = []
+    const record = (reason: unknown) => unhandled.push(reason)
+    process.on('unhandledRejection', record)
+
+    try {
+      await assert.rejects(frameDiffs('clip.mp4', (args) => spawnFfmpeg(args, missing)), /ENOENT/)
+      await new Promise((resolve) => setImmediate(resolve))
+    } finally {
+      process.off('unhandledRejection', record)
+    }
+
+    assert.deepEqual(unhandled, [])
+  })
+
   test('frames split across stdout chunks are joined, and a trailing partial frame is dropped', async () => {
     const frame = (level: number) => new Uint8Array(FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT).fill(level)
     const changed = frame(0).fill(200, 0, 576)

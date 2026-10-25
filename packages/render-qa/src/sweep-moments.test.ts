@@ -59,6 +59,14 @@ describe('sweepMoments', () => {
     assert.deepEqual(moments.filter((m) => m.beat === 'b').map((m) => [m.t, m.local]), [[1, 0.3], [1.5, 0.8]])
   })
 
+  test('a rate that is not a positive number is refused instead of looping or sampling nothing', () => {
+    const beats = [{ id: 'a', durationS: 1 }]
+
+    const attempts = [0, -2, Number.NaN, Infinity].map((hz) => () => sweepMoments(beats, { hz }))
+
+    for (const attempt of attempts) assert.throws(attempt, RangeError)
+  })
+
   test('a settle window longer than the beat falls back to its last sample', () => {
     const moments = sweepMoments([{ id: 'a', durationS: 1.2 }], { settleBy: () => 5 })
 

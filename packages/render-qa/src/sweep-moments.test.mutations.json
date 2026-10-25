@@ -24,6 +24,15 @@
         "sweepMoments without settleBy every beat settles on its last sample",
         "sweepMoments the grid counts from the video start, so a beat starting between samples begins at the next one"
       ]
+    },
+    {
+      "name": "a zero sweep rate is accepted and samples nothing",
+      "file": "packages/render-qa/src/moments.ts",
+      "find": "if (!Number.isFinite(hz) || hz <= 0) throw",
+      "replace": "if (!Number.isFinite(hz) || hz < 0) throw",
+      "kills": [
+        "sweepMoments a rate that is not a positive number is refused instead of looping or sampling nothing"
+      ]
     }
   ]
 }
