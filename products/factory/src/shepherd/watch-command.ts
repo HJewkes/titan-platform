@@ -41,12 +41,20 @@ function watchedRun(ctx: FactoryContext, store: ShepherdStore, repo: string, pr:
   if (status !== undefined && runFinished(status)) throw coded(`${repo}#${pr} already finished (run ${registration.runId} is ${status}), so there is nothing left to watch`, EXIT.FAILURE);
 }
 
+/** A `--seat` outside the seat book would take a copy no seat reads, so a typo is refused rather than sent nowhere. */
+function knownSeat(ctx: FactoryContext, seat: string | undefined): void {
+  if (seat === undefined) return;
+  const names = ctx.shepherd?.seats().seats.map((entry) => entry.name) ?? [];
+  if (!names.includes(seat)) throw coded(`--seat ${seat} is not in the seat book${names.length === 0 ? "" : ` (seats: ${names.join(", ")})`}, so nothing was watched`, EXIT.FAILURE);
+}
+
 function runWatch(args: WatchArgs, ctx: FactoryContext): WatchResult {
   const store = storeOf(ctx);
   const table = store.watches();
   if (args.action === "list") return { changed: false, watches: table.list() };
   if (args.action === "unwatch") return { changed: table.clear(args.repo, args.pr), watches: table.list() };
   watchedRun(ctx, store, args.repo, args.pr);
+  knownSeat(ctx, args.seat);
   table.set({ repo: args.repo, pr: args.pr, seat: args.seat ?? null, on: [...new Set(args.on)], actor: args.actor });
   return { changed: true, watches: table.list() };
 }
@@ -54,7 +62,7 @@ function runWatch(args: WatchArgs, ctx: FactoryContext): WatchResult {
 /** A watch gates nothing: it only makes the run's named events prompt in the seat digest, until the digest tells its end. */
 export const watchCommand = defineCommand<WatchArgs, WatchResult, FactoryContext>({
   name: "shepherd.watch",
-  description: "Watch, unwatch or list watches on owner/repo#N: a watched run's merged, stopped or gated event reaches the seat in the next settled digest rather than the batch flush, and the watch drops once the digest reports the run finished",
+  description: "Watch, unwatch or list watches on owner/repo#N: a watched run's merged, stopped or gated event reaches the watching seat in the next settled digest rather than the batch flush, --seat sends that seat a copy while the run's own seat keeps its lines, and the watch drops once a sent digest tells the run's end",
   args: WatchArgs,
   result: z.custom<WatchResult>(),
   run: async (args, ctx) => runWatch(args, ctx),

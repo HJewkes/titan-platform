@@ -7,8 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import { H1, REPO } from "./test-support/land.js";
+import type { SeatBook } from "./shepherd/seats.js";
 import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 
+/** One seat in the book, owning another repo, so it can be named by --seat without changing #1's own seat or policy. */
+const OPS_BOOK: SeatBook = { seats: [{ name: "ops-seat", remotes: ["acme/ops"], paths: {}, grants: [] }], denied: [] };
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
@@ -26,7 +29,7 @@ async function registeredDb(cancelled = false): Promise<{ dbPath: string; deps: 
   const dir = mkdtempSync(join(tmpdir(), "factory-watch-"));
   dirs.push(dir);
   const dbPath = join(dir, "state", "factory.sqlite3");
-  const fixture = shepherdFixture();
+  const fixture = shepherdFixture({ seats: OPS_BOOK });
   fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
   const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
   const registered = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
@@ -64,7 +67,7 @@ describe("shepherd watch", () => {
     const listed = await cli(["--db", dbPath, "shepherd", "watch", "--list", "--port", port], deps);
     const unwatched = await cli(["--db", dbPath, "shepherd", "unwatch", `${REPO}#1`, "--port", port], deps);
 
-    expect(listed.out).toContain(`${REPO}#1  on merged,stopped  to ops-seat (by demo-seat,`);
+    expect(listed.out).toContain(`${REPO}#1  on merged,stopped  copy to ops-seat (by demo-seat,`);
     expect(unwatched).toMatchObject({ code: EXIT.OK, out: "changed; no watches\n" });
   });
 
@@ -76,6 +79,17 @@ describe("shepherd watch", () => {
 
     expect(refused.code).toBe(EXIT.FAILURE);
     expect(refused.err).toBe(`error: ${REPO}#2 is not registered with shepherd, so nothing would report on it; register it first\n`);
+    expect(listed.out).toBe("no watches\n");
+  });
+
+  it("exits 1 when --seat is not in the seat book, and records nothing", async () => {
+    const { dbPath, deps, port } = await registeredDb();
+
+    const refused = await cli(["--db", dbPath, "shepherd", "watch", `${REPO}#1`, "--seat", "ops-saet", "--port", port], deps);
+    const listed = await cli(["--db", dbPath, "shepherd", "watch", "--list", "--port", port], deps);
+
+    expect(refused.code).toBe(EXIT.FAILURE);
+    expect(refused.err).toBe("error: --seat ops-saet is not in the seat book (seats: ops-seat), so nothing was watched\n");
     expect(listed.out).toBe("no watches\n");
   });
 

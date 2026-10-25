@@ -9,7 +9,8 @@
       "kills": [
         "watched runs in the seat digest sends a watched run's merge once it settles, not at the 30-minute batch flush",
         "watched runs in the seat digest carries an unwatched merge along on the digest a watched merge brings",
-        "watched runs in the seat digest keeps the watch while the digest is held, and drops it once the digest that reports the merge is sent"
+        "watched runs in the seat digest keeps the watch while the digest is held, and drops it once the digest that reports the merge is sent",
+        "watched runs in the seat digest tells a watching seat with no digest memory yet the merge, and drops the watch only after that send"
       ]
     }
   ]

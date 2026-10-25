@@ -84,7 +84,7 @@ function formatRepairStops({ changed, stops }: RepairStopResult): string {
 }
 
 function formatWatches({ changed, watches }: WatchResult): string {
-  const lines = watches.map((watch) => `${watch.repo}#${watch.pr}  on ${watch.on.join(",")}  to ${watch.seat ?? "its digest seat"} (by ${watch.actor}, ${watch.at})`);
+  const lines = watches.map((watch) => `${watch.repo}#${watch.pr}  on ${watch.on.join(",")}  ${watch.seat === null ? "to its digest seat" : `copy to ${watch.seat}`} (by ${watch.actor}, ${watch.at})`);
   return `${changed ? "changed; " : ""}${watches.length === 0 ? "no watches" : `watches:\n${lines.join("\n")}`}\n`;
 }
 

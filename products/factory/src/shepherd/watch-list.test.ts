@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { SeatDigestPacingSchema, digestPacer } from "./seat-digest-pace.js";
 import { sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
 import type { WatchRow } from "./view.js";
-import { digestWatches, watchListMigration, watchListTable, watchedSeat, type DigestWatches, type PrWatch, type WatchEvent } from "./watch-list.js";
+import { digestWatches, watchListMigration, watchListTable, type DigestWatches, type PrWatch, type WatchEvent } from "./watch-list.js";
 
 const START = Date.parse("2026-10-10T00:00:00.000Z");
 const MINUTE = 60_000;
@@ -19,27 +19,38 @@ function run(id: string, done = false): WorkflowRun {
 }
 
 const idle: DigestInput = { row: row(100), run: run("run-100") };
+const gated = (n: number): DigestInput => ({ row: row(n, { phase: "awaiting-approval", pendingGate: { gateId: `run-${n}/ci-failed`, stepId: "ci-failed", since: "2026-10-10T00:00:00.000Z" } }), run: run(`run-${n}`) });
 const merged = (n: number): DigestInput => ({ row: row(n, { phase: "done", outcome: { kind: "merged", reason: null } }), run: run(`run-${n}`, true) });
 
 /** An in-memory watch list keyed by run id, standing in for the store's table. */
-function watchList(entries: Record<string, WatchEvent[]>, seat: string | null = null): DigestWatches & { left: () => string[] } {
-  const watches = new Map(Object.entries(entries).map(([runId, on]): [string, PrWatch] => [runId, { repo: "acme/widgets", pr: Number(runId.slice(4)), seat, on, actor: "widgets-coord", at: "2026-10-10T00:00:00.000Z" }]));
-  return { of: (runId) => watches.get(runId), drop: (runIds) => runIds.forEach((runId) => watches.delete(runId)), left: () => [...watches.keys()] };
+type TestWatches = DigestWatches & { left: () => string[]; add: (runId: string, on: WatchEvent[], seat: string) => void };
+
+function watchList(entries: Record<string, WatchEvent[]>, seat: string | null = null): TestWatches {
+  const watchOf = (runId: string, on: WatchEvent[], named: string | null): PrWatch => ({ repo: "acme/widgets", pr: Number(runId.slice(4)), seat: named, on, actor: "widgets-coord", at: "2026-10-10T00:00:00.000Z" });
+  const watches = new Map(Object.entries(entries).map(([runId, on]): [string, PrWatch] => [runId, watchOf(runId, on, seat)]));
+  return {
+    of: (runId) => watches.get(runId),
+    drop: (runIds) => runIds.forEach((runId) => watches.delete(runId)),
+    left: () => [...watches.keys()],
+    add: (runId, on, named) => void watches.set(runId, watchOf(runId, on, named)),
+  };
 }
 
-function harness(watches: DigestWatches, failing = false) {
-  const sent: { at: number; text: string }[] = [];
+/** Every run's own seat is widgets-coord; a watch naming a seat sends that seat a copy, as serve's live routing would. */
+function harness(watches: DigestWatches, failFor: readonly string[] = []) {
+  const sent: { at: number; seat: string; text: string }[] = [];
   const states = new Map<string, SeatState>();
   const memory: SeatDigestMemory = { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) };
   const pacer = digestPacer(PACING);
   const ports = (at: number): SeatDigestPorts => ({
     seatLookup: () => () => "widgets-coord",
-    send: async (_seat, text) => {
-      if (failing) throw new Error("broker down");
-      sent.push({ at, text });
+    send: async (seat, text) => {
+      if (failFor.includes(seat)) throw new Error("broker down");
+      sent.push({ at, seat, text });
     },
   });
-  const sweep = (inputs: DigestInput[], at: number) => sendSeatDigests(inputs, ports(at), memory, { watches }, new Date(at), pacer);
+  const routes = { seatOf: () => "widgets-coord", copyOf: (run: { runId: string }) => watches.of(run.runId)?.seat ?? undefined, watches };
+  const sweep = (inputs: DigestInput[], at: number) => sendSeatDigests(inputs, ports(at), memory, { ...routes, unsendable: new Map() }, new Date(at), pacer);
   return { sent, sweep };
 }
 
@@ -92,17 +103,46 @@ describe("watched runs in the seat digest", () => {
 
   it("keeps the watch when the digest could not be sent, so the next sweep reports the merge again", async () => {
     const watches = watchList({ "run-1": ["merged"] });
-    const { sweep } = harness(watches, true);
+    const { sweep } = harness(watches, ["widgets-coord"]);
 
     await minutes(sweep, [merged(1)], 5);
 
     expect(watches.left()).toEqual(["run-1"]);
   });
 
-  it("routes a watched run to the seat its watch names, and any other run as before", () => {
-    const seatOf = watchedSeat(() => "widgets-coord", watchList({ "run-1": ["merged"] }, "ops-coord"));
+  it("tells a watching seat with no digest memory yet the merge, and drops the watch only after that send", async () => {
+    const watches = watchList({ "run-1": ["merged"] });
+    const { sent, sweep } = harness(watches);
 
-    expect([seatOf({ runId: "run-1" }), seatOf({ runId: "run-2" })]).toEqual(["ops-coord", "widgets-coord"]);
+    await sweep([merged(1)], START);
+    const beforeSend = watches.left();
+    await sweep([merged(1)], START + 2 * MINUTE);
+
+    expect(beforeSend).toEqual(["run-1"]);
+    expect(sent.map((s) => [s.at, s.seat, s.text.includes("acme/widgets#1 merged")])).toEqual([[START + 2 * MINUTE, "widgets-coord", true]]);
+    expect(watches.left()).toEqual([]);
+  });
+
+  it("sends --seat a copy of the run's gate while the run's own seat keeps it and is never told it cleared", async () => {
+    const watches = watchList({});
+    const { sent, sweep } = harness(watches);
+    await minutes(sweep, [gated(1)], 3);
+    watches.add("run-1", ["gated", "merged"], "ops-coord");
+
+    for (let m = 4; m <= 40; m += 1) await sweep([idle, gated(1)], START + m * MINUTE);
+
+    expect(sent.filter((s) => s.seat === "widgets-coord").map((s) => s.text).join("\n")).not.toContain("Cleared");
+    expect(sent.filter((s) => s.seat === "ops-coord").map((s) => [s.at, s.text.includes("acme/widgets#1 waits on ci-failed")])).toEqual([[START + 6 * MINUTE, true]]);
+  });
+
+  it("keeps a --seat watch when only the run's own seat was told the merge", async () => {
+    const watches = watchList({ "run-1": ["merged"] }, "ops-coord");
+    const { sent, sweep } = harness(watches, ["ops-coord"]);
+
+    await minutes(sweep, [merged(1)], 40);
+
+    expect(sent.map((s) => s.seat)).toEqual(["widgets-coord"]);
+    expect(watches.left()).toEqual(["run-1"]);
   });
 });
 
@@ -120,5 +160,15 @@ describe("watch list table", () => {
 
     expect(followed).toEqual([undefined, 1]);
     expect(table.list()).toEqual([]);
+  });
+
+  it("skips a stored watch whose events cannot be read, so one bad row never stops the sweep", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [watchListMigration(41)]);
+    const table = watchListTable(db, () => "2026-10-10T00:00:00.000Z");
+    table.set({ repo: "acme/widgets", pr: 1, seat: null, on: ["merged"], actor: "widgets-coord" });
+    db.prepare("INSERT INTO shepherd_watch (repo, pr, seat, events, actor, at) VALUES (?, ?, ?, ?, ?, ?)").run("acme/widgets", 2, null, "not json", "x", "2026-10-10T00:00:00.000Z");
+
+    expect(table.list().map((watch) => watch.pr)).toEqual([1]);
   });
 });

@@ -771,10 +771,13 @@ row's phase is one of `--until`. It exits 1, with the reason on stderr, when the
 a watch through serve when one answers, else in the database here. `--on` takes `merged`, `stopped`
 and `gated`, all three by default. While the watch stands, those events are prompt-class in the seat
 digest's `shepherd.seatDigest.pacing`: they go out once `settleMs` has passed, not at `flushMs`.
-`--seat` sends the run's digest lines to that seat instead of the run's digest seat. A watch is
-dropped once the digest that reports its run finished has been sent. Watches live in the factory
-database, so they survive a serve restart. A PR Shepherd has not registered, or one whose run has
-already finished, exits 1 with the reason. `shepherd unwatch <ref>` drops a watch, and
+`--seat` names a seat from the seat book that gets a copy of the run's digest lines, routed to a
+live seat the way digests are; the run's own seat keeps them. The watching seat, the `--seat` one
+or else the run's own, is the one whose digest is paced promptly. A watch is dropped only once a
+digest sent to the watching seat carried the run's end, so a seat with no digest memory yet is
+still told. Watches live in the factory database, so they survive a serve restart. A PR Shepherd
+has not registered, one whose run has already finished, or a `--seat` outside the seat book exits
+1 with the reason. `shepherd unwatch <ref>` drops a watch, and
 `shepherd watch --list` prints every watch.
 
 `shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and

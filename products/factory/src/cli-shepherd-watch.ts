@@ -19,9 +19,9 @@ type RunShepherd = (verbs: Verbs, name: ShepherdCommandName, argsOf: () => objec
 
 /** `shepherd watch` replaces the Monitor loops and `shepherd wait` runs seats arm on a registered PR: the seat digest brings the news. */
 export function registerShepherdWatch(verb: VerbOf, verbs: Verbs, run: RunShepherd): void {
-  verb("watch [ref]", "watch owner/repo#N: its --on events reach the seat in the next settled digest instead of the batch flush, and the watch drops once a digest reports the run finished; exit 1 when the PR is not registered")
+  verb("watch [ref]", "watch owner/repo#N: its --on events reach the seat in the next settled digest instead of the batch flush, and the watch drops once a sent digest tells the run's end; exit 1 when the PR is not registered or --seat is not in the seat book")
     .option("--on <events>", `comma-separated events: ${WATCH_EVENTS.join(", ")} (default: all)`, parseEvents)
-    .option("--seat <name>", "the seat the run's digest lines go to while watched (default: the run's digest seat)")
+    .option("--seat <name>", "a seat in the seat book that gets a copy of the run's digest lines and the prompt wake, while the run's own seat keeps them (default: the run's own digest seat)")
     .option("--list", "list every watch instead")
     .action((ref: string | undefined, opts: WatchVerbOpts) => run(verbs, "shepherd.watch", () => watchArgs(ref, opts, verbs.io.env), opts));
   verb("unwatch <ref>", "drop the watch on owner/repo#N; its events go back to the digest's usual pacing")

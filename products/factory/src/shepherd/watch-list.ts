@@ -46,7 +46,20 @@ export interface WatchList {
 
 const StoredWatch = z.object({ repo: z.string(), pr: z.number().int(), seat: z.string().nullable(), events: z.string(), actor: z.string(), at: z.string() });
 
-const fromRow = ({ events, ...rest }: z.infer<typeof StoredWatch>): PrWatch => ({ ...rest, on: z.array(WatchEventSchema).parse(JSON.parse(events)) });
+const StoredEvents = z.string().transform((text, ctx) => {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    ctx.addIssue({ code: "custom", message: "events is not JSON" });
+    return z.NEVER;
+  }
+}).pipe(z.array(WatchEventSchema));
+
+/** A row whose events cannot be read is skipped, so one bad watch never stops the digest sweep for every seat. */
+function fromRow({ events, ...rest }: z.infer<typeof StoredWatch>): PrWatch[] {
+  const on = StoredEvents.safeParse(events);
+  return on.success ? [{ ...rest, on: on.data }] : [];
+}
 
 export function watchListTable(db: Db, stamp: () => string): WatchList {
   return {
@@ -57,16 +70,23 @@ export function watchListTable(db: Db, stamp: () => string): WatchList {
       return stored;
     },
     clear: (repo, pr) => db.prepare("DELETE FROM shepherd_watch WHERE repo = ? AND pr = ?").run(repo.toLowerCase(), pr).changes > 0,
-    list: () => z.array(StoredWatch).parse(db.prepare("SELECT * FROM shepherd_watch ORDER BY repo, pr").all()).map(fromRow),
+    list: () => z.array(StoredWatch).parse(db.prepare("SELECT * FROM shepherd_watch ORDER BY repo, pr").all()).flatMap(fromRow),
   };
 }
 
 /** The watched events a run's row shows now: its outcome, and an open gate. */
-export function watchedEvents(watch: PrWatch, row: WatchRow): WatchEvent[] {
+function watchedEvents(watch: PrWatch, row: WatchRow): WatchEvent[] {
   const shown: WatchEvent[] = [];
   if (row.outcome !== null) shown.push(row.outcome.kind);
   if (row.pendingGate !== null) shown.push("gated");
   return shown.filter((event) => watch.on.includes(event));
+}
+
+/** The digest item keys of a watched run whose event its watch names: an open item for `gated`, its end for `merged` or `stopped`. */
+export function watchedKeys(watch: PrWatch | undefined, row: WatchRow, openKey: string | undefined, finishedKey: string | undefined): string[] {
+  if (watch === undefined) return [];
+  const shown = watchedEvents(watch, row);
+  return [...(openKey !== undefined && shown.includes("gated") ? [openKey] : []), ...(finishedKey !== undefined && shown.some((event) => event !== "gated") ? [finishedKey] : [])];
 }
 
 /** What the digest sweep reads of the watch list: the watch on a run, and the drop once that run's end has been told. */
@@ -97,9 +117,4 @@ export function digestWatches(store: WatchSource): DigestWatches {
       }
     },
   };
-}
-
-/** A watch that names a seat sends its run's digest lines there instead of to the seat the run would route to. */
-export function watchedSeat<Run extends { runId: string }>(seatOf: (run: Run) => string | undefined, watches: DigestWatches): (run: Run) => string | undefined {
-  return (run) => watches.of(run.runId)?.seat ?? seatOf(run);
 }
