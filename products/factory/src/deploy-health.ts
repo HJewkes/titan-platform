@@ -39,7 +39,7 @@ export interface DeployHealth {
   behind: number;
   /** Minutes since the oldest ask (or origin/main commit, once git is read) that has not landed; 0 when none is waiting. */
   behindMinutes: number;
-  /** Set by `shepherd status` from git: commits on origin/main older than the grace that the running build lacks, asked for or not. */
+  /** Set from git by serve's watch while no deploy is queued, else by `shepherd status`: commits on origin/main older than the grace that the running build lacks, asked for or not. */
   originLag?: { merges: number; minutes: number; asked: number };
   consecutiveRefusals: number;
   lastRefusal: { at: string | null; reason: string } | null;

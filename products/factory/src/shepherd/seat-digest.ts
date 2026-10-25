@@ -14,7 +14,9 @@ import type { ShepherdStore } from "./store.js";
 import type { WatchRow } from "./view.js";
 import { holdsLiveSession } from "./wake-roster.js";
 import { rowsWithRuns, runFinished } from "./watch-rows.js";
-import { digestText, type DigestItem } from "./seat-digest-text.js";
+import { digestDelta, digestText, type DigestItem } from "./seat-digest-text.js";
+import type { DigestPacer, DigestPacing, PendingItems } from "./seat-digest-pace.js";
+import { digestWatches, watchedKeys, type DigestWatches } from "./watch-list.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
 export const SEAT_DIGEST_MS = 60_000;
@@ -31,6 +33,8 @@ export interface SeatDigestPorts {
   /** The seats a digest for `repo` goes to, in order, when its seat holds no live session, as for notices. */
   fallbackSeats?(repo: string): readonly FallbackSeat[];
   send(seat: string, text: string): Promise<void>;
+  /** `shepherd.seatDigest.pacing`; absent sends each change on the sweep that sees it. */
+  pacing?: DigestPacing;
 }
 
 /** The seat a run's digest lines go to. */
@@ -63,6 +67,10 @@ interface SeatView {
   finished: DigestItem[];
   /** Every finished run read, with or without an outcome to report, so the next sweep need not read it again. */
   settled: string[];
+  /** The keys of open and finished items this seat's watch asked for: only these are prompt-class. */
+  watched: string[];
+  /** Each run this seat watches that has ended, whatever its watch's `on`, with its finished item's key if it has one. */
+  ended: { runId: string; key: string | undefined }[];
 }
 
 const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back"]);
@@ -101,29 +109,61 @@ function finishedItem(row: WatchRow): DigestItem | undefined {
  * Each seat's open items and finished runs, from the watch rows; a run no seat is named for is left out. A `quiet` run is
  * settled without a line, so the seat neither hears of it nor reads it again.
  */
-function seatViews(inputs: readonly DigestInput[], seatOf: SeatOf, quiet: (input: DigestInput) => boolean): Map<string, SeatView> {
+function seatViews(inputs: readonly DigestInput[], routes: Pick<DigestRoutes, "seatOf" | "copyOf" | "watches">, quiet: (input: DigestInput) => boolean): Map<string, SeatView> {
   const views = new Map<string, SeatView>();
   for (const input of inputs) {
-    const seat = seatOf(input.row);
-    if (seat === undefined) continue;
-    const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [] }).get(seat)!;
-    if (quiet(input)) {
-      if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
-      continue;
+    const own = routes.seatOf(input.row);
+    const copy = routes.copyOf?.(input.row);
+    for (const seat of new Set([own, copy])) {
+      if (seat === undefined) continue;
+      const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [], watched: [], ended: [] }).get(seat)!;
+      addRun(view, input, quiet, seat === (copy ?? own) ? routes.watches : undefined);
     }
-    const open = gateItem(input.row) ?? seatFixItem(input);
-    if (open) view.open.push(open);
-    const finished = finishedItem(input.row);
-    if (finished) view.finished.push(finished);
-    if (FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
   }
   return views;
 }
 
-/** A seat seen for the first time has its finished runs taken as already known, so a first sweep does not replay history. */
-function seatText(seat: string, view: SeatView, last: SeatState | undefined): string | undefined {
-  const known = new Set(last?.finished ?? view.finished.map((item) => item.key));
-  return digestText(seat, view.open, view.finished.filter((item) => !known.has(item.key)), last);
+/** `watches` is passed only for the seat watching the run: the copy seat when the watch names one, else the run's own. */
+function addRun(view: SeatView, input: DigestInput, quiet: (input: DigestInput) => boolean, watches: DigestWatches | undefined): void {
+  if (quiet(input)) {
+    if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
+    return;
+  }
+  const open = gateItem(input.row) ?? seatFixItem(input);
+  if (open) view.open.push(open);
+  const finished = finishedItem(input.row);
+  if (finished) view.finished.push(finished);
+  const watch = watches?.of(input.row.runId);
+  view.watched.push(...watchedKeys(watch, input.row, open?.key, finished?.key));
+  if (watch !== undefined && (finished !== undefined || FINISHED_PHASES.has(input.row.phase))) view.ended.push({ runId: input.row.runId, key: finished?.key });
+  if (FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
+}
+
+/** A seat seen for the first time takes its finished runs as known, so a first sweep does not replay history; a watched end is still told. */
+function freshRuns(view: SeatView, last: SeatState | undefined): DigestItem[] {
+  const watchedEnds = new Set(view.ended.map((end) => end.key));
+  const known = new Set(last?.finished ?? view.finished.filter((item) => !watchedEnds.has(item.key)).map((item) => item.key));
+  return view.finished.filter((item) => !known.has(item.key));
+}
+
+/** A new open item, a moved one included, and a watched run's end are prompt-class; a cleared item or another finished run is batch-class. */
+function pendingItems(view: SeatView, fresh: readonly DigestItem[], last: SeatState | undefined): PendingItems {
+  const delta = digestDelta(view.open, fresh, last);
+  const watchedEnd = (item: DigestItem): boolean => view.watched.includes(item.key);
+  const ended = (items: readonly DigestItem[]): string[] => items.map((item) => `finished:${item.key}`);
+  return {
+    prompt: [...delta.added.map((item) => item.key), ...ended(fresh.filter(watchedEnd))],
+    batch: [...delta.cleared.map((key) => `cleared:${key}`), ...ended(fresh.filter((item) => !watchedEnd(item)))],
+  };
+}
+
+/**
+ * The watched runs whose end this seat now knows, so their watches drop: told in `fresh` now or in an earlier digest, or
+ * ended with no outcome to tell. The watch's `on` never enters into it; it only decides prompt or batch.
+ */
+function toldEnds(view: SeatView, fresh: readonly DigestItem[], last: SeatState | undefined): string[] {
+  const told = new Set([...fresh.map((item) => item.key), ...(last?.finished ?? [])]);
+  return view.ended.filter((end) => end.key === undefined || told.has(end.key)).map((end) => end.runId);
 }
 
 /** Finished runs stay known once heard of, because a sweep reads only the finished runs its seat has not heard of. */
@@ -160,6 +200,10 @@ interface DigestRoutes {
   unsendable: ReadonlyMap<string, string>;
   /** The run's own seat when its digest goes to a fallback because that seat holds no live session. */
   reroutedFrom?: SeatOf;
+  /** The seats' watches: a watched event is prompt-class, and a watch is dropped once its run's end is told. */
+  watches?: DigestWatches;
+  /** The live seat a watch's `--seat` resolves to: it gets a copy of the run's lines, and the run's own seat keeps them. */
+  copyOf?: SeatOf;
 }
 
 const finishedAt = ({ row, run }: DigestInput): string => run.completedAt ?? row.phaseSince;
@@ -181,23 +225,32 @@ function rerouteQuiet(routes: Partial<DigestRoutes>, memory: SeatDigestMemory, n
   };
 }
 
+type DigestOutcome = { sent: string[]; failed: { seat: string; cause: string }[] };
+
+/** Whether `pacer` holds a seat's change for a later sweep; a seat with nothing to say has nothing pending. */
+function held(pacer: DigestPacer | undefined, seat: string, text: string | undefined, pending: () => PendingItems, now: Date): boolean {
+  if (pacer === undefined) return false;
+  if (text !== undefined) return !pacer.due(seat, pending(), now);
+  pacer.clear(seat);
+  return false;
+}
+
 /**
  * One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again, and so
- * does a seat `unsendable` names, whose reason is its failure's cause.
+ * does a seat `unsendable` names, whose reason is its failure's cause. A `pacer` the change is not yet due under holds it
+ * the same way, so the send that comes due carries every unsent item.
  */
 export async function sendSeatDigests(
-  inputs: readonly DigestInput[],
-  ports: SeatDigestPorts,
-  memory: SeatDigestMemory,
-  routes: Partial<DigestRoutes> = {},
-  now: Date = new Date(),
-): Promise<{ sent: string[]; failed: { seat: string; cause: string }[] }> {
+  inputs: readonly DigestInput[], ports: SeatDigestPorts, memory: SeatDigestMemory, routes: Partial<DigestRoutes> = {}, now = new Date(), pacer?: DigestPacer,
+): Promise<DigestOutcome> {
   const sent: string[] = [];
   const failed: { seat: string; cause: string }[] = [];
   const unsendable = routes.unsendable ?? new Map<string, string>();
-  for (const [seat, view] of seatViews(inputs, routes.seatOf ?? repoSeats(ports.seatLookup()), rerouteQuiet(routes, memory, now))) {
+  for (const [seat, view] of seatViews(inputs, { ...routes, seatOf: routes.seatOf ?? repoSeats(ports.seatLookup()) }, rerouteQuiet(routes, memory, now))) {
     const last = memory.get(seat);
-    const text = seatText(seat, view, last);
+    const fresh = freshRuns(view, last);
+    const text = digestText(seat, view.open, fresh, last);
+    if (held(pacer, seat, text, () => pendingItems(view, fresh, last), now)) continue;
     const why = text === undefined ? undefined : unsendable.get(seat);
     if (why !== undefined) {
       failed.push({ seat, cause: why });
@@ -207,6 +260,7 @@ export async function sendSeatDigests(
     try {
       if (text !== undefined) await ports.send(seat, text);
       if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
+      routes.watches?.drop(toldEnds(view, fresh, last));
       if (text !== undefined) sent.push(seat);
     } catch (error) {
       failed.push({ seat, cause: error instanceof Error ? error.message : String(error) });
@@ -226,7 +280,7 @@ function unreadRoster(error: unknown): undefined {
  * (`spawnerSeat`), else its repo's one seat, and none when the repo has no single seat (`runSeat`). The seat book is read
  * once, and the roster once, which also says which seats are live.
  */
-async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<DigestRoutes> {
+async function runSeats(store: ShepherdStore, ports: SeatDigestPorts, watches: DigestWatches): Promise<DigestRoutes> {
   const seatFor = ports.seatLookup();
   const lineages = store.all().flatMap((registration) => (registration.registrant ? [{ runId: registration.runId, lineage: runLineage(store, registration) }] : []));
   const roster = ports.roster ? await ports.roster().catch(unreadRoster) : undefined;
@@ -235,8 +289,12 @@ async function runSeats(store: ShepherdStore, ports: SeatDigestPorts): Promise<D
     const seat = seatFor(run.repo);
     return seat && (named.get(run.runId) ?? seat);
   };
-  const live = roster && { live: async (seat: string) => holdsLiveSession(seat, roster) };
-  return liveSeats(store.all(), chosen, { ...live, ...(ports.fallbackSeats && { fallbackSeats: ports.fallbackSeats }) });
+  const live = { ...(roster && { live: async (seat: string) => holdsLiveSession(seat, roster) }), ...(ports.fallbackSeats && { fallbackSeats: ports.fallbackSeats }) };
+  const routes = await liveSeats(store.all(), chosen, live);
+  const copies = await liveSeats(store.all(), (run) => watches.of(run.runId)?.seat ?? undefined, live);
+  const watched = (run: { runId: string }): boolean => watches.of(run.runId) !== undefined;
+  const reroutedFrom: SeatOf = (run) => (watched(run) ? undefined : routes.reroutedFrom?.(run));
+  return { seatOf: routes.seatOf, unsendable: new Map([...routes.unsendable, ...copies.unsendable]), reroutedFrom, watches, copyOf: copies.seatOf };
 }
 
 /**
@@ -266,11 +324,14 @@ async function liveSeats(runs: readonly { repo: string; runId: string }[], chose
 }
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
-export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now: Date = new Date()): ReturnType<typeof sendSeatDigests> {
-  const routes = await runSeats(services.store.get(), ports);
+export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now = new Date(), pacer?: DigestPacer): Promise<DigestOutcome> {
+  const store = services.store.get();
+  const watches = digestWatches(store);
+  const routes = await runSeats(store, ports, watches);
   const reads = digestReads(memory, routes.seatOf);
-  const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration, runFinished(status)));
-  return sendSeatDigests(inputs, ports, memory, routes, now);
+  const watched = (runId: string): boolean => watches.of(runId) !== undefined;
+  const inputs = await rowsWithRuns(host, services, (registration, status) => watched(registration.runId) || reads(registration, runFinished(status)));
+  return sendSeatDigests(inputs, ports, memory, routes, now, pacer);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);

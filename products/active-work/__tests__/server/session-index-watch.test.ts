@@ -299,16 +299,22 @@ describe('startSessionIndexWatch', () => {
         scanned: 3,
         filesOpened: 3,
         bytesRead: expect.any(Number),
+        rowsWritten: expect.any(Number),
+        dbBytes: expect.any(Number),
         durationMs: expect.any(Number),
         maxStallMs: expect.any(Number),
         phases: expect.objectContaining({
           discover: expect.any(Number),
           corpus: expect.any(Number),
         }),
+        prsPolled: 0,
         errors: [],
         errorCount: 0,
       });
-      expect((passLines()[0] as { bytesRead: number }).bytesRead).toBeGreaterThan(0);
+      const line = passLines()[0] as { bytesRead: number; rowsWritten: number; dbBytes: number };
+      expect(line.bytesRead).toBeGreaterThan(0);
+      expect(line.rowsWritten).toBeGreaterThan(0);
+      expect(line.dbBytes).toBeGreaterThan(0);
     });
 
     it('logs the pass kind the refresh reports', async () => {

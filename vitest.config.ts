@@ -33,6 +33,11 @@ const activeWorkNeedsProcess = [
   "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
 ];
 
+// Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
+// worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
+// this process, which its threads share and its forks inherit.
+process.env.TZ = "UTC";
+
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
 // workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
 // the pool starts; forks are child processes and take execArgv.

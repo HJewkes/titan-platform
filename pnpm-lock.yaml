@@ -162,6 +162,9 @@ importers:
       '@titan-design/decider':
         specifier: workspace:^
         version: link:../../packages/decider
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../../packages/fix-proof
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
@@ -229,6 +232,9 @@ importers:
       '@titan-design/frame-capture':
         specifier: workspace:^
         version: link:../../packages/frame-capture
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../../packages/test-kit
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -331,6 +337,9 @@ importers:
 
   packages/autoresearch:
     dependencies:
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../rpc-client
@@ -344,6 +353,9 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -370,6 +382,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../evidence
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
@@ -382,6 +397,10 @@ importers:
       web-tree-sitter:
         specifier: ^0.26.6
         version: 0.26.13
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/code-parser:
     dependencies:
@@ -511,7 +530,11 @@ importers:
 
   packages/evidence: {}
 
-  packages/fix-proof: {}
+  packages/fix-proof:
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/frame-capture:
     devDependencies:
@@ -956,9 +979,16 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../authority
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       zod:
         specifier: ^4.0.0
         version: 4.5.4
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/workflow:
     dependencies:
@@ -998,6 +1028,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@4.5.4)
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../../packages/agent-dispatch
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol

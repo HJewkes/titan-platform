@@ -119,10 +119,10 @@ const RULES: readonly RequiredChecks[] = [
 const STATUS_SETS: readonly CommitStatus[][] = [[], ...STATUS_STATES.map((state) => [{ context: "validate", state }])];
 const REQUIRED_APPS: readonly number[][] = [[GITHUB_ACTIONS_APP_ID], [GITHUB_ACTIONS_APP_ID, OTHER_APP]];
 
-type RunShape = Omit<CheckRun, "id" | "workflowRunId" | "pullRequests" | "url">;
+type RunShape = Omit<CheckRun, "id" | "completedAt" | "title" | "workflowRunId" | "pullRequests" | "url">;
 
 function run(id: number, shape: RunShape): CheckRun {
-  return { id, ...shape, workflowRunId: null, pullRequests: [], url: `https://example.test/runs/${id}` };
+  return { id, ...shape, completedAt: null, title: null, workflowRunId: null, pullRequests: [], url: `https://example.test/runs/${id}` };
 }
 
 function* everyRunShape(): Generator<RunShape> {

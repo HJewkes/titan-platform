@@ -7,6 +7,7 @@ import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
+import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import { gitBehind } from "./deploy-behind.js";
 import { deployBlockOf, deploySummary, withGitBehind, type DeployHealth } from "./deploy-health.js";
@@ -49,6 +50,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
+  registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
@@ -178,9 +180,9 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
 
-/** Serve's block counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. */
+/** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
 async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
-  if (block === null) return null;
+  if (block === null || block.originLag !== undefined) return block;
   const probe = verbs.deps.deployBehind ?? gitBehind(deployCheckoutFor(verbs.io.env));
   return withGitBehind(block, await probe(block.runningSha), Date.now());
 }
