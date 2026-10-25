@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "stdout past the limit is dropped without killing the command",
+      "file": "packages/speech-tts/src/command-tts.ts",
+      "find": "    chunks.length = 0;\n    onOverflow();",
+      "replace": "    chunks.length = 0;",
+      "kills": [
+        "commandTts hardening kills a command whose stdout passes maxOutputBytes, while it is still writing",
+        "commandTts hardening takes maxOutputBytes from the profile"
+      ]
+    }
+  ]
+}

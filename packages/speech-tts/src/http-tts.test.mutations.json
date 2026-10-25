@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a streamed body is never checked against the limit",
+      "file": "packages/speech-tts/src/http-tts.ts",
+      "find": "    if (size + next.value.length > limit) {",
+      "replace": "    if (size + next.value.length > Infinity) {",
+      "kills": [
+        "httpTts hardening cancels a response body that passes maxOutputBytes while it streams"
+      ]
+    }
+  ]
+}

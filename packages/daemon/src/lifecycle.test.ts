@@ -98,6 +98,7 @@ describe("process probes", () => {
     const after = Date.now();
     try {
       const started = getProcessStartTime(child.pid ?? -1);
+      expect(started).toBeInstanceOf(Date);
       expect(started?.getTime()).toBeGreaterThanOrEqual(before - 2000);
       expect(started?.getTime()).toBeLessThanOrEqual(after + 2000);
     } finally {

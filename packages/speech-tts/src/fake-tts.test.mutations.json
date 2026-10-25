@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the capability check runs after the engine",
+      "file": "packages/speech-tts/src/fake-tts.ts",
+      "find": "    assertSupported(id, capabilities, input, voice, options);\n    if (opts.unavailable) throw new TtsUnavailableError(id, \"fake engine is switched off\");\n    return withDeadline(id, options.timeoutMs ?? opts.timeoutMs ?? 30_000, options.signal, async (signal) => {\n      if (opts.latencyMs) await sleep(opts.latencyMs, undefined, { signal });",
+      "replace": "    if (opts.unavailable) throw new TtsUnavailableError(id, \"fake engine is switched off\");\n    return withDeadline(id, options.timeoutMs ?? opts.timeoutMs ?? 30_000, options.signal, async (signal) => {\n      if (opts.latencyMs) await sleep(opts.latencyMs, undefined, { signal });\n      assertSupported(id, capabilities, input, voice, options);",
+      "kills": [
+        "fakeTts rejects an unsupported call before any audio is rendered"
+      ]
+    }
+  ]
+}

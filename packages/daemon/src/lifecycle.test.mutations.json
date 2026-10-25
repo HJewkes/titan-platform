@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "ps is asked for elapsed time, not the start",
+      "file": "packages/daemon/src/lifecycle.ts",
+      "find": "[\"-o\", \"lstart=\", \"-p\", String(pid)]",
+      "replace": "[\"-o\", \"etime=\", \"-p\", String(pid)]",
+      "kills": [
+        "process probes reports a child's start time between the clock readings around its spawn"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "close tears down only the first handle",
+      "file": "packages/daemon/src/file-watch.ts",
+      "find": "  for (const w of tree.watchers.values()) w.close();",
+      "replace": "  tree.watchers.values().next().value?.close();",
+      "kills": [
+        "watchTree covers a deep tree with one handle where watch is recursive, and closes every handle (TP-37)"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the gated open blocks on a FIFO",
+      "file": "packages/anthropic-account/src/node/gated-read.ts",
+      "find": "const OPEN_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK;",
+      "replace": "const OPEN_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;",
+      "kills": [
+        "readLoginState checks the descriptor it reads with a FIFO renamed in after the lstat refuses it promptly instead of blocking on the open"
+      ]
+    }
+  ]
+}

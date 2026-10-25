@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a cooldown reads retry-after as tenths of a second",
+      "file": "packages/github/src/octokit-client.ts",
+      "find": "until: now() + retryAfterS * 1000 }",
+      "replace": "until: now() + retryAfterS * 100 }",
+      "kills": [
+        "octokitClient reports the live rate window and a secondary-limit cooldown in its budget",
+        "octokitClient drops a cooldown from the budget once it has passed"
+      ]
+    }
+  ]
+}

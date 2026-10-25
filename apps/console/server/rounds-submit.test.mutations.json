@@ -8,7 +8,7 @@
       "replace": "const recordInBatch = recordWith(humanOnly);",
       "kills": [
         "a long round sends in about one human-only read (TP-4001) reads the human-only list once for twelve answers and logs all twelve",
-        "a long round sends in about one human-only read (TP-4001) responds in about one read's latency, not twelve"
+        "a long round sends in about one human-only read (TP-4001) responds in one read's latency, not twelve"
       ]
     },
     {
