@@ -63,3 +63,68 @@ describe("compileGlobs", () => {
     expect(expandBraces("{a}".repeat(32))).toEqual(["a".repeat(32)]);
   });
 });
+
+// The backtracking compiler this replaced, kept as the oracle for what each glob means.
+function referenceRegExp(glob: string): RegExp {
+  let source = "";
+  for (let index = 0; index < glob.length; index += 1) {
+    if (glob.startsWith("**/", index)) {
+      source += "(?:[^/]+/)*";
+      index += 2;
+    } else if (glob.startsWith("**", index)) {
+      source += ".*";
+      index += 1;
+    } else {
+      const char = glob.charAt(index);
+      source += char === "*" ? "[^/]*" : char === "?" ? "[^/]" : char.replace(/[.+^$()|[\]\\{}]/, "\\$&");
+    }
+  }
+  return new RegExp(`^${source}$`);
+}
+
+function seededRandom(seed: number): (below: number) => number {
+  let state = seed;
+  return (below) => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state % below;
+  };
+}
+
+describe("compileGlobs on hostile globs", () => {
+  it.each([
+    ["d/ and 20 stars", `d/${"*".repeat(20)}x`, `d/${"a".repeat(40)}`],
+    ["12 globstar segments", `${"**/".repeat(12)}x`, `${"a/".repeat(40)}b`],
+    ["10 globstar-a runs", "**a".repeat(10), `${"a".repeat(40)}b`],
+    ["10 star-a runs", `d/${"*a".repeat(10)}`, `d/${"a".repeat(40)}b`],
+    ["alternating globstar and star segments", `${"**/*/".repeat(8)}x`, `${"a/".repeat(40)}b`],
+  ])("rejects a non-matching path quickly for %s", (_name, glob, path) => {
+    const matches = compileGlobs([glob]);
+    const started = performance.now();
+    expect(matches(path)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it.each([
+    ["d/**x", ["d/x", "d/a/b/x", "d/ax"], ["d/a/b", "e/x"]],
+    ["**/**/a", ["a", "b/a", "b/c/a"], ["ba", "b/", "/a"]],
+    ["a/**/*.ts", ["a/x.ts", "a/b/c/x.ts", "a/.ts"], ["a.ts", "b/x.ts", "a/x.tsx"]],
+    ["a?c", ["abc", "a.c"], ["a/c", "ac", "abbc"]],
+  ])("matches %s like the backtracking compiler did", (glob, hits, misses) => {
+    const matches = compileGlobs([glob]);
+    expect(hits.map(matches)).toEqual(hits.map(() => true));
+    expect(misses.map(matches)).toEqual(misses.map(() => false));
+  });
+
+  it("agrees with the backtracking compiler on 5000 random globs and paths", () => {
+    const random = seededRandom(1756);
+    const pick = (pieces: readonly string[], most: number): string =>
+      Array.from({ length: random(most + 1) }, () => pieces[random(pieces.length)]).join("");
+    const disagreements: string[] = [];
+    for (let round = 0; round < 5000; round += 1) {
+      const glob = pick(["a", "b", "/", ".", "*", "?", "**", "**/"], 6);
+      const path = pick(["a", "b", "/", "."], 8);
+      if (compileGlobs([glob])(path) !== referenceRegExp(glob).test(path)) disagreements.push(`${glob} ${path}`);
+    }
+    expect(disagreements).toEqual([]);
+  });
+});
