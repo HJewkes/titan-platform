@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { resolveScript, visual } from "./resolve-fixtures.test-helpers.js";
 import { applyEdit, SlotEditSchema, type EditBase, type SlotEdit } from "./slot-edit.js";
 import { sha256 } from "./workflow/artifacts.js";
@@ -7,11 +8,11 @@ import { sha256 } from "./workflow/artifacts.js";
 const cue = { action: "V6", target: "old-lane", atCue: "ledger" };
 const rows = [{ id: "old-lane", left: "One queue", right: "Two queues" }];
 
-const script = JSON.parse(JSON.stringify(resolveScript([
+const script: Record<string, unknown> = resolveScript([
   ["b1", "WHAT", { visual: visual({ beat: "list", labels: ["two lanes"] }) }],
   ["b2", "WHAT", { visual: visual({ beat: "compare", labels: ["old", "new"], cues: [cue] }) }],
   ["b3", "HOW", { visual: visual({ beat: "chart", layer: "custom", labels: ["4 a day"] }) }],
-]))) as Record<string, unknown>;
+]);
 
 const base: EditBase = {
   runId: "run-base",
@@ -30,8 +31,8 @@ function edit(beats: SlotEdit["beats"], over: Partial<SlotEdit["base"]> = {}): S
   });
 }
 
-type Beat = { id: string; visual: Record<string, unknown> };
-const beatsOf = (value: Record<string, unknown>): Beat[] => value.beats as Beat[];
+const BeatsSchema = z.looseObject({ beats: z.array(z.looseObject({ id: z.string(), visual: z.record(z.string(), z.unknown()) })) });
+const beatsOf = (value: Record<string, unknown>) => BeatsSchema.parse(value).beats;
 const withoutOverrides = (value: Record<string, unknown>) =>
   ({ ...value, beats: beatsOf(value).map((beat) => ({ ...beat, visual: { ...beat.visual, slots: undefined, tune: undefined } })) });
 

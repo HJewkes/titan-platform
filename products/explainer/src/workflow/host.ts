@@ -10,11 +10,12 @@ import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
-import { linkEditRun, readLedger } from "./edit-ledger.js";
-import { CUSTOM_LAYERS } from "./layer-build.js";
+import { linkEditRun } from "./edit-ledger.js";
+import { editOf, editPins } from "./edit-run.js";
+import { planOf, videoIdOf } from "./run-lineage.js";
 import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
-import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
+import { stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
 import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
@@ -105,8 +106,6 @@ export function openState(dataDir: string): Db {
   return db;
 }
 
-const planOf = (run: WorkflowRun): RunPlan => RunPlanSchema.parse(JSON.parse(run.params.plan ?? "{}"));
-
 function latestRun(store: WorkflowRunStore): WorkflowRun | undefined {
   const runs = store.listByStatus(["completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
   return runs.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
@@ -161,17 +160,6 @@ function neededInputs(from: StageName, to: StageName, profile: string | undefine
   return [...needed];
 }
 
-/**
- * An edit run starts on the base the edit was drafted over and pins that base's custom layers, since a template-only
- * edit never needs a layer rebuilt (and a rebuild spends).
- */
-function editPins(dataDir: string, edit: string, base: WorkflowRun | undefined): Record<string, string> {
-  const ledger = readLedger(dataDir, edit);
-  if (base?.id !== ledger.base.runId) throw new Error(`edit ${edit} is over run ${ledger.base.runId}; pass --base ${ledger.base.runId}`);
-  const layers = stageRecords(base).find((record) => record.stage === "resolve")?.outputs[CUSTOM_LAYERS] ?? planOf(base).artifacts[CUSTOM_LAYERS];
-  return layers === undefined ? {} : { [CUSTOM_LAYERS]: layers };
-}
-
 function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: string): RunPlan {
   const from = request.from ?? "script";
   const to = request.to ?? "export";
@@ -198,14 +186,6 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings, ...edit };
 }
 
-/** A run's video: its plan's, else its base run's, else (the first run of a video) its own id. */
-function videoIdOf(runs: WorkflowRunStore, run: WorkflowRun, seen = new Set<string>()): string {
-  const plan = planOf(run);
-  if (plan.videoId) return plan.videoId;
-  const base = plan.baseRunId && !seen.has(plan.baseRunId) ? runs.get(plan.baseRunId) : undefined;
-  return base ? videoIdOf(runs, base, seen.add(run.id)) : run.id;
-}
-
 function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageName): WorkflowRun {
   const base = id ? runs.get(id) : latestRun(runs);
   if (base?.workflowName === VIDEO_WORKFLOW) return base;
@@ -223,37 +203,6 @@ function linkedRuns(dataDir: string, runs: WorkflowRunStore, run: WorkflowRun): 
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
     .map((other) => ({ runId: other.id, usd: ownUsd(allRecords(dataDir, other)) }));
   return { videoId, linked };
-}
-
-function editOf(dataDir: string, editId: string): RunReport["edit"] {
-  const ledger = readLedger(dataDir, editId);
-  return { editId, beats: Object.keys(ledger.beats).length, baseRunId: ledger.base.runId };
-}
-
-export interface RunView {
-  runId: string;
-  status: string;
-  videoId: string;
-  /** Every artifact the run holds: its plan's, then each finished stage's outputs, later stages winning. */
-  artifacts: Record<string, string>;
-  profile?: string;
-  theater?: string;
-}
-
-/** A finished `explainer-video` run as an edit drafted over it sees it. */
-export function runView(dataDir: string, runId: string): RunView {
-  const db = openState(dataDir);
-  try {
-    const runs = new WorkflowRunStore(db);
-    const run = runs.get(runId);
-    if (!run || run.workflowName !== VIDEO_WORKFLOW) throw new Error(`no ${VIDEO_WORKFLOW} run ${runId}`);
-    const plan = planOf(run);
-    const artifacts = stageRecords(run).reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...plan.artifacts });
-    const where = { ...(plan.profile ? { profile: plan.profile } : {}), ...(plan.theater ? { theater: plan.theater } : {}) };
-    return { runId, status: run.status, videoId: videoIdOf(runs, run), artifacts, ...where };
-  } finally {
-    db.close();
-  }
 }
 
 /** Folds a run's records into `run-report.md` and `run-report.json` in its run directory. */

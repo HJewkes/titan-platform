@@ -5,7 +5,7 @@ import { SlotEditSchema, type SlotEdit } from "../slot-edit.js";
 import { sha256 } from "./artifacts.js";
 import { readJson, writeJson } from "./run-dir.js";
 
-export const EDIT_ID = /^edit-[0-9a-f]{16}$/;
+const EDIT_ID = /^edit-[0-9a-f]{16}$/;
 
 /**
  * One saved edit (`<dataDir>/edits/<editId>.json`): what it was drafted over, the script it stored, and the linked run

@@ -107,14 +107,16 @@ function scopeProblems(id: string, beat: ScriptBeat | undefined, layer: string |
 }
 
 /** Writes the edited fields into the raw script, so every byte the edit does not name stays as the base had it. */
-function writeBack(script: Record<string, unknown>, edit: SlotEdit): Record<string, unknown> {
+function writeBack(script: Fields, edit: SlotEdit): Fields {
   const next = structuredClone(script);
-  for (const beat of next.beats as Fields[]) {
-    const change = edit.beats[beat.id as string];
-    if (change === undefined) continue;
-    const visual = beat.visual as Fields;
+  const beats: unknown[] = Array.isArray(next.beats) ? next.beats : [];
+  for (const beat of beats) {
+    const visual = isFields(beat) ? beat.visual : undefined;
+    const change = isFields(beat) && typeof beat.id === "string" ? edit.beats[beat.id] : undefined;
+    if (change === undefined || !isFields(visual)) continue;
     for (const key of ["slots", "tune"] as const) {
-      const value = overlay(visual[key] as Fields | undefined, change[key]);
+      const current = visual[key];
+      const value = overlay(isFields(current) ? current : undefined, change[key]);
       if (value === undefined) delete visual[key];
       else visual[key] = value;
     }

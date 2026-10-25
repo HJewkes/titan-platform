@@ -13,7 +13,10 @@ import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { ArtifactStore } from "./artifacts.js";
 import { EditLedgerSchema, editIdOf, editLogFile, ledgerFile, listLedgers, writeLedger, type EditLedger } from "./edit-ledger.js";
 import { dataDirOption } from "./run-cli.js";
-import { openState, runView, type RunView } from "./host.js";
+import { openState } from "./host.js";
+import { VIDEO_WORKFLOW } from "./pipeline.js";
+import { stageRecords } from "./report.js";
+import { planOf, videoIdOf } from "./run-lineage.js";
 import { readJson } from "./run-dir.js";
 
 const EXIT = { OK: 0, REFUSED: 1, USAGE: 2 } as const;
@@ -28,7 +31,7 @@ export type DetachedSpawn = (argv: readonly string[], logFile: string) => void;
  * The template fill's verdict on the edited script: each problem the filled slots would raise (the whole parse and the
  * emphasis gate). TP-4134's `fillScript` plugs in here; until then `edit check` runs without it.
  */
-export type FillCheck = (script: ScriptV1, resolved: Resolved) => string[];
+type FillCheck = (script: ScriptV1, resolved: Resolved) => string[];
 
 export interface EditCliDeps {
   out?: (text: string) => void;
@@ -40,7 +43,7 @@ export interface EditCliDeps {
 
 type Io = Required<Pick<EditCliDeps, "out" | "err">>;
 
-export interface EditVerdict {
+interface EditVerdict {
   ok: boolean;
   editId?: string;
   problems: string[];
@@ -66,6 +69,32 @@ function readEdit(file: string, deps: EditCliDeps): { edit?: SlotEdit; problems:
   if (Buffer.byteLength(text) > MAX_EDIT_BYTES) return { problems: [`edit: larger than ${MAX_EDIT_BYTES} bytes`] };
   const parsed = SlotEditSchema.safeParse(JSON.parse(text));
   return parsed.success ? { edit: parsed.data, problems: [] } : { problems: issues(parsed.error) };
+}
+
+interface RunView {
+  runId: string;
+  status: string;
+  videoId: string;
+  /** Every artifact the run holds: its plan's, then each finished stage's outputs, later stages winning. */
+  artifacts: Record<string, string>;
+  profile?: string;
+  theater?: string;
+}
+
+/** A finished `explainer-video` run as an edit drafted over it sees it. */
+function runView(dataDir: string, runId: string): RunView {
+  const db = openState(dataDir);
+  try {
+    const runs = new WorkflowRunStore(db);
+    const run = runs.get(runId);
+    if (!run || run.workflowName !== VIDEO_WORKFLOW) throw new Error(`no ${VIDEO_WORKFLOW} run ${runId}`);
+    const plan = planOf(run);
+    const artifacts = stageRecords(run).reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...plan.artifacts });
+    const where = { ...(plan.profile ? { profile: plan.profile } : {}), ...(plan.theater ? { theater: plan.theater } : {}) };
+    return { runId, status: run.status, videoId: videoIdOf(runs, run), artifacts, ...where };
+  } finally {
+    db.close();
+  }
 }
 
 function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
@@ -116,7 +145,7 @@ function readAndCheck(file: string, dataDir: string, deps: EditCliDeps): { edit?
 
 const verdictOf = ({ ok, editId, problems, diff }: Checked): EditVerdict => ({ ok, ...(editId ? { editId } : {}), problems, diff });
 
-export function editRunArgv(dataDir: string, view: RunView, editId: string, scriptSha: string): string[] {
+function editRunArgv(dataDir: string, view: RunView, editId: string, scriptSha: string): string[] {
   const where = [...(view.profile ? ["--profile", view.profile] : []), ...(view.theater ? ["--theater", view.theater] : [])];
   return [
     "run", "--from", "resolve", "--base", view.runId, "--pin", `script=${scriptSha}`, "--edit", editId,
@@ -150,7 +179,7 @@ function storeEdit(dataDir: string, edit: SlotEdit, checked: Checked & { script:
   return { editId, scriptSha, started: start };
 }
 
-export interface EditRow extends EditLedger {
+interface EditRow extends EditLedger {
   /** The linked run's workflow status; `starting` while a launched run has not linked itself, `not started` without one. */
   runStatus: string;
 }
