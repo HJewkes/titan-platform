@@ -720,6 +720,16 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/render-qa:
+    dependencies:
+      '@titan-design/frame-capture':
+        specifier: workspace:^
+        version: link:../frame-capture
+    devDependencies:
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
+
   packages/retrieval:
     dependencies:
       '@huggingface/transformers':

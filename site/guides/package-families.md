@@ -169,6 +169,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`frame-capture`](/reference/frame-capture): renders any page that publishes the
   `__titanMotion` protocol (`seek`, `ready`, `duration`) to PNG frames under a virtual clock,
   in parallel chunks, and encodes them with ffmpeg. It knows nothing of beats or React.
+- `render-qa` (private): the render QA gate. It seeks a `__titanMotion` page to cue moments, measures the DOM
+  for overlaps, off-frame, small or low-contrast text and the frame rules, and holds a finding only when it
+  persists. Pages mark their intent with `data-qa-*` attributes.
 
 ## Speech
 
