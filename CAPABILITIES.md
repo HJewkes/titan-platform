@@ -1197,8 +1197,7 @@ Key exports:
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
-- `rollup`: `reconcile`, `rollupSessions`
-- `refresh`: `indexTranscript`
+- `rollup`: `reconcile`, `rollupSessions`, `rollupYielding`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>

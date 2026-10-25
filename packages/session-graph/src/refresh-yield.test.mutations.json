@@ -40,7 +40,7 @@
     },
     {
       "name": "a throw at a rollup yield leaves the remaining sessions unrolled",
-      "file": "packages/session-graph/src/refresh.ts",
+      "file": "packages/session-graph/src/rollup.ts",
       "find": "      rollupSessions(graph, unique.slice(i + 1));\n",
       "replace": "",
       "kills": [

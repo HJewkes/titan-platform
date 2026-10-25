@@ -10,7 +10,7 @@ import { enrichPrs, type PrEnrichment, type PrResolver } from "./outcomes.js";
 import { resolveOrigins, type OriginEnrichment, type OriginResolver } from "./origin.js";
 import { purgeTranscript } from "./purge.js";
 import { projectReviewRounds, type ReviewerProfilePredicate, type ReviewProjection } from "./review-rounds.js";
-import { reconcile, rollupSessions, type ReconcileCounts } from "./rollup.js";
+import { reconcile, rollupSessions, rollupYielding, type ReconcileCounts } from "./rollup.js";
 import { allTaskIds, enrichTasks, NO_ENRICHMENT, type TaskEnrichment, type TaskResolver } from "./tasks.js";
 
 export interface IndexOptions {
@@ -190,27 +190,6 @@ async function indexAll(graph: SessionGraph, transcripts: readonly DiscoveredTra
     await pause();
   }
   return { counts, touched, facts };
-}
-
-/**
- * One session per rollup transaction, yielding after each: the rollup
- * recomputes rather than accumulates, so slicing it changes no row. A throw at
- * a yield (a shutdown abort) rolls up the rest before it propagates, so no
- * continued turn keeps stale aggregates.
- */
-async function rollupYielding(graph: SessionGraph, sessionIds: readonly string[], yieldPoint: () => Promise<void>): Promise<number> {
-  const unique = [...new Set(sessionIds)];
-  let updated = 0;
-  for (const [i, sessionId] of unique.entries()) {
-    updated += rollupSessions(graph, [sessionId]);
-    try {
-      await yieldPoint();
-    } catch (err) {
-      rollupSessions(graph, unique.slice(i + 1));
-      throw err;
-    }
-  }
-  return updated;
 }
 
 /** Rows absent from discovery are only nominated; an `fs.stat` decides, so an empty scan cannot condemn the corpus. */

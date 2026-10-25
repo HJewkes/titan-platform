@@ -14,7 +14,7 @@ export { AUDIT_FACET, backfillFacets, DEFAULT_FACET_LIMIT, type BackfillOptions,
 export { applyDelta, type DeltaSource } from "./apply.js";
 export { purgeTranscript } from "./purge.js";
 export type { ReconcileCounts } from "./rollup.js";
-export { reconcile, rollupSessions } from "./rollup.js";
+export { reconcile, rollupSessions, rollupYielding } from "./rollup.js";
 export type { IndexOptions, RefreshOptions, RefreshSummary, TranscriptOutcome } from "./refresh.js";
 export { indexTranscript, refreshCorpus } from "./refresh.js";
 export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from "./tasks.js";
