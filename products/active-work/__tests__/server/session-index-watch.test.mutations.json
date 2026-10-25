@@ -20,7 +20,7 @@
       ]
     },
     {
-      "name": "the live graph never compares the inode at the path, so it keeps writing the swapped-out file",
+      "name": "the live graph skips the inode check and keeps writing the swapped-out file",
       "file": "products/active-work/src/session-index/live-graph.ts",
       "find": "      if (handle && handle.inode === inodeAt(file)) return handle.graph;\n",
       "replace": "      if (handle) return handle.graph;\n",
