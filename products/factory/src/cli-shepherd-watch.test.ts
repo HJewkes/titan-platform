@@ -15,9 +15,10 @@ afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, f
 async function deadPort(): Promise<number> {
   const probe = createServer();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as { port: number };
+  const address = probe.address();
   await new Promise((resolve) => probe.close(resolve));
-  return port;
+  if (address === null || typeof address === "string") throw new Error("expected a TCP address");
+  return address.port;
 }
 
 /** A database holding one registered run for #1, closed again, so every CLI call below opens it afresh as a restart would. */

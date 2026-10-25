@@ -11,8 +11,14 @@ export const WATCH_EVENTS = ["merged", "stopped", "gated"] as const;
 export const WatchEventSchema = z.enum(WATCH_EVENTS);
 export type WatchEvent = z.infer<typeof WatchEventSchema>;
 
-const PrWatchSchema = z.object({ repo: z.string(), pr: z.number().int(), seat: z.string().nullable(), on: z.array(WatchEventSchema), actor: z.string(), at: z.string() });
-export type PrWatch = z.infer<typeof PrWatchSchema>;
+export interface PrWatch {
+  repo: string;
+  pr: number;
+  seat: string | null;
+  on: WatchEvent[];
+  actor: string;
+  at: string;
+}
 
 const WATCH_DDL = `
   CREATE TABLE shepherd_watch (
