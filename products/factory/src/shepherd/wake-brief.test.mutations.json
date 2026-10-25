@@ -9,6 +9,15 @@
       "kills": [
         "every wake brief: the branch history rule carries the rule exactly once in ci-red"
       ]
+    },
+    {
+      "name": "a ci-red brief keeps the line against merging the base under a planner's exception",
+      "file": "products/factory/src/shepherd/wake-brief.ts",
+      "find": "const baseRule = input.mergeBase === undefined ? ` ${BASE_IS_SHEPHERDS}` : \"\";",
+      "replace": "const baseRule = ` ${BASE_IS_SHEPHERDS}`;",
+      "kills": [
+        "wake brief: a planner's merge-base exception (TP-4242) lets a ci-red fixer merge the base in place of the line against it, fencing who allowed it and why"
+      ]
     }
   ]
 }
