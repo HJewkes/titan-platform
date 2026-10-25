@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a runtime shutdown keeps its live runs' leases, so a successor waits for them to lapse",
+      "name": "a runtime shutdown keeps its live runs' leases for a successor to wait out",
       "file": "packages/workflow/src/runtime.ts",
       "find": "      this.release(live.ctx.run);",
       "replace": "      void live.ctx.run;",
