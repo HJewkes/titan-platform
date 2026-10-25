@@ -70,6 +70,10 @@ afterAll(() => {
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-pass-stall-'));
   graph = openGraph(path.join(dir, 'graph.sqlite3'));
+  // Each WAL autocheckpoint fsyncs twice inside a commit on this thread. A
+  // contended CI disk made that 2 to 3 s, so the bound measured the runner's
+  // disk instead of the pass's own synchronous chunks (TP-4200).
+  graph.db.pragma('synchronous = OFF');
   vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
 });
 
