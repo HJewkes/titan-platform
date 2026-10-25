@@ -237,8 +237,8 @@ function skippedSpan(j: number, end: number): number {
 
 /**
  * Index of the `close` ending a `$( )` or `${ }` body that starts at `from`, nesting and quotes included; UNSURE when
- * it never closes. A `#` in `$( )` may open a comment that hides the closer, and a `[` may open a nested spaced
- * subscript whose `)` or `}` is no closer, so the scan cannot be sure and returns UNSURE.
+ * it never closes. A `[` may open a nested spaced subscript whose `)` or `}` is no closer, and in `$( )` some text
+ * moves the closer, so the scan cannot be sure and returns UNSURE.
  */
 function closingSubstitution(src: string, from: number, open: string, close: string, spans: SpanEnds): number {
   let depth = 1;
@@ -246,12 +246,27 @@ function closingSubstitution(src: string, from: number, open: string, close: str
     const end = skipQuoted(src, k, spans);
     if (end === -1) return UNSURE;
     const c = end === k ? src[k] : "";
-    if (c === "[" || (c === "#" && open === "(")) return UNSURE;
+    if (c === "[" || (open === "(" && movesParenClose(src, k, from))) return UNSURE;
     if (c === open) depth++;
     if (c === close && --depth === 0) return k;
     k = end;
   }
   return UNSURE;
+}
+
+/**
+ * Whether the unquoted text at `k` of a `$( )` body starting at `from` may hide or fake its `)`: a `#` opening a
+ * comment, a `case` word whose pattern `)` closes nothing, or a heredoc opener whose body may hold a `)`. A `<<` in
+ * `$(( ))` is a shift.
+ */
+function movesParenClose(src: string, k: number, from: number): boolean {
+  if (src[k] === "#") return true;
+  if (src.startsWith("<<", k)) return src[from] !== "(";
+  return isCaseWord(src, k);
+}
+
+function isCaseWord(src: string, k: number): boolean {
+  return src.startsWith("case", k) && !IDENTIFIER_PART.test(src[k - 1] ?? "") && !IDENTIFIER_PART.test(src[k + 4] ?? "");
 }
 
 /** Index of the next unescaped `quote` from `from`; -1 when there is none. */
