@@ -57,6 +57,7 @@
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
+    "esbuild": "^0.28.0",
     "playwright-core": "^1.63.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
