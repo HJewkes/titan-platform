@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { matchesGlob } from "./glob.js";
 
 describe("matchesGlob on a hostile glob", () => {
-  it.each(hostileGlobs())("grows linearly with the path for $name", ({ glob, path }) => {
+  it.each(hostileGlobs())("grows linearly with the path for %s", (_name, { glob, path }) => {
     const { ratio } = linearGrowth((size) => {
       const input = path(size);
       return () => matchesGlob(input, glob);

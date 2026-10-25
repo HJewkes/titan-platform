@@ -7,7 +7,7 @@ import { LINEARITY_CPU_MS } from "./test-support/linear-time.js";
 const HOME = "/home/you";
 
 describe("a guarded path pattern that is a hostile glob", () => {
-  cpuBudgetIt.each(hostileGlobs().map((row) => [row.name, row] as const))("grows linearly with the path for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
+  cpuBudgetIt.each(hostileGlobs())("grows linearly with the path for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
     const list: GuardedList = { paths: [{ id: "p", pattern: `/${glob}` }], basenames: [] };
     const { ratio } = linearGrowth((size) => {
       const input = `/${path(size)}`;

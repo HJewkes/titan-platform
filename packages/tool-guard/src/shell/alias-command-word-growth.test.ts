@@ -6,7 +6,7 @@ import { expandedWordMayBeAlias } from "./alias-command-word.js";
 
 // A `/` makes the word a path before any glob is read, so the rows use `-`; the growing name is a store builtin.
 describe("a glob command word that is a hostile glob", () => {
-  cpuBudgetIt.each(hostileGlobs("-").map((row) => [row.name, row] as const))("grows linearly with the name for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
+  cpuBudgetIt.each(hostileGlobs("-"))("grows linearly with the name for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
     const { ratio } = linearGrowth((size) => {
       const builtins = [path(size)];
       return () => expandedWordMayBeAlias(glob, builtins);

@@ -17,22 +17,32 @@ const LINE_TERMINATORS = new Set(["\n", "\r", " ", " "]);
 // Escapes that read more than one character or assert a position, which the NFA does not model.
 const UNSUPPORTED_ESCAPE = /[0-9bBcxukpP]/;
 
-/** One character, tested by the native engine: a single-character RegExp cannot backtrack. */
+/** One character, tested by the native engine: a single-character RegExp cannot backtrack. Each answer is kept, as a path repeats few characters. */
 function nativeChar(source: string, flags: string): CharTest {
   const regexp = new RegExp(`^(?:${source})$`, flags);
-  return (char) => regexp.test(char);
+  const answers = new Map<string, boolean>();
+  return (char) => {
+    let answer = answers.get(char);
+    if (answer === undefined) {
+      answer = regexp.test(char);
+      answers.set(char, answer);
+    }
+    return answer;
+  };
 }
 
 // Parses the subset glob compilers emit into a tree; anything outside it is a SyntaxError, as RegExp throws for bad source.
 class Parser {
   private at = 0;
   private readonly source: string;
-  private readonly flags: string;
+  private readonly ignoreCase: boolean;
+  private readonly dotAll: boolean;
   private readonly charFlags: string;
 
   constructor(source: string, flags: string) {
     this.source = source;
-    this.flags = flags;
+    this.ignoreCase = flags.includes("i");
+    this.dotAll = flags.includes("s");
     this.charFlags = flags.replace(/[^is]/g, "");
   }
 
@@ -74,7 +84,7 @@ class Parser {
   }
 
   private atom(): Node {
-    const char = this.source.charAt(this.at);
+    const char = this.source[this.at] ?? "";
     this.at += 1;
     if (char === "(") return this.group();
     if (char === "[") return this.charClass();
@@ -87,11 +97,11 @@ class Parser {
   }
 
   private dot(): CharTest {
-    return this.flags.includes("s") ? () => true : (char) => !LINE_TERMINATORS.has(char);
+    return this.dotAll ? () => true : (char) => !LINE_TERMINATORS.has(char);
   }
 
   private literal(char: string): CharTest {
-    return this.flags.includes("i") ? nativeChar(char.replace(/[.*+?^${}()|[\]\\/]/, "\\$&"), this.charFlags) : (c) => c === char;
+    return this.ignoreCase ? nativeChar(char.replace(/[.*+?^${}()|[\]\\/]/, "\\$&"), this.charFlags) : (c) => c === char;
   }
 
   private group(): Node {
@@ -149,26 +159,59 @@ function buildRepeat(node: Extract<Node, { kind: "repeat" }>, next: number, stat
   return node.min === 1 ? body : loopAt;
 }
 
+/** The states one position holds; each state enters at most once per position, so a buffer of every state suffices. */
+interface StateSet {
+  readonly items: Int32Array;
+  size: number;
+}
+
 interface Run {
   readonly states: readonly State[];
   readonly marks: Uint32Array;
+  /** Pending states of a closure; a state is pushed once per edge into it, so it holds every edge. */
+  readonly stack: Int32Array;
   readonly length: number;
   generation: number;
 }
 
+const stateSet = (capacity: number): StateSet => ({ items: new Int32Array(capacity), size: 0 });
+
+function newRun(states: readonly State[], edges: number, length: number): Run {
+  return { states, marks: new Uint32Array(states.length), stack: new Int32Array(edges), length, generation: 1 };
+}
+
 /** Adds `from` and every state it reaches without reading a character at `position`; true once the match state is among them. */
-function close(run: Run, from: number, position: number, into: number[]): boolean {
+function close(run: Run, from: number, position: number, into: StateSet): boolean {
   let matched = false;
-  const stack = [from];
-  while (stack.length > 0) {
-    const at = stack.pop()!;
+  let top = 0;
+  run.stack[top++] = from;
+  while (top > 0) {
+    const at = run.stack[--top]!;
     if (run.marks[at] === run.generation) continue;
     run.marks[at] = run.generation;
     const state = run.states[at]!;
     if (state.kind === "match") matched = true;
-    else if (state.kind === "char") into.push(at);
-    else if (state.kind === "split") for (let k = state.next.length - 1; k >= 0; k -= 1) stack.push(state.next[k]!);
-    else if (state.kind === "start" ? position === 0 : position === run.length) stack.push(state.next);
+    else if (state.kind === "char") into.items[into.size++] = at;
+    else if (state.kind === "split") for (let k = state.next.length - 1; k >= 0; k -= 1) run.stack[top++] = state.next[k]!;
+    else if (state.kind === "start" ? position === 0 : position === run.length) run.stack[top++] = state.next;
+  }
+  return matched;
+}
+
+const edgesOf = (states: readonly State[]): number => states.reduce((sum, state) => sum + (state.kind === "split" ? state.next.length : 1), 1);
+
+/** Whether a match can begin strictly inside the input; false for a source every branch of which starts with `^`. */
+function beginsInside(states: readonly State[], start: number): boolean {
+  const reached = stateSet(states.length);
+  return close(newRun(states, edgesOf(states), 2), start, 1, reached) || reached.size > 0;
+}
+
+/** Reads `char` at `position` from the states in `current` into `next`; true once one reaches the match state. */
+function advance(run: Run, current: StateSet, char: string, position: number, next: StateSet): boolean {
+  let matched = false;
+  for (let i = 0; i < current.size; i += 1) {
+    const state = run.states[current.items[i]!] as Extract<State, { kind: "char" }>;
+    if (state.test(char)) matched = close(run, state.next, position + 1, next) || matched;
   }
   return matched;
 }
@@ -176,24 +219,43 @@ function close(run: Run, from: number, position: number, into: number[]): boolea
 function compile(source: string, flags: string): (input: string) => boolean {
   const states: State[] = [{ kind: "match" }];
   const start = build(new Parser(source, flags).parse(), 0, states);
+  const edges = edgesOf(states);
+  // `test` searches, so a match may begin at any position; an anchored source stops reading once no state is left.
+  const searches = beginsInside(states, start);
   return (input) => {
-    const run: Run = { states, marks: new Uint32Array(states.length), length: input.length, generation: 1 };
-    let current: number[] = [];
+    const run = newRun(states, edges, input.length);
+    let [current, next] = [stateSet(states.length), stateSet(states.length)];
     let matched = close(run, start, 0, current);
-    for (let position = 0; position < input.length && !matched; position += 1) {
-      const char = input.charAt(position);
-      const next: number[] = [];
+    for (let position = 0; position < input.length && !matched && (searches || current.size > 0); position += 1) {
+      next.size = 0;
       run.generation += 1;
-      for (const at of current) {
-        const state = states[at] as Extract<State, { kind: "char" }>;
-        if (state.test(char)) matched = close(run, state.next, position + 1, next) || matched;
-      }
-      // `test` searches, so a match may also begin here.
-      matched = close(run, start, position + 1, next) || matched;
-      current = next;
+      matched = advance(run, current, input[position]!, position, next);
+      if (searches) matched = close(run, start, position + 1, next) || matched;
+      [current, next] = [next, current];
+    }
+    // Only a `$` alternative of an anchored source can still begin at the end.
+    if (!matched && !searches && input.length > 0) {
+      run.generation += 1;
+      current.size = 0;
+      matched = close(run, start, input.length, current);
     }
     return matched;
   };
+}
+
+const MAX_CACHED = 64;
+const cache = new Map<string, (input: string) => boolean>();
+
+// Callers such as tool-guard's path matcher rebuild the same glob for every list they check, so one compile serves them all.
+function cachedCompile(source: string, flags: string): (input: string) => boolean {
+  const key = `${flags}/${source}`;
+  let matches = cache.get(key);
+  if (matches === undefined) {
+    matches = compile(source, flags);
+    if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value!);
+    cache.set(key, matches);
+  }
+  return matches;
 }
 
 /**
@@ -210,7 +272,7 @@ export class LinearRegExp extends RegExp {
   constructor(source: string, flags = "", matches?: (input: string) => boolean) {
     if (/[gy]/.test(flags)) throw new SyntaxError("LinearRegExp keeps no lastIndex, so the g and y flags are refused");
     super(source, flags);
-    this.#matches = matches ?? compile(source, flags);
+    this.#matches = matches ?? cachedCompile(source, flags);
   }
 
   override test(input: string): boolean {

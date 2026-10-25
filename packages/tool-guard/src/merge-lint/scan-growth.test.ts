@@ -5,7 +5,7 @@ import { LINEARITY_CPU_MS } from "../test-support/linear-time.js";
 import { globToRegExp } from "./scan.js";
 
 describe("globToRegExp on a hostile glob", () => {
-  cpuBudgetIt.each(hostileGlobs().map((row) => [row.name, row] as const))("grows linearly with the path for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
+  cpuBudgetIt.each(hostileGlobs())("grows linearly with the path for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
     const { ratio } = linearGrowth((size) => {
       const input = path(size);
       return () => globToRegExp(glob).test(input);

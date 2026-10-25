@@ -10,6 +10,9 @@ export const LINEAR_GROWTH_LIMIT = 2.5;
 const RUNS = 7;
 const MIN_BATCH_MS = 2;
 const MAX_REPS = 1 << 16;
+const PROBES = 3;
+const PROBE_LIMIT = LINEAR_GROWTH_LIMIT * GROWTH;
+const SURE_MS = 100;
 
 export interface GrowthOptions {
   /** The first size; each rung multiplies it by GROWTH until it would pass `to`. */
@@ -62,9 +65,8 @@ function rungRatio(small: () => void, large: () => void, options: GrowthOptions)
   };
   const reps = repsFor(small, timed);
   const smallBatch = () => repeat(small, reps * GROWTH);
-  // Single large runs first: a backtracking matcher already shows its growth there, and timing a whole batch of it could take minutes.
-  const probe = Math.min(...[0, 1, 2].map(() => timed(large) / (timed(smallBatch) / reps)));
-  if (probe >= LINEAR_GROWTH_LIMIT * GROWTH) return probe;
+  const probe = probeRatio(small, large, reps, timed);
+  if (probe >= PROBE_LIMIT) return probe;
   const largeBatch = () => repeat(large, reps);
   const best = { small: Infinity, large: Infinity };
   for (let run = 0; run < RUNS; run += 1) {
@@ -73,6 +75,22 @@ function rungRatio(small: () => void, large: () => void, options: GrowthOptions)
     options.between?.();
   }
   return best.large / Math.max(best.small, 0.001);
+}
+
+/**
+ * The ratio from single large runs, best of PROBES. A backtracking matcher already shows its growth here, and timing a
+ * whole batch of it could take minutes. One large run of SURE_MS, against small runs of microseconds, is growth rather
+ * than a pause on the thread, so it ends the probe at once.
+ */
+function probeRatio(small: () => void, large: () => void, reps: number, timed: (run: () => void) => number): number {
+  let best = Infinity;
+  for (let probe = 0; probe < PROBES && best >= PROBE_LIMIT; probe += 1) {
+    const largeMs = timed(large);
+    const ratio = largeMs / Math.max(timed(() => repeat(small, reps * GROWTH)) / reps, 0.001);
+    if (ratio >= PROBE_LIMIT && largeMs >= SURE_MS) return ratio;
+    best = Math.min(best, ratio);
+  }
+  return best;
 }
 
 /** Enough repetitions that GROWTH of them at the small size take MIN_BATCH_MS, so a microsecond run still reads above the clock's noise. */
