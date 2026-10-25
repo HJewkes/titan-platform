@@ -138,11 +138,13 @@ describe("assignedTaskIds", () => {
       `TASK: ${"A-1".repeat(34_000)}`,
       `${HEADER}${"(".repeat(100_000)}`,
     ];
-    for (const brief of shapes) {
+    const sources = shapes.map((brief) => {
       const started = performance.now();
-      assign(brief, "x".repeat(1_000));
+      const { source } = assign(brief, "x".repeat(1_000));
       if (process.env.TITAN_BENCH === "1") expect(performance.now() - started).toBeLessThan(50);
-    }
+      return source;
+    });
+    expect(sources).toEqual(["none", "none", "none", "none"]);
   });
 });
 
