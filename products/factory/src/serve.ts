@@ -52,6 +52,7 @@ import { markRevertedRuns } from "./shepherd/reverts.js";
 import { FIXER_RETIRE_MS, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
+import { digestPacer } from "./shepherd/seat-digest-pace.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
@@ -180,7 +181,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now }, log);
+  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now, tell: options.consoleAnswers?.tellOwner }, log);
   const reconciler = startServeReconciler(options.reconciler, bot.access(), { sources: options.sources ?? DEFAULT_SOURCES, db: host.db, log, now: options.now, stamp: passStamp });
   reconcilerRef.health = reconciler.health;
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
@@ -280,8 +281,9 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
   if (services === undefined || ports === undefined) return undefined;
   const memory = fileSeatDigestMemory(stateDir);
+  const pacer = ports.pacing && digestPacer(ports.pacing);
   const tickOnce = async (): Promise<void> => {
-    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory);
+    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory, new Date(), pacer);
     if (sent.length > 0) log.info({ seats: sent }, "sent seat digests");
     for (const failure of failed) log.warn({ ...failure }, "could not send a seat digest; the next sweep tries again");
   };

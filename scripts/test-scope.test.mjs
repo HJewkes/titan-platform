@@ -97,7 +97,7 @@ describe("scopeForEvent", () => {
 });
 
 describe("vitestArgs", () => {
-  it("names all three projects and the scoped dirs", () => {
+  it("names every project and the scoped dirs", () => {
     expect(vitestArgs({ mode: "scoped", dirs: ["products/factory/", "scripts/"] })).toEqual([
       "run",
       "--passWithNoTests",
@@ -107,6 +107,10 @@ describe("vitestArgs", () => {
       "repo",
       "--project",
       "forks",
+      "--project",
+      "active-work",
+      "--project",
+      "active-work-forks",
       "products/factory/",
       "scripts/",
     ]);

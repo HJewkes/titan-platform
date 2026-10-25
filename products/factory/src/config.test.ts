@@ -61,6 +61,21 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(env))).toThrow(new RegExp(`invalid config .*${"titan-factory"}.config\\.json`));
   });
 
+  it("keeps the original parse error as the cause of the wrapped error", () => {
+    const env = xdg({});
+    writeFileSync(configPath(env), "{ not json");
+
+    let thrown: unknown;
+    try {
+      loadConfig(configPath(env));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).toHaveProperty("cause", expect.any(SyntaxError));
+  });
+
   it("reads the shepherd seats directory and charter path", () => {
     const env = xdg({ shepherd: { seatsDir: "/seats", charterPath: "/charter.md" } });
 

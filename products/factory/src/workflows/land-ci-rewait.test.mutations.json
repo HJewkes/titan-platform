@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a read that hit a 5xx never counts as unsettled",
+      "file": "products/factory/src/workflows/land-ci-wait.ts",
+      "find": "  poll.unsettled = isServerError(error);",
+      "replace": "  poll.unsettled = false;",
+      "kills": [
+        "land when a ci-wait window runs out on a wait only GitHub ends waits again when the window's last read hit an HTTP 503, and reaches the merge decision once the checks go green"
+      ]
+    },
+    {
+      "name": "mergeable_state unknown never counts as unsettled",
+      "file": "products/factory/src/workflows/land-ci-wait.ts",
+      "find": "  poll.unsettled = waitingOn.length === 0 ? snapshot.mergeableState === \"unknown\" : waitingOn.every((name) => name === SECOND_READ);",
+      "replace": "  poll.unsettled = waitingOn.length === 0 ? false : waitingOn.every((name) => name === SECOND_READ);",
+      "kills": [
+        "land when a ci-wait window runs out on a wait only GitHub ends waits again in a fresh ci-wait and reaches the merge decision once mergeable_state settles",
+        "land when a ci-wait window runs out on a wait only GitHub ends returns a red check at once, with no re-wait, when it turns red during a re-wait"
+      ]
+    },
+    {
+      "name": "a wait on a never-reported check counts as unsettled",
+      "file": "products/factory/src/workflows/land-ci-wait.ts",
+      "find": "  poll.unsettled = waitingOn.length === 0 ? snapshot.mergeableState === \"unknown\" : waitingOn.every((name) => name === SECOND_READ);",
+      "replace": "  poll.unsettled = waitingOn.length === 0 ? snapshot.mergeableState === \"unknown\" : true;",
+      "kills": [
+        "land when a ci-wait window runs out on a wait only GitHub ends still fails at the first timeout when a required check never reported"
+      ]
+    },
+    {
+      "name": "land fails at the first timed-out window",
+      "file": "products/factory/src/workflows/land-budget.ts",
+      "find": "  if (++count.timeouts >= CI_WAIT_ATTEMPTS) throw",
+      "replace": "  if (++count.timeouts >= 1) throw",
+      "kills": [
+        "land when a ci-wait window runs out on a wait only GitHub ends waits again in a fresh ci-wait and reaches the merge decision once mergeable_state settles",
+        "land when a ci-wait window runs out on a wait only GitHub ends waits again when the window's last read hit an HTTP 503, and reaches the merge decision once the checks go green"
+      ]
+    },
+    {
+      "name": "land waits one window past its attempts",
+      "file": "products/factory/src/workflows/land-budget.ts",
+      "find": "  if (++count.timeouts >= CI_WAIT_ATTEMPTS) throw",
+      "replace": "  if (++count.timeouts >= CI_WAIT_ATTEMPTS + 1) throw",
+      "kills": [
+        "land when a ci-wait window runs out on a wait only GitHub ends fails naming the attempt count once every attempt times out"
+      ]
+    }
+  ]
+}

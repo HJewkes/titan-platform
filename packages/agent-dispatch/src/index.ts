@@ -9,7 +9,15 @@ export {
   type DispatchRequest,
   type DispatchResult,
   type LaunchedBy,
+  type SpawnPlacement,
 } from "./dispatch.js";
+export {
+  CALLER_IDENTITY_VARS,
+  callerEnv,
+  spawnAsCaller,
+  type SpawnAsCallerRequest,
+  type SpawnAsCallerResult,
+} from "./spawn-as-caller.js";
 export { observeAgentChatCalls, type AgentChatCall } from "./call-timing.js";
 export { assertInstalledHeadless, installedProfilesDir } from "./profile-guard.js";
 export {
@@ -40,9 +48,11 @@ export { dataFence } from "./fence.js";
 export {
   buildListAgentsArgs,
   buildRetireArgs,
+  listAgentLineage,
   listAgents,
   parseAgentRows,
   retire,
+  type AgentLineage,
   type AgentRow,
   type RetireResult,
 } from "./agents.js";

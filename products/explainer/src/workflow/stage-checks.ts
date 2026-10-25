@@ -10,7 +10,7 @@ import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
-import { readEmphasisInput, wordBudgetVerdict } from "../resolve-stage.js";
+import { readEmphasisInput, slotOverridesVerdict, wordBudgetVerdict } from "../resolve-stage.js";
 import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { labelConventionsVerdict } from "../label-conventions.js";
@@ -167,6 +167,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "variety-cast-in-motion", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:cast-in-motion") },
     { name: "emphasis-target", gate: true, reads: ["script", "resolved", "slots"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
     { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
+    { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
   ],
   tts: [{ name: "cue-resolution", gate: true, reads: ["script", "words"], run: cueResolution }],
   render: [],

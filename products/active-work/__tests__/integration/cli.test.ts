@@ -343,6 +343,19 @@ describe('cli integration', () => {
       expect(await readTaskFile()).toBe(before);
     });
 
+    it.each(['--add-tag', '--remove-tag'])(
+      'exits 64 and leaves the file untouched when %s is repeated',
+      async (flag) => {
+        const before = await readTaskFile();
+
+        const res = taskEdit(flag, 'alpha', flag, 'beta');
+
+        expect(res.status).toBe(64);
+        expect(res.stderr).toContain(flag);
+        expect(await readTaskFile()).toBe(before);
+      },
+    );
+
     it('refuses a four-argument tags edit that drops a tag unless --force is passed', async () => {
       const before = await readTaskFile();
 

@@ -264,6 +264,12 @@ interface WatchTreeOptions {
     debounceMs?: number;
     /** Surface watcher errors (e.g. EMFILE) without crashing the host process. */
     onError?: (err: unknown) => void;
+    /**
+     * Directories under the root whose subtrees are not watched: no handle is attached
+     * to them and their events never fire `onChange`. A host that writes its own state
+     * inside the watched tree lists that directory here, or its writes read as changes.
+     */
+    ignore?: string[];
 }
 interface TreeWatcher {
     close: () => void;

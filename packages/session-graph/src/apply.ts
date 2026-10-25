@@ -1,4 +1,5 @@
 import { applyAudit, namedBinder } from "./audit-apply.js";
+import { ECHO_STATE_TABLE } from "./echo-state-schema.js";
 import { REVIEW_TABLE } from "./review-schema.js";
 import { isUntypedPrompt, stripInjected } from "./injected-text.js";
 import { backfillClaudeAliases } from "./normalized-schema.js";
@@ -41,12 +42,28 @@ const INSERT_FACT = `
   VALUES (@transcriptId, @byteOffset, @byteLength, @eventType, @ts, @seq, @sessionId, @promptId, @toolUseId)
   ON CONFLICT (transcript_id, byte_offset) DO NOTHING`;
 
-/** Facts carry a per-transcript `seq` continuing from whatever is stored. */
+const READ_ECHO = `SELECT value FROM ${ECHO_STATE_TABLE} WHERE transcript_id = ? AND session_id = ? AND key = ?`;
+const UPSERT_ECHO = `
+  INSERT INTO ${ECHO_STATE_TABLE} (transcript_id, session_id, key, value) VALUES (?, ?, ?, ?)
+  ON CONFLICT (transcript_id, session_id, key) DO UPDATE SET value = excluded.value`;
+
+/**
+ * Facts carry a per-transcript `seq` continuing from whatever is stored. An echo fact whose value
+ * equals the stored state is skipped without taking a `seq`; the state lives in a table rather
+ * than in memory, so a chunked read keeps exactly the facts a whole-file read keeps.
+ */
 function applyFacts(db: Db, transcriptId: number, delta: TranscriptDelta): void {
   const next = db.prepare("SELECT COALESCE(MAX(seq), -1) + 1 AS next FROM fact WHERE transcript_id = ?").get(transcriptId) as { next: number };
   const insert = db.prepare(INSERT_FACT);
+  const readEcho = db.prepare<[number, string, string], { value: string }>(READ_ECHO);
+  const upsertEcho = db.prepare(UPSERT_ECHO);
   let seq = next.next;
   for (const f of delta.facts) {
+    if (f.state) {
+      const stored = readEcho.get(transcriptId, f.sessionId, f.state.key);
+      if (stored?.value === f.state.value) continue;
+      upsertEcho.run(transcriptId, f.sessionId, f.state.key, f.state.value);
+    }
     insert.run({ transcriptId, byteOffset: f.byteOffset, byteLength: f.byteLength, eventType: f.eventType, ts: f.ts, seq: seq++, sessionId: f.sessionId, promptId: f.promptId, toolUseId: f.toolUseId });
   }
 }

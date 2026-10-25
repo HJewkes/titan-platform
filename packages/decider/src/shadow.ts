@@ -1,5 +1,5 @@
 import type { LedgerRow, Prediction } from "./ledger.js";
-import { normalizeKey } from "./normalize.js";
+import { normalizeKey, policyCategory } from "./normalize.js";
 import { stripRecommended } from "./outcome.js";
 import { categoryPolicy, setCategoryMode, type CategoryPolicy, type RoutingPolicy } from "./policy.js";
 
@@ -108,7 +108,7 @@ function tallies(predictions: ReadonlyMap<string, Prediction>, ledger: readonly 
   const now = options.now().getTime();
   const byCategory = new Map<string, Tally>();
   const tallyFor = (category: string): Tally => {
-    const key = normalizeKey(category);
+    const key = policyCategory(category);
     const tally = byCategory.get(key) ?? emptyTally();
     byCategory.set(key, tally);
     return tally;

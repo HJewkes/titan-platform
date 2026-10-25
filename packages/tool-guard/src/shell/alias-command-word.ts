@@ -1,3 +1,4 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { BRACE_RE } from "./word-generation.js";
 import { WRITER_SPECS } from "./writer-specs.js";
 
@@ -103,7 +104,7 @@ function globMayBeAlias(pattern: string, storeBuiltins: Iterable<string>): boole
   if (UNMODELLED_GLOB_RE.test(pattern)) return true;
   const source = pattern.replace(/[.+${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".").replace(/\[!/g, "[^");
   try {
-    const matcher = new RegExp(`^${source}$`, "si");
+    const matcher = new LinearRegExp(`^${source}$`, "si");
     return [...ALIAS_REACHERS, ...storeBuiltins].some((name) => matcher.test(name));
   } catch {
     return true;

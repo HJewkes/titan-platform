@@ -28,8 +28,10 @@
 
 ## Running the products
 
-One guide per runnable unit. Each covers what the unit is for, prerequisites, the build,
-every command with an invocation, where state and logs live, and how it fails.
+A guide for each runnable unit that needs more than its README; the rest, such as
+`apps/console` and `products/evals`, are documented in their own READMEs. Each guide covers what the unit is for,
+prerequisites, the build, every command with an invocation, where state and logs live, and
+how it fails.
 
 - **[Factory](/guides/factory)** — `titan-factory`: `serve` on loopback port 7410 with
   `/health`, `/rpc` and `/mcp`, `land`, `gate resolve`, `resume`, the launchd service, and
@@ -51,11 +53,12 @@ every command with an invocation, where state and logs live, and how it fails.
 
 ## End-to-end stories
 
-- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages composed into
+- **[Case study: the session miner](/guides/session-miner)** — <!-- generated:miner-count start -->seventeen<!-- generated:miner-count end --> packages composed into
   one product. Follows a refresh and a search through the DAG, with real output.
 - **[Case study: adopting registry and daemon](/guides/adopting-a-package)** — active-work
   replacing two hand-written modules with packages: about a thousand lines deleted, 1,321
-  tests unchanged, and the two regressions that nearly slipped through.
+  tests unchanged, a deleted test that had guarded a real bug, and two risks checked rather
+  than assumed.
 - **[Autoresearch](/guides/autoresearch)** — the ratcheted improvement loop: the run
   lifecycle, the logged ratchet path, and how to add a target.
 

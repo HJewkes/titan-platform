@@ -28,6 +28,7 @@ titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
 titan-miner --graph <file> graph-refresh -- <owner refresh...>   # scheduled refresh; see below
 titan-miner --graph <file> tool-gap-weekly --notify-command <path>  # weekly tool-gap pass; see below
+titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir>  # daily chunk classification; see below
 ```
 
 Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <dir>` (or
@@ -411,6 +412,35 @@ install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/s
 systemctl --user daemon-reload
 systemctl --user enable --now session-miner-tool-gaps.timer
 ```
+
+## Daily self-improve classification (TP-685)
+
+`titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir> [--max-budget-usd 3]`
+runs the classification stage of the daily self-improve pass as one `@titan-design/workflow` run.
+The extraction steps that write the chunk files stay outside the miner.
+
+1. It reads every `<family>_<n>.txt` in `--chunks` for the five prompt families in
+   `src/self-improve/families.ts`, and each family's prompt from `<prompts>/<family>.md`. The
+   prompts are the operator's and stay outside this repo; a family with chunks and no prompt
+   file exits 64, as does a missing directory.
+2. `mapItems` sends each chunk through one tool-less `claude -p` call (the `claude-print`
+   harness) on the family's model, with the family's `outputSchema` as `--json-schema` and the
+   family's per-call ceiling as `--max-budget-usd`.
+3. Each chunk is memoized under `<chunk>:<sha256 of prompt and chunk>`. A rerun over the same
+   `--chunks` and `--out` resumes the unfinished run and calls the model only for chunks it did
+   not finish, or whose text or prompt changed. A finished run is reported again with
+   `newCalls: 0`. Ctrl-C releases the run at once; after a hard kill, a rerun waits out the
+   2-minute lease.
+4. Before each launch the run holds back one call's ceiling from `--max-budget-usd`, so the
+   run cannot pass its budget. Chunks it never launched are listed as `skipped` with reason
+   `budget`.
+5. It writes `<out>/<family>.jsonl`, one row per line with `_chunk` set to the chunk's file
+   name without `.txt`, and `<out>/summary.json`. A row that fails its family schema, or an
+   answer that is not `{ "rows": [...] }`, counts as `unparsed` and is not written.
+
+Run state lives in `<state>/self-improve-daily/state.sqlite3`. Stdout carries one JSON line:
+`runId`, `status`, `newCalls` and the summary (`rows`, `unparsed` and `cost` per family,
+`skipped`, `failed`, `spentUsd`). The exit code is 0 for a completed run and 70 otherwise.
 
 ## Throughput (TP-2155)
 

@@ -210,7 +210,7 @@ describe("running a stage's checks", () => {
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
       eval: [], resolve: [
         "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
-        "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate",
+        "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate",
       ], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });
   });

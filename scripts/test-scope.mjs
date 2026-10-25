@@ -158,7 +158,8 @@ export function scopeForEvent(env, readChanged, loadWorkspace) {
 export function vitestArgs(scope) {
   const args = ["run", "--passWithNoTests"];
   if (scope.mode !== "scoped") return args;
-  return [...args, "--project", "threads", "--project", "repo", "--project", "forks", ...scope.dirs];
+  const projects = ["threads", "repo", "forks", "active-work", "active-work-forks"];
+  return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 
 function describeScope(scope) {

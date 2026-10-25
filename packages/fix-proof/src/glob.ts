@@ -40,31 +40,73 @@ function tooMany(glob: string): Error {
   return new Error(`glob expands past ${MAX_EXPANSIONS} alternatives: ${glob.length > 80 ? `${glob.slice(0, 80)}...` : glob}`);
 }
 
-function escapeRegExp(char: string): string {
-  return /[.+^$()|[\]\\{}]/.test(char) ? `\\${char}` : char;
-}
+// `segments` is `**/`: zero or more whole `name/` segments. `any` is a bare `**`.
+type Token =
+  | { readonly kind: "literal"; readonly char: string }
+  | { readonly kind: "one" | "star" | "any" | "segments" };
 
-function globToRegExp(glob: string): RegExp {
-  let source = "";
+function tokenize(glob: string): Token[] {
+  const tokens: Token[] = [];
   let index = 0;
   while (index < glob.length) {
     if (glob.startsWith("**/", index)) {
-      source += "(?:[^/]+/)*";
+      tokens.push({ kind: "segments" });
       index += 3;
     } else if (glob.startsWith("**", index)) {
-      source += ".*";
+      tokens.push({ kind: "any" });
       index += 2;
     } else {
       const char = glob.charAt(index);
-      source += char === "*" ? "[^/]*" : char === "?" ? "[^/]" : escapeRegExp(char);
+      tokens.push(char === "*" ? { kind: "star" } : char === "?" ? { kind: "one" } : { kind: "literal", char });
       index += 1;
     }
   }
-  return new RegExp(`^${source}$`);
+  return tokens;
 }
 
-/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`. */
+// A backtracking RegExp goes polynomial or exponential on runs like `*a*a*a` or `**/**/**/`, so
+// one allow line could hang a scan. Simulating the glob as a set of NFA states instead costs
+// path length times glob length on every input. State 2i is "at token i"; 2i+1 is "inside a
+// segment of the `**/` at token i", which must reach its `/` before the token can end.
+function addState(tokens: readonly Token[], states: Uint8Array, state: number): void {
+  if (states[state] === 1) return;
+  states[state] = 1;
+  const token = tokens[state >> 1];
+  if (state % 2 === 0 && token && token.kind !== "literal" && token.kind !== "one") {
+    addState(tokens, states, state + 2);
+  }
+}
+
+function step(tokens: readonly Token[], from: Uint8Array, char: string): Uint8Array {
+  const next = new Uint8Array(from.length);
+  const inSegment = char !== "/";
+  from.forEach((on, state) => {
+    const token = on === 1 ? tokens[state >> 1] : undefined;
+    if (!token) return;
+    const at = state & ~1;
+    if (token.kind === "literal" && token.char === char) addState(tokens, next, at + 2);
+    else if (token.kind === "one" && inSegment) addState(tokens, next, at + 2);
+    else if (token.kind === "any" || (token.kind === "star" && inSegment)) addState(tokens, next, at);
+    else if (token.kind === "segments" && inSegment) addState(tokens, next, at + 1);
+    else if (token.kind === "segments" && state !== at) addState(tokens, next, at);
+  });
+  return next;
+}
+
+function globMatcher(glob: string): (path: string) => boolean {
+  const tokens = tokenize(glob);
+  const accept = tokens.length * 2;
+  return (path) => {
+    let states: Uint8Array = new Uint8Array(accept + 2);
+    addState(tokens, states, 0);
+    // UTF-16 code units, as the RegExp this replaced matched without the `u` flag.
+    for (let index = 0; index < path.length; index += 1) states = step(tokens, states, path.charAt(index));
+    return states[accept] === 1;
+  };
+}
+
+/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`, in time linear in the path. */
 export function compileGlobs(globs: readonly string[]): (path: string) => boolean {
-  const patterns = globs.flatMap(expandBraces).map(globToRegExp);
-  return (path) => patterns.some((pattern) => pattern.test(path));
+  const matchers = globs.flatMap(expandBraces).map(globMatcher);
+  return (path) => matchers.some((matches) => matches(path));
 }

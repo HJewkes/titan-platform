@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the delta pass rolls up every touched session in one transaction",
+      "file": "products/active-work/src/session-index/delta-pass.ts",
+      "find": "await rollupYielding(graph, touched, yieldPoint)",
+      "replace": "rollupSessions(graph, touched)",
+      "kills": [
+        "session index pass over 500 dirty transcripts a delta pass never stalls the event loop for a second"
+      ]
+    },
+    {
+      "name": "unfinished turns roll up in one transaction",
+      "file": "products/active-work/src/session-index/unfinished-turns.ts",
+      "find": "  return rollupYielding(graph, [...sessions], yieldPoint);\n",
+      "replace": "  return rollupSessions(graph, [...sessions]);\n",
+      "kills": [
+        "session index pass over 500 dirty transcripts a pass resuming unfinished turns never stalls the event loop for a second"
+      ]
+    },
+    {
+      "name": "the sliced rollup never yields",
+      "file": "products/active-work/src/session-index/unfinished-turns.ts",
+      "find": "      await yieldPoint();\n",
+      "replace": "",
+      "kills": [
+        "session index pass over 500 dirty transcripts a delta pass never stalls the event loop for a second",
+        "session index pass over 500 dirty transcripts a pass resuming unfinished turns never stalls the event loop for a second"
+      ]
+    }
+  ]
+}

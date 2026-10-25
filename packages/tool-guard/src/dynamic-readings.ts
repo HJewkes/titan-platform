@@ -8,6 +8,11 @@ export function hasDynamicName(cmd: SimpleCommand): boolean {
   return cmd.name === null && cmd.args[0]?.dynamic === true;
 }
 
+const NAME_READINGS = new WeakSet<object>();
+
+/** Whether `cmd` is a dynamic command word read as a name, whose name the line never typed. */
+export const isNameReading = (cmd: object): boolean => NAME_READINGS.has(cmd);
+
 /**
  * The words after a dynamic command word read as each command name a family lists. The family's own
  * classification of a reading is the verdict, so a word naming no guarded verb (`"$EDITOR" file`) reads as nothing.
@@ -15,6 +20,7 @@ export function hasDynamicName(cmd: SimpleCommand): boolean {
 export function namedReadings(cmd: SimpleCommand, families: readonly Family[]): SimpleCommand[] {
   const names = new Set(families.flatMap((f) => [...(f.names ?? [])]));
   const readings = [...names].map((name) => ({ ...cmd, name, path: name, args: cmd.args.slice(1) }));
+  readings.forEach((r) => NAME_READINGS.add(r));
   return [...readings.filter(namesItsHost), ...splitGit(cmd)];
 }
 

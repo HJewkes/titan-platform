@@ -9,6 +9,15 @@
       "kills": [
         "serve's deploy pacer sweep keeps a wanted sha the running build descends from while deploy-window.json shows that build still in its health watch"
       ]
+    },
+    {
+      "name": "/health reads no wait the sweep wrote",
+      "file": "products/factory/src/deploy-pacer-sweep.ts",
+      "find": "memoOf(options).wait)",
+      "replace": "undefined)",
+      "kills": [
+        "serve's deploy pacer sweep spawns the deployer once for a queued sha after the quiet window, and /health shows it pending, then spawned"
+      ]
     }
   ]
 }

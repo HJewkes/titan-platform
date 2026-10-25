@@ -5,7 +5,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
 import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewer } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
-import { provablyIndependent } from "./lineage.js";
+import { provablyIndependent, type Lineage } from "./lineage.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
@@ -35,6 +35,8 @@ export type HoldSatisfier = (repo: RepoSlug, pr: number, sha: string, baseRef: s
 export interface HoldSatisfierDeps {
   store: () => ShepherdStore;
   roster: () => Promise<readonly ReviewerAgent[]>;
+  /** Every generation, retired ones included, that proves the reviewer independent; absent means `roster` stands for it. */
+  lineage?: () => Promise<Lineage>;
   reader: ReviewerReader;
   /** The `sh-carry` probe; absent means a satisfaction never moves to another head. */
   carry?: (input: CarryInput) => Promise<CarryResult>;
@@ -53,7 +55,9 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     });
     if (roster === undefined) return;
     const row = latestSession(reviewer, roster);
-    if (row === undefined || !independent(row, registration, roster, store)) return;
+    if (row === undefined) return;
+    const lineage = deps.lineage ? await deps.lineage().catch(unreadLineage(repo, pr)) : { rows: roster, complete: true };
+    if (lineage === undefined || !independent(row, registration, lineage, store)) return;
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
     const messages = await readNamedReviewer(deps.reader, read).catch((): undefined => undefined);
     if (messages === undefined) return registration.holdSatisfied?.head === sha ? store.unsatisfyHold(registration.runId) : undefined;
@@ -95,11 +99,17 @@ async function carrySatisfaction(deps: HoldSatisfierDeps, registration: Registra
   deps.store().satisfyHold(registration.runId, holdReviewer, at.head, { agentId: holdSatisfied.by.agentId, sessionId: holdSatisfied.by.sessionId, locator: holdSatisfied.by.locator });
 }
 
+/** A lineage outage leaves the hold as it is, like a roster outage. */
+const unreadLineage = (repo: RepoSlug, pr: number) => (error: unknown): undefined => {
+  console.error(`shepherd: ${repo}#${pr}: the lineage could not be read, so the hold stays as it is: ${error instanceof Error ? error.message : String(error)}`);
+  return undefined;
+};
+
 /** The roster's lineage must clear the reviewer, and so must the run's recorded authors, by agent id and by name. */
-function independent(row: ReviewerAgent, registration: Registration, roster: readonly ReviewerAgent[], store: ShepherdStore): boolean {
+function independent(row: ReviewerAgent, registration: Registration, lineage: Lineage, store: ShepherdStore): boolean {
   const authors = store.authorsOf(registration.runId);
   if (authors.some((author) => author.agentId === row.agentId || author.name === row.name)) return false;
-  return provablyIndependent(row, registration.implementer, roster);
+  return provablyIndependent(row, registration.implementer, lineage);
 }
 
 /** The first guard that names a reason decides; later guards are not read. */

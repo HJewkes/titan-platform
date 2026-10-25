@@ -26,6 +26,12 @@ export interface WatchTreeOptions {
   debounceMs?: number;
   /** Surface watcher errors (e.g. EMFILE) without crashing the host process. */
   onError?: (err: unknown) => void;
+  /**
+   * Directories under the root whose subtrees are not watched: no handle is attached
+   * to them and their events never fire `onChange`. A host that writes its own state
+   * inside the watched tree lists that directory here, or its writes read as changes.
+   */
+  ignore?: string[];
 }
 
 export interface TreeWatcher {
@@ -64,6 +70,7 @@ interface Tree {
   onChange: () => void;
   options: WatchTreeOptions;
   debounceMs: number;
+  isIgnored: (target: string) => boolean;
   watchers: Map<string, FSWatcher>;
   attachWaiters: Map<string, Set<() => void>>;
   debounceTimer: NodeJS.Timeout | null;
@@ -78,6 +85,7 @@ function createTree(root: string, onChange: () => void, options: WatchTreeOption
     onChange,
     options,
     debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
+    isIgnored: ignoredBy(options.ignore ?? []),
     watchers: new Map(),
     attachWaiters: new Map(),
     debounceTimer: null,
@@ -86,12 +94,18 @@ function createTree(root: string, onChange: () => void, options: WatchTreeOption
     crawl: {
       isClosed: () => tree.closed,
       isWatched: (dir) => tree.watchers.has(dir),
+      isIgnored: (dir) => tree.isIgnored(dir),
       watchDir: (dir) => watchDir(tree, dir),
       fire: () => fire(tree),
       onError: (err) => tree.options.onError?.(err),
     },
   };
   return tree;
+}
+
+function ignoredBy(dirs: string[]): (target: string) => boolean {
+  const roots = dirs.map((dir) => path.resolve(dir));
+  return (target) => roots.some((dir) => target === dir || isStrictlyBelow(dir, target));
 }
 
 function fire(tree: Tree): void {
@@ -109,7 +123,7 @@ function fire(tree: Tree): void {
  * covered, with no handle of its own to look up.
  */
 function covered(tree: Tree, dir: string): boolean {
-  if (tree.closed) return false;
+  if (tree.closed || tree.isIgnored(dir)) return false;
   if (tree.watchers.has(dir)) return true;
   if (!RECURSIVE_WATCH) return false;
   return isStrictlyBelow(tree.root, dir) && existsSync(dir);
@@ -141,11 +155,15 @@ function scheduleRescan(tree: Tree): void {
 }
 
 function watchDir(tree: Tree, dir: string, recursive = false): void {
-  if (tree.closed || tree.watchers.has(dir)) return;
+  if (tree.closed || tree.watchers.has(dir) || tree.isIgnored(dir)) return;
   const w = openWatcher(tree, dir, recursive);
   if (!w) return;
   w.on("error", (err) => tree.options.onError?.(err));
-  w.on("change", () => onWatcherChange(tree, recursive));
+  w.on("change", (_event, filename) => {
+    // Without a filename there is no telling where the change was, so it counts.
+    if (filename && tree.isIgnored(path.join(dir, filename.toString()))) return;
+    onWatcherChange(tree, recursive);
+  });
   tree.watchers.set(dir, w);
   notifyAttached(tree, dir);
 }
@@ -202,6 +220,7 @@ function closeTree(tree: Tree): void {
 interface Crawl {
   isClosed: () => boolean;
   isWatched: (dir: string) => boolean;
+  isIgnored: (dir: string) => boolean;
   watchDir: (dir: string) => void;
   fire: () => void;
   onError: (err: unknown) => void;
@@ -227,6 +246,7 @@ async function attachBelow(crawl: Crawl, dir: string): Promise<void> {
     return;
   }
   for (const child of dirNames(entries, dir)) {
+    if (crawl.isIgnored(child)) continue;
     const isNew = !crawl.isWatched(child);
     crawl.watchDir(child);
     // Writes can land inside a directory between its creation and our attaching to it;
@@ -249,6 +269,7 @@ function attachBelowSync(crawl: Crawl, dir: string): void {
     return;
   }
   for (const child of dirNames(entries, dir)) {
+    if (crawl.isIgnored(child)) continue;
     crawl.watchDir(child);
     attachBelowSync(crawl, child);
   }

@@ -20,8 +20,23 @@ export function changedLines(diff) {
 
 function callRoot(call) {
   let callee = call.expression;
+  // `it.each(rows)("title", fn)` and ``it.each`table`("title", fn)`` call the result of the `.each` call.
+  if (ts.isCallExpression(callee)) callee = callee.expression;
+  else if (ts.isTaggedTemplateExpression(callee)) callee = callee.tag;
   while (ts.isPropertyAccessExpression(callee)) callee = callee.expression;
   return ts.isIdentifier(callee) ? callee.text : null;
+}
+
+// printf-style (%s %i %d %j %o %p %# %$) and `$name` / `$a.b` placeholders in an `.each` title stand for any text.
+const PLACEHOLDER = /%[sdifjoOpc#$]|\$[A-Za-z_][\w.]*/g;
+
+const isPattern = (name) => new RegExp(PLACEHOLDER.source).test(name.replaceAll("%%", ""));
+
+function matchesName(name, kill) {
+  if (name === kill) return true;
+  if (!isPattern(name)) return false;
+  const body = name.split(/(%%)/).map((part) => (part === "%%" ? "%" : part.split(PLACEHOLDER).map((literal) => literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".+"))).join("");
+  return new RegExp(`^${body}$`).test(kill);
 }
 
 function titleOf(node) {
@@ -73,5 +88,5 @@ export function touchedTests(source, lines) {
 export function missedChange(sidecar, touched) {
   if (touched.size === 0) return null;
   const kills = (sidecar.mutations ?? []).flatMap((mutation) => mutation.kills ?? []);
-  return kills.some((kill) => touched.has(kill)) ? null : `no kill names a test the diff touches (${[...touched].map((name) => JSON.stringify(name)).join(", ")})`;
+  return kills.some((kill) => [...touched].some((name) => matchesName(name, kill))) ? null : `no kill names a test the diff touches (${[...touched].map((name) => JSON.stringify(name)).join(", ")})`;
 }

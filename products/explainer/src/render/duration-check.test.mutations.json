@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "tolerance widened to a whole second",
+      "file": "products/explainer/src/render/duration-check.ts",
+      "find": "<= DURATION_TOLERANCE_S",
+      "replace": "<= 1",
+      "kills": [
+        "page and mix duration agreement refuses a page half a second longer than the mix, naming both lengths",
+        "page and mix duration agreement refuses lengths that differ by just over the tolerance"
+      ]
+    }
+  ]
+}

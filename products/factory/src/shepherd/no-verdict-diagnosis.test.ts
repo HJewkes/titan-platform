@@ -15,7 +15,7 @@ import { GATE_DEMOTIONS } from "./auto-pass.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { demoteFailedRounds, onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { LeaveLand } from "./leave-land.js";
-import { DEFAULT_DIAGNOSIS_PROFILE, diagnosisName, spawnDiagnosis, type DiagnosisPorts } from "./no-verdict-diagnosis.js";
+import { DEFAULT_DIAGNOSIS_PROFILE, DIAGNOSIS_SPAWN_ATTEMPTS, diagnosisName, spawnDiagnosis, type DiagnosisPorts, type DiagnosisTiming } from "./no-verdict-diagnosis.js";
 import { freshNoVerdictState, noteReviewerStep, type ReviewerSeen } from "./no-verdict-round.js";
 import type { ObservedPr } from "./observe.js";
 import type { EffectivePolicy } from "./policy.js";
@@ -23,6 +23,7 @@ import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { Escalated } from "./route-table.js";
 import { countRound, type Routed } from "./routed.js";
+import { SpawnDeferred, spawnGate } from "./spawn-gate.js";
 import { shepherdStoreRef } from "./store.js";
 
 const REPO = "octo/demo";
@@ -190,7 +191,7 @@ describe("the diagnosis planner's spawn", () => {
   it("briefs the PR, the head, each no-verdict reviewer's session and transcript or refusal, and the log lines naming them", async () => {
     const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE);
 
-    const result = await spawnDiagnosis(ports, input);
+    const result = await spawnDiagnosis(ports, input, timing());
 
     expect(result).toEqual({ spawned: true, agent: diagnosisName("run-1", HEAD), profile: "bd-planner" });
     const [request] = ports.spawned;
@@ -210,15 +211,25 @@ describe("the diagnosis planner's spawn", () => {
   it("names a silent reviewer's transcript from the roster", async () => {
     const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, [{ ...ROW, name: "rv-demo-2", agentId: "agent-2", sessionId: "session-2", transcriptPath: "/transcripts/session-2.jsonl" }]);
 
-    await spawnDiagnosis(ports, input);
+    await spawnDiagnosis(ports, input, timing());
 
     expect(ports.spawned[0]!.brief).toContain("session session-2, transcript /transcripts/session-2.jsonl");
+  });
+
+  it("says the aggregate withheld the verdict, not a reviewer, when every dispatched reviewer answered (TP-4195)", async () => {
+    const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE);
+    const answered = [REVIEWERS[0]!, { head: HEAD, shape: "adversary", name: "rv-demo-1-adversary", agentId: "agent-3", sessionId: "session-3", verdict: true as const }];
+
+    await spawnDiagnosis(ports, { ...input, reviewers: answered }, timing());
+
+    expect(ports.spawned[0]!.brief).toContain("- none: all 2 dispatched reviewers gave a verdict, so the panel's aggregate withheld it");
+    expect(ports.spawned[0]!.brief).not.toContain("without dispatching a reviewer");
   });
 
   it("spawns at the configured profile as given, even one the panel cap would lower to an uninstalled profile (TP-3762)", async () => {
     const ports = diagnosisPorts("bd-reviewer");
 
-    await spawnDiagnosis(ports, input);
+    await spawnDiagnosis(ports, input, timing());
 
     expect(ports.spawned.map((request) => request.profile)).toEqual(["bd-reviewer"]);
   });
@@ -231,13 +242,69 @@ describe("the diagnosis planner's spawn", () => {
   it("spawns nothing more when the planner is already on the roster", async () => {
     const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, [{ ...ROW, name: diagnosisName("run-1", HEAD) }]);
 
-    expect(await spawnDiagnosis(ports, input)).toMatchObject({ spawned: true });
+    expect(await spawnDiagnosis(ports, input, timing())).toMatchObject({ spawned: true });
     expect(ports.spawned).toEqual([]);
   });
 
   it("records a failed spawn, never a throw, when nothing is wired or the repo has no checkout", async () => {
-    expect(await spawnDiagnosis(undefined, input)).toMatchObject({ spawned: false, reason: "no diagnosis planner is wired" });
-    expect(await spawnDiagnosis({ ...diagnosisPorts("bd-planner"), cwdFor: () => undefined }, input)).toMatchObject({ spawned: false, reason: expect.stringContaining("no checkout path") });
+    expect(await spawnDiagnosis(undefined, input, timing())).toMatchObject({ spawned: false, reason: "no diagnosis planner is wired" });
+    expect(await spawnDiagnosis({ ...diagnosisPorts("bd-planner"), cwdFor: () => undefined }, input, timing())).toMatchObject({ spawned: false, reason: expect.stringContaining("no checkout path") });
+  });
+});
+
+/** A fake clock whose sleep moves it on, so a wait for the gate's window passes at once. */
+function timing(clock = { at: 0 }): DiagnosisTiming & { slept: number[] } {
+  const slept: number[] = [];
+  const sleepFor = async (ms: number) => void (slept.push(ms), (clock.at += ms));
+  return { now: () => clock.at, sleep: sleepFor, signal: new AbortController().signal, slept };
+}
+
+/** Ports whose spawns pass the factory's spawn gate, which admitted another agent 23762 ms before the planner asks at `load5`. */
+function gatedPorts(clock: { at: number }, load5 = 1): ReturnType<typeof diagnosisPorts> {
+  const reading = { load5: 1 };
+  const gate = spawnGate({ now: () => clock.at, read: () => ({ ...reading }), limits: { load5: 28 }, log: () => undefined });
+  gate.admit("rv-other");
+  reading.load5 = load5;
+  clock.at = 23_762;
+  const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, []);
+  const { roster, spawn } = ports.agents!;
+  return { ...ports, agents: { roster, spawn: async (request) => (gate.admit(request.name), spawn(request)) } };
+}
+
+describe("a diagnosis planner the spawn gate defers (TP-4157)", () => {
+  it("asks again after the spawn-rate window, records the refusal, and starts the planner", async () => {
+    const clock = { at: 0 };
+    const ports = gatedPorts(clock);
+    const wait = timing(clock);
+
+    const result = await spawnDiagnosis(ports, input, wait);
+
+    expect(result).toEqual({ spawned: true, agent: diagnosisName("run-1", HEAD), profile: "bd-planner", deferrals: ["another spawn was admitted 23762 ms ago, inside the 60000 ms window"] });
+    expect(ports.spawned.map((request) => request.name)).toEqual([diagnosisName("run-1", HEAD)]);
+    expect(wait.slept).toEqual([60_000]);
+  });
+
+  it("gives up after a bounded number of asks, recording every refusal", async () => {
+    const clock = { at: 0 };
+    const ports = gatedPorts(clock, 99);
+    const wait = timing(clock);
+
+    const result = await spawnDiagnosis(ports, input, wait);
+
+    expect(result).toMatchObject({ spawned: false, reason: "the spawn gate deferred it 5 times; the last: load5 99 is past the limit 28" });
+    expect(result.deferrals).toEqual(Array(DIAGNOSIS_SPAWN_ATTEMPTS).fill("load5 99 is past the limit 28"));
+    expect(wait.slept).toHaveLength(DIAGNOSIS_SPAWN_ATTEMPTS - 1);
+    expect(ports.spawned).toEqual([]);
+  });
+
+  it("does not ask again after a refusal that is no deferral", async () => {
+    const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, []);
+    const wait = timing();
+
+    const result = await spawnDiagnosis({ ...ports, agents: { roster: async () => [], spawn: async () => Promise.reject(new Error("profile is not installed")) } }, input, wait);
+
+    expect(result).toEqual({ spawned: false, agent: diagnosisName("run-1", HEAD), profile: "bd-planner", reason: "profile is not installed" });
+    expect(wait.slept).toEqual([]);
   });
 });
 
@@ -247,7 +314,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "repo-seat" };
 
 /** A green PR whose every review gives no verdict, with the planner wired and a hub seat that records what it hears. */
-function silentWorld() {
+function silentWorld(diagnosis = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, [])) {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.addPr({ headSha: HEAD });
@@ -259,7 +326,6 @@ function silentWorld() {
     wake: async (_ctx, request) => (wakes.push(request.kind), { kind: "unhandled", reason: "no fixer in this replay" }),
     review: async (_ctx, request) => (reviews.push(request.headSha), { kind: "none", cause: "no-verdict" }),
   };
-  const diagnosis = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, []);
   const store = shepherdStoreRef();
   let clock = 0;
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice, diagnosis, park: async () => ({ lines: [] }) });
@@ -316,6 +382,21 @@ describe("a run whose reviews never give a verdict (TP-3796)", () => {
     expect(world.wakes).toEqual([]);
     expect(steps.filter((id) => FIX_ROUND_STEPS.test(id))).toEqual([]);
     expect(world.diagnosis.spawned).toEqual([]);
+  });
+
+  it("starts the planner after the spawn gate defers its first ask, with no seat notice, before waiting for a new head (TP-4157)", async () => {
+    const ports = diagnosisPorts(DEFAULT_DIAGNOSIS_PROFILE, []);
+    const { roster, spawn } = ports.agents!;
+    let asks = 0;
+    const deferFirst = async (request: SpawnRequest) => (++asks === 1 ? Promise.reject(new SpawnDeferred("another spawn was admitted 23762 ms ago, inside the 60000 ms window")) : spawn(request));
+    const world = silentWorld({ ...ports, agents: { roster, spawn: deferFirst } });
+
+    await settledAtUnchangedHead(world);
+
+    expect(ports.spawned.map((request) => request.name)).toEqual([diagnosisName(world.runId, HEAD)]);
+    expect(world.sent).toEqual([]);
+    const recorded = Object.entries(world.host.runtime.status(world.runId)!.stepResults).filter(([key]) => key.startsWith(`sh-no-verdict-diagnosis:${HEAD}`));
+    expect(recorded.map(([, step]) => step.data)).toEqual([expect.objectContaining({ result: expect.objectContaining({ spawned: true, deferrals: ["another spawn was admitted 23762 ms ago, inside the 60000 ms window"] }) })]);
   });
 
   it("reviews a new head afresh after the planner", async () => {

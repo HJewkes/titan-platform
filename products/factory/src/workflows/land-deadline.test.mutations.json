@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a timed-out read drops its window length",
+      "file": "products/factory/src/workflows/land-ci-wait.ts",
+      "find": "timedOut: { afterMs: timing.timeoutMs, reason: poll.last }",
+      "replace": "timedOut: { afterMs: 0, reason: poll.last }",
+      "kills": [
+        "ci-wait deadline polls exactly once more, at least 2 minutes after the wake, when CI is still unfinished after the jump",
+        "ci-wait deadline times out at the deadline when the clock never jumps"
+      ]
+    }
+  ]
+}

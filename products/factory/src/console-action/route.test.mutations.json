@@ -4,8 +4,8 @@
     {
       "name": "the sent-back allowlist admits abandon",
       "file": "products/factory/src/console-action/gate.ts",
-      "find": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD])]",
-      "replace": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD, \"abandon\"])]",
+      "find": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD, WAIVE_PROOF])]",
+      "replace": "[SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD, WAIVE_PROOF, \"abandon\"])]",
       "kills": [
         "POST /owner/console-action sh-sent-back refuses with 403 class a record asking abandon, which the gate's schema offers, leaving the gate pending"
       ]
@@ -31,8 +31,8 @@
     {
       "name": "a sent-back answer carries the head its schema does not pin",
       "file": "products/factory/src/console-action/gate.ts",
-      "find": "pinnedHead(gate.schema) === undefined ?",
-      "replace": "false ?",
+      "find": "pinnedHead(gate.schema) !== undefined ||",
+      "replace": "true ||",
       "kills": [
         "POST /owner/console-action sh-sent-back resolves await-new-head with the decision alone, as owner-remote from the console inbox bound to the record's sha256"
       ]

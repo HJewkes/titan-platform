@@ -1,6 +1,7 @@
 import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
 import { egress } from "./families/egress.js";
+import { githubSettings } from "./families/github-settings.js";
 import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
@@ -24,7 +25,7 @@ import { classified } from "./spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "./types.js";
 
 /** The family registry. A new family adds one line here and its rows to `SPELLINGS`. */
-const FAMILIES: readonly Family[] = [secret, config, merge, release, egress];
+const FAMILIES: readonly Family[] = [secret, config, merge, release, egress, githubSettings];
 /** Names a reading of dynamic wrapper words is walked for: those a family reads differently, and those whose script `scriptActions` reads. */
 const GUARDED = new Set([...FAMILIES.flatMap((f) => [...(f.names ?? []), ...(f.verbs ?? [])]), ...SOURCERS, ...INTERPRETERS]);
 

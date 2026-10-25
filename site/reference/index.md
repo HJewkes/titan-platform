@@ -26,10 +26,11 @@ Domain-free building blocks. No titan dependencies.
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`openai-account`](/reference/openai-account) | Read-only Codex account state: login status, rollout quota readings, freshness and admission | `anthropic-account` |
 | [`owner-proof`](/reference/owner-proof) | Owner-signed statements: canonical JSON, P-256 key ring and an exact-bytes ECDSA verify core generic over a zod schema | none |
+| [`review-burden`](/reference/review-burden) | Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser | `fix-proof` |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations | none |
 | [`test-kit`](/reference/test-kit) | Typed test doubles: partialFake builds a T from only the fields a test uses, without a cast | none |
-| [`tool-guard`](/reference/tool-guard) | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | `authority` |
+| [`tool-guard`](/reference/tool-guard) | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | `authority`, `fix-proof` |
 
 ## Tier 1 — engines
 
@@ -62,8 +63,8 @@ Modules that know about a subject: transcripts, code, rules.
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`autoresearch`](/reference/autoresearch) | Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports | `rpc-client`, `workflow` |
-| [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `retrieval`, `store-sqlite` |
+| [`autoresearch`](/reference/autoresearch) | Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports | `fix-proof`, `rpc-client`, `workflow` |
+| [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `fix-proof`, `retrieval`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
@@ -100,13 +101,13 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-protocol`, `cluster`, `daemon`, `decider`, `locator`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
+| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-dispatch`, `agent-protocol`, `cluster`, `daemon`, `decider`, `locator`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `corpus-query` | Cheap one-line questions over a large local text corpus: deterministic index and retrieval, verified judge calls | `agent`, `agent-protocol`, `app-paths`, `evidence`, `hitl`, `store-sqlite`, `workflow` |
-| `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
-| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `app-paths`, `code-graph`, `code-read`, `evidence`, `github`, `graph-layout`, `hitl`, `owner-queue`, `pm`, `session-read`, `speech-g2p`, `speech-stt`, `speech-tts`, `speech-vet`, `store-sqlite`, `workflow` |
+| `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `app-paths`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `review-panel`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
+| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-protocol`, `app-paths`, `code-graph`, `code-read`, `evidence`, `frame-capture`, `github`, `graph-layout`, `hitl`, `owner-queue`, `pm`, `react-ui`, `session-read`, `speech-g2p`, `speech-stt`, `speech-tts`, `speech-vet`, `store-sqlite`, `workflow` |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `autoresearch`, `coordinator`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `review-schema`, `rpc-client`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `store-sqlite` |
-| `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `app-paths`, `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput` |
+| `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `app-paths`, `cluster`, `daemon`, `embed`, `github`, `hitl`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput`, `workflow` |
 | `titan` | The titan host CLI: health sampling of the factory and the host | `daemon`, `health` |
 | `codewatch` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |
-| `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `agent-dispatch`, `app-paths`, `chat-protocol`, `coordinator`, `daemon`, `decider`, `github`, `owner-queue`, `pm`, `react-app`, `react-ui`, `registry`, `review-schema`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |
+| `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `agent-dispatch`, `app-paths`, `chat-protocol`, `coordinator`, `daemon`, `decider`, `fix-proof`, `github`, `owner-queue`, `pm`, `react-app`, `react-ui`, `registry`, `review-schema`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |

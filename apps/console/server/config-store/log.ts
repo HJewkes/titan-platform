@@ -5,23 +5,26 @@
  * and only after the whole chain, the new entry included, passes `verifyChain`.
  *
  * Reads fail closed. A torn last line, a line that is not JSON or a broken chain makes the log
- * `invalid`, and nothing is appended to an invalid log. Rev 0 is created with O_EXCL, so two
- * imports cannot both write it; a later append refuses when the file grew after it was read.
+ * `invalid`, and nothing is appended to an invalid log. Every rev 0 write, into an absent log or
+ * a zero-byte one, first takes an O_EXCL sibling claim held until the line is synced, so two
+ * imports cannot both write it; O_EXCL on the log alone cannot cover a zero-byte file that
+ * already exists. A later append refuses when the file grew after it was read.
  */
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, unlink, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { revisionSha, verifyChain, type ChainError, type ConfigRevision } from "@titan-design/coordinator";
 import { syncDirectory } from "./materialize.js";
 
 const CONFIG_DIR = "config";
 const REVISIONS_FILE = "coordinator.revisions.jsonl";
+const REV0_CLAIM_SUFFIX = ".rev0-claim";
 const MAX_LOG_BYTES = 32 * 1024 * 1024;
 const CREATE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW;
 
 type LogState =
-  | { state: "empty" }
+  | { state: "empty"; exists: boolean }
   | { state: "verified"; revisions: unknown[]; head: ConfigRevision; bytes: number }
   | { state: "invalid"; errors: ChainError[] };
 
@@ -53,11 +56,11 @@ function parseLines(text: string): unknown[] | LogState {
 /** The log as it stands; never throws for a bad log, only for an unreadable one. */
 export async function readRevisionLog(file: string): Promise<LogState> {
   const stats = await lstat(file).catch((error: unknown) => (errnoOf(error) === "ENOENT" ? null : Promise.reject(error)));
-  if (stats === null) return { state: "empty" };
+  if (stats === null) return { state: "empty", exists: false };
   if (!stats.isFile()) return invalid(0, "the log is not a regular file");
   if (stats.size > MAX_LOG_BYTES) return invalid(0, `the log is over ${MAX_LOG_BYTES} bytes`);
   const text = await readFile(file, "utf8");
-  if (text === "") return { state: "empty" };
+  if (text === "") return { state: "empty", exists: true };
   const revisions = parseLines(text);
   if (!Array.isArray(revisions)) return revisions;
   const chain = verifyChain(revisions);
@@ -82,12 +85,15 @@ async function assertPrivate(handle: FileHandle, expectedBytes: number): Promise
   if (stats.size !== expectedBytes) throw new RevisionLogError("the revision log changed after it was read; read it again");
 }
 
-async function writeLine(file: string, line: string, log: LogState): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const creating = log.state === "empty";
-  const handle = await open(file, creating ? CREATE_FLAGS : APPEND_FLAGS, 0o600).catch((error: unknown) => {
+async function openForWrite(file: string, log: LogState): Promise<FileHandle> {
+  const creating = log.state === "empty" && !log.exists;
+  return open(file, creating ? CREATE_FLAGS : APPEND_FLAGS, 0o600).catch((error: unknown) => {
     throw errnoOf(error) === "EEXIST" ? new RevisionLogError("another writer created rev 0 first; read the log again") : error;
   });
+}
+
+async function writeOpened(file: string, line: string, log: LogState): Promise<void> {
+  const handle = await openForWrite(file, log);
   try {
     await assertPrivate(handle, log.state === "verified" ? log.bytes : 0);
     await handle.write(line);
@@ -95,7 +101,29 @@ async function writeLine(file: string, line: string, log: LogState): Promise<voi
   } finally {
     await handle.close();
   }
-  if (creating) await syncDirectory(path.dirname(file));
+}
+
+/** Held across the open, the size check and the write, so two writers cannot both write rev 0. */
+async function claimRev0(file: string): Promise<() => Promise<void>> {
+  const claim = `${file}${REV0_CLAIM_SUFFIX}`;
+  const handle = await open(claim, CREATE_FLAGS, 0o600).catch((error: unknown) => {
+    throw errnoOf(error) === "EEXIST"
+      ? new RevisionLogError(`another writer is writing rev 0 into ${file} (claim ${claim}); read the log again, or remove the claim if no import is running`)
+      : error;
+  });
+  await handle.close();
+  return () => unlink(claim);
+}
+
+async function writeLine(file: string, line: string, log: LogState): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const release = log.state === "empty" ? await claimRev0(file) : null;
+  try {
+    await writeOpened(file, line, log);
+  } finally {
+    await release?.();
+  }
+  if (log.state === "empty") await syncDirectory(path.dirname(file));
 }
 
 /** Appends the next revision, numbered and parented from the log's head, and returns it. */

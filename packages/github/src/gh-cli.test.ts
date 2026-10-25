@@ -223,8 +223,17 @@ describe("gh api adapter", () => {
     const read = await ghCliWire(gh.exec).listCommitStatuses(REPO, H1);
 
     expect(read).toHaveLength(40);
-    expect(read.at(-1)).toEqual({ context: "slow", state: "pending" });
+    expect(read.at(-1)).toEqual({ context: "slow", state: "pending", targetUrl: null, description: null, createdAt: null, updatedAt: null });
     expect(gh.calls[0]?.args).toContain(`repos/${REPO}/commits/${H1}/status`);
+  });
+
+  it("maps a status's link, description and times, which gh pr checks prints", async () => {
+    const posted = { context: "deploy", state: "failure", target_url: "https://ci.example.test/1", description: "Preview failed", created_at: "2026-03-02T11:00:00Z", updated_at: "2026-03-02T11:05:00Z" };
+    const gh = scriptedGh({ "/status": JSON.stringify({ total_count: 1, statuses: [posted] }) });
+
+    const [status] = await ghCliWire(gh.exec).listCommitStatuses(REPO, H1);
+
+    expect(status).toEqual({ context: "deploy", state: "failure", targetUrl: "https://ci.example.test/1", description: "Preview failed", createdAt: "2026-03-02T11:00:00Z", updatedAt: "2026-03-02T11:05:00Z" });
   });
 
   it("refuses a combined status that lists fewer statuses than its total_count", async () => {

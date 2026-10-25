@@ -1,3 +1,5 @@
+export { LinearRegExp } from './linear-regexp.js';
+
 /** Where a target repo keeps its fix-proof config; read at the merge base, never at head. */
 declare const CONFIG_PATH = ".github/fix-proof.json";
 declare const DEFAULT_TEST_GLOBS: readonly string[];
@@ -39,7 +41,7 @@ declare function parseFixProofConfig(text: string | null | undefined): ConfigRes
 
 /** Every alternative of a brace glob, innermost group first; throws past 256 alternatives, 32 brace groups or 1024 characters. */
 declare function expandBraces(glob: string): string[];
-/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`. */
+/** A matcher for repo-relative POSIX paths supporting `**`, `*`, `?` and `{a,b}`, in time linear in the path. */
 declare function compileGlobs(globs: readonly string[]): (path: string) => boolean;
 
 interface PlanInput {
@@ -313,7 +315,10 @@ interface FixProofResult {
     /** True when format dropped entries to fit the 4 KB line. */
     truncated: boolean;
     error?: string;
-    /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+    /**
+     * The mutation check, present for a diff of test material alone that adds or changes a mutation spec, and as an error
+     * beside an `error` verdict for a source diff whose spec has a kill naming no test at head.
+     */
     mutants?: MutantsResult;
 }
 type ParsedResultLine = {

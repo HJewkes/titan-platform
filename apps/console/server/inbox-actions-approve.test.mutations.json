@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "skip the broker-row kind check in prepare",
+      "file": "apps/console/server/inbox-approve-chat.ts",
+      "find": "if (row.kind === \"approval_request\" && tool) {",
+      "replace": "if (tool) {",
+      "kills": [
+        "inbox approve-chat prepare gives a needs-grant notice that the factory also shapes approve no tap"
+      ]
+    },
+    {
+      "name": "a verdict retry posts the record's choice without checking the tap's",
+      "file": "apps/console/server/inbox-approve-chat.ts",
+      "find": "assertSameChoice(parsed.data.verdict, tap);",
+      "replace": "void assertSameChoice;",
+      "kills": [
+        "inbox approve-chat act refuses a retry that changes the verdict after the first tap found the broker unreachable, posting nothing"
+      ]
+    }
+  ]
+}

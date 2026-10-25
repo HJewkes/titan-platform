@@ -36,16 +36,20 @@ export async function loadRequiredContexts(port: GitHubPort, repo: RepoSlug, bra
   return rules.contexts.length > 0 ? rules : port.classicRequiredChecks(repo, branch);
 }
 
-/** A pinned context needs a green run from each pinned app; an unpinned one accepts GitHub Actions or a commit status. */
+/**
+ * A pinned context needs a green run from each pinned app. An unpinned one is judged on its GitHub Actions run and its
+ * commit status together, since the combined status carries no time to show which is newer: a stale success status
+ * must not hide a newer red or unfinished run, nor a green run a red status.
+ */
 function requiredFindings({ rules, runs, statuses }: CiVerdictInput): Finding[] {
   const findings: (Finding | null)[] = [];
   for (const context of rules.contexts) {
     const pins = rules.pins?.[context];
     if (pins) {
-      findings.push(...pins.map((app) => judge(context, decidingRun(runs, context, app), null)));
+      findings.push(...pins.map((app) => judge(context, decidingRun(runs, context, app))));
     } else {
       const state = statuses.find((status) => status.context === context)?.state ?? null;
-      findings.push(judge(context, decidingRun(runs, context, GITHUB_ACTIONS_APP_ID), state));
+      findings.push(judgeUnpinned(context, decidingRun(runs, context, GITHUB_ACTIONS_APP_ID), state));
     }
   }
   return findings.filter((finding): finding is Finding => finding !== null);
@@ -63,10 +67,22 @@ function decidingRun(runs: readonly CheckRun[], name: string, app: number): Chec
 }
 
 /** A required context needs `isSucceeded`, as checks.ts documents: skipped and neutral are red here, unlike the all-runs rule. */
-function judge(name: string, run: CheckRun | null, state: string | null): Finding | null {
-  if ((run && isSucceeded(run)) || state === "success") return null;
-  if ((run && run.status !== "completed") || state === "pending" || (!run && state === null)) return { kind: "pending", text: name };
-  return { kind: "bad", text: `${name}=${run ? run.conclusion : state}` };
+function judge(name: string, run: CheckRun | null): Finding | null {
+  if (run && isSucceeded(run)) return null;
+  if (!run || run.status !== "completed") return { kind: "pending", text: name };
+  return { kind: "bad", text: `${name}=${run.conclusion}` };
+}
+
+/** Every source that reported must succeed; pending outranks red, as in `ciVerdict`, and a red run is named first. */
+function judgeUnpinned(name: string, run: CheckRun | null, state: string | null): Finding | null {
+  if (!run && state === null) return { kind: "pending", text: name };
+  const findings = [run ? judge(name, run) : null, judgeStatus(name, state)].filter((finding): finding is Finding => finding !== null);
+  return findings.find((finding) => finding.kind === "pending") ?? findings[0] ?? null;
+}
+
+function judgeStatus(name: string, state: string | null): Finding | null {
+  if (state === null || state === "success") return null;
+  return state === "pending" ? { kind: "pending", text: name } : { kind: "bad", text: `${name}=${state}` };
 }
 
 /** A status-only sha stays pending: a status can land before the check suites have even been created. */
