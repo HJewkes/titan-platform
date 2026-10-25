@@ -28,3 +28,15 @@ export {
   type SimModelSpec,
   type SimTolerance,
 } from "./sim-load.js";
+export {
+  MAX_SIM_TOLERANCE_REL,
+  SIM_CHECK_CODES,
+  SIM_NOISE_SE,
+  numberFacts,
+  simCheck,
+  type SimBeat,
+  type SimCheckCode,
+  type SimSlots,
+  type SimVerdict,
+} from "./sim-check.js";
+export { SimTracesSchema, runSimPass, shippedSims, type SimPass, type SimRegistry, type SimTraces } from "./sim-resolve.js";

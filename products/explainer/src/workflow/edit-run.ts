@@ -2,7 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { readLedger } from "./edit-ledger.js";
 import { CUSTOM_LAYERS } from "./layer-build.js";
 import { stageRecords, type RunReport } from "./report.js";
-import { planOf } from "./run-lineage.js";
+import { planOf } from "./video-runs.js";
 
 /**
  * An edit run starts on the base the edit was drafted over and pins that base's custom layers, since a template-only

@@ -1,6 +1,7 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { CONFIG_PATH, DEFAULT_CARRY_GLOBS, parseFixProofConfig } from "@titan-design/fix-proof";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
+import { PROMPT_LINE_BREAK, promptLine } from "@titan-design/owner-queue";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
@@ -213,13 +214,15 @@ const COMMENTS_INTRO = "The PR's unresolved review comments follow, grouped by r
 /** Any account can comment on a public repo; only these associations speak for it. */
 const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 /** A line a verdict parser, or a reader, could take for one of the verdict block's lines, behind any markdown or invisible prefix, with an ASCII or look-alike colon. */
-const VERDICT_LIKE = /^[\s>*+\-#_`~|\u200B-\u200D\u2060\uFEFF]*(?:verdict|pr|head)[\s*_`]*[:\uFF1A\uFE55\uFE13\u2236]/i;
-/** Every break a renderer or reader may start a new line at, not only the parser's `\n`. */
-const LINE_BREAK = /\r\n|[\n\r\u0085\u2028\u2029]/;
+const VERDICT_LIKE = /^[\s>*+\-#_`~|]*(?:verdict|pr|head)[\s*_`]*[:\uFF1A\uFE55\uFE13\u2236]/i;
 const COMMENTS_UNREADABLE = "The PR's review comments could not be read, so none are included.";
 
-/** Comment text is public and untrusted, so no line of it may read as a verdict block's line. */
-const neutralise = (text: string): string[] => text.split(LINE_BREAK).map((line) => (VERDICT_LIKE.test(line) ? `[quoted] ${line.trim()}` : line));
+/** Comment text is public and untrusted: it is split at every break a reader may see, cleaned, and no line of it may read as a verdict block's line. */
+const neutralise = (text: string): string[] =>
+  text
+    .split(PROMPT_LINE_BREAK)
+    .map((line) => promptLine(line))
+    .map((line) => (VERDICT_LIKE.test(line) ? `[quoted] ${line.trim()}` : line));
 
 function capped(body: string): string {
   const chars = [...body];

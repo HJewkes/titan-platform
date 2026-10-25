@@ -17,7 +17,7 @@ import { dataDirOption } from "./run-cli.js";
 import { openState } from "./host.js";
 import { VIDEO_WORKFLOW } from "./pipeline.js";
 import { stageRecords } from "./report.js";
-import { planOf, videoIdOf } from "./run-lineage.js";
+import { planOf, videoIdOf } from "./video-runs.js";
 import { readJson } from "./run-dir.js";
 
 const EXIT = { OK: 0, REFUSED: 1, USAGE: 2 } as const;
