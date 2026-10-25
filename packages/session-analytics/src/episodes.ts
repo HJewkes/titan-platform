@@ -367,13 +367,40 @@ const endKey = (sessionId: string, heuristic: Heuristic): string => `${sessionId
  * compare parsed, because a worker episode can end on an inbound whose ISO form differs from the request's.
  */
 export function staleEpisodeSessions(db: Db, ids?: readonly string[]): string[] {
-  const rows = lastMainRequests(db, ids);
-  const lastRequest = new Map(rows.map((row) => [row.sessionId, Date.parse(row.lastRequestAt)]));
+  return staleRows(db, lastMainRequests(db, ids), episodeEnds(db)).map((row) => row.sessionId);
+}
+
+const MAIN_THREAD_SESSIONS = "SELECT DISTINCT session_id AS sessionId FROM request WHERE is_sidechain = 0 ORDER BY session_id";
+
+/**
+ * `staleEpisodeSessions(db)` read `pageSize` sessions at a time, awaiting `yieldPoint` after each
+ * page. The whole-graph call ranks every request in one statement and held a daemon's event loop
+ * for most of a second (TP-4175). A scoped check agrees with the whole-graph one for the sessions it
+ * names, so the pages, merged back into its order, give the same list.
+ */
+export async function staleEpisodeSessionsYielding(db: Db, yieldPoint: () => Promise<void>, pageSize = 20): Promise<string[]> {
+  const ids = (db.prepare(MAIN_THREAD_SESSIONS).all() as { sessionId: string }[]).map((row) => row.sessionId);
   const ends = episodeEnds(db);
+  const stale: LastMainRequest[] = [];
+  for (let i = 0; i < ids.length; i += pageSize) {
+    stale.push(...staleRows(db, lastMainRequests(db, ids.slice(i, i + pageSize)), ends));
+    await yieldPoint();
+  }
+  return stale.sort(newestRequestFirst).map((row) => row.sessionId);
+}
+
+/** `LAST_MAIN_REQUESTS_ORDER` in JavaScript: SQLite's BINARY collation agrees with code-unit order on these ASCII keys. */
+function newestRequestFirst(a: LastMainRequest, b: LastMainRequest): number {
+  if (a.lastRequestAt !== b.lastRequestAt) return a.lastRequestAt > b.lastRequestAt ? -1 : 1;
+  return a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0;
+}
+
+function staleRows(db: Db, rows: LastMainRequest[], ends: Map<string, number>): LastMainRequest[] {
+  const lastRequest = new Map(rows.map((row) => [row.sessionId, Date.parse(row.lastRequestAt)]));
   const isStale = ({ sessionId, heuristic }: SegmentedSession): boolean => {
     const endedAt = ends.get(endKey(sessionId, heuristic));
     return endedAt === undefined || lastRequest.get(sessionId)! > endedAt;
   };
   const stale = new Set(segmentedSessions(db, [...lastRequest.keys()]).filter(isStale).map((session) => session.sessionId));
-  return rows.map((row) => row.sessionId).filter((id) => stale.has(id));
+  return rows.filter((row) => stale.has(row.sessionId));
 }

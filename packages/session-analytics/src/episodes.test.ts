@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSessionContexts } from "./cost-report-queries.js";
-import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, writeEpisodes, type EpisodeInput } from "./episodes.js";
+import { EPISODE_REQUESTS_SQL, buildEpisodes, readEpisodeInput, staleEpisodeSessions, staleEpisodeSessionsYielding, writeEpisodes, type EpisodeInput } from "./episodes.js";
 import { createFixtureGraph, insertInbound, insertOrigin, insertRequest, insertSession, insertSignal, type FixtureGraph } from "./fixture.js";
 
 const BASE_MS = Date.parse("2026-09-20T10:00:00Z");
@@ -280,6 +280,21 @@ describe("staleEpisodeSessions", () => {
 
     expect(staleEpisodeSessions(fixture.graph.db)).toEqual(["human", "worker"]);
     expect(staleEpisodeSessions(fixture.graph.db, ["worker", "absent"])).toEqual(["worker"]);
+  });
+
+  it("a paged sweep yields after each page and lists what one whole-graph call lists, in its order", async () => {
+    addWorker("older", at(0));
+    insertSession(fixture.graph.db, { sessionId: "newer" });
+    insertRequest(fixture.graph.db, { sessionId: "newer", ts: at(3) });
+    addWorker("current", at(1));
+    writeEpisodes(fixture.graph, ["current"]);
+    let yields = 0;
+
+    const paged = await staleEpisodeSessionsYielding(fixture.graph.db, async () => void (yields += 1), 1);
+
+    expect(paged).toEqual(staleEpisodeSessions(fixture.graph.db));
+    expect(paged).toEqual(["newer", "older"]);
+    expect(yields).toBe(3);
   });
 
   it("a cron-prompted session turns stale once its typed human turns pass two", () => {
