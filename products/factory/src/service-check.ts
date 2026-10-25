@@ -159,11 +159,40 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const answersFromJob = health?.ok === true && healthPid === job.pid;
   if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, jobName(job, ports), health);
   if (!answersFromJob) return unanswered(job, port, probes, healthPid);
+  return withDeployWait(await judgeAnswering(ports, job, health));
+}
+
+async function judgeAnswering(ports: CheckPorts, job: Job, health: Record<string, unknown>): Promise<CheckResult> {
   const running = await judgeRunning(ports, job, health);
   if (!running.ok) return running;
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
   const configured = judged.ok ? withHubSeat(judged, ports) : judged;
   return configured.ok ? withInstalledCli(configured, ports) : configured;
+}
+
+interface DeployWait {
+  sha: string;
+  why: string;
+  until: string | null;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
+function deployWaitOf(health: Record<string, unknown> | null): DeployWait | undefined {
+  const pending = health?.deployPending;
+  if (!isRecord(pending) || !isRecord(pending.waiting)) return undefined;
+  const { sha } = pending;
+  const { why, until } = pending.waiting;
+  if (typeof sha !== "string" || typeof why !== "string") return undefined;
+  return { sha, why, until: typeof until === "string" ? until : null };
+}
+
+/** Whatever the verdict, a deploy the pacer holds says why on the same line, so "main ahead" never reads as stuck (TP-2427). */
+function withDeployWait(result: CheckResult): CheckResult {
+  const wait = deployWaitOf(result.health);
+  if (wait === undefined) return result;
+  const message = `${result.message}; deploy ${wait.sha} waits: ${wait.why}${wait.until === null ? "" : ` until ${wait.until}`}`;
+  return { ...result, message, detail: { ...result.detail, deployWaitSha: wait.sha, deployWaitWhy: wait.why, deployWaitUntil: wait.until } };
 }
 
 function socketDown(job: Job): CheckResult {

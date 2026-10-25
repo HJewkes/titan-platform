@@ -13,9 +13,11 @@ import {
   pacerStatus,
   pacerTick,
   readWanted,
+  withWaiting,
   writeWanted,
   type DeploySpawn,
   type DeployWanted,
+  type PacerMemo,
   type WantedStore,
 } from "./deploy-pacer.js";
 
@@ -43,6 +45,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
+  const waits: PacerMemo = {};
   const world = {
     now: 0,
     busy: options.busy ?? 0,
@@ -67,6 +70,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       paused: () => world.paused,
       spawn,
       log: (line) => void logs.push(line),
+      waits,
     });
   const ticksUntil = (minute: number) => {
     while (world.now < minute * MIN) {
@@ -74,7 +78,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       tick();
     }
   };
-  return { store, spawns, logs, world, merge, tick, ticksUntil, wanted: () => readWanted(STATE, store) };
+  return { store, spawns, logs, waits, world, merge, tick, ticksUntil, wanted: () => readWanted(STATE, store) };
 }
 
 const wantedAt = (sha: string, firstMin: number, lastMin: number, extra: Partial<DeployWanted> = {}): DeployWanted => ({
@@ -141,7 +145,7 @@ describe("deploy pacer", () => {
     const held = decide(wanted, 30, { busy: 2 });
     const capped = decide(wanted, 90, { busy: 2 });
 
-    expect(held).toEqual({ kind: "wait", why: "2 busy run(s)", until: 90 * MIN });
+    expect(held).toEqual({ kind: "wait", why: "2 busy run(s)", until: 90 * MIN, key: "busy runs" });
     expect(capped).toEqual({ kind: "spawn", sha: "a" });
   });
 
@@ -479,7 +483,7 @@ describe(`the ${DEPLOY_NOW_LABEL} express lane`, () => {
     const held = decide(wanted, 1, { busy: 1, express: true });
     const drained = decide(wanted, 2, { busy: 0, express: true });
 
-    expect(held).toEqual({ kind: "wait", why: "1 busy run(s)", until: DEPLOY_MAX_WAIT_MS });
+    expect(held).toEqual({ kind: "wait", why: "1 busy run(s)", until: DEPLOY_MAX_WAIT_MS, key: "busy runs" });
     expect(drained).toEqual({ kind: "spawn", sha: "a", express: true });
   });
 
@@ -495,6 +499,73 @@ describe(`the ${DEPLOY_NOW_LABEL} express lane`, () => {
 
   it("past the quiet window a labelled spawn is an ordinary one", () => {
     expect(decide(wantedAt("a", 0, 0), 20, { express: true })).toEqual({ kind: "spawn", sha: "a" });
+  });
+});
+
+describe("the pacer's wait line (TP-2427)", () => {
+  const at = (minute: number): string => new Date(minute * MIN).toISOString();
+  const waiting = (sha: string, why: string, untilMin?: number): string => `deploy pacer: waiting for ${sha}: ${why}${untilMin === undefined ? "" : ` until ${at(untilMin)}`}`;
+
+  it("a quiet-window wait is logged once across repeated sweeps", () => {
+    const p = pacer();
+    p.merge("a");
+
+    p.ticksUntil(10);
+
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15)]);
+  });
+
+  it("a change to a busy-run wait logs again, and a busy count that moves does not", () => {
+    const p = pacer({ busy: 1 });
+    p.merge("a");
+
+    p.ticksUntil(20);
+    p.world.busy = 2;
+    p.ticksUntil(30);
+
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15), waiting("a", "1 busy run(s)", 90)]);
+    expect(p.spawns).toEqual([]);
+    expect(p.waits.wait).toMatchObject({ sha: "a", why: "2 busy run(s)", until: at(90) });
+  });
+
+  it("idle logs nothing and keeps no wait", () => {
+    const p = pacer();
+
+    p.ticksUntil(5);
+
+    expect(p.logs).toEqual([]);
+    expect(p.waits.wait).toBeUndefined();
+  });
+
+  it("a new sha in the quiet window logs again", () => {
+    const p = pacer();
+    p.merge("a");
+    p.ticksUntil(2);
+
+    p.merge("b");
+    p.ticksUntil(4);
+
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15), waiting("b", "inside the quiet window", 17)]);
+  });
+
+  it("a paused wait logs no until-time, and a wait that ends forgets it", () => {
+    const p = pacer();
+    p.world.paused = true;
+    p.merge("a");
+    p.ticksUntil(3);
+
+    p.world.runningSha = "a";
+    p.ticksUntil(4);
+
+    expect(p.logs).toEqual([waiting("a", "deploys are paused; titan-factory service pause --clear lifts it"), "deploy pacer: cleared a: the service runs a"]);
+    expect(p.waits.wait).toBeUndefined();
+  });
+
+  it("withWaiting attaches the wait only for the same sha, without its change key", () => {
+    const status = pacerStatus(wantedAt("a", 0, 5));
+
+    expect(withWaiting(status, { sha: "b", why: "x", key: "x" })).toEqual(status);
+    expect(withWaiting(status, { sha: "a", why: "1 busy run(s)", until: at(90), key: "busy runs" })).toEqual({ ...status, waiting: { why: "1 busy run(s)", until: at(90) } });
   });
 });
 
