@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -146,35 +146,36 @@ describe("spawnAsCaller", () => {
   it("reports the broker's refusal on stdout verbatim", async () => {
     const bin = fakeAgentChat(`echo "account: none fit (work over ceiling 93%)"\necho "Not spawned."\nexit 1\n`);
 
-    const error = await spawnAsCaller(request(bin), 10_000).catch((e: unknown) => e);
+    const spawn = spawnAsCaller(request(bin), 10_000);
 
-    expect(error).toBeInstanceOf(DispatchError);
-    expect((error as Error).message).toBe(
-      "agent-chat refused the spawn: account: none fit (work over ceiling 93%)\nNot spawned.",
-    );
+    await expect(spawn).rejects.toBeInstanceOf(DispatchError);
+    await expect(spawn).rejects.toMatchObject({
+      message: "agent-chat refused the spawn: account: none fit (work over ceiling 93%)\nNot spawned.",
+    });
   });
 
   it("reports an agent-chat too old to know --account by its usage error", async () => {
     const bin = fakeAgentChat(`echo "error: unknown option '--account'" >&2\nexit 1\n`);
 
-    const error = await spawnAsCaller(request(bin, { account: "least-used" }), 10_000).catch((e: unknown) => e);
+    const spawn = spawnAsCaller(request(bin, { account: "least-used" }), 10_000);
 
-    expect((error as Error).message).toBe("agent-chat refused the spawn: error: unknown option '--account'");
+    await expect(spawn).rejects.toMatchObject({
+      message: "agent-chat refused the spawn: error: unknown option '--account'",
+    });
   });
 
   it("marks an unreachable broker as unavailable, so a retry is safe", async () => {
     const bin = fakeAgentChat(`echo "could not reach or start the agent-chat broker" >&2\nexit 1\n`);
 
-    const error = await spawnAsCaller(request(bin), 10_000).catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(BrokerUnavailableError);
+    await expect(spawnAsCaller(request(bin), 10_000)).rejects.toBeInstanceOf(BrokerUnavailableError);
   });
 
   it("refuses a name agent-chat's registry would reject without starting the CLI", async () => {
     const bin = fakeAgentChat();
 
-    const error = await spawnAsCaller(request(bin, { name: "Bad Name" }), 10_000).catch((e: unknown) => e);
-
-    expect((error as Error).message).toBe("invalid peer name: 'Bad Name'");
+    await expect(spawnAsCaller(request(bin, { name: "Bad Name" }), 10_000)).rejects.toMatchObject({
+      message: "invalid peer name: 'Bad Name'",
+    });
+    expect(existsSync(join(dir, "argv"))).toBe(false);
   });
 });
