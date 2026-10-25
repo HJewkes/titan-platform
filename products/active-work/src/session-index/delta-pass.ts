@@ -8,13 +8,13 @@ import {
   enrichTasks,
   indexTranscript,
   rollupSessions,
+  rollupYielding,
 } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from './graph.js';
 import type { DrainedDirtySet } from './dirty-set.js';
 import { transcriptFromPath } from './transcript-path.js';
 import { taskResolver } from './tasks.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
-import { rollupYielding } from './unfinished-turns.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';

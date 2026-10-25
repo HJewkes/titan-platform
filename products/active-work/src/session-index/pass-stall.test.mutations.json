@@ -20,16 +20,6 @@
       ]
     },
     {
-      "name": "the sliced rollup never yields",
-      "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "      await yieldPoint();\n",
-      "replace": "",
-      "kills": [
-        "session index pass over 60 dirty transcripts a delta pass yields between transcripts and between sessions it rolls up",
-        "session index pass over 60 dirty transcripts a pass resuming unfinished turns yields between sessions it rolls up"
-      ]
-    },
-    {
       "name": "the full pass hands refreshCorpus no yieldPoint",
       "file": "products/active-work/src/session-index/refresh.ts",
       "find": "      facetLimit: options.facetLimit,\n      yieldPoint,\n",
