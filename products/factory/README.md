@@ -275,11 +275,15 @@ stays the local `titan-factory gate resolve`.
 `shepherd owner-release <owner/repo#N> --head <sha>` is the owner's release of an `owner-asked` hold, and the only
 verb that lifts one. Like `gate resolve`, it is local: it opens this host's database and is not in
 `SHEPHERD_COMMAND_MAP`, so no registry, MCP or `/rpc` caller reaches it. Its resolver is `ownerResolver` in
-`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner's presence
-proof and is refused with exit 77 without one; no coordinator allowance or evidence admits it. Any other shell
-is `owner-terminal`. It refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold
-(both exit 65), and lifts only the owner slot, so any other hold stays in force. The release event's actor is
-`owner-terminal:<user>`, plus `proof <id>` when presence was proved.
+`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner to sign a
+`titan-factory.hold-release` statement for this run, PR, head and owner-asked hold, and is refused with exit 77
+without one; no coordinator allowance or evidence admits it. The signed statement is recorded in the gate batch
+ledger, and `ownerRelease` re-verifies that record against the owner key ring and the live hold before it lifts
+anything (`src/owner-release-presence.ts`), then spends it. A bare UUID, a record signed by any other key and a
+statement for another PR, head or hold are all refused with exit 77. Any other shell is `owner-terminal`. It
+refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold (both exit 65), and lifts only
+the owner slot, so any other hold stays in force. The release event's actor is `owner-terminal:<user>`, plus
+`proof gate-batch:<id>` when the owner signed.
 
 ### Escalations
 

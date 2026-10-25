@@ -2,6 +2,7 @@ import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs";
 import { hostname, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { GateResolver } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
 import { holdItemId } from "./hold-release-proof.js";
@@ -134,5 +135,17 @@ describe("ownerRelease checks an owner-release presence proof against the ledger
 
     await expect(w.release("run-1", ownerWith(proof))).rejects.toMatchObject({ code: 77, message: expect.stringContaining("another owner-asked hold") });
     expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OTHER_OWNER });
+  });
+
+  it("an owner statement signed for an earlier owner-asked hold is refused once the same text is placed again", async () => {
+    const w = world();
+    fakeOwnerSigner();
+    const proof = await minted(w, w.heldAt("run-1"));
+    w.store().releaseOwnerHold("run-1");
+    await sleep(5);
+    w.store().hold("run-1", OWNER);
+
+    await expect(w.release("run-1", ownerWith(proof))).rejects.toMatchObject({ code: 77, message: expect.stringContaining("another owner-asked hold") });
+    expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OWNER });
   });
 });
