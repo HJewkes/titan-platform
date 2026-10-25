@@ -94,14 +94,17 @@ export interface RelatedDeps {
 const STALE_INDEX = {
   source: 'index',
   reason: 'stale',
-  message: `the session index did not catch up within ${RELATED_FRESH_BUDGET_MS} ms; recent writes may be missing`,
+  message: `the workspace index did not catch up within ${RELATED_FRESH_BUDGET_MS} ms; recent writes may be missing`,
 };
 
 /** The command's body, with the index and hit log injectable so tests never touch the live ones. */
 export async function runRelated(args: Args, deps: RelatedDeps): Promise<RelatedResult> {
   // Before entering the gate, which would otherwise hold off the very pass this waits on.
-  const ensureFresh = deps.ensureFresh ?? ((budgetMs) => indexFreshness.ensure(budgetMs));
-  const freshness = await ensureFresh(RELATED_FRESH_BUDGET_MS).catch(() => 'stale' as const);
+  const ensureFresh = deps.ensureFresh ?? ((budgetMs, scope) => indexFreshness.ensure(budgetMs, scope));
+  // Related ranks workspace documents only, so a transcript pass would buy it nothing.
+  const freshness = await ensureFresh(RELATED_FRESH_BUDGET_MS, 'workspace').catch(
+    () => 'stale' as const,
+  );
   // A daemon refresh pass holds off while this runs, so the request waits for one chunk at most.
   const release = readerGate.enter();
   try {

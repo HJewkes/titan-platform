@@ -6,6 +6,7 @@ import { closedPort } from "./test-support.js";
 const GATE = "11111111-0000-4000-8000-000000000001/approve-merge";
 const RUN = "22222222-0000-4000-8000-000000000002";
 const HEAD = "abcdef1234567890abcdef1234567890abcdef12";
+const PAUSED_AT = "2026-10-18T12:00:00.000Z";
 
 let server: Server | undefined;
 let seen: { url?: string; body: string; client?: string }[] = [];
@@ -67,6 +68,26 @@ describe("factoryOwnerAction", () => {
     expect(await factoryOwnerAction(port).post("a".repeat(64))).toEqual(outcome);
   });
 
+  it("reads a deploy-pause-clear's answers with the pause each names", async () => {
+    const answers: [number, object][] = [
+      [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null }],
+      [200, { outcome: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" }],
+      [200, { outcome: "already", clearedPause: PAUSED_AT }],
+      [409, { outcome: "moved", currentPause: PAUSED_AT }],
+      [409, { outcome: "refused", reason: "deploying", detail: "a deployer is running" }],
+    ];
+
+    const read = await Promise.all(answers.map(async ([status, body]) => factoryOwnerAction(await factoryAnswering(status, body)).post("a".repeat(64))));
+
+    expect(read).toEqual([
+      { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null },
+      { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "a hand hold" },
+      { status: "already", clearedPause: PAUSED_AT },
+      { status: "moved", currentHead: null, currentPause: PAUSED_AT },
+      { status: "refused", reason: "deploying", detail: "a deployer is running" },
+    ]);
+  });
+
   it.each([
     ["a 503 the factory could not read GitHub", 503, { outcome: "refused", reason: "github-unreadable", detail: "rate limited" }],
     ["a 500", 500, { ok: false, error: "answering the console action failed" }],
@@ -75,6 +96,7 @@ describe("factoryOwnerAction", () => {
     ["a retired with no caveats list", 200, { outcome: "retired", name: "item-42" }],
     ["a 503 the factory could not reach agent-chat", 503, { outcome: "refused", reason: "agent-chat-unavailable", detail: "broker down" }],
     ["a pr-closed with no closed head", 200, { outcome: "pr-closed" }],
+    ["a pause-cleared with no still-held answer", 200, { outcome: "pause-cleared", clearedPause: PAUSED_AT }],
     ["a redirect", 302, {}],
   ])("reads %s as unreachable, so a retry may land", async (_, status, body) => {
     const port = await factoryAnswering(status, body, status === 302 ? { location: "http://127.0.0.1:1/elsewhere" } : {});

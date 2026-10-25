@@ -293,6 +293,49 @@ describe("judge with mutation specs", () => {
     expect(result.mutants).toBeUndefined();
   });
 
+  describe("a source diff whose spec kills tests the head no longer has", () => {
+    const RENAMED = ["math adds", "math adds negatives", "math adds zero"];
+    const sourceSpec = (kills: readonly string[]) =>
+      JSON.stringify({
+        v: 1,
+        mutations: [
+          { name: "minus", file: "src/math.ts", find: "a + b", replace: "a - b", kills: [kills[0]] },
+          { name: "first", file: "src/math.ts", find: "(a: number", replace: "(_: number", kills: [kills[1]] },
+          { name: "second", file: "src/math.ts", find: "b: number)", replace: "_: number)", kills: [kills[2]] },
+        ],
+      });
+
+    function namedReport(status: "passed" | "failed"): string {
+      const failureMessages = status === "failed" ? ["AssertionError: expected -1 to be 3"] : [];
+      const assertionResults = RENAMED.map((fullName) => ({ fullName, status, failureMessages }));
+      return encodeReport({ testResults: [{ name: "src/math.test.ts", status, assertionResults }] });
+    }
+
+    async function judgeSourceDiff(kills: readonly string[]) {
+      const repo = makeRepo();
+      const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST, [SPEC]: sourceSpec(kills) });
+      const failed = namedReport("failed");
+      return parsed(await judge({ repo: repo.dir, base: repo.base, head, reports: { base: failed, baseRerun: failed, head: namedReport("passed") } }));
+    }
+
+    it("three stale kills turn a reproduced verdict into an error naming each kill", async () => {
+      const result = await judgeSourceDiff(["adds", "adds negatives", "adds zero"]);
+
+      expect(result.verdict).toBe("error");
+      expect(result.error).toMatch(/^mutation spec: /);
+      expect(result.mutants?.verdict).toBe("error");
+      for (const kill of ["adds", "adds negatives", "adds zero"]) expect(result.mutants?.error).toContain(`kills ${JSON.stringify(kill)}, which names no test`);
+      expect(result.mutants?.error).toContain('did you mean "math adds negatives"?');
+    });
+
+    it("kills that name head tests leave the reproduced verdict and attach no mutants", async () => {
+      const result = await judgeSourceDiff(RENAMED);
+
+      expect(result.verdict).toBe("reproduced");
+      expect(result.mutants).toBeUndefined();
+    });
+  });
+
   it("attaches no mutants when the diff has no spec", async () => {
     expect((await judgeHead({}, killedMutants)).mutants).toBeUndefined();
   });

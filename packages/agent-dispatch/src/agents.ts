@@ -54,6 +54,11 @@ export interface AgentRow {
   account?: string | null;
   generation: number;
   teleportFrom?: string | null;
+  /**
+   * The agent this one took over from; null when the broker says it took over
+   * from no one. Absent when the broker does not report it, which proves nothing.
+   */
+  predecessor?: string | null;
 }
 
 export interface RetireResult {
@@ -190,6 +195,7 @@ function toAgentRow(value: unknown): AgentRow | undefined {
     ...optionalField(value, "spawnedBy", isStringOrNull),
     ...optionalField(value, "account", isStringOrNull),
     ...optionalField(value, "teleportFrom", isStringOrNull),
+    ...optionalField(value, "predecessor", isStringOrNull),
   };
 }
 

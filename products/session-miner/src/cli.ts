@@ -21,11 +21,14 @@ import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
 import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
 import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
+import { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily, type DailyOptions, type RunnerFor } from "./self-improve/run.js";
 
 export interface CliIo {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   env?: NodeJS.ProcessEnv;
+  /** Where self-improve-daily's model calls go; tests pass a fake so no model is called. */
+  runnerFor?: RunnerFor;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t) };
@@ -161,6 +164,7 @@ interface ToolGapWeeklyFlags {
 function attachScheduled(program: Command, io: CliIo, onExit: (code: number) => void): void {
   attachGraphRefresh(program, io, onExit);
   attachToolGapWeekly(program, io, onExit);
+  attachSelfImproveDaily(program, io, onExit);
 }
 
 function attachToolGapWeekly(program: Command, io: CliIo, onExit: (code: number) => void): void {
@@ -198,5 +202,46 @@ async function toolGapWeeklyFromCli(config: MinerConfig, opts: ToolGapWeeklyFlag
     return result.exitCode;
   } finally {
     ctx.close();
+  }
+}
+
+interface SelfImproveDailyFlags {
+  chunks: string;
+  prompts: string;
+  out: string;
+  maxBudgetUsd: string;
+}
+
+function attachSelfImproveDaily(program: Command, io: CliIo, onExit: (code: number) => void): void {
+  program
+    .command("self-improve-daily")
+    .description("Classify the self-improve chunk files as one resumable workflow run under a run budget")
+    .requiredOption("--chunks <dir>", "dir of <family>_<n>.txt chunk files")
+    .requiredOption("--prompts <dir>", "dir of <family>.md prompts; they stay outside this repo")
+    .requiredOption("--out <dir>", "where <family>.jsonl and summary.json are written")
+    .option("--max-budget-usd <n>", "what the whole run may spend", String(DEFAULT_MAX_BUDGET_USD))
+    .action(async (opts: SelfImproveDailyFlags) => {
+      const options: DailyOptions = { chunks: opts.chunks, prompts: opts.prompts, out: opts.out, maxBudgetUsd: Number(opts.maxBudgetUsd) };
+      const invalid = options.maxBudgetUsd > 0 ? checkInputs(options) : "--max-budget-usd takes a positive number";
+      if (invalid) {
+        io.stderr(`error: ${invalid}\n`);
+        return onExit(EXIT.USAGE);
+      }
+      onExit(await selfImproveDailyFromCli(resolveConfig(configOverrides(program.opts()), io.env), options, io));
+    });
+}
+
+/** Ctrl-C releases the run's lease on the way out, so a rerun resumes at once instead of waiting it out. */
+async function selfImproveDailyFromCli(config: MinerConfig, options: DailyOptions, io: CliIo): Promise<number> {
+  const interrupt = new AbortController();
+  const stop = () => interrupt.abort();
+  process.once("SIGINT", stop).once("SIGTERM", stop);
+  try {
+    const stateDir = path.join(config.stateDir, "self-improve-daily");
+    const result = await runSelfImproveDaily(options, { stateDir, signal: interrupt.signal, ...(io.runnerFor ? { runnerFor: io.runnerFor } : {}) });
+    io.stdout(`${JSON.stringify(result)}\n`);
+    return result.status === "completed" ? EXIT.OK : EXIT.SOFTWARE;
+  } finally {
+    process.off("SIGINT", stop).off("SIGTERM", stop);
   }
 }

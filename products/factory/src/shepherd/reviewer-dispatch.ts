@@ -14,7 +14,10 @@ import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
 
-/** A roster row plus its transcript fields; `predecessor` and `fillTokens` stay absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file. */
+/**
+ * A roster row plus its transcript fields. `predecessor` is present only when agent-chat reports it, so a row without it
+ * proves no lineage; `fillTokens` stays absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file.
+ */
 export interface ReviewerRosterRow extends ReviewerAgent {
   transcriptPath: string | null;
   transcriptExists: boolean;
@@ -136,6 +139,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
+    ...(row.predecessor !== undefined && { predecessor: row.predecessor }),
     ...(row.profile !== "" && { profile: row.profile }),
     ...(row.cwd !== "" && { cwd: row.cwd }),
     ...lastWrittenAt(transcriptPath),

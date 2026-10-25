@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a row with no predecessor reads as one that took over from no one",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "...optionalField(value, \"predecessor\", isStringOrNull),",
+      "replace": "predecessor: null,",
+      "kills": [
+        "listAgents leaves the predecessor absent for a row that carries none, rather than claiming no takeover",
+        "listAgents passes through a predecessor naming the agent it took over from",
+        "listAgents keeps a row whose optional predecessor is 7 but drops that field"
+      ]
+    },
+    {
+      "name": "a predecessor of null is dropped as if the broker never said it",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "...optionalField(value, \"predecessor\", isStringOrNull),",
+      "replace": "...optionalField(value, \"predecessor\", (v: unknown): v is string => typeof v === \"string\"),",
+      "kills": [
+        "listAgents passes through a predecessor naming that it took over from no one"
+      ]
+    }
+  ]
+}

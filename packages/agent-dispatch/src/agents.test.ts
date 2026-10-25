@@ -112,6 +112,7 @@ describe("listAgents", () => {
     ["spawnedBy", false],
     ["account", 1],
     ["teleportFrom", {}],
+    ["predecessor", 7],
   ])("keeps a row whose optional %s is %j but drops that field", async (field, value) => {
     const bin = printing([row({ [field]: value })]);
 
@@ -119,6 +120,25 @@ describe("listAgents", () => {
 
     expect(kept).toEqual(row({ [field]: undefined }));
     expect(kept).not.toHaveProperty(field);
+  });
+
+  it.each([
+    ["the agent it took over from", "item-41"],
+    ["that it took over from no one", null],
+  ])("passes through a predecessor naming %s", async (_scene, predecessor) => {
+    const bin = printing([row({ predecessor })]);
+
+    const [kept] = await listAgents(bin, 10_000);
+
+    expect(kept).toHaveProperty("predecessor", predecessor);
+  });
+
+  it("leaves the predecessor absent for a row that carries none, rather than claiming no takeover", async () => {
+    const bin = printing([row()]);
+
+    const [kept] = await listAgents(bin, 10_000);
+
+    expect(kept).not.toHaveProperty("predecessor");
   });
 
   it("skips a row missing a field it relies on, rather than guessing its status", async () => {

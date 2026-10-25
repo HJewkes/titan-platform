@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { deployLockPath } from "../deploy-lock.js";
+import { deployHoldPath, deployPausePath } from "../deploy-pause.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { OWNER_GATE_POLICY } from "../shepherd/policy.js";
 import { callCommand, shepherdFixture } from "../test-support/shepherd.js";
@@ -9,7 +14,22 @@ const H = "a".repeat(40);
 const MERGE_SHA = "c".repeat(40);
 
 const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+const dirs: string[] = [];
+afterEach(() => {
+  hosts.splice(0).forEach((host) => host.close());
+  dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+  vi.unstubAllEnvs();
+});
+
+/** The deployer's state dir under a fresh XDG state home, which serve reads the pause from. */
+function deployStateDir(): string {
+  const home = mkdtempSync(join(tmpdir(), "factory-preview-state-"));
+  dirs.push(home);
+  vi.stubEnv("XDG_STATE_HOME", home);
+  const stateDir = join(home, "titan-factory");
+  mkdirSync(stateDir);
+  return stateDir;
+}
 
 function world() {
   const fixture = shepherdFixture();
@@ -128,5 +148,34 @@ describe("owner-op.preview", () => {
     const answer = await preview({ kind: "close-pr", repo: REPO, pr: number, headSha: "b".repeat(40) });
 
     expect(answer.ok && answer.data.pr).toMatchObject({ repo: REPO, pr: number, state: "open", head: H, title: "Synthetic stale change" });
+  });
+
+  it("reads a deploy-pause-clear op's pause, the manual hold it leaves, and whether a deployer runs", async () => {
+    const { preview } = world();
+    const stateDir = deployStateDir();
+    const pause = { pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40), from: "e".repeat(40), why: "synthetic watch failure", rollback: "verified" };
+    writeFileSync(deployPausePath(stateDir), JSON.stringify(pause));
+    writeFileSync(deployHoldPath(stateDir), JSON.stringify({ heldAt: pause.pausedAt, reason: "synthetic hand hold" }));
+
+    const answer = await preview({ kind: "deploy-pause-clear", pausedAt: pause.pausedAt, target: pause.target });
+
+    expect(answer.ok && answer.data.pause).toEqual({
+      paused: true,
+      since: pause.pausedAt,
+      reason: "synthetic watch failure",
+      lastRollback: { target: pause.target, from: pause.from, status: "verified" },
+      deployerRunning: false,
+      manualHold: "synthetic hand hold",
+    });
+  });
+
+  it("reads a live pid in the deploy lock as a running deployer", async () => {
+    const { preview } = world();
+    const stateDir = deployStateDir();
+    writeFileSync(deployLockPath(stateDir), String(process.pid));
+
+    const answer = await preview({ kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) });
+
+    expect(answer.ok && answer.data.pause).toMatchObject({ paused: false, deployerRunning: true, manualHold: null });
   });
 });

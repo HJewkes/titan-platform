@@ -47,6 +47,7 @@ let timelines: Record<number, unknown[]>;
 let shepherd: ReturnType<typeof fakeShepherd>;
 let preview: (op: { repo: string; pr: number }) => unknown;
 let agentPreview: () => unknown;
+let pausePreview: () => unknown;
 
 beforeEach(async () => {
   agentPreview = () => retirePreview();
@@ -57,6 +58,7 @@ beforeEach(async () => {
   timelines = {};
   shepherd = fakeShepherd();
   preview = (op) => openPreview(op, HEAD);
+  pausePreview = () => pauseAnswer();
 });
 
 afterEach(async () => {
@@ -193,7 +195,7 @@ async function sources(): Promise<InboxSources> {
     if (command === "shepherd.timeline") return { row: rows.find((each) => each.pr === args.pr), entries: timelines[Number(args.pr)] ?? [] };
     if (command === "shepherd.release") return shepherd.release(args);
     if (command === "owner-op.preview" && z.object({ kind: z.literal("retire-agent") }).safeParse(args.op).success) return agentPreview();
-    if (command === "owner-op.preview") return preview(z.object({ repo: z.string(), pr: z.number() }).parse(args.op));
+    if (command === "owner-op.preview") return z.object({ kind: z.literal("deploy-pause-clear") }).safeParse(args.op).success ? pausePreview() : preview(z.object({ repo: z.string(), pr: z.number() }).parse(args.op));
     throw new Error(`no fixture for ${command}`);
   });
   return { factory: factoryNeeds(factory.port), shepherd: shepherdReader(factory.port), rounds: { dir: path.join(dir, "rounds") }, inbox: { dir: path.join(dir, "deposits") } };
@@ -274,6 +276,25 @@ describe("inbox.act", () => {
     expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.outcome.json`), "utf8"))).toMatchObject({ status: "resolved" });
     expect(calls).toHaveLength(1);
     expect(calls[0]![1]).toMatchObject({ text: "merge", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
+  });
+
+  it("waits for a new head on an sh-sent-back gate: the read-back, record, message and log all say await-new-head, not merge", async () => {
+    const sentBackId = `${RUN_PLAIN}/sh-sent-back`;
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+    ];
+    items = [{ ...gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), id: `gate:${sentBackId}`, sources: [{ system: "hitl", ref: sentBackId }], options: offered }];
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const prepared = ready(await prepare(`gate:${sentBackId}`));
+
+    const { envelope } = await act(`gate:${sentBackId}`, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ gateId: sentBackId, effect: `Wait for the implementer's next pushed head on ${REPO}#1 at 1234567; nothing merges` });
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, message: "Waiting for the implementer's next pushed head; nothing merged" } });
+    expect(JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8"))).toMatchObject({ action: { kind: "resolve-gate", stepId: "sh-sent-back", decision: "await-new-head" } });
+    expect(calls[0]![1]).toMatchObject({ text: "await-new-head" });
   });
 
   it("refuses a bearer credential with 403 and writes no record", async () => {
@@ -745,6 +766,82 @@ describe("inbox retire-agent op", () => {
 
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
     expect(factorySpy.posted).toEqual([]);
+  });
+});
+
+const PAUSED_AT = "2026-10-10T04:00:00.000Z";
+const ROLLED_BACK = "fedcba9876543210fedcba9876543210fedcba98";
+
+/** `owner-op.preview` for a deploy-pause-clear: the failure pause as the factory's `/health` reads it, and no PR. */
+function pauseAnswer(pause: { since?: string; deployerRunning?: boolean; manualHold?: string | null } = {}) {
+  const since = pause.since ?? PAUSED_AT;
+  const lastRollback = { target: ROLLED_BACK, from: HEAD, status: "verified" };
+  return { kind: "deploy-pause-clear", authority: { verdict: "gate", ruleId: "DRS-OR", reason: "read back first" }, pause: { paused: true, since, reason: "the restarted build failed its watch", lastRollback, deployerRunning: pause.deployerRunning ?? false, manualHold: pause.manualHold ?? null } };
+}
+
+describe("inbox deploy-pause-clear op", () => {
+  const op = { kind: "deploy-pause-clear", pausedAt: PAUSED_AT, target: ROLLED_BACK } as const;
+  const PAUSE_ID = depositItemId(ASKER, "op-pause-1");
+  const depositPauseClear = () =>
+    writeDeposit(path.join(dir, "deposits"), { depositId: "op-pause-1", asker: ASKER, kind: "do", door: "one-way", summary: "Clear the fixture deploy pause", context: "", keys: [], command: "titan-factory service pause --clear", op });
+
+  it("reads back the pause and that the pacer resumes, posts the op as deposited, and lands the clear", async () => {
+    await depositPauseClear();
+    const posted: unknown[] = [];
+    const client: OwnerActionClient = {
+      post: async (actionId) => {
+        posted.push(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8")).op);
+        return { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null };
+      },
+    };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(PAUSE_ID));
+    const { envelope } = await act(PAUSE_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ pausedAt: PAUSED_AT, target: ROLLED_BACK, why: "the restarted build failed its watch", effect: `Clear the deploy pause from ${PAUSED_AT} over fedcba9; the deploy pacer resumes and may deploy within about a minute` });
+    expect(posted).toEqual([op]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "pause-cleared" }, message: "Deploy pause cleared; the deploy pacer may deploy within about a minute" } });
+    expect(envelope).not.toMatchObject({ data: { next: expect.anything() } });
+  });
+
+  it("says a manual hold stays held when one stands beside the pause, before and after the clear", async () => {
+    await depositPauseClear();
+    pausePreview = () => pauseAnswer({ manualHold: "synthetic hand hold" });
+    const client: OwnerActionClient = { post: async () => ({ status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "synthetic hand hold" }) };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(PAUSE_ID));
+    const { envelope } = await act(PAUSE_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ manualHold: "synthetic hand hold", effect: `Clear the deploy pause from ${PAUSED_AT} over fedcba9; deploys stay held by hand (synthetic hand hold), which this does not clear` });
+    expect(envelope).toMatchObject({ ok: true, data: { message: "Deploy pause cleared; deploys stay held by hand: synthetic hand hold" } });
+  });
+
+  it("offers no action when a newer pause than the deposit names stands", async () => {
+    await depositPauseClear();
+    pausePreview = () => pauseAnswer({ since: "2026-10-10T05:30:00.000Z" });
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(PAUSE_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: `the deploy pause standing now is from 2026-10-10T05:30:00.000Z over fedcba9; this deposit names the one from ${PAUSED_AT}, so it is not cleared` } });
+  });
+
+  it("offers no action while a deployer is running", async () => {
+    await depositPauseClear();
+    pausePreview = () => pauseAnswer({ deployerRunning: true });
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(PAUSE_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "a deployer is running now; read the item again once it ends" } });
+  });
+
+  it("reads the factory's moved as a newer pause that is kept", async () => {
+    await depositPauseClear();
+    const client: OwnerActionClient = { post: async () => ({ status: "moved", currentHead: null, currentPause: "2026-10-10T05:30:00.000Z" }) };
+    const { prepare, act } = await harness(client);
+
+    const { envelope } = await act(PAUSE_ID, ready(await prepare(PAUSE_ID)).confirm);
+
+    expect(envelope).toMatchObject({ ok: true, data: { message: "A deploy pause from 2026-10-10T05:30:00.000Z stands instead and is kept, read again" } });
   });
 });
 

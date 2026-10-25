@@ -52,6 +52,7 @@ result to `options.env`. It never mutates its argument and never reads
 | `CLAUDE_CODE_OAUTH_TOKEN` | keep | the subscription credential |
 | `CLAUDE_CODE_USE_BEDROCK` / `_VERTEX` / `_FOUNDRY` | keep | a deliberate provider choice |
 | `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | keep | a deliberate opt-out |
+| `CLAUDE_CODE_REMOTE` | keep | the only switch that stops the CLI's subagent warmup in a headless `claude -p` run |
 | `CLAUDE_CODE_MAX_RETRIES` | keep, default `3` | the built-in default of 10 turns an outage into a long silent hang |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | strip unless `allowApiKeyBilling` | either one silently outranks the OAuth token and bills the API account |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (both cases) | strip | leak from the parent shell and re-route the child's API traffic |

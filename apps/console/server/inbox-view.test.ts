@@ -311,6 +311,30 @@ describe("actionFor", () => {
     expect(actionFor(repeated, row(RUN_PLAIN, 1)).action).toMatchObject({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge:2`, stepId: "approve-merge" });
   });
 
+  it("taps an sh-sent-back gate offering await-new-head and abandon with await-new-head alone", () => {
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+    ];
+    const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
+
+    const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
+
+    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head" });
+  });
+
+  it("keeps an sh-sent-back gate whose options lack await-new-head on the terminal", () => {
+    const offered = [
+      { id: "abandon", label: "Abandon the PR" },
+      { id: "waive-proof", label: "Waive the fix-proof" },
+    ];
+    const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
+
+    const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
+
+    expect(action).toMatchObject({ kind: "terminal", command: `titan-factory gate resolve ${RUN_PLAIN} sh-sent-back --json '<payload>'` });
+  });
+
   it("leaves an agent's approval request on its own session", () => {
     const approval = item("chat:msg-8", { sources: [{ system: "agent-chat", ref: "msg-8" }], kind: "approve" });
 
@@ -354,10 +378,16 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
   });
 
-  it("stays on the terminal for a kind with no console tap yet", () => {
-    const { action } = actionFor(deposited({ kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "factory" }), undefined);
+  it("becomes an owner-op tap for a deploy-pause-clear", () => {
+    const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) } as const;
 
-    expect(action.kind === "terminal" && action.reason).toBe("a deploy-pause-clear op has no console tap yet; run its command");
+    expect(actionFor(deposited(pauseOp), undefined).action).toEqual({ kind: "owner-op", op: pauseOp });
+  });
+
+  it("stays on the terminal for a kind with no console tap yet", () => {
+    const { action } = actionFor(deposited({ kind: "factory-config-set", path: "shepherd.spawnGate.load5", value: 4 }), undefined);
+
+    expect(action.kind === "terminal" && action.reason).toBe("a factory-config-set op has no console tap yet; run its command");
   });
 
   it("holds a gate op with no live row to Morning, as a rowless hitl gate is", () => {

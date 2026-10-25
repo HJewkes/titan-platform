@@ -130,6 +130,26 @@ describe("watchTree", () => {
     expect(outcome).toBe(false);
   });
 
+  it("never fires for writes under an ignored directory", { timeout: 15_000 }, async () => {
+    const state = path.join(root, ".state", "db");
+    await mkdir(state, { recursive: true });
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, {
+      debounceMs: DEBOUNCE_MS,
+      ignore: [path.join(root, ".state")],
+    });
+    expect(await watcher.whenWatching(root)).toBe(true);
+
+    await writeFile(path.join(root, ".state", "graph.sqlite3"), "rows");
+    await writeFile(path.join(state, "graph.sqlite3-wal"), "rows");
+    await mkdir(path.join(root, ".state", "fresh"));
+    await sleep(DEBOUNCE_MS * 10);
+
+    expect(counter.count).toBe(0);
+    expect(watcher.isWatching(state)).toBe(false);
+    await writeUntilChanged(root, counter);
+  });
+
   it("stops firing after close", async () => {
     const counter = { count: 0 };
     watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });

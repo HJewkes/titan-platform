@@ -19,7 +19,7 @@ import type { ShepherdSource } from "./shepherd.js";
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
 type InboxAction =
-  | { kind: "resolve-gate"; gateId: string; runId: string; stepId: string; repo: string; pr: number; headSha: string; decision: "merge" }
+  | { kind: "resolve-gate"; gateId: string; runId: string; stepId: string; repo: string; pr: number; headSha: string; decision: ConsoleDecision }
   | { kind: "owner-release"; repo: string; pr: number; headSha: string }
   | { kind: "hold-release"; repo: string; pr: number; headSha: string; holdClass: string }
   | { kind: "owner-op"; op: OwnerOp }
@@ -59,13 +59,20 @@ export interface InboxSources extends ApprovalsSources {
   now?: () => number;
 }
 
-const MERGE_STEP = "approve-merge";
+/**
+ * The gate steps the console taps and the one decision each tap gives, as data the factory's `CONSOLE_STEPS` mirrors and
+ * re-checks against the gate's own schema. An sh-sent-back tap only waits for the implementer's next pushed head; it merges
+ * nothing and abandons nothing (TP-3949). TP-3620 T1 adds `waive-proof` here.
+ */
+const CONSOLE_DECISIONS = { "approve-merge": ["merge"], "sh-sent-back": ["await-new-head"] } as const satisfies Record<string, readonly string[]>;
+type ConsoleStep = keyof typeof CONSOLE_DECISIONS;
+export type ConsoleDecision = (typeof CONSOLE_DECISIONS)[ConsoleStep][number];
 /** The factory route refuses these to an owner-remote resolver (`batchRefusal`, `DEVICE_RULE`), so the console offers no tap. */
 const HARDWARE_STEP = /device|hardware/;
 const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
-const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-agent", "close-pr"]);
+const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-agent", "close-pr", "deploy-pause-clear"]);
 /**
  * TP-3918: a gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
  * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
@@ -95,11 +102,22 @@ const releaseCommand = (row: WatchRow, holdClass: string): string =>
     ? `titan-factory shepherd owner-release ${row.repo}#${row.pr} --head ${row.headSha}`
     : `titan-factory shepherd release ${row.repo}#${row.pr} --head ${row.headSha} --class ${holdClass}`;
 
-function gateStepAction(stepId: string, command: string | undefined): InboxAction | undefined {
+const isConsoleStep = (stepId: string): stepId is ConsoleStep => Object.hasOwn(CONSOLE_DECISIONS, stepId);
+
+/**
+ * The step's decision, when the gate offers it: an item with options lists exactly the gate's schema, and one with none
+ * (a gate of several questions) leaves the check to the factory, which reads the schema itself.
+ */
+function offeredDecision(item: OwnerItem, stepId: ConsoleStep): ConsoleDecision | undefined {
+  return CONSOLE_DECISIONS[stepId].find((decision) => item.options?.some((option) => option.id === decision) ?? true);
+}
+
+function gateStepDecision(item: OwnerItem, stepId: string): ConsoleDecision | InboxAction {
+  const { command } = item;
   if (HARDWARE_STEP.test(stepId)) return terminal("a device or hardware gate answers only at the device's own terminal", command);
   if (stepId === AFTER_STAGES_STEP) return terminal("an after-stages gate deploys or publishes after the merge; the factory refuses it to the console", command);
-  if (stepId !== MERGE_STEP) return terminal(`the console answers approve-merge gates; ${stepId} is answered with its command`, command);
-  return undefined;
+  if (!isConsoleStep(stepId)) return terminal(`the console answers approve-merge and sh-sent-back gates; ${stepId} is answered with its command`, command);
+  return offeredDecision(item, stepId) ?? terminal(`this ${stepId} gate offers no ${CONSOLE_DECISIONS[stepId].join(" or ")}; answer it with its command`, command);
 }
 
 const isDiverged = (row: WatchRow | undefined): boolean => row === undefined || REPLAY_DIVERGED.test(row.stalled?.reason ?? "");
@@ -107,11 +125,11 @@ const isDiverged = (row: WatchRow | undefined): boolean => row === undefined || 
 function gateAction(item: OwnerItem, gateId: string, row: WatchRow | undefined): InboxAction {
   const parts = gateParts(gateId);
   if (parts === undefined) return terminal("the gate names no run, so the console cannot read its PR back", item.command);
-  const refused = gateStepAction(parts.stepId, item.command);
-  if (refused !== undefined) return refused;
+  const decision = gateStepDecision(item, parts.stepId);
+  if (typeof decision !== "string") return decision;
   if (isDiverged(row)) return terminal(DIVERGED_HOLD, item.command);
   if (row!.pr === null || row!.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
-  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row!.repo, pr: row!.pr, headSha: row!.headSha, decision: "merge" };
+  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row!.repo, pr: row!.pr, headSha: row!.headSha, decision };
 }
 
 function holdAction(row: WatchRow, holdClass: string | undefined): InboxAction {

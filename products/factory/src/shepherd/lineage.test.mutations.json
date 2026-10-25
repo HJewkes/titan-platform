@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a teleport generation naming its own seat as spawner counts as a loop",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (parent === null || parent === undefined || parent === name) continue;",
+      "replace": "if (parent === null || parent === undefined) continue;",
+      "kills": [
+        "provablyIndependent clears a reviewer whose spawning seat teleported, so every generation of it names itself as spawner"
+      ]
+    },
+    {
+      "name": "a seat with several generations skips every parent, not only its own name",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (parent === null || parent === undefined || parent === name) continue;",
+      "replace": "if (parent === null || parent === undefined || rows.length > 1) continue;",
+      "kills": [
+        "provablyIndependent refuses a reviewer whose teleported spawner was itself spawned by the implementer in one generation"
+      ]
+    },
+    {
+      "name": "a parent already on the path is skipped instead of refused",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (parent === null || parent === undefined || parent === name) continue;",
+      "replace": "if (parent === null || parent === undefined || parent === name || path.includes(parent)) continue;",
+      "kills": [
+        "provablyIndependent refuses a reviewer whose lineage loops through two other names"
+      ]
+    },
+    {
+      "name": "a row with no stored lineage is trusted",
+      "file": "products/factory/src/shepherd/lineage.ts",
+      "find": "if (rows.length === 0 || rows.some((agent) => agent.predecessor === undefined)) return undefined;",
+      "replace": "if (rows.length === 0) return undefined;",
+      "kills": [
+        "provablyIndependent refuses a reviewer whose spawner has no stored lineage"
+      ]
+    }
+  ]
+}
