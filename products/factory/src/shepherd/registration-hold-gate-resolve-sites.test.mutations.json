@@ -24,6 +24,16 @@
       "find": "inGateResolveCheck(path) || (previousPath !== undefined && inGateResolveCheck(previousPath))",
       "replace": "inGateResolveCheck(path)",
       "kills": ["the G10 hold Shepherd places at registration on the gate-resolve closure check holds a rename of gate-resolve-sites.test.ts out of the check g10-adversary by its old path"]
+    },
+    {
+      "name": "the gate-resolve check matches path case exactly",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "matchesGateResolveCheck(path.toLowerCase())",
+      "replace": "matchesGateResolveCheck(path)",
+      "kills": [
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only a closure helper named in another case g10-adversary",
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a rename that changes only the case of a closure helper g10-adversary"
+      ]
     }
   ]
 }
