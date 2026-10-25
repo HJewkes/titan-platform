@@ -21,6 +21,19 @@ const GRAPHQL_WRITE: SettingsWrite = { route: "rulesets", scope: "unknown" };
 const namesRulesetMutation = (texts: string[], fields: WordToken[] = []) =>
   graphqlBranchWrites(texts, fields).mutations.some((m) => RULESET_MUTATIONS.has(m));
 
+const literalUrl = (value: string): WordToken =>
+  ({ type: "word", value, typed: value, dynamic: false, quoted: true, spliced: false, computed: false, refs: [], subs: [], cuts: [] });
+
+/**
+ * gh resolves a relative endpoint against the API root, and GHES serves GraphQL under `api/`, so the endpoint reaches
+ * GraphQL whenever the same path would for curl: `graphql.json`, `graphql;x` and `%67raphql` included.
+ */
+function ghReachesGraphql(endpoint: string): boolean {
+  if (isGraphqlEndpoint(endpoint)) return true;
+  const path = endpoint.replace(/^[a-z][\w+.-]*:\/\/[^/]*/i, "").replace(/^\/*(?:api\/)?/i, "");
+  return isGitHubGraphql(literalUrl(`https://api.github.com/${path}`));
+}
+
 /**
  * Each `query=` field's text as written. An expansion inside it only adds text, so a mutation name written around it
  * still reaches GitHub, and gh's placeholder fills leave the name alone. A query read from a file or under a run-time
@@ -39,16 +52,22 @@ function ghSettings(cmd: SimpleCommand): ClassifiedAction[] {
   if (line.hidden || line.path.join(" ") !== "api") return [];
   const { endpoint, method, fields } = ghApiRequest(line.leaf);
   if (endpoint === null) return [];
-  if (isGraphqlEndpoint(endpoint)) {
+  if (ghReachesGraphql(endpoint)) {
     return namesRulesetMutation(queryTexts(fields), fields) ? [classified("bash.config.gh-api-graphql-ruleset", subject(GRAPHQL_WRITE))] : [];
   }
   const write = apiSettingsWrite(endpoint, method);
   return write ? [classified("bash.config.gh-api-ruleset", subject(write))] : [];
 }
 
-/** A body read from a file or known only at run time is not read here; TP-2720 F3 owns that reading. */
-const curlGraphqlWrite = (request: HttpRequest) =>
-  request.urls.some(isGitHubGraphql) && namesRulesetMutation(graphqlQueries(request.bodies) ?? []);
+/**
+ * A body read from a file, known only at run time, or sent as httpie items, which are never read, may carry any
+ * mutation, so on GitHub's GraphQL endpoint it is an unknown ruleset write.
+ */
+function curlGraphqlWrite(request: HttpRequest): boolean {
+  if (!request.urls.some(isGitHubGraphql)) return false;
+  const queries = graphqlQueries(request.bodies);
+  return queries === null || namesRulesetMutation(queries);
+}
 
 /** A run-time URL is already denied as `bash.merge.curl-api` when it may reach the GitHub API. */
 function httpSettings(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
