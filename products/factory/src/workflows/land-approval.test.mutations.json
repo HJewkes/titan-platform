@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the prompt leaves out the D21 card",
+      "file": "products/factory/src/workflows/land-approval.ts",
+      "find": "const policyLines = ciPolicy ? [\"\", ...ciPolicyCardLines(repo, pr, ciPolicy)] : [];",
+      "replace": "const policyLines: string[] = [];",
+      "kills": [
+        "the approve-merge prompt on a ci-policy-weakened gate (TP-2407 c) names Class D21, the weakened keys and each before→after line, and sends the owner to the diff for other"
+      ]
+    },
+    {
+      "name": "the card is read from evidence collected at another head",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "if (evidence?.head !== headSha || evidence.ciPolicy?.kind !== \"weakened\") return undefined;",
+      "replace": "if (evidence?.ciPolicy?.kind !== \"weakened\") return undefined;",
+      "kills": [
+        "the approve-merge prompt on a ci-policy-weakened gate (TP-2407 c) shows no D21 card on a gate at another head than the evidence was collected at"
+      ]
+    },
+    {
+      "name": "a key with no lines is not sent to the diff",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "const unshown = card.keys.filter((key) => !shown.has(key));",
+      "replace": "const unshown: string[] = [];",
+      "kills": [
+        "the approve-merge prompt on a ci-policy-weakened gate (TP-2407 c) names Class D21, the weakened keys and each before→after line, and sends the owner to the diff for other"
+      ]
+    },
+    {
+      "name": "the summary drops the D21 class",
+      "file": "products/factory/src/gate-brief.ts",
+      "find": "const detail = target.ciPolicy ? `${ciPolicyClassLine(target.ciPolicy)}. ${target.reason}` : target.reason;",
+      "replace": "const detail = target.reason;",
+      "kills": [
+        "the approve-merge prompt on a ci-policy-weakened gate (TP-2407 c) names Class D21, the weakened keys and each before→after line, and sends the owner to the diff for other"
+      ]
+    }
+  ]
+}

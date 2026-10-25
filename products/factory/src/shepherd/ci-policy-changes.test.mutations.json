@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "base and head swap in the line diff",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "lineDiff(keyLines(key, file.path, file.before), keyLines(key, file.path, file.after))",
+      "replace": "lineDiff(keyLines(key, file.path, file.after), keyLines(key, file.path, file.before))",
+      "kills": [
+        "ciPolicyChanges shows a permission scope narrowed from write to read as a removed and an added line",
+        "ciPolicyChanges swapping base and head swaps removed and added"
+      ]
+    },
+    {
+      "name": "matchers read lines before escapes are stripped",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "const lines = text.split(/\\r?\\n/).map(cleanLine);",
+      "replace": "const lines = text.split(/\\r?\\n/);",
+      "kills": [
+        "ciPolicyChanges strips an ANSI escape, a bidi override and a carriage return from an author's head line and its path"
+      ]
+    },
+    {
+      "name": "the per-file line budget is never spent",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "    left -= kept.length;\n",
+      "replace": "",
+      "kills": [
+        "ciPolicyChanges caps a file at one line budget shared by its keys and counts the lines it left out"
+      ]
+    },
+    {
+      "name": "a trailing comma counts as a changed line",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
+      "find": "const diffKey = (line: string): string => line.replace(/,$/, \"\");",
+      "replace": "const diffKey = (line: string): string => line;",
+      "kills": [
+        "ciPolicyChanges reads the required context strings of .github/required-checks.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the record drops the D21 lines",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "    ...(changes && { ciPolicyChanges: changes }),\n",
+      "replace": "",
+      "kills": [
+        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records the weakened key's lines"
+      ]
+    },
+    {
+      "name": "the head side reads the base ref",
+      "file": "products/factory/src/shepherd/ci-policy-read.ts",
+      "find": "const at = { repo: input.repo, base: baseRef, head: input.head };",
+      "replace": "const at = { repo: input.repo, base: baseRef, head: baseRef };",
+      "kills": [
+        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) reads each changed .github/ file at the base and the head and records the weakened key's lines"
+      ]
+    },
+    {
+      "name": "a failed file read is not named unread",
+      "file": "products/factory/src/shepherd/ci-policy-read.ts",
+      "find": "const unreadFacts = [...unread, ...policy.unread]",
+      "replace": "const unreadFacts = [...unread]",
+      "kills": [
+        "the D21 card's lines on a weakened CI-policy line (TP-2407 c) still gates when a file read fails, naming the unread file in unreadFacts and not the error's text"
+      ]
+    }
+  ]
+}

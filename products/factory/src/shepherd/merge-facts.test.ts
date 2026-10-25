@@ -779,6 +779,46 @@ describe("a fact that cannot be read", () => {
   });
 });
 
+describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => {
+  const CI = ".github/workflows/ci.yml";
+  const WEAKENED = { ciPolicy: { kind: "weakened" as const, keys: ["permissions" as const] } };
+  const seeded = () => {
+    const fake = world([{ path: CI, status: "modified" }, { path: "src/a.ts", status: "modified" }]);
+    fake.files.set(`main:${CI}`, { content: "permissions:\n  contents: write\n", blobSha: "b1" });
+    fake.files.set(`${HEAD}:${CI}`, { content: "permissions:\n  contents: read\n", blobSha: "b2" });
+    return fake;
+  };
+
+  it("reads each changed .github/ file at the base and the head and records the weakened key's lines", async () => {
+    const evidence = await collect(seeded(), WEAKENED);
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, key: "permissions", removed: ["  contents: write"], added: ["  contents: read"], omitted: 0 }]);
+  });
+
+  it("reads no file for an unchanged line", async () => {
+    const fake = seeded();
+    const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
+
+    const evidence = await mergeEvidence(port, { ...input, ciPolicy: { kind: "unchanged" } }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(port.getFile).not.toHaveBeenCalled();
+    expect(evidence.record).not.toHaveProperty("ciPolicyChanges");
+  });
+
+  it("still gates when a file read fails, naming the unread file in unreadFacts and not the error's text", async () => {
+    const port = { ...githubPort(seeded().wire), getFile: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`]);
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.decision.reason).toContain(CI);
+    expect(evidence.record.decision.reason).not.toContain("/internal");
+    expect(evidence.record.ciPolicyChanges).toEqual([]);
+  });
+});
+
 describe("approve-merge under merge:auto", () => {
   it("merges with one merge-policy record naming authority/MRG-AU-RV, the evidence record, no hitl row and one comment", async () => {
     const fake = world();

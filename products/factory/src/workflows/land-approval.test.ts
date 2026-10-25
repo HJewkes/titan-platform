@@ -9,7 +9,9 @@ import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { DEVICE_CHECK, LAND_STEPS, SET_ANSWER_ORIGIN, land, type ApprovalAnswer, type ApprovalQuestion, type AskApproval, type LandOutcome } from "./land.js";
-import { approveMergeGate } from "./land-approval.js";
+import { shepherdLandOptions, type EffectivePolicy } from "../shepherd/policy.js";
+import type { Verdict } from "../shepherd/phases.js";
+import { approveMergeAsk, approveMergeGate } from "./land-approval.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];
@@ -103,6 +105,35 @@ describe("approveMergeGate", () => {
     ["a merge the approved set answered", { decision: "merge", headSha: H1, origin: SET_ANSWER_ORIGIN }, "merge-by-set"],
   ])("reads %s with its source", async (_name, data, expected) => {
     expect(await approveMergeGate(RULE)(answering(data), QUESTION)).toBe(expected);
+  });
+});
+
+describe("the approve-merge prompt on a ci-policy-weakened gate (TP-2407 c)", () => {
+  const RULE: PolicyRule = { table: "shepherd-merge-guard", rowId: "ci-policy-weakened", version: 1 };
+  const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: false, seat: "trusted-seat" };
+  const CI = ".github/workflows/ci.yml";
+  const change = { path: CI, key: "permissions", removed: ["  contents: write"], added: ["  contents: read"], omitted: 0 };
+  const evidence = { head: H1, merge: { changedPaths: [CI] }, record: { ciPolicyChanges: [change] }, ciPolicy: { kind: "weakened", keys: ["permissions", "other"] } };
+  /** Evidence collected at H1 under a MERGE at any head, so only the accessor's own head check keeps it off another head's gate. */
+  const weakenedAt = (headSha: string): Verdict | undefined => ({ kind: "MERGE", headSha, evidence });
+  const ask = (headSha: string) => approveMergeAsk(RULE, shepherdLandOptions(() => AUTO, weakenedAt), { repo: REPO, pr: 1, headSha, round: 0, reason: "CI-policy weakened: permissions, other" });
+
+  it("names Class D21, the weakened keys and each before→after line, and sends the owner to the diff for other", () => {
+    const { prompt, brief } = ask(H1);
+
+    expect(prompt).toContain("Class D21 (CI policy weakened): permissions, other");
+    expect(prompt).toContain(`${CI} (permissions):\n-   contents: write\n+   contents: read`);
+    expect(prompt).toContain("No before→after lines read for other; read the diff.");
+    expect(prompt).toContain(`https://github.com/${REPO}/pull/1/files`);
+    expect(brief.summary).toContain("Class D21 (CI policy weakened): permissions, other");
+  });
+
+  it("shows no D21 card on a gate at another head than the evidence was collected at", () => {
+    const { prompt, brief } = ask(H2);
+
+    expect(prompt).not.toContain("D21");
+    expect(prompt).not.toContain("contents: write");
+    expect(brief.summary).not.toContain("D21");
   });
 });
 

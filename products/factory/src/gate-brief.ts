@@ -1,6 +1,7 @@
 import type { GateBrief, GateQuestion } from "@titan-design/hitl";
 import type { OwnerBrief } from "@titan-design/review-panel";
 import { z } from "zod";
+import type { CiPolicyCard, CiPolicyChange } from "./shepherd/ci-policy-changes.js";
 import type { Verdict } from "./shepherd/phases.js";
 import type { FailingCheck } from "./workflows/land-ci.js";
 
@@ -87,12 +88,33 @@ export function skillChangeNote(repo: string, pr: number, skillPaths: readonly s
   return `Review the repo skill diff: ${prFilesEvidence(repo, pr)}. Repo skill changes: ${shownSkillPaths(skillPaths)}.`;
 }
 
+/** The class line both the summary and the prompt lead with; the keys come from the parser's closed set, never free text. */
+const ciPolicyClassLine = (card: CiPolicyCard): string => `Class D21 (CI policy weakened): ${card.keys.join(", ")}`;
+
+function changeLines(change: CiPolicyChange): string[] {
+  const more = change.omitted > 0 ? [`… ${change.omitted} more lines; see the diff`] : [];
+  return [`${change.path} (${change.key}):`, ...change.removed.map((line) => `- ${line}`), ...change.added.map((line) => `+ ${line}`), ...more];
+}
+
+/**
+ * The D21 card's prompt lines: the class, then each weakened key's removed and added lines per file. A key with no matcher
+ * (`other`), or with no line found, sends the owner to the diff, which the last line always links.
+ */
+export function ciPolicyCardLines(repo: string, pr: number, card: CiPolicyCard): string[] {
+  const shown = new Set(card.changes.map((change) => change.key));
+  const unshown = card.keys.filter((key) => !shown.has(key));
+  const seeDiff = unshown.length > 0 ? [`No before→after lines read for ${unshown.join(", ")}; read the diff.`] : [];
+  return [ciPolicyClassLine(card), ...card.changes.flatMap(changeLines), ...seeDiff, `Diff: ${prFilesEvidence(repo, pr)}`];
+}
+
 interface ApproveMergeTarget extends PrHead {
   reason: string;
   reviewedMerge: boolean;
   carriedFrom?: string;
   ownerBrief?: OwnerBrief;
   skillPaths?: readonly string[];
+  /** The D21 card when the reviewer's MERGE says CI policy is weakened; its class line leads the summary's detail. */
+  ciPolicy?: CiPolicyCard;
   /** Offers `send-back`, whose answer must carry the owner's note; only `shepherd.consoleAnswers` turns it on. */
   sendBack?: boolean;
 }
@@ -149,7 +171,8 @@ export function approveMergeDecision(target: ApproveMergeTarget) {
 function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
   const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
   const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
-  return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
+  const detail = target.ciPolicy ? `${ciPolicyClassLine(target.ciPolicy)}. ${target.reason}` : target.reason;
+  return brief(summarize(`Merge ${where(target)}? CI green.`, detail, verdict), prEvidence(target.repo, target.pr), questions);
 }
 
 /**

@@ -9,7 +9,8 @@ import { headWaits } from "./freeze-wait.js";
 import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
-import { CiPolicySchema } from "./review-schemas.js";
+import type { CiPolicyCard } from "./ci-policy-changes.js";
+import { CiPolicyChangesSchema, CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
@@ -192,7 +193,7 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ciPolicyAt: (headSha) => ciPolicyCardAt(headSha, current) };
 }
 
 /**
@@ -279,6 +280,13 @@ function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) =
 /** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
 function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
   return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
+}
+
+/** The D21 card from the MERGE evidence collected at exactly that head; a line other than weakened shows none. */
+function ciPolicyCardAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): CiPolicyCard | undefined {
+  const evidence = mergeEvidenceAt(headSha, verdictFor);
+  if (evidence?.head !== headSha || evidence.ciPolicy?.kind !== "weakened") return undefined;
+  return { keys: evidence.ciPolicy.keys, changes: CiPolicyChangesSchema.parse(evidence.record.ciPolicyChanges) ?? [] };
 }
 
 function skillNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
