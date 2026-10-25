@@ -22,7 +22,7 @@
     "test:affected": "node scripts/test-affected.mjs",
     "verify:changed": "node scripts/verify-changed.mjs",
     "test:scope": "node scripts/test-scope.mjs",
-    "test:watch": "vitest --project threads --project forks",
+    "test:watch": "vitest --project threads --project forks --project active-work --project active-work-forks",
     "env:doctor": "node scripts/env-doctor.mjs",
     "dag:check": "node scripts/package-cycles.mjs && node scripts/graph-gate.mjs",
     "dag:check:graph": "node scripts/package-cycles.mjs && node scripts/dag-check-self.mjs",
