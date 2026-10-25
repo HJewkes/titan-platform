@@ -53,3 +53,23 @@ export function mergeBaseExceptionTable(db: Db, stamp: () => string): MergeBaseE
 export function repointMergeBaseException(db: Db, runId: string, newRunId: string): void {
   db.prepare("UPDATE shepherd_merge_base_exception SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
 }
+
+/** What the wake reads the exception through, so this table needs no import of the store that holds it. */
+interface ExceptionSource {
+  get(): { mergeBaseExceptions(): MergeBaseExceptions };
+}
+
+/** An exception that cannot be read is none: the fixer keeps the line against merging the base, and the wake still goes out. */
+function readException(store: ExceptionSource, runId: string): MergeBaseException | undefined {
+  try {
+    return store.get().mergeBaseExceptions().of(runId);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The wake's facts with the run's exception, if it has one. */
+export function withMergeBaseException<Facts extends { runId: string }>(facts: Facts, store: ExceptionSource): Facts & { mergeBase?: MergeBaseException } {
+  const mergeBase = readException(store, facts.runId);
+  return mergeBase === undefined ? facts : { ...facts, mergeBase };
+}
