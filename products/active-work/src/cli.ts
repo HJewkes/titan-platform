@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import type { ZodSchema, ZodTypeAny } from 'zod';
 import { registry } from './registry/index.js';
 import './commands/index.js'; // populates the registry via side effect
@@ -245,6 +245,21 @@ function collectRepeated(value: string, previous: string[] | undefined): string[
   return [...(previous ?? []), value];
 }
 
+/** Single-tag flags: commander would keep only the last of a repeat and drop the rest silently. */
+const SINGLE_USE_OPTIONS: ReadonlySet<string> = new Set([
+  'task.edit:add_tag',
+  'task.edit:remove_tag',
+]);
+
+function refuseRepeat(flag: string): (value: string, previous: string | undefined) => string {
+  return (value, previous) => {
+    if (previous !== undefined) {
+      throw new InvalidArgumentError(`${flag} takes one tag per call; repeat the command instead`);
+    }
+    return value;
+  };
+}
+
 /** Attach one registry command as a sub-command under its appropriate parent. */
 function attachCommand(root: Command, cmd: AnyCommand): void {
   const parts = splitName(cmd.name);
@@ -270,6 +285,8 @@ function attachCommand(root: Command, cmd: AnyCommand): void {
         sub.requiredOption(flags, opt.description);
       } else if (isArray) {
         sub.option(flags, opt.description, collectRepeated);
+      } else if (SINGLE_USE_OPTIONS.has(`${cmd.name}:${key}`)) {
+        sub.option(flags, opt.description, refuseRepeat(opt.long));
       } else {
         sub.option(flags, opt.description);
       }
