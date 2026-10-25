@@ -60,9 +60,8 @@ describe("write verbs in an agent env with no serve answering", () => {
     ["shepherd resync", (port) => ["shepherd", "resync", "--port", port]],
     ["shepherd repair-go", (port) => ["shepherd", "repair-go", `${REPO}#1`, "--port", port]],
     ["shepherd repair-stop", (port) => ["shepherd", "repair-stop", `${REPO}#1`, "--reason", "demo", "--port", port]],
-    ["resume", () => ["resume"]],
-    ["gate resolve", () => ["gate", "resolve", "run-1", "step-1", "--json", "{}"]],
-    ["toolchain fanout", () => ["toolchain", "fanout"]],
+    ["resume", (port) => ["resume", "--port", port]],
+    ["toolchain fanout", (port) => ["toolchain", "fanout", "--port", port]],
   ];
 
   it.each(writes)("%s exits UNAVAILABLE and makes no GitHub call", async (verb, argvOf) => {
@@ -75,14 +74,30 @@ describe("write verbs in an agent env with no serve answering", () => {
     expect(calls).toEqual([]);
   });
 
-  it("resume stays refused while something answers /health, since it has no serve route", async () => {
+  it("gate resolve in an agent env is left to its resolver policy, not refused for want of serve", async () => {
     const { deps, dbPath } = countingSetup();
-    const serve = createHttp((_req, res) => void res.writeHead(200, { "content-type": "application/json" }).end("{}"));
+
+    const result = await cli(["--db", dbPath, "gate", "resolve", "run-1", "step-1", "--json", "{}"], deps, AGENT);
+
+    expect(result.code).not.toBe(EXIT.UNAVAILABLE);
+    expect(result.err).not.toContain("an agent env refuses");
+  });
+
+  it("land hands a slow but answering serve the write instead of running it in-process", async () => {
+    const { deps, dbPath, calls } = countingSetup();
+    const serve = createHttp((req, res) => {
+      const reply = (): void => void res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, data: { runId: "run-9", status: "running", created: true } }));
+      if (req.url === "/health") setTimeout(reply, 700);
+      else reply();
+    });
     await new Promise<void>((resolve) => serve.listen(0, "127.0.0.1", resolve));
+    const address = serve.address();
+    const port = String(address !== null && typeof address === "object" ? address.port : 0);
 
-    const result = await cli(["--db", dbPath, "resume"], deps, AGENT).finally(() => serve.close());
+    const result = await cli(["--db", dbPath, "land", `${REPO}#1`, "--port", port], { ...deps, serveWaitMs: 5000 }, AGENT).finally(() => serve.close());
 
-    expect(result.code).toBe(EXIT.UNAVAILABLE);
+    expect(result.out).toContain("on titan-factory serve");
+    expect(calls).toEqual([]);
   });
 
   it("repair-stops, a read, still falls back to the database here", async () => {

@@ -1,7 +1,9 @@
 import type { Command } from "commander";
 import type { Verbs } from "./cli.js";
-import { refusedAgentWrite } from "./cli-agent-env.js";
+import { refusedWithoutServe } from "./cli-agent-env.js";
+import { parsePort } from "./cli-options.js";
 import { EXIT } from "./exit-codes.js";
+import { FACTORY_PORT } from "./serve.js";
 import type { FactoryRoutes } from "./host.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { planAdoptions, sweepToolchain, type ToolchainPlans, type ToolchainSweepNote } from "./shepherd/toolchain-sweep.js";
@@ -15,9 +17,10 @@ export function registerToolchain(program: Command, verbs: Verbs): void {
     .command("fanout")
     .description("open one adoption PR per drifted consumer repo and register it with Shepherd")
     .option("--dry-run", "list the PRs it would open and write nothing")
-    .action(async (opts: { dryRun?: boolean }) => {
+    .option("--port <n>", "port titan-factory serve listens on; an agent env refuses to open PRs here when none answers", parsePort, FACTORY_PORT)
+    .action(async (opts: { dryRun?: boolean; port: number }) => {
       if (opts.dryRun) return verbs.setExit(await dryRun(verbs));
-      if (refusedAgentWrite(verbs, "toolchain fanout")) return;
+      if (await refusedWithoutServe(verbs, opts.port, "toolchain fanout")) return;
       await verbs.withHost(async (host, routes) => {
         const notes = await sweepToolchain(host, shepherdOf(routes));
         verbs.io.stdout(formatNotes(notes));

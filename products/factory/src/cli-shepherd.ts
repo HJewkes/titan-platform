@@ -1,7 +1,7 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
-import { refusedWriteFallback } from "./cli-agent-env.js";
+import { refusedInProcess } from "./cli-agent-env.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
@@ -187,7 +187,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
-  if (writesPort(name, args) && (await refusedWriteFallback(verbs, opts.port, name.replace("shepherd.", "shepherd ")))) return;
+  if (writesPort(name, args) && refusedInProcess(verbs, probe, opts.port, name.replace("shepherd.", "shepherd "))) return;
   const envelope = await localEnvelope(verbs, name, args);
   if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
@@ -196,7 +196,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
 /** The commands whose in-process fallback writes, the ones the brief names; repair-stop writes only when its action is not `list`. */
 const PORT_WRITES: ReadonlySet<ShepherdCommandName> = new Set(["shepherd.merge", "shepherd.review", "shepherd.release", "shepherd.hold", "shepherd.resync", "shepherd.repair-stop"]);
 
-const writesPort = (name: ShepherdCommandName, args: object): boolean => PORT_WRITES.has(name) && (args as { action?: string }).action !== "list";
+const writesPort = (name: ShepherdCommandName, args: object): boolean => PORT_WRITES.has(name) && !("action" in args && args.action === "list");
 
 /** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
 async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {

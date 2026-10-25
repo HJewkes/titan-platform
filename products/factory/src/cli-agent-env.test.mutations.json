@@ -13,7 +13,7 @@
     {
       "name": "land skips the agent-env refusal",
       "file": "products/factory/src/cli-land.ts",
-      "find": "if (await refusedWriteFallback(verbs, opts.port, \"land\")) return;",
+      "find": "if (refusedInProcess(verbs, probe, opts.port, \"land\")) return;",
       "replace": "",
       "kills": [
         "land exits UNAVAILABLE and makes no GitHub call"
@@ -22,10 +22,10 @@
     {
       "name": "resume skips the agent-env refusal",
       "file": "products/factory/src/cli-host-verbs.ts",
-      "find": "if (refusedAgentWrite(verbs, \"resume\")) return;",
+      "find": "if (await refusedWithoutServe(verbs, opts.port, \"resume\")) return;",
       "replace": "",
       "kills": [
-        "resume stays refused while something answers /health, since it has no serve route"
+        "resume exits UNAVAILABLE and makes no GitHub call"
       ]
     }
   ]

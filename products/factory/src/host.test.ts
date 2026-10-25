@@ -152,14 +152,14 @@ describe("titan-factory resume and gate resolve", () => {
     expect(changed.err).toContain(`no gate with id ${runId}/approve-publish:1`);
   });
 
-  it("gate resolve from an agent-chat agent's shell is refused before any in-process write and the gate stays pending", async () => {
+  it("gate resolve from an agent-chat agent's shell is refused and the gate stays pending", async () => {
     const dbPath = dbFile();
     const runId = await pausedRun(dbPath);
 
     const { code, err } = await cliWithEnv(dbPath, { AGENT_CHAT_AGENT_ID: "agent-1" }, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
 
-    expect(code).toBe(EXIT.UNAVAILABLE);
-    expect(err).toContain("an agent env refuses");
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("refused a resolution by coordinator");
     expect(gateAt(dbPath, `${runId}/approve-publish`)).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 
