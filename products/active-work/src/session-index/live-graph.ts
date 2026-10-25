@@ -2,6 +2,7 @@ import { statSync } from 'node:fs';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { startCheckpointer } from './checkpoint.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from './graph.js';
+import { withRefreshLock } from './refresh.js';
 
 /**
  * The daemon's one long-lived graph handle, which follows the file at
@@ -61,8 +62,13 @@ export function openLiveGraph(options: LiveGraphOptions = {}): LiveGraph {
       return handle.graph;
     },
     async close() {
-      if (handle) await closeHandle(handle);
+      const closing = handle;
       handle = null;
+      if (!closing) return;
+      // A handle on a swapped-out inode deletes the new file's WAL and shm on
+      // close, which a writer outside the daemon may be using: wait it out.
+      if (closing.inode === inodeAt(file)) await closeHandle(closing);
+      else await withRefreshLock(() => closeHandle(closing));
     },
   };
 }
