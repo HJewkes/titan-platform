@@ -51,7 +51,7 @@ function unchangedLines(unchanged: readonly DigestItem[]): string[] {
 }
 
 /** What changed since the seat was last told: open items it has not heard of, keys of told items now gone, and fresh runs. */
-export interface DigestDelta {
+interface DigestDelta {
   open: DigestItem[];
   added: DigestItem[];
   cleared: string[];

@@ -25,7 +25,7 @@ type FirstSeen = ReadonlyMap<string, number>;
 const oldestAge = (keys: readonly string[], since: FirstSeen, at: number): number => Math.max(...keys.map((key) => at - (since.get(key) ?? at)));
 
 /** Whether a seat's digest goes now: a settled prompt item sends; with none pending, an old or full batch does. */
-export function paceDue(pending: PendingItems, since: FirstSeen, at: number, pacing: DigestPacing): boolean {
+function paceDue(pending: PendingItems, since: FirstSeen, at: number, pacing: DigestPacing): boolean {
   const prompt = pending.prompt.map((key) => `prompt:${key}`);
   if (prompt.length > 0) return oldestAge(prompt, since, at) >= pacing.settleMs;
   const batch = pending.batch.map((key) => `batch:${key}`);

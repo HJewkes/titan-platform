@@ -190,19 +190,24 @@ function rerouteQuiet(routes: Partial<DigestRoutes>, memory: SeatDigestMemory, n
   };
 }
 
+type DigestOutcome = { sent: string[]; failed: { seat: string; cause: string }[] };
+
+/** Whether `pacer` holds a seat's change for a later sweep; a seat with nothing to say has nothing pending. */
+function held(pacer: DigestPacer | undefined, seat: string, text: string | undefined, pending: () => PendingItems, now: Date): boolean {
+  if (pacer === undefined) return false;
+  if (text !== undefined) return !pacer.due(seat, pending(), now);
+  pacer.clear(seat);
+  return false;
+}
+
 /**
  * One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again, and so
  * does a seat `unsendable` names, whose reason is its failure's cause. A `pacer` the change is not yet due under holds it
  * the same way, so the send that comes due carries every unsent item.
  */
 export async function sendSeatDigests(
-  inputs: readonly DigestInput[],
-  ports: SeatDigestPorts,
-  memory: SeatDigestMemory,
-  routes: Partial<DigestRoutes> = {},
-  now: Date = new Date(),
-  pacer?: DigestPacer,
-): Promise<{ sent: string[]; failed: { seat: string; cause: string }[] }> {
+  inputs: readonly DigestInput[], ports: SeatDigestPorts, memory: SeatDigestMemory, routes: Partial<DigestRoutes> = {}, now = new Date(), pacer?: DigestPacer,
+): Promise<DigestOutcome> {
   const sent: string[] = [];
   const failed: { seat: string; cause: string }[] = [];
   const unsendable = routes.unsendable ?? new Map<string, string>();
@@ -210,8 +215,7 @@ export async function sendSeatDigests(
     const last = memory.get(seat);
     const fresh = freshRuns(view, last);
     const text = digestText(seat, view.open, fresh, last);
-    if (text === undefined) pacer?.clear(seat);
-    else if (pacer && !pacer.due(seat, pendingItems(view, fresh, last), now)) continue;
+    if (held(pacer, seat, text, () => pendingItems(view, fresh, last), now)) continue;
     const why = text === undefined ? undefined : unsendable.get(seat);
     if (why !== undefined) {
       failed.push({ seat, cause: why });
@@ -221,10 +225,7 @@ export async function sendSeatDigests(
     try {
       if (text !== undefined) await ports.send(seat, text);
       if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
-      if (text !== undefined) {
-        sent.push(seat);
-        pacer?.clear(seat);
-      }
+      if (text !== undefined) sent.push(seat);
     } catch (error) {
       failed.push({ seat, cause: error instanceof Error ? error.message : String(error) });
     }
@@ -283,7 +284,7 @@ async function liveSeats(runs: readonly { repo: string; runId: string }[], chose
 }
 
 /** One sweep over the host: each run's seat read once, and only the runs `digestReads` says the seats still need. */
-export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now: Date = new Date(), pacer?: DigestPacer): ReturnType<typeof sendSeatDigests> {
+export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory, now = new Date(), pacer?: DigestPacer): Promise<DigestOutcome> {
   const routes = await runSeats(services.store.get(), ports);
   const reads = digestReads(memory, routes.seatOf);
   const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration, runFinished(status)));
