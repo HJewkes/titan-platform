@@ -4,8 +4,8 @@
     {
       "name": "a second tap prepares the item's own decision",
       "file": "apps/console/src/pages/InboxPage.tsx",
-      "find": "args: { itemId, ...(decision && { decision }) }",
-      "replace": "args: { itemId }",
+      "find": "args: { itemId, ...(decision && { decision }), ...(waitFor && { waitFor }) }",
+      "replace": "args: { itemId, ...(waitFor && { waitFor }) }",
       "kills": ["the inbox page on a waivable sent-back gate offers Waive fix-proof as a second tap beside Wait for new head, and prepares and acts with that decision"]
     }
   ]
