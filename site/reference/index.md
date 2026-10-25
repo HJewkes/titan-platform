@@ -26,6 +26,7 @@ Domain-free building blocks. No titan dependencies.
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`openai-account`](/reference/openai-account) | Read-only Codex account state: login status, rollout quota readings, freshness and admission | `anthropic-account` |
 | [`owner-proof`](/reference/owner-proof) | Owner-signed statements: canonical JSON, P-256 key ring and an exact-bytes ECDSA verify core generic over a zod schema | none |
+| [`review-burden`](/reference/review-burden) | Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser | `fix-proof` |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations | none |
 | [`test-kit`](/reference/test-kit) | Typed test doubles: partialFake builds a T from only the fields a test uses, without a cast | none |

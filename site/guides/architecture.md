@@ -35,6 +35,7 @@ graph TD
     locator["locator"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
+    reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
     testKit["test-kit"]
@@ -141,6 +142,7 @@ graph TD
   registry --> rpcProtocol
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewBurden --> fixProof
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
