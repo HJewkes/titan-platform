@@ -178,6 +178,7 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  activeWork --> agentDispatch
   activeWork --> agentProtocol
   activeWork --> clusterPkg
   activeWork --> daemon
