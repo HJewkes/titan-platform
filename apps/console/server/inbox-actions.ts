@@ -27,7 +27,7 @@ import { failure } from "./active-work.js";
 import type { DecisionItem, DecisionLog, DecisionLogResult } from "./decision-log.js";
 import type { AnswerOutcome, BrokerAnswerer } from "./broker-answer.js";
 import type { BrokerVerdicter, VerdictOutcome } from "./broker-verdict.js";
-import { APPROVE_AT_SESSION, approveChatReadBackOf, dispatchVerdict, verdictFor, verdictMessageOf, VERDICTS, type ApproveChatAction, type ApproveChatReadBack } from "./inbox-approve-chat.js";
+import { APPROVE_AT_SESSION, approveChatReadBackOf, dispatchVerdict, verdictFor, isApproveChatReadBack, verdictMessageOf, VERDICTS, type ApproveChatAction, type ApproveChatReadBack } from "./inbox-approve-chat.js";
 import { g10Signal, isG10Release, releaseG10, type G10Action, type G10Signal } from "./g10-hold.js";
 import { nextStateOf, type NextState } from "./inbox-next.js";
 import { opReadBackOf, postedOp, type MergeWait, type OpAction, type OpReadBack } from "./inbox-op.js";
@@ -207,7 +207,7 @@ async function writeItemRecord(ctx: ActContext, file: string, tap: Tap, prepared
   const readBack = await readBackOf(ctx.sources, item, action, tap.waitFor);
   if (typeof readBack === "string" || itemDigest(item, action, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
-  const verdict = verdictFor(action.kind === "approve-chat" ? (readBack as ApproveChatReadBack) : undefined, tap.verdict);
+  const verdict = verdictFor(action.kind === "approve-chat" && isApproveChatReadBack(readBack) ? readBack : undefined, tap.verdict);
   const target = action.kind === "owner-op" ? ("proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action }) : { action: postedAction(action) };
   const record = { itemId: item.id, ...target, readBack, ...(text !== undefined && { text }), ...(verdict !== undefined && { verdict }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
   await writeRecord(ctx.options.actionsDir, file, record);

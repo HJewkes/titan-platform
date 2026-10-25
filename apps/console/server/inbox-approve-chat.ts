@@ -38,6 +38,8 @@ const approveChatReadBack = z.discriminatedUnion("kind", [permissionReadBack, en
 
 export type ApproveChatReadBack = z.infer<typeof approveChatReadBack>;
 
+export const isApproveChatReadBack = (readBack: unknown): readBack is ApproveChatReadBack => approveChatReadBack.safeParse(readBack).success;
+
 const askerOf = (row: BrokerEvent): { asker?: string } => (row.from === "" ? {} : { asker: row.from });
 
 function readBackOfRow(row: BrokerEvent): ApproveChatReadBack | string {
