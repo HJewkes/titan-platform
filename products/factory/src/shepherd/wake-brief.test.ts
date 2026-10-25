@@ -398,6 +398,44 @@ describe("wake brief: who merges the base branch", () => {
   });
 });
 
+describe("wake brief: a planner's merge-base exception (TP-4242)", () => {
+  const NO_BASE_MERGE = "Do not merge the base branch";
+  const ALLOWED = "A planner allowed this run's fix rounds to merge the base branch";
+  const mergeBase = { actor: "demo-planner", reason: "the fix needs #12 from main" };
+  const EXCEPTION_FENCE = dataFence("merge-base exception", `allowed by: ${mergeBase.actor}\nreason: ${mergeBase.reason}`);
+
+  async function wakeOf(kind: WakeFacts["kind"], payload: unknown, exception?: typeof mergeBase) {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    return describeWake(githubPort(fake.wire), { kind, repo: REPO, pr: pr.number, headSha: H1, payload, ...(exception && { mergeBase: exception }) }, pr);
+  }
+
+  it("lets a ci-red fixer merge the base in place of the line against it, fencing who allowed it and why", async () => {
+    const { reason, payload } = await wakeOf("ci-red", null, mergeBase);
+
+    expect(reason).toContain(ALLOWED);
+    expect(reason).toContain("`git merge origin/<base>`");
+    expect(reason).not.toContain(NO_BASE_MERGE);
+    expect(reason).not.toContain(mergeBase.reason);
+    expect(payload).toContain(EXCEPTION_FENCE);
+  });
+
+  it("keeps the line against merging the base for a ci-red fixer of a run with no exception", async () => {
+    const { reason, payload } = await wakeOf("ci-red", null);
+
+    expect(reason).toContain(NO_BASE_MERGE);
+    expect(reason).not.toContain(ALLOWED);
+    expect(payload).not.toContain("merge-base exception");
+  });
+
+  it("carries the exception on a review fix round too", async () => {
+    const { reason, payload } = await wakeOf("review", { text: FINDINGS }, mergeBase);
+
+    expect(reason).toContain(ALLOWED);
+    expect(payload).toContain(EXCEPTION_FENCE);
+  });
+});
+
 describe("conflict wake brief: how the fixer brings in the base", () => {
   const RECIPE = "`git fetch origin`, `git merge origin/<base>`";
   const CAP = ["src/a.ts", ...Array.from({ length: 300 }, (_, i) => `gen/file-${i}.ts`)];
