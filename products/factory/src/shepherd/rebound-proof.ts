@@ -24,7 +24,7 @@ type Rebound = z.infer<typeof ReboundResult>;
 type ReboundTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number };
 
 /** The default branch a refused fix-proof standing names, or undefined for any other standing. */
-export function refusedInto(proofUnverified: string | undefined): string | undefined {
+function refusedInto(proofUnverified: string | undefined): string | undefined {
   return proofUnverified === undefined ? undefined : REFUSAL.exec(proofUnverified)?.[1];
 }
 

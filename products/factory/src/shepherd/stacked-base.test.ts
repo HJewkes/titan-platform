@@ -220,14 +220,14 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     expect(w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt).toContain("no fix-proof line against main has been read at this head");
     const reads = reboundReads(w);
     expect(reads.length).toBeGreaterThan(0);
-    expect(reads.every((read) => (read.data as { result?: { bound?: boolean } }).result?.bound === false)).toBe(true);
+    for (const read of reads) expect(read.data).toMatchObject({ result: { bound: false } });
   });
 
   it("reads nothing again and merges on a seat that merges into the parent branch the proof was refused on", async () => {
     const w = refused({ ...AUTO, featureBase: true });
     const served = w.fake.onGetPr;
-    w.fake.onGetPr = (pr) => {
-      served?.(pr);
+    w.fake.onGetPr = (pr, count) => {
+      served?.(pr, count);
       w.fake.rules.contexts = ["validate"];
     };
 
