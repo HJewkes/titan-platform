@@ -215,14 +215,12 @@ describe("httpTts hardening", () => {
   });
 
   // Mutation caught: the body is read whole before its size is checked, so an endless body runs to the deadline.
+  // The flood never ends, so only a cancel on the count yields this error; the deadline's error names the timeout.
   it("cancels a response body that passes maxOutputBytes while it streams", async () => {
-    const started = Date.now();
-
     const error = await wavProvider("/flood", { maxOutputBytes: 2 * 1024 * 1024 }).synthesize({ text: "hi" }, "alloy", { timeoutMs: 20_000 }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(TtsFailedError);
     expect(String(error)).toContain("response passed maxOutputBytes (2097152)");
-    expect(Date.now() - started).toBeLessThan(10_000);
   });
 
   // Mutations caught: the error body is quoted unredacted; it is quoted whole, however long.

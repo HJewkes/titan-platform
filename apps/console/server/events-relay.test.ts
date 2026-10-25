@@ -243,14 +243,21 @@ describe("the events relay", () => {
 
   it("backs off between refused dials, doubling to the cap, and relays nothing", async () => {
     const broker = await fake(TOKEN);
-    const relayed = startRelay(brokerAt(broker.port, "wrong-token"), { baseDelayMs: 20, maxDelayMs: 80 });
+    // The cap is read from the delays the relay asks for, since load stretches a wall-clock gap without bound.
+    const spy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const relayed = startRelay(brokerAt(broker.port, "wrong-token"), { baseDelayMs: 20, maxDelayMs: 80 });
 
-    await until(() => broker.dials.length >= 5);
+      await until(() => broker.dials.length >= 5);
 
-    const gaps = broker.dials.slice(1).map((dial, i) => dial.at - broker.dials[i]!.at);
-    expect(gaps.every((gap) => gap >= 35)).toBe(true);
-    expect(gaps.at(-1)).toBeLessThan(400);
-    expect(relayed).toEqual([]);
+      const gaps = broker.dials.slice(1).map((dial, i) => dial.at - broker.dials[i]!.at);
+      expect(gaps.every((gap) => gap >= 35)).toBe(true);
+      const backoffs = spy.mock.calls.map(([, ms]) => ms).filter((ms) => ms !== undefined && [20, 40, 80, 160, 320].includes(ms));
+      expect(backoffs.slice(0, 4)).toEqual([40, 80, 80, 80]);
+      expect(relayed).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("drops a connection whose unterminated frame passes the cap, then redials", async () => {

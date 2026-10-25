@@ -20,13 +20,14 @@ runTtsConformance("fakeTts, text only", {
 
 describe("fakeTts", () => {
   // Mutation caught: the capability check runs after the engine, so an unsupported call still does work.
+  // The engine sleeps 60 s on a timer, so a call that reached it is still pending at the next setImmediate turn.
   it("rejects an unsupported call before any audio is rendered", async () => {
     const tts = fakeTts({ capabilities: MINIMAL, latencyMs: 60_000 });
-    const started = Date.now();
+    const nextTurn = new Promise((resolve) => setImmediate(() => resolve("still pending")));
 
-    await expect(tts.synthesize({ text: "hi" }, "fake-a", { speed: 1.5 })).rejects.toBeInstanceOf(TtsUnsupportedError);
+    const first = await Promise.race([tts.synthesize({ text: "hi" }, "fake-a", { speed: 1.5 }).catch((e: unknown) => e), nextTurn]);
 
-    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(first).toBeInstanceOf(TtsUnsupportedError);
   });
 
   // Mutation caught: speed is ignored, so every take has the same length.

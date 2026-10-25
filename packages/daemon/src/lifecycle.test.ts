@@ -90,11 +90,19 @@ describe("process probes", () => {
     expect(parsePsStartTime(raw)).toBeNull();
   });
 
-  it("reports this process start time within seconds of its real start", () => {
-    const started = getProcessStartTime(process.pid);
-    const expected = Date.now() - process.uptime() * 1000;
-    expect(started).not.toBeNull();
-    expect(Math.abs((started as Date).getTime() - expected)).toBeLessThan(5000);
+  // A child spawned between two clock readings started inside them; load only widens that window. ps prints whole
+  // seconds from a boot time it also rounds, hence the 2 s either side.
+  it("reports a child's start time between the clock readings around its spawn", () => {
+    const before = Date.now();
+    const child = spawn("sleep", ["30"]);
+    const after = Date.now();
+    try {
+      const started = getProcessStartTime(child.pid ?? -1);
+      expect(started?.getTime()).toBeGreaterThanOrEqual(before - 2000);
+      expect(started?.getTime()).toBeLessThanOrEqual(after + 2000);
+    } finally {
+      child.kill();
+    }
   });
 
   it("reads a pid with no process as unknown", () => {

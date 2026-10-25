@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setTimeout as realDelay } from "node:timers/promises";
+import { watch, type FSWatcher } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -162,25 +163,30 @@ describe("watchTree", () => {
     expect(watcher.isWatching(root)).toBe(false);
   });
 
-  it("covers a deep tree and still tears down promptly (TP-37)", async () => {
+  it("covers a deep tree with one handle where watch is recursive, and closes every handle (TP-37)", async () => {
     // 60 nested directories. Watching per directory cost one FSEvents handle each,
     // and each close is a serialized semaphore round-trip — the shape that made a
     // real daemon spend 12.6s in its SIGTERM handler across 1,593 directories.
+    // So the handles closed are counted, since the time a close takes is the OS's.
     let deep = root;
     for (let i = 0; i < 60; i++) {
       deep = path.join(deep, `d${i}`);
       await mkdir(deep);
     }
+    const probe = watch(root, { persistent: false });
+    const closes = vi.spyOn(Object.getPrototypeOf(probe) as FSWatcher, "close");
+    probe.close();
     watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
     expect(await watcher.whenWatching(deep)).toBe(true);
+    closes.mockClear();
 
-    const started = Date.now();
     watcher.close();
-    const elapsed = Date.now() - started;
     watcher = null;
+    const closed = closes.mock.calls.length;
+    closes.mockRestore();
 
-    // 60 handles at the measured ~8ms each would be ~480ms; one handle is ~8ms.
-    expect(elapsed).toBeLessThan(400);
+    const recursive = process.platform === "darwin" || process.platform === "win32";
+    expect(closed).toBe(recursive ? 1 : 61);
   });
 
   it("reports errors instead of throwing when the root is missing", () => {

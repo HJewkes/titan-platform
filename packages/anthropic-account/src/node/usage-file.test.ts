@@ -9,6 +9,7 @@ import {
   errorText,
   makeFifo,
   makeTempHome,
+  releasedAReader,
   removeTempHome,
   swapAfterLstat,
   thrown,
@@ -244,7 +245,7 @@ describe("readUsage reads the file it checked", () => {
 
   it.skipIf(process.platform === "win32")(
     "returns promptly when a file is swapped for a symlink to a FIFO after the lstat",
-    () => {
+    async () => {
       writeSessionFile("s.json", reading({ session_id: "s" }));
       const fifo = path.join(home, "pipe");
       makeFifo(fifo);
@@ -253,11 +254,10 @@ describe("readUsage reads the file it checked", () => {
         fs.rmSync(sessionFile());
         fs.symlinkSync(fifo, sessionFile());
       });
-      const started = Date.now();
 
       const read = readUsage(configDir, { now: WRITTEN_AT * 1000 });
 
-      expect(Date.now() - started).toBeLessThan(500);
+      expect(await releasedAReader(unblocker)).toBe(false);
       expect(read).toBeNull();
     },
     15_000,
@@ -265,7 +265,7 @@ describe("readUsage reads the file it checked", () => {
 
   it.skipIf(process.platform === "win32")(
     "returns promptly when a FIFO is renamed over the file after the lstat",
-    () => {
+    async () => {
       writeSessionFile("s.json", reading({ session_id: "s" }));
       const fifo = path.join(sessionsDir(configDir), "pipe");
       makeFifo(fifo);
@@ -273,11 +273,10 @@ describe("readUsage reads the file it checked", () => {
       unblocker = unblockFifoLater(sessionFile());
       swapAfterLstat(sessionFile(), () => fs.renameSync(fifo, sessionFile()));
       const read = vi.spyOn(fs, "readSync");
-      const started = Date.now();
 
       const result = readUsage(configDir, { now: WRITTEN_AT * 1000 });
 
-      expect(Date.now() - started).toBeLessThan(500);
+      expect(await releasedAReader(unblocker)).toBe(false);
       expect(result).toBeNull();
       expect(read).not.toHaveBeenCalled();
     },
