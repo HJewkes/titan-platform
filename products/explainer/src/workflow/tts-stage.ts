@@ -74,12 +74,17 @@ const spokenWords = (spoken: string): string[] => spoken.split(/\s+/).filter(Boo
 
 const tenths = (value: number): number => Math.round(value * 10) / 10;
 
-/** Each beat's band from the resolve stage's beat type, and its rate; a beat the resolver left out stops the stage. */
+/**
+ * Each beat's band from the resolve stage's beat type, and its rate; a beat resolve cut is not voiced, and any other
+ * beat the resolver left out stops the stage.
+ */
 function beatRates(script: ScriptV1, input: TtsStageInput, speech: StageSpeech): Map<string, BeatRate> {
   const sha = input.artifacts.resolved;
   if (sha === undefined) throw new Error(`stage tts needs artifact "resolved", which no earlier stage produced`);
-  const bands = new Map(ResolvedSchema.parse(JSON.parse(input.store.readText(sha))).beats.map((beat) => [beat.id, beat.band]));
-  return new Map(script.beats.map((beat) => {
+  const resolved = ResolvedSchema.parse(JSON.parse(input.store.readText(sha)));
+  const bands = new Map(resolved.beats.map((beat) => [beat.id, beat.band]));
+  const cut = new Set((resolved.cut ?? []).map((beat) => beat.id));
+  return new Map(script.beats.filter((beat) => !cut.has(beat.id)).map((beat) => {
     const band = bands.get(beat.id);
     if (band === undefined) throw new Error(`stage tts: beat ${beat.id} has no band in "resolved"; re-run resolve on this script`);
     return [beat.id, { band, rateWpm: tenths(speech.rates[band] * speech.voice.rate) }];
@@ -168,7 +173,10 @@ export async function runTtsStage(input: TtsStageInput, speech: StageSpeech, dep
   const padding = deps.padding ?? DEFAULT_PADDING;
   const voicing: Voicing = { voice, engine, cache: new TakeCache(deps.takesDir), padding };
   const beats: VoicedBeat[] = [];
-  for (const beat of script.beats) beats.push(await voiceBeat(beat, rates.get(beat.id)!, voicing));
+  for (const beat of script.beats) {
+    const rate = rates.get(beat.id);
+    if (rate) beats.push(await voiceBeat(beat, rate, voicing));
+  }
   const audioDir = mkdtempSync(path.join(tmpdir(), "explainer-tts-"));
   try {
     for (const beat of beats) writeFileSync(path.join(audioDir, `${beat.id}.wav`), beat.wav);
