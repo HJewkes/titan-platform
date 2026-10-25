@@ -541,11 +541,12 @@ describe("sh-fix-proof in reviewPhase", () => {
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
     });
 
-    it("keeps an errored proof's unverified review, never turning it into a NO_REPRO the fixer cannot answer", async () => {
-      const { verdicts, spawns } = await review(panelScene(resultLine(H, "error")));
+    it("keeps an errored proof's unverified review with a planned tests member, never a NO_REPRO the fixer cannot answer (TP-4195)", async () => {
+      const { verdicts, spawns, inputs } = await review(panelScene(resultLine(H, "error")));
 
-      expect(spawns).toHaveLength(2);
-      expect(verdicts).toEqual([expect.objectContaining({ kind: "none", cause: "no-verdict" })]);
+      expect(spawns.map((spawn) => spawn.name.split("-").at(-1))).toEqual(expect.arrayContaining(["adversary", "tests"]));
+      expect(inputs[`sh-review:${H}:tests`]).toMatchObject({ fixProofUnverified: "error" });
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
     });
 
     it("briefs every member, not only correctness, that an unreadable proof is unverified", async () => {
