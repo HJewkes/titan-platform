@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "landGate matches the whole skill-path prompt again",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "LAND_PROMPT.exec(gate.prompt.split(\"\\n\", 1)[0]!)",
+      "replace": "LAND_PROMPT.exec(gate.prompt)",
+      "kills": ["the approve-merge gate land opens carries Shepherd's skill paths and the files URL through land's options, still tied to its PR but never auto-approvable"]
+    }
+  ]
+}
