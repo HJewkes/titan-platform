@@ -25,6 +25,7 @@ type InboxAction =
   | { kind: "hold-release"; repo: string; pr: number; headSha: string; holdClass: string }
   | { kind: "owner-op"; op: OwnerOp }
   | { kind: "answer-chat"; msgId: string }
+  | { kind: "approve-chat"; msgId: string }
   | { kind: "open-round"; roundId: string }
   | { kind: "open"; route: string }
   | { kind: "terminal"; command?: string; reason: string };
@@ -193,7 +194,7 @@ export function actionFor(item: OwnerItem, row: WatchRow | undefined, evidence: 
     case "hitl":
       return hitlDerived(item, source.ref, row);
     case "agent-chat":
-      return { action: item.kind === "approve" ? terminal("an agent's approval or permission prompt is answered at its own session; the broker never approves over HTTP", item.command) : { kind: "answer-chat", msgId: source.ref } };
+      return { action: { kind: item.kind === "approve" ? "approve-chat" : "answer-chat", msgId: source.ref } };
     case "round":
       return { action: { kind: "open-round", roundId: roundIdOf(source.ref) } };
     case "deposit":

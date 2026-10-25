@@ -28,6 +28,7 @@ function ReadBackFacts({ prepared }: { prepared: InboxReady }): ReactNode {
   const { readBack } = prepared;
   if ("repo" in readBack) return <PrFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("pausedAt" in readBack) return <PauseFacts readBack={readBack} readAt={prepared.readAt} />;
+  if ("kind" in readBack) return <Typography variant="mono">{readBack.kind === "permission" ? `${readBack.tool}: ${readBack.inputPreview}` : `To ${readBack.to}: ${readBack.text}`}</Typography>;
   return (
     <>
       <Typography variant="body2">{readBack.title}</Typography>
