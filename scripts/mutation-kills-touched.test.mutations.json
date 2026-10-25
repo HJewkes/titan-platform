@@ -11,6 +11,15 @@
       ]
     },
     {
+      "name": "an .each title is matched only literally",
+      "file": "scripts/mutation-kills-touched.mjs",
+      "find": "  if (!isPattern(name)) return false;",
+      "replace": "  return false;",
+      "kills": [
+        "missedChange with .each passes a sidecar whose kill is one expanded row of a touched .each title"
+      ]
+    },
+    {
       "name": "any kill counts, touched or not",
       "file": "scripts/mutation-kills-touched.mjs",
       "find": "return kills.some((kill) => touched.has(kill)) ? null",
