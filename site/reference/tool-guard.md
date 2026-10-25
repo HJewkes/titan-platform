@@ -114,9 +114,12 @@ through a symlinked parent, is refused just before the append.
 - A git push that moves a tag reads as `release` (`bash.release.git-push-tag`), as a tag move is a charter hard
   stop: `--tags`, `--follow-tags`, `git -c push.followTags[=<true>]`, a refspec whose destination is `refs/tags/…`,
   `tags/…`, a `v<digit>` name (`v1`, `v2.3.0`) or a changesets tag (`@scope/pkg@1.2.0`, `pkg@1.2.0`), and
-  `tag <name>`. A branch named in one of those shapes reads as a tag too. Not seen: a tag of any other name
-  (`git push origin r2` cannot be told from a branch without the repository), an abbreviated long option (`--ta`,
-  `--fol`), a tag named only at run time, and `push.followTags` from a config file or `--config-env`.
+  `tag <name>`. A branch named in one of those shapes reads as a tag too. A push long option given as a prefix is
+  read as git reads it, against `git push`'s own option list: `--ta` is `--tags`, `--fol` is `--follow-tags`, `--al`
+  is `--all`, `--mir` is `--mirror`. An ambiguous prefix such as `--t` (`--tags` or `--thin`) makes git refuse the
+  push, and reads as a push to an unknown branch (TP-4173). Not seen: a tag of any other name
+  (`git push origin r2` cannot be told from a branch without the repository), a tag named only at run time, and
+  `push.followTags` from a config file or `--config-env`.
 - It does not classify `titan-factory` verbs.
 
 ## merge-lint
