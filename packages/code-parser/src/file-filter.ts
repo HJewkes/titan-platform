@@ -10,6 +10,11 @@ const EXCLUDED_DIRS = [
   ".git",
   ".claude",
   "coverage",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".tox",
 ];
 
 const EXCLUDED_PATTERNS = [
