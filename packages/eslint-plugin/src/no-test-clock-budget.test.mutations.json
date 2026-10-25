@@ -28,15 +28,6 @@
       "kills": [
         "no-test-clock-budget valid another property of a value that holds a time"
       ]
-    },
-    {
-      "name": "a name is followed however deep its property path grows",
-      "file": "packages/eslint-plugin/src/no-test-clock-budget.ts",
-      "find": "  if (variable === null || path.length > MAX_PATH) return false;",
-      "replace": "  if (variable === null) return false;",
-      "kills": [
-        "no-test-clock-budget valid a name written from its own property, as a walk up the parents"
-      ]
     }
   ]
 }

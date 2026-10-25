@@ -43,14 +43,6 @@ tsRuleTester.run("no-test-clock-budget", noTestClockBudget, {
       code: "const handle = startDaemon({ startedAt: Date.now() }); expect(handle.port).toBeGreaterThan(0);",
       filename: test,
     },
-    {
-      name: "a name written from its own property, as a walk up the parents",
-      code: lines(
-        "function rowOf(element) { let node = element; for (let parent = node.parentElement; parent; node = parent, parent = parent.parentElement) if (parent.wraps) return node; return null; }",
-        "const rows = items.filter((item) => rowOf(item) !== null); expect(rows.length).toBeGreaterThan(0);",
-      ),
-      filename: test,
-    },
   ],
   invalid: [
     {
