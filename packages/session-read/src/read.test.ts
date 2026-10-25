@@ -17,12 +17,15 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const relationsOf = (delta: TranscriptDelta) => delta.edges.map((e) => `${e.sourceRef} ${e.relation} ${e.targetRef}`);
+/** `last-prompt` repeats a prompt its own line already recorded, so it emits no fact. */
+const FACT_LINE_COUNT = FIXTURE_LINES.filter((l) => l.type !== "last-prompt").length;
+
+const relationsOf =(delta: TranscriptDelta) => delta.edges.map((e) => `${e.sourceRef} ${e.relation} ${e.targetRef}`);
 
 describe("extractTranscript", () => {
-  it("emits one fact per non-blank line, tagged by event type", async () => {
+  it("emits one fact per non-blank line except last-prompt, tagged by event type", async () => {
     const result = await extractTranscript(transcript);
-    expect(result.facts).toHaveLength(FIXTURE_LINES.length);
+    expect(result.facts).toHaveLength(FACT_LINE_COUNT);
     const types = new Set(result.facts.map((f) => f.eventType));
     for (const t of ["user_prompt", "tool_decision", "assistant_response", "tool_result_error", "pr_link", "system_compact_boundary"]) {
       expect(types, t).toContain(t);
@@ -112,7 +115,7 @@ describe("extractTranscript", () => {
 
     const rewound = await extractTranscript(transcript, { fromByteOffset: watermark, priorPrefixHash: "stale" });
     expect(rewound).toMatchObject({ restartedFromZero: true, startByteOffset: 0 });
-    expect(rewound.facts).toHaveLength(FIXTURE_LINES.length);
+    expect(rewound.facts).toHaveLength(FACT_LINE_COUNT);
   });
 
   it("throws a locating error for a malformed line", async () => {

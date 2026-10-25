@@ -161,6 +161,9 @@ export const FIXTURE_LINES: Record<string, unknown>[] = [
   userPrompt('p2', '2026-07-01T00:00:19Z', 'ship it'),
 ];
 
+/** Lines that store a fact: `last-prompt` repeats a prompt its own line already recorded. */
+export const FACT_LINE_COUNT = FIXTURE_LINES.filter((l) => l.type !== 'last-prompt').length;
+
 export function renderTranscript(lines: Record<string, unknown>[]): string {
   return lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
 }

@@ -1,4 +1,4 @@
-export type { EventBase, EventOf, LineSpan, SessionEvent, SessionEventKind, SessionPatch, SpanField } from "./events.js";
+export type { EchoState, EventBase, EventOf, LineSpan, SessionEvent, SessionEventKind, SessionPatch, SpanField } from "./events.js";
 export type { Emit, EmitPolicy, LineContext } from "./line-reader.js";
 export { DEFAULT_EMIT_POLICY, LineReader } from "./line-reader.js";
 export type { BranchRow, SessionRow, TranscriptDelta } from "./fold.js";

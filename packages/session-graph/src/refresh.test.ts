@@ -205,7 +205,7 @@ describe("task resolver (TP-22)", () => {
 
 describe("refreshCorpus emit policy (TP-880)", () => {
   const toolSpanCount = () =>
-    (graph.db.prepare("SELECT count(*) AS n FROM search_span WHERE field IN ('tool_input', 'tool_result')").get() as { n: number }).n;
+    graph.db.prepare<[], { n: number }>("SELECT count(*) AS n FROM search_span WHERE field IN ('tool_input', 'tool_result')").get()?.n;
 
   it("stores no tool span and no context_block row under the default options", async () => {
     await refreshCorpus(graph, [transcript]);

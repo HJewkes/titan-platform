@@ -2,7 +2,7 @@ import { readAssistantLine } from "./assistant-line.js";
 import { emitAttachmentContextBlock } from "./audit-context.js";
 import { emitInbound } from "./audit-inbound.js";
 import { emitCompaction, emitCostState, emitQueueOp } from "./audit-line.js";
-import type { EventBase, LineSpan, SessionEvent, SessionPatch, SpanField } from "./events.js";
+import type { EchoState, EventBase, LineSpan, SessionEvent, SessionPatch, SpanField } from "./events.js";
 import { RELATIONS, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, toRepoRelative } from "./refs.js";
 import { asObject, int, searchText, str, type Json } from "./text.js";
 import { IGNORED_PATH } from "./bash-parse.js";
@@ -83,9 +83,14 @@ export class LineReader {
     return { sessionId: ctx.sessionId, ts: ctx.ts, byteOffset: ctx.loc.byteOffset, byteLength: ctx.loc.byteLength };
   }
 
-  fact(ctx: LineContext, eventType: string, toolUseId: string | null = null): void {
+  fact(ctx: LineContext, eventType: string, toolUseId: string | null = null, state: EchoState | null = null): void {
     const promptId = eventType === "user_prompt" ? str(ctx.line, "uuid") : null;
-    this.emit({ ...this.base(ctx), kind: "fact", eventType, promptId, toolUseId });
+    this.emit({ ...this.base(ctx), kind: "fact", eventType, promptId, toolUseId, ...(state ? { state } : {}) });
+  }
+
+  /** A line with no readable value carries no state, so the store keeps every such fact rather than guessing. */
+  private echo(ctx: LineContext, eventType: string, value: string | null): void {
+    this.fact(ctx, eventType, null, value === null ? null : { key: eventType, value });
   }
 
   span(ctx: LineContext, field: SpanField): void {
@@ -145,9 +150,17 @@ export class LineReader {
       case "pr-link":
         return this.prLink(ctx);
       case "ai-title":
-        return this.typedField(ctx, "ai_title", "aiTitle");
+        return this.aiTitle(ctx);
       case "last-prompt":
-        return this.typedField(ctx, "last_prompt", "lastPrompt");
+        return this.lastPrompt(ctx);
+      case "custom-title":
+        return this.echo(ctx, type, str(ctx.line, "customTitle"));
+      case "agent-name":
+        return this.echo(ctx, type, str(ctx.line, "agentName"));
+      // Host bookkeeping rewritten on every turn; nothing reads it, so it stores nothing.
+      case "atis-latch":
+      case "bridge-session":
+        return;
       case "frame-link":
         return this.frameLink(ctx);
       case "mode":
@@ -164,7 +177,7 @@ export class LineReader {
         this.fact(ctx, type);
         return emitQueueOp(this, ctx);
       case "cost-state":
-        this.fact(ctx, type);
+        this.echo(ctx, type, rawScalar(ctx.line.totalCostUSD));
         return emitCostState(this, ctx);
       case "user":
         return readUserLine(this, ctx);
@@ -181,10 +194,16 @@ export class LineReader {
     if (subtype === "compact_boundary") emitCompaction(this, ctx);
   }
 
-  private typedField(ctx: LineContext, eventType: string, key: "aiTitle" | "lastPrompt"): void {
-    const value = str(ctx.line, key);
-    if (value !== null) this.session(ctx, key === "aiTitle" ? { aiTitle: value } : { seedPrompt: value.slice(0, 240) });
-    this.fact(ctx, eventType);
+  private aiTitle(ctx: LineContext): void {
+    const value = str(ctx.line, "aiTitle");
+    if (value !== null) this.session(ctx, { aiTitle: value });
+    this.echo(ctx, "ai_title", value);
+  }
+
+  /** No fact: the line repeats the newest prompt, which its own `user` line already recorded. */
+  private lastPrompt(ctx: LineContext): void {
+    const value = str(ctx.line, "lastPrompt");
+    if (value !== null) this.session(ctx, { seedPrompt: value.slice(0, 240) });
   }
 
   private prLink(ctx: LineContext): void {
@@ -205,8 +224,8 @@ export class LineReader {
   }
 
   private phase(ctx: LineContext, trigger: "mode" | "permission-mode", key: string): void {
-    this.fact(ctx, trigger === "mode" ? "mode" : "permission_mode");
     const toMode = str(ctx.line, key);
+    this.echo(ctx, trigger === "mode" ? "mode" : "permission_mode", toMode);
     if (toMode) this.emit({ ...this.base(ctx), kind: "phase", trigger, toMode });
   }
 
@@ -237,4 +256,9 @@ export class LineReader {
       this.emit({ ...this.base(ctx), kind: "file_checkpoint", filePath: relative, backupFileName, version: int(entry, "version"), backupTime });
     }
   }
+}
+
+/** The raw field as written, not through `int()`, so a fractional cost change still reads as a change. */
+function rawScalar(value: unknown): string | null {
+  return typeof value === "number" || typeof value === "string" ? String(value) : null;
 }
