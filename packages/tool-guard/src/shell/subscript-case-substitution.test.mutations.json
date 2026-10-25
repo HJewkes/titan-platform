@@ -36,18 +36,27 @@
       ]
     },
     {
-      "name": "a case word needs no boundary before it",
+      "name": "a funsub body is brace-counted like a parameter expansion",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": " && !IDENTIFIER_PART.test(src[k - 1] ?? \"\")",
+      "find": "  if (open === \"{\" && FUNSUB_START.test(readAhead(src, from, 1).text)) return UNSURE;\n",
       "replace": "",
-      "kills": ["a $( ) in a subscript whose ) a case pattern or heredoc body holds passes a word ending in case"]
+      "kills": [
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a case pattern",
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a case pattern, ahead of gh pr merge",
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a heredoc body",
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a comment",
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a case pattern in a valsub",
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a case pattern after a line continuation"
+      ]
     },
     {
-      "name": "a case word needs no boundary after it",
+      "name": "a funsub opener is read on raw text, line continuations kept",
       "file": "packages/tool-guard/src/shell/subscript.ts",
-      "find": " && !IDENTIFIER_PART.test(text[4] ?? \"\")",
-      "replace": "",
-      "kills": ["a $( ) in a subscript whose ) a case pattern or heredoc body holds passes a word starting with case"]
+      "find": "FUNSUB_START.test(readAhead(src, from, 1).text)",
+      "replace": "FUNSUB_START.test(src[from] ?? \"\")",
+      "kills": [
+        "a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds denies a case pattern after a line continuation"
+      ]
     }
   ]
 }
