@@ -29,7 +29,7 @@
       ]
     },
     {
-      "name": "panel members get no unverified standing, so their briefs read an unreadable proof as silence",
+      "name": "panel members get no unverified fix-proof standing",
       "file": "products/factory/src/shepherd/review.ts",
       "find": "...(standing.unverified && { fixProofUnverified: standing.unverified }), ...(standing.waivedAt !== undefined",
       "replace": "...(standing.waivedAt !== undefined",
