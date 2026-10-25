@@ -73,6 +73,7 @@ graph TD
     ownerQueue["owner-queue"]
     pm["pm"]
     queueMirror["queue-mirror"]
+    renderQa["render-qa"]
     reviewPanel["review-panel"]
     reviewWorkflow["review-workflow"]
     sessionAnalytics["session-analytics"]
@@ -142,6 +143,7 @@ graph TD
   reactApp --> rpcClient
   reactApp --> rpcProtocol
   registry --> rpcProtocol
+  renderQa --> frameCapture
   retrieval --> embed
   retrieval --> storeSqlite
   reviewBurden --> fixProof

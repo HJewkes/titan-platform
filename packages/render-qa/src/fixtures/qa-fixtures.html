@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>render-qa seeded-defect fixtures</title>
+    <style>
+      :root { --color-status-success: #3fb950; --color-status-error: #f85149; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #0d1117; }
+      #root { position: absolute; inset: 0; background: #0d1117; font-family: sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Seeded-defect fixtures for the inspector (`?fixture=<id>`): one bad and one clean twin per check. `kinds` is the
+      // exact set of finding kinds the inspector must report; an empty set is a clean twin. Without `fixture`, the page
+      // shows the first bad fixture, so it is a known-failing subject for the gate. Plain HTML that speaks the
+      // __titanMotion protocol, so the package that inspects it needs no framework. All text is synthetic.
+      const INK = '#f0f3f6'
+      const LINE = '1px solid #7d8590'
+      const FONT = 42
+
+      const UNITLESS = new Set(['opacity'])
+      const css = (props) => Object.entries(props).map(([k, v]) => `${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${typeof v === 'number' && !UNITLESS.has(k) ? `${v}px` : v}`).join('; ')
+      const attrs = (a = {}) => Object.entries(a).map(([k, v]) => ` ${k}="${v}"`).join('')
+      const el = (tag, style, body = '', a = {}) => `<${tag}${attrs(a)} style="${css(style)}">${body}</${tag}>`
+      const abs = (left, top, extra = {}) => ({ position: 'absolute', left, top, fontSize: FONT, lineHeight: '56px', color: INK, whiteSpace: 'nowrap', ...extra })
+      const box = (left, top, width, height, extra = {}) => abs(left, top, { width, height, border: LINE, boxSizing: 'border-box', padding: '0 12px', ...extra })
+      const div = (style, body, a) => el('div', style, body, a)
+
+      /** Two lines of text whose ink bands are `gap` px apart vertically (negative: overlapping). */
+      const stacked = (gap) => div(abs(200, 200), 'Signal check') + div(abs(200, 200 + 56 * 0.9 + gap), 'Second stage passes')
+      const panelRow = (container) => div(box(200, 200, 700, 400), '', container ? { 'data-qa-container': '' } : {})
+        + div(box(260, 300, 240, 80), 'Plan') + div(box(560, 300, 240, 80), 'Build')
+      const marker = (decor) => div(box(300, 300, 360, 120), 'Review')
+        + div(box(630, 270, 56, 56, { borderRadius: 28, padding: 0, lineHeight: '54px', textAlign: 'center', background: '#8e1519' }), '!', decor ? { 'data-qa-decor': '' } : {})
+      const svg = (body) => `<svg width="1920" height="1080" style="position: absolute; left: 0; top: 0">${body}</svg>`
+      const strokeScene = (x) => div(box(300, 300, 420, 80, { borderRadius: 40, padding: '0 40px' }), 'ref#2048')
+        + svg(`<line x1="${x}" y1="200" x2="${x}" y2="500" stroke="#58a6ff" stroke-width="3" />`)
+      /** An edge along y = 300 and its label with its top at `top`: 316 is 16 px off the line, 400 is 100 px. */
+      const edgeLabel = (top) => svg('<g data-edge="e:a->b"><path d="M200 300 L700 300" stroke="#7d8590" stroke-width="3" /></g>')
+        + div(abs(400, top), 'run', { 'data-edge-label': 'e:a->b' })
+      /** A box past the right edge and a label 100 px off its edge, as a camera zoom leaves them; `camera` marks the layer. */
+      const cameraLayer = (camera) => el('div', {}, div(box(1700, 600, 400, 100), 'Deploy') + edgeLabel(400), camera ? { 'data-qa-camera': '' } : {})
+      /** Two identical arrows of a step rail, both mid-fade. */
+      const arrowTwins = el('span', abs(300, 300, { color: '#4a5058' }), '→', { class: 'qa-arrow' }) + el('span', abs(600, 300, { color: '#4a5058' }), '→', { class: 'qa-arrow' })
+      const flexRow = (width, contents) => el('ol', { ...abs(100, 200), display: 'flex', flexWrap: 'wrap', width, margin: 0, padding: 0, gap: 12, listStyle: 'none' },
+        ['1 Intake', '2 Plan', '3 Build', '4 Review'].map((label) => {
+          const item = el('li', { border: LINE, padding: '0 12px' }, label)
+          return contents ? el('span', { display: 'contents' }, item) : item
+        }).join(''))
+      const statCard = div(box(300, 200, 640, 420, { padding: 24, whiteSpace: 'normal' }),
+        div({ fontSize: FONT, lineHeight: '56px' }, 'shipped without a hold') + div({ fontSize: 160, lineHeight: '112px', marginTop: 20, color: INK }, '23'))
+
+      // The frame rules: one pair per defect a frame review found and an earlier gate missed.
+      const at = abs
+      /** Two chromes, the outgoing one hidden unless `overprint`: a chapter-line overprint at a beat boundary. */
+      const chromes = (overprint) => div({ ...at(60, 900), visibility: overprint ? 'visible' : 'hidden' }, '5/9 Builder', { class: 'xp-chrome' })
+        + div(at(60, 1000), '6/9 Courier', { class: 'xp-chrome' })
+      /** A headline band and a map label at y 80; `clip` holds the label's layer to the stage below the band. */
+      const underBand = (clip) => div({ position: 'absolute', left: 0, top: 0, width: 1920, height: 122 }, '', { class: 'xp-band-top' })
+        + div({ position: 'absolute', inset: 0, ...(clip ? { clipPath: 'inset(122px 0px 165px 0px)' } : {}) }, el('span', at(900, 80), 'workspace'))
+      /** Two compare cards; `rightFirst` shows the right card's row while the left card's is still hidden. */
+      const compare = (rightFirst) => div({ ...at(200, 300), display: 'flex', gap: 200 },
+        div({}, div({ opacity: rightFirst ? 0 : 1 }, 'tests fail', { class: 'qa-row' })) + div({}, div({ opacity: rightFirst ? 1 : 0 }, 'tests pass', { class: 'qa-row' })), { 'data-qa-order': '.qa-row' })
+      /** A list row's mark: a success tick on a failure, or the error tone and a cross. */
+      const mark = (state, glyph, tone) => div(at(300, 300), `${el('span', { color: `var(--color-status-${tone})` }, glyph, { 'data-qa-glyph': '' })} check-failed 1`, { 'data-mark': state })
+      /** A compare card: its title and one row. */
+      const card = (row) => div({ ...at(300, 300), whiteSpace: 'normal' }, div({}, 'Roster', { 'data-qa-title': '' }) + div({}, row))
+      /** A wrapped pin `gap` px right of an edge label, its first line on the label's row. */
+      const sideBySide = (gap) => div({ ...at(300, 300), display: 'flex', alignItems: 'flex-start', gap },
+        div({}, div({}, el('span', {}, 'workspace'))) + div({}, div({}, el('span', {}, 'BLOCKED →<br />stalled'))))
+      /** Two stat cards; `drop` pushes the second value down, as a wrapped label did. */
+      const stats = (drop) => div({ ...at(300, 300), display: 'flex', alignItems: 'flex-start', gap: 200 },
+        div({}, div({}, '97', { class: 'qa-value' })) + div({}, div({ marginTop: drop }, '16', { class: 'qa-value' })), { 'data-qa-level': '.qa-value' })
+
+      const FIXTURES = [
+        { id: 'text-overlap-bad', kinds: ['text-overlap'], view: stacked(-30) },
+        { id: 'text-overlap-clean', kinds: [], view: stacked(30) },
+        { id: 'text-overlap-ink-clean', kinds: [], view: statCard },
+        { id: 'text-box-bad', kinds: ['text-box'], view: div(box(200, 200, 500, 100), 'Review') + div(abs(600, 220), 'Courier') },
+        { id: 'text-box-clean', kinds: [], view: div(box(200, 200, 500, 100), 'Review') + div(abs(800, 220), 'Courier') },
+        { id: 'occluded-bad', kinds: ['occluded'], view: div(abs(300, 300), 'Courier departs') + div(box(380, 290, 300, 80, { background: '#30363d' }), '') },
+        { id: 'occluded-clean', kinds: [], view: div(abs(300, 300), 'Courier departs') + div(box(380, 420, 300, 80, { background: '#30363d' }), '') },
+        { id: 'box-overlap-bad', kinds: ['box-overlap'], view: div(box(300, 300, 300, 100), 'A') + div(box(560, 300, 300, 100, { textAlign: 'right' }), 'B') },
+        { id: 'box-overlap-clean', kinds: [], view: div(box(300, 300, 300, 100), 'A') + div(box(700, 300, 300, 100, { textAlign: 'right' }), 'B') },
+        { id: 'container-bad', kinds: ['box-overlap'], view: panelRow(false) },
+        { id: 'container-clean', kinds: [], view: panelRow(true) },
+        { id: 'decor-bad', kinds: ['box-overlap', 'text-box'], view: marker(false) },
+        { id: 'decor-clean', kinds: [], view: marker(true) },
+        { id: 'edge-through-pill-bad', kinds: ['edge-crossing'], view: strokeScene(312) },
+        { id: 'edge-through-pill-clean', kinds: [], view: strokeScene(200) },
+        { id: 'off-frame-bad', kinds: ['off-frame'], view: div(box(1700, 300, 400, 100), 'Deploy') },
+        { id: 'off-frame-clean', kinds: [], view: div(box(1400, 300, 400, 100), 'Deploy') },
+        { id: 'content-overflow-bad', kinds: ['content-overflow', 'escapes-box'], view: div(box(300, 300, 240, 100), 'Software owner') },
+        { id: 'content-overflow-clean', kinds: [], view: div(box(300, 300, 600, 100), 'Software owner') },
+        { id: 'content-overflow-ink-clean', kinds: [], view: div(box(300, 300, 400, 52, { lineHeight: '58px', borderRadius: 26 }), 'verdict: adopt') },
+        { id: 'small-text-bad', kinds: ['small-text'], view: div(abs(300, 300, { fontSize: 24 }), 'chip text') },
+        { id: 'small-text-clean', kinds: [], view: div(abs(300, 300), 'chip text') },
+        { id: 'low-contrast-bad', kinds: ['low-contrast'], view: div(abs(300, 300, { color: '#4a5058' }), 'held for review') },
+        { id: 'low-contrast-clean', kinds: [], view: div(abs(300, 300), 'held for review') },
+        { id: 'context-dim-clean', kinds: [], view: div(abs(300, 300, { color: '#4a5058' }), 'held for review', { 'data-qa-context': '' }) },
+        { id: 'ellipsis-bad', kinds: ['ellipsis'], view: div(abs(300, 300), 'run state and the sou…') },
+        { id: 'ellipsis-clean', kinds: [], view: div(abs(300, 300), 'run state and the source') },
+        { id: 'wrap-bad', kinds: ['wrap'], view: div(abs(300, 300, { width: 420, whiteSpace: 'normal' }), 'the queue waits for its gate', { class: 'qa-title' }) },
+        { id: 'wrap-clean', kinds: [], view: div(abs(300, 300, { width: 900, whiteSpace: 'normal' }), 'the queue waits for its gate', { class: 'qa-title' }) },
+        { id: 'flex-wrap-bad', kinds: ['flex-wrap'], view: flexRow(420, false) },
+        { id: 'flex-wrap-clean', kinds: [], view: flexRow(1200, false) },
+        { id: 'flex-wrap-contents-bad', kinds: ['flex-wrap'], view: flexRow(420, true) },
+        { id: 'flex-wrap-contents-clean', kinds: [], view: flexRow(1200, true) },
+        { id: 'crowding-bad', kinds: ['crowding'], view: div(box(300, 300, 300, 80), 'Plan') + div(box(603, 300, 300, 80), 'Build') },
+        { id: 'crowding-clean', kinds: [], view: div(box(300, 300, 300, 80), 'Plan') + div(box(700, 300, 300, 80), 'Build') },
+        { id: 'anchor-offset-bad', kinds: ['anchor-offset'], view: div(box(380, 300, 240, 80, { left: 440 }), 'ref#2048', { 'data-anchor-x': '500' }) },
+        { id: 'anchor-offset-clean', kinds: [], view: div(box(380, 300, 240, 80), 'ref#2048', { 'data-anchor-x': '500' }) },
+        { id: 'labels-dropped-bad', kinds: ['label-dropped'], view: div(box(380, 300, 240, 80), 'map', { 'data-labels-dropped': '2', 'data-labels-dropped-ids': 'e:a->b n4#pin1' }) },
+        { id: 'labels-dropped-clean', kinds: [], view: div(box(380, 300, 240, 80), 'map', { 'data-labels-dropped': '0', 'data-labels-dropped-ids': '' }) },
+        { id: 'edge-label-far-bad', kinds: ['edge-label-far'], view: edgeLabel(400) },
+        { id: 'edge-label-far-clean', kinds: [], view: edgeLabel(316) },
+        { id: 'camera-bad', kinds: ['edge-label-far', 'off-frame'], view: cameraLayer(false) },
+        { id: 'camera-clean', kinds: [], view: cameraLayer(true) },
+        { id: 'arrow-twins', kinds: ['low-contrast'], view: arrowTwins },
+        { id: 'double-chrome-bad', kinds: ['double-chrome'], view: chromes(true) },
+        { id: 'double-chrome-clean', kinds: [], view: chromes(false) },
+        { id: 'under-chrome-bad', kinds: ['under-chrome'], view: underBand(false) },
+        { id: 'under-chrome-clean', kinds: [], view: underBand(true) },
+        { id: 'fill-order-bad', kinds: ['fill-order'], view: compare(true) },
+        { id: 'fill-order-clean', kinds: [], view: compare(false) },
+        { id: 'tone-mismatch-bad', kinds: ['tone-mismatch'], view: mark('tick', '✓', 'success') },
+        { id: 'tone-mismatch-clean', kinds: [], view: mark('problem', '✗', 'error') },
+        { id: 'title-repeat-bad', kinds: ['title-repeat'], view: card('roster: 6 members') },
+        { id: 'title-repeat-clean', kinds: [], view: card('6 members') },
+        { id: 'unlabelled-number-bad', kinds: ['unlabelled-number'], view: card('6 · 12') },
+        { id: 'unlabelled-number-clean', kinds: [], view: card('12 workspaces') },
+        { id: 'label-adjacent-bad', kinds: ['label-adjacent'], view: sideBySide(35) },
+        { id: 'label-adjacent-clean', kinds: [], view: sideBySide(60) },
+        { id: 'misaligned-bad', kinds: ['misaligned'], view: stats(64) },
+        { id: 'misaligned-clean', kinds: [], view: stats(0) },
+      ]
+
+      const wanted = new URLSearchParams(location.search).get('fixture')
+      const shown = FIXTURES.find((f) => f.id === wanted) ?? FIXTURES[0]
+      const root = document.getElementById('root')
+      root.dataset.fixture = shown.id
+      root.innerHTML = shown.view
+      window.__qaFixtures = FIXTURES.map(({ id, kinds }) => ({ id, kinds }))
+      // The fixtures do not move: a seek changes nothing, so any moment shows the seeded defect.
+      window.__titanMotion = { seek: () => {}, ready: () => document.fonts.ready.then(() => undefined), duration: 3 }
+    </script>
+  </body>
+</html>

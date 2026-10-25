@@ -40,21 +40,12 @@ const CLOCK_BUDGET_BASELINE = [
   "packages/anthropic-account/src/node/usage-file.test.ts",
   "packages/daemon/src/file-watch.test.ts",
   "packages/daemon/src/lifecycle.test.ts",
-  "packages/egress-scan/src/git.test.ts",
   "packages/github/src/octokit-client.test.ts",
   "packages/speech-tts/src/command-tts.test.ts",
   "packages/speech-tts/src/fake-tts.test.ts",
   "packages/speech-tts/src/http-tts.test.ts",
   "packages/tool-guard/src/merge-lint/merge-lint.test.ts",
   "packages/tool-guard/src/shell/procsub-heredoc.test.ts",
-  "packages/worktree/src/setup.repo.test.ts",
-  "products/active-work/__tests__/server/daemon-shutdown-order.test.ts",
-  "products/active-work/__tests__/server/related-during-refresh.test.ts",
-  "products/active-work/__tests__/server/session-index-watch.test.ts",
-  "products/active-work/__tests__/session-index/delta-pass.test.ts",
-  "products/active-work/__tests__/session-index/refresh.test.ts",
-  "products/active-work/__tests__/session-index/scheduler.test.ts",
-  "products/active-work/src/session-index/pass-stall.test.ts",
 ];
 
 export default tseslint.config(

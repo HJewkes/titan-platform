@@ -69,7 +69,8 @@
           "packages/dispatch-ledger",
           "packages/speech-vet",
           "packages/autoresearch",
-          "packages/review-workflow"
+          "packages/review-workflow",
+          "packages/render-qa"
         ],
         "ui": [
           "packages/react-app"
@@ -152,7 +153,8 @@
           "packages/dispatch-ledger",
           "packages/speech-vet",
           "packages/autoresearch",
-          "packages/review-workflow"
+          "packages/review-workflow",
+          "packages/render-qa"
         ],
         [
           "packages/react-app"
