@@ -39,6 +39,8 @@ function tcpAddress(address: AddressInfo | string | null): AddressInfo {
   return address;
 }
 
+// A test-server response delay, not frame motion: it holds a fixture back to exercise the page's loading state.
+// eslint-disable-next-line titan/no-wall-clock-motion
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Loopback HTTP over the built page, with the fixture timelines at /timelines/ and, held back by `slowMs`, at /slow/. */
