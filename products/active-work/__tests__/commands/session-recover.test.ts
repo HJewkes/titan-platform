@@ -248,7 +248,7 @@ describe('session recover', () => {
     });
   });
 
-  // Quarantined by TP-4152 pending a follow-up task: on Linux `ps -o comm=` names this
+  // Quarantined by TP-4152 pending TP-4201: on Linux `ps -o comm=` names this
   // process MainThread, not node, so the default probe reads the live pid as recycled.
   it.skip('finds transcripts and live processes through CLAUDE_CONFIG_DIRS by default', async () => {
     await withTempActiveRoot(async (activeRoot) => {
