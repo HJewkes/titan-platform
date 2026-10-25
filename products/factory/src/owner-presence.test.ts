@@ -192,6 +192,13 @@ describe("signStatement", () => {
     expect(calls).toEqual([{ args: ["sign", "--", "--resolve\\x1b[2J"], input: statement }]);
   });
 
+  it("escapes control, format and backslash characters in the reason", async () => {
+    const seen: string[][] = [];
+    const run: HelperRunner = async (file, args, input) => (seen.push([...args]), enclave(file, args, input));
+    await signStatement(statement, "approve\x1b[2J‮ and\\more", options(run));
+    expect(seen).toEqual([["sign", "--", "approve\\x1b[2J\\u202E and\\\\more"]]);
+  });
+
   it.each([
     ["a proof id", PROOF],
     ["standard base64", "MAYC+QEC/QE="],

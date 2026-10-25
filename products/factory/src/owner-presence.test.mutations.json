@@ -36,6 +36,15 @@
       "kills": [
         "owner presence checks the helper path before each run prefers the root install and never falls back to native/build when that install fails the check"
       ]
+    },
+    {
+      "name": "the reason escape lets bidi format characters through",
+      "file": "products/factory/src/owner-presence.ts",
+      "find": "\\x7f-\\x9f\\p{Cf}\\\\]",
+      "replace": "\\x7f-\\x9f\\\\]",
+      "kills": [
+        "signStatement escapes control, format and backslash characters in the reason"
+      ]
     }
   ]
 }
