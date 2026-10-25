@@ -3,11 +3,19 @@ import type { WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 
 const GLOBAL_VALUE_OPTS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source", "--super-prefix"]);
+/**
+ * Global options that leave the repository where `-C` and the environment put it. Any other one (`--bare`,
+ * `--namespace`, `--exec-path`) may relocate the repository or the program a subcommand runs.
+ */
+const REPO_KEEPING_OPTS = new Set([
+  "-C", "-c", "--config-env", "--no-pager", "-p", "--paginate", "-P", "--no-replace-objects", "--literal-pathspecs",
+  "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-optional-locks", "--no-advice",
+]);
 
 export interface GitInvocation {
   /** Directory git operates in after `-C`, null when unknown. */
   dir: string | null;
-  /** Paths from `--git-dir` and `--work-tree`; any entry means `dir` alone does not locate the repository. */
+  /** Paths from `--git-dir` and `--work-tree`, null for another option that may relocate it; any entry means `dir` alone does not locate the repository. */
   otherPaths: Array<string | null>;
   /** `-c key=value` overrides. */
   config: string[];
@@ -33,6 +41,7 @@ export function parseGit(args: WordToken[], dir: string | null, home: string | n
     else if (flag === "--git-dir" || flag === "--work-tree") inv.otherPaths.push(resolvePath(inv.dir, value, home));
     else if (flag === "-c" && value) recordConfig(inv, value);
     else if (flag === "--config-env" && value) inv.configEnv.push(value.typed ?? value.value);
+    else if (!REPO_KEEPING_OPTS.has(flag)) inv.otherPaths.push(null);
   }
   const sub = args[i];
   if (sub?.dynamic || isCaseUnsure(sub)) inv.subDynamic = true;

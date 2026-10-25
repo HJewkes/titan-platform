@@ -92,7 +92,7 @@ function curlMerge(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[]
  * throws has not answered, so it reads as unknown too: as no branch, a push to main would pass.
  */
 function headOf(git: GitInvocation, ctx: ClassifyContext): string | null {
-  if (git.dir === null || git.otherPaths.length > 0) return UNKNOWN;
+  if (git.dir === null || git.otherPaths.length > 0 || ctx.gitRepoUnseen) return UNKNOWN;
   try {
     return ctx.readHead(git.dir);
   } catch {

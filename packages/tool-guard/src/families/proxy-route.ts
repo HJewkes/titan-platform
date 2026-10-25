@@ -33,10 +33,15 @@ export function isRoutingVar(name: string): boolean {
 
 /** Whether `cmd` is a declarer that exports, or may export, a routing variable to the commands after it. */
 export function declaresRouting(cmd: SimpleCommand): boolean {
+  return declaresVar(cmd, isRoutingVar);
+}
+
+/** Whether `cmd` is a declarer that exports, or may export, a variable `isVar` names to the commands after it. */
+export function declaresVar(cmd: SimpleCommand, isVar: (name: string) => boolean): boolean {
   if (cmd.name === null || !DECLARERS.has(cmd.name)) return false;
   const { options, names } = splitDeclaration(cmd.args);
   if (cmd.name === "export" && options.some((o) => o.startsWith("-") && o.includes("n"))) return false;
-  return names.some(namesRouting);
+  return names.some((word) => namesVar(word, isVar));
 }
 
 /** Whether the git global words `globals`, before the subcommand, set a routing key or one only known at run time. */
@@ -65,13 +70,13 @@ function splitDeclaration(args: WordToken[]): { options: string[]; names: WordTo
 }
 
 /** An append (`NAME+=`) exports whatever value the variable already held, so even an empty one counts. */
-function namesRouting(word: WordToken): boolean {
+function namesVar(word: WordToken, isVar: (name: string) => boolean): boolean {
   const eq = word.value.indexOf("=");
   const end = eq < 0 ? word.value.length : eq;
   if (dynamicBefore(word, end)) return true;
   const name = word.value.slice(0, end).replace(/\[.*$/s, "");
   const append = name.endsWith("+");
-  if (!isRoutingVar(append ? name.slice(0, -1) : name)) return false;
+  if (!isVar(append ? name.slice(0, -1) : name)) return false;
   return eq < 0 || append || word.dynamic || eq < word.value.length - 1;
 }
 

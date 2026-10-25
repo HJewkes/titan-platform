@@ -25,6 +25,8 @@ export interface ClassifyContext {
   chainTrust?: { chain: Chain; fallback: ClassifyContext };
   /** Set by the classifier when the line may choose or write the config file wget or curl reads. */
   httpConfigUnseen?: true;
+  /** Set when the line, or the hook's own environment, may move the repository git opens away from its directory's. */
+  gitRepoUnseen?: true;
 }
 
 export type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";

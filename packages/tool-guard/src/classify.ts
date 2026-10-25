@@ -2,6 +2,7 @@ import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
 import { egress } from "./families/egress.js";
 import { githubSettings } from "./families/github-settings.js";
+import { relocatesRepo } from "./families/git-repo.js";
 import { choosesHttpConfig } from "./families/http-config.js";
 import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
@@ -71,14 +72,17 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
     if (scripts) addPathWrite(scripts.path, unsafe, dirs);
   };
   const commands = extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), onPathWrite });
-  const line = withHttpConfig(src, commands, ctx);
+  const line = withLineState(src, commands, ctx);
   const asWritten = classifyLine(commands, line, scripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, line, scripts)]) : asWritten;
 }
 
-/** Marks the line when it may choose or write an HTTP client's config file, read from these commands. */
-function withHttpConfig(src: string, commands: SimpleCommand[], ctx: ClassifyContext): ClassifyContext {
-  return choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true) ? { ...ctx, httpConfigUnseen: true } : ctx;
+/** Marks the line when it may choose or write an HTTP client's config file, or move the repository git opens, read from these commands. */
+function withLineState(src: string, commands: SimpleCommand[], ctx: ClassifyContext): ClassifyContext {
+  let line = ctx;
+  if (choosesHttpConfig(src, commands, ctx.home, ctx.foldCase === true)) line = { ...line, httpConfigUnseen: true };
+  if (relocatesRepo(src, commands)) line = { ...line, gitRepoUnseen: true };
+  return line;
 }
 
 /**
@@ -99,7 +103,7 @@ function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: Scrip
 function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
     const folded = extractCommands(src, extractOptions(cwd, ctx, scripts, true));
-    return classifyLine(folded, withHttpConfig(src, folded, ctx), scripts);
+    return classifyLine(folded, withLineState(src, folded, ctx), scripts);
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];

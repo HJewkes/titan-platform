@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { inheritsRepoVar } from "./families/git-repo.js";
 import { UnreadableScriptError } from "./shell/unsure-readings.js";
 import type { ClassifyContext } from "./types.js";
 
@@ -43,8 +44,11 @@ export function foldsCaseOn(platform: string): boolean {
   return platform === "darwin" || platform === "win32";
 }
 
-/** The classifier's context over a read-only filesystem. Every port but `readScript` returns null rather than throwing. */
-export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContext {
+/**
+ * The classifier's context over a read-only filesystem. Every port but `readScript` returns null rather than throwing.
+ * A `GIT_DIR` or like variable in `env`, which the agent's shell inherits too, leaves every repository unknown.
+ */
+export function nodeContext(home: string, rfs: ReadFs = NODE_FS, env: NodeJS.ProcessEnv = process.env): ClassifyContext {
   const realHome = attempt(() => rfs.realpath(home));
   return {
     home,
@@ -52,6 +56,7 @@ export function nodeContext(home: string, rfs: ReadFs = NODE_FS): ClassifyContex
     readHead: (dir) => attempt(() => branchOf(dir, rfs)),
     readScript: (p) => wholeScript(p, rfs),
     ...(rfs.foldsCase ? { foldCase: true } : {}),
+    ...(inheritsRepoVar(env) ? { gitRepoUnseen: true } : {}),
   };
 }
 
