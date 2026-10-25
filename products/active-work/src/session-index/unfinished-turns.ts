@@ -12,6 +12,33 @@ const UNFINISHED_SESSIONS = `
   WHERE prompt_id IN (SELECT prompt_id FROM turn WHERE ended_at IS NULL)`;
 
 /**
+ * Roll up `sessionIds` one session per transaction, yielding after each. One
+ * transaction over a 500-session delta held the daemon's event loop for
+ * seconds (TP-4172); the rollup recomputes rather than accumulates, so slicing
+ * it changes no row. A throw at a yield point (a shutdown abort) rolls up the
+ * rest before it propagates, as the scan does, so no continued turn is left
+ * with stale aggregates.
+ */
+export async function rollupYielding(
+  graph: WorkspaceGraph,
+  sessionIds: readonly string[],
+  yieldPoint: () => Promise<void>,
+): Promise<number> {
+  const unique = [...new Set(sessionIds)];
+  let updated = 0;
+  for (const [i, sessionId] of unique.entries()) {
+    updated += rollupSessions(graph, [sessionId]);
+    try {
+      await yieldPoint();
+    } catch (err) {
+      rollupSessions(graph, unique.slice(i + 1));
+      throw err;
+    }
+  }
+  return updated;
+}
+
+/**
  * Roll up every session that still has a turn with no `ended_at`.
  *
  * A pass advances each transcript's watermark as it indexes it and rolls up
@@ -20,10 +47,14 @@ const UNFINISHED_SESSIONS = `
  * it reaches, so in steady state this finds nothing: one scan of the narrow
  * `turn` table, about 16k rows on the live graph as of 2026-10-03.
  */
-export function rollupUnfinishedTurns(graph: WorkspaceGraph): number {
+export async function rollupUnfinishedTurns(
+  graph: WorkspaceGraph,
+  yieldPoint: () => Promise<void>,
+): Promise<number> {
   const rows = graph.db.prepare<[], { session_id: string }>(UNFINISHED_SESSIONS).all();
-  return rollupSessions(
+  return rollupYielding(
     graph,
     rows.map((row) => row.session_id),
+    yieldPoint,
   );
 }

@@ -14,6 +14,7 @@ import type { DrainedDirtySet } from './dirty-set.js';
 import { transcriptFromPath } from './transcript-path.js';
 import { taskResolver } from './tasks.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
+import { rollupYielding } from './unfinished-turns.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { bytesAdvanced, lapTimer } from './pass-metrics.js';
@@ -126,7 +127,7 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
   const tasksBefore = new Set(allTaskIds(graph));
   const { counts, touched, facts } = await scanTranscripts(graph, transcripts, yieldPoint);
   phases.scan = lap();
-  const turnsRolledUp = rollupSessions(graph, touched);
+  const turnsRolledUp = await rollupYielding(graph, touched, yieldPoint);
   const newTasks = allTaskIds(graph).filter((id) => !tasksBefore.has(id));
   const tasks = await enrichTasks(graph, taskResolver(options.taskRoot), newTasks);
   phases.rollup = lap();

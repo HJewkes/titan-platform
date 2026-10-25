@@ -338,7 +338,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
 
     syncPrices(graph, PRICE_TABLE, { tableVersion: PRICE_TABLE_VERSION });
     // A rebuild rolls up every session itself; it has also just reset every turn.
-    const resumedTurns = options.full ? 0 : rollupUnfinishedTurns(graph);
+    const resumedTurns = options.full ? 0 : await rollupUnfinishedTurns(graph, yieldPoint);
     const offsetsBefore = snapshotOffsets(graph);
     phases.discover = lap();
     const prErrors: string[] = [];
