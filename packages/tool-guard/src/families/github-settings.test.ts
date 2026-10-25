@@ -138,6 +138,12 @@ describe("githubSettings, a GraphQL ruleset mutation", () => {
     ["bash.config.curl-graphql-ruleset", `https ${API}/graphql query='${RULESET_QUERIES.delete}'`],
     ["bash.config.curl-graphql-ruleset", `curl -d @q.json ${API}/graphql`],
     ["bash.config.curl-graphql-ruleset", `wget --post-file=q.json ${API}/graphql`],
+    ["bash.config.gh-api-graphql-ruleset", "gh api graphql -F query=@q.graphql"],
+    ["bash.config.gh-api-graphql-ruleset", "gh api graphql --input q.json"],
+    ["bash.config.gh-api-graphql-ruleset", "gh api graphql.json --input=q.json"],
+    ["bash.config.gh-api-graphql-ruleset", 'gh api graphql -f query="$(cat q.graphql)"'],
+    ["bash.config.gh-api-graphql-ruleset", 'gh api graphql -f query="$Q"'],
+    ["bash.config.gh-api-graphql-ruleset", `gh api graphql -f "$K=${RULESET_QUERIES.delete.replaceAll('"', '\\"')}"`],
   ])("%s: %s", (spelling, command) => {
     expect(settings(bash(command))).toEqual([expect.objectContaining({ action: "authority-config", spelling, subject: RULESET })]);
   });
@@ -151,6 +157,7 @@ describe("githubSettings, a GraphQL ruleset mutation", () => {
     `curl -d ${curlBody(RULESET_QUERIES.delete)} https://example.com/graphql`,
     `curl -d @q.json https://example.com/graphql`,
     `http ${API}/graphql`,
+    "gh api graphql -f query='{viewer{login}}' -F owner=@me",
     `gh api graphqlx -f query='${RULESET_QUERIES.delete}'`,
     `gh api repos/o/r/graphql.json -f query='${RULESET_QUERIES.delete}'`,
   ])("passes %s", (command) => {
