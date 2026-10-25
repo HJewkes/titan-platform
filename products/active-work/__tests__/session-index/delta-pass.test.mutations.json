@@ -27,8 +27,8 @@
     {
       "name": "the database size counts pages, not bytes",
       "file": "products/active-work/src/session-index/pass-metrics.ts",
-      "find": "  return pageCount * pageSize;\n",
-      "replace": "  return pageCount;\n",
+      "find": "page_count * page_size AS n",
+      "replace": "page_count AS n",
       "kills": ["delta pass reports the rows each pass wrote and the database size it left"]
     }
   ]
