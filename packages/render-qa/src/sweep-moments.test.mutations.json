@@ -18,7 +18,10 @@
       "find": "const ts = gridTimes(startS, endS, hz)",
       "replace": "const ts = gridTimes(0, endS - startS, hz).map((t) => round3(t + startS))",
       "kills": [
+        "sweepMoments against the archived sweep golden redesign-explainer-v4: the 2 Hz sweep with the outro fade rule equals the golden",
         "sweepMoments against the archived sweep golden review-addendum-v5: the 2 Hz sweep with the outro fade rule equals the golden",
+        "sweepMoments the settled sample is the last one before end - settleBy, even when later samples fall in the fade",
+        "sweepMoments without settleBy every beat settles on its last sample",
         "sweepMoments the grid counts from the video start, so a beat starting between samples begins at the next one"
       ]
     }
