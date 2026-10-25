@@ -7,7 +7,7 @@
       "find": "  if (isNameReading(cmd)) return hidden;\n",
       "replace": "",
       "kills": [
-        "a dynamic command word read as gh passes \"$EDITOR\" file, whose literal words gh would read as an alias",
+        "a dynamic command word read as gh passes \"$EDITOR\" file, whose literal word gh would read as an alias",
         "a dynamic command word read as gh passes \"$PM\" start 3000, whose literal words gh would read as an alias"
       ]
     }

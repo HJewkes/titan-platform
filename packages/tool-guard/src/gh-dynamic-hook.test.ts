@@ -56,7 +56,11 @@ describe("a dynamic command word read as gh", () => {
     expect(await handled('"$G" pr $X 5')).toBe("deny");
   });
 
-  it.each([['"$EDITOR" file'], ['"$PM" start 3000'], ['"$G" push']])("passes %s, whose literal words gh would read as an alias", async (command) => {
+  it("passes \"$EDITOR\" file, whose literal word gh would read as an alias", async () => {
+    expect(await handled('"$EDITOR" file')).toBe("pass");
+  });
+
+  it.each([['"$PM" start 3000'], ['"$G" push']])("passes %s, whose literal words gh would read as an alias", async (command) => {
     expect(await handled(command)).toBe("pass");
   });
 });

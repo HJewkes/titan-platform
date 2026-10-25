@@ -349,6 +349,15 @@ describe("handle: what passes", () => {
   });
 });
 
+describe("handle: a push rerouted by the command's own config", () => {
+  it("denies a feature-branch push that -c remote.origin.push maps onto main", async () => {
+    const result = await handle(bash("git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin feat"), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "MRG-WK", "merge", "bash.merge.git-push-protected"]);
+  });
+});
+
 describe("namesGuarded", () => {
   it("finds guarded paths, basenames and keywords in any case", () => {
     expect(namesGuarded("cat ~/.NPMRC")).toBe(true);

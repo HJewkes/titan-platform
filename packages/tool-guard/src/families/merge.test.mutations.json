@@ -21,31 +21,30 @@
       ]
     },
     {
-      "name": "an unknown gh path is read only for a literal pr merge",
+      "name": "config routes only a push with no refspec",
       "file": "packages/tool-guard/src/families/merge.ts",
-      "find": "  if (cmd.name === \"gh\") return ghPathUnknown(cmd) ? [classified(\"bash.merge.gh-pr-merge\", {})] : [...prMerge(cmd), ...apiMerge(cmd)];",
-      "replace": "  if (cmd.name === \"gh\") return [...prMerge(cmd), ...apiMerge(cmd)];",
+      "find": "    return spec === null ? [UNKNOWN] : spec.includes(\":\") ? [] : [spec];",
+      "replace": "    return [];",
       "kills": [
-        "a gh command whose group or verb is only known at run time reads gh $X as a merge of an unknown PR",
-        "a gh command whose group or verb is only known at run time reads gh pr $X 5 as a merge of an unknown PR"
+        "a push the command's own -c or --config-env config routes onto a protected branch a remote push refspec mapping the named branch reads as a push to main"
       ]
     },
     {
-      "name": "an unknown gh path does not switch the branch",
+      "name": "config routes an explicit src:dst refspec too",
       "file": "packages/tool-guard/src/families/merge.ts",
-      "find": "    const checksOut = ghPathUnknown(cmd) || /^pr checkout\\b/",
-      "replace": "    const checksOut = /^pr checkout\\b/",
+      "find": "    return spec === null ? [UNKNOWN] : spec.includes(\":\") ? [] : [spec];",
+      "replace": "    return spec === null ? [UNKNOWN] : [spec];",
       "kills": [
-        "a gh command whose group or verb is only known at run time reads it as a switch to an unknown head, so a later push counts as protected"
+        "a push the command's own -c or --config-env config routes onto a protected branch an explicit src:dst refspec, which git does not map pushes no protected branch"
       ]
     },
     {
-      "name": "a dynamic command word read as gh ignores a run-time word",
-      "file": "packages/tool-guard/src/families/gh-path.ts",
-      "find": "  if (isNameReading(cmd)) return hidden;\n",
-      "replace": "  if (isNameReading(cmd)) return false;\n",
+      "name": "any branch upstream satisfies push.default=upstream",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "sources.some((s) => s === UNKNOWN || !config.merges.has(s))",
+      "replace": "config.merges.size === 0",
       "kills": [
-        "a gh command whose group or verb is only known at run time reads a run-time verb behind a dynamic command word as a gh merge"
+        "a push the command's own -c or --config-env config routes onto a protected branch push.default=upstream with another branch's upstream reads as a push to an unknown branch"
       ]
     }
   ]

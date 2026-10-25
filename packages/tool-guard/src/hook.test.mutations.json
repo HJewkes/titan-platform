@@ -20,6 +20,15 @@
         "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a node` running a script of paths, cost near-linear in size",
         "handle over real script files behind dynamic wrapper words, case folding on denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads"
       ]
+    },
+    {
+      "name": "the push guard ignores the command's own config",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  if (git.config.length === 0 && git.configEnv.length === 0) return [];",
+      "replace": "  if (git.sub === \"push\") return [];",
+      "kills": [
+        "handle: a push rerouted by the command's own config denies a feature-branch push that -c remote.origin.push maps onto main"
+      ]
     }
   ]
 }
