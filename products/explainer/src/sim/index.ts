@@ -1,4 +1,5 @@
 export { SIM_MODELS, type SimModel } from "./model.js";
+export { MAX_REVIEW_PRS, MIN_LATER_PASS, fitLaterRoundPass, reviewRounds, type ReviewRoundsParams } from "./models/review-rounds.js";
 export {
   MAX_SIM_STEPS,
   SIM_TRACE_SCHEMA,
