@@ -1,5 +1,5 @@
 import { compileGlobs } from "@titan-design/fix-proof";
-import { DEFAULT_CLASS_RULES, pathTouches, type ClassRules } from "@titan-design/review-panel";
+import { DEFAULT_CLASS_RULES, pathTouches, type ChangedFile, type ClassRules } from "@titan-design/review-panel";
 
 /** Shepherd's merge-policy files. These tables sit apart from registration-hold.ts so risk-tier.ts can read them without an import cycle through policy.ts. */
 export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "risk-tier.ts"].map((name) => `**/${name}`);
@@ -76,7 +76,9 @@ export const GATE_RESOLVE_CHECK_FILES = ["gate-resolve-sites.test.ts", "gate-res
   (name) => `products/factory/src/shepherd/${name}`,
 );
 
-const inGateResolveCheck = compileGlobs(GATE_RESOLVE_CHECK_FILES);
+const matchesGateResolveCheck = compileGlobs(GATE_RESOLVE_CHECK_FILES);
+/** Case-folded (TP-4158): a case-insensitive checkout still imports `Gate-Resolve-x.test-helpers.ts` as the helper. */
+const inGateResolveCheck = (path: string): boolean => matchesGateResolveCheck(path.toLowerCase());
 
 /** Shepherd's merge policy and the owner's levers live in plain source files, which the panel's default globs miss. */
 export const SHEPHERD_CLASS_RULES: ClassRules = {
@@ -85,8 +87,12 @@ export const SHEPHERD_CLASS_RULES: ClassRules = {
   security: [...DEFAULT_CLASS_RULES.security, ...AGENT_CHAT_SECURITY_FILES],
 };
 
-/** The panel's path touches under Shepherd's rules, with the gate-resolve check counted as policy despite the panel's test exemption. */
-export function shepherdPathTouches(paths: readonly string[]): string[] {
-  const touches: string[] = pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES);
-  return paths.some(inGateResolveCheck) && !touches.includes("policy") ? [...touches, "policy"] : touches;
+/**
+ * The panel's path touches under Shepherd's rules, a rename's old path included, with the gate-resolve check counted as
+ * policy despite the panel's test exemption.
+ */
+export function shepherdPathTouches(files: readonly Pick<ChangedFile, "path" | "previousPath">[]): string[] {
+  const touches: string[] = pathTouches(files, SHEPHERD_CLASS_RULES);
+  const inCheck = files.some(({ path, previousPath }) => inGateResolveCheck(path) || (previousPath !== undefined && inGateResolveCheck(previousPath)));
+  return inCheck && !touches.includes("policy") ? [...touches, "policy"] : touches;
 }

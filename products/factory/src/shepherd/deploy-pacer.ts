@@ -41,8 +41,22 @@ export type DeployWanted = z.infer<typeof DeployWanted>;
 type PaceDecision =
   | { kind: "idle" }
   | { kind: "clear"; why: string }
-  | { kind: "wait"; why: string; until?: number }
+  /** `key` names the reason when `why` carries a count, so a count that moves is not a new reason. */
+  | { kind: "wait"; why: string; until?: number; key?: string }
   | { kind: "spawn"; sha: string; stale?: boolean; express?: boolean; main?: boolean };
+
+/** A wait as `/health` shows it; `until` is absent for a wait with no end, such as the pause. */
+interface PaceWait {
+  sha: string;
+  why: string;
+  until?: string;
+  key: string;
+}
+
+/** The wait the last sweep decided, kept between sweeps so a standing wait is logged once instead of every minute. */
+export interface PacerMemo {
+  wait?: PaceWait | undefined;
+}
 
 interface PaceInput {
   wanted: DeployWanted | undefined;
@@ -140,7 +154,7 @@ export function paceDecision(input: PaceInput): PaceDecision {
   const quiet = now < quietEnds && now < capEnds;
   const express = quiet && input.express === true;
   if (quiet && !express) return { kind: "wait", why: "inside the quiet window", until: Math.min(quietEnds, capEnds) };
-  if (busy > 0 && now < capEnds) return { kind: "wait", why: `${busy} busy run(s)`, until: capEnds };
+  if (busy > 0 && now < capEnds) return { kind: "wait", why: `${busy} busy run(s)`, until: capEnds, key: "busy runs" };
   return { kind: "spawn", sha: wanted.sha, ...(express && { express }) };
 }
 
@@ -227,6 +241,7 @@ interface PacerDeps {
   maxWaitMs?: number;
   staleSpawnMs?: number;
   log: (line: string) => void;
+  waits: PacerMemo;
 }
 
 /** An unreadable record is removed once logged, so the sweep says so once instead of idling silently every minute. */
@@ -289,11 +304,27 @@ export interface DeployPacerOptions {
   morningQueuesDir?: string;
 }
 
+function waitOf(wanted: DeployWanted | undefined, decision: PaceDecision): PaceWait | undefined {
+  if (wanted === undefined || decision.kind !== "wait") return undefined;
+  return { sha: wanted.sha, why: decision.why, ...(decision.until !== undefined && { until: iso(decision.until) }), key: decision.key ?? decision.why };
+}
+
+/** Without this line a held deploy reads as stuck: nothing else says why the pacer has not spawned (TP-2427). */
+function noteWait(deps: PacerDeps, wanted: DeployWanted | undefined, decision: PaceDecision): void {
+  const wait = waitOf(wanted, decision);
+  const last = deps.waits.wait;
+  if (wait !== undefined && (wait.sha !== last?.sha || wait.key !== last.key)) {
+    deps.log(`deploy pacer: waiting for ${wait.sha}: ${wait.why}${wait.until === undefined ? "" : ` until ${wait.until}`}`);
+  }
+  deps.waits.wait = wait;
+}
+
 /** One sweep: read, decide, act. Never throws; a failed tick logs and waits for the next. */
 export function pacerTick(deps: PacerDeps): PaceDecision {
   try {
     const { wanted, decision } = decide(deps);
     if (wanted !== undefined) act(deps, wanted, decision);
+    noteWait(deps, wanted, decision);
     return decision;
   } catch (error) {
     const why = `the pacer tick failed: ${failureOf(error)}`;
@@ -310,10 +341,18 @@ interface PacerStatus {
   /** Set once the sweep has started a deployer for this sha. */
   spawnedSha?: string;
   spawnedAt?: string;
+  /** Why the last sweep held this sha, absent once it stopped waiting. */
+  waiting?: { why: string; until?: string };
 }
 
 export function pacerStatus(wanted: DeployWanted | undefined, maxWaitMs = DEPLOY_MAX_WAIT_MS): PacerStatus | null {
   if (wanted === undefined) return null;
   const spawned = wanted.spawnedSha === undefined ? {} : { spawnedSha: wanted.spawnedSha, spawnedAt: wanted.spawnedAt };
   return { sha: wanted.sha, since: wanted.firstAt, deploysBy: iso(ms(wanted.firstAt) + maxWaitMs), ...spawned };
+}
+
+/** A wait for an older sha says nothing about the one now queued, so it is shown only when the shas match. */
+export function withWaiting(status: PacerStatus | null, wait: PaceWait | undefined): PacerStatus | null {
+  if (status === null || wait?.sha !== status.sha) return status;
+  return { ...status, waiting: { why: wait.why, ...(wait.until !== undefined && { until: wait.until }) } };
 }

@@ -4,12 +4,14 @@ import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
+import { ciPolicyAt } from "../gate-brief.js";
+import type { Verdict } from "../shepherd/phases.js";
 import { gateEverything, type GatePolicy, type PolicyRule } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { DEVICE_CHECK, LAND_STEPS, SET_ANSWER_ORIGIN, land, type ApprovalAnswer, type ApprovalQuestion, type AskApproval, type LandOutcome } from "./land.js";
-import { approveMergeGate } from "./land-approval.js";
+import { approveMergeAsk, approveMergeGate } from "./land-approval.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];
@@ -103,6 +105,30 @@ describe("approveMergeGate", () => {
     ["a merge the approved set answered", { decision: "merge", headSha: H1, origin: SET_ANSWER_ORIGIN }, "merge-by-set"],
   ])("reads %s with its source", async (_name, data, expected) => {
     expect(await approveMergeGate(RULE)(answering(data), QUESTION)).toBe(expected);
+  });
+});
+
+describe("the approve-merge prompt on a ci-policy-weakened gate", () => {
+  const RULE: PolicyRule = { table: "shepherd-merge-guard", rowId: "ci-policy-weakened", version: 1 };
+  const CI = ".github/workflows/ci.yml";
+  const change = { path: CI, lines: [{ side: "-", n: 7, text: "  egress-scan:" }], omitted: 0 };
+  /** Evidence collected at H1 under a MERGE at any head, so only the card's own evidence-head check keeps it off another head's gate. */
+  const verdictAt = (headSha: string): Verdict => ({ kind: "MERGE", headSha, evidence: { head: H1, record: { ciPolicyChanges: [change] }, ciPolicy: { kind: "weakened", keys: ["required-check"] } } });
+  const ask = (headSha: string) => approveMergeAsk(RULE, { ciPolicyAt: (head) => ciPolicyAt(verdictAt(head), head) }, { repo: REPO, pr: 1, headSha, round: 0, reason: "CI-policy weakened: required-check" });
+
+  it("names Class D21, the keys and each changed line read at the gate's head", () => {
+    const { prompt, brief } = ask(H1);
+
+    expect(prompt).toContain(`Class D21 (CI policy weakened): required-check.\n${CI}:\n- L7:   egress-scan:\nRead the diff: https://github.com/${REPO}/pull/1/files`);
+    expect(brief.summary).toContain("Class D21. CI policy weakened: required-check.");
+  });
+
+  it("shows no card on a gate at another head than the evidence was collected at", () => {
+    const { prompt, brief } = ask(H2);
+
+    expect(prompt).not.toContain("D21");
+    expect(prompt).not.toContain("egress-scan");
+    expect(brief.summary).not.toContain("D21");
   });
 });
 

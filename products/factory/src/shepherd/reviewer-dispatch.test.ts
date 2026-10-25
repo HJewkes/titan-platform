@@ -5,6 +5,7 @@ import type * as childProcess from "node:child_process";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReviewTarget } from "@titan-design/review-panel";
+import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { provablyIndependent } from "./lineage.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown } from "./review.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
@@ -39,17 +40,8 @@ beforeEach(() => {
   home = join(dir, "home");
   checkout = join(home, "projects", "demo");
   mkdirSync(checkout, { recursive: true });
-  vi.stubEnv("HOME", home);
-  vi.stubEnv("AGENT_CHAT_HOME", join(home, ".agent-chat"));
-  installHeadlessProfiles(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
+  isolateAgentChatHome(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
 });
-
-/** agent-dispatch refuses a spawn unless `~/.agent-chat/profiles/<profile>.json` says headless. */
-function installHeadlessProfiles(root: string, profiles: string[]): void {
-  const profilesDir = join(root, ".agent-chat", "profiles");
-  mkdirSync(profilesDir, { recursive: true });
-  for (const profile of profiles) writeFileSync(join(profilesDir, `${profile}.json`), JSON.stringify({ surface: "headless" }));
-}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -162,14 +154,55 @@ describe("agentChatReviewerDispatch roster", () => {
       const roster = await rosterOf(crew({ predecessor: null }));
       const reviewer = roster.find((agent) => agent.name === "rv-demo-7");
 
-      expect(reviewer && provablyIndependent(reviewer, "impl-a", roster)).toBe(true);
+      expect(reviewer && provablyIndependent(reviewer, "impl-a", { rows: roster, complete: true })).toBe(true);
     });
 
     it("cannot prove a reviewer independent from rows that carry no predecessor", async () => {
       const roster = await rosterOf(crew({}));
       const reviewer = roster.find((agent) => agent.name === "rv-demo-7");
 
-      expect(reviewer && provablyIndependent(reviewer, "impl-a", roster)).toBe(false);
+      expect(reviewer && provablyIndependent(reviewer, "impl-a", { rows: roster, complete: true })).toBe(false);
+    });
+  });
+
+  describe("retired generations", () => {
+    const seat = (name: string, spawnedBy: string | null, over: Record<string, unknown> = {}) => ({ ...row, name, agentId: `agent-${name}-${String(over.generation ?? 1)}`, spawnedBy, predecessor: null, ...over });
+    /** The seat's first generation, retired, is the only row that says the implementer spawned the seat. */
+    const retiredFirst = seat("seat", "impl-a", { state: "retired", retired: true });
+    const rows = [retiredFirst, seat("seat", "seat", { generation: 2, predecessor: "seat" }), seat("impl-a", null), seat("rv-demo-7", "seat")];
+
+    /** Prints `rows` for any `agent ls`; `predatesFlag` refuses `--include-retired` the way commander does on an older agent-chat. */
+    const brokerOf = (printed: readonly unknown[], predatesFlag = false) => {
+      writeFileSync(join(dir, "roster.json"), JSON.stringify(printed));
+      const refuse = predatesFlag ? `for a in "$@"; do [ "$a" = --include-retired ] && { echo "error: unknown option '--include-retired'" >&2; exit 1; }; done\n` : "";
+      return dispatchOver(`${refuse}cat "${dir}/roster.json"\n`);
+    };
+
+    it("never offers a retired row as a reviewer on the roster", async () => {
+      const roster = await brokerOf(rows).roster();
+
+      expect(roster.map((agent) => [agent.name, agent.agentId])).not.toContainEqual(["seat", retiredFirst.agentId]);
+      expect(roster).toHaveLength(rows.length - 1);
+      expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
+    });
+
+    it("refuses a reviewer whose seat's retired first generation the implementer spawned", async () => {
+      const dispatch = brokerOf(rows);
+      const reviewer = (await dispatch.roster()).find((agent) => agent.name === "rv-demo-7");
+      const lineage = await dispatch.lineage();
+
+      expect(recordedArgv()).toEqual(["agent", "ls", "--json", "--include-retired"]);
+      expect(lineage.rows.map((agent) => agent.agentId)).toContain(retiredFirst.agentId);
+      expect(reviewer && provablyIndependent(reviewer, "impl-a", lineage)).toBe(false);
+    });
+
+    it("proves nothing, and still reads the roster, on an agent-chat that predates --include-retired", async () => {
+      const dispatch = brokerOf(rows.filter((agent) => agent !== retiredFirst), true);
+      const reviewer = (await dispatch.roster()).find((agent) => agent.name === "rv-demo-7");
+      const lineage = await dispatch.lineage();
+
+      expect(lineage.complete).toBe(false);
+      expect(reviewer && provablyIndependent(reviewer, "impl-a", lineage)).toBe(false);
     });
   });
 

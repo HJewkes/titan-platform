@@ -335,7 +335,7 @@ describe("Codex exec results", () => {
     const fake = fakeProcess({ stdout: events() });
     const runner = harness(fake.processHandle, { inspectVersion: async () => "codex-cli 0.161.9" });
     const result = await runner.adapter.run(request());
-    expect(result).toMatchObject({ ok: false, failure: { kind: "runtime_error", reason: /unsupported Codex CLI version/ } });
+    expect(result).toMatchObject({ ok: false, failure: { kind: "harness_mismatch", reason: /unsupported Codex CLI version/ } });
     expect(runner.start).not.toHaveBeenCalled();
   });
 

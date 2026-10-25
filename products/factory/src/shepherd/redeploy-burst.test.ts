@@ -82,6 +82,7 @@ function tickAfterQuiet(store: WantedStore, runningHolds: (sha: string) => boole
     paused: () => false,
     spawn: (sha) => (spawned.push(sha), { pid: 4242 }),
     log: () => undefined,
+    waits: {},
   });
   return spawned;
 }

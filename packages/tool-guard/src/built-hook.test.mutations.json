@@ -9,6 +9,13 @@
       "kills": [
         "the built tool-guard on a line whose check outruns its deadline (TP-3224) denies as the deadline passes through the built worker, telling the agent to split the command"
       ]
+    },
+    {
+      "name": "the push guard ignores the command's own config",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  if (git.config.length === 0 && git.configEnv.length === 0) return [];",
+      "replace": "  if (git.sub === \"push\") return [];",
+      "kills": ["the built tool-guard denies a push rerouted by -c remote.origin.push through the hook with exit 0"]
     }
   ]
 }

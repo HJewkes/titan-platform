@@ -1,15 +1,22 @@
 import type { GitHubPort } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
+import type { GateBatchStore } from "../gate-batch-store.js";
 import { ownerRelease } from "../shepherd/owner-release.js";
 import type { ShepherdStore } from "../shepherd/store.js";
 import { consoleResolver, githubOutcome, refused, type Outcome } from "./outcome.js";
 import type { Read, ReleaseAction } from "./record.js";
 
+interface ReleaseDeps {
+  store: ShepherdStore;
+  port: GitHubPort;
+  batches: GateBatchStore;
+}
+
 /**
  * Lifts the owner-asked hold on the record's PR, and only that hold, at the head the owner confirmed. Shepherd's own
  * checks run again inside `ownerRelease`; reading them first here is what lets the console tell moved from gone.
  */
-export async function releaseHold({ action, confirmEvent }: Read<ReleaseAction>, port: GitHubPort, store: ShepherdStore): Promise<Outcome> {
+export async function releaseHold({ action, confirmEvent }: Read<ReleaseAction>, port: GitHubPort, store: ShepherdStore, batches: GateBatchStore): Promise<Outcome> {
   const registration = store.byPr(action.repo, action.pr);
   if (registration === undefined) return { outcome: "gone", reason: `${action.repo}#${action.pr} is not registered with shepherd` };
   const { runId } = registration;
@@ -17,7 +24,7 @@ export async function releaseHold({ action, confirmEvent }: Read<ReleaseAction>,
   if (before !== undefined) return before;
   if (registration.ownerHold === null) return { outcome: "gone", reason: `${action.repo}#${action.pr} holds no owner-asked hold` };
   const stale = await githubOutcome(port, action);
-  return stale ?? releaseOnce(store, port, { ...action, runId }, confirmEvent);
+  return stale ?? releaseOnce({ store, port, batches }, { ...action, runId }, confirmEvent);
 }
 
 /**
@@ -30,9 +37,9 @@ function releasedBefore(store: ShepherdStore, runId: string, confirmEvent: strin
 }
 
 /** Of two concurrent posts of one record only one lifts the hold; the other loses inside `ownerRelease` and reads back `already`. */
-async function releaseOnce(store: ShepherdStore, port: GitHubPort, { repo, pr, headSha, runId }: ReleaseAction & { runId: string }, confirmEvent: string): Promise<Outcome> {
+async function releaseOnce({ store, port, batches }: ReleaseDeps, { repo, pr, headSha, runId }: ReleaseAction & { runId: string }, confirmEvent: string): Promise<Outcome> {
   try {
-    const after = await ownerRelease(store, port, { repo, pr, head: headSha }, consoleResolver(confirmEvent));
+    const after = await ownerRelease(store, port, { repo, pr, head: headSha }, consoleResolver(confirmEvent), batches);
     return { outcome: "released", runId, stillHeld: after.held ? after.holdReason : null };
   } catch (error) {
     const code = error instanceof Error && "code" in error ? error.code : undefined;

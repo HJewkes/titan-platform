@@ -170,12 +170,12 @@ describe("resolving a skill-path gate", () => {
     return coordinatorEvidencePolicy(gate, COORDINATOR, { decision: "merge", headSha: HEAD }, evidence);
   }
 
-  it("refuses a coordinator merge on the live-shaped multi-line prompt with its skill-diff link line, which landGate does not read as a land gate", () => {
+  it("refuses a coordinator merge on the live-shaped multi-line prompt with its skill-diff link line, which landGate reads by its policy line", () => {
     const gate = gateWith(livePrompt("shepherd-merge-guard/skill-path", SKILL_REASON));
 
     const land = landGate(gate);
 
-    expect(land).toBeUndefined();
+    expect(land).toEqual({ repo: LIVE_REPO, pr: LIVE_PR, head: HEAD, rule: "shepherd-merge-guard/skill-path", reason: SKILL_REASON });
     expect(coordinatorMerge(gate, "shepherd-merge-guard/skill-path", SKILL_REASON)).toBe(false);
   });
 

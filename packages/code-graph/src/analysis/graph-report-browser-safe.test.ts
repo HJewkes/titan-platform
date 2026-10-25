@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // The static report app runs these derivations in a browser, so their whole relative
-// import closure may reach no package and no Node builtin.
+// import closure may reach no package and no Node builtin. The one package module it may
+// reach is fix-proof's linear glob matcher, which is walked and checked like the rest.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ENTRIES = [
@@ -31,6 +32,9 @@ const ENTRIES = [
 ];
 // The "./analysis" subpath's entry; it may re-export only the modules listed above.
 const SUBPATH_ENTRY = "browser.ts";
+const WALKED_PACKAGES: Record<string, string> = {
+  "@titan-design/fix-proof/linear-regexp": "../../../fix-proof/src/linear-regexp.ts",
+};
 const IMPORT_SPECIFIER = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
 const NODE_GLOBAL_USE = /\b(?:process|Buffer|__dirname|__filename|require|setImmediate)\s*[.([]/;
 // Type-only imports are erased at build time, so they cannot pull a module into a bundle.
@@ -46,6 +50,7 @@ function importClosure(entries: readonly string[]): Map<string, string> {
     seen.set(file, text);
     for (const [, spec] of text.matchAll(IMPORT_SPECIFIER)) {
       if (spec!.startsWith(".")) queue.push(path.resolve(path.dirname(file), spec!.replace(/\.js$/, ".ts")));
+      else if (WALKED_PACKAGES[spec!]) queue.push(path.join(here, WALKED_PACKAGES[spec!]!));
     }
   }
   return seen;
@@ -61,7 +66,7 @@ describe("report derivations in a browser", () => {
   it.each(closure)("$file imports only relative modules", ({ text }) => {
     const specifiers = [...text.matchAll(IMPORT_SPECIFIER)].map((m) => m[1]!);
 
-    expect(specifiers.filter((s) => !s.startsWith("."))).toEqual([]);
+    expect(specifiers.filter((s) => !s.startsWith(".") && !(s in WALKED_PACKAGES))).toEqual([]);
   });
 
   it.each(closure)("$file touches no Node-only global", ({ text }) => {

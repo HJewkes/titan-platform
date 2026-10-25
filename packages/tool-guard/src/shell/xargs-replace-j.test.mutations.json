@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no gh command path is read as unknown",
+      "file": "packages/tool-guard/src/families/gh-path.ts",
+      "find": "  const { hidden, aliasSlot } = ghCommandLine(cmd.args);\n",
+      "replace": "  return false;\n  const { hidden, aliasSlot } = ghCommandLine(cmd.args);\n",
+      "kills": [
+        "BSD xargs -J puts every input item of a run at the insert argument denies a merge spliced in at the insert argument",
+        "BSD xargs -J puts every input item of a run at the insert argument fails closed on a merge behind a stdin file"
+      ]
+    }
+  ]
+}

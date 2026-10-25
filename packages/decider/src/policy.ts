@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ALWAYS_ASK, type AlwaysAskEntry } from "./always-ask.js";
-import { DEFAULT_MIN_CONFIDENCE } from "./contract.js";
-import { normalizeKey } from "./normalize.js";
+import { DEFAULT_MIN_CONFIDENCE, type DecidePolicy } from "./contract.js";
+import { categoryKey, policyCategory } from "./normalize.js";
 import { UNLOCK_CATEGORIES } from "./unlock.js";
 
 export const DECIDER_MODES = ["off", "shadow", "auto"] as const;
@@ -22,7 +22,7 @@ export function strictestMode(a: DeciderMode, b: DeciderMode): DeciderMode {
 function foldRows(rows: readonly CategoryPolicy[]): CategoryPolicy[] {
   const folded = new Map<string, CategoryPolicy>();
   for (const row of rows) {
-    const key = categoryKey(row.category);
+    const key = policyCategory(row.category);
     const seen = folded.get(key);
     folded.set(
       key,
@@ -52,11 +52,6 @@ export const RoutingPolicySchema = z.object({
 });
 export type RoutingPolicy = z.output<typeof RoutingPolicySchema>;
 
-/** The normalized key, or the trimmed lowercase text when normalizing would empty it, so a symbol-only name never collapses to "". */
-export function categoryKey(text: string): string {
-  return normalizeKey(text) || text.trim().toLowerCase();
-}
-
 /** Always-ask and unlock-table categories: their mode is `off` and nothing raises it. */
 export function isLockedCategory(
   category: string,
@@ -85,7 +80,7 @@ export function categoryPolicy(
   policy: RoutingPolicy,
   category: string
 ): CategoryPolicy {
-  const key = categoryKey(category);
+  const key = policyCategory(category);
   const row =
     foldRows(policy.categories).find((c) => c.category === key) ??
     CategoryPolicySchema.parse({ category: key });
@@ -93,6 +88,15 @@ export function categoryPolicy(
     ...row,
     category: key,
     mode: isLockedCategory(key) ? "off" : row.mode,
+  };
+}
+
+/** The thresholds `validate` reads, keyed the way `categoryPolicy` folds rows, so both agree on a category's minConfidence. */
+export function decidePolicyFrom(policy: RoutingPolicy): DecidePolicy {
+  return {
+    categories: Object.fromEntries(
+      foldRows(policy.categories).map((row) => [row.category, { minConfidence: row.minConfidence }])
+    ),
   };
 }
 
@@ -106,11 +110,11 @@ export function setCategoryMode(
     throw new Error(`category "${category}" is always-ask and stays off`);
   const row = {
     ...categoryPolicy(policy, category),
-    category: categoryKey(category),
+    category: policyCategory(category),
     mode,
   };
   const rest = policy.categories.filter(
-    (c) => categoryKey(c.category) !== row.category
+    (c) => policyCategory(c.category) !== row.category
   );
   return { ...policy, categories: [...rest, row] };
 }

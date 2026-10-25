@@ -1,7 +1,8 @@
 import { alarmKey, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { runningHolds, type AncestryProbe } from "./build-ancestry.js";
 import { DEPLOY_ALARM_ASKER, DEPLOY_TARGET } from "./deploy-incident.js";
-import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, targetsToProve, type DeployHealth } from "./deploy-health.js";
+import type { GitBehindProbe } from "./deploy-behind.js";
+import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, targetsToProve, withGitBehind, type DeployHealth } from "./deploy-health.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 
 export const DEPLOY_WATCH_MS = 5 * 60_000;
@@ -24,6 +25,10 @@ export interface DeployWatchPorts {
   /** Proves the running build descends from an ask, so a hand deploy of a later commit lands it; absent means only an equal sha does. */
   isAncestor?: AncestryProbe;
   indexLock: () => Promise<IndexLock>;
+  /** Reads main past the running build, so a merge that never asked for a deploy still reads behind; absent means only the asks count. */
+  originBehind?: GitBehindProbe;
+  /** Whether deploy-wanted.json holds a queued sha: the pacer then owns the lag, and its `deployPending` block shows it. */
+  deployQueued?: () => boolean;
   /** Absent means no hub seat is configured, so only status and the owner queue carry the alarm. */
   notify?: (text: string) => Promise<void>;
   /** Files an owner-queue item; absent means a standing alarm never leaves status and the hub seat. */
@@ -84,7 +89,9 @@ async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> 
   const note = await lockNote(ports, entries);
   const runningSha = ports.runningSha();
   const ancestry = await heldByRunning(ports.isAncestor, entries, runningSha);
-  return deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...(note !== undefined && { lockNote: note }) });
+  const health = deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...(note !== undefined && { lockNote: note }) });
+  if (ports.originBehind === undefined || ports.deployQueued?.() === true) return health;
+  return withGitBehind(health, await ports.originBehind(runningSha), ports.now());
 }
 
 const failure = (error: unknown): string => (error instanceof Error ? error.message : String(error));

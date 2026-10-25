@@ -21,6 +21,23 @@ const needsProcess = [
   "products/session-miner/src/memory/discover.test.ts",
 ];
 
+// active-work kept its tests in a __tests__ tree when it was folded in (TP-3535). Its sandbox-home setup redirects
+// os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
+const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
+const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+// These assign process.env.HOME or spy on os.homedir() in-process.
+const activeWorkNeedsProcess = [
+  "products/active-work/__tests__/commands/setup.test.ts",
+  "products/active-work/__tests__/integration/end-to-end.test.ts",
+  "products/active-work/__tests__/server/session-index-watch.test.ts",
+  "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
+];
+
+// Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
+// worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
+// this process, which its threads share and its forks inherit.
+process.env.TZ = "UTC";
+
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
 // workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
 // the pool starts; forks are child processes and take execArgv.
@@ -94,6 +111,27 @@ export default defineConfig({
           maxWorkers: 1,
           execArgv: forksHeap,
           include: needsProcess,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "active-work",
+          pool: "threads",
+          include: activeWorkTests,
+          exclude: ["**/node_modules/**", ...activeWorkNeedsProcess],
+          setupFiles: activeWorkSetup,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "active-work-forks",
+          pool: "forks",
+          maxWorkers: 1,
+          execArgv: forksHeap,
+          include: activeWorkNeedsProcess,
+          setupFiles: activeWorkSetup,
         },
       },
     ],

@@ -11,6 +11,7 @@ export {
   type FixProofConfig,
 } from "./config.js";
 export { compileGlobs, expandBraces } from "./glob.js";
+export { LinearRegExp } from "./linear-regexp.js";
 export {
   planFixProof,
   testOnlyOf,

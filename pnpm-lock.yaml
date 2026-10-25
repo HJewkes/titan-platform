@@ -162,6 +162,9 @@ importers:
       '@titan-design/decider':
         specifier: workspace:^
         version: link:../../packages/decider
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../../packages/fix-proof
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
@@ -229,6 +232,9 @@ importers:
       '@titan-design/frame-capture':
         specifier: workspace:^
         version: link:../../packages/frame-capture
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../../packages/test-kit
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -331,6 +337,9 @@ importers:
 
   packages/autoresearch:
     dependencies:
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../rpc-client
@@ -344,6 +353,9 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -370,6 +382,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../evidence
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
@@ -382,6 +397,10 @@ importers:
       web-tree-sitter:
         specifier: ^0.26.6
         version: 0.26.13
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/code-parser:
     dependencies:
@@ -511,7 +530,11 @@ importers:
 
   packages/evidence: {}
 
-  packages/fix-proof: {}
+  packages/fix-proof:
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/frame-capture:
     devDependencies:
@@ -708,6 +731,12 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../store-sqlite
+
+  packages/review-burden:
+    dependencies:
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
 
   packages/review-panel:
     dependencies:
@@ -950,9 +979,16 @@ importers:
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../authority
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       zod:
         specifier: ^4.0.0
         version: 4.5.4
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/workflow:
     dependencies:
@@ -992,6 +1028,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.30.0(zod@4.5.4)
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../../packages/agent-dispatch
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol
@@ -1137,6 +1176,9 @@ importers:
       '@titan-design/agent':
         specifier: workspace:^
         version: link:../../packages/agent
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority
@@ -1194,6 +1236,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../../packages/evidence
+      '@titan-design/frame-capture':
+        specifier: workspace:^
+        version: link:../../packages/frame-capture
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
@@ -1209,6 +1254,9 @@ importers:
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm
+      '@titan-design/react-ui':
+        specifier: ^0.23.1
+        version: 0.23.1(tcpsdurwh2bjt32gdxfhihdeqe)
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -1233,6 +1281,21 @@ importers:
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.2
+      playwright-core:
+        specifier: ^1.63.0
+        version: 1.63.0
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-native-web:
+        specifier: ^0.21.0
+        version: 0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -1243,6 +1306,27 @@ importers:
       '@titan-design/test-kit':
         specifier: workspace:*
         version: link:../../packages/test-kit
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^6.1.1
+        version: 6.1.1(vite@8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+      autoprefixer:
+        specifier: ^10.6.1
+        version: 10.6.1(postcss@8.5.28)
+      postcss:
+        specifier: ^8.5.28
+        version: 8.5.28
+      tailwindcss:
+        specifier: ^3.4.17
+        version: 3.4.19(tsx@4.23.13)(yaml@2.9.1)
+      vite:
+        specifier: ^8.0.3
+        version: 8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
 
   products/factory:
     dependencies:
@@ -1361,6 +1445,9 @@ importers:
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
+      '@titan-design/hitl':
+        specifier: workspace:^
+        version: link:../../packages/hitl
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../../packages/locator
@@ -1391,6 +1478,9 @@ importers:
       '@titan-design/throughput':
         specifier: workspace:^
         version: link:../../packages/throughput
+      '@titan-design/workflow':
+        specifier: workspace:^
+        version: link:../../packages/workflow
       commander:
         specifier: ^14.0.3
         version: 14.0.3

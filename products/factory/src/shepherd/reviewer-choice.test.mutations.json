@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the standing reviewer is proven over the live roster, without retired rows",
+      "file": "products/factory/src/shepherd/reviewer-choice.ts",
+      "find": "return resumable && provablyIndependent(agent, registration.implementer, lineage) ? agent : undefined;",
+      "replace": "return resumable && provablyIndependent(agent, registration.implementer, { rows: roster, complete: true }) ? agent : undefined;",
+      "kills": [
+        "chooseReviewer over a lineage with retired generations spawns fresh rather than resume a standing reviewer whose seat's retired first generation the implementer spawned",
+        "lineageFor proves nothing when the lineage read fails, so no standing reviewer is resumed"
+      ]
+    },
+    {
+      "name": "a failed lineage read falls back to the roster as the whole lineage",
+      "file": "products/factory/src/shepherd/reviewer-choice.ts",
+      "find": "    return UNPROVEN;\n  });",
+      "replace": "    return { rows: roster, complete: true };\n  });",
+      "kills": [
+        "lineageFor proves nothing when the lineage read fails, so no standing reviewer is resumed"
+      ]
+    },
+    {
+      "name": "the lineage is read for every registration",
+      "file": "products/factory/src/shepherd/reviewer-choice.ts",
+      "find": "if (registration?.policy.reviewer === undefined) return UNPROVEN;",
+      "replace": "if (registration === undefined) return UNPROVEN;",
+      "kills": [
+        "lineageFor reads the lineage only for a registration that names a standing reviewer"
+      ]
+    }
+  ]
+}

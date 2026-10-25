@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a merge-at-head op cannot carry the wait for the adversary loop",
+      "file": "packages/owner-queue/src/op.ts",
+      "find": "repo, pr, headSha, waitFor: z.enum(MERGE_WAITS).optional() }),",
+      "replace": "repo, pr, headSha }),",
+      "kills": [
+        "ownerOpSchema accepts a merge-at-head op"
+      ]
+    }
+  ]
+}

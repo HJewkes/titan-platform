@@ -14,9 +14,10 @@ import type { DrainedDirtySet } from './dirty-set.js';
 import { transcriptFromPath } from './transcript-path.js';
 import { taskResolver } from './tasks.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
+import { rollupYielding } from './unfinished-turns.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
-import { bytesAdvanced, lapTimer } from './pass-metrics.js';
+import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
 import type { RefreshSummary } from './refresh.js';
 
 type IndexStatus = 'indexed' | 'unchanged' | 'rewound' | 'missing' | 'quarantined';
@@ -121,12 +122,13 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
   const startedAt = new Date().toISOString();
   const started = Date.now();
   const offsetsBefore = snapshotOffsets(graph);
+  const rowsWritten = rowsWrittenCounter(graph.db);
   const lap = lapTimer();
   const phases: Record<string, number> = {};
   const tasksBefore = new Set(allTaskIds(graph));
   const { counts, touched, facts } = await scanTranscripts(graph, transcripts, yieldPoint);
   phases.scan = lap();
-  const turnsRolledUp = rollupSessions(graph, touched);
+  const turnsRolledUp = await rollupYielding(graph, touched, yieldPoint);
   const newTasks = allTaskIds(graph).filter((id) => !tasksBefore.has(id));
   const tasks = await enrichTasks(graph, taskResolver(options.taskRoot), newTasks);
   phases.rollup = lap();
@@ -152,6 +154,8 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
     scanned: transcripts.length,
     filesOpened: counts.indexed + counts.rewound + counts.quarantined,
     bytesRead: bytesAdvanced(offsetsBefore, snapshotOffsets(graph)),
+    rowsWritten: rowsWritten(),
+    dbBytes: dbBytes(graph.db),
     phases,
     ...counts,
     reconciledMissing: 0,
@@ -162,6 +166,7 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
     turnsRolledUp,
     tasksRequested: tasks.requested,
     tasksApplied: tasks.applied,
+    prsPolled: 0,
     workspace,
     preserved: NO_PRESERVED,
     errors: tasks.failed ? [`tasks: ${tasks.error ?? 'resolver failed'}`] : [],

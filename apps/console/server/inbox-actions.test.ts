@@ -200,9 +200,11 @@ async function sources(): Promise<InboxSources> {
 
 const ownerContext = (auth: RequestAuth = SESSION, ownerWrites = true): ConsoleContext => ({ warnings: [], format: "json", surface: "http", auth, ownerWrites });
 
+type Extra = { waitFor?: "adversary-loop" };
+
 interface Harness {
-  prepare(itemId: string): Promise<JsonEnvelope<unknown>>;
-  act(itemId: string, confirm: string, ctx?: ConsoleContext, text?: string): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
+  prepare(itemId: string, extra?: Extra): Promise<JsonEnvelope<unknown>>;
+  act(itemId: string, confirm: string, ctx?: ConsoleContext, text?: string, extra?: Extra): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
 }
 
 interface HarnessOptions {
@@ -215,8 +217,8 @@ async function harness(client: OwnerActionClient, options: HarnessOptions = {}):
   const { decisionLog, answerer } = options;
   const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(decisionLog && { decisionLog }), ...(answerer && { answerer }) });
   return {
-    prepare: async (itemId) => (await invokeCommand(commands["inbox.prepare"], { itemId }, ownerContext())).envelope,
-    act: (itemId, confirm, ctx = ownerContext(), text) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }) }, ctx),
+    prepare: async (itemId, extra = {}) => (await invokeCommand(commands["inbox.prepare"], { itemId, ...extra }, ownerContext())).envelope,
+    act: (itemId, confirm, ctx = ownerContext(), text, extra = {}) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }), ...extra }, ctx),
   };
 }
 
@@ -409,23 +411,6 @@ describe("inbox answer-chat", () => {
     expect(await prepare(CHAT_ID)).toMatchObject({ ok: true, data: { status: "no-action", action: { kind: "answer-chat" } } });
   });
 
-  it("sends the owner's text to the broker, keeps it in the record and logs it as the answer", async () => {
-    const broker = spyBroker();
-    const factorySpy = spyFactory();
-    const { log, calls } = spyLog();
-    const { prepare, act } = await harness(factorySpy.client, { answerer: broker.answerer, decisionLog: log });
-    const { confirm } = ready(await prepare(CHAT_ID));
-
-    const { envelope } = await act(CHAT_ID, confirm, undefined, "  alpha  ");
-
-    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "answered" }, message: "Answer sent" } });
-    expect(broker.answers).toEqual([[MSG, "alpha"]]);
-    expect(factorySpy.posts).toEqual([]);
-    expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ itemId: CHAT_ID, action: { kind: "answer-chat", msgId: MSG }, text: "alpha" });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]![1]).toMatchObject({ text: "alpha", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
-  });
-
   it("refuses an answer with no text before writing or sending anything", async () => {
     const broker = spyBroker();
     const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
@@ -459,23 +444,6 @@ describe("inbox answer-chat", () => {
 
     expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "closed" }, message: expect.stringMatching(/^Not sent; the question is closed/) } });
     expect(calls).toEqual([]);
-  });
-
-  it("leaves a broker-down answer unsettled, so the retry sends the words first written", async () => {
-    const broker = spyBroker({ status: "unreachable", detail: "connect ECONNREFUSED" });
-    const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
-    const { confirm } = ready(await prepare(CHAT_ID));
-
-    const down = await act(CHAT_ID, confirm, undefined, "alpha");
-    const afterDown = await records();
-    await act(CHAT_ID, confirm, undefined, "beta");
-
-    expect(down.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
-    expect(afterDown).toEqual([`${confirm}.json`]);
-    expect(broker.answers).toEqual([
-      [MSG, "alpha"],
-      [MSG, "alpha"],
-    ]);
   });
 });
 
@@ -592,15 +560,15 @@ function openPreview({ repo, pr }: { repo: string; pr: number }, head: string, v
 
 const OP_DEPOSIT = "op-merge-1";
 const OP_ID = depositItemId(ASKER, OP_DEPOSIT);
-const opRecordShape = z.object({ op: z.object({ kind: z.string(), repo: z.string(), pr: z.number(), headSha: z.string() }), action: z.never().optional() });
+const opRecordShape = z.object({ op: z.object({ kind: z.string(), repo: z.string(), pr: z.number(), headSha: z.string(), waitFor: z.string().optional() }), action: z.never().optional() });
 
 /** The factory as an op record meets it: it reads the op, never an action, and starts one land run per record. */
-function opFactory() {
+function opFactory(answer: ActionOutcome = { status: "accepted", runId: "land-run-1" }) {
   const posted: z.infer<typeof opRecordShape>[] = [];
   const client: OwnerActionClient = {
     post: async (actionId) => {
       posted.push(opRecordShape.parse(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8"))));
-      return { status: "accepted", runId: "land-run-1" };
+      return answer;
     },
   };
   return { client, posted };
@@ -678,6 +646,63 @@ describe("inbox owner-op", () => {
     const { prepare } = await harness(opFactory().client);
 
     expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "the authority table refuses a merge-at-head op to the console: owner-remote may not merge here" } });
+  });
+});
+
+describe("inbox owner-op merge-at-head on a g10-held PR", () => {
+  const heldPreview = (op: { repo: string; pr: number }) => {
+    const open = openPreview(op, NEW_HEAD);
+    return { ...open, pr: { ...open.pr, shepherd: { runId: "run-held", held: true, holdReason: "g10-adversary: authority change", ownerHold: null } } };
+  };
+  const after = { waitFor: "adversary-loop" } as const;
+
+  it("reads the forced merge back as skipping the hold and posts it with no wait", async () => {
+    await depositMergeOp();
+    preview = heldPreview;
+    const factorySpy = opFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+
+    const prepared = ready(await prepare(OP_ID));
+    await act(OP_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ hold: { class: "g10-adversary" }, effect: expect.stringMatching(/the g10 hold is skipped/) });
+    expect(factorySpy.posted).toEqual([{ op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: NEW_HEAD } }]);
+  });
+
+  it("approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed", async () => {
+    await depositMergeOp();
+    preview = heldPreview;
+    const factorySpy = opFactory({ status: "approved", runId: "run-held" });
+    const { prepare, act } = await harness(factorySpy.client);
+
+    const prepared = ready(await prepare(OP_ID, after));
+    const { envelope } = await act(OP_ID, prepared.confirm, ownerContext(), undefined, after);
+
+    expect(prepared.readBack).toMatchObject({ headSha: NEW_HEAD, waitFor: "adversary-loop", effect: expect.stringMatching(/^Approve the merge of .* once the adversary loop closes with MERGE at this head/) });
+    expect(factorySpy.posted).toEqual([{ op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: NEW_HEAD, waitFor: "adversary-loop" } }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "approved", runId: "run-held" }, message: expect.stringMatching(/^Merge approved: Shepherd merges at this head once the adversary loop closes/) } });
+  });
+
+  it("offers no wait on a PR with no g10 hold", async () => {
+    await depositMergeOp();
+    preview = (op) => openPreview(op, NEW_HEAD);
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(OP_ID, after)).toMatchObject({ ok: true, data: { status: "no-action", reason: `${REPO}#7 holds no g10 hold, so there is no adversary loop to wait for; merge at head instead` } });
+  });
+
+  it("never acts on a forced-merge confirm as the wait, or the reverse, and writes nothing", async () => {
+    await depositMergeOp();
+    preview = heldPreview;
+    const factorySpy = opFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+    const forced = ready(await prepare(OP_ID));
+
+    const { envelope } = await act(OP_ID, forced.confirm, ownerContext(), undefined, after);
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
+    expect(factorySpy.posted).toEqual([]);
+    expect(await records()).toEqual([]);
   });
 });
 

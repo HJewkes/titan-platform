@@ -1,6 +1,7 @@
 import { sessionRef } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 import { AUDIT_TABLES, FACET_TABLE } from "./audit-schema.js";
+import { ECHO_STATE_TABLE } from "./echo-state-schema.js";
 import { EPISODE_TABLE } from "./origin-schema.js";
 import { REVIEW_TABLE } from "./review-schema.js";
 import { recountSessions } from "./rollup.js";
@@ -87,7 +88,8 @@ export function purgeTranscript(graph: SessionGraph, transcriptId: number): stri
     for (const table of SESSION_SCOPED) {
       graph.db.prepare(`DELETE FROM "${table}" WHERE session_id IN (SELECT session_id FROM session WHERE transcript_id = ?)`).run(transcriptId);
     }
-    for (const table of [...AUDIT_TABLES, FACET_TABLE, REVIEW_TABLE]) {
+    // Echo state goes by transcript, not with SESSION_SCOPED: a handed-off session keeps the other copy's state.
+    for (const table of [...AUDIT_TABLES, FACET_TABLE, REVIEW_TABLE, ECHO_STATE_TABLE]) {
       graph.db.prepare(`DELETE FROM "${table}" WHERE transcript_id = ?`).run(transcriptId);
     }
     graph.db.prepare("DELETE FROM fact WHERE transcript_id = ?").run(transcriptId);

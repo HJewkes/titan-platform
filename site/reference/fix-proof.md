@@ -320,6 +320,17 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
 Carried files count as test material on path alone. A fix placed in a carried file that
 production code imports would pass as test-only.
 
+## Linear globs
+
+`compileGlobs` matches in time linear in the path. For a package with its own glob dialect,
+`LinearRegExp` (also `@titan-design/fix-proof/linear-regexp`, which imports nothing) is a RegExp
+whose `test` simulates its source as an NFA: build the regex source as before and construct a
+`LinearRegExp` in place of `new RegExp`. It accepts literals, escapes, `.`, classes, groups, `|`,
+`*`, `+`, `?`, `^` and `$` under the `i` and `s` flags, and throws a SyntaxError on anything else
+(lookaround, backreferences, `{n,m}`, `\b`) and on the `g` and `y` flags. `exec` reports the whole
+input as the match, which is what an anchored glob matches. review-panel, autoresearch, code-graph,
+tool-guard, factory and the console build their globs this way (TP-4223).
+
 ## What it deliberately does not do
 
 The pure functions make no git, vitest, filesystem or network calls; only `execSide`, `judge`, `run` and the bin do.

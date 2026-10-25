@@ -1,0 +1,61 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the legacy full list is exported as a caller choice",
+      "file": "packages/worktree/src/git.ts",
+      "find": "  if (value === undefined || value === LEGACY_GIT_PROTOCOL_PIN) return undefined",
+      "replace": "  if (value === undefined) return undefined",
+      "kills": [
+        "pinGitProtocols narrows \"file:git:http:https:ssh\" to undefined",
+        "pinGitProtocols drops the legacy list and appends the ext pair without otherwise rewriting the environment",
+        "worktree setup environment pins the install environment using the same policy",
+        "mandatory pin after caller-owned identity stripping never runs an ext remote with GIT_ALLOW_PROTOCOL=\"file:git:http:https:ssh\" after stripping GIT_ fields",
+        "the caller's own protocol policy under gitChildEnv still refuses an ssh fetch the repo denies, host GIT_ALLOW_PROTOCOL=\"file:git:http:https:ssh\""
+      ]
+    },
+    {
+      "name": "gitChildEnv drops the ext pair",
+      "file": "packages/worktree/src/git.ts",
+      "find": "  return pinnedGitEnv(out, protocols);",
+      "replace": "  return { ...out, GIT_ALLOW_PROTOCOL: protocols };",
+      "kills": [
+        "pinGitProtocols appends the ext pair after a GIT_ strip, at index 0, and keeps identity stripping",
+        "git the allocator runs itself never runs a scratch ext remote when the host has GIT_ALLOW_PROTOCOL=undefined",
+        "git the allocator runs itself never runs a scratch ext remote when the host has GIT_ALLOW_PROTOCOL=\"file:git:http:https:ssh\"",
+        "mandatory pin after caller-owned identity stripping never runs an ext remote with GIT_ALLOW_PROTOCOL=undefined after stripping GIT_ fields",
+        "mandatory pin after caller-owned identity stripping never runs an ext remote with GIT_ALLOW_PROTOCOL=\"file:git:http:https:ssh\" after stripping GIT_ fields"
+      ]
+    },
+    {
+      "name": "a negative config count passes",
+      "file": "packages/worktree/src/git.ts",
+      "find": "  if (!/^\\d{0,9}$/.test(raw)) throw",
+      "replace": "  if (!/^-?\\d{0,9}$/.test(raw)) throw",
+      "kills": [
+        "pinGitProtocols refuses a config count git would die on: {\"GIT_CONFIG_COUNT\":\"-1\"}"
+      ]
+    },
+    {
+      "name": "a lone ext pair is appended again",
+      "file": "packages/worktree/src/git.ts",
+      "find": "  if (count > 0 && env[",
+      "replace": "  if (count > 1 && env[",
+      "kills": [
+        "pinGitProtocols keeps caller config pairs and appends the ext pair after them, once"
+      ]
+    },
+    {
+      "name": "the ext pair overwrites the caller's first pair",
+      "file": "packages/worktree/src/git.ts",
+      "find": "    [`GIT_CONFIG_KEY_${count}`]: EXT_NEVER_KEY,",
+      "replace": "    GIT_CONFIG_KEY_0: EXT_NEVER_KEY,",
+      "kills": [
+        "pinGitProtocols keeps caller config pairs and appends the ext pair after them, once",
+        "the caller's own protocol policy under gitChildEnv still refuses an ssh fetch the repo denies, host GIT_ALLOW_PROTOCOL=undefined",
+        "the caller's own protocol policy under gitChildEnv still refuses an ssh fetch the repo denies, host GIT_ALLOW_PROTOCOL=\"file:git:http:https:ssh\"",
+        "the caller's own protocol policy under gitChildEnv runs the caller's own config pair when nothing denies ssh"
+      ]
+    }
+  ]
+}

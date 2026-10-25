@@ -24,7 +24,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type 
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c1s2", tts: "p6b", render: "x4", qa: "x4", sheets: "x9",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2", tts: "p6b", render: "x4", qa: "x4", sheets: "x10",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */

@@ -1,8 +1,10 @@
 import { optionText, OWNER_LABELS } from "./calibration-agreement.js";
-import type { CalibrationQueue, QueueItem } from "./calibration-queue.js";
+import type { CalibrationQueue, ItemKind, QueueItem } from "./calibration-queue.js";
 
-/** About how long one item takes: read the excerpt, answer one yes or no question. */
-export const MINUTES_PER_ITEM = 1.75;
+/** About how long one item takes: read an excerpt and answer yes or no, or read two storyboards and pick one. */
+const MINUTES_PER_ITEM: Record<ItemKind, number> = { verdict: 1.25, pair: 2 };
+
+export const roundMinutes = (items: readonly QueueItem[]): number => Math.round(items.reduce((total, item) => total + MINUTES_PER_ITEM[item.kind], 0));
 
 /** A video as the owner reads it once, before its items. */
 export interface RoundCase {
@@ -13,6 +15,7 @@ export interface RoundCase {
 
 interface RoundOptions {
   unit: string;
+  round: number;
   cases: ReadonlyMap<string, RoundCase>;
 }
 
@@ -21,7 +24,7 @@ const question = (item: QueueItem) => ({
   kind: "pick-one" as const,
   required: false,
   prompt: `${item.question}\n\n${item.excerpt}`,
-  options: OWNER_LABELS.map((label) => optionText(label, item.id)),
+  options: OWNER_LABELS.map((label) => optionText(label, item.id, item.kind)),
   signsOff: `your label for item ${item.id}`,
 });
 
@@ -31,7 +34,9 @@ function section(caseId: string, items: readonly QueueItem[], video: RoundCase |
     title: video?.title ?? caseId,
     questionIds: items.map((item) => item.id),
     variantKeys: [],
-    deciding: "Yes or No to each question, from the excerpt (or the script below for whole-video questions). Can't tell when it does not settle it.",
+    deciding: items.every((item) => item.kind === "pair")
+      ? "A or B for each pair of storyboards. Can't tell when neither is the better video."
+      : "Yes or No to each question, from the excerpt (or the script below for whole-video questions). Can't tell when it does not settle it.",
     changed: "Nothing ships from this round; your labels only score the judges, whose own answers stay hidden.",
     context: video?.script ?? "(script not attached)",
   };
@@ -43,16 +48,17 @@ function section(caseId: string, items: readonly QueueItem[], video: RoundCase |
  */
 export function calibrationRound(queue: CalibrationQueue, options: RoundOptions) {
   const cases = [...new Set(queue.items.map((item) => item.case))];
-  const minutes = Math.round(queue.items.length * MINUTES_PER_ITEM);
+  const minutes = roundMinutes(queue.items);
   return {
     schema: "titan-review/round@2",
     unit: options.unit,
-    round: 1,
+    round: options.round,
     storybookUrl: "http://127.0.0.1:6006",
     widths: [1280],
     context:
-      `Judge calibration (TP-4012): ${queue.items.length} yes or no questions from ${cases.length} videos, about ${minutes} minutes. ` +
+      `Judge calibration (TP-4012): ${queue.items.length} questions in ${cases.length} sections, about ${minutes} minutes. ` +
       "Each question is one a model judge already answered; your answers say how often each judge agrees with you. " +
+      "The clearest material comes first and every question is optional, so you can stop anywhere and what you answered still counts. " +
       "Until a judge reaches 0.8 agreement it stays reported only and is never a climb target or a gate.",
     variants: [],
     sections: cases.map((c) => section(c, queue.items.filter((item) => item.case === c), options.cases.get(c))),

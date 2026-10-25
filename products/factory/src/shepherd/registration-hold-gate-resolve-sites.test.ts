@@ -44,6 +44,28 @@ describe("the G10 hold Shepherd places at registration on the gate-resolve closu
     expect(await holdFor([file("products/factory/src/shepherd/gate-resolve-repo.test-helpers.ts", 1)])).toBe("g10-adversary: policy touch");
   });
 
+  it("holds a rename of gate-resolve-sites.test.ts out of the check g10-adversary by its old path", async () => {
+    const renamed: PrFile = { path: "products/factory/src/shepherd/other.test.ts", previousPath: "products/factory/src/shepherd/gate-resolve-sites.test.ts", status: "renamed", additions: 0, deletions: 0 };
+
+    expect(await holdFor([renamed])).toBe("g10-adversary: policy touch");
+  });
+
+  it("holds a change to only a closure helper named in another case g10-adversary", async () => {
+    expect(await holdFor([file("products/factory/src/shepherd/Gate-Resolve-closure.test-helpers.ts", 1)])).toBe("g10-adversary: policy touch");
+  });
+
+  it("holds a rename that changes only the case of a closure helper g10-adversary", async () => {
+    const renamed: PrFile = {
+      path: "products/factory/src/shepherd/GATE-RESOLVE-closure.test-helpers.ts",
+      previousPath: "products/factory/src/shepherd/Gate-Resolve-closure.test-helpers.ts",
+      status: "renamed",
+      additions: 0,
+      deletions: 0,
+    };
+
+    expect(await holdFor([renamed])).toBe("g10-adversary: policy touch");
+  });
+
   it("leaves a change to only another policy-named test file unheld", async () => {
     expect(await holdFor([file("products/factory/src/shepherd/gate-resolve-proof.test.ts", 3)])).toBeUndefined();
   });

@@ -178,7 +178,6 @@ describe("a line that rebinds a command name", () => {
     ["a run script that waits on a pid", "bash ./bg.sh"],
     ["a declare option the shell rejects", "declare -Q Y=status; git status"],
     ["a gh word that expands to an option", 'gh pr edit 12 "--$X"'],
-    ["a gh option word that varies", "gh --$F x pr merge"],
     ["stat of a run-time file after a doubled --", 'stat -- -- "$f"'],
     ["stat of a run-time file behind ./", 'stat ./"$f"'],
     ["an export of PATH with a run-time value", 'export PATH="$HOME/bin"'],
@@ -186,6 +185,12 @@ describe("a line that rebinds a command name", () => {
     const got = await answer(command);
     expect(got.reason).not.toMatch(REBIND_REASON);
     expect(got.decision).toBeNull();
+  });
+
+  it("denies a gh option word that varies as an unknown gh command, not as a rebinding", async () => {
+    const got = await answer("gh --$F x pr merge");
+    expect(got.reason).not.toMatch(REBIND_REASON);
+    expect(got.decision).toBe("deny");
   });
 
   it("still reads a plain push as git-push-protected, not as a rebinding", async () => {

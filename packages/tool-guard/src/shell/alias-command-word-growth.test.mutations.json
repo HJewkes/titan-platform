@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "alias globs compile a backtracking RegExp again",
+      "file": "packages/tool-guard/src/shell/alias-command-word.ts",
+      "find": "new LinearRegExp(",
+      "replace": "new RegExp(",
+      "kills": [
+        "a glob command word that is a hostile glob grows linearly with the name for d/ and 20 stars",
+        "a glob command word that is a hostile glob grows linearly with the name for 12 globstar segments"
+      ]
+    }
+  ]
+}

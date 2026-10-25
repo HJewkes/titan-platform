@@ -164,7 +164,7 @@ export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate
   if (!isRemoteName(remote)) throw new ConfigError("remote is not a remote name");
   const known = !isZeroSha(update.remoteSha) && hasCommit(cwd, update.remoteSha);
   // The second `--not` flips back, so the local sha after it counts as included.
-  const excluded = known ? knownExclusions(cwd, update.remoteSha, list) : [`--remotes=${remote}`];
+  const excluded = remoteExclusions(cwd, known ? update.remoteSha : undefined, list);
   const range = ["--not", ...excluded, "--not", END_OF_OPTIONS, update.localSha];
   return lines(git(cwd, ["rev-list", "--reverse", ...range]));
 }
@@ -197,20 +197,21 @@ export function listRemoteTips(cwd: string, list: ListOptions): string[] | undef
 }
 
 /**
- * What an existing branch's range leaves out. A branch that merged main also carries main commits the
- * remote already has, so the remote's advertised tips are excluded along with the branch's old tip.
- * When the push URL is missing or the remote cannot be listed in time, the range is the plain
- * `remote..local`, which scans more and never less.
+ * What a push's range leaves out: the remote's advertised tips, plus an existing branch's old tip. A
+ * branch that merged main also carries main commits the remote already has, and a new branch carries
+ * the history it forked from. Local tracking refs are never excluded, since a forged or stale one would
+ * hide commits. When the push URL is missing or cannot be listed in time, only the old tip is excluded
+ * (nothing for a new branch), which scans more and never less.
  */
-function knownExclusions(cwd: string, remoteSha: string, list: ListOptions): string[] {
+function remoteExclusions(cwd: string, remoteSha: string | undefined, list: ListOptions): string[] {
+  const oldTip = remoteSha === undefined ? [] : [remoteSha];
   const tips = list.tips ?? listRemoteTips(cwd, list);
   if (tips === undefined) {
-    process.stderr.write(
-      `titan-egress-scan: could not list the push URL; scanning the full ${remoteSha.slice(0, 7)}..local range\n`
-    );
-    return [remoteSha];
+    const range = remoteSha === undefined ? "history of the new branch" : `${remoteSha.slice(0, 7)}..local range`;
+    process.stderr.write(`titan-egress-scan: could not list the push URL; scanning the full ${range}\n`);
+    return oldTip;
   }
-  return [remoteSha, ...tips];
+  return [...oldTip, ...tips];
 }
 
 /** The commits in `base..head`, oldest first; an all-zero base means `head` alone. */
