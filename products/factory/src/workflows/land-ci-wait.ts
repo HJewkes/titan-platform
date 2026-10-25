@@ -105,7 +105,7 @@ function observeFailure(poll: PollState, error: unknown): void {
 
 /** GitHub's own side failed the read: a 5xx status, or one the gh CLI only names in its message. */
 function isServerError(error: unknown): boolean {
-  const status = (error as { status?: unknown } | null)?.status;
+  const status = typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
   if (typeof status === "number") return status >= 500;
   return error instanceof Error && /\bHTTP 5\d\d\b/.test(error.message);
 }
