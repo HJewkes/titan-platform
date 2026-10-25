@@ -5,10 +5,11 @@ import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
-import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import { EVENT_KINDS, SHEPHERD_ACTOR, type ShepherdEvent } from "./events.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { CI_WAIT_ATTEMPTS } from "../workflows/land-budget.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { NONE_KINDS, liveLastNone } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
@@ -79,6 +80,9 @@ export const WatchRowSchema = z.object({
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
+/** The stored event kinds, plus `ci-timeout`, which is read from a timed-out `ci-wait` record rather than stored. */
+const TIMELINE_EVENT_KINDS = [...EVENT_KINDS, "ci-timeout"] as const;
+
 export const TimelineEntrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("step"),
@@ -122,7 +126,7 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("event"),
-    event: z.enum(EVENT_KINDS),
+    event: z.enum(TIMELINE_EVENT_KINDS),
     reason: z.string().nullable(),
     actor: z.string().nullable(),
     at: z.string(),
@@ -315,12 +319,25 @@ export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], 
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
   const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
-  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  return numberedTimeouts([...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry));
+}
+
+/** Each timed-out window names its attempt, counted as land counts them: a ci read that did not time out starts over. */
+function numberedTimeouts(entries: TimelineEntry[]): TimelineEntry[] {
+  let attempt = 0;
+  return entries.map((entry) => {
+    if (entry.kind === "ci") attempt = 0;
+    if (entry.kind !== "event" || entry.event !== "ci-timeout") return entry;
+    attempt += 1;
+    const next = attempt < CI_WAIT_ATTEMPTS ? "waiting again" : "attempts spent, the run fails";
+    return { ...entry, reason: `attempt ${attempt} of ${CI_WAIT_ATTEMPTS}, ${next}: ${entry.reason}` };
+  });
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
   const payload = (result.data as { result?: unknown } | undefined)?.result;
   const ci = stepPhase(result.stepId) === "ci" ? CiSnapshotResult.safeParse(payload) : undefined;
+  if (ci?.success && ci.data.timedOut) return ciTimeoutEntry(result, ci.data.headSha, ci.data.timedOut);
   if (ci?.success) return { kind: "ci", stepId: result.stepId, headSha: ci.data.headSha, conclusion: ci.data.verdict, runUrl: null };
   const recorded = recordedEntry(result.stepId, payload);
   if (recorded !== undefined) return recorded;
@@ -374,6 +391,11 @@ function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined 
   const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
   if (parsed.data.kind === "unhandled") return parsed.data.held === undefined || parsed.data.reason === undefined ? unhandled : { ...unhandled, held: parsed.data.reason };
   return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
+}
+
+function ciTimeoutEntry(result: StepResult, headSha: string, timedOut: { afterMs: number; reason: string }): TimelineEntry {
+  const reason = `${result.stepId} timed out after ${timedOut.afterMs} ms, ${timedOut.reason}`;
+  return { kind: "event", event: "ci-timeout", reason, actor: SHEPHERD_ACTOR, at: result.completedAt, headSha };
 }
 
 function eventEntry({ kind, reason, actor, at, headSha }: ShepherdEvent): TimelineEntry {

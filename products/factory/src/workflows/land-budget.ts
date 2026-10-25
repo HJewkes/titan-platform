@@ -118,3 +118,9 @@ export function missingCheckGraceSpent(firstReads: FirstReads, headKey: string, 
  * red check, so the wait extends; the ceiling keeps a truly hung check from holding the run forever.
  */
 export const CI_BACKLOG_CEILING_FACTOR = 3;
+
+/**
+ * How many `ci-wait` windows land spends in a row on a wait only GitHub ends: mergeable_state unknown, an open repo's
+ * second read, or a read that hit a 5xx. A queue backlog leaves all three standing long after the checks go green.
+ */
+export const CI_WAIT_ATTEMPTS = 3;
