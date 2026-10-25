@@ -26,8 +26,8 @@ export async function rollupYielding(
 ): Promise<number> {
   const unique = [...new Set(sessionIds)];
   let updated = 0;
-  for (let i = 0; i < unique.length; i += 1) {
-    updated += rollupSessions(graph, [unique[i]!]);
+  for (const [i, sessionId] of unique.entries()) {
+    updated += rollupSessions(graph, [sessionId]);
     try {
       await yieldPoint();
     } catch (err) {
