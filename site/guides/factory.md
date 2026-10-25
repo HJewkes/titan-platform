@@ -1159,6 +1159,7 @@ checkout's bin.
 | `error: gate <id> is already <status>` | the gate was answered or cancelled before; `<status>` is `resolved` or `cancelled` |
 | `error: --json must be a JSON object`, exit 2 | the gate payload did not parse as an object |
 | a run `failed` with `ci-wait timed out after 2700000 ms` | required checks did not finish in 45 minutes |
+| a run `failed` with `ci-wait timed out after 2700000 ms on each of 3 attempts` | GitHub never settled the PR in 3 windows in a row: mergeable_state stayed unknown, an open repo's run set kept changing, or reads kept failing with a 5xx |
 | a run `failed` with `requires no status checks` | the base branch has no required check |
 | `/health` shows `"github":"gh api rate_limit failed …"` | the server's environment cannot use `gh` |
 
