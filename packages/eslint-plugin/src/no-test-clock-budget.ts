@@ -63,7 +63,9 @@ const MIXERS: Readonly<Record<string, readonly string[]>> = {
 const ARRAY_METHODS = new Set(["map", "flatMap", "filter", "reduce", "concat", "slice", "sort", "toSorted", "at", "find"]);
 const FILLERS = new Set(["push", "unshift"]);
 const MATH = /^(?:Math\.\w+|Number|BigInt)$/;
-const FUNCTION_TYPES = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
+/** Deeper than any property path a clock reading is read through. */
+const MAX_PATH = 8;
+const FUNCTION_TYPES =new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
 
 function childNodes(node: Flow, keys: readonly string[]): Flow[] {
   return keys.flatMap((key) => [node[key]].flat()).filter(isFlow);
@@ -152,7 +154,8 @@ function propertyReadsClock(prop: Flow, walk: Walk, [key, ...rest]: Path): boole
 
 function nameReadsClock(node: Flow, walk: Walk, path: Path): boolean {
   const variable = walk.resolved.get(node) ?? null;
-  if (variable === null) return false;
+  // A write such as `parent = parent.parentElement` reads the name one property deeper each time it is followed.
+  if (variable === null || path.length > MAX_PATH) return false;
   const paths = walk.seen.get(variable) ?? new Set<string>();
   if (paths.has(path.join("."))) return false;
   walk.seen.set(variable, paths.add(path.join(".")));
