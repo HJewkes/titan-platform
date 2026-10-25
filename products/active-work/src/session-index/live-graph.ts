@@ -51,9 +51,10 @@ export function openLiveGraph(options: LiveGraphOptions = {}): LiveGraph {
   return {
     async current() {
       if (handle && handle.inode === inodeAt(file)) return handle.graph;
-      // Close before opening: closing the last connection to the old inode
-      // deletes `<path>-wal` and `<path>-shm` by name, which by now are the new
-      // file's. Under the lock they hold no frame, so nothing is lost.
+      // Closing the old inode leaves `<path>-wal` and `<path>-shm`, which by now
+      // are the new file's: SQLite skips the close-time checkpoint and delete
+      // once the path names another inode (SQLITE_FCNTL_HAS_MOVED). The
+      // live-graph test pins that, here and in close().
       if (handle) await closeHandle(handle);
       handle = null;
       clearDocumentFrequency(file);
