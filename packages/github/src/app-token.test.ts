@@ -601,12 +601,25 @@ describe("token shape scrub", () => {
   describe("TP-1509 gaps", () => {
     const hex = "0123456789abcdef".repeat(3).slice(0, 40);
 
-    it.each(["-eyJaaaaaaaaaaaa", "_eyJaaaaaaaaaaaa"])("scans %j repeated to 128 KB in linear time", (unit) => {
-      const text = unit.repeat((1 << 17) / unit.length);
-      const started = performance.now();
+    it.each(["-eyJaaaaaaaaaaaa", "_eyJaaaaaaaaaaaa"])("scans %j repeated to 256 KB in linear time", (unit) => {
+      // Doubling the input costs 2x when linear and 4x when quadratic; the bound sits between with headroom for load.
+      const MAX_RATIO = 3;
+      const repeated = (bytes: number) => unit.repeat(bytes / unit.length);
+      const medianMs = (text: string) => {
+        const times: number[] = [];
+        for (let run = 0; run < 5; run++) {
+          const started = performance.now();
+          redact(text, []);
+          times.push(performance.now() - started);
+        }
+        return times.sort((a, b) => a - b)[2] ?? 0;
+      };
+      const small = repeated(1 << 17);
+      const large = repeated(1 << 18);
 
-      expect(redact(text, [])).toBe(text);
-      expect(performance.now() - started).toBeLessThan(100);
+      redact(small, []);
+      expect(redact(large, [])).toBe(large);
+      expect(medianMs(large)).toBeLessThan(Math.max(medianMs(small), 1) * MAX_RATIO);
     });
 
     it("scans a megabyte of JWT-shaped runs, with and without dots, in linear time", () => {
