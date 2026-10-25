@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, globSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, matchesGlob } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it, vi } from "vitest";
 import config from "../vitest.config.ts";
@@ -40,6 +40,20 @@ it("names every project in a scoped CI run", () => {
   const named = scoped.flatMap((arg, i) => (scoped[i - 1] === "--project" ? [arg] : []));
   expect(named.sort()).toEqual(config.test.projects.map((project) => project.test.name).sort());
 });
+
+// active-work's __tests__ tree sat outside every project's include, so none of its tests ran (TP-4152).
+it("runs every active-work __tests__ file in exactly one project", () => {
+  const files = globSync("products/active-work/__tests__/**/*.test.ts", { cwd: ROOT });
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
+});
+
+function projectsRunning(file) {
+  const matchesAny = (globs) => (globs ?? []).some((glob) => matchesGlob(file, glob));
+  return config.test.projects
+    .filter((project) => matchesAny(project.test.include) && !matchesAny(project.test.exclude))
+    .map((project) => project.test.name);
+}
 
 // A second setupFiles key once replaced the first, so the factory setup stopped loading and serve-bot read the real
 // home's token path. The resolved config must hold both.
