@@ -69,7 +69,8 @@ export function agentChatRepairer(deps: AgentChatRepairerDeps): LayerRepairer {
       mkdirSync(request.scratchDir, { recursive: true });
       const peerName = peerNameFor(request.key);
       const deadline = now().getTime() + (deps.timeoutMs ?? DEFAULT_REPAIR_TIMEOUT_MS);
-      await dispatchToAgentChat({ agentChatBinPath: deps.agentChatBin, peerName, profile, brief: repairBrief(request, target), cwd: request.scratchDir, ...(deps.profilesDir ? { profilesDir: deps.profilesDir } : {}) }, CLI_TIMEOUT_MS, [profile]);
+      const spawn = { agentChatBinPath: deps.agentChatBin, peerName, profile, brief: repairBrief(request, target), cwd: request.scratchDir };
+      await dispatchToAgentChat({ ...spawn, ...(deps.profilesDir ? { profilesDir: deps.profilesDir } : {}) }, CLI_TIMEOUT_MS, [profile]);
       let row: AgentRow;
       try {
         row = await waitForExit(poll, peerName, deadline, signal);

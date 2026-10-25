@@ -153,7 +153,9 @@ async function repairOnce(deps: LayerRouteDeps, request: RepairRequest, build: L
     return { build, error: `${request.error}; repair not started: ${error instanceof Error ? error.message : String(error)}` };
   }
   const session = repair.sessionId ? ` (repair session ${repair.sessionId})` : "";
-  const repaired: LayerBuild = { ...build, ...(repair.module ? { module: repair.module } : {}), usage: addUsage(build.usage, repair.usage), ...(repair.sessionId ? { repairSessionId: repair.sessionId } : {}) };
+  const repaired: LayerBuild = {
+    ...build, ...(repair.module ? { module: repair.module } : {}), usage: addUsage(build.usage, repair.usage), ...(repair.sessionId ? { repairSessionId: repair.sessionId } : {}),
+  };
   if (repair.error !== undefined) return { build: repaired, error: `${request.error}; repair failed${session}: ${repair.error}` };
   if (!repair.module) return { build: repaired, error: `${request.error}; the repair wrote no module${session}` };
   const verdict = await compileLayer(repair.module);

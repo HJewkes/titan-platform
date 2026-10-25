@@ -189,6 +189,12 @@ const stageExtras = (host: RunHost): Pick<StageDeps, "stylePacks" | "reflection"
   ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
 });
 
+function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
+  const worker = beatWorkerFor(host.beatWorker);
+  const repairer = layerRepairerFor(host.layerRepairer);
+  return { ...(worker ? { worker } : {}), ...(repairer ? { repairer } : {}) };
+}
+
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
@@ -197,15 +203,14 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
-  const worker = beatWorkerFor(host.beatWorker);
-  const repairer = layerRepairerFor(host.layerRepairer);
+  const runners = layerRunners(host);
   const children = childRoutes({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(worker ? { worker } : {}), ...(repairer ? { repairer } : {}),
+    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...runners,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
     ...(host.media ? { media: host.media } : {}),
   });
-  const builder = worker ? { builder: worker.builder } : {};
+  const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
   const stage = {
     dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host),

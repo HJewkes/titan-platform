@@ -288,6 +288,7 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker or repairer unless a test passes one: the defaults would spawn a real claude or agent wherever one is installed.
-  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now, beatWorker: null, layerRepairer: null };
-  return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
+  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now };
+  const builders = { beatWorker: null, layerRepairer: null };
+  return { dataDir: fx.dataDir, ...seams, ...builders, ...extra, rewriter, rubric };
 }

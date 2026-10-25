@@ -11,7 +11,10 @@ export const FAKE_MODEL = "claude-sonnet-5-5";
 export function syntheticTranscript(sessionId: string, tokens: { input: number; output: number }): string {
   const line = {
     type: "assistant", sessionId, uuid: "u-1", timestamp: "2026-10-25T00:00:00.000Z",
-    message: { id: "msg-1", role: "assistant", model: FAKE_MODEL, content: [{ type: "text", text: "Wrote the layer." }], usage: { input_tokens: tokens.input, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: tokens.output } },
+    message: {
+      id: "msg-1", role: "assistant", model: FAKE_MODEL, content: [{ type: "text", text: "Wrote the layer." }],
+      usage: { input_tokens: tokens.input, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: tokens.output },
+    },
   };
   return `${JSON.stringify(line)}\n`;
 }
