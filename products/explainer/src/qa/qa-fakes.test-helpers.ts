@@ -7,7 +7,7 @@ import type { QaEngine } from "./qa-engine.js";
 /** A synthetic overlap: two labels of the fake page drawn over each other. */
 export const OVERLAP: Finding = { kind: "text-overlap", el: "h2.title", text: "Parcel desk", other: "Scanner", at: { x: 100, y: 120, w: 400, h: 60 } };
 
-export interface FakeQa extends QaEngine {
+interface FakeQa extends QaEngine {
   /** Every page URL opened, and the cues it was opened with. */
   opened: { url: string; cues: CueRecord[] }[];
   /** Every time inspected, in order. */

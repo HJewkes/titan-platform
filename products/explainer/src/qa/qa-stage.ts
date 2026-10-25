@@ -21,7 +21,7 @@ export interface QaConfig extends QaGate {
   page?: string;
 }
 
-export interface QaInput extends Omit<ModelStageInput, "store"> {
+interface QaInput extends Omit<ModelStageInput, "store"> {
   store: Pick<ArtifactStore, "readText" | "putText" | "putTree" | "path" | "materialise">;
 }
 

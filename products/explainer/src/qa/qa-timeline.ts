@@ -6,12 +6,12 @@ import { beatCues, type ScriptV1 } from "../script-schema.js";
 import { readTiming, type ScriptTiming } from "../timing.js";
 
 /** A cue as QA reads it: the script's `word` or `word#n`, at seconds from its beat's start. */
-export interface QaCue {
+interface QaCue {
   name: string;
   atS: number;
 }
 
-export interface QaBeat {
+interface QaBeat {
   id: string;
   /** The beat's component, when the timeline names one. */
   kind?: string;

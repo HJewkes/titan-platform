@@ -15,7 +15,7 @@ const QaFindingSchema = z.object({
   /** The annotated crop's file name inside the `qa-crops` tree; absent past render-qa's per-kind cap. */
   crop: z.string().optional(),
 });
-export type QaFinding = z.infer<typeof QaFindingSchema>;
+type QaFinding = z.infer<typeof QaFindingSchema>;
 
 /** `qa.json`: the qa stage's whole verdict, which its checks read and nothing recomputes. */
 export const QaReportSchema = z.object({
@@ -42,7 +42,7 @@ const finding = (held: HeldFinding & { crop?: string }): QaFinding => ({
   ...(held.finding.text === undefined ? {} : { text: held.finding.text }), ...(held.crop === undefined ? {} : { crop: held.crop }),
 });
 
-export type QaReportBase = Omit<QaReport, "schema" | "pass" | "errorCounts" | "infoCounts" | "errors" | "info">;
+type QaReportBase = Omit<QaReport, "schema" | "pass" | "errorCounts" | "infoCounts" | "errors" | "info">;
 
 export function qaReport(held: Held, base: QaReportBase): QaReport {
   return {

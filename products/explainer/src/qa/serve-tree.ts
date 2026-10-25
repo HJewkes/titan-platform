@@ -9,7 +9,7 @@ const TYPES: Readonly<Record<string, string>> = {
   ".ttf": "font/ttf", ".wav": "audio/wav",
 };
 
-export interface ServedTree {
+interface ServedTree {
   /** `http://127.0.0.1:<port>`, with no trailing slash. */
   origin: string;
   close(): Promise<void>;

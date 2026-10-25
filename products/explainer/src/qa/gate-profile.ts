@@ -20,7 +20,7 @@ export const QaInspectSchema = z.strictObject({
   anchorTolPx: z.number().nonnegative().optional(),
   edgeLabelReachPx: z.number().nonnegative().optional(),
 });
-export type QaInspect = z.infer<typeof QaInspectSchema>;
+type QaInspect = z.infer<typeof QaInspectSchema>;
 
 const TypeOverrideSchema = z.strictObject({
   gate: z.array(KindSchema).default([]),
@@ -33,7 +33,7 @@ const GateProfileFileSchema = z.strictObject({
   default: z.strictObject({ gate: z.array(KindSchema), inspect: QaInspectSchema.default({}) }),
   types: z.record(z.string(), TypeOverrideSchema).default({}),
 });
-export type GateProfileFile = z.infer<typeof GateProfileFileSchema>;
+type GateProfileFile = z.infer<typeof GateProfileFileSchema>;
 
 /** One video type's QA policy: the kinds that fail the stage and the inspector thresholds, with the file's hash. */
 export interface QaGate {
@@ -42,7 +42,7 @@ export interface QaGate {
   inspect: QaInspect;
 }
 
-export const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
+const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
 
 /** Parses `gate-profile.yaml`; a kind render-qa does not know, or a type no profile defines, fails the load. */
 export function parseGateProfile(text: string, types: ReadonlySet<string>): GateProfileFile {
