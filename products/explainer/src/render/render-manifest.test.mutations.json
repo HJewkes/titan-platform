@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the host block accepts extra keys",
+      "file": "products/explainer/src/render/render-manifest.ts",
+      "find": "export const RenderHostSchema = z.strictObject({",
+      "replace": "export const RenderHostSchema = z.looseObject({",
+      "kills": [
+        "render manifest refuses a hostname added to the host block"
+      ]
+    },
+    {
+      "name": "qaGate accepts any string",
+      "file": "products/explainer/src/render/render-manifest.ts",
+      "find": "qaGate: z.literal(\"absent\")",
+      "replace": "qaGate: z.string()",
+      "kills": [
+        "render manifest refuses a manifest that claims a QA gate ran"
+      ]
+    }
+  ]
+}

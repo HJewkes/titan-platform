@@ -296,3 +296,71 @@ describe("formatSquashMessage", () => {
     expect(twice).toEqual(once);
   });
 });
+
+// Looser than GitHub's own match on purpose: any case or inner spacing of a token counts as live.
+const LIVE_SKIP = /\[\s*(?:skip\s*ci|ci\s*skip|no\s*ci|skip\s*actions|actions\s*skip)\s*\]/i;
+const LIVE_SKIP_CHECKS = /skip-checks\s*:\s*true/i;
+const TOKENS = ["skip ci", "ci skip", "no ci", "skip actions", "actions skip"];
+const VARIANTS = ["Skip CI", " skip  ci ", "NO CI", "Actions\tSkip"];
+
+const live = (message: { subject: string; body: string }): boolean =>
+  LIVE_SKIP.test(message.subject) || LIVE_SKIP.test(message.body) || LIVE_SKIP_CHECKS.test(message.body);
+
+describe("CI skip tokens in a squash message", () => {
+  it.each([...TOKENS, ...VARIANTS])("defangs [%s] in the PR body to its inert parenthesised form", (inner) => {
+    const result = formatSquashMessage(input({ body: `Adds the widget. [${inner}]` }));
+
+    expect(live(result)).toBe(false);
+    expect(result.body).toContain(`(${inner})`);
+  });
+
+  it.each(TOKENS)("defangs [%s] in the title and in a commit subject", (inner) => {
+    const result = formatSquashMessage(input({ title: `[${inner}] Add the widget`, commits: [{ subject: `Add it [${inner}]`, body: "" }] }));
+
+    expect(live(result)).toBe(false);
+    expect(result.subject).toBe(`(${inner}) Add the widget (TP-1) (#42)`);
+    expect(result.body).toContain(`- **Add it (${inner}).**`);
+  });
+
+  it("defangs tokens inside fenced, indented and inline code", () => {
+    const body = "Adds it with `[ci skip]` inline.\n\n```\n[skip ci]\n```\n\n    run [no ci]";
+    const result = formatSquashMessage(input({ body, commits: [{ subject: "Add it", body: "Run `[skip actions]`.\n\n    [actions skip]" }] }));
+
+    expect(live(result)).toBe(false);
+    for (const inner of TOKENS) expect(result.body).toContain(`(${inner})`);
+  });
+
+  it.each(["skip-checks: true", "skip-checks:true", "Skip-Checks : TRUE"])("defangs a %j trailer in the PR body and a commit body", (trailer) => {
+    const result = formatSquashMessage(input({ body: `Adds it.\n\n${trailer}`, commits: [{ subject: "Add it", body: `Because.\n\n${trailer}` }] }));
+
+    expect(live(result)).toBe(false);
+    expect(result.body.match(/skip-checks\s*=/gi)).toHaveLength(2);
+  });
+
+  it("defangs a token that stripping an address joins", () => {
+    const joined = `[skip ${address("pat", "example.org")} ci]`;
+
+    const result = formatSquashMessage(input({ title: `${joined} Add it`, body: `Adds it. ${joined}` }));
+
+    expect(live(result)).toBe(false);
+    expect(result.subject).toBe("(skip ci) Add it (TP-1) (#42)");
+  });
+
+  it("re-formats a message that carried every token unchanged", () => {
+    const tokens = [...TOKENS, ...VARIANTS].map((inner) => `[${inner}]`).join(" ");
+    const original = input({ title: `[skip ci] Add it`, body: `${tokens}\n\nskip-checks: true`, commits: [{ subject: "Add it [no ci]", body: tokens }] });
+    const once = formatSquashMessage(original);
+
+    const twice = formatSquashMessage({ ...original, title: once.subject, body: once.body });
+
+    expect(twice).toEqual(once);
+  });
+
+  it("leaves prose that names a token without brackets, and a false skip-checks, as written", () => {
+    const body = "We never skip ci here, (skip ci) is inert, and skip-checks: false is kept.";
+
+    const result = formatSquashMessage(input({ body }));
+
+    expect(result.body).toContain(body);
+  });
+});

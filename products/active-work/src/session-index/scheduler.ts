@@ -80,7 +80,7 @@ function cancellableSleep(ms: number): { done: Promise<void>; cancel: () => void
 }
 
 /** Resolves `'fresh'` if `pass` succeeds within `budgetMs`, else `'stale'` at the budget. */
-async function withinBudget(
+export async function withinBudget(
   pass: (expired: () => boolean) => Promise<boolean>,
   budgetMs: number,
 ): Promise<Freshness> {

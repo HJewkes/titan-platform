@@ -113,4 +113,5 @@ on already exists on npm.
 ## Gotchas
 
 - A fresh worktree needs `pnpm install --frozen-lockfile` and then `pnpm build` before vitest can import sibling packages, because packages resolve through their built `dist/` entries.
+- `.agent-chat/generated` lists, one exact path per line, the ignored files this repo's own scripts regenerate (`site/guides/capabilities.md`, written by `docs:build`), so `agent-chat agent park` may delete them instead of refusing the tree; add a path there when a new script writes an ignored file into the tree.
 - On the docs site, an explicit `<br/>` in a mermaid node label clips the last line; write short labels, let them wrap, and view the rendered diagram before committing.

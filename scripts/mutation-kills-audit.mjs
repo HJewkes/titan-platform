@@ -2,6 +2,8 @@
 // vitest full name (describe titles, then the test title), so a bare title matches nothing. Read-only: it runs each
 // sidecar's test file once with the JSON reporter and compares names; it never edits a sidecar. With --base it also
 // lists each sidecar whose kills name no test the diff from that base touches, so its proof is not about the change.
+// Each sidecar also goes through fix-proof's own parser, so a spec CI would refuse (a name over its length cap, too many
+// mutants) fails here first (TP-4165).
 //
 //   node scripts/mutation-kills-audit.mjs [sidecar...]               default: every tracked *.test.mutations.json
 //   node scripts/mutation-kills-audit.mjs --base <ref> [sidecar...]  default: the sidecars of test files changed since <ref>
@@ -11,6 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseMutationSpec } from "../packages/fix-proof/dist/index.js";
 import { changedLines, missedChange, touchedTests } from "./mutation-kills-touched.mjs";
 
 const SUFFIX = ".mutations.json";
@@ -61,14 +64,35 @@ function missedChangeOf(path, testFile, sidecar, base) {
   return problem === null ? [] : [`${path}: ${problem}`];
 }
 
-function audit(path, base) {
+/** fix-proof's refusal of a sidecar's text as one problem line, or null when fix-proof would accept it. */
+export function specProblem(path, text) {
+  const parsed = parseMutationSpec(text);
+  return parsed.ok ? null : `${path}: ${parsed.error}`;
+}
+
+function jsonOrNull(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function killProblems(path, sidecar, base) {
   const testFile = testFileOf(path, existsSync);
   if (testFile === null) return [`${path}: no single test file beside it`];
   const names = namesOfRun(testFile);
   if (names === null) return [`${path}: ${testFile} collected no tests`];
-  const sidecar = JSON.parse(readFileSync(path, "utf8"));
   const unmatched = unmatchedKills(sidecar, names).map(({ mutation, kill }) => `${path}: mutation ${JSON.stringify(mutation)} kills ${JSON.stringify(kill)}, which names no test`);
   return [...unmatched, ...missedChangeOf(path, testFile, sidecar, base)];
+}
+
+function audit(path, base) {
+  const text = readFileSync(path, "utf8");
+  const refused = specProblem(path, text);
+  const sidecar = jsonOrNull(text);
+  const kills = sidecar === null ? [] : killProblems(path, sidecar, base);
+  return [...(refused === null ? [] : [refused]), ...kills];
 }
 
 function trackedSidecars() {

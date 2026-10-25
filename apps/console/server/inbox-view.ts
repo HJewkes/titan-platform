@@ -12,6 +12,7 @@ import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
+import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -264,15 +265,16 @@ export async function readInbox(sources: InboxSources): Promise<InboxList> {
 const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
 
 /** A Shepherd that just failed the active read already has its gap line, so the finished read is skipped, not doubled. */
-async function readDerived({ shepherd, agents, now = Date.now }: InboxSources, live: Read<WatchRow[]>): Promise<Read<DerivedRow[]>> {
-  const [finished, roster] = await Promise.all([
+async function readDerived({ shepherd, agents, rounds, now = Date.now }: InboxSources, live: Read<WatchRow[]>): Promise<Read<DerivedRow[]>> {
+  const at = now();
+  const [finished, roster, missed] = await Promise.all([
     live.gaps.length > 0 ? NOT_READ : readOrGap("shepherd finished", () => shepherd.list("finished"), []),
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
+    readOrGap("round notices", () => missedNoticeRows(rounds.dir, at), []),
   ]);
-  const at = now();
   const blocked = roster?.value === undefined ? [] : blockedAgentRows(roster.value);
-  const rows = [...stalledRunRows(live.value, at), ...failedRunRows(finished.value, live.value, at), ...blocked].sort(byDerivedOrder);
-  return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? [])] };
+  const rows = [...stalledRunRows(live.value, at), ...failedRunRows(finished.value, live.value, at), ...blocked, ...missed.value].sort(byDerivedOrder);
+  return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? []), ...missed.gaps] };
 }
 
 /** The queue read already reports an unreadable round as a gap, so a nudge read adds none of its own. */
@@ -292,7 +294,7 @@ export function inboxViewCommands(sources: InboxSources) {
     "inbox.list": readCommand({
       name: "inbox.list",
       description:
-        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action; and each round open over six hours, once, with its recommendations stated",
+        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command, blocking first and newest first; beside them, machine-derived stall, failed-run, blocked-agent and missed round-notice rows with their evidence and no action; and each round open over six hours, once, with its recommendations stated",
       args: z.object({}),
       result: z.custom<InboxView>(),
       run: () => readInboxView(sources),

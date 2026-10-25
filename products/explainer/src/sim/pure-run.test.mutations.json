@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Date constructor is not trapped",
+      "file": "products/explainer/src/sim/pure-run.ts",
+      "find": "args.length === 0 ? refuse(\"new Date()\")",
+      "replace": "args.length === -1 ? refuse(\"new Date()\")",
+      "kills": [
+        "runPure refuses a model that builds a Date from the clock, and restores Date after"
+      ]
+    },
+    {
+      "name": "the two runs are never compared",
+      "file": "products/explainer/src/sim/pure-run.ts",
+      "find": "if (canonicalJson(first) !== canonicalJson(second))",
+      "replace": "if (false)",
+      "kills": [
+        "runPure refuses a model whose output differs between two runs on the same seed"
+      ]
+    },
+    {
+      "name": "a trap is restored by plain assignment",
+      "file": "products/explainer/src/sim/pure-run.ts",
+      "find": "saved ? Object.defineProperty(owner, key, saved) : Reflect.deleteProperty(owner, key)",
+      "replace": "Object.defineProperty(owner, key, saved ?? { value: Reflect.get(owner, key), configurable: true, writable: true })",
+      "kills": [
+        "runPure restores every trapped source after a refused run"
+      ]
+    }
+  ]
+}

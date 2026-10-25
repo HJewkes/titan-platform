@@ -41,6 +41,7 @@
     "@titan-design/code-graph": "workspace:^",
     "@titan-design/code-read": "workspace:^",
     "@titan-design/evidence": "workspace:^",
+    "@titan-design/frame-capture": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/graph-layout": "workspace:^",
     "@titan-design/hitl": "workspace:^",
@@ -55,6 +56,7 @@
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
     "esbuild": "^0.28.0",
+    "playwright-core": "^1.63.0",
     "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },

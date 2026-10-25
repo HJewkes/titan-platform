@@ -60,6 +60,17 @@ describe("the squash message a land merge sends", () => {
     expect(message).toEqual({ subject: "Add the widget", body: "" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
   });
+
+  it("defangs a CI skip token in the fallback title", async () => {
+    const scenario = landScenario();
+    const port = githubPort(scenario.fake.wire);
+    const commits = [{ get subject(): string { throw new Error("boom"); }, body: "" }];
+    const hostile = { ...port, getSquashSource: async () => ({ title: "[skip ci] Add the widget", body: "", commits }) };
+
+    const message = await squashMessageFor(hostile, "octo/demo", 1, [], vi.fn());
+
+    expect(message).toEqual({ subject: "(skip ci) Add the widget", body: "" });
+  });
 });
 
 describe("a merge step recorded without task ids", () => {

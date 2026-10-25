@@ -436,7 +436,7 @@ declare const STRIPPED_AUTH_VARS: readonly ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH
  * that namespace describes the *parent* session (exec path, terminal, entry
  * point) and confuses the child's credential and config inference.
  */
-declare const CLAUDE_CODE_PASSTHROUGH_VARS: readonly ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_MAX_RETRIES", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"];
+declare const CLAUDE_CODE_PASSTHROUGH_VARS: readonly ["CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_MAX_RETRIES", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "CLAUDE_CODE_REMOTE"];
 /** Proxy settings leak from the parent shell and silently re-route the child's API traffic. */
 declare const STRIPPED_PROXY_VARS: readonly ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"];
 /** The CLI retries 10 times by default, which turns an outage into a long silent hang. */

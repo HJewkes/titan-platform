@@ -125,7 +125,8 @@ function BlockingSection({ items, quiet, gapped }: { items: readonly InboxItem[]
   );
 }
 
-const DERIVED_LABEL: Record<DerivedRow["kind"], string> = { "stalled-run": "stalled", "failed-run": "failed", "blocked-agent": "blocked" };
+const DERIVED_LABEL: Record<DerivedRow["kind"], string> = { "stalled-run": "stalled", "failed-run": "failed", "blocked-agent": "blocked", "missed-notice": "notice failed" };
+const DERIVED_LINK: Record<DerivedRow["kind"], string> = { "stalled-run": "Open the run", "failed-run": "Open the run", "blocked-agent": "Open the agent", "missed-notice": "Open the round" };
 
 /** Exceptions the console derived itself, kept apart from what producers filed; each is a "go look" link with no action. */
 function DerivedSection({ rows }: { rows: readonly DerivedRow[] }): ReactNode {
@@ -159,7 +160,7 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
           <Typography variant="caption">{`${evidence.observed} (${evidence.source}, since ${evidence.at})`}</Typography>
           <Typography variant="caption" color="secondary">{`Crossed: ${threshold.name}`}</Typography>
           <Link color="primary" onPress={() => open(parseRoute(row.link))}>
-            {row.kind === "blocked-agent" ? "Open the agent" : "Open the run"}
+            {DERIVED_LINK[row.kind]}
           </Link>
         </VStack>
       </CardContent>
