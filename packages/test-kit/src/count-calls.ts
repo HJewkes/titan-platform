@@ -1,5 +1,8 @@
-/** A method to count, as `[prototype or object, method name]`: `[Array.prototype, "push"]`, `[Map.prototype, "get"]`. */
-export type CountedMethod = readonly [object, string];
+/**
+ * A method to count, as `[prototype or object, key]`: `[Array.prototype, "push"]`, `[Map.prototype, "get"]`, or
+ * `[Array.prototype, Symbol.iterator]`, which every `for...of` over an array calls once.
+ */
+export type CountedMethod = readonly [object, PropertyKey];
 
 export interface CallMeter {
   /** The calls made to the methods since the meter was installed; a running total, as `linearWork`'s `meter` takes. */
@@ -20,18 +23,18 @@ type Method = (...args: unknown[]) => unknown;
 export function callMeter(methods: readonly CountedMethod[], cap = Infinity): CallMeter {
   let calls = 0;
   const originals = methods.map(([target, name]) => Object.getOwnPropertyDescriptor(target, name));
-  methods.forEach(([target, name], index) => {
+  // Plain loops and index reads below: a counted iterator or Array method must not run while the meter is set up.
+  for (let index = 0; index < methods.length; index += 1) {
     const original: unknown = originals[index]?.value;
-    if (typeof original !== "function") throw new Error(`no ${name} to count`);
+    if (typeof original !== "function") throw new Error(`no ${String(methods[index]![1])} to count`);
     const counted = function (this: unknown, ...args: unknown[]): unknown {
       calls += 1;
       if (calls > cap) throw new CallCapExceeded(`more than ${cap} calls`);
       return Reflect.apply(original as Method, this, args);
     };
-    Object.defineProperty(target, name, { configurable: true, writable: true, value: counted });
-  });
+    Object.defineProperty(methods[index]![0], methods[index]![1], { configurable: true, writable: true, value: counted });
+  }
   const restore = () => {
-    // A plain loop: a counted Array method must not run, and throw past the cap, while the originals go back.
     for (let index = 0; index < methods.length; index += 1) Object.defineProperty(methods[index]![0], methods[index]![1], originals[index] ?? {});
   };
   return { calls: () => calls, restore };

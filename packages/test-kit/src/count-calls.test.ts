@@ -19,6 +19,14 @@ describe("countCalls", () => {
     expect(Array.prototype.push).toBe(push);
   });
 
+  it("counts each for...of over an array through its iterator, even with a cap of none", () => {
+    const calls = countCalls([[Array.prototype, Symbol.iterator]], () => {
+      for (const _ of [1, 2]) void _;
+    }, 0);
+
+    expect(calls).toBe(1);
+  });
+
   it("stops a run at the first call past the cap and reports a count above it", () => {
     let reached = 0;
 

@@ -1,3 +1,4 @@
+import { countCalls } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { GraphEdge, GraphMetric } from "../types.js";
 import { computeTestKindMetrics } from "./test-kinds.js";
@@ -59,17 +60,23 @@ function syntheticGraph(functions: number, tests: number): { edges: GraphEdge[];
   return { edges, sourceMetrics };
 }
 
+/**
+ * Each `for...of` over an array and each map lookup: one pass over the graph makes them per node and edge (TP-4262).
+ * This row took 727 012; flowing the bits once per test, as a closure per test did, takes about a hundred times that.
+ */
+const REACH_WORK = [[Array.prototype, Symbol.iterator], [Map.prototype, "get"]] as const;
+const REACH_CALLS = 1_500_000;
+
 describe("computeTestKindMetrics at scale", () => {
-  it("counts 3k tests over a 20k-function call chain in well under the 19 s a closure per test took", () => {
+  it("counts 3k tests over a 20k-function call chain in one pass, not one closure per test", () => {
     const graph = syntheticGraph(20_000, 3_000);
 
-    const started = performance.now();
-    const rows = computeTestKindMetrics(graph);
-    const elapsed = performance.now() - started;
+    let rows: GraphMetric[] = [];
+    const work = countCalls(REACH_WORK, () => (rows = computeTestKindMetrics(graph)), REACH_CALLS);
 
+    expect(work).toBeLessThanOrEqual(REACH_CALLS);
     const last = rows.find((r) => r.nodeId === "src/m.py#f19999" && r.name === "symbol_tests_exact_output");
     expect(last?.value).toBe(3_000);
     expect(rows.find((r) => r.nodeId === "src/m.py#f0" && r.name === "symbol_kind_pure")?.value).toBe(1);
-    expect(elapsed).toBeLessThan(3_000);
   });
 });
