@@ -7,7 +7,7 @@ export interface DigestItem {
 }
 
 /** What the seat was last told; `refs` is absent in memory written before deltas, so cleared items there have no ref. */
-export interface ToldState {
+interface ToldState {
   open: readonly string[];
   refs?: Readonly<Record<string, string>>;
 }
@@ -23,7 +23,10 @@ function newLines(added: readonly DigestItem[]): string[] {
   for (const item of added) {
     const group = item.gate && byStep.get(item.gate.stepId);
     if (!group || group.length < COLLAPSE_AT) lines.push(item.line);
-    else if (group[0] === item) lines.push(`- ${group.length} wait on ${item.gate!.stepId}: ${group.map((g) => g.pr).join(", ")}; resolve each with ${group.map((g) => `\`${g.gate!.command}\``).join(", ")}`);
+    else if (group[0] === item) {
+      const commands = group.map((g) => `\`${g.gate!.command}\``).join(", ");
+      lines.push(`- ${group.length} wait on ${item.gate!.stepId}: ${group.map((g) => g.pr).join(", ")}; resolve each with ${commands}`);
+    }
   }
   return lines;
 }
