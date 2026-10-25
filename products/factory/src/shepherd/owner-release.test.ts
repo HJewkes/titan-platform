@@ -141,9 +141,10 @@ describe("titan-factory shepherd owner-release", () => {
 
     expect(code).toBe(0);
     expect(out).toContain(`released the owner-asked hold on ${REPO}#1 at ${H1} as owner-terminal`);
-    const [actor] = releases(w).map((event) => event.actor ?? "");
-    expect(actor).toMatch(new RegExp(`^owner-terminal:${userInfo().username} proof gate-batch:[0-9a-f-]{36}$`));
-    expect(hosts.at(-1)!.batches.get(actor.slice(actor.indexOf("gate-batch:") + "gate-batch:".length))?.items).toMatchObject([{ gate: "hold:run-1", headSha: H1, outcome: "resolved" }]);
+    const actors = releases(w).map((event) => event.actor ?? "");
+    expect(actors).toEqual([expect.stringMatching(new RegExp(`^owner-terminal:${userInfo().username} proof gate-batch:[0-9a-f-]{36}$`))]);
+    const batchId = actors[0]!.split("gate-batch:")[1]!;
+    expect(hosts.at(-1)!.batches.get(batchId)?.items).toMatchObject([{ gate: "hold:run-1", headSha: H1, outcome: "resolved" }]);
   });
 
   it("releases from the owner's own terminal without asking for presence", async () => {
