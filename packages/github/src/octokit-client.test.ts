@@ -25,16 +25,21 @@ function clientWith(answer: (index: number) => FakeAnswer, token: () => Promise<
 
 /** A socket that never answers, aborting the way undici does so plugin-retry treats it as final; counts its calls. */
 function hungFetch() {
-  const fake = { calls: 0, fetch: undefined as unknown as typeof globalThis.fetch };
-  fake.fetch = (async (_input: string | URL | Request, init: RequestInit = {}) => {
-    fake.calls += 1;
+  const counter = { calls: 0 };
+  const fetch = (async (_input: string | URL | Request, init: RequestInit = {}) => {
+    counter.calls += 1;
     return new Promise<Response>((_resolve, reject) => {
       const abort = () => reject(new DOMException("aborted", "AbortError"));
       if (init.signal?.aborted) abort();
       init.signal?.addEventListener("abort", abort);
     });
   }) as typeof globalThis.fetch;
-  return fake;
+  return {
+    fetch,
+    get calls() {
+      return counter.calls;
+    },
+  };
 }
 
 /** Lets the throttle's and retry's timers run under fake time. */
