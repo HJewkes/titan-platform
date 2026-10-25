@@ -1,6 +1,6 @@
 import type { GitHubPort } from "@titan-design/github";
 import { GateAlreadySettled, GateExpired, GateNotFound, GatePayloadInvalid, GateResolverRefused, type GateRecord } from "@titan-design/hitl";
-import { AWAIT_NEW_HEAD, MERGE_GATE, SENT_BACK_GATE, gatePr, landGate, pinnedHead, stepOf } from "../coordinator-evidence.js";
+import { AWAIT_NEW_HEAD, MERGE_GATE, SENT_BACK_GATE, gatePr, isSkillPathLand, landGate, pinnedHead, stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { batchRefusal } from "../gate-batch-plan.js";
 import { WAIVE_PROOF } from "../gate-brief.js";
@@ -60,7 +60,10 @@ function gateRefusal(gate: GateRecord, action: GateAction): GateTarget | Outcome
 function targetOf(gate: GateRecord): GateTarget | undefined {
   const step = stepOf(gate.id);
   if (!CONSOLE_STEPS.has(step)) return undefined;
-  if (step === MERGE_GATE) return landGate(gate);
+  if (step === MERGE_GATE) {
+    const land = landGate(gate);
+    return isSkillPathLand(land) ? undefined : land;
+  }
   const pr = gatePr(gate);
   const head = headGateAsks(gate);
   return pr && head ? { ...pr, head } : undefined;

@@ -86,7 +86,7 @@ describe("the approve-merge gate land opens", () => {
     for (const path of SKILLS) expect(gate.prompt).toContain(path);
     expect(gate.prompt).toContain("https://github.com/octo/demo/pull/1/files");
     expect(gatePr(gate)).toEqual({ repo: "octo/demo", pr: 1 });
-    expect(landGate(gate)).toBeUndefined();
+    expect(landGate(gate)).toMatchObject({ repo: "octo/demo", pr: 1, head: H1 });
     expect(gate.questions![0]!.options.some((option) => option.recommended)).toBe(false);
   });
 

@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { GateRecord } from "@titan-design/hitl";
-import { landGate, stepOf } from "./coordinator-evidence.js";
+import { isSkillPathLand, landGate, stepOf } from "./coordinator-evidence.js";
 import type { FactoryHost } from "./host.js";
 import type { ProofItem } from "./presence-proof.js";
 
@@ -42,5 +42,6 @@ export function batchRefusal(gate: GateRecord): string | undefined {
   if (RELEASE_STEPS.has(step)) return "a release gate";
   const land = landGate(gate);
   if (land === undefined) return "not a merge gate at a pinned head";
+  if (isSkillPathLand(land)) return "a skill-path gate";
   return land.rule.startsWith(RELEASE_TABLE) ? "a release gate" : undefined;
 }

@@ -120,14 +120,21 @@ export interface LandGate {
 }
 
 /**
- * A land approve-merge gate: its prompt names the PR, the head and the policy rule, and its schema pins the same head.
- * A conflict or any other approve-merge gate does not read as one.
+ * A land approve-merge gate: its prompt's first line names the PR, the head and the policy rule, and its schema pins the
+ * same head. Land puts a skill-diff link and the reviewer's owner brief on later lines (TP-4141), which never change what
+ * the gate asks. A conflict or any other approve-merge gate does not read as one.
  */
 export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): LandGate | undefined {
-  const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt) : null;
+  const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt.split("\n", 1)[0]!) : null;
   if (!match || pinnedHead(gate.schema) !== match[3]) return undefined;
   return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}`, reason: match[6]! };
 }
+
+/**
+ * The owner reads a repo skill diff at its own head (CC-1120). Until TP-4141 every live skill-path gate's multi-line prompt
+ * kept it off the console tap, standing answers, Ship answers and batches; it stays off them.
+ */
+export const isSkillPathLand = (land: LandGate | undefined): boolean => land?.rule === "shepherd-merge-guard/skill-path";
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
   const head = (schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;

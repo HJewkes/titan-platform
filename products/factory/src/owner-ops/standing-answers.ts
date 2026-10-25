@@ -5,7 +5,7 @@ import type { Logger } from "@titan-design/daemon";
 import { MERGE_WAITS, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { z } from "zod";
 import { consoleResolver } from "../console-action/outcome.js";
-import { MERGE_GATE, landGate, stepOf } from "../coordinator-evidence.js";
+import { MERGE_GATE, isSkillPathLand, landGate, stepOf } from "../coordinator-evidence.js";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { frozenFor } from "../shepherd/freeze.js";
 import { LIVE, endRunsGoneElsewhere } from "../shepherd/gone-elsewhere.js";
@@ -173,7 +173,9 @@ async function loopApproval({ host, services, answers, tell, loopRead }: SweepDe
 function resolveAtHead(host: FactoryHost, services: ShepherdServices, answer: StandingAnswer): StandingResult[] {
   const { actionId, runId } = answer;
   return pendingMergeGates(host, runId).map((pending): StandingResult => {
-    const head = landGate(pending.gate)?.head;
+    const land = landGate(pending.gate);
+    if (isSkillPathLand(land)) return { kind: "pending", actionId, runId, reason: `${pending.gate.id} is a skill-path gate, which no standing answer gives` };
+    const head = land?.head;
     if (head !== answer.headSha) return { kind: "pending", actionId, runId, reason: `the gate asks about head ${head ?? "unknown"}, the owner confirmed ${answer.headSha}` };
     const stop = mergeStop(services, answer.repo, answer.pr);
     if (stop !== undefined) return { kind: "pending", actionId, runId, reason: `${answer.repo}#${answer.pr} ${stop}` };
