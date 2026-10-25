@@ -1,3 +1,5 @@
+import { promptLine } from "@titan-design/owner-queue";
+
 /** One changed `.github/` file read at the base and at the head; an absent side is the empty string. */
 export interface CiPolicyFile {
   path: string;
@@ -26,13 +28,7 @@ export const MAX_LINE_CHARS = 160;
 /** Opens each unread fact of a D21 file read, so the card can name those files beside the lines it did read. */
 export const CI_POLICY_UNREAD_PREFIX = "the CI-policy lines of ";
 
-/** Every line is author-written and reaches the owner's prompt, so escape sequences and bidi overrides go before anything else. */
-// eslint-disable-next-line no-control-regex -- ANSI sequences are exactly what the owner prompt must not render
-const ANSI_SEQUENCE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/gu;
-// eslint-disable-next-line no-control-regex -- control, bidi and zero-width characters are exactly what a prompt line refuses
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u{061c}\u{200b}-\u{200f}\u{202a}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{2069}\u{feff}]/gu;
-/** A viewer may render these as breaks, but YAML does not, so they stay in the line as a visible mark and line numbers still match. */
-const SEPARATOR = /[\u0085\u{2028}\u{2029}]/gu;
+/** A viewer may render NEL and the line and paragraph separators as breaks, but YAML does not, so they stay in the line as a visible mark and line numbers still match. */
 const SEPARATOR_MARK = "\u{23ce}";
 /** JSON escapes a lone surrogate as six characters, which would break the evidence comment's size bound. */
 const LONE_SURROGATE = /[\u{d800}-\u{dfff}]/gu;
@@ -43,8 +39,8 @@ const LINE_BREAK = /\r\n|\r|\n/;
 /** Above this many table cells the changed middle of a file reads as wholly changed, which shows more lines, never fewer. */
 const MAX_DIFF_CELLS = 4_000_000;
 
-/** Runs after the split, so stripping can never join two lines. */
-const cleanLine = (line: string): string => line.replace(ANSI_SEQUENCE, "").replace(/\t/g, "  ").replace(SEPARATOR, SEPARATOR_MARK).replace(CONTROL, "").trimEnd();
+/** Every line is author-written and reaches the owner's prompt. Runs after the split, so stripping can never join two lines. */
+const cleanLine = (line: string): string => promptLine(line.replace(/\t/g, "  "), { lineBreak: SEPARATOR_MARK }).trimEnd();
 
 /** Strips escapes and control characters, keeps the indent that shows YAML nesting, and cuts at `MAX_LINE_CHARS` with an ellipsis. */
 export function shownLine(line: string): string {

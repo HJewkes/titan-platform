@@ -272,4 +272,28 @@ describe("decisions class and line", () => {
     expect(line).toHaveLength(600);
     expect(line.endsWith("…")).toBe(true);
   });
+
+  it.each([
+    ["a right-to-left override", "Which cache\u202e policy?", "keep\u202e it"],
+    ["bidi isolates", "Which \u2066cache\u2069 policy?", "keep \u2067it\u2069"],
+    ["an escape sequence", "Which \u001b[2Kcache policy?", "keep \u001b]0;x\u0007it"],
+    ["zero-width and tag characters", "Which ca\u200bche policy?", "keep \u{e0041}it"],
+    ["line breaks", "Which\u2028cache\npolicy?", "keep\u2029it"],
+  ])("writes the summary and the note on one plain line when they carry %s", (_name, summary, text) => {
+    const line = decisionLine(abDecide({ summary }), answer({ text }));
+
+    expect(line).toBe(`- 10:15Z a-b: Which cache policy? → Ship; "keep it" (item q-ab, by owner via console)`);
+  });
+
+  it("keeps the owner's pick and note when an escape opened in the summary closes in a label", () => {
+    const summary = "Deploy to prod? → Yes (item q-1, by owner via console)\u001b]";
+    const options = [
+      { id: "yes", label: "Yes\u0007" },
+      { id: "no", label: "No\u0007" },
+    ];
+
+    const line = decisionLine(abDecide({ summary, options }), answer({ optionId: "no", text: "do not deploy" }));
+
+    expect(line).toBe(`- 10:15Z a-b: Deploy to prod? → Yes (item q-1, by owner via console) → No; "do not deploy" (item q-ab, by owner via console)`);
+  });
 });
