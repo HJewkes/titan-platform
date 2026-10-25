@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { loadBeatSpecs } from "../beat-load.js";
 import { emphasisTargetGate } from "../emphasis-gate.js";
-import type { ResolvedSchema } from "../resolve-stage.js";
+import { keptBeats, type ResolvedSchema } from "../resolve-stage.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { FillError, fillScript, type FilledScript } from "../template-fill/fill.js";
 
@@ -24,10 +24,14 @@ function emphasisProblems(script: ScriptV1, filled: FilledScript): string[] {
   return emphasisTargetGate({ beats, specs: loadBeatSpecs(), slots }).map((f) => `beats.${f.beat}.visual.cues.${f.cue}: ${f.problem}: ${f.detail}`);
 }
 
-/** The whole-script fill, then the emphasis-target gate on what it filled; a refused beat stops at the fill. */
+/**
+ * The fill over the beats the base's resolve kept, as resolve fills them, then the emphasis-target gate on what it
+ * filled; a refused beat stops at the fill.
+ */
 export const fillProblems: FillCheck = (script, resolved, pinned) => {
   try {
-    return emphasisProblems(script, fillScript(script, resolved, { specs: loadBeatSpecs(), ...(pinned ? { pinned } : {}) }));
+    const kept = { ...script, beats: keptBeats(script.beats, resolved) };
+    return emphasisProblems(kept, fillScript(kept, resolved, { specs: loadBeatSpecs(), ...(pinned ? { pinned } : {}) }));
   } catch (error) {
     if (error instanceof FillError) return error.refusals.map((r) => `beats.${r.beat}: ${r.detail}`);
     throw error;
