@@ -20,6 +20,11 @@ export interface CommitStatus {
   context: string;
   /** `success`, `pending`, `failure` or `error`. */
   state: string;
+  /** The link `gh pr checks` prints; absent when the wire does not report it, null when the poster set none. */
+  targetUrl?: string | null;
+  description?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 /** A commit on the default branch with its full message, subject line first. */

@@ -799,10 +799,18 @@ minute old, and concurrent callers share one list read. The PRs Shepherd itself 
 row is `{ repo, number, branch, headSha, base, state, mergedAt, mergeSha, title, body, draft,
 registered, runId?, phase?, ci?, source, at }`. `state` is `open` or `merged`. `source` is
 `snapshot` or `merge-step`, and `at` is when that source was read. `ci` is
-`{ head, state, requiredMissing, at }`, where `state` is `pending`, `green`, `red` or `none`. It
-appears only when the snapshot already holds the head's check runs. A head it holds none for
-leaves `ci` out rather than reading GitHub. `requiredMissing` names the run's required contexts
-that have no check run on the head. A serve wired without a snapshot refuses with exit 69.
+`{ head, state, requiredMissing, checks, statuses?, required?, settled, at }`, where `state` is
+`pending`, `green`, `red` or `none`. It appears only when the snapshot already holds the head's
+check runs. A head it holds none for leaves `ci` out rather than reading GitHub. `head` is the
+commit the checks were read for: when it differs from the row's `headSha`, a push outran the read
+and the checks describe the old head. `requiredMissing` names the run's required contexts that
+have no check run or status on the head. `checks` holds the newest run per name as
+`{ name, status, conclusion, startedAt, completedAt, url, title }`. `statuses` holds the head's
+commit statuses as `{ context, state, targetUrl, description, createdAt, updatedAt }`; the
+snapshot reads them beside the runs, on the same cadence, and leaves the field out when that read
+failed. `required` is the run's land-rules contexts, absent when none were recorded. `settled` says
+the runs that decide the head are complete, so the snapshot reads them again only once per settled
+window. A serve wired without a snapshot refuses with exit 69.
 
 ## Stats {#stats}
 
