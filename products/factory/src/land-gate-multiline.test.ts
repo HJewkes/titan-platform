@@ -37,7 +37,9 @@ const liveGate = defineWorkflow({
   name: "live-merge-gate",
   steps: [{ id: "approve-merge", kind: "assisted" }],
   run: async (ctx) => {
-    const [table, rowId] = ctx.param("rule")!.split("/") as [string, string];
+    const rule = ctx.param("rule")!;
+    const table = rule.slice(0, rule.indexOf("/"));
+    const rowId = rule.slice(rule.indexOf("/") + 1);
     const skillPaths = table === "shepherd-merge-guard" ? SKILLS : [];
     const facts = { reviewedMerge: () => true, ownerBriefAt: () => OWNER_BRIEF, skillPathsAt: () => skillPaths };
     await approveMergeGate({ table, rowId, version: 1 }, facts)(ctx, { repo: REPO, pr: Number(ctx.param("pr")), headSha: H, round: 0, reason: ctx.param("reason")!, base: "main" });
