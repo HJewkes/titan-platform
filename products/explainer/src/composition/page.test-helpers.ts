@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { captureFrames } from "@titan-design/frame-capture";
 import { build } from "vite";
@@ -39,15 +40,13 @@ function tcpAddress(address: AddressInfo | string | null): AddressInfo {
   return address;
 }
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /** Loopback HTTP over the built page, with the fixture timelines at /timelines/ and, held back by `slowMs`, at /slow/. */
 export async function servePage(pageDir: string, slowMs: number): Promise<PageServer> {
   const server = createServer((req, res) => {
     const path = normalize(new URL(req.url ?? "/", "http://page").pathname);
     const [, prefix = "", ...rest] = path.split("/");
     const file = prefix === "timelines" || prefix === "slow" ? join(FIXTURES, ...rest) : join(pageDir, path);
-    const held = prefix === "slow" ? delay(slowMs) : Promise.resolve();
+    const held = prefix === "slow" ? sleep(slowMs) : Promise.resolve();
     held
       .then(() => readFile(file))
       .then(

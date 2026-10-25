@@ -46,6 +46,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerRunVerbs(verb, verbs);
   registerHoldVerbs(verb, verbs);
   registerRepairStopVerbs(verb, verbs);
+  registerMergeBaseVerbs(verb, verbs);
   registerRepoFreezeVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
@@ -109,6 +110,16 @@ function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "clear", ref, actor: callerOf(verbs.io.env) }), opts));
   verb("repair-stops [repo]", "every repair stop, or only owner/repo's")
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
+}
+
+/** A planner's leave for a run's fix rounds to merge the base, when the fix needs code that landed there (TP-4242). */
+function registerMergeBaseVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("allow-merge-base <ref>", "let owner/repo#N's fix rounds merge the base branch: their briefs name who allowed it and why in place of the line that forbids it; a repeat replaces the reason")
+    .requiredOption("--reason <text>", "why the fix needs the base, e.g. the PR on main it depends on")
+    .action((ref: string, opts: ShepherdOpts & { reason: string }) =>
+      runShepherd(verbs, "shepherd.merge-base", () => ({ action: "allow", ...parsePrRef(ref), reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("revoke-merge-base <ref>", "drop owner/repo#N's merge-base exception, so its fix rounds are told not to merge the base again")
+    .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.merge-base", () => ({ action: "revoke", ...parsePrRef(ref) }), opts));
 }
 
 /** A coordinator's pause on a whole repo's merges, apart from the main-red freeze, which only `thaw` lifts by hand. */

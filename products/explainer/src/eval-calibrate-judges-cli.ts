@@ -3,8 +3,8 @@ import { dirname, join } from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import { auditionOutputs } from "./calibration-auditions.js";
-import { labelsFromFeedback, pooledAgreement, promotionRefusal, type AgreementRecord } from "./calibration-agreement.js";
-import { buildQueue, CALIBRATION_JUDGES, QUEUE_SIZE, QueueKeySchema, type JudgedOutput, type KeyEntry, type QueueKey } from "./calibration-queue.js";
+import { labelsFromFeedback, listenerLabels, pooledAgreement, promotionRefusal, type AgreementRecord } from "./calibration-agreement.js";
+import { buildQueue, CALIBRATION_JUDGES, pickListenerItems, QUEUE_SIZE, QueueKeySchema, type JudgedOutput, type KeyEntry, type QueueKey } from "./calibration-queue.js";
 import { calibrationRound, roundMinutes, type RoundCase } from "./calibration-round.js";
 import { judgedOutputs, ManifestSchema } from "./calibration-sources.js";
 
@@ -42,7 +42,8 @@ function writeQueue(manifestPath: string, flags: QueueFlags): void {
   const read = manifest.cases.map((entry) => ({ entry, ...judgedOutputs(entry, maxDensity) }));
   const clarity = new Map(read.flatMap((r) => (r.density === undefined ? [] : [[r.entry.case, r.density] as const])));
   const outputs: JudgedOutput[] = [...read.flatMap((r) => r.outputs), ...manifest.auditions.flatMap((entry) => auditionOutputs(entry, flags.seed))];
-  const queue = buildQueue(outputs, positiveInt.parse(flags.size), flags.seed, clarity);
+  const heard = maxDensity === undefined ? [] : pickListenerItems(read.flatMap((r) => r.listener), maxDensity);
+  const queue = buildQueue(outputs, positiveInt.parse(flags.size), flags.seed, clarity, heard);
   if (queue.items.length === 0) throw new Error("no judged outputs outside the holdout; run the judges first");
   const cases = new Map<string, RoundCase>([
     ...manifest.auditions.map((a) => [a.case, { title: a.title, script: PAIR_CONTEXT }] as const),
@@ -107,6 +108,24 @@ function reportAgreement(flags: AgreementFlags, now: () => Date): void {
   if (flags.record) writeJson(flags.record, record);
   console.log(flags.format === "json" ? JSON.stringify(record) : formatRecord(record));
 }
+
+interface ListenerLabelFlags { key: string; feedback: string; out?: string }
+
+function reportListenerLabels(flags: ListenerLabelFlags): void {
+  const key = QueueKeySchema.parse(readJson(flags.key));
+  const record = { schema: "listener-labels/v1", round: key.round, rows: listenerLabels(key.entries, labelsFromFeedback(readJson(flags.feedback))) };
+  if (flags.out) writeJson(flags.out, record);
+  console.log(JSON.stringify(record));
+}
+
+export const listenerLabelsCommand = (onResult: (code: number) => void): Command =>
+  new Command("listener-labels")
+    .description("The owner's yes or no on each \"clear on one hearing?\" chapter, beside its listener density: TP-4080's threshold examples")
+    .requiredOption("--key <file>", "calibration-key/v1 written by `calibrate queue --max-density`")
+    .requiredOption("--feedback <file>", "the round's feedback.json")
+    .option("--out <file>", "also write the listener-labels/v1 record here")
+    .exitOverride()
+    .action((flags: ListenerLabelFlags) => guarded("listener-labels", onResult, () => reportListenerLabels(flags)));
 
 export const agreementCommand = (onResult: (code: number) => void, now: () => Date = () => new Date()): Command =>
   new Command("agreement")

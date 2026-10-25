@@ -642,6 +642,11 @@ with the owner.
   (questions a sentence) is at or under it, and rubric items only from a script at or under it overall. A case
   with no listener result is refused. The overall density also orders the round: the clearest video first, then
   the pairs, then the other videos from clearest to least clear.
+- Under `--max-density` the round also asks "Is this chapter clear enough to follow on one hearing?" for 3
+  chapters, on top of `--size`, so no judge loses a label to them. They are the heard chapters (holdout and
+  owner-named cases left out) nearest the bar, taking turns between chapters at or under it and chapters over
+  it, so the answers bracket it. Each goes first in its video's section, clearest chapter first. Its key entry
+  is judge `listener`, passes when the chapter clears the bar, and carries the chapter's `density`.
 - The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
   than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
   last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
@@ -661,8 +666,8 @@ with the owner.
   the two pickers disagree take their own turn.
 - It writes `round.json`, a questions-only console round with one section per video. A section shows the script
   as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones (`A` / `B` / `Can't tell`
-  for a pair). The header gives the estimated minutes (1.25 a yes or no item, 2 a pair). The round shows no judge
-  name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
+  for a pair). The header gives the estimated minutes (1.25 a yes or no item, listener items included, 2 a
+  pair). The round shows no judge name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
   outside the round directory. The command never overwrites an existing round or key.
 - `--round-dir` is a staging directory. File the round from it with `titan-console decisions file
   <dir>/round.json --seat <seat> --initiative <initiative>`, which writes the asker and notifies the owner.
@@ -674,6 +679,10 @@ with the owner.
   counts whole; an earlier round's item counts only at an `evalVersion` the newest round ran, and is otherwise
   reported as `stale`. An item with no `evalVersion` (round-1 keys) never pools into a later round. The pooled
   record lists its `rounds`, and each judge row its `eval_versions`. A round given twice is refused.
+- `explainer eval calibrate listener-labels --key <key.json> --feedback <round>/feedback.json [--out <file>]`
+  prints a `listener-labels/v1` record: one row per listener item the owner answered Yes or No, with its case,
+  chapter, `density`, `clear` and the listener's `eval_version`. These rows are TP-4080's labelled threshold
+  examples; a "Can't tell" gives no row.
 - `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
   agreement below 0.8. The evals units test checks that every judge check stays `reported`.
 
@@ -808,6 +817,11 @@ new stage key.
   chapters are listed in a note and not capped.
 - **Output** `resolved` (`explainer.resolved/v1`) gives, per beat, the key, row, beat spec, component, band, framing,
   layer and anchors, plus every budget row.
+- **Variety (reported, TP-4019).** `variety-top-component`, `variety-component-run`, `variety-template-share`,
+  `variety-framing-run`, `variety-min-framings` and `variety-cast-in-motion` read `resolved` against the profile's
+  `layers.componentMaxShare`, `layers.templateMaxShare` and `variety.minFramings`, plus a run of at most 2 components
+  and 1 framing. Each detail names the beats a fix would change. None is a gate yet; cast-in-motion counts the
+  `E-RESOLVE-STILL-MOTION` beats the resolver already refuses.
 - **Gates.** `emphasis-target` runs `emphasisGateVerdict(readEmphasisInput(...))` on the beat specs the resolver
   chose. It is skipped with a note until a `slots` artifact exists; template fill (TP-2614 D3) will write one.
   `word-budget` fails on any beat or block over its cap. `slot-overrides` refuses an owner override the chosen beat
@@ -820,6 +834,29 @@ new stage key.
   override on a custom-layer beat. A script with neither field resolves to the same bytes as before. Both fields
   are the owner's: the script stage's prompt shape (`DraftScriptSchema`) leaves them out, and a draft reply naming
   them loses them as `script-unknown-keys`.
+- **Owner edits** (`slot-edit.ts`, `workflow/edit-cli.ts`, TP-4021). One save is an `explainer.slot-edit/v1`:
+  `{ schema, base: { runId, scriptSha, mp4Sha }, beats: { <id>: { slots?, tune? } }, fromNote?, createdAt }`. Each
+  field replaces the override whole, and `null` drops it so the generated value stands again; anything else on a beat
+  is refused (spoken and framing go through rewrite and eval). `applyEdit` refuses a base whose script is not the
+  edit's `scriptSha`, a beat the script lacks, a beat whose resolved layer is not `template`, an edit that changes
+  nothing, and a slot change that drops an element a cue targets, naming the cue. It returns the new script, byte for
+  byte the base's outside each edited `visual.slots`/`visual.tune`, and a field diff against what the render saw
+  (the run's `slots` artifact with the overrides laid over it).
+  - `explainer edit check <edit.json|->` adds `ScriptSchema` and the `slot-overrides` gate and prints
+    `{ ok, editId, problems, diff }` as JSON; it writes nothing. When the overrides pass, it runs TP-4134's `fillScript`
+    on the edited script (the base's `slots` artifact pinned, as at resolve) and the emphasis-target gate on the filled
+    slots, so a refused beat or a cue left with no element is refused here (`workflow/edit-fill.ts`).
+  - `explainer edit apply <edit.json|-> [--start] [--json]` stores the script artifact (provenance
+    `{ runId: "input", stage: "edit" }`) and writes `<data dir>/edits/<editId>.json` (base, video, new script sha,
+    beats, `fromNote`, status `stored` or `started`, and the run id once known). `--start` launches
+    `explainer run --from resolve --base <run> --pin script=<sha> --edit <editId> --budget-usd 0.25` detached, its
+    output in `edits/<editId>.log`, and returns at once. The run pins the base's `custom-layers`, so a template edit
+    never rebuilds a layer; its tts takes are all cached, so it voices nothing; it links its id into the ledger as it
+    starts, joins the base's video, and its report says which edit it carries. One save makes one run: once the ledger
+    row is `started`, any later `apply` of the same edit, with or without `--start`, is refused (exit 1) and leaves the
+    row and its run id alone.
+  - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
+    status (`not started`, `starting` before the run links itself, then the workflow status).
 
 ### Template fill
 

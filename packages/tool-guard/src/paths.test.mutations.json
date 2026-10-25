@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "matchGuarded tests every pattern again for a path it already answered",
+      "file": "packages/tool-guard/src/paths.ts",
+      "find": "  if (known !== undefined) return known;\n",
+      "replace": "",
+      "kills": [
+        "matchGuarded tests a path a script names in every line against the patterns once, not once a line (TP-4255)"
+      ]
+    }
+  ]
+}

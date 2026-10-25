@@ -47,6 +47,8 @@ export const RunPlanSchema = z.object({
   variants: z.partialRecord(z.enum(STAGES), z.string()).default({}),
   /** Stage → sample index; part of the stage key, so n samples are n cached runs. */
   samples: z.partialRecord(z.enum(STAGES), z.number().int().nonnegative()).default({}),
+  /** The owner edit (`explainer edit apply`) this run carries; the run links itself into the edit's ledger row. */
+  edit: z.string().optional(),
 });
 export type RunPlan = z.infer<typeof RunPlanSchema>;
 

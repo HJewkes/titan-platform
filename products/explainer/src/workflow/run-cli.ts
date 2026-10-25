@@ -46,6 +46,7 @@ interface RunFlags {
   retroDir?: string;
   listenerQuestions?: boolean;
   listenerThreshold?: number;
+  edit?: string;
 }
 
 /** Everything but the data dir is injectable, so the CLI runs on fakes in a test. */
@@ -174,6 +175,7 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.video ? { video: flags.video } : {}), pins: flags.pin, variants: flags.variant, samples: flags.sample,
     from: flags.from, to: flags.to, budgetUsd: flags.budgetUsd, scriptModel: flags.scriptModel, ...(judge ? { judge } : {}), rounds: flags.rounds,
     ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}), ...(flags.theater ? { theater: path.resolve(flags.theater) } : {}),
+    ...(flags.edit ? { edit: flags.edit } : {}),
   }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}), reflection: deps.host?.reflection ?? reflectionFor(flags) }, flags));
   return summary(result, io);
 }
@@ -217,6 +219,7 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
     .option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`, rounds, MAX_REWRITE_ROUNDS)
     .option("--listener-questions", "also run the reported listener-questions check on the script stage, on the --judge model (it spends)")
     .option("--listener-threshold <q>", "questions a sentence above which listener-questions reports red (implies --listener-questions; default: none)", threshold)
+    .option("--edit <editId>", "the owner edit this run carries (`explainer edit apply --start` passes it); needs the edit's --base")
     .exitOverride()
     .action(async (flags: RunFlags) => onResult(await runAction(flags, deps, io)));
 }

@@ -11,6 +11,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { releaseAtHead } from "./release-head.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 
 const REPO = "octo/demo";
 const REVIEWED = fakeSha("reviewed");
@@ -158,7 +159,7 @@ describe("the merge guard failing closed on a g10-adversary run", () => {
   /** A bare run on PR 1, at `head`, whose probe answers by base branch and counts its calls. */
   function bare(head = MOVED, answer: (input: CarryInput) => CarryResult = () => FIX_PUSH) {
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19), parkSettledMigration(21)]);
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19), parkSettledMigration(21), mergeBaseExceptionMigration(42)]);
     const store = new ShepherdStore(db);
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: head });

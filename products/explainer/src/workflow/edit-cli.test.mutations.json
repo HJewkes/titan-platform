@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "edit check stores the edit",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "const { checked } = readAndCheck(file, dataDirOf(flags), deps);",
+      "replace": "const { edit, checked } = readAndCheck(file, dataDirOf(flags), deps); if (edit && checked.script && checked.view) storeEdit(dataDirOf(flags), edit, { ...checked, script: checked.script, view: checked.view }, false, deps);",
+      "kills": ["explainer edit check prints the diff per beat and field and leaves the store and the ledger as they were"]
+    },
+    {
+      "name": "the linked run starts without the script pin",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "\"--pin\", `script=${scriptSha}`, ",
+      "replace": "",
+      "kills": ["explainer edit apply with --start launches exactly the pinned resolve run, which links into the ledger, voices no take and sums with its base"]
+    },
+    {
+      "name": "an edit run rebuilds custom layers",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "const fromEdit = request.edit ? editPins(dataDir, request.edit, base) : {};",
+      "replace": "const fromEdit = {};",
+      "kills": ["explainer edit apply an edit run pins the base's custom layers and builds none"]
+    },
+    {
+      "name": "the run never links into the ledger",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "if (plan.edit) linkEditRun(host.dataDir, plan.edit, runId);",
+      "replace": "",
+      "kills": [
+        "explainer edit apply with --start launches exactly the pinned resolve run, which links into the ledger, voices no take and sums with its base",
+        "explainer edit list lists a render's edits with each linked run's status"
+      ]
+    },
+    {
+      "name": "list reads a stored edit as starting",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "return ledger.status === \"started\" ? \"starting\" : \"not started\";",
+      "replace": "return \"starting\";",
+      "kills": ["explainer edit list lists a render's edits with each linked run's status"]
+    }
+  ]
+}

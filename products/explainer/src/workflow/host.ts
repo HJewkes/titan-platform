@@ -10,6 +10,8 @@ import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
+import { linkEditRun } from "./edit-ledger.js";
+import { editOf, editPins } from "./edit-run.js";
 import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
 import { checkPins, findBase, inputArtifacts, neededInputs, reusedFromBase, startsFresh } from "./host-plan.js";
@@ -92,6 +94,8 @@ export interface RunRequest {
   gather?: GatherRequest;
   /** The folder export links into, in place of the bridge's `theater.dir`. */
   theater?: string;
+  /** An edit id from `explainer edit apply`: the run needs its base, pins the base's custom layers and links into the ledger. */
+  edit?: string;
 }
 
 export interface RunOutcome {
@@ -121,7 +125,7 @@ function allRecords(dataDir: string, run: WorkflowRun): StageRecord[] {
   return [...stageRecords(run), ...failed];
 }
 
-function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
+function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: string): RunPlan {
   const from = request.from ?? "script";
   const to = request.to ?? "export";
   if (STAGES.indexOf(to) < STAGES.indexOf(from)) throw new Error(`--to ${to} comes before --from ${from}`);
@@ -138,11 +142,12 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
   const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
   const fromBase = base ? reusedFromBase(base, from) : { reused: [], artifacts: {} };
-  const artifacts = { ...fromBase.artifacts, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };
+  const fromEdit = request.edit ? editPins(dataDir, request.edit, base) : {};
+  const artifacts = { ...fromBase.artifacts, ...fromEdit, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };
   const missing = neededInputs(from, to, profile).filter((name) => artifacts[name] === undefined);
   if (missing.length > 0) throw new Error(`this run needs ${missing.map((m) => `--${m}`).join(" and ")}`);
   const videoId = request.video ?? (base ? videoIdOf(runs, base) : undefined);
-  return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings };
+  return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings, ...(request.edit ? { edit: request.edit } : {}) };
 }
 
 /** Every other run of the same video, oldest first: the video's cost is the sum over them (owner answer Q2 B). */
@@ -167,7 +172,8 @@ export function writeReport(runId: string, host: Pick<RunHost, "dataDir">): { re
     const failed = failedStage ? readJson(paths.failed(failedStage), StageRecordSchema) : undefined;
     const stop = readJson(paths.stop, StopSchema);
     const { videoId, linked } = linkedRuns(host.dataDir, runs, run);
-    const report = buildReport({ run, from: plan.from, to: plan.to, budgetUsd: plan.budgetUsd, records: stageRecords(run), ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), videoId, linked });
+    const extra = { ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), ...(plan.edit ? { edit: editOf(host.dataDir, plan.edit) } : {}) };
+    const report = buildReport({ run, from: plan.from, to: plan.to, budgetUsd: plan.budgetUsd, records: stageRecords(run), videoId, linked, ...extra });
     writeJson(paths.reportJson, report);
     writeText(paths.reportMd, renderReport(report));
     return { report, reportPath: paths.reportMd };
@@ -246,9 +252,10 @@ function outcome(run: WorkflowRun, host: RunHost): RunOutcome {
 export async function runVideo(request: RunRequest, host: RunHost): Promise<RunOutcome> {
   const db = openState(host.dataDir);
   try {
-    const plan = buildPlan(request, db, new ArtifactStore(host.dataDir, db));
+    const plan = buildPlan(request, db, new ArtifactStore(host.dataDir, db), host.dataDir);
     const { runtime } = newRuntime(db, host, plan);
     const runId = runtime.start(VIDEO_WORKFLOW, { plan: JSON.stringify(plan) });
+    if (plan.edit) linkEditRun(host.dataDir, plan.edit, runId);
     const run = await settle(runtime, runId, host);
     return outcome(run, host);
   } finally {

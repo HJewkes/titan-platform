@@ -90,6 +90,7 @@ Q-E12 (`seatRoutes`) and Q-E14 (`explainRoutes`) only route beats to the L1 judg
 `runItems` is that L1 item judge: one call per chapter over `itemRoutes` (explain, seat and list routes, nothing else), asking whether each routed item is explained, each routed beat seated, and which listed item is the odd one out;
 it voids any verdict without a verbatim quote, plants a name-only canary beat per call, and
 `explainer eval items` runs it three times by default under eval id `L1-items`.
+`varietyScriptCheck` (in `L0_CHECKS`) adds the script-only variety lints as warnings: `variety:hook-formula`, `variety:connector-share` (over 30 % of beats opening on so, but, then, and or now), `variety:cue-action` (one cue action across the script) and `variety:framing-run` when beats author `visual.framing`; `resolvedVarietyRows` holds the resolver's choices to the profile's component, template and framing limits at `checks:resolve`.
 `explainer eval pace` runs only those lints on a spike or script/v1 file, with heard durations from `--timing`, appends their rows and prints items a minute per chapter, then the reused beats to re-voice when there are any.
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
@@ -133,6 +134,11 @@ resolve builds each `layer: "custom"` beat's layer through claude-print by defau
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-edit/v1` (slot and tune fields per template beat, over a base run's script and render), and
+`applyEdit` applies it to the base script, refusing a stale base, an unknown or custom-layer beat and a slot change that drops an element a cue targets, and returns the new script and a field diff.
+`explainer edit check` prints that verdict with the slot-overrides gate, the template fill and the emphasis-target gate, and writes nothing,
+`explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
+`explainer edit list` lists a render's or a video's edits with their linked run's status.
 `renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
 mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
 `assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.
