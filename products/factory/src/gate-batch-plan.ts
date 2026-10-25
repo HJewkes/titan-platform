@@ -42,7 +42,7 @@ export function batchRefusal(gate: GateRecord): string | undefined {
   if (RELEASE_STEPS.has(step)) return "a release gate";
   const land = landGate(gate);
   if (land === undefined) return "not a merge gate at a pinned head";
-  const ownerRow = ownerAtHeadRow(land);
+  const ownerRow = ownerAtHeadRow(gate);
   if (ownerRow !== undefined) return `a ${ownerRow} gate`;
   return land.rule.startsWith(RELEASE_TABLE) ? "a release gate" : undefined;
 }

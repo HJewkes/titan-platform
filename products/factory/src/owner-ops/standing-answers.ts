@@ -173,10 +173,9 @@ async function loopApproval({ host, services, answers, tell, loopRead }: SweepDe
 function resolveAtHead(host: FactoryHost, services: ShepherdServices, answer: StandingAnswer): StandingResult[] {
   const { actionId, runId } = answer;
   return pendingMergeGates(host, runId).map((pending): StandingResult => {
-    const land = landGate(pending.gate);
-    const ownerRow = ownerAtHeadRow(land);
+    const ownerRow = ownerAtHeadRow(pending.gate);
     if (ownerRow !== undefined) return { kind: "pending", actionId, runId, reason: `${pending.gate.id} is a ${ownerRow} gate, which no standing answer gives` };
-    const head = land?.head;
+    const head = landGate(pending.gate)?.head;
     if (head !== answer.headSha) return { kind: "pending", actionId, runId, reason: `the gate asks about head ${head ?? "unknown"}, the owner confirmed ${answer.headSha}` };
     const stop = mergeStop(services, answer.repo, answer.pr);
     if (stop !== undefined) return { kind: "pending", actionId, runId, reason: `${answer.repo}#${answer.pr} ${stop}` };

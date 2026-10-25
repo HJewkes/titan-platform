@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
+import { SKILL_DIFF_LEAD } from "./gate-brief.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
 
@@ -138,9 +139,16 @@ export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): La
 const OWNER_AT_HEAD_ROWS: ReadonlySet<string> = new Set(["skill-path", "ci-policy-weakened", "ci-policy-malformed"]);
 const MERGE_GUARD = "shepherd-merge-guard/";
 
-/** The row of a gate the remote paths refuse, named in their refusal; undefined for any other gate. */
-export function ownerAtHeadRow(land: LandGate | undefined): string | undefined {
-  const row = land?.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : undefined;
+/**
+ * The row of a land gate the remote paths refuse, named in their refusal; undefined for any other gate. A gate showing a
+ * repo skill diff reads as `skill-path` whatever its rule: a seat or route gate carries one too, and the owner reads it at
+ * their own head.
+ */
+export function ownerAtHeadRow(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
+  const land = landGate(gate);
+  if (land === undefined) return undefined;
+  if (gate.prompt.split("\n").slice(1).some((line) => line.startsWith(SKILL_DIFF_LEAD))) return "skill-path";
+  const row = land.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : undefined;
   return row !== undefined && OWNER_AT_HEAD_ROWS.has(row) ? row : undefined;
 }
 

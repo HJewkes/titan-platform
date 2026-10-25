@@ -42,7 +42,7 @@ const liveGate = defineWorkflow({
     const rule = ctx.param("rule")!;
     const table = rule.slice(0, rule.indexOf("/"));
     const rowId = rule.slice(rule.indexOf("/") + 1);
-    const skillPaths = rule === SKILL_PATH ? SKILLS : [];
+    const skillPaths = rule === SKILL_PATH || ctx.param("skills") === "yes" ? SKILLS : [];
     const facts = { reviewedMerge: () => true, ownerBriefAt: () => OWNER_BRIEF, skillPathsAt: () => skillPaths };
     await approveMergeGate({ table, rowId, version: 1 }, facts)(ctx, { repo: REPO, pr: Number(ctx.param("pr")), headSha: H, round: 0, reason: ctx.param("reason")!, base: "main" });
   },
@@ -69,9 +69,10 @@ function world() {
 type World = ReturnType<typeof world>;
 
 /** A PR whose Shepherd run waits on a live-shaped approve-merge gate under `rule`. */
-async function gatedPr(w: World, rule: string, reason = rule === MRG_AU ? MECHANICAL : `the owner reads ${rule} changes at their head`) {
+async function gatedPr(w: World, rule: string, skills = false) {
+  const reason = rule === MRG_AU ? MECHANICAL : `the owner reads ${rule} changes at their head`;
   const { number: pr } = w.fixture.fake.addPr({ headSha: H });
-  const runId = w.host.runtime.start("live-merge-gate", { pr: String(pr), rule, reason });
+  const runId = w.host.runtime.start("live-merge-gate", { pr: String(pr), rule, reason, skills: skills ? "yes" : "no" });
   const gateId = `${runId}/approve-merge`;
   await vi.waitFor(() => expect(w.host.gates.get(gateId)?.status).toBe("pending"));
   w.services.store.get().register({ repo: REPO, pr, runId, task: "demo/T-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
@@ -183,6 +184,48 @@ describe("a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-m
       expect(swept).toEqual([{ kind: "pending", actionId: "act-2", runId: held.runId, reason: `${held.gateId} is a ${row} gate, which no standing answer gives` }]);
       expect(shipped).toMatchObject({ kind: "refused", reason: "not-land-gate", detail: `gate ${held.gateId} is a ${row} gate, which no Ship answer gives` });
       expect(w.host.gates.get(held.gateId)?.status).toBe("pending");
+    }
+  });
+});
+
+/** An owner-gate seat (the default seat `none`) and an escalation route open under their own rule, not `skill-path`. */
+const SKILL_DIFF_RULES = ["shepherd-seat/none", "shepherd-route/conflict"];
+
+describe("a live-shaped seat or route gate showing a repo skill diff", () => {
+  it("reads as a skill-path gate that the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse", async () => {
+    for (const rule of SKILL_DIFF_RULES) {
+      const w = world();
+      const mechanical = await gatedPr(w, MRG_AU);
+      const held = await gatedPr(w, rule, true);
+      const request = { runId: held.runId, gateId: held.gateId, headSha: H, tree: "t", packetSha: "p", roundId: "r", choice: "merge" as const };
+      const files = { round: new Uint8Array(), packet: new Uint8Array(), feedback: new Uint8Array() };
+
+      const tapped = await resolveGate(tapRead(held.runId, held.gateId, held.pr), w.services.port, w.host);
+      const merged = await mergeAtHead("act-1", { op: { kind: "merge-at-head", repo: REPO, pr: held.pr, headSha: H }, confirmEvent: CONFIRM }, w.deps);
+      await w.answers.add({ actionId: "act-2", confirmEvent: CONFIRM, repo: REPO, pr: held.pr, headSha: H, runId: held.runId, expiresAt: "2026-10-25T12:00:00.000Z" });
+      const batched = itemsRefusal(w.host, [mergeItem(mechanical.runId, mechanical.gateId, mechanical.pr), mergeItem(held.runId, held.gateId, held.pr)]);
+      const swept = await sweepStandingAnswers(w.host, w.services, w.answers, new Date(NOW_MS));
+      const shipped = await checkAnswer({ host: w.host, port: w.services.port, request, files, now: new Date(NOW_MS) });
+
+      expect(landGate(held.gate)?.rule).toBe(rule);
+      expect(tapped).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("a skill-path gate") });
+      expect(merged).toMatchObject({ outcome: "refused", reason: "class" });
+      expect(batched).toBe(`item 2: ${held.gateId} is a skill-path gate; it stays one per proof`);
+      expect(swept).toEqual([{ kind: "pending", actionId: "act-2", runId: held.runId, reason: `${held.gateId} is a skill-path gate, which no standing answer gives` }]);
+      expect(shipped).toMatchObject({ kind: "refused", reason: "not-land-gate", detail: `gate ${held.gateId} is a skill-path gate, which no Ship answer gives` });
+      expect(landRuns(w.host)).toEqual([]);
+      expect(w.host.gates.get(held.gateId)?.status).toBe("pending");
+    }
+  });
+
+  it("without a skill diff stays open to the console tap", async () => {
+    for (const rule of SKILL_DIFF_RULES) {
+      const w = world();
+      const { pr, runId, gateId } = await gatedPr(w, rule);
+
+      const outcome = await resolveGate(tapRead(runId, gateId, pr), w.services.port, w.host);
+
+      expect(outcome).toEqual({ outcome: "resolved", gateId });
     }
   });
 });

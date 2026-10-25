@@ -60,10 +60,7 @@ function gateRefusal(gate: GateRecord, action: GateAction): GateTarget | Outcome
 function targetOf(gate: GateRecord): GateTarget | undefined {
   const step = stepOf(gate.id);
   if (!CONSOLE_STEPS.has(step)) return undefined;
-  if (step === MERGE_GATE) {
-    const land = landGate(gate);
-    return ownerAtHeadRow(land) === undefined ? land : undefined;
-  }
+  if (step === MERGE_GATE) return ownerAtHeadRow(gate) === undefined ? landGate(gate) : undefined;
   const pr = gatePr(gate);
   const head = headGateAsks(gate);
   return pr && head ? { ...pr, head } : undefined;
