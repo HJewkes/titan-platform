@@ -169,4 +169,14 @@ describe('session index pass over 500 dirty transcripts', () => {
     expect(graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get()).toEqual({ n: 0 });
     expect(maxChunkMs).toBeLessThanOrEqual(STALL_BOUND_MS);
   });
+
+  it('a --full rebuild with an episode sweep never stalls the event loop for a second', SLOW_FIXTURE, async () => {
+    const { result, maxChunkMs } = await measureLongestChunk(() =>
+      runRefresh({ graph, transcripts, full: true, taskRoot: dir, skipWorkspace: true, skipPrOutcomes: true }),
+    );
+
+    expect(result.indexed).toBe(TRANSCRIPTS);
+    expect(result.turnsRolledUp).toBe(TRANSCRIPTS * EXCHANGES);
+    expect(maxChunkMs).toBeLessThanOrEqual(STALL_BOUND_MS);
+  });
 });

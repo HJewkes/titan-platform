@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fill, filledBeat, fillSolo, fixtureScript } from "./fill-fixtures.test-helpers.js";
+import { fill, filledBeat, fillSolo, fixtureScript, soloScript } from "./fill-fixtures.test-helpers.js";
 
 const cue = (target: string, atCue: string) => ({ action: "V6", target, atCue });
 
@@ -20,6 +20,27 @@ describe("template fill: list beats", () => {
         { id: "rows-3", text: "Night shift", mark: "dot", lane: "crew" },
       ],
     });
+  });
+
+  it("draws the rows untitled with a hint when the chapter label is longer than a title holds", () => {
+    // Arrange
+    const solo = soloScript({ beat: "list", labels: ["tick Two lanes"] });
+    const script = { ...solo, chapters: solo.chapters.map((chapter) => (chapter.id === "ch1" ? { ...chapter, label: "x".repeat(49) } : chapter)) };
+
+    // Act
+    const found = filledBeat(fill(script), "s1");
+
+    // Assert
+    expect(found.slots).not.toHaveProperty("title");
+    expect(found.hints).toEqual({ titleOmitted: true });
+  });
+
+  it("gives no title hint when the chapter label fits", () => {
+    // Arrange / Act
+    const found = fillSolo({ beat: "list", labels: ["tick Two lanes"] });
+
+    // Assert
+    expect(found.hints).not.toHaveProperty("titleOmitted");
   });
 
   it("lands each row on its numbered cue, and a row with no cue on the cue before it", () => {

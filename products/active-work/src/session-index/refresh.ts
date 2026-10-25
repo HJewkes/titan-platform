@@ -366,6 +366,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
             },
           }),
       facetLimit: options.facetLimit,
+      yieldPoint,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
     const restored = restoreUnvisited(graph, unvisited);

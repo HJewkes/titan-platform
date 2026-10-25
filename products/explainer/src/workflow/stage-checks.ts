@@ -10,7 +10,7 @@ import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
-import { keptBeats, readEmphasisInput, ResolvedSchema, simCheckVerdict, simCutOrphanVerdict, slotOverridesVerdict, wordBudgetVerdict } from "../resolve-stage.js";
+import { keptBeats, readEmphasisInput, ResolvedSchema, simCheckVerdict, simCutOrphanVerdict, slotOverridesVerdict, templateFillVerdict, wordBudgetVerdict } from "../resolve-stage.js";
 import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { labelConventionsVerdict } from "../label-conventions.js";
@@ -171,9 +171,10 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "variety-framing-run", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:framing-run") },
     { name: "variety-min-framings", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:min-framings") },
     { name: "variety-cast-in-motion", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:cast-in-motion") },
-    { name: "emphasis-target", gate: true, reads: ["script", "resolved", "slots"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
+    { name: "emphasis-target", gate: true, reads: ["script", "resolved"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
     { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
     { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
+    { name: "template-fill", gate: true, reads: ["script", "resolved"], run: templateFillVerdict },
     { name: "sim-check", gate: false, reads: ["sim-traces"], run: simCheckVerdict },
     { name: "sim-cut-orphan", gate: true, reads: ["script", "resolved"], run: simCutOrphanVerdict },
   ],

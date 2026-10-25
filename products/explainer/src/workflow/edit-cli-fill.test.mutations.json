@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "edit check runs without the template fill",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "deps.fill ?? fillProblems",
+      "replace": "deps.fill ?? (() => [])",
+      "kills": ["explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"]
+    },
+    {
+      "name": "the fill skips the emphasis gate",
+      "file": "products/explainer/src/workflow/edit-fill.ts",
+      "find": "return emphasisProblems(script, fillScript(",
+      "replace": "return [] || emphasisProblems(script, fillScript(",
+      "kills": ["explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"]
+    },
+    {
+      "name": "the fill check pins the slots the base's resolve stored",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "fill(parsed.data, base.resolved, base.pinned)",
+      "replace": "fill(parsed.data, base.resolved, base.generated)",
+      "kills": ["explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"]
+    }
+  ]
+}

@@ -18,6 +18,15 @@
       "kills": [
         "template fill: verdict-card and issue-pin beats titles pinned issues by their node labels and lands each pin on its own cue"
       ]
+    },
+    {
+      "name": "an over-long list title gives no hint",
+      "file": "products/explainer/src/template-fill/derive-rows.ts",
+      "find": "...(title.title === undefined ? { titleOmitted: true as const } : {})",
+      "replace": "...{}",
+      "kills": [
+        "template fill: list beats draws the rows untitled with a hint when the chapter label is longer than a title holds"
+      ]
     }
   ]
 }

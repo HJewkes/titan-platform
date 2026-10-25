@@ -28,6 +28,15 @@
         "session index pass over 500 dirty transcripts a delta pass never stalls the event loop for a second",
         "session index pass over 500 dirty transcripts a pass resuming unfinished turns never stalls the event loop for a second"
       ]
+    },
+    {
+      "name": "the full pass hands refreshCorpus no yieldPoint",
+      "file": "products/active-work/src/session-index/refresh.ts",
+      "find": "      facetLimit: options.facetLimit,\n      yieldPoint,\n",
+      "replace": "      facetLimit: options.facetLimit,\n",
+      "kills": [
+        "session index pass over 500 dirty transcripts a --full rebuild with an episode sweep never stalls the event loop for a second"
+      ]
     }
   ]
 }

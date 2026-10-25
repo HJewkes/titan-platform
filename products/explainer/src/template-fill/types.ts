@@ -14,6 +14,8 @@ export interface FillHints {
   headingYields?: true;
   qaLeadLine?: true;
   continues?: string;
+  /** The chapter label is longer than a list title holds, so the list draws untitled. */
+  titleOmitted?: true;
 }
 
 /** Slots a deriver read off a beat's script fields, with each element's cue word. */
