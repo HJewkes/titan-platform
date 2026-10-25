@@ -1,15 +1,14 @@
-import { LINEAR_GROWTH_LIMIT, hostileGlobs, linearGrowth } from "@titan-design/test-kit";
-import { describe, expect } from "vitest";
-import { cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget } from "../test-support/cpu-budget.js";
-import { LINEARITY_CPU_MS } from "../test-support/linear-time.js";
+import { linearRegExpSteps } from "@titan-design/fix-proof/linear-regexp";
+import { LINEAR_WORK_LIMIT, hostileGlobs, linearWork } from "@titan-design/test-kit";
+import { describe, expect, it } from "vitest";
 import { globToRegExp } from "./scan.js";
 
 describe("globToRegExp on a hostile glob", () => {
-  cpuBudgetIt.each(hostileGlobs())("grows linearly with the path for %s", LINEARITY_CPU_MS, (_name, { glob, path }) => {
-    const { ratio } = linearGrowth((size) => {
+  it.each(hostileGlobs())("grows linearly with the path for %s", (_name, { glob, path, steady }) => {
+    const { ratio } = linearWork((size) => {
       const input = path(size);
       return () => globToRegExp(glob).test(input);
-    }, { from: 1, to: 1024, stopwatch: cpuStopwatch, between: expectWithinCpuBudget });
-    expect(ratio).toBeLessThan(LINEAR_GROWTH_LIMIT);
+    }, { from: 1, to: 1024, steady, meter: linearRegExpSteps });
+    expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
   });
 });
