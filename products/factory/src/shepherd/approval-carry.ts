@@ -41,6 +41,12 @@ function isSkillPathGate(prompt: string): boolean {
   return match?.[3] === "shepherd-merge-guard" && match[4] === "skill-path";
 }
 
+/** Only the owner accepts a weaker CI policy, and only at the head they read it at, so a D21 approval follows to no head. */
+function isCiPolicyWeakenedGate(prompt: string): boolean {
+  const match = LAND_GATE.exec(prompt);
+  return match?.[3] === "shepherd-merge-guard" && match[4] === "ci-policy-weakened";
+}
+
 interface Followed {
   rule: string;
   /** The tree or diff facts the carry rests on, recorded with the answer. */
@@ -114,7 +120,8 @@ async function followedAnswer(ctx: WorkflowContext, carry: ApprovalCarry, from: 
  * Wraps `assisted` so a merge answer at land's gate, the owner's or a review round's ship pick, follows to a later gate at a
  * head that is the approved head plus one merge of the base whose remerge-diff is empty or touches only declared generated
  * files, or a head whose whole tree equals the approved head merged with the base (any fixer commit in between re-asks, TP-3070). A security run follows only
- * Shepherd's own clean merge-up whose base side touches none of the PR's files and no carry-fenced path (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again. Any other head, a kind that
+ * Shepherd's own clean merge-up whose base side touches none of the PR's files and no carry-fenced path (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again.
+ * A CI-policy-weakened gate asks again, and its own approval follows to no later gate. Any other head, a kind that
  * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again. With no approval to
  * follow, a visual gate at a head that commits exactly the set the owner accepted at a red head is answered by that set.
  * That approval follows only Shepherd's own merge-up whose base side matches no visual glob (VQ3 b).
@@ -125,14 +132,16 @@ export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowConte
     const asked = landGateHead(stepId, prompt);
     if (asked === undefined) return assisted(stepId, prompt, options);
     const base = landGateBase(prompt);
-    const standing = !isSkillPathGate(prompt) && carry.reviewedMerge(asked);
+    const ciPolicyWeakened = isCiPolicyWeakenedGate(prompt);
+    const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);
     const from = standing && approved !== undefined && approved.head !== asked && approved.base === base ? approved : undefined;
     const followed = from === undefined ? undefined : await followedAnswer(ctx, carry, from, asked);
     const bySet = followed || !standing ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked, base });
     const answer = followed ?? bySet ?? (await assisted(stepId, prompt, options));
     if (!followed && !bySet) spendOnOwnerAnswer(carry, stepId, prompt);
     const merged = MergeAnswer.safeParse(answer.data).data;
-    if (merged?.headSha === asked) approved = { head: asked, base, origin: merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer" };
+    if (ciPolicyWeakened) approved = undefined;
+    else if (merged?.headSha === asked) approved = { head: asked, base, origin: merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer" };
     else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
     return answer;
   };

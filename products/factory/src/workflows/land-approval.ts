@@ -52,7 +52,9 @@ interface ApproveMergeFacts {
 export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { repo, pr, headSha, reason, base }: ApprovalQuestion, sendBack = false) {
   const ownerBrief = facts.ownerBriefAt?.(headSha);
   const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
-  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths, sendBack });
+  const ciPolicyWeakened = rule.table === "shepherd-merge-guard" && rule.rowId === "ci-policy-weakened";
+  const reviewedMerge = facts.reviewedMerge?.(headSha) ?? false;
+  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge, ownerBrief, skillPaths, ciPolicyWeakened, sendBack });
   const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
   const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
   const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
