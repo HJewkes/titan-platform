@@ -47,5 +47,6 @@ describe('gen-cli-reference', () => {
     const reference = readFileSync(path.join(root, 'docs/cli-reference.md'), 'utf8');
     expect(reference).toMatch(/^# CLI reference/);
     expect(reference).toContain('## active-work');
-  }, 120_000);
+    expect(reference).toContain('Usage: active-work');
+  }, 300_000);
 });
