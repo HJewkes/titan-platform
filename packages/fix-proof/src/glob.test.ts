@@ -85,8 +85,8 @@ function referenceRegExp(glob: string): RegExp {
 function seededRandom(seed: number): (below: number) => number {
   let state = seed;
   return (below) => {
-    state = (state * 1103515245 + 12345) % 2147483648;
-    return state % below;
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    return (state >>> 16) % below;
   };
 }
 
@@ -115,15 +115,19 @@ describe("compileGlobs on hostile globs", () => {
     expect(misses.map(matches)).toEqual(misses.map(() => false));
   });
 
-  it("agrees with the backtracking compiler on 5000 random globs and paths", () => {
+  it("agrees with the backtracking compiler on 300 random globs over every path up to 5 characters", () => {
     const random = seededRandom(1756);
-    const pick = (pieces: readonly string[], most: number): string =>
-      Array.from({ length: random(most + 1) }, () => pieces[random(pieces.length)]).join("");
+    const pieces = ["a", "b", "/", ".", "*", "?", "**", "**/"];
+    const paths = [""];
+    for (let index = 0; index < paths.length && paths.length < 364; index += 1) {
+      paths.push(...["a", "b", "/"].map((char) => `${paths[index]}${char}`));
+    }
     const disagreements: string[] = [];
-    for (let round = 0; round < 5000; round += 1) {
-      const glob = pick(["a", "b", "/", ".", "*", "?", "**", "**/"], 6);
-      const path = pick(["a", "b", "/", "."], 8);
-      if (compileGlobs([glob])(path) !== referenceRegExp(glob).test(path)) disagreements.push(`${glob} ${path}`);
+    for (let round = 0; round < 300; round += 1) {
+      const glob = Array.from({ length: 1 + random(6) }, () => pieces[random(pieces.length)]).join("");
+      const matches = compileGlobs([glob]);
+      const reference = referenceRegExp(glob);
+      disagreements.push(...paths.filter((path) => matches(path) !== reference.test(path)).map((path) => `${glob} ${path}`));
     }
     expect(disagreements).toEqual([]);
   });

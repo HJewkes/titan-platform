@@ -8,7 +8,7 @@
       "replace": "token.kind === \"one\"",
       "kills": [
         "compileGlobs on hostile globs matches a?c like the backtracking compiler did",
-        "compileGlobs on hostile globs agrees with the backtracking compiler on 5000 random globs and paths"
+        "compileGlobs on hostile globs agrees with the backtracking compiler on 300 random globs over every path up to 5 characters"
       ]
     },
     {
@@ -18,7 +18,7 @@
       "replace": "token.kind === \"segments\"",
       "kills": [
         "compileGlobs on hostile globs matches **/**/a like the backtracking compiler did",
-        "compileGlobs on hostile globs agrees with the backtracking compiler on 5000 random globs and paths"
+        "compileGlobs on hostile globs agrees with the backtracking compiler on 300 random globs over every path up to 5 characters"
       ]
     }
   ]
