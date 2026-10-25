@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Layer 1: cases come only from these repos (bare names; `owner/` is ignored). */
-const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work"] as const;
+const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work", "titan-design"] as const;
 /** Layer 1: a task is joined only from these initiatives. titan-design is a public repo with a public TD-* namespace. */
 const ENGINEERING_INITIATIVES = ["titan-platform", "codewatch", "relay", "claude-channels", "titan-design"] as const;
 /** Task-id prefix to its engineering initiative; a prefix not listed is never joined. */

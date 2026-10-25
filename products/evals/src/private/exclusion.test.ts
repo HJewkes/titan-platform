@@ -112,6 +112,20 @@ describe("private exclusion", () => {
     expect(() => assertNoPrivate([subject], policy)).toThrow(/private-marker/);
   });
 
+  it("keeps a case from the titan-design repo citing a TD-* id", () => {
+    const subject = { id: "td-repo", repo: "owner/titan-design", taskInitiative: "titan-design", body: { notes: "closes TD-7" } };
+
+    expect(filterPrivate([subject], policy)).toEqual({ kept: [subject], excluded: {} });
+    expect(() => assertNoPrivate([subject], policy)).not.toThrow();
+  });
+
+  it("still refuses a titan-design repo case that also cites a private task id", () => {
+    const subject = { id: "td-repo-mixed", repo: "owner/titan-design", body: { notes: "closes TD-7, see GDN-3" } };
+
+    expect(filterPrivate([subject], policy).excluded).toEqual({ "private-marker": 1 });
+    expect(() => assertNoPrivate([subject], policy)).toThrow(/private-marker/);
+  });
+
   it("joins a task only from an engineering initiative", () => {
     expect(engineeringInitiativeOf("CC-12")).toBe("claude-channels");
     expect(engineeringInitiativeOf("TD-7")).toBe("titan-design");
