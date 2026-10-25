@@ -1,5 +1,4 @@
 import type { MergeMethod, RepoSlug } from "@titan-design/github";
-import type { OwnerBrief } from "@titan-design/review-panel";
 import { codeStep, type WorkflowContext } from "@titan-design/workflow";
 import type { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -7,9 +6,9 @@ import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
 import { BaseCheckResult, BaseWaitResult, type BaseCheck, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { landedOf, type LandedPr } from "./land-landed.js";
-import { approveMergeGate, askedApproval, type ApprovalSource, type AskApproval } from "./land-approval.js";
+import { approveMergeGate, askedApproval, type ApprovalSource, type ApproveMergeFacts, type AskApproval } from "./land-approval.js";
 import type { CiSnapshot, FailingCheck } from "./land-ci.js";
-import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type UpdateBound } from "./land-budget.js";
+import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, waitsAgain, type UpdateBound } from "./land-budget.js";
 import { SettleResult, settleOrGate, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS } from "./land-update.js";
 import { rerunOrphaned } from "./land-orphan.js";
@@ -20,7 +19,7 @@ export { afterWrite } from "./land-ci-wait.js";
 export { sleep } from "./deadline.js";
 export { codeRoute, landRoutes, type LandDeps, type Timing } from "./land-routes.js";
 export { DEVICE_CHECK, SET_ANSWER_ORIGIN, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
-export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
+export { CI_BACKLOG_CEILING_FACTOR, CI_WAIT_ATTEMPTS, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -65,7 +64,8 @@ export interface MergeAllowContext {
   decision: GateDecision;
 }
 
-export interface LandOptions {
+/** The approve-merge facts are each read at exactly the head the gate asks about; `sendBackOffered` true makes land return a `sent-back` stop on that answer. */
+export interface LandOptions extends ApproveMergeFacts {
   /**
    * Consulted with the head before each merge of an untrusted head, and the decision is recorded in a `merge-policy`
    * step before any branch, so a replay reuses it. `gate` asks the owner through `approve-merge`, `deny` stops
@@ -74,14 +74,6 @@ export interface LandOptions {
   policy: GatePolicy;
   /** Evidence the allowing caller vouches for, stored beside the policy trace in the `merge-policy` step. */
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
-  /** True when the reviewer's verdict at exactly this head is MERGE; only then does the approve-merge brief recommend merging. */
-  reviewedMerge?: (headSha: string) => boolean;
-  /** The reviewer's owner brief from a MERGE at exactly this head, shown on the approve-merge gate. */
-  ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
-  /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
-  skillPathsAt?: (headSha: string) => readonly string[];
-  /** Read before each approve-merge gate opens; true offers the owner `send-back`, and land returns a `sent-back` stop on it. */
-  sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
@@ -125,6 +117,8 @@ interface LandState {
   /** Merge steps that waited on a hold cost no cycle either: only the owner's release ends that wait, so no count may fail it (TP-4082). */
   helds: number;
   orphanReruns: number;
+  /** ci-wait windows in a row that timed out on a wait only GitHub ends. */
+  timeouts: number;
   hold: SettleHold;
 }
 
@@ -137,13 +131,14 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
   const state: LandState = {
-    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, helds: 0, orphanReruns: 0, cycle: 0, updates: 0, retries: 0,
+    round, rules, rulesReads: 0, baseChecks: 0, baseWaits: 0, settles: 0, helds: 0, orphanReruns: 0, timeouts: 0, cycle: 0, updates: 0, retries: 0,
     bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0,
     trusted: new Set(), trustedBy: "human", trustedOn: rules.base,
   };
   for (;;) {
     if (state.cycle - state.settles - state.helds >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: state.rules.contexts, strict: state.rules.strict }, CiSnapshotResult);
+    if (waitsAgain(ci, state)) continue;
     if (ci.orphaned?.length) {
       await rerunOrphaned(ctx, roundId("ci-orphan-rerun", round, state.orphanReruns++), { repo: input.repo, pr: input.pr, headSha: ci.headSha, jobs: ci.orphaned });
       continue;
@@ -239,14 +234,7 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
   const check = await allowedBase(ctx, input, ci, state, options);
   if (check === undefined) return undefined;
-  const mergeInput = {
-    repo: input.repo,
-    pr: input.pr,
-    sha: ci.headSha,
-    method: input.method ?? "squash",
-    taskIds: input.taskIds ?? [],
-    base: check.base,
-  };
+  const mergeInput = { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [], base: check.base };
   const merge = await step(ctx, roundId("merge", state.round, state.merges++), mergeInput, MergeResultResult);
   return afterMerge(merge, ci, check, state);
 }
@@ -324,12 +312,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   if (decided.outcome === "deny") return stopped("merge-denied", ci.headSha, decided.reason);
   if (decided.outcome === "allow") return void trust(state, ci.headSha, "policy", base);
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) =>
-    step(
-      ctx,
-      roundId("merge-settle", state.round, state.settles++),
-      { repo: input.repo, baseRef: state.rules.base, ...wait },
-      SettleResult,
-    );
+    step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = gatedOnRecord(ctx) ? decided : await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const ask = options.askApproval ?? approveMergeGate(decision.rule, options);

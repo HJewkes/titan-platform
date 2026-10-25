@@ -46,7 +46,7 @@ describe("Codex runtime admission", () => {
       inspectVersion: async () => { throw new Error("fixture version probe rejected"); }, start,
     });
     expect(await adapter.run(request())).toMatchObject({ ok: false,
-      failure: { reason: "could not verify Codex CLI version: fixture version probe rejected" } });
+      failure: { kind: "harness_mismatch", reason: "could not verify Codex CLI version: fixture version probe rejected" } });
     expect(start).not.toHaveBeenCalled();
   });
   it("uses the installed CLI on PATH rather than a desktop application path", () => {

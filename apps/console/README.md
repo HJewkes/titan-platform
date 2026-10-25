@@ -866,17 +866,21 @@ A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are o
 `hold-release` of a `g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers
 `no-action` with its reason.
 
-Each gate step's tap gives one decision, held as data in `inbox-view.ts` and mirrored by the factory's
-`CONSOLE_STEPS`: `merge` on approve-merge, and `await-new-head` on sh-sent-back. The sent-back tap reads "Wait for
-new head": the run waits for the implementer's next pushed head, and nothing merges. It never offers `abandon` or
-`waive-proof`, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
+Each gate step's decisions are held as data in `inbox-view.ts` and mirrored by the factory's `CONSOLE_STEPS`:
+`merge` on approve-merge, and `await-new-head` then `waive-proof` on sh-sent-back. The first is the item's tap; a
+later one is a second, outline-styled tap, offered only when the gate's options list it. The sent-back tap reads
+"Wait for new head": the run waits for the implementer's next pushed head, and nothing merges. On a fix-proof
+send-back (NO_REPRO, or a fixer's exit from a fix-proof wake) the gate also lists `waive-proof`, and the item gets a
+second tap, "Waive fix-proof": it skips the fix-proof requirement for the shown head only, so Shepherd reviews that
+head. It merges nothing; the merge still needs the owner's Approve merge tap, and a new push asks again. `abandon` is
+never offered, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
 record asking any other decision, or one the gate's own schema does not offer, as 403 `class`.
 
-1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
+1. `inbox.prepare({ itemId, decision? })` is a read; `decision` picks a second tap the item offers. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
    id, its action, its hold, the read-back and the read time. The console keeps it for five minutes and accepts no confirm it did
    not issue.
-2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
+2. `inbox.act({ itemId, decision?, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
    It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
    It then writes `$TITAN_CONSOLE_STATE/owner-actions/<confirm>.json` once (O_EXCL, 0600, in a 0700 dir). The
    record holds the item, its action and read-back, the confirm, the session's `issuedAt` and the peer class,
@@ -887,7 +891,7 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 
 | Factory answer | Owner sees |
 | --- | --- |
-| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged"; a waiver: "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
 | 200 `approved` (with `runId`) | "Merge approved": a `merge-at-head` that waits for the adversary loop left the owner's approval on the held Shepherd run |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
@@ -916,8 +920,25 @@ id, summary, asker, context, the asker's options and recommendation. `inbox.act`
 retry sends the words first written. The console posts `{ msgId, text, channel: "dashboard" }` to the agent-chat
 broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per call, and never follows a redirect.
 The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
-token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
-prompt never reaches this path: `inbox.list` gives it a terminal action.
+token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried.
+
+An agent's permission prompt or endorsement is an `approve-chat` tap (`server/inbox-approve-chat.ts`). The factory
+folds both, and `needs-grant` / `ready-to-merge` notices too, into one `approve` kind without the row's meta, so
+`inbox.list` gives every agent-chat `approve` item `{ kind: "approve-chat", msgId }` and `inbox.prepare` re-reads the
+broker's own `GET /api/queue` row by msg id. Only an `approval_request` row (read-back: tool name, input preview,
+description; verdicts `allow` or `deny`) or an `endorse_request` row (read-back: the exact stored text and its
+recipient; verdict `endorse`) offers a tap. Any other row, or none, answers `no-action` with the reason that it is
+answered at its own session. The digest covers the row, so a text that changes between prepare and act refuses the
+confirm. `inbox.act` takes `verdict`, checked against the read-back's kind, and refuses any `text`. The record keeps
+the verdict and the read-back, and the console posts from them (`server/broker-verdict.ts`) to the broker's
+`POST /api/queue/:msgId/permission` or `/endorse` on loopback, with the 0600 `ui.token` re-read per call,
+`X-Owner-Channel: console`, and no redirect followed. An endorse sends the read-back's text and recipient byte for
+byte. A replay of a settled confirm answers from the outcome it settled and never reaches the broker. A prompt
+decided first elsewhere comes back `closed`. A refusal, including the 404 of a broker that has not deployed the
+verdict routes yet, names the terminal command: `agent-chat approve <id> allow|deny` or `agent-chat endorse <id>`.
+On the page the row's Approve opens the sheet, and the read-back sets its confirming taps in place of Confirm: Allow
+and Deny under a permission prompt's tool, input preview and description, or Endorse under the recipient and the
+stored text, shown in a whitespace-preserving block. Each sends `inbox.act` with only the `verdict` added.
 
 An `owner-op` tap (`server/inbox-op.ts`) takes its read-back from the factory's `owner-op.preview` on loopback,
 never from the deposit: GitHub's live head, title, base, behind and mergeable state, the Shepherd hold, and the

@@ -5,6 +5,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { BeatWorker } from "../build/beat-worker.js";
+import { beatWorkerFor } from "../build/claude-print-worker.js";
 import type { L0Check } from "../eval-l0.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
@@ -46,8 +47,8 @@ export interface RunHost {
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The gather stage's outside world; tests pass a fake gh, task list, call graph and clone. */
   gather?: GatherDeps;
-  /** Builds the resolve stage's custom layers; absent, custom beats are left unbuilt with a note. */
-  beatWorker?: BeatWorker;
+  /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
+  beatWorker?: BeatWorker | null;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -241,7 +242,8 @@ export interface Runtime {
   runtime: WorkflowRuntime;
   store: ArtifactStore;
   cache: CacheDeps;
-  bridge: () => BridgeFile;
+  /** `builder`: the beat worker's, which keys the resolve stage; absent, custom beats are left unbuilt with a note. */
+  bridge: () => BridgeFile; builder?: BeatWorker["builder"];
 }
 
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
@@ -252,12 +254,13 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
+  const worker = beatWorkerFor(host.beatWorker);
   const children = childRoutes({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(host.beatWorker ? { worker: host.beatWorker } : {}),
+    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(worker ? { worker } : {}),
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
   });
-  const builder = host.beatWorker ? { builder: host.beatWorker.builder } : {};
+  const builder = worker ? { builder: worker.builder } : {};
   const stage = {
     dataDir: host.dataDir, store, bridge, cache, now, ...builder,
     ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
@@ -271,7 +274,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   late.runtime = runtime;
   for (const stage of CACHED_STAGES) runtime.register(childWorkflow(stage), stageWorkflow(), { version: STAGE_VERSIONS[stage] });
   if (plan) runtime.register(VIDEO_WORKFLOW, videoWorkflow(plan, host.dataDir), { version: VIDEO_WORKFLOW_VERSION });
-  return { runtime, store, cache, bridge };
+  return { runtime, store, cache, bridge, ...builder };
 }
 
 async function settle(runtime: WorkflowRuntime, runId: string, host: RunHost): Promise<WorkflowRun> {
@@ -368,7 +371,7 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,
       remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}),
-      ...(host.beatWorker ? { builder: host.beatWorker.builder } : {}),
+      ...(rt.builder ? { builder: rt.builder } : {}),
       ...(variantSha ? { variant: { sha: variantSha, value: VariantSchema.parse(JSON.parse(rt.store.readText(variantSha))) } } : {}),
     });
     return await runStageCached(rt.cache, spec);

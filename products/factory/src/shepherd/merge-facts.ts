@@ -3,6 +3,8 @@ import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PullRequest
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
+import type { CiPolicyFileChange } from "./ci-policy-changes.js";
+import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
 import { errorClass } from "./error-class.js";
 import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
 import { CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
@@ -14,6 +16,8 @@ import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visu
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { ownerHoldOf, riskFactsOf, riskTier, type RiskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
+
+export { isGithubPath };
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 
@@ -98,6 +102,8 @@ export interface EvidenceRecord {
   /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
   carry?: CarryFact;
   ciPolicy?: CiPolicy;
+  /** On a weakened line, every changed line of the changed `.github/` files, shown or counted, for the D21 card. */
+  ciPolicyChanges?: CiPolicyFileChange[];
   proofUnverified?: string;
   /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
   riskTier?: RiskTier;
@@ -148,12 +154,6 @@ export function isUnsettledGate(decision: GateDecision): boolean {
 
 function authorityRule(ruleId: string | null): PolicyRule {
   return { table: "authority", rowId: ruleId ?? "none", version: AUTHORITY_VERSION };
-}
-
-/** Folds case and trailing dots or spaces, which some filesystems ignore, so `.GitHub.` is still `.github`. */
-export function isGithubPath(path: string): boolean {
-  const first = path.split("/")[0] ?? "";
-  return first.toLowerCase().replace(/[ .]+$/, "") === ".github";
 }
 
 /** Names the facts read at their closed value, so the owner sees why a gate fell back; an allow is left as it is. */
@@ -279,6 +279,7 @@ interface Observed {
   unreadFacts?: string[];
   changedFilesUnread?: string;
   changedLines?: number;
+  ciPolicyChanges?: CiPolicyFileChange[];
 }
 
 interface KindRead {
@@ -336,14 +337,14 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
-  const unreadFacts = [bypassable.unread, unread].filter((fact) => fact !== undefined);
+  const read = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
   const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
-  return { pr, merge, runs, ...unknown, ...(unreadFacts.length > 0 && { unreadFacts }), ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+  return { pr, merge, runs, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
+  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines, ciPolicyChanges: changes } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
@@ -365,6 +366,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     mergeableState,
     ...(merge.carry && { carry: merge.carry }),
     ...ciPolicy,
+    ...(changes && { ciPolicyChanges: changes }),
     ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
     riskTier: riskTier(risk),
   };

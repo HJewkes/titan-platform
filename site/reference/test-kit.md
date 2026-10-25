@@ -29,6 +29,20 @@ For a fake with behaviour, such as an in-memory GitHub, use the owning package's
 | Export | What it does |
 |---|---|
 | `partialFake<T>(fields?)` | returns `fields` typed as `T`; `fields` is `Partial<T>`, so a field `T` does not declare fails the typecheck |
+| `linearGrowth(prepare, { from, to })` | times one run at each size against `GROWTH` (4) runs at a quarter of it, climbing from `from` to `to`, and returns the worst ratio; it stops at the first rung past `LINEAR_GROWTH_LIMIT` (2.5), so a polynomial matcher fails on a small input instead of hanging on a large one. Assert `ratio` below the limit |
+| `hostileGlobs(separator?)` | the timing rows of tp#2491 as `[name, row]` pairs for `it.each`: `d/` and twenty `*`, and twelve `**/`, each with a path of a given size it does not match |
+
+A glob compiler's growth test, from review-panel:
+
+```ts
+it.each(hostileGlobs())("grows linearly with the path for %s", (_name, { glob, path }) => {
+  const { ratio } = linearGrowth((size) => {
+    const input = path(size);
+    return () => matchesGlob(input, glob);
+  }, { from: 1, to: 1024 });
+  expect(ratio).toBeLessThan(LINEAR_GROWTH_LIMIT);
+}, 60_000);
+```
 
 ## Example
 

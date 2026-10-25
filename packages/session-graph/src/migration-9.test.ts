@@ -27,8 +27,14 @@ describe("migration 9", () => {
     const graph = openSessionGraph(file);
     expect(hasTable(graph.db, "artifact")).toBe(false);
     for (const t of NORMALIZED_TABLES) expect(hasTable(graph.db, t)).toBe(false);
-    expect(hasTable(graph.db, "session_state")).toBe(true);
     graph.db.close();
+  });
+
+  it("creates session_state, which migration 14 later replaces", () => {
+    const db = openDatabase(file);
+    runMigrations(db, MIGRATIONS.slice(0, 9));
+    expect(hasTable(db, "session_state")).toBe(true);
+    db.close();
   });
 
   it("drops the artifact table and the empty normalized tables of a version 8 graph", () => {

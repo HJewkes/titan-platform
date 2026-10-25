@@ -24,6 +24,7 @@
     "@titan-design/coordinator": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/decider": "workspace:^",
+    "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",
@@ -44,10 +45,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@titan-design/egress-scan": "workspace:^",
-    "@titan-design/frame-capture": "workspace:^",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
+    "@titan-design/egress-scan": "workspace:^",
+    "@titan-design/frame-capture": "workspace:^",
+    "@titan-design/test-kit": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

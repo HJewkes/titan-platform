@@ -83,6 +83,12 @@ const TASK_STEPS = [
   "Report the root cause per reviewer, the evidence lines, and the fix. File the fix as a task when it is a Shepherd or reviewer defect.",
 ];
 
+/** Every reviewer answering means the panel's aggregate withheld the verdict, which is a different hunt from a silent reviewer. */
+function noSilentLine(reviewers: readonly ReviewerSeen[]): string {
+  if (reviewers.length === 0) return "- none recorded: the review returned no verdict without dispatching a reviewer Shepherd could see";
+  return `- none: all ${reviewers.length} dispatched reviewers gave a verdict, so the panel's aggregate withheld it (an unplanned seat such as the fix-proof's tests member)`;
+}
+
 function diagnosisBrief(input: DiagnosisInput, roster: readonly AgentRow[], logLines: readonly string[], reportTo: string | undefined): string {
   const silent = input.reviewers.filter((reviewer) => reviewer.verdict !== true);
   return [
@@ -92,7 +98,7 @@ function diagnosisBrief(input: DiagnosisInput, roster: readonly AgentRow[], logL
     `Failed rounds: ${input.failedOutcomes.join(", ") || "none counted"}`,
     "",
     "Reviewers that gave no verdict:",
-    ...(silent.length > 0 ? silent.map((reviewer) => reviewerLine(reviewer, roster)) : ["- none recorded: the review returned no verdict without dispatching a reviewer Shepherd could see"]),
+    ...(silent.length > 0 ? silent.map((reviewer) => reviewerLine(reviewer, roster)) : [noSilentLine(input.reviewers)]),
     "",
     logLines.length > 0 ? dataFence("serve.err.log lines naming these reviewers oldest first", logLines.join("\n")) : "serve.err.log: no line names these reviewers.",
     "",

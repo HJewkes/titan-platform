@@ -1,8 +1,8 @@
 import Database from 'better-sqlite3';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { DiscoveredTranscript } from '@titan-design/session-read';
-import type { SessionGraph } from '@titan-design/session-graph';
+import { EXTRACT_VERSION, type DiscoveredTranscript } from '@titan-design/session-read';
+import { AUDIT_FACET, FACET_TABLE, type SessionGraph } from '@titan-design/session-graph';
 import type { WatermarkRow } from '@titan-design/store-sqlite';
 
 import {
@@ -87,13 +87,29 @@ async function isSealed(
 }
 
 /**
+ * Transcripts whose audit facet has reached `EXTRACT_VERSION`. The facet
+ * backfill only sees the transcripts a pass walks, so a sealed one with an
+ * older facet would never be upgraded nor counted in the backlog (TP-877).
+ */
+function currentFacets(graph: Pick<SessionGraph, 'db'>): Set<number> {
+  const rows = graph.db
+    .prepare<
+      [string, number],
+      { transcript_id: number }
+    >(`SELECT transcript_id FROM ${FACET_TABLE} WHERE facet = ? AND version >= ?`)
+    .all(AUDIT_FACET, EXTRACT_VERSION);
+  return new Set(rows.map((row) => row.transcript_id));
+}
+
+/**
  * `discovered` without the transcripts of sessions retired more than `graceMs`
  * ago that the index has fully read. A retired transcript with unread bytes
  * stays in, and so does a transcript whose path the watcher reported since the
- * last pass (`dirtyPaths`), so it is indexed once more before it seals.
+ * last pass (`dirtyPaths`), so it is indexed once more before it seals, and one
+ * whose audit facet is behind, so the backfill reaches it.
  */
 export async function sealedFilter(
-  graph: Pick<SessionGraph, 'transcripts'>,
+  graph: Pick<SessionGraph, 'transcripts' | 'db'>,
   discovered: DiscoveredTranscript[],
   retired: Map<string, number>,
   graceMs: number = SEAL_GRACE_MS,
@@ -102,6 +118,7 @@ export async function sealedFilter(
   if (retired.size === 0) return discovered;
   const now = Date.now();
   const rows = new Map(graph.transcripts.list().map((row) => [row.sourceKey, row]));
+  const current = currentFacets(graph);
   const kept: DiscoveredTranscript[] = [];
   for (const transcript of discovered) {
     const retiredAt = retired.get(sessionOf(transcript));
@@ -111,6 +128,7 @@ export async function sealedFilter(
       !dirtyPaths.has(transcript.absolutePath) &&
       now - retiredAt > graceMs &&
       row !== undefined &&
+      current.has(row.sourceId) &&
       (await isSealed(graph, row, retiredAt, transcript.absolutePath));
     if (!sealed) kept.push(transcript);
   }

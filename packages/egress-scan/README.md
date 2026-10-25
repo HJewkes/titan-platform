@@ -130,8 +130,10 @@ only the range endpoints: a leak added and then removed is still in the pushed h
 `.egress-allow` holds `<glob> <rule-id> <reason>` lines. The reason must name a task id
 such as `TP-405`, and the glob must name at least one literal path segment.
 Braces expand (`docs/{a,b}.md`), and every alternative must name a literal segment. A glob
-that expands past 256 alternatives is malformed. A backslash is not an escape; it matches a
-literal backslash.
+that expands past 256 alternatives, is longer than 1024 characters or has more than 32 brace
+groups is malformed. Matching takes time linear in the path, so no run of `*`, `**/` or
+`*a` in a glob can stall the scan. A backslash is not an escape; it matches a literal
+backslash.
 `private-term` and `credential-token` are never allowable. `parseAllow` throws `AllowFileError`
 on any malformed line; a caller must fail the scan on it, never fall back to an empty list.
 

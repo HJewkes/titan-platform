@@ -133,6 +133,7 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Categories | `active-work category init [--areas <file>]` | Seed `categories.yml` once from the `kind:` and `cos:` tags in use, the statuses open, done, wont-do and icebox, and the area section printed by titan-platform `scripts/areas.mjs`; leaves an existing file untouched |
 | Sessions | `active-work wrap <slug> ...` | End a session: summary + open-loop ledger + brief bump |
 | Sessions | `aw <slug>` | Launch Claude with the bootstrap prompt |
+| Sessions | `active-work spawn <name> <profile> (--brief-file <path>\|--brief-stdin) [--host h] [--account <name\|least-used>] [--cwd d] [--briefing slug] [--surface s] [--remote-control]` | Spawn an agent through `agent-chat agent spawn` as yourself (an agent's `AGENT_CHAT_NAME` is forwarded). With no `--account`, the broker picks the least-used logged-in account and prints the readings; a refusal prints them and exits 1. CLI only, never an MCP tool. Finds `agent-chat` on `PATH`, or `AGENT_CHAT_BIN` |
 | Sessions | `active-work open <slug>` | Print the bootstrap prompt to stdout (no claude spawn) |
 | Sessions | `active-work facet add <slug> <alias> --tags a,b [--about ...]` | Add a facet alias that `aw <alias>` opens |
 | Sessions | `active-work facet list [slug]` | List facet aliases, flagging shadowed ones |

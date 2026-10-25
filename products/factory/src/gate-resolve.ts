@@ -9,7 +9,7 @@ import { stepIdMatches } from "./definition.js";
 import { EXIT } from "./exit-codes.js";
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { mintPresenceRecord } from "./gate-resolve-presence.js";
-import { confirmOwner } from "./owner-presence.js";
+import { mintHoldReleaseRecord, type OwnerHeldAt } from "./owner-release-presence.js";
 
 interface ResolveIo {
   stdout: (text: string) => void;
@@ -19,7 +19,7 @@ interface ResolveIo {
 
 /**
  * `titan-factory gate resolve`: answers the gate the run waits on at `stepId`; a resolver refusal throws to the CLI, which exits 1.
- * Presence is always `confirmOwner`, and `sources` is injected only in code: no proof, runner, helper path or evidence is ever read from argv or the environment.
+ * Presence is always an owner-signed statement, and `sources` is injected only in code: no proof, runner, helper path or evidence is ever read from argv or the environment.
  * Without `sources` no coordinator evidence is read, so the resolve takes the presence path as before.
  */
 export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: string, stepId: string, json: string, sources?: EvidenceSources): Promise<number> {
@@ -118,17 +118,17 @@ const ownerTerminal = (): GateResolver => ({ class: "owner-terminal", id: userIn
 const coordinatorOf = (id: string): GateResolver => ({ class: "coordinator", id, channel: "factory-cli" });
 
 /**
- * The owner-only check for a non-gate action (`shepherd owner-release`): no allowance and no evidence admit a coordinator.
- * A shell agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with a presence proof for `reason`; without one
- * it is refused. Any other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
- * Gates use `mintPresenceRecord` instead, whose proof the gate store verifies against the ledger.
+ * The owner-only check for `shepherd owner-release`: no allowance and no evidence admit a coordinator. A shell
+ * agent-chat launched (AGENT_CHAT_AGENT_ID) is the owner only with an owner-signed hold-release record for exactly
+ * `held` (`mintHoldReleaseRecord`), which `ownerRelease` verifies against the ledger; without one it is refused. Any
+ * other shell is owner-terminal without a dialog, as for gates. Returns the refusal as a string.
  */
-export async function ownerResolver(env: NodeJS.ProcessEnv, reason: string): Promise<GateResolver | string> {
+export async function ownerResolver(env: NodeJS.ProcessEnv, batches: GateBatchStore, held: OwnerHeldAt, reason: string): Promise<GateResolver | string> {
   const owner = ownerTerminal();
   if (!env.AGENT_CHAT_AGENT_ID) return owner;
-  const proof = await confirmOwner(reason);
-  if (!proof) return `owner presence was not confirmed, so ${env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID}, a shell agent-chat launched, is refused: only the owner may ${reason}`;
-  return { ...owner, confirmEvent: proof };
+  const minted = await mintHoldReleaseRecord(batches, held, reason);
+  if ("refusal" in minted) return `${minted.refusal}, so ${env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID}, a shell agent-chat launched, is refused: only the owner may ${reason}`;
+  return { ...owner, confirmEvent: minted.confirmEvent };
 }
 
 const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;

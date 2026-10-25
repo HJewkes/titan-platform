@@ -31,6 +31,40 @@ describe("touchedTests", () => {
   });
 });
 
+const EACH_SOURCE = [
+  'describe.each([["a"], ["b"]])("suite %s", (x) => {', // 1
+  '  it.each([[1, 2]])("adds %i and %i", (a, b) => {', // 2
+  "    expect(a + b).toBe(3);", // 3
+  "  });", // 4
+  "  it.each`", // 5
+  "    a | b", // 6
+  "    ${1} | ${2}", // 7
+  '  `("tabled $a", ({ a }) => {', // 8
+  "    expect(a).toBe(1);", // 9
+  "  });", // 10
+  "});", // 11
+].join("\n");
+
+describe("touchedTests with .each", () => {
+  it("names a printf-style it.each row under its describe.each title", () => {
+    expect([...touchedTests(EACH_SOURCE, new Set([3]))]).toEqual(["suite %s adds %i and %i"]);
+  });
+
+  it("names a tagged-template it.each test by its $name title", () => {
+    expect([...touchedTests(EACH_SOURCE, new Set([9]))]).toEqual(["suite %s tabled $a"]);
+  });
+});
+
+describe("missedChange with .each", () => {
+  it("passes a sidecar whose kill is one expanded row of a touched .each title", () => {
+    expect(missedChange(sidecar("suite b adds 1 and 2"), new Set(["suite %s adds %i and %i"]))).toBeNull();
+  });
+
+  it("flags a kill that only resembles an .each title", () => {
+    expect(missedChange(sidecar("suite b adds 1"), new Set(["suite %s adds %i and %i"]))).toEqual(expect.stringContaining("no kill names"));
+  });
+});
+
 describe("missedChange", () => {
   it("flags a sidecar that only kills a test the diff left alone (the rounds.test.tsx case on #2219)", () => {
     expect(missedChange(sidecar("a round ignores a modifier"), new Set(["a round ships"]))).toEqual(expect.stringContaining("no kill names a test the diff touches"));

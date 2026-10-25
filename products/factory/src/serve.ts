@@ -52,6 +52,7 @@ import { markRevertedRuns } from "./shepherd/reverts.js";
 import { FIXER_RETIRE_MS, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
+import { digestPacer } from "./shepherd/seat-digest-pace.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
@@ -280,8 +281,9 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
 function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
   if (services === undefined || ports === undefined) return undefined;
   const memory = fileSeatDigestMemory(stateDir);
+  const pacer = ports.pacing && digestPacer(ports.pacing);
   const tickOnce = async (): Promise<void> => {
-    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory);
+    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory, new Date(), pacer);
     if (sent.length > 0) log.info({ seats: sent }, "sent seat digests");
     for (const failure of failed) log.warn({ ...failure }, "could not send a seat digest; the next sweep tries again");
   };

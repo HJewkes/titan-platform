@@ -10,6 +10,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -175,11 +176,7 @@ describe("sh-wake-implementer: who is woken", () => {
     const rows = JSON.stringify([row("impl-a")]);
     writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '%s' '${rows}'\n`);
     chmodSync(bin, 0o755);
-    // agent-dispatch refuses a spawn unless $HOME/.agent-chat/profiles/<profile>.json is headless.
-    mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
-    writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
-    vi.stubEnv("HOME", SCRATCH);
-    vi.stubEnv("AGENT_CHAT_HOME", join(SCRATCH, ".agent-chat"));
+    isolateAgentChatHome(SCRATCH, ["bd-implementer"]);
     try {
       const { run } = wakeStep({ ...scene, noAgents: true, agentChatBin: bin, warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
       await run("review", fixFirst("fix the parser"));

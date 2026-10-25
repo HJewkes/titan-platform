@@ -259,9 +259,22 @@ workflow, keyed by `packetKey` = sha256 of the packet and the builder (`{ id, ve
 by beat id alone, so a replay reuses every build whose packet is unchanged. The `custom-layers` tree holds one
 `<beat>.tsx` per layer and a `layers.json` with each layer's anchors and element ids. A pinned `custom-layers` tree, or
 a script with no custom beats, runs no builds. The builder is part of the resolve key, so a new base prompt rebuilds
-every layer. The host's `beatWorker` builds the layers; with none configured the custom beats are left unbuilt and
-noted. The only worker ids are `claude-print` and `agent-chat`; there is no fork runner. Any build that fails fails
-the stage.
+every layer. The host's `beatWorker` builds the layers. When the host sets none, the default is the claude-print
+worker (`claudePrintWorker`), as long as a `claude` binary is on this host (`CLAUDE_BIN` or `PATH`). With no worker
+(`beatWorker: null`, or no binary), the custom beats are left unbuilt and noted, and the run goes on. The only worker
+ids are `claude-print` and `agent-chat`; there is no fork runner. Any build that fails fails the stage.
+
+The claude-print worker makes one tool-less `claude -p` call per packet. It uses sonnet, with
+`doctrine/builders/custom-layer.md` as `--system-prompt` and the packet JSON as the prompt. The answer must match
+`LayerOutputSchema` (module, anchors, element ids), with one turn and a $0.50 cap. Spend is priced from each model's
+tokens at the price table, never from the reported `total_cost_usd`. A model the table lacks marks the spend unknown.
+Every build then goes through the compile gate (`compileLayer`): an esbuild TSX bundle that refuses any import except
+`react`, `react/jsx-runtime` and `@titan-design/react-ui/motion`. A build that fails the gate is marked
+`needsRepair` with esbuild's error, and the stage fails with that error. A build that passes is stored by packet key in
+a cross-run build cache (`LayerBuildCache`, `<dataDir>/layer-builds/<key>` naming the build's artifact sha). So when a
+script or facts edit makes a new resolve run, a beat whose packet did not change reuses its build at no cost. The
+in-run `mapItems` memo cannot do this, because it lasts only for one child run. A build that fails the gate is never
+cached.
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
@@ -582,13 +595,20 @@ beats that fail at least one error-severity row. Borderline labels count as neit
 a false positive, a flagged beat with no label is reported as unlabelled, and a check no row
 carries is "not run", not zero.
 
-**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, and L1's
-beat dimensions) stay reported only until the owner's labels show they agree with the owner.
+**Judge calibration (TP-4012).** The model judges (the cold probe, the cold-viewer rubric J8 to J12, L1's beat
+dimensions, and the audition's code and rubric pickers) stay reported only until the owner's labels show they agree
+with the owner.
 
-- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--size 20]
-  [--seed <s>]` reads a `calibration-manifest/v1` file. For each case the file gives its script, the bench the
-  judges wrote to, its video type, split and owner-named flag, and `format` (`v1`, or `spike` for a spike-era
-  script). Keep the manifest outside this repo, because it names private scripts.
+- `explainer eval calibrate queue <manifest.json> --round-dir <dir> --key <key.json> --unit <id> [--round 1]
+  [--size 20] [--seed <s>] [--max-density <q>]` reads a `calibration-manifest/v1` file. For each case the file
+  gives its script, the bench the judges wrote to, its video type, split and owner-named flag, `format` (`v1`, or
+  `spike` for a spike-era script) and optionally `listener`, the script's `explainer eval listener` result. Its
+  optional `auditions` list names `audition/v1` records, each with a case, title, video type, split and
+  owner-named flag. Keep the manifest outside this repo, because it names private scripts.
+- `--max-density` is the listener screen. Cold and L1 items stay only from chapters whose listener density
+  (questions a sentence) is at or under it, and rubric items only from a script at or under it overall. A case
+  with no listener result is refused. The overall density also orders the round: the clearest video first, then
+  the pairs, then the other videos from clearest to least clear.
 - The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
   than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
   last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
@@ -597,16 +617,30 @@ beat dimensions) stay reported only until the owner's labels show they agree wit
     words (what-why, invariant or term), with a score above 0? An `inv` item gives two questions.
   - cold-viewer rubric: does the script reach the middle anchor of a dimension (3 or more)?
   - L1: does the beat pass a B dimension?
+  - audition pair: the pick and runner-up storyboards, shown as A and B in a seeded order, with the sentence,
+    the opening line and each block's question and length; never the structure, system, candidate id or scores.
+    One owner question carries two key entries: `audition-code` prefers the pick, and `audition-rubric` the side
+    with the higher J8 to J11 sum over the rows both sides scored (no entry on a tie). The key reads a pair's
+    `pass` as "prefers A".
+- Each key entry carries the judge's `evalVersion`; for `audition-code`, a hash of the pick rule.
 - It drops holdout and owner-named cases. Judges take turns, so each gets an even share of the queue; within a
-  judge, its video types and verdicts also take turns.
+  judge, its video types and verdicts also take turns. A pair counts as `audition-code`'s turn, and pairs where
+  the two pickers disagree take their own turn.
 - It writes `round.json`, a questions-only console round with one section per video. A section shows the script
-  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones. The round shows no judge
-  name, verdict or recommendation. The verdicts go to the answer key, which is kept outside the round directory.
-  The command never overwrites an existing round or key.
+  as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones (`A` / `B` / `Can't tell`
+  for a pair). The header gives the estimated minutes (1.25 a yes or no item, 2 a pair). The round shows no judge
+  name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
+  outside the round directory. The command never overwrites an existing round or key.
+- `--round-dir` is a staging directory. File the round from it with `titan-console decisions file
+  <dir>/round.json --seat <seat> --initiative <initiative>`, which writes the asker and notifies the owner.
 - `explainer eval calibrate agreement --key <key.json> --feedback <round>/feedback.json [--record <file>]
   [--format table|json]` reads the owner's labels from the console's `feedback.json`. For each judge it prints the
   labelled and can't-tell counts, the agreement (the share of labelled items where owner and judge agree), and the
   recall on the items the owner failed. `--record` writes the `judge-agreement/v1` record.
+- Repeat `--key` and `--feedback` (paired by position, oldest round first) to pool rounds. A judge's newest round
+  counts whole; an earlier round's item counts only at an `evalVersion` the newest round ran, and is otherwise
+  reported as `stale`. An item with no `evalVersion` (round-1 keys) never pools into a later round. The pooled
+  record lists its `rounds`, and each judge row its `eval_versions`. A round given twice is refused.
 - `promotionRefusal` reads that record. It refuses a judge with no recorded agreement, fewer than 5 labels, or
   agreement below 0.8. The evals units test checks that every judge check stays `reported`.
 
@@ -775,6 +809,33 @@ new stage key.
   - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
     status (`not started`, `starting` before the run links itself, then the workflow status).
 
+### Template fill
+
+`fillScript(script, resolved, { specs, pinned?, code? })` (`template-fill/`, TP-4134) turns each template beat of a
+`script/v1` and its `resolved` row into storyboard slot props, parsed by the beat spec's slot schema through
+`parseBeatSlots`. It is pure: the caller passes the beat specs, a pinned `slots` artifact and the code source
+(`codeSource(code)`). No stage calls it yet; TP-2992 S3 builds the storyboard from it.
+
+- **Layers.** The derived slots (or the pinned entry for the beat, which replaces them), then resolver `slots`, then
+  the owner's `visual.slots` through `withSlotOverrides`, the same call the emphasis gate makes. `generated` is every
+  layer under the owner's; `overridden` names the owner's fields.
+- **Derivation.** `DERIVERS` holds one row per `BEAT_SLOTS` ref, so a new ref without a row fails typecheck. The rows
+  port the spike sample builder's label conventions: a list row's mark is its first word (`tick`, `cross`, `risk`, `open`,
+  `dot`) and `<lane> · <text>` names its lane; `name: number` labels chart as bars, or as a line when there are 3 or
+  more and every name is a date; `before:` and `after:` labels pair by order into compare rows; 2 to 5 labels make a
+  map path. Refs whose slots carry structure a label does not hold (gantt, schema, sim and the like) derive nothing
+  and need `visual.slots` or a pin.
+- **Element ids** follow the cue convention: item n of field f is `f-n`, so a script cue's `rows-2` target names it.
+  Each element's cue word is the first cue whose target ends in `-n`; a missing one takes the one before it, and the
+  first defaults to the first spoken word. `reveals` lists them; `hints.placeholder` is set when the first lands past
+  30 % of the words.
+- **Continuation.** A later beat in a chapter that names the lead's `list`, `verdict-card` or `issue-pin` spec keeps
+  the lead's heading and its last rows (renamed `held-n`, shown from the first word), up to 3 rows with its own.
+- **Fallback.** Slots that do not parse, or a deriver that cannot read the beat, draw the beat as a `list` of its
+  labels and record `fallback: { from, reason }`; a button with no action draws as `outro`. A beat with
+  `visual.slots` never falls back: its refusal names the fields. Every refusal is listed in one `FillError`. Custom
+  beats are listed in `custom`, not filled.
+
 ### The sim kit
 
 A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contract, in TypeScript only:
@@ -794,3 +855,19 @@ A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contrac
   tolerance and its `why`, and `fittedFrom`). `simDoctrineSha` is the sha a trace records as `doctrine`.
   `checkSims(SIM_MODELS, loadSims())` reports a model with no doctrine file (`E-SIM-NO-DOCTRINE`), a doctrine file
   with no model (`E-SIM-NO-MODEL`) and a doctrine statistic the model does not emit (`E-SIM-STAT-UNEMITTED`).
+
+## Composition page
+
+`src/composition/` is one built Vite page that renders any `timeline.json` (TP-2991, milestone M9). Build it with
+`pnpm --filter @titan-design/explainer build:page` (into `dist/composition/`) and open `index.html?timeline=<url of
+timeline.json>`. The page fetches the timeline, then mounts react-ui's `MotionProvider` on a `seekClock` with the
+beats in one commit, so `window.__titanMotion` appears only once frame 0 can draw; any `__titanMotion` renderer, such
+as `@titan-design/frame-capture`, can capture it. Each beat's `kind` resolves through the registry in `registry.tsx`,
+which parses its slots; an unknown kind or bad slots throw in the page, and a page error fails the capture. A timeline
+with `provisional: true` carries a DRAFT badge. `baked.html` renders `fixtures/fixture.timeline.json` imported at
+build time: the reference the runtime page must match byte for byte.
+
+The registry holds `hook`, whose slots are `BEAT_SLOTS.hook`, and `catalogue` (react-ui's `FileCard`, `SchemaCard` and
+`Annotate`) until `@titan-design/beats` is published (TD-907), when the page resolves kinds through that package
+instead. The page reads only `durationS`, `provisional` and each beat's `id`, `kind`, `startS`, `durationS`, `cues`
+and `slots`; `compileTimeline` (TP-2990) owns the rest of `timeline.json`.

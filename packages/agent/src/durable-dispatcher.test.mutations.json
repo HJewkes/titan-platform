@@ -9,6 +9,15 @@
       "kills": [
         "durable harness dispatch persists a Claude run that reached its native maxTurns as a terminal failure"
       ]
+    },
+    {
+      "name": "a thrown Codex version probe maps back to the ambiguous runtime_error",
+      "file": "packages/agent/src/codex-available.ts",
+      "find": "  return { kind: \"harness_mismatch\", reason: `could not verify ${phase}:",
+      "replace": "  return { kind: \"runtime_error\", reason: `could not verify ${phase}:",
+      "kills": [
+        "durable harness dispatch persists a Codex version probe that cannot spawn the CLI as a terminal failure"
+      ]
     }
   ]
 }

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pass log line drops rowsWritten",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "    rowsWritten: summary.rowsWritten,\n",
+      "replace": "",
+      "kills": [
+        "startSessionIndexWatch with transcripts on disk logs one session index pass line with what the pass opened and read"
+      ]
+    },
+    {
+      "name": "the pass log line drops dbBytes",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "    dbBytes: summary.dbBytes,\n",
+      "replace": "",
+      "kills": [
+        "startSessionIndexWatch with transcripts on disk logs one session index pass line with what the pass opened and read"
+      ]
+    },
+    {
+      "name": "the live graph skips the inode check and keeps writing the swapped-out file",
+      "file": "products/active-work/src/session-index/live-graph.ts",
+      "find": "      if (handle && handle.inode === inodeAt(file)) return handle.graph;\n",
+      "replace": "      if (handle) return handle.graph;\n",
+      "kills": [
+        "startSessionIndexWatch with transcripts on disk after a miner rebuild swap the watcher writes its next pass to the new file, whose turn and request totals equal the old one"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
+
 const cache = new Map<string, RegExp>();
 
 function toSource(glob: string): string {
@@ -19,7 +21,7 @@ function toSource(glob: string): string {
 export function matchesGlob(path: string, glob: string): boolean {
   let re = cache.get(glob);
   if (!re) {
-    re = new RegExp(`^${toSource(glob)}$`);
+    re = new LinearRegExp(`^${toSource(glob)}$`);
     cache.set(glob, re);
   }
   return re.test(path);
