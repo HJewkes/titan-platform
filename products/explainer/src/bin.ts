@@ -7,6 +7,7 @@ import { runPrCli } from "./presets/pr-overview/pr-cli.js";
 import { runRewriteCli } from "./rewrite-cli.js";
 import { runRunCli } from "./workflow/run-cli.js";
 import { runEditCli } from "./workflow/edit-cli.js";
+import { runPropsCli } from "./workflow/props-cli.js";
 import { runAbCli } from "./workflow/samples-cli.js";
 import { runStageCli } from "./workflow/stage-cli.js";
 
@@ -18,6 +19,7 @@ const SUBCOMMANDS = new Map<string | undefined, (argv: string[]) => Promise<numb
   ["edit", runEditCli],
   ["guide", runGuideCli],
   ["pr", runPrCli],
+  ["props", runPropsCli],
   ["rewrite", runRewriteCli],
   ["run", runRunCli],
   ["sheets", runSheetsCli],

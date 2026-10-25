@@ -11,7 +11,7 @@ export const MAX_SIM_TOLERANCE_REL = 0.1;
 /** A tolerance must be at least this many standard errors wide, or Monte Carlo noise alone could flip the verdict. */
 export const SIM_NOISE_SE = 3;
 
-export const SIM_CHECK_CODES = ["E-SIM-MISS", "E-SIM-NO-FACT", "E-SIM-NO-RUN", "E-SIM-TOL-NOISE", "E-SIM-TOL-LOOSE", "E-SIM-CIRCULAR", "E-SIM-UNCHECKED-NUMBER"] as const;
+export const SIM_CHECK_CODES = ["E-SIM-MISS", "E-SIM-NO-FACT", "E-SIM-NO-RUN", "E-SIM-TOL-NOISE", "E-SIM-TOL-LOOSE", "E-SIM-CIRCULAR", "E-SIM-UNCHECKED-NUMBER", "E-SIM-NO-SLOTS"] as const;
 export type SimCheckCode = (typeof SIM_CHECK_CODES)[number];
 
 export type SimSlots = z.infer<(typeof BEAT_SLOTS)["sim"]>;

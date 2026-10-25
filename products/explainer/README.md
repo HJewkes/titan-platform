@@ -277,6 +277,20 @@ script or facts edit makes a new resolve run, a beat whose packet did not change
 in-run `mapItems` memo cannot do this, because it lasts only for one child run. A build that fails the gate is never
 cached.
 
+A build that fails the gate gets one repair round (`agentChatRepairer`; round caps are TP-2616's). It spawns an
+agent-chat agent under the `beat-builder` profile (a config value) through `@titan-design/agent-dispatch`. The brief
+goes on stdin, never in argv: the packet, the failing module and the gate's error, each fenced as data. The agent
+writes `<beat>.tsx` into `runs/<run>/layer-repairs/<packet key>/`. Once the roster shows the agent exited, the module
+is read back and the gate runs again. The agent's spend is priced from its own transcript, found by the roster's
+session id, at the price table, so the `mapItems` budget sees a known cost at once. A transcript that is not on this
+host, or an agent that is not seen to exit in time, marks the spend unknown rather than free. The repair's spend joins
+the build's usage, and its session id is kept as `repairSessionId` on the build and in `layers.json`. A repair that
+still fails stays `needsRepair` (its error names the repair session), keeps its spend, and is not cached. Repairs are
+off unless the host passes a `layerRepairer`: no agent-chat binary on `PATH` or in `AGENT_CHAT_BIN` turns them on,
+because the installed `beat-builder` profile predates its TSX variant. They turn on by default after TP-2608 ships
+that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
+and no resumed session.
+
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
 bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt
@@ -847,6 +861,15 @@ new stage key.
     row and its run id alone.
   - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
     status (`not started`, `starting` before the run links itself, then the workflow status).
+  - `explainer props --mp4-sha <sha> [--json]` (`workflow/props-cli.ts`, `workflow/beat-props.ts`) is the props
+    panel's read model. It finds the newest run whose export linked that mp4 (the theater file's sha256 is the run's
+    `mp4` artifact sha), or prints `{ found: false }`. For each template beat resolve kept (cut and custom-layer beats
+    are left out) it gives `id`, `chapter`, the drawn `spec` and its `slots` ref, `schema` (`z.toJSONSchema` of
+    `BEAT_SLOTS[ref]`, input side), `value` (`fillScript` with the run's `slots` artifact pinned and the owner's
+    overrides laid over it), `overridden` fields, `locked` ids (the ids its cues target), `startS`/`endS` from the
+    `words` artifact, and `stillS`, the later of `endS - 0.3` and its last cue. `saveBack { enabled, reason }` is on
+    only once render is in process and draws from the fill; until TP-2992 S3 it reads "renders ignore edits until
+    TP-2992 S3". Tune schemas join each beat when page kinds declare them (H1).
 
 ### Template fill
 

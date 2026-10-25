@@ -78,7 +78,7 @@ interface RunView {
 }
 
 /** A finished `explainer-video` run as an edit drafted over it sees it. */
-function runView(dataDir: string, runId: string): RunView {
+export function runView(dataDir: string, runId: string): RunView {
   const db = openState(dataDir);
   try {
     const runs = new WorkflowRunStore(db);
@@ -93,7 +93,7 @@ function runView(dataDir: string, runId: string): RunView {
   }
 }
 
-function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
+export function withStore<T>(dataDir: string, use: (store: ArtifactStore) => T): T {
   const db = openState(dataDir);
   try {
     return use(new ArtifactStore(dataDir, db));
@@ -108,7 +108,7 @@ type CheckBase = EditBase & { resolved: Resolved; pinned?: Record<string, unknow
  * The base run's script, resolved beats, the generated slots it rendered with (its own pin, for a run from before
  * resolve stored them) and its `slots` pin, when it holds them.
  */
-function editBase(dataDir: string, view: RunView): CheckBase {
+export function editBase(dataDir: string, view: RunView): CheckBase {
   const { script, resolved, slots, "generated-slots": rendered = slots } = view.artifacts;
   if (script === undefined || resolved === undefined) throw new Error(`run ${view.runId} has no resolved script; an edit needs a run that finished resolve`);
   return withStore(dataDir, (store) => {
