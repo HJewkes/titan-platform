@@ -1,3 +1,4 @@
+import { reviewRounds } from "./models/review-rounds.js";
 import type { SimRun } from "./trace-schema.js";
 
 /**
@@ -13,4 +14,4 @@ export interface SimModel<P extends Record<string, number> = Record<string, numb
 }
 
 /** The code registry, checked against `doctrine/sims/*.yaml` as `BEAT_SLOTS` is against `beats/*.yaml`. */
-export const SIM_MODELS: Readonly<Record<string, SimModel>> = {};
+export const SIM_MODELS: Readonly<Record<string, SimModel>> = { [reviewRounds.id]: reviewRounds };
