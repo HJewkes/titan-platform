@@ -4,6 +4,7 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { ScrubMarkers } from "./ScrubMarkers.js";
+import { BeatEditEntry } from "./TheaterBeatEditor.js";
 import { TheaterComment, formatAt, type NoteAbout } from "./TheaterComment.js";
 import { VERDICT_LABELS, VideoBadges } from "./TheaterFeed.js";
 import type { VideoRow } from "./theater-feed.js";
@@ -26,20 +27,26 @@ export function startTimeOf(query: string | undefined): number | null {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
-/** One video with its captions and the owner's notes; `?t=` opens it paused at that time. */
+/** `edit=1` beside `t=`: open the beat editor on the beat under that time. */
+function editTimeOf(query: string | undefined): number | null {
+  return new URLSearchParams(query ?? "").get("edit") === "1" ? startTimeOf(query) : null;
+}
+
+/** One video with its captions and the owner's notes; `?t=` opens it paused at that time, `&edit=1` with that beat open. */
 export function TheaterPlayer({ id, query }: { id: string; query?: string | undefined }): ReactNode {
   const list = useQuery("videos.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading video" />;
   if (list.data === undefined) return <Framed title={id}><Alert status="error" message={`Could not load videos: ${list.error.message}`} /></Framed>;
   const video = list.data.videos.find((row) => row.id === id);
   if (video === undefined) return <Framed title={id}><Alert status="error" message="No video with this id is under the configured roots." /></Framed>;
-  return <Player video={video} start={startTimeOf(query)} />;
+  return <Player video={video} start={startTimeOf(query)} editAt={editTimeOf(query)} />;
 }
 
-function Player({ video, start }: { video: VideoRow; start: number | null }): ReactNode {
+function Player({ video, start, editAt }: { video: VideoRow; start: number | null; editAt: number | null }): ReactNode {
   const ref = useRef<HTMLVideoElement>(null);
   const seek = usePendingSeek(ref, start);
   const duration = useDuration(ref);
+  const props = useQuery("videos.props", { videoId: video.id });
   const media = `/media/videos/${encodeURIComponent(video.id)}`;
   return (
     <Framed title={video.title}>
@@ -50,7 +57,8 @@ function Player({ video, start }: { video: VideoRow; start: number | null }): Re
       <video ref={ref} src={media} controls playsInline preload="metadata" className="block h-auto w-full max-w-3xl rounded bg-black" data-testid="theater-video">
         {video.captions ? <track kind="captions" src={`${media}/captions`} srcLang="en" label="Captions" default /> : null}
       </video>
-      <NoteMarkers videoId={video.id} duration={duration} seek={seek} />
+      <NoteMarkers videoId={video.id} beats={props.data?.props?.beats ?? []} duration={duration} seek={seek} />
+      <BeatEditEntry videoId={video.id} videoRef={ref} seek={seek} read={props.data} openAt={editAt} />
       <TheaterComment videoId={video.id} videoRef={ref} />
       <NotesList videoId={video.id} seek={seek} />
     </Framed>
@@ -99,9 +107,9 @@ function useDuration(ref: RefObject<HTMLVideoElement | null>): number {
   return duration;
 }
 
-function NoteMarkers({ videoId, duration, seek }: { videoId: string; duration: number; seek: Seek }): ReactNode {
+function NoteMarkers({ videoId, beats, duration, seek }: { videoId: string; beats: readonly { id: string; startS: number }[]; duration: number; seek: Seek }): ReactNode {
   const notes = useQuery("videos.notes", { videoId });
-  return notes.data === undefined ? null : <ScrubMarkers notes={notes.data.notes} duration={duration} seek={seek} />;
+  return <ScrubMarkers notes={notes.data?.notes ?? []} beats={beats} duration={duration} seek={seek} />;
 }
 
 function Framed({ title, children }: { title: string; children: ReactNode }): ReactNode {

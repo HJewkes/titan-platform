@@ -81,4 +81,15 @@ describe("on a 390px phone", () => {
     expect(cards.length).toBeGreaterThan(0);
     expect(cards.filter((card) => !isCappedToRow(card))).toEqual([]);
   });
+
+  it("keeps the beat editor's fields, row buttons and save row inside the page", async () => {
+    await renderAt("#/theater/v-relay-intro?t=2&edit=1");
+
+    const editor = await screen.findByTestId("beat-editor");
+    const rowItems = [...editor.querySelectorAll("button, input, h4")].filter((element) => rowItemOf(element) !== null);
+    const fields = [...editor.querySelectorAll("[data-testid^=slot-]")].filter((element) => element.tagName !== "BUTTON");
+    expect(rowItems.length).toBeGreaterThan(0);
+    expect(rowItems.filter((element) => !isCappedToRow(element))).toEqual([]);
+    expect(fields.filter((element) => !element.classList.contains("min-w-0") && !element.closest(".min-w-0"))).toEqual([]);
+  });
 });

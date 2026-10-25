@@ -31,6 +31,7 @@ import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
+import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
@@ -71,6 +72,8 @@ export interface ConsoleSources {
   videos?: VideoCatalog;
   /** Optional so test sources need not build one; absent, `videos.note` stores comments and tells no seat. */
   videoNotify?: SeatNotifier;
+  /** Optional so test sources need not set one; absent, `videos.props` and `videos.edit-check` answer one gap naming the setting. */
+  explainerBin?: string;
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
@@ -124,7 +127,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -149,6 +152,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos, summarizeNotes),
     ...videoNotesCommands(videos, videoNotify),
+    ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
   };

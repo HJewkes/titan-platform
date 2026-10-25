@@ -178,6 +178,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       logger,
     }),
     ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
+    ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
   };
