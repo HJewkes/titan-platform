@@ -38,6 +38,15 @@
       "kills": [
         "a gh command whose group or verb is only known at run time reads it as a switch to an unknown head, so a later push counts as protected"
       ]
+    },
+    {
+      "name": "a dynamic command word read as gh ignores a run-time word",
+      "file": "packages/tool-guard/src/families/gh-path.ts",
+      "find": "  if (isNameReading(cmd)) return hidden;\n",
+      "replace": "  if (isNameReading(cmd)) return false;\n",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads a run-time verb behind a dynamic command word as a gh merge"
+      ]
     }
   ]
 }

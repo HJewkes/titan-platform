@@ -566,6 +566,10 @@ describe("a gh command whose group or verb is only known at run time", () => {
     expect(merges(command).map((a) => [a.spelling, a.subject])).toEqual([["bash.merge.gh-pr-merge", {}]]);
   });
 
+  it("reads a run-time verb behind a dynamic command word as a gh merge", () => {
+    expect(spellings(merges('"$G" pr $X 5'))).toContain("bash.merge.gh-pr-merge");
+  });
+
   it("keeps the PR a literal gh pr merge names", () => {
     expect(merges("gh pr merge 12 --squash").map((a) => a.subject)).toEqual([{ pr: "12" }]);
   });

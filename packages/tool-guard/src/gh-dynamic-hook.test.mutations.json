@@ -10,15 +10,6 @@
         "a dynamic command word read as gh passes \"$EDITOR\" file, whose literal words gh would read as an alias",
         "a dynamic command word read as gh passes \"$PM\" start 3000, whose literal words gh would read as an alias"
       ]
-    },
-    {
-      "name": "a dynamic command word read as gh ignores a run-time word",
-      "file": "packages/tool-guard/src/families/gh-path.ts",
-      "find": "  if (isNameReading(cmd)) return hidden;\n",
-      "replace": "  if (isNameReading(cmd)) return false;\n",
-      "kills": [
-        "a dynamic command word read as gh denies a run-time verb after a literal group"
-      ]
     }
   ]
 }
