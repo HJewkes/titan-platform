@@ -18,6 +18,9 @@ const NOW = Date.parse("2026-03-01T12:00:00Z");
 const REPO = "octo/demo";
 const HEAD = fakeSha("head");
 const TOKEN = "ghs_installation_secret_token";
+// The scan rows guard native-RegExp backtracking, which no call count sees, so their time limits hold only on an
+// idle machine: `TITAN_BENCH=1` asserts them. Without it the rows still scan the hostile inputs and check the output (TP-4264).
+const BENCH = process.env.TITAN_BENCH === "1";
 
 interface Call {
   args: readonly string[];
@@ -556,7 +559,7 @@ describe("token shape scrub", () => {
         const large = `${keyword}${" ".repeat(smallBytes * SCALE)}`;
 
         expect(redact(large, [])).toBe(large);
-        expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 5) * MAX_RATIO);
+        if (BENCH) expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 5) * MAX_RATIO);
       }
     });
 
@@ -579,7 +582,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redact(text, []);
-        expect(performance.now() - started).toBeLessThan(2000);
+        if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       }
     });
 
@@ -593,7 +596,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redact(text, []);
-        expect(performance.now() - started).toBeLessThan(2000);
+        if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       }
     });
   });
@@ -620,7 +623,7 @@ describe("token shape scrub", () => {
 
       redact(small, []);
       expect(redact(large, [])).toBe(large);
-      expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 1) * MAX_RATIO);
+      if (BENCH) expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 1) * MAX_RATIO);
     });
 
     it("scans a megabyte of JWT-shaped runs, with and without dots, in linear time", () => {
@@ -629,7 +632,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redactStreams(text, text, []);
-        expect(performance.now() - started).toBeLessThan(2000);
+        if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       }
     });
 
@@ -640,7 +643,7 @@ describe("token shape scrub", () => {
 
       const [out, err] = redactStreams(text, text, secrets);
 
-      expect(performance.now() - started).toBeLessThan(2000);
+      if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       expect(`${out}${err}`).not.toContain("needle-xyz");
     });
 

@@ -7,6 +7,7 @@ import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
+import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
@@ -433,16 +434,32 @@ describe("inbox ordering", () => {
     expect(items.map((each) => each.id)).toEqual([newer.id, older.id]);
   });
 
-  it("orders 3000 live-sized items within 200 ms", () => {
-    const many = Array.from({ length: 3000 }, (_, n) =>
+  const liveSized = (count: number) => {
+    const many = Array.from({ length: count }, (_, n) =>
       n % 3 === 0 ? gate(`${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`, new Date(Date.UTC(2026, 9, 1) + n * 1000).toISOString()) : item(`ask-${n}`, { lens: n % 2 === 0 ? "planning" : "blocking-agent" }),
     );
     const rows = many.filter((_, n) => n % 3 === 0).map((each, n) => row(each.sources[0]!.ref.slice(0, each.sources[0]!.ref.indexOf("/")), n + 1));
+    return { many, rows };
+  };
 
-    const started = performance.now();
-    const items = inboxItems(many, rows);
+  it("orders 3000 live-sized items", () => {
+    const { many, rows } = liveSized(3000);
 
-    expect(performance.now() - started).toBeLessThan(200);
-    expect(items).toHaveLength(3000);
+    expect(inboxItems(many, rows)).toHaveLength(3000);
+  });
+
+  it("orders live-sized items in work linear in their count", () => {
+    // A run-id lookup lowercases one id, and each sort comparison parses two dates; a scan of the rows per gate is quadratic.
+    const meter = callMeter([[String.prototype, "toLowerCase"], [Date, "parse"]]);
+    try {
+      const { ratio } = linearWork((size) => {
+        const { many, rows } = liveSized(size);
+        return () => inboxItems(many, rows);
+      }, { from: 48, to: 3072, meter: meter.calls });
+
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      meter.restore();
+    }
   });
 });

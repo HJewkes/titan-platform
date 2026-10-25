@@ -34,7 +34,6 @@ const MOTION_PATHS = [
 // Tests that still compare a clock with a limit. TP-4264 empties this list and TP-4076 owns the two tool-guard files; only remove entries.
 const CLOCK_BUDGET_BASELINE = [
   "apps/console/server/events-relay.test.ts",
-  "apps/console/server/inbox-view.test.ts",
   "apps/console/server/rounds-submit.test.ts",
   "packages/agent-surface/src/run-agent.test.ts",
   "packages/anthropic-account/src/node/login.test.ts",
@@ -42,12 +41,8 @@ const CLOCK_BUDGET_BASELINE = [
   "packages/anthropic-account/src/node/usage-file.test.ts",
   "packages/daemon/src/file-watch.test.ts",
   "packages/daemon/src/lifecycle.test.ts",
-  "packages/decider/src/ask-lint.test.ts",
-  "packages/egress-scan/src/allow.test.ts",
   "packages/egress-scan/src/git.test.ts",
-  "packages/github/src/app-token.test.ts",
   "packages/github/src/octokit-client.test.ts",
-  "packages/github/src/redact.test.ts",
   "packages/retrieval/src/fail-open.test.ts",
   "packages/session-read/src/review-verdict.test.ts",
   "packages/session-read/src/spawn-assignment.test.ts",
