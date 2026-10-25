@@ -84,6 +84,7 @@ describe("the D21 owner card", () => {
 
     expect(ciPolicyAt(merge, HEAD)).toEqual({ keys: ["permissions"], changes: [decoy] });
     expect(ciPolicyAt(merge, OTHER)).toBeUndefined();
+    expect(ciPolicyAt({ ...merge, headSha: OTHER }, HEAD)).toBeUndefined();
     expect(ciPolicyAt({ kind: "MERGE", headSha: HEAD, evidence: { head: HEAD, ciPolicy: { kind: "unchanged" } } }, HEAD)).toBeUndefined();
   });
 
