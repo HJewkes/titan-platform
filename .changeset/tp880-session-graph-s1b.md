@@ -11,4 +11,4 @@ session-read: `ReadOptions` gains `toolSpans` and `contextBlocks` (default true)
 
 session-graph: `IndexOptions` gains `indexToolSpans` and `contextBlocks` (default false); `refreshCorpus` forwards `contextBlocks` to `backfillFacets`. Migration 14 replaces `session_state` with `echo_state`, keyed per transcript, and an echo fact is stored only when its value changed. `turn.thinking_ms` now counts the gap from a tool result past a skipped echo.
 
-session-miner and active-work keep storing tool spans and context blocks.
+session-miner and active-work keep storing tool spans and context blocks; active-work does so on both its full and delta passes.
