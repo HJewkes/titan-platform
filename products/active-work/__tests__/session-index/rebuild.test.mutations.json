@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rebuild starts over a .next it was not told to resume",
+      "file": "products/active-work/src/session-index/rebuild.ts",
+      "find": "  if (existsSync(nextPath) && !resume) {\n",
+      "replace": "  if (existsSync(nextPath) && resume) {\n",
+      "kills": [
+        "rebuildGraph refuses a .next a stopped rebuild left behind, and --resume continues it"
+      ]
+    },
+    {
+      "name": "chat review verdicts are carried along with GitHub ones",
+      "file": "products/active-work/src/session-index/rebuild-carry.ts",
+      "find": "  { table: 'pr_review', where: \"surface <> 'chat'\" },\n",
+      "replace": "  { table: 'pr_review' },\n",
+      "kills": [
+        "rebuildGraph carries PR forge columns and GitHub review verdicts into the new file, but not chat verdicts"
+      ]
+    },
+    {
+      "name": "the swap keeps no backup of the old file",
+      "file": "products/active-work/src/session-index/rebuild.ts",
+      "find": "  await fs.link(livePath, backupPath);\n",
+      "replace": "",
+      "kills": [
+        "rebuildGraph carries PR forge columns and GitHub review verdicts into the new file, but not chat verdicts"
+      ]
+    },
+    {
+      "name": "the swap goes ahead when totals differ and refuses only when forced",
+      "file": "products/active-work/src/session-index/rebuild.ts",
+      "find": "  if (!force && !sameTotals(liveTotals, nextTotals)) {\n",
+      "replace": "  if (force && !sameTotals(liveTotals, nextTotals)) {\n",
+      "kills": [
+        "rebuildGraph turn totals that differ swap nothing and leave .next in place unless forced"
+      ]
+    }
+  ]
+}
