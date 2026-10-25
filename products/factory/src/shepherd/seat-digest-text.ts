@@ -40,8 +40,20 @@ function clearedLine(cleared: readonly string[], refs: Readonly<Record<string, s
 }
 
 /**
+ * Unchanged gates fold into a count, since `titan-factory shepherd waiting` lists every pending gate; an unchanged item
+ * of any other kind, such as a seat-fix round, has no command that lists it, so it is listed again in full.
+ */
+function unchangedLines(unchanged: readonly DigestItem[]): string[] {
+  const gates = unchanged.filter((item) => item.gate !== undefined).length;
+  const rest = unchanged.filter((item) => item.gate === undefined).map((item) => item.line);
+  const lines = gates === 0 ? [] : [`Still open: ${gates} unchanged gate${gates === 1 ? "" : "s"}; \`titan-factory shepherd waiting\` lists them.`];
+  return rest.length === 0 ? lines : [...lines, "Still to act on:", ...rest];
+}
+
+/**
  * The digest text, or undefined when nothing changed. A seat with no memory hears every open item; after that it hears
- * only what changed: new open items, the PRs whose items cleared, newly finished runs, and a count of the unchanged rest.
+ * only what changed: new open items, the PRs whose items cleared, newly finished runs, and the unchanged rest per
+ * `unchangedLines`.
  */
 export function digestText(seat: string, open: readonly DigestItem[], fresh: readonly DigestItem[], last: ToldState | undefined): string | undefined {
   const sorted = [...open].sort((a, b) => a.key.localeCompare(b.key));
@@ -55,8 +67,7 @@ export function digestText(seat: string, open: readonly DigestItem[], fresh: rea
   if (last === undefined && sorted.length > 0) lines.push("Open:", ...sorted.map((item) => item.line));
   if (last !== undefined && added.length > 0) lines.push("New:", ...newLines(added));
   if (cleared.length > 0) lines.push(clearedLine(cleared, last?.refs));
-  const unchanged = sorted.length - added.length;
-  if (unchanged > 0) lines.push(`Still open: ${unchanged} unchanged; \`titan-factory shepherd waiting\` lists them.`);
+  if (last !== undefined) lines.push(...unchangedLines(sorted.filter((item) => told.has(item.key))));
   if (fresh.length > 0) lines.push("Finished:", ...fresh.map((item) => item.line));
   return lines.join("\n");
 }
