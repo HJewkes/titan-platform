@@ -125,6 +125,54 @@ describe('delta pass', () => {
     expect(frequency('prompt')).toBeGreaterThan(before);
   });
 
+  it('stores tool spans and context blocks for bytes a delta pass indexes', async () => {
+    writeTranscript(1);
+    await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });
+    const toolLines = [
+      {
+        type: 'assistant',
+        sessionId: 'sess-1',
+        uuid: 'a-tool',
+        timestamp: '2026-01-01T00:00:05.000Z',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }],
+        },
+      },
+      {
+        type: 'user',
+        sessionId: 'sess-1',
+        uuid: 'u-tool',
+        timestamp: '2026-01-01T00:00:06.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'listing output' }],
+        },
+      },
+    ];
+    appendFileSync(
+      path.join(root, 'demo', 's1.jsonl'),
+      toolLines.map((line) => `${JSON.stringify(line)}\n`).join(''),
+      'utf8',
+    );
+    const dirty = createDirtySet();
+    dirty.add(root, 'demo/s1.jsonl');
+    const transcripts = await transcriptsFromDirty(graph, dirty.drain(), [
+      { root, account: 'default' },
+    ]);
+
+    await runRefresh({ graph, mode: 'delta', transcripts, skipWorkspace: true, taskRoot: dir });
+
+    const fields = graph.db
+      .prepare("SELECT DISTINCT field FROM search_span WHERE field LIKE 'tool_%' ORDER BY field")
+      .all() as { field: string }[];
+    expect(fields.map((row) => row.field)).toEqual(['tool_input', 'tool_result']);
+    const blocks = graph.db
+      .prepare("SELECT tool_use_id FROM context_block WHERE source = 'tool_result'")
+      .all();
+    expect(blocks).toEqual([{ tool_use_id: 't1' }]);
+  });
+
   it('visits only recent rows and files with no row when a root is unknown', async () => {
     const [settled, recent] = [writeTranscript(1), writeTranscript(2)];
     await runRefresh({ graph, root, skipPrOutcomes: true, skipWorkspace: true, taskRoot: dir });

@@ -20,6 +20,7 @@ import { runDeltaPass } from './delta-pass.js';
 import { bytesAdvanced, lapTimer } from './pass-metrics.js';
 import { restoreUnvisited, retiredSessions, sealedFilter, unvisitedOk } from './retired.js';
 import { rollupUnfinishedTurns } from './unfinished-turns.js';
+import { EMIT_POLICY } from './emit-policy.js';
 import type { DiscoveredTranscript } from '@titan-design/session-read';
 import { atomicWrite } from '../utils/fs-atomic.js';
 import { isLockContention } from './scheduler.js';
@@ -361,6 +362,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
             },
           }),
       facetLimit: options.facetLimit,
+      ...EMIT_POLICY,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
     const restored = restoreUnvisited(graph, unvisited);

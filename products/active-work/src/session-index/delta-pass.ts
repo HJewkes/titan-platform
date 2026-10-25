@@ -12,6 +12,7 @@ import {
 import type { WorkspaceGraph } from './graph.js';
 import type { DrainedDirtySet } from './dirty-set.js';
 import { transcriptFromPath } from './transcript-path.js';
+import { EMIT_POLICY } from './emit-policy.js';
 import { taskResolver } from './tasks.js';
 import { refreshEpisodes, snapshotOffsets } from './episodes.js';
 import { rollupYielding } from './unfinished-turns.js';
@@ -96,7 +97,7 @@ async function scanTranscripts(
   let facts = 0;
   try {
     for (const transcript of transcripts) {
-      const outcome = await indexTranscript(graph, transcript);
+      const outcome = await indexTranscript(graph, transcript, EMIT_POLICY);
       counts[outcome.status] += 1;
       facts += outcome.facts;
       touched.push(...outcome.sessionIds);

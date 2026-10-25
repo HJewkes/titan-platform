@@ -26,6 +26,10 @@ export interface IndexOptions {
   resolvePrs?: PrResolver;
   /** Index prompts the host labels `promptSource: "sdk"`: spawned agents' briefs, and `claude -p` runs a person typed. Default false. */
   indexSdkPrompts?: boolean;
+  /** Store `tool_input` and `tool_result` search spans. Default false. */
+  indexToolSpans?: boolean;
+  /** Store `context_block` audit rows. Default false. Turning it on later fills only bytes read after that; a rebuild fills the rest. */
+  contextBlocks?: boolean;
 }
 
 export interface RefreshOptions extends IndexOptions {
@@ -74,6 +78,8 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
       fromByteOffset: point.start,
       priorPrefixHash: point.state === "rewritten" ? null : row.prefixHash,
       subagentId: transcript.subagentId,
+      toolSpans: options.indexToolSpans ?? false,
+      contextBlocks: options.contextBlocks ?? false,
     });
     // Two ways to learn a transcript was rewritten, and both must purge. `resumePoint`
     // catches a file that shrank; `extractTranscript` re-hashes the prefix it was asked
@@ -149,7 +155,8 @@ export async function refreshCorpus(graph: SessionGraph, transcripts: readonly D
     facts += outcome.facts;
     touched.push(...outcome.sessionIds);
   }
-  const facets = await backfillFacets(graph, transcripts, { limit: facetLimit });
+  // The backfill deletes and rewrites `context_block`, so it must follow the same policy as the forward read.
+  const facets = await backfillFacets(graph, transcripts, { limit: facetLimit, contextBlocks: perTranscript.contextBlocks });
   touched.push(...facets.sessionIds);
   const turnsRolledUp = rollupSessions(graph, full ? allSessionIds(graph) : touched);
   // Before reconcile, so a worker's subagent row gets its ended_at in the same pass.
