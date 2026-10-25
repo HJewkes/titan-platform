@@ -98,7 +98,7 @@ async function buildNext(nextPath: string): Promise<{ passes: number; errors: st
 function checkpointTruncate(dbPath: string): void {
   const db = new Database(dbPath);
   try {
-    const [result] = db.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[];
+    const result = db.prepare<[], { busy: number }>('PRAGMA wal_checkpoint(TRUNCATE)').get();
     if (result?.busy) throw new Error(`${dbPath}: a reader blocked the checkpoint; nothing was swapped`);
   } finally {
     db.close();

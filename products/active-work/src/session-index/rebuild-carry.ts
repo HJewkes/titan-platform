@@ -17,7 +17,7 @@ const CARRIED: { table: string; where?: string }[] = [
 ];
 
 function columnsOf(db: Database.Database, table: string): string[] {
-  const rows = db.prepare('SELECT name FROM pragma_table_info(?)').all(table) as { name: string }[];
+  const rows = db.prepare<[string], { name: string }>('SELECT name FROM pragma_table_info(?)').all(table);
   return rows.map((row) => row.name);
 }
 
@@ -39,9 +39,9 @@ function carryTable(
     `INSERT OR IGNORE INTO "${spec.table}" (${names}) VALUES (${columns.map(() => '?').join(', ')})`,
   );
   const where = spec.where ? ` WHERE ${spec.where}` : '';
-  const rows = from.prepare(`SELECT ${names} FROM "${spec.table}"${where}`).raw();
+  const rows = from.prepare<[], unknown[]>(`SELECT ${names} FROM "${spec.table}"${where}`).raw();
   let carried = 0;
-  for (const row of rows.iterate() as Iterable<unknown[]>) carried += insert.run(...row).changes;
+  for (const row of rows.iterate()) carried += insert.run(...row).changes;
   return carried;
 }
 
@@ -57,15 +57,17 @@ export function carryNonDerivable(
   return carried;
 }
 
-export interface GraphTotals {
-  turns: number;
-  turnDurationMs: number;
-  toolCalls: number;
-  requests: number;
-  requestCount: number;
-  inputTokens: number;
-  outputTokens: number;
-}
+const TOTAL_KEYS = [
+  'turns',
+  'turnDurationMs',
+  'toolCalls',
+  'requests',
+  'requestCount',
+  'inputTokens',
+  'outputTokens',
+] as const;
+
+export type GraphTotals = Record<(typeof TOTAL_KEYS)[number], number>;
 
 const TOTALS = `SELECT
   (SELECT COUNT(*) FROM turn) AS turns,
@@ -80,12 +82,14 @@ const TOTALS = `SELECT
 export function graphTotals(dbPath: string): GraphTotals {
   const db = openGraphReadOnly(dbPath);
   try {
-    return db.prepare(TOTALS).get() as GraphTotals;
+    const totals = db.prepare<[], GraphTotals>(TOTALS).get();
+    if (!totals) throw new Error(`${dbPath}: the totals query returned no row`);
+    return totals;
   } finally {
     db.close();
   }
 }
 
 export function sameTotals(a: GraphTotals, b: GraphTotals): boolean {
-  return (Object.keys(a) as (keyof GraphTotals)[]).every((key) => a[key] === b[key]);
+  return TOTAL_KEYS.every((key) => a[key] === b[key]);
 }
