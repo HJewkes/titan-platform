@@ -52,6 +52,7 @@ type BridgeCommand = z.infer<typeof CommandSchema>;
 const PORTED_STAGES: Readonly<Record<string, string>> = {
   tts: 'still has a "tts" block, but tts runs in TypeScript now; delete it, and move any command it ran that is not TTS (a sample builder) to the start of "render"',
   sheets: 'still has a "sheets" block, but sheets runs in TypeScript now (the sidecar, poster and fingerprint); delete it, and drop write_video_meta.py and sheets.sh from the host',
+  qa: 'still has a "qa" block, but qa runs in TypeScript now (render-qa); delete it; examples/qa.ts stays only inside the bridged render\'s own render.ts gate until the render stage is ported',
 };
 
 const PortedStagesSchema = z.object({ stages: z.record(z.string(), z.unknown()) });

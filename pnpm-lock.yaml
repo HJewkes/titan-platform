@@ -1278,6 +1278,9 @@ importers:
       '@titan-design/react-ui':
         specifier: ^0.23.1
         version: 0.23.1(tcpsdurwh2bjt32gdxfhihdeqe)
+      '@titan-design/render-qa':
+        specifier: workspace:^
+        version: link:../../packages/render-qa
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read

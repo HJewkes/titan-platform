@@ -11,6 +11,7 @@ import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
 import { openState, resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -38,7 +39,7 @@ describe("explainer run", () => {
 
     expect(result.status, result.error).toBe("completed");
     expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "gather" || stage === "audition" ? "not run" : "ran"]));
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
@@ -289,7 +290,7 @@ describe("the cold rubric on every run", () => {
     expect(result.status, result.error).toBe("completed");
     expect(row(result, "eval").checks).toBe("2 pass, 0 gate fail, 0 reported fail");
     expect(row(result, "eval").notes[0]).toMatch(/^cold rubric \(reported only\)/);
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
   });
 });
 
@@ -339,8 +340,8 @@ describe("explainer run --from", () => {
 
   it("refuses a --from whose base run never finished the stages before it, naming the stage", async () => {
     fx = fixture();
-    const bridge = fakeBridge({ qaFails: true });
-    const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const bridge = fakeBridge();
+    const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { qaEngine: fakeQa(heldOverlap()) }));
 
     await expect(runVideo({ from: "sheets", base: failed.runId }, fakeHost(fx, fakeScriptModel(), bridge))).rejects.toThrow(/has no completed qa stage/);
   });
@@ -387,16 +388,17 @@ describe("spend cap", () => {
 describe("bridged stages", () => {
   it("fails the run at the stage whose command exits non-zero, and a resume starts there", async () => {
     fx = fixture();
-    const failing = fakeBridge({ qaFails: true });
+    const failing = fakeBridge({ renderFails: true });
     const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), failing));
     const bridge = fakeBridge();
 
     const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), bridge));
 
-    expect(failed.error).toContain("bridge qa: command 1 (qa.ts) exited 1: held errors at b1");
-    expect(row(failed, "qa")).toMatchObject({ status: "failed", checks: "0 pass, 1 gate fail, 0 reported fail" });
+    expect(failed.error).toContain("bridge render: command 1 (render.ts) exited 1: capture failed at b1");
+    expect(row(failed, "render")).toMatchObject({ status: "failed" });
     expect(resumed.status, resumed.error).toBe("completed");
-    expect(bridge.calls).toEqual(["qa.ts", "variety.mjs"]);
+    expect(resumed.report.from).toBe("render");
+    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
   });
 
   it("writes each command's output to the run's log directory", async () => {
@@ -404,8 +406,8 @@ describe("bridged stages", () => {
 
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
 
-    const qaChild = row(result, "qa").childRunId!;
-    expect(readFileSync(path.join(fx.dataDir, "runs", qaChild, "logs", "qa-1.log"), "utf8")).toContain("qa PASS demo");
+    const renderChild = row(result, "render").childRunId!;
+    expect(readFileSync(path.join(fx.dataDir, "runs", renderChild, "logs", "render-1.log"), "utf8")).toContain('{"frames":30}');
   });
 });
 
@@ -441,8 +443,8 @@ describe("checks as stage steps", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge({ varietyFails: true })));
 
     expect(result.status, result.error).toBe("completed");
-    expect(row(result, "qa").checks).toBe("1 pass, 0 gate fail, 1 reported fail");
-    expect(readFileSync(result.reportPath, "utf8")).toContain("| qa | variety | reported | **fail** | variety WARN: 3 beats in a row share a framing |");
+    expect(row(result, "render").checks).toBe("0 pass, 0 gate fail, 1 reported fail");
+    expect(readFileSync(result.reportPath, "utf8")).toContain("| render | variety | reported | **fail** | variety WARN: 3 beats in a row share a framing |");
   });
 
   it("lists every stage's verdicts with their role in the report", async () => {
@@ -483,9 +485,9 @@ describe("run report", () => {
 
     const md = readFileSync(result.reportPath, "utf8");
     const bridgedRows = md.split("\n").filter((line) => line.includes("**bridge**")).map((line) => line.split("|")[1]!.trim());
-    expect(bridgedRows).toEqual(["render", "qa"]);
+    expect(bridgedRows).toEqual(["render"]);
     expect(md).toContain(`mp4 ${row(result, "render").outputs.mp4!.slice(0, 12)}`);
-    expect(md).toContain("qa PASS demo: 0 held errors");
+    expect(md).toContain("qa PASS: 0 held errors");
     expect(existsSync(result.reportPath.replace(/\.md$/, ".json"))).toBe(true);
   });
 });

@@ -14,6 +14,7 @@ import { canonicalJson } from "../eval-store.js";
 import { stylePack } from "../profile-fixtures.test-helpers.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -39,7 +40,7 @@ describe("stage cache over whole runs", () => {
 
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toEqual({ gather: "not run", audition: "not run", script: "cached", rewrite: "cached", eval: "cached", resolve: "cached", tts: "cached", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
     expect(model.prompts).toHaveLength(1);
     expect(second.report.totals.usd).toBe(0);
     expect(row(second, "render").outputs.mp4).not.toBe(row(first, "render").outputs.mp4);
@@ -56,8 +57,9 @@ describe("stage cache over whole runs", () => {
 
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toMatchObject({ script: "cached", tts: "cached", render: "ran" });
-    // The fake render writes the same MP4 for any pack, so QA and sheets, keyed on its sha, hit the cache.
-    expect(bridge.calls).toEqual(["render.ts"]);
+    // The fake render writes the same MP4 and page for any pack, so QA and sheets, keyed on their shas, hit the cache.
+    expect(statuses(second)).toMatchObject({ qa: "cached" });
+    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
   });
 
   it("a stage's wall time spans its body, read from the clock after the body returns", async () => {
@@ -90,7 +92,7 @@ describe("stage cache over whole runs", () => {
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toEqual({ gather: "not run", audition: "not run", script: "cached", rewrite: "ran", eval: "ran", resolve: "ran", tts: "ran", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
     expect(unchanged.prompts.length).toBeGreaterThan(0);
-    expect(bridge.calls).toEqual(["render.ts", "qa.ts", "variety.mjs"]);
+    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
   });
 
   it("a variant file for another stage is refused before any stage runs", async () => {
@@ -161,7 +163,7 @@ describe("pins over a base run", () => {
     const bridge = fakeBridge();
     const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
     const draft = row(first, "script").outputs.draft!;
-    const failed = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), fakeBridge({ qaFails: true })));
+    const failed = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), fakeBridge(), { qaEngine: fakeQa(heldOverlap()) }));
     const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), bridge));
 
     const followUp = await runVideo({ from: "tts", base: resumed.runId }, fakeHost(fx, fakeScriptModel(), bridge));

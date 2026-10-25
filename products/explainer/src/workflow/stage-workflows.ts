@@ -19,6 +19,8 @@ import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 import { kokoroEngine } from "./tts-engine.js";
 import { runTtsStage, type TtsEngine } from "./tts-stage.js";
 import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
+import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
+import { runQaStage } from "../qa/qa-stage.js";
 
 interface BodyDeps {
   dataDir: string;
@@ -36,6 +38,8 @@ interface BodyDeps {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; the host's own by default. */
   media?: MediaExec;
+  /** The qa stage's browser and ffprobe; real Chromium and the host's ffprobe by default. */
+  qaEngine?: QaEngine;
 }
 
 /** One `explainer.<stage>` run: the stage body on the spec it was started with, resolve's custom-layer builds, then the stage's checks over its artifacts. */
@@ -68,6 +72,7 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   }
   if (stage === "tts") return runTtsBody(config, input, deps);
   if (stage === "sheets") return runSheetsBody(config, input, deps);
+  if (stage === "qa") return runQaBody(config, input, deps);
   return runBridgeStage({
     stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
     logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
@@ -97,6 +102,12 @@ function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps
   const { take, status, stem } = config.sheets;
   const settings = { take, status, stem, ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
   return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia());
+}
+
+function runQaBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.qa) throw new Error("qa stage spec has no gate profile");
+  const settings = { ...config.qa, ...(config.profile ? { profile: config.profile.type } : {}) };
+  return runQaStage({ ...input, store: deps.store }, settings, deps.qaEngine ?? chromiumQaEngine(deps.media));
 }
 
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {

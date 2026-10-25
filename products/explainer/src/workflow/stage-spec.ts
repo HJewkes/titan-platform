@@ -14,6 +14,7 @@ import type { StylePack } from "../style-pack-schema.js";
 import { SIDECAR_STATUSES } from "../video-sidecar.js";
 import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
+import { loadQaGate, QaInspectSchema } from "../qa/gate-profile.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
@@ -24,18 +25,18 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type 
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x4", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x10", sheets: "x10",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
 const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly string[]> = {
-  gather: [], audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"], sheets: ["mp4", "script"],
+  gather: [], audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"], qa: ["mp4", "words", "script", "page"], sheets: ["mp4", "script"],
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  sheets: ["render-json", "resolved", "slots", "qa", "visual"],
+  qa: ["timeline", "resolved"], sheets: ["render-json", "resolved", "slots", "qa", "visual"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -97,6 +98,8 @@ export const StageConfigSchema = z.object({
   /** The sheets stage's sidecar take and status, the theater stem its poster is named after, and the structure registry by hash. */
   sheets: z.object({ take: z.string(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
   video: VideoRefSchema.optional(),
+  /** The qa stage's gate profile for the run's type, by content hash, and the bridged spike page's stem. */
+  qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, page: z.string().optional() }).optional(),
   /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
   builder: BuilderRefSchema.optional(),
 });
@@ -163,6 +166,13 @@ function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParams
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
+/** The gate profile is read when the spec is built, so an edit to it or to the run's type re-keys qa. */
+function qaConfig(settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
+  z.strictObject({}).parse(params);
+  const qa = { ...loadQaGate(settings.profile), page: bridge().theater.stem };
+  return { qa, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
+}
+
 function settingsConfig(stage: CachedStage, settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
   if (stage === "gather") {
     z.strictObject({}).parse(params);
@@ -186,6 +196,7 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
   if (stage === "resolve") return { ...z.strictObject({}).parse(params), ...resolveConfig() };
   if (stage === "tts") return { voice: ttsVoice(settings.profile, TtsParamsSchema.parse(params)), rates: bandRates() };
   if (stage === "sheets") return sheetsConfig(settings, SheetsParamsSchema.parse(params), bridge);
+  if (stage === "qa") return qaConfig(settings, params, bridge);
   return bridgeConfig(stage, params, bridge);
 }
 

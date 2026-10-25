@@ -16,6 +16,7 @@ import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { TtsEngine } from "./tts-stage.js";
+import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
 export const SPINE = `# Story spine: parcel-desk
@@ -56,15 +57,12 @@ const BRIDGE: Omit<z.input<typeof BridgeFileSchema>, "workdir" | "theater"> = {
   stages: {
     render: {
       inputs: { words: "out/words.json", audio: "out/audio" },
-      outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false } },
-      commands: [{ argv: ["node", "tools/render.ts", "{out.mp4}", "--workers", "{var.workers}"], timeoutS: 60 }],
+      outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false }, page: { path: "out/page", tree: true } },
+      commands: [
+        { argv: ["node", "tools/render.ts", "{out.mp4}", "--workers", "{var.workers}"], timeoutS: 60 },
+        { argv: ["node", "tools/variety.mjs"], timeoutS: 60, check: "variety", gate: false },
+      ],
       vars: { workers: "4" },
-    },
-    qa: {
-      inputs: { mp4: "out/demo.mp4" },
-      outputs: { qa: { path: "out/qa.json", tree: false } },
-      commands: [{ argv: ["node", "tools/qa.ts"], timeoutS: 60, check: "qa" }, { argv: ["node", "tools/variety.mjs"], timeoutS: 60, check: "variety", gate: false }],
-      vars: {},
     },
   },
 };
@@ -96,22 +94,27 @@ const write = (file: string, text: string) => {
 const at = (req: ExecRequest, rel: string) => path.join(req.cwd, rel);
 
 interface BridgeOptions {
-  qaFails?: boolean;
+  /** The render command exits non-zero before writing anything. */
+  renderFails?: boolean;
   /** The variety lint (a reported-only check) exits non-zero. */
   varietyFails?: boolean;
 }
+
+const PlayedSchema = z.object({ beats: z.array(z.object({ durationS: z.number() })) });
+
+/** The fake render's MP4 plays its beats back to back, as the fake QA engine reads it. */
+const playedS = (words: string): number => PlayedSchema.parse(JSON.parse(words)).beats.reduce((sum, beat) => sum + beat.durationS, 0);
 
 /** Each template command's stand-in, by script name: it writes what the real one would, derived from its inputs. */
 function templateBodies(options: BridgeOptions): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
   return {
     "render.ts": (req) => {
-      write(req.argv[2]!, `mp4:workers=${req.argv[4]}:${readFileSync(at(req, "out/words.json"), "utf8")}`);
+      if (options.renderFails) return { code: 1, stdout: "" };
+      const words = readFileSync(at(req, "out/words.json"), "utf8");
+      write(req.argv[2]!, JSON.stringify({ workers: req.argv[4], words: sha256(words), durationS: playedS(words) }));
       write(at(req, "out/demo.vtt"), "WEBVTT\n");
+      write(at(req, "out/page/index.html"), "<!doctype html><title>demo</title>\n");
       return { code: 0, stdout: '{"frames":30}\n' };
-    },
-    "qa.ts": (req) => {
-      write(at(req, "out/qa.json"), JSON.stringify({ pass: !options.qaFails }));
-      return options.qaFails ? { code: 1, stdout: "qa FAIL demo: 1 held errors\n" } : { code: 0, stdout: "qa PASS demo: 0 held errors, 2 moments\n" };
     },
     "variety.mjs": () => (options.varietyFails ? { code: 1, stdout: "variety WARN: 3 beats in a row share a framing\n" } : { code: 0, stdout: "variety ok\n" }),
   };
@@ -125,7 +128,7 @@ export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
     const name = path.basename(req.argv[1]!);
     calls.push(name);
     const { code, stdout } = bodies[name]!(req);
-    return { code, stdout, stderr: code === 0 ? "" : "held errors at b1\n" };
+    return { code, stdout, stderr: code === 0 ? "" : "capture failed at b1\n" };
   };
   return { exec, calls };
 }
@@ -288,6 +291,6 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
-  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now, beatWorker: null };
+  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), qaEngine: fakeQa(), evalChecks: [l0Check(true)], now, beatWorker: null };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
 }

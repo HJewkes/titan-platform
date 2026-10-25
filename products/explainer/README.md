@@ -249,7 +249,8 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
 | `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
-| `render`, `qa` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
+| `render` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
+| `qa` | in-process, no model call: render-qa's cue-moment gate over the served page tree in Chromium, the gate profile's verdict, and ffprobe for the MP4's length (below) | mp4, words, script, page (+ timeline, resolved when a run has them) → qa, qa-crops |
 | `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-json, qa, visual when a run has them) → sidecar, poster, fingerprint |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
@@ -363,6 +364,25 @@ histograms, the close type, the signature layer, the slot-masked spoken 4-gram h
 null until the beat-aware sheets land. The sidecar's copy carries the grams by hash only. A host `bridge.json` that
 still has a `sheets` block is refused: delete it, along with its `sheets.sh` and `write_video_meta.py` commands.
 
+**QA stage** (`src/qa/`, TP-2999 part A). `runQaStage` builds the QA timeline from the render's `timeline` artifact
+(its beats and beat-local cue seconds), or, for a bridged render that wrote none, from `words` (beat lengths, back to
+back) with the `script` cues resolved by `cueResolverFromWords` over the beats `keptBeats` keeps. It materialises the
+`page` tree, serves it on loopback (`serveTree`) and opens the composition page with `?timeline=` or, without a
+timeline, the bridged spike page with `?page=<theater stem>`. At every render-qa cue moment it runs `inspectAt`, then
+`addLateFill` and `classify` with the gate profile's gating kinds, writes an annotated crop per held error (at most 8
+per kind) as the `qa-crops` tree, reads the MP4's length through ffprobe, and writes `qa.json` (`explainer.qa/v1`:
+`pass`, `profile`, `gateProfileSha`, `gate`, `timeline`, `moments`, `errorCounts`, `infoCounts`, `errors` and `info`
+by beat with `kind`, `ts`, `at`, `reason`, `el`, `text` and `crop`, `mp4 { durationS, timelineS, frameS }`, `notes`).
+The body never fails on a finding: its `held-errors` and `mp4-duration` gates read `qa.json`, so a held error fails
+the stage with the spike's one-line summary (`qa FAIL: 3 held errors (text-overlap 2, off-frame 1), …`) and the run
+stops before sheets. The browser and ffprobe sit behind `QaEngine`; `chromiumQaEngine` is the default and tests pass
+a fake. The gate profile `doctrine/qa/gate-profile.yaml` (`explainer.qa-gate-profile/v1`, `loadQaGate`) holds the
+`default` gating kinds and inspector thresholds and per-type overrides (`gate` adds kinds, `info` demotes them,
+`inspect` sets thresholds). Its loader refuses a kind render-qa cannot gate and a type no `types/<type>.yaml`
+defines. The default gates every kind render-qa can gate, as the spike's `examples/qa.ts` did. Its hash and the
+resolved policy are part of the qa key, as is the MP4, so a new render reruns QA. A host `bridge.json` that still has
+a `qa` block is refused: delete it.
+
 The bridge is temporary: it runs today's template commands, Python included, from a host file kept outside the repo,
 so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
 (`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
@@ -375,8 +395,7 @@ names the folder, the file stem and the suffix per artifact for `export`; `--the
 instead. A type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads
 `bridges/<name>.json` from the per-user explainer data dir, whatever `--data-dir` says, so one host bridge serves
 every run of the type with no per-run copy. A bridged stage's `inputs` are also its
-cache key: declare every artifact its commands read (the MP4 for `qa`), or a new render will hit an old
-QA entry.
+cache key: declare every artifact its commands read, or a changed input will hit an old cache entry.
 
 **Checks as stage steps.** Each `explainer.<stage>` child run is two code steps: the body, then `checks:<stage>`,
 which runs the stage's deterministic checks from the workflow plan's §5.1 over its input and output artifacts. Every
@@ -402,7 +421,8 @@ it ran with; use `--sample script=<k>` to run the check on a draft already made.
 same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
-| `render`, `qa` | the `check` commands of the host's `bridge.json` block (for example the render cue gate and `qa`) | `check` commands with `gate: false` |
+| `render` | the `check` commands of the host's `bridge.json` block (for example the render cue gate) | `check` commands with `gate: false` |
+| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame | — |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism

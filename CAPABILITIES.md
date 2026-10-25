@@ -1554,7 +1554,8 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render and QA through a host bridge file of today's template commands (marked as bridged in every report row),
+then render through a host bridge file of today's template commands (marked as bridged in every report row),
+then the qa stage in process (`runQaStage`: render-qa's cue-moment gate in Chromium behind a `QaEngine` seam, the `doctrine/qa/gate-profile.yaml` verdict through `loadQaGate`, and `qa.json` as `explainer.qa/v1` with findings by beat),
 then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
 `fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
 then a hard-linked export to the theater;
