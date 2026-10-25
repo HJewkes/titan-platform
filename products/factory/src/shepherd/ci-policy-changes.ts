@@ -30,7 +30,7 @@ export const MAX_LINE_CHARS = 160;
 // eslint-disable-next-line no-control-regex -- ANSI sequences are exactly what the owner prompt must not render
 const ANSI_SEQUENCE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|[@-Z\\-_])/g;
 // eslint-disable-next-line no-control-regex -- control characters are exactly what a prompt line refuses
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
 
 /** Escapes and control characters go before any matcher reads the line, so neither can hide a line from the card. */
 const cleanLine = (line: string): string => line.replace(ANSI_SEQUENCE, "").replace(/\t/g, "  ").replace(CONTROL, "").trimEnd();
@@ -46,8 +46,22 @@ const SECRETS_LINE = /secrets\.|secrets\s*:\s*inherit/;
 const NAME_LINE = /^\s*(?:-\s*)?name\s*:/;
 const QUOTED = /"[^"]+"/;
 
+/**
+ * YAML breaks a line at CR, LF or CRLF, so a bare CR must split, never be stripped into a join that hides a line from
+ * every matcher. NEL and the Unicode separators split too: a viewer may render them as breaks, and split, each piece
+ * still carries the card's own prefix.
+ */
+const LINE_BREAK = /\r\n|[\r\n\u0085\u2028\u2029]/;
+
+/** Above this many table cells the changed middle of a file reads as wholly changed, which shows more lines, never fewer. */
+const MAX_DIFF_CELLS = 4_000_000;
+
 const isRulesetPath = (path: string): boolean => /^\.github\/rulesets\//i.test(path);
 const isRequiredChecksPath = (path: string): boolean => /^\.github\/required-checks\.json$/i.test(path);
+
+const linesOf = (text: string): string[] => text.split(LINE_BREAK).map(cleanLine);
+
+const indicesWhere = (lines: readonly string[], test: (line: string) => boolean): Set<number> => new Set(lines.flatMap((line, index) => (test(line) ? [index] : [])));
 
 /** The job-id lines: the first indent level under a top-level `jobs:`, which ends at the next top-level key. */
 function jobIdLines(lines: readonly string[]): Set<number> {
@@ -69,38 +83,74 @@ function jobIdLines(lines: readonly string[]): Set<number> {
   return ids;
 }
 
-/** The lines of `text` that bear on `key`; `other` names nothing, so the owner reads that change in the diff. */
-function keyLines(key: CiPolicyKey, path: string, text: string): string[] {
-  const lines = text.split(/\r?\n/).map(cleanLine);
+/** The indices of the lines that bear on `key`; `other` names none, so the owner reads that change in the diff. */
+function keyLines(key: CiPolicyKey, path: string, lines: readonly string[]): Set<number> {
   switch (key) {
     case "permissions":
-      return lines.filter((line) => PERMISSION_LINE.test(line));
+      return indicesWhere(lines, (line) => PERMISSION_LINE.test(line));
     case "pull_request_target":
-      return lines.filter((line) => line.includes("pull_request_target"));
+      return indicesWhere(lines, (line) => line.includes("pull_request_target"));
     case "secrets":
-      return lines.filter((line) => SECRETS_LINE.test(line));
+      return indicesWhere(lines, (line) => SECRETS_LINE.test(line));
     case "ruleset":
-      return isRulesetPath(path) ? lines.filter((line) => line.trim() !== "") : [];
+      return isRulesetPath(path) ? indicesWhere(lines, (line) => line.trim() !== "") : new Set();
     case "required-check":
       return requiredCheckLines(path, lines);
     case "other":
-      return [];
+      return new Set();
   }
 }
 
-function requiredCheckLines(path: string, lines: readonly string[]): string[] {
-  if (isRequiredChecksPath(path)) return lines.filter((line) => QUOTED.test(line));
+function requiredCheckLines(path: string, lines: readonly string[]): Set<number> {
+  if (isRequiredChecksPath(path)) return indicesWhere(lines, (line) => QUOTED.test(line));
   const ids = jobIdLines(lines);
-  return lines.filter((line, index) => ids.has(index) || NAME_LINE.test(line));
+  for (const index of indicesWhere(lines, (line) => NAME_LINE.test(line))) ids.add(index);
+  return ids;
 }
 
 /** A trailing comma is list punctuation, so dropping the last entry of a JSON list does not move the entry before it; indent still counts, as YAML nests by it. */
 const diffKey = (line: string): string => line.replace(/,$/, "");
 
-function lineDiff(before: readonly string[], after: readonly string[]): { removed: string[]; added: string[] } {
-  const kept = new Set(after.map(diffKey));
-  const had = new Set(before.map(diffKey));
-  return { removed: before.filter((line) => !kept.has(diffKey(line))), added: after.filter((line) => !had.has(diffKey(line))) };
+/** Base indices the head removes and head indices it adds. */
+interface LineEdits {
+  removed: number[];
+  added: number[];
+}
+
+const range = (from: number, to: number): number[] => Array.from({ length: Math.max(0, to - from) }, (_, offset) => from + offset);
+
+/**
+ * A positional diff of whole files: the common prefix and suffix, then a longest-common-subsequence over the rest, so a
+ * swapped, moved or repeated line still shows. Set membership would cancel a `read` and a `write` that trade places.
+ */
+function lineEdits(before: readonly string[], after: readonly string[]): LineEdits {
+  const a = before.map(diffKey);
+  const b = after.map(diffKey);
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) [endA, endB] = [endA - 1, endB - 1];
+  if ((endA - start + 1) * (endB - start + 1) > MAX_DIFF_CELLS) return { removed: range(start, endA), added: range(start, endB) };
+  const middle = lcsEdits(a.slice(start, endA), b.slice(start, endB));
+  return { removed: middle.removed.map((index) => index + start), added: middle.added.map((index) => index + start) };
+}
+
+function lcsEdits(a: readonly string[], b: readonly string[]): LineEdits {
+  const width = b.length + 1;
+  const table = new Uint32Array((a.length + 1) * width);
+  const at = (i: number, j: number): number => table[i * width + j] ?? 0;
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) table[i * width + j] = a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+  }
+  const edits: LineEdits = { removed: [], added: [] };
+  let [i, j] = [0, 0];
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) [i, j] = [i + 1, j + 1];
+    else if (j >= b.length || (i < a.length && at(i + 1, j) >= at(i, j + 1))) edits.removed.push((i += 1) - 1);
+    else edits.added.push((j += 1) - 1);
+  }
+  return edits;
 }
 
 /** Spends one file's line budget in key order, removed lines first, so a long key cannot hide every other one. */
@@ -118,15 +168,23 @@ function capped(changes: CiPolicyChange[]): CiPolicyChange[] {
   });
 }
 
+/** Each shown line names its 1-based line number on its own side, so two lines of the same text in different jobs stay apart. */
+const numbered = (lines: readonly string[], indices: readonly number[], keyed: ReadonlySet<number>): string[] =>
+  indices.filter((index) => keyed.has(index)).map((index) => shownLine(`L${index + 1}:${lines[index] ?? ""}`));
+
 /**
- * The before→after lines of each weakened key in each file: a line in the base and not the head is removed, and the
- * reverse is added. A key whose lines did not change in a file yields no entry for it.
+ * The before→after lines of each weakened key in each file: a line the positional diff removes from the base is removed,
+ * and one it adds at the head is added. A key with no such line in a file yields no entry for it.
  */
 export function ciPolicyChanges(keys: readonly CiPolicyKey[], files: readonly CiPolicyFile[]): CiPolicyChange[] {
   return files.flatMap((file) => {
+    const before = linesOf(file.before);
+    const after = linesOf(file.after);
+    const edits = lineEdits(before, after);
     const changes = keys.flatMap((key): CiPolicyChange[] => {
-      const { removed, added } = lineDiff(keyLines(key, file.path, file.before), keyLines(key, file.path, file.after));
-      return removed.length + added.length === 0 ? [] : [{ path: shownLine(file.path), key, removed: removed.map(shownLine), added: added.map(shownLine), omitted: 0 }];
+      const removed = numbered(before, edits.removed, keyLines(key, file.path, before));
+      const added = numbered(after, edits.added, keyLines(key, file.path, after));
+      return removed.length + added.length === 0 ? [] : [{ path: shownLine(file.path), key, removed, added, omitted: 0 }];
     });
     return capped(changes);
   });

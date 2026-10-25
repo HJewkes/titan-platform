@@ -793,7 +793,7 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
     const evidence = await collect(seeded(), WEAKENED);
 
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
-    expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, key: "permissions", removed: ["  contents: write"], added: ["  contents: read"], omitted: 0 }]);
+    expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, key: "permissions", removed: ["L2:  contents: write"], added: ["L2:  contents: read"], omitted: 0 }]);
   });
 
   it("reads no file for an unchanged line", async () => {

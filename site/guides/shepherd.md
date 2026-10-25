@@ -1598,8 +1598,10 @@ allows a merge; it only gates one:
   a weaker CI policy.
   Its approve-merge gate is the D21 card: it names the class and the weakened keys, and shows,
   for each changed `.github/` file, the lines of those keys that the head removes from or adds to
-  the base branch, read through `getFile` at both refs. The lines are the PR author's, so each is
-  stripped of escape and control characters and cut at 160 characters, and a file shows at most
+  the base branch, read through `getFile` at both refs. The files are split at every line break
+  YAML reads (CR, LF, CRLF) and at NEL and the Unicode separators, and diffed by position, so a
+  swapped or repeated line still shows, each with its line number. The lines are the PR author's, so each is
+  stripped of escape, control and zero-width characters and cut at 160 characters, and a file shows at most
   20 lines. `other` has no matcher and sends the owner to the diff. A file that cannot be read,
   or one past the first ten, is named in the gate's reason and the gate still opens.
 - The label is read on every raw line, fenced, indented or commented out, and with any casing,

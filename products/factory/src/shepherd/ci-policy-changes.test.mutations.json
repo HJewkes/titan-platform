@@ -2,10 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "base and head swap in the line diff",
+      "name": "removed lines are read from the head side",
       "file": "products/factory/src/shepherd/ci-policy-changes.ts",
-      "find": "lineDiff(keyLines(key, file.path, file.before), keyLines(key, file.path, file.after))",
-      "replace": "lineDiff(keyLines(key, file.path, file.after), keyLines(key, file.path, file.before))",
+      "find": "const removed = numbered(before, edits.removed, keyLines(key, file.path, before));",
+      "replace": "const removed = numbered(after, edits.removed, keyLines(key, file.path, after));",
       "kills": [
         "ciPolicyChanges shows a permission scope narrowed from write to read as a removed and an added line",
         "ciPolicyChanges swapping base and head swaps removed and added"
@@ -14,10 +14,10 @@
     {
       "name": "matchers read lines before escapes are stripped",
       "file": "products/factory/src/shepherd/ci-policy-changes.ts",
-      "find": "const lines = text.split(/\\r?\\n/).map(cleanLine);",
-      "replace": "const lines = text.split(/\\r?\\n/);",
+      "find": "text.split(LINE_BREAK).map(cleanLine)",
+      "replace": "text.split(LINE_BREAK)",
       "kills": [
-        "ciPolicyChanges strips an ANSI escape, a bidi override and a carriage return from an author's head line and its path"
+        "ciPolicyChanges strips an ANSI escape, a bidi override and a zero-width space from an author's head line and its path"
       ]
     },
     {
@@ -30,21 +30,21 @@
       ]
     },
     {
-      "name": "a trailing comma counts as a changed line",
+      "name": "a bare CR does not split a line",
       "file": "products/factory/src/shepherd/ci-policy-changes.ts",
-      "find": "const diffKey = (line: string): string => line.replace(/,$/, \"\");",
-      "replace": "const diffKey = (line: string): string => line;",
+      "find": "const LINE_BREAK = /\\r\\n|[\\r\\n",
+      "replace": "const LINE_BREAK = /\\r\\n|[\\n",
       "kills": [
-        "ciPolicyChanges reads the required context strings of .github/required-checks.json"
+        "ciPolicyChanges splits at a bare CR as YAML does, so a job joined onto one line cannot hide its write-all behind a decoy edit"
       ]
     },
     {
-      "name": "line and paragraph separators survive into the card",
+      "name": "line and paragraph separators do not split a line",
       "file": "products/factory/src/shepherd/ci-policy-changes.ts",
-      "find": "\\u200f\\u2028\\u2029\\u202a",
-      "replace": "\\u200f\\u202a",
+      "find": "\\u0085\\u2028\\u2029]/;",
+      "replace": "\\u0085]/;",
       "kills": [
-        "ciPolicyChanges strips a line or paragraph separator, so a head line cannot fake a removed, added or file line on the card"
+        "ciPolicyChanges splits at a line or paragraph separator and strips one from a path, so neither can fake an unprefixed card line"
       ]
     }
   ]
