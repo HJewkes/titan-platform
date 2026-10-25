@@ -1,0 +1,48 @@
+{
+ "task": "TP-2998",
+ "python": "3.14.4",
+ "bundle": {
+  "path": "motion-spike-video.bundle",
+  "sha256": "bd029f8af3e825ad9d7aaf3296654fa8ff43f76a2f9c22fdd20490d5a207ed99"
+ },
+ "tool": {
+  "path": "rf-snapshot/qa/s9/sweep_moments.py",
+  "sha256": "08d4b62e73b1db38bad9c21601148a458ec212ae820a7c773e278c2068b6ef98"
+ },
+ "scripts": {
+  "redesign-explainer-v4": {
+   "words": {
+    "branch": "video/rx-v4",
+    "commit": "6a09ca2a9a9b863b136429e2ab4b787ded2cc8fc",
+    "path": "examples/samples/redesign-explainer-v4.words.json",
+    "sha256": "ceddfcac4b400130cbb8358127df2028c4d50205039cdedb896ed8b3f6b26a8d"
+   },
+   "visual": {
+    "path": "build_script.py --visual output (the A2 visual.json golden)",
+    "sha256": "78f1bb3ff4973e9de379d52468059cf1b5018fee6c7c03602fb51829ec90d337"
+   },
+   "argv": ["python3", "-I", "sweep_moments.py", "words.json", "visual.json", "sweep_moments.json"],
+   "exitCode": 0,
+   "moments": 1486,
+   "beatsSha256": "11044b387ffb4f375a24829cb6070b3ac5f29a5d3e7a96a5aa14d7991ac4e111",
+   "outputSha256": "73aa4e402bd257a0ab1de6b05f37fa67add16600b08e901eb4c09a96b10c6cdf"
+  },
+  "review-addendum-v5": {
+   "words": {
+    "branch": "video/rx-addendum-r2",
+    "commit": "209c91ba11e180e2e9f483399a0f7f545ed2c670",
+    "path": "examples/samples/review-addendum-v5.words.json",
+    "sha256": "32abdd92d4543edc9d9ad7e39c3e8671c2931b7622066c6e9d6784c65f9a4690"
+   },
+   "visual": {
+    "path": "build_script.py --visual output (the A2 visual.json golden)",
+    "sha256": "b3ed65d3e84ef82d580046b2685e71d51232670bf92d1aa0563475255aa2b6f4"
+   },
+   "argv": ["python3", "-I", "sweep_moments.py", "words.json", "visual.json", "sweep_moments.json"],
+   "exitCode": 0,
+   "moments": 593,
+   "beatsSha256": "ba3a3c7b1c77ac905e4ed683b3baf249ecf1dabd3c26d965a87b081842377e68",
+   "outputSha256": "dede8b050f4aefa700a0c3f95e314ff6d2f22ae1582a36eb8015e4398944d432"
+  }
+ }
+}

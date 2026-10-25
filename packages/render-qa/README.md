@@ -2,7 +2,8 @@
 
 The render QA gate as a library. It seeks any page that speaks the `__titanMotion` protocol to chosen moments,
 measures the DOM at each one, and applies a persistence rule that separates held layout errors from an entrance
-passing through. It reads no video file and knows nothing of beats' components, React or a product's policy.
+passing through. Its one video reader, `frameDiffs`, decodes through ffmpeg; it knows nothing of beats' components,
+React or a product's policy.
 
 Tier 2 of the titan-platform DAG. It depends on `@titan-design/frame-capture` (tier 1) and takes `playwright-core`
 as a peer, as frame-capture does. The `video-mechanism-no-react:render-qa` rule in `.codewatch/check.json` keeps
@@ -43,6 +44,28 @@ await writeCrops(browser, url, errors, cropDir, DEFAULT_OPTIONS)
   transient sample is info. `late-fill` gates on one sample, and so do `double-chrome` and `under-chrome`, the only
   kinds read at the `start` and `enter` moments. A `wrap` gates only when it leaves an orphan.
 - `writeCrops` writes an annotated PNG per held error, at most 8 per kind, and sets each error's `crop` file name.
+
+## Sweep, probe and frame change
+
+```ts
+import { frameDiffs, probeMoments, sweepMoments } from '@titan-design/render-qa'
+
+const sweep = sweepMoments(beats, { settleBy: (b) => (b.kind === 'outro' ? 1 : 0) }) // the settle rule is policy
+const probed = await probeMoments(page, sweep.filter((m) => m.kind === 'end'))
+const diffs = await frameDiffs('out/video.mp4') // one share per frame; tests pass an exec in place of ffmpeg
+```
+
+- `sweepMoments(beats, { hz = 2, settleBy })`: samples on a grid counted from the video's start, not per beat. Each
+  beat's settled sample (kind `end`) is its last one before `end - settleBy(beat)`, or its last when none is; every
+  other sample is a `cue` moment, so `classify` treats them as it treats cue moments. It equals the archived
+  `sweep_moments.py` (`src/fixtures/sweep/`, a copy of `products/explainer/fixtures/spike/goldens/sweep/`).
+- `probeMoments(page, moments)`: per moment, every visible text run (text, font px, tag, class list, one box per
+  rendered line, and every ancestor that clips it, painted or not, with the element itself first when it clips) and
+  every visible element that holds text or paint, with `decor` set under `data-qa-decor`. Empty layout wrappers are
+  left out. The types are render-qa's own; a product adapts them to its checks.
+- `frameDiffs(video, exec?)`: each frame decoded to 320x180 grey, as the share of pixels that moved more than 3
+  levels since the frame before (frame 0 is 0). Counting pixels, not a mean, is what catches a small element's fade.
+  It rejects when ffmpeg fails, so an unreadable video never reads as a still one.
 
 ## Finding kinds
 
@@ -93,7 +116,8 @@ session reads it when the caller passes no cues.
 ## Where it came from
 
 A port of the motion spike's QA gate (`examples/qa/{inspect,held,moments,session}.ts` and the crop writer in
-`examples/qa.ts`). Two changes are deliberate: `openQaPage` takes `cues` (a composition page has no `__cueLog`), and
+`examples/qa.ts`), its `examples/framediff.ts` and `examples/probe.ts` (extended with line boxes, clips and element
+boxes), and the archived `qa/s9/sweep_moments.py` sweep. Two changes are deliberate: `openQaPage` takes `cues` (a composition page has no `__cueLog`), and
 `classify` takes the gating kinds. The inspector runs in the page as one serialised step per check, bound to a
 shared object at run time, so each check fits this repo's function and file limits and still reaches the others
 whatever a bundler renames. `src/fixtures/qa-fixtures.html` is a plain-HTML port of the spike's seeded-defect page:
