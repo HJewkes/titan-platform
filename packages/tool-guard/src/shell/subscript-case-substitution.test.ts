@@ -51,6 +51,28 @@ describe("a $( ) in a subscript whose ) a case pattern or heredoc body holds", (
   });
 });
 
+describe("a ${ } funsub in a subscript whose } a case pattern, heredoc body or comment holds", () => {
+  // Bash 5.3 parses a funsub or valsub body as commands, so the `}` inside it does not end it and runs the command after each `#`.
+  it.each([
+    ["a case pattern", "((1)); a[ ${ case x in }) esac; : ]; } # ]=1; git push origin HEAD:main"],
+    ["a case pattern, ahead of gh pr merge", "( ((1)); a[ ${ case x in }) esac; : ]; } # ]=1; gh pr merge 1 )"],
+    ["a heredoc body", "( ((1)); a[ ${ cat <<E\n}\nE\n: ]; } # ]=1; git push origin HEAD:main )"],
+    ["a comment", "declare -A a; ((1)); a[ ${ : # }\n: ]; } # ]=1; git push origin HEAD:main"],
+    ["a case pattern in a valsub", "((1)); a[ ${| case x in }) esac; : ]; } # ]=1; git push origin HEAD:main"],
+    ["a case pattern after a line continuation", "((1)); a[ ${\\\n case x in }) esac; : ]; } # ]=1; git push origin HEAD:main"],
+  ])("denies %s", async (_name, command) => {
+    expect(await decisionOf(command)).toBe("deny");
+  });
+
+  it.each([
+    ["a parameter expansion", "((1)); a[${x}]=x # c"],
+    ["a length expansion", "((1)); a[${#x}]=x # c"],
+    ["a funsub with no # after it", "((1)); a[${ f; }]=x"],
+  ])("passes %s", async (_name, command) => {
+    expect(await decisionOf(command)).toBeNull();
+  });
+});
+
 const BUDGET_MS = 2500;
 const CASE_SPAN = "$(case x in x) esac) ";
 

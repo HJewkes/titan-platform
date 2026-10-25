@@ -22,7 +22,7 @@ const PAREN_BODY = " \t=+-*/%!~^|?:,.@[]()$";
 const IDENTIFIER_CHAR = /[A-Za-z0-9_]/;
 
 /** What follows `${` in a funsub, which holds commands whose `}` need not close it. */
-const FUNSUB_START = /[\s|]/;
+export const FUNSUB_START = /[\s|]/;
 
 /**
  * Index of the last character of the unsure `${ }`, `$( )` or backquote span at `j` when it holds only text whose

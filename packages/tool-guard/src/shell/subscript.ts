@@ -1,7 +1,7 @@
 import { dollarOpener } from "./balanced.js";
 import { joinedDollar, joinedWithIndex, readAhead } from "./joins.js";
 import type { Token, WordToken } from "./lexer.js";
-import { opensUnsureSpan, selfContainedEnd } from "./span-scan.js";
+import { FUNSUB_START, opensUnsureSpan, selfContainedEnd } from "./span-scan.js";
 
 const ASSIGNMENT_WORD_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
 /** `(` is left out: inside a case pattern it opens no command, and a subshell then splits as on main. */
@@ -238,9 +238,11 @@ function skippedSpan(j: number, end: number): number {
 /**
  * Index of the `close` ending a `$( )` or `${ }` body that starts at `from`, nesting and quotes included; UNSURE when
  * it never closes. A `[` may open a nested spaced subscript whose `)` or `}` is no closer, and in `$( )` some text
- * moves the closer, so the scan cannot be sure and returns UNSURE.
+ * moves the closer, so the scan cannot be sure and returns UNSURE. A funsub or valsub (`${ `, `${⏎`, `${|`) holds
+ * commands too, whose comments, case patterns and heredoc bodies may hold a `}` that closes nothing, so it is never sure.
  */
 function closingSubstitution(src: string, from: number, open: string, close: string, spans: SpanEnds): number {
+  if (open === "{" && FUNSUB_START.test(readAhead(src, from, 1).text)) return UNSURE;
   let depth = 1;
   for (let k = from; k < src.length; k++) {
     const end = skipQuoted(src, k, spans);
