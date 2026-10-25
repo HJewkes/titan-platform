@@ -66,14 +66,17 @@ function writeTranscript(name: string, lines = FIXTURE_LINES): void {
 }
 
 describe('runRefresh', () => {
-  it('keeps storing tool_result spans and context_block rows until TP-881 drops them', async () => {
+  it('stores only prompt and reply spans and no context_block rows for a transcript with tool calls', async () => {
     writeTranscript('a.jsonl');
 
     await runRefresh({ skipPrOutcomes: true, graph, root });
 
-    const n = (sql: string) => (graph.db.prepare(sql).get() as { n: number }).n;
-    expect(n("SELECT COUNT(*) AS n FROM search_span WHERE field = 'tool_result'")).toBeGreaterThan(0);
-    expect(n('SELECT COUNT(*) AS n FROM context_block')).toBeGreaterThan(0);
+    const fields = graph.db
+      .prepare("SELECT DISTINCT field FROM search_span WHERE owner_ref LIKE 'session:%' ORDER BY field")
+      .all() as { field: string }[];
+    expect(fields.map((row) => row.field)).toEqual(['assistant_response', 'prompt']);
+    const blocks = graph.db.prepare('SELECT COUNT(*) AS n FROM context_block').get() as { n: number };
+    expect(blocks.n).toBe(0);
   });
 
   it('a pass yields before the workspace half and before replaying preserved rows', async () => {

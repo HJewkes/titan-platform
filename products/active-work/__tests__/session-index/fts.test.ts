@@ -21,8 +21,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** Opts in to tool spans the way `runRefresh` does; `indexToolSpans: false` reads with the package default. */
-async function index({ indexToolSpans = true } = {}): Promise<void> {
+/** Reads with the package default, which `runRefresh` keeps; `indexToolSpans: true` opts in to tool spans. */
+async function index({ indexToolSpans = false } = {}): Promise<void> {
   const absolutePath = path.join(dir, 'session.jsonl');
   writeFileSync(absolutePath, renderTranscript(FIXTURE_LINES), 'utf8');
   await indexTranscript(
@@ -79,7 +79,7 @@ describe('search_fts population', () => {
   });
 
   it('indexes assistant prose, tool inputs and tool results under their own fields', async () => {
-    await index();
+    await index({ indexToolSpans: true });
 
     expect(search('"on it"').map((r) => r.field)).toEqual(['assistant_response']);
     expect(search('boom').map((r) => r.field)).toEqual(['tool_result']);
@@ -88,7 +88,7 @@ describe('search_fts population', () => {
   });
 
   it('stores no tool span under the session-graph default', async () => {
-    await index({ indexToolSpans: false });
+    await index();
 
     expect(search('boom')).toEqual([]);
     expect(search('checkout')).toEqual([]);
@@ -96,7 +96,7 @@ describe('search_fts population', () => {
   });
 
   it('does not index JSON field names', async () => {
-    await index();
+    await index({ indexToolSpans: true });
 
     expect(search('file_path')).toEqual([]);
     expect(search('subagent_type')).toEqual([]);
