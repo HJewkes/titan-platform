@@ -1,4 +1,5 @@
 import { priceRequest } from "@titan-design/session-analytics";
+import { queuedWake, userWake, type Wake } from "./wakes.js";
 
 export interface Spend {
   calls: number;
@@ -32,6 +33,8 @@ export interface SessionScan {
   instructions: InstructionFile[];
   /** Tool-result and attachment chars by kind, raw and weighted by the later calls that re-read them. */
   carried: Map<string, { raw: number; carried: number }>;
+  /** Pushed messages that start or join a turn, each with the trigger that sent it. */
+  wakes: Wake[];
 }
 
 type Rec = Record<string, unknown>;
@@ -71,6 +74,7 @@ class Scanner {
     snapshot: null,
     instructions: [],
     carried: new Map(),
+    wakes: [],
   };
   private readonly seen = new Set<string>();
   private readonly toolKinds = new Map<string, string>();
@@ -80,13 +84,14 @@ class Scanner {
     if (j.type === "agent-name") this.scan.name ??= str(j.agentName) || null;
     else if (j.type === "attachment") this.attachment(rec(j.attachment), j);
     else if (j.type === "assistant") this.assistant(rec(j.message), str(j.timestamp));
-    else if (j.type === "user") this.user(rec(j.message).content);
+    else if (j.type === "user") this.user(j);
   }
 
   private attachment(a: Rec, j: Rec): void {
     const kind = str(a.type);
     if (kind === "prompt_snapshot") this.scan.snapshot = snapshotOf(a, str(j.timestamp)) ?? this.scan.snapshot;
     if (kind === "instructions") this.scan.instructions = list(a.files).map((f) => ({ path: str(rec(f).path), type: str(rec(f).type), chars: str(rec(f).content).length }));
+    if (kind === "queued_command") this.scan.wakes.push({ at: str(a.timestamp) || str(j.timestamp), trigger: queuedWake(a) });
     if (CARRIED_ATTACHMENTS.has(kind)) this.events.push([this.scan.spend.calls, `att:${kind}`, JSON.stringify(j.rendered ?? a).length]);
   }
 
@@ -118,7 +123,10 @@ class Scanner {
     if (!priced.priced) s.unpriced += 1;
   }
 
-  private user(content: unknown): void {
+  private user(j: Rec): void {
+    const content = rec(j.message).content;
+    const trigger = userWake(j);
+    if (trigger) this.scan.wakes.push({ at: str(j.timestamp), trigger });
     if (typeof content === "string" && content.includes("<channel")) this.events.push([this.scan.spend.calls, "channel-msg", content.length]);
     for (const block of list(content).map(rec)) {
       if (block.type === "tool_result") this.events.push([this.scan.spend.calls, this.toolKinds.get(str(block.tool_use_id)) ?? "?", textLength(block.content)]);
