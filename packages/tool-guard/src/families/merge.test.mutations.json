@@ -19,6 +19,25 @@
         "one fixture per bash.merge spelling a readHead that throws reads as an unknown protected head git push origin HEAD",
         "one fixture per bash.merge spelling a readHead that throws reads as an unknown protected head git merge x"
       ]
+    },
+    {
+      "name": "an unknown gh path is read only for a literal pr merge",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  if (cmd.name === \"gh\") return ghPathUnknown(cmd) ? [classified(\"bash.merge.gh-pr-merge\", {})] : [...prMerge(cmd), ...apiMerge(cmd)];",
+      "replace": "  if (cmd.name === \"gh\") return [...prMerge(cmd), ...apiMerge(cmd)];",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads gh $X as a merge of an unknown PR",
+        "a gh command whose group or verb is only known at run time reads gh pr $X 5 as a merge of an unknown PR"
+      ]
+    },
+    {
+      "name": "an unknown gh path does not switch the branch",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "    const checksOut = ghPathUnknown(cmd) || /^pr checkout\\b/",
+      "replace": "    const checksOut = /^pr checkout\\b/",
+      "kills": [
+        "a gh command whose group or verb is only known at run time reads it as a switch to an unknown head, so a later push counts as protected"
+      ]
     }
   ]
 }
