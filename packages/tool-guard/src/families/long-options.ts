@@ -88,6 +88,17 @@ export const WGET_LONG = table(`
   warc-dedup= warc-digests warc-file= warc-header= warc-keep-log warc-max-size= warc-tempdir= xattr`);
 
 /**
+ * Every long option `git push` 2.53.0 accepts, as `git push --git-completion-helper-all` lists them; `=` marks one that
+ * takes a required value. git reads any unique prefix as the option (`--tag` is `--tags`) and refuses an ambiguous one.
+ */
+export const GIT_PUSH_LONG = table(`
+  all atomic branches delete dry-run exec= follow-tags force force-if-includes force-with-lease ipv4 ipv6 mirror no-all no-atomic
+  no-branches no-delete no-dry-run no-exec no-follow-tags no-force no-force-if-includes no-force-with-lease no-mirror no-porcelain
+  no-progress no-prune no-push-option no-quiet no-receive-pack no-recurse-submodules no-repo no-set-upstream no-signed no-tags no-thin
+  no-verbose no-verify porcelain progress prune push-option= quiet receive-pack= recurse-submodules= repo= set-upstream signed tags thin
+  verbose verify`);
+
+/**
  * Maps a `--flag` to the table entry it names: an exact match wins, then a unique prefix, as getopt_long and older
  * curl both read one. Several prefix matches give AMBIGUOUS_LONG; none leaves the flag as given.
  */

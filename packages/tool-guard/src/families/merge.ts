@@ -13,6 +13,7 @@ import { httpRequest, isWrite } from "./http-request.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
 import type { Options } from "./options.js";
+import { GIT_PUSH_LONG, resolveLong } from "./long-options.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
 /** The Version Packages branch; merging it is a release, which the release family classifies. */
@@ -28,7 +29,11 @@ const GH_PR_MERGE_VALUES = set("-b", "--body", "-F", "--body-file", "-t", "--sub
 const GH_API_VALUES = set("-X", "--method", "-f", "--raw-field", "-F", "--field", "-H", "--header", "--input", "-q", "--jq", "-t", "--template", "-p", "--preview", "--hostname", "--cache");
 const GIT_MERGE_VALUES = set("-m", "--message", "-F", "--file", "-s", "--strategy", "-X", "--strategy-option", "--into-name", "--cleanup");
 const GIT_MERGE_CONTROL = ["--abort", "--continue", "--quit", "--skip"];
-const GIT_PUSH_VALUES = set("--repo", "-o", "--push-option", "--receive-pack", "--exec");
+const GIT_PUSH_VALUES = set("-o", ...GIT_PUSH_LONG.values);
+const resolvePushLong = resolveLong(GIT_PUSH_LONG, false);
+
+/** `git push`'s options, a unique prefix such as `--tag` or `--mirr` read as the option git runs. */
+export const readPushOptions = (args: WordToken[]): Options => readOptions(args, GIT_PUSH_VALUES, resolvePushLong);
 
 export interface PrMerge {
   /** The PR number, URL or branch named, null for the current branch's PR. */
@@ -195,7 +200,7 @@ function tagPush(options: Options, specs: string[], config: readonly string[]): 
 }
 
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
-  const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
+  const options = readPushOptions(git.subArgs);
   const refspecs = options.positionals.slice(1);
   const specs = refspecs.flatMap((s) => literalSpec(s) ?? []);
   return [...tagPush(options, specs, git.config), ...branchPush(options, refspecs, specs, git, ctx)];

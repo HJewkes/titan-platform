@@ -3,7 +3,7 @@ import { parseGit } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
 import type { ClassifiedAction, ClassifyContext } from "../types.js";
-import { merge } from "./merge.js";
+import { merge, readPushOptions } from "./merge.js";
 import { hasFlag, readOptions, set } from "./options.js";
 import type { Options } from "./options.js";
 import { release } from "./release.js";
@@ -68,12 +68,11 @@ function wrapsText(cmd: SimpleCommand): boolean {
 
 const git = (cmd: SimpleCommand): GitInvocation | null => (cmd.name === "git" ? parseGit(cmd.args, cmd.dir) : null);
 const GIT_BRANCH_VALUES = set("-u", "--set-upstream-to", "--format", "--sort", "--contains", "--merged", "--points-at");
-const GIT_PUSH_VALUES = set("-o", "--push-option", "--repo", "--receive-pack", "--exec");
 
 function deletesBranchOrPushesTag(inv: GitInvocation): boolean {
   if (inv.sub === "branch") return hasFlag(readOptions(inv.subArgs, GIT_BRANCH_VALUES), "-d", "-D", "--delete");
   if (inv.sub !== "push") return false;
-  const options = readOptions(inv.subArgs, GIT_PUSH_VALUES);
+  const options = readPushOptions(inv.subArgs);
   if (hasFlag(options, "-d", "--delete", "--tags", "--follow-tags")) return true;
   return options.positionals.slice(1).some((s) => s.value.startsWith(":") || s.value.includes("refs/tags/"));
 }
@@ -123,7 +122,6 @@ const testsLiveRoot = (cmd: SimpleCommand) =>
 /** Per subcommand, the options that take a value, so a message such as `-m "--no-verify"` is not read as the flag. */
 const GIT_VALUES: Record<string, ReadonlySet<string>> = {
   commit: set("-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "-t", "--template", "--author", "--date", "--trailer", "--fixup", "--squash", "--cleanup"),
-  push: GIT_PUSH_VALUES,
   merge: set("-m", "--message", "-F", "--file", "-s", "--strategy", "-X", "--strategy-option"),
 };
 
@@ -131,7 +129,7 @@ function skipsHooks(cmd: SimpleCommand): boolean {
   const inv = git(cmd);
   if (!inv?.sub) return false;
   if (inv.config.some((c) => /^core\.hookspath=/i.test(c))) return true;
-  const options = readOptions(inv.subArgs, GIT_VALUES[inv.sub] ?? set());
+  const options = inv.sub === "push" ? readPushOptions(inv.subArgs) : readOptions(inv.subArgs, GIT_VALUES[inv.sub] ?? set());
   return hasFlag(options, "--no-verify") || (inv.sub === "commit" && hasFlag(options, "-n"));
 }
 
