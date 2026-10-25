@@ -163,6 +163,7 @@ export async function runDeltaPass(options: DeltaPassOptions): Promise<RefreshSu
     turnsRolledUp,
     tasksRequested: tasks.requested,
     tasksApplied: tasks.applied,
+    prsPolled: 0,
     workspace,
     preserved: NO_PRESERVED,
     errors: tasks.failed ? [`tasks: ${tasks.error ?? 'resolver failed'}`] : [],
