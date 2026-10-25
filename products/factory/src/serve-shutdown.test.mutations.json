@@ -16,6 +16,7 @@
       "find": "  for (const sweep of abandoned) sweep.abort();",
       "replace": "  void abandoned;",
       "kills": [
+        "serve's bounded shutdown close gives a hung tick the grace and no longer",
         "serve's bounded shutdown a hung tick's child process is killed at the end of the grace"
       ]
     }

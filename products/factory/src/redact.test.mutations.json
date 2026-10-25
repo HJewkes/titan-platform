@@ -16,6 +16,8 @@
       "find": "String.raw`${AFTER}sk-[A-Za-z0-9_-]{20,}`,",
       "replace": "String.raw`sk-[A-Za-z0-9_-]{20,}`,",
       "kills": [
+        "error text stored as evidence leaves task-sk-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa unchanged",
+        "error text stored as evidence leaves risk-assessment-for-the-quarterly-review unchanged",
         "error text stored as evidence scans 100 kB of sk- runs in linear time"
       ]
     }

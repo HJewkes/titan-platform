@@ -7,6 +7,7 @@
       "find": "    if (child.pid !== undefined) process.kill(-child.pid, \"SIGKILL\");",
       "replace": "    if (child.pid !== undefined) process.kill(-child.pid, \"SIGTERM\");",
       "kills": [
+        "execChore kills a chore that outlives its timeout and records it as timed out",
         "execChore kills a chore that traps SIGTERM once its timeout passes"
       ]
     },
@@ -20,10 +21,10 @@
       ]
     },
     {
-      "name": "an exited chore is settled only once a daemon releases its output",
+      "name": "an exited chore waits out its whole timeout, not the pipe grace",
       "file": "products/factory/src/workflows/post-merge.ts",
       "find": "    graceTimer = setTimeout(() => settle({ exitCode, signal }), options.pipeGraceMs ?? POST_MERGE_PIPE_GRACE_MS);",
-      "replace": "    void POST_MERGE_PIPE_GRACE_MS;",
+      "replace": "    graceTimer = setTimeout(() => settle({ exitCode, signal }), options.timeoutMs);",
       "kills": [
         "execChore settles on the chore's exit plus the pipe grace when a setsid'd daemon holds its output"
       ]

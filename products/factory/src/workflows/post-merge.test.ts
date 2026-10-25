@@ -242,9 +242,9 @@ describe("execChore", () => {
   }, 20_000);
 
   it("settles on the chore's exit plus the pipe grace when a setsid'd daemon holds its output", async () => {
-    const daemon = "const c = require('node:child_process').spawn('sleep', ['10'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }); c.unref(); console.log(c.pid)";
+    const daemon = "const c = require('node:child_process').spawn('sleep', ['5'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }); c.unref(); console.log(c.pid)";
 
-    const result = await execChore([process.execPath, "-e", daemon], options({ timeoutMs: 5_000, pipeGraceMs: 200 }));
+    const result = await execChore([process.execPath, "-e", daemon], options({ timeoutMs: 20_000, pipeGraceMs: 200 }));
     const held = Number(result.stdout.trim());
     track(held);
 
