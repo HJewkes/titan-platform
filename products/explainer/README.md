@@ -773,3 +773,19 @@ A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contrac
   tolerance and its `why`, and `fittedFrom`). `simDoctrineSha` is the sha a trace records as `doctrine`.
   `checkSims(SIM_MODELS, loadSims())` reports a model with no doctrine file (`E-SIM-NO-DOCTRINE`), a doctrine file
   with no model (`E-SIM-NO-MODEL`) and a doctrine statistic the model does not emit (`E-SIM-STAT-UNEMITTED`).
+
+## Composition page
+
+`src/composition/` is one built Vite page that renders any `timeline.json` (TP-2991, milestone M9). Build it with
+`pnpm --filter @titan-design/explainer build:page` (into `dist/composition/`) and open `index.html?timeline=<url of
+timeline.json>`. The page fetches the timeline, then mounts react-ui's `MotionProvider` on a `seekClock` with the
+beats in one commit, so `window.__titanMotion` appears only once frame 0 can draw; any `__titanMotion` renderer, such
+as `@titan-design/frame-capture`, can capture it. Each beat's `kind` resolves through the registry in `registry.tsx`,
+which parses its slots; an unknown kind or bad slots throw in the page, and a page error fails the capture. A timeline
+with `provisional: true` carries a DRAFT badge. `baked.html` renders `fixtures/fixture.timeline.json` imported at
+build time: the reference the runtime page must match byte for byte.
+
+The registry holds `hook`, whose slots are `BEAT_SLOTS.hook`, and `catalogue` (react-ui's `FileCard`, `SchemaCard` and
+`Annotate`) until `@titan-design/beats` is published (TD-907), when the page resolves kinds through that package
+instead. The page reads only `durationS`, `provisional` and each beat's `id`, `kind`, `startS`, `durationS`, `cues`
+and `slots`; `compileTimeline` (TP-2990) owns the rest of `timeline.json`.

@@ -32,7 +32,8 @@
   "private": true,
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:page": "vite build -c src/composition/vite.config.ts"
   },
   "dependencies": {
     "@titan-design/agent": "workspace:^",
@@ -47,6 +48,7 @@
     "@titan-design/hitl": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",
+    "@titan-design/react-ui": "^0.23.1",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/speech-g2p": "workspace:^",
     "@titan-design/speech-stt": "workspace:^",
@@ -56,11 +58,21 @@
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
     "playwright-core": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-native-web": "^0.21.0",
     "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@titan-design/test-kit": "workspace:*"
+    "@titan-design/test-kit": "workspace:*",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.6.1",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.17",
+    "vite": "^8.0.3"
   },
   "bin": {
     "explainer": "./dist/bin.js"
