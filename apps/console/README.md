@@ -936,6 +936,9 @@ the verdict and the read-back, and the console posts from them (`server/broker-v
 byte. A replay of a settled confirm answers from the outcome it settled and never reaches the broker. A prompt
 decided first elsewhere comes back `closed`. A refusal, including the 404 of a broker that has not deployed the
 verdict routes yet, names the terminal command: `agent-chat approve <id> allow|deny` or `agent-chat endorse <id>`.
+On the page the row's Approve opens the sheet, and the read-back sets its confirming taps in place of Confirm: Allow
+and Deny under a permission prompt's tool, input preview and description, or Endorse under the recipient and the
+stored text, shown in a whitespace-preserving block. Each sends `inbox.act` with only the `verdict` added.
 
 An `owner-op` tap (`server/inbox-op.ts`) takes its read-back from the factory's `owner-op.preview` on loopback,
 never from the deposit: GitHub's live head, title, base, behind and mergeable state, the Shepherd hold, and the

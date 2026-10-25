@@ -33,8 +33,8 @@
     {
       "name": "the act is sent without the prepared confirm",
       "file": "apps/console/src/pages/TapSheet.tsx",
-      "find": "{ ...JSON.parse(argsKey), confirm: prepared.confirm }",
-      "replace": "{ ...JSON.parse(argsKey) }",
+      "find": "{ ...JSON.parse(argsKey), ...choice, confirm: prepared.confirm }",
+      "replace": "{ ...JSON.parse(argsKey), ...choice }",
       "kills": ["the inbox page, acting from the console sends the prepared confirm on the second tap, shows the outcome inline and reads the inbox again"]
     },
     {
