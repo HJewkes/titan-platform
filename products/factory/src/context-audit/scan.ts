@@ -64,7 +64,13 @@ function snapshotOf(attachment: Rec, at: string): Snapshot | null {
 }
 
 class Scanner {
-  readonly scan: SessionScan = { name: null, spend: { calls: 0, turn1: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, usd: 0, unpriced: 0 }, snapshot: null, instructions: [], carried: new Map() };
+  readonly scan: SessionScan = {
+    name: null,
+    spend: { calls: 0, turn1: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0, usd: 0, unpriced: 0 },
+    snapshot: null,
+    instructions: [],
+    carried: new Map(),
+  };
   private readonly seen = new Set<string>();
   private readonly toolKinds = new Map<string, string>();
   private readonly events: [call: number, kind: string, chars: number][] = [];
@@ -90,17 +96,17 @@ class Scanner {
       this.toolKinds.set(str(block.id), name === "Bash" ? bashKind(str(rec(block.input).command)) : name);
     }
     const id = str(m.id);
-    const u = rec(m.usage);
     if (!m.usage || this.seen.has(id)) return;
     this.seen.add(id);
-    this.count(u, str(m.model), at);
+    this.count(rec(m.usage), str(m.model), at);
   }
 
   private count(u: Rec, model: string, at: string): void {
     const s = this.scan.spend;
     const split = rec(u.cache_creation);
     const tokens = { inputTokens: num(u.input_tokens), cacheReadTokens: num(u.cache_read_input_tokens), cacheCreationTokens: num(u.cache_creation_input_tokens) };
-    const priced = priceRequest({ ...tokens, cacheCreation5mTokens: num(split.ephemeral_5m_input_tokens) || undefined, cacheCreation1hTokens: num(split.ephemeral_1h_input_tokens) || undefined, outputTokens: num(u.output_tokens) }, model, at);
+    const ttlSplit = { cacheCreation5mTokens: num(split.ephemeral_5m_input_tokens) || undefined, cacheCreation1hTokens: num(split.ephemeral_1h_input_tokens) || undefined };
+    const priced = priceRequest({ ...tokens, ...ttlSplit, outputTokens: num(u.output_tokens) }, model, at);
     if (s.calls === 0) s.turn1 = tokens.inputTokens + tokens.cacheCreationTokens + tokens.cacheReadTokens;
     s.calls += 1;
     s.input += tokens.inputTokens;

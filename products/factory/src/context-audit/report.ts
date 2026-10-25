@@ -77,8 +77,10 @@ const sum = (values: readonly number[]): number => values.reduce((a, b) => a + b
 function spendLines(spend: AuditReport["spend"]): string[] {
   const rows = [...spend].sort(([, a], [, b]) => b.usd - a.usd);
   const head = `${"role".padEnd(16)}${["sessions", "calls", "turn1", "cache_write", "cache_read", "output", "usd"].map((h) => h.padStart(12)).join("")}`;
-  const line = ([role, s]: [string, RoleSpend]): string =>
-    `${role.padEnd(16)}${[String(s.sessions), String(s.calls), k(s.turn1 / s.sessions), k(s.cacheWrite), k(s.cacheRead), k(s.output), s.usd.toFixed(2)].map((c) => c.padStart(12)).join("")}${s.unpriced ? `  (${s.unpriced} calls unpriced)` : ""}`;
+  const line = ([role, s]: [string, RoleSpend]): string => {
+    const cells = [String(s.sessions), String(s.calls), k(s.turn1 / s.sessions), k(s.cacheWrite), k(s.cacheRead), k(s.output), s.usd.toFixed(2)];
+    return `${role.padEnd(16)}${cells.map((c) => c.padStart(12)).join("")}${s.unpriced ? `  (${s.unpriced} calls unpriced)` : ""}`;
+  };
   return ["spend by role (turn1 is the mean first-call context; usd is API-equivalent)", head, ...rows.map(line)];
 }
 

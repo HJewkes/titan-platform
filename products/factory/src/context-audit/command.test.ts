@@ -19,6 +19,7 @@ const IMPLEMENTER = [
   { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu1", content: "y".repeat(50) }] } },
   assistant("m2", usage(5, 50, 1000, 20)),
   "not json",
+  assistant("m3", usage(0, 0, 1100, 5)),
 ];
 const REVIEWER = [{ type: "agent-name", agentName: "rv-pr-9" }, snapshot("2026-10-21T09:00:00Z", ["base prompt", "You review."], ["Read"]), assistant("r1", usage(1, 2000, 0, 10))];
 const OLD_COORDINATOR = [{ type: "agent-name", agentName: "ws-coord" }, snapshot("2026-09-01T09:00:00Z", ["Rule marker A."], []), assistant("c1", usage(1, 1, 1, 1))];
@@ -55,7 +56,7 @@ describe("context-audit report", () => {
   it("sums each role's spend once per message id and leaves out transcripts older than the window", async () => {
     const { code, out } = await audit("--days", "7");
     expect(code).toBe(0);
-    expect(out).toMatch(/^implementer\s+1\s+2\s+1\.0k\s+1\.1k\s+1\.0k\s+120\s+0\.01$/m);
+    expect(out).toMatch(/^implementer\s+1\s+3\s+1\.0k\s+1\.1k\s+2\.1k\s+125\s+0\.01$/m);
     expect(out).toMatch(/^reviewer\s+1\s+1\s+2\.0k\s+2\.0k\s+0\s+10\s+0\.01$/m);
     expect(out).not.toContain("coordinator");
   });
@@ -70,7 +71,7 @@ describe("context-audit report", () => {
 
   it("weights tool results by the later calls that carry them, keyed by program and subcommand", async () => {
     const { out } = await audit();
-    expect(out).toMatch(/^ {2}bash:pnpm test\s+raw\s+50\s+carried\s+50 /m);
+    expect(out).toMatch(/^ {2}bash:pnpm test\s+raw\s+50\s+carried\s+100 /m);
   });
 });
 

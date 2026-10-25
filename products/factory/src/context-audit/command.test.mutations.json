@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a message split over several records counts once per record",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "if (!m.usage || this.seen.has(id)) return;",
+      "replace": "if (!m.usage) return;",
+      "kills": ["context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"]
+    },
+    {
+      "name": "transcripts older than the window are read",
+      "file": "products/factory/src/context-audit/command.ts",
+      "find": ".mtimeMs >= since)",
+      "replace": ".mtimeMs >= 0)",
+      "kills": ["context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"]
+    },
+    {
+      "name": "the first snapshot in a session wins over the newest",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "this.scan.snapshot = snapshotOf(a, str(j.timestamp)) ?? this.scan.snapshot;",
+      "replace": "this.scan.snapshot ??= snapshotOf(a, str(j.timestamp));",
+      "kills": [
+        "context-audit report lists the newest snapshot's layers and the instructions files per profile and role",
+        "context-audit --assert-rule passes when every listed role's newest system prompt carries the marker"
+      ]
+    },
+    {
+      "name": "a tool result counts once however many later calls carry it",
+      "file": "products/factory/src/context-audit/scan.ts",
+      "find": "row.carried += chars * Math.max(this.scan.spend.calls - call, 0);",
+      "replace": "row.carried += chars;",
+      "kills": ["context-audit report weights tool results by the later calls that carry them, keyed by program and subcommand"]
+    },
+    {
+      "name": "a role with no snapshot in the window passes the assert",
+      "file": "products/factory/src/context-audit/report.ts",
+      "find": "if (!held.length) return [`FAIL ${role}: no prompt_snapshot in the window`];",
+      "replace": "if (!held.length) return [];",
+      "kills": ["context-audit --assert-rule fails for a role whose prompt lacks the marker and for a role with no snapshot in the window"]
+    }
+  ]
+}
