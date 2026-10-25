@@ -144,8 +144,13 @@ export interface CiPolicyChangesRead {
   unread: string[];
 }
 
+interface PrAt {
+  repo: RepoSlug;
+  head: string;
+}
+
 /** Reads each changed `.github/` file at the base branch and at the head; a failed read never stops the weakened gate opening. */
-export async function readCiPolicyChanges(port: GitHubPort, at: { repo: RepoSlug; head: string }, baseRef: string, keys: readonly CiPolicyKey[], githubPaths: readonly string[]): Promise<CiPolicyChangesRead> {
+export async function readCiPolicyChanges(port: GitHubPort, at: PrAt, baseRef: string, keys: readonly CiPolicyKey[], githubPaths: readonly string[]): Promise<CiPolicyChangesRead> {
   const read = githubPaths.slice(0, MAX_CARD_FILES);
   const reads = await Promise.all(read.map((path) => cardFile(port, at.repo, path, baseRef, at.head)));
   const files = reads.filter((file): file is CiPolicyFile => !("unread" in file));
