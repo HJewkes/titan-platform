@@ -1,6 +1,7 @@
 import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
 import { parseGit, splits } from "../shell/git.js";
+import { configTrue } from "../shell/git-verbs.js";
 import { continuesChain } from "../shell/reading-hand-on.js";
 import type { GitInvocation } from "../shell/git.js";
 import type { WordToken } from "../shell/lexer.js";
@@ -10,6 +11,7 @@ import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
 import { httpRequest, isWrite } from "./http-request.js";
 import { mayReachGitHubApi } from "./github-endpoint.js";
 import { hasFlag, lastValue, readOptions, set, valuesOf } from "./options.js";
+import type { Options } from "./options.js";
 
 const PROTECTED_RE = /^(?:main|master|release\/.+)$/;
 /** The Version Packages branch; merging it is a release, which the release family classifies. */
@@ -172,10 +174,33 @@ function hasUnknownDestination(git: GitInvocation, refspecs: WordToken[]): boole
 /** `"$@"` and `"${arr[@]}"`, with or without an operator such as `:0` or `#x`, give one word per element even when quoted, so any of them may be a refspec. */
 const expandsToMany = (word: WordToken) => word.dynamic && /\$@|\$\{@|\[@\]/.test(word.typed ?? word.value);
 
+/**
+ * A tag ref, a `v<digit>` name such as `v1` or `v2.3.0`, or a changesets release tag such as `@scope/pkg@1.2.0` or
+ * `pkg@1.2.0`: the usual shapes of a release tag.
+ */
+const TAG_REF_RE = /^(?:(?:refs\/)?tags\/.|v\d|(?:@[^/@:]+\/)?[^@:/]+@\d)/;
+
+/** The ref a refspec updates names a tag; with no colon the source names the destination too. */
+function pushesTag(spec: string): boolean {
+  const plain = spec.replace(/^\+/, "");
+  return TAG_REF_RE.test(plain.slice(plain.lastIndexOf(":") + 1));
+}
+
+/** `--tags`, `--follow-tags` or `-c push.followTags`, a tag refspec or git's `tag <name>` form: moving a tag is a release. */
+function tagPush(options: Options, specs: string[], config: readonly string[]): ClassifiedAction[] {
+  const named = specs.some((s, i) => pushesTag(s) || (s === "tag" && i < specs.length - 1));
+  const flagged = hasFlag(options, "--tags", "--follow-tags") || configTrue(config, "push.followtags");
+  return flagged || named ? [classified("bash.release.git-push-tag", {})] : [];
+}
+
 function gitPush(git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   const options = readOptions(git.subArgs, GIT_PUSH_VALUES);
   const refspecs = options.positionals.slice(1);
   const specs = refspecs.flatMap((s) => literalSpec(s) ?? []);
+  return [...tagPush(options, specs, git.config), ...branchPush(options, refspecs, specs, git, ctx)];
+}
+
+function branchPush(options: Options, refspecs: WordToken[], specs: string[], git: GitInvocation, ctx: ClassifyContext): ClassifiedAction[] {
   if (hasFlag(options, "--all", "--branches", "--mirror") || specs.some((s) => s.includes("*"))) {
     return [classified("bash.merge.git-push-all", {})];
   }

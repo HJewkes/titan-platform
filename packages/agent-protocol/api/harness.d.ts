@@ -183,6 +183,14 @@ interface TranscriptSourceHint {
     namespace: string;
     path?: string;
 }
+/**
+ * Why a harness run did not succeed. Durable dispatch treats only `runtime_error` as
+ * ambiguous: the transport was lost and the native run may still be live, so the record
+ * parks in `recovery_required`. `aborted`, `cancelled_unknown` and `wall_time_exceeded`
+ * end as `cancellation_unknown`. Every other kind is definite and ends as `failed`,
+ * including `limit_exceeded` for a native cap such as maxTurns and `harness_mismatch`
+ * for an installed runtime rejected before spawn.
+ */
 type HarnessRunFailure = {
     kind: "invalid_request";
     reason: string;

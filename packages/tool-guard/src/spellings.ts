@@ -85,6 +85,7 @@ export const SPELLINGS = {
   "bash.release.gh-workflow-run": release(),
   "bash.release.wrangler-deploy": release(),
   "bash.release.version-packages-merge": release(),
+  "bash.release.git-push-tag": release(),
   "bash.egress.gh-gist": egress(),
   "bash.egress.curl-upload": egress(),
   "bash.egress.wget-upload": egress(),

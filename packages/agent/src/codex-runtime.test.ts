@@ -65,7 +65,7 @@ describe("Codex runtime admission", () => {
   it.each(["0.154.0-alpha.6.1", "0.162.0", "0.162.1-alpha.1", "0.162.01", "future", "0.162.1garbage"])(
     "refuses below-floor or malformed %s before probing or spawning", async version => {
       const fixture = runner(version);
-      expect(await fixture.adapter.run(request())).toMatchObject({ ok: false, failure: { kind: "runtime_error" } });
+      expect(await fixture.adapter.run(request())).toMatchObject({ ok: false, failure: { kind: "harness_mismatch" } });
       expect(fixture.inspectCapabilities).not.toHaveBeenCalled();
       expect(fixture.start).not.toHaveBeenCalled();
     },
@@ -75,7 +75,7 @@ describe("Codex runtime admission", () => {
     "refuses a newer runtime missing %s before model launch", async capability => {
       const inspection = report(); inspection.capabilities[capability] = false;
       const fixture = runner("0.163.0", inspection);
-      expect(await fixture.adapter.run(request())).toMatchObject({ ok: false, failure: { reason: expect.stringContaining(capability) } });
+      expect(await fixture.adapter.run(request())).toMatchObject({ ok: false, failure: { kind: "harness_mismatch", reason: expect.stringContaining(capability) } });
       expect(fixture.start).not.toHaveBeenCalled();
     },
   );
