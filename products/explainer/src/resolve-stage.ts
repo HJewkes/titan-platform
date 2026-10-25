@@ -100,9 +100,14 @@ function cutFailingSims(script: ScriptV1, beats: Resolved["beats"], input: Model
     putTrace: (json) => input.store.putText(json, "sim-trace", input.from),
   });
   const failed = new Map(pass.traces.verdicts.filter((verdict) => !verdict.pass).map((verdict) => [verdict.beat, verdict]));
-  const cut = beats.filter((beat) => failed.has(beat.id)).map((beat): CutBeat => ({ id: beat.id, chapter: beat.chapter, code: failed.get(beat.id)!.code ?? "E-SIM-MISS", detail: failed.get(beat.id)!.detail }));
-  const notes = [...cut.map((beat) => `sim beat ${beat.id} cut (${beat.code}): ${beat.detail}`), ...(pass.unslotted.length ? [`sim beats ${pass.unslotted.join(", ")} have no sim slots at resolve: not swept or checked`] : [])];
-  return { kept: beats.filter((beat) => !failed.has(beat.id)), cut, notes, simTraces: input.store.putText(`${JSON.stringify(pass.traces, null, 2)}\n`, "sim-traces", input.from) };
+  const cut = beats.flatMap((beat): CutBeat[] => {
+    const verdict = failed.get(beat.id);
+    return verdict ? [{ id: beat.id, chapter: beat.chapter, code: verdict.code ?? "E-SIM-MISS", detail: verdict.detail }] : [];
+  });
+  const unslottedNote = `sim beats ${pass.unslotted.join(", ")} have no sim slots at resolve: not swept or checked`;
+  const notes = [...cut.map((beat) => `sim beat ${beat.id} cut (${beat.code}): ${beat.detail}`), ...(pass.unslotted.length ? [unslottedNote] : [])];
+  const simTraces = input.store.putText(`${JSON.stringify(pass.traces, null, 2)}\n`, "sim-traces", input.from);
+  return { kept: beats.filter((beat) => !failed.has(beat.id)), cut, notes, simTraces };
 }
 
 function readScript(input: ModelStageInput): ScriptV1 {

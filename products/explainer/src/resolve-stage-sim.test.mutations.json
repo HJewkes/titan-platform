@@ -4,8 +4,8 @@
     {
       "name": "a failing sim beat stays in resolved",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "return { kept: beats.filter((beat) => !failed.has(beat.id)), cut, notes,",
-      "replace": "return { kept: beats, cut, notes,",
+      "find": "return { kept: beats.filter((beat) => !failed.has(beat.id)), cut, notes, simTraces };",
+      "replace": "return { kept: beats, cut, notes, simTraces };",
       "kills": [
         "sim beats at resolve cuts a sim beat that misses its claim and records the cut in resolved, the notes and sim-check"
       ]

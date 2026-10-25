@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { BEAT_SLOTS } from "../beat-slots.js";
+import type { BEAT_SLOTS } from "../beat-slots.js";
 import { claimText } from "../lint-claims.js";
 import { hasSpokenDigits } from "../spoken-numbers.js";
 import type { SimModelSpec, SimTolerance } from "./sim-load.js";
@@ -72,7 +72,8 @@ function uncheckedVerdict(beat: SimBeat): SimVerdict {
 
 function toleranceVerdict(beat: string, tolerance: SimTolerance, measured: Required<Pick<SimVerdict, "claim" | "got" | "se" | "tolerance">>): SimVerdict {
   const { claim, got, se, tolerance: allowed } = measured;
-  if (looseness(tolerance, claim) > MAX_SIM_TOLERANCE_REL) return simFailure(beat, "E-SIM-TOL-LOOSE", `tolerance ±${allowed} is looser than ${MAX_SIM_TOLERANCE_REL * 100}% of the claim ${claim}`, measured);
+  const loose = `tolerance ±${allowed} is looser than ${MAX_SIM_TOLERANCE_REL * 100}% of the claim ${claim}`;
+  if (looseness(tolerance, claim) > MAX_SIM_TOLERANCE_REL) return simFailure(beat, "E-SIM-TOL-LOOSE", loose, measured);
   if (allowed < SIM_NOISE_SE * se) return simFailure(beat, "E-SIM-TOL-NOISE", `tolerance ±${allowed} is under ${SIM_NOISE_SE}·se (se ${se}): noise alone could flip it`, measured);
   if (Math.abs(got - claim) > allowed) return simFailure(beat, "E-SIM-MISS", `the sim gives ${got}, outside ${claim} ±${allowed}`, measured);
   return { beat, pass: true, ...measured, detail: `the sim gives ${got}, within ${claim} ±${allowed}` };
