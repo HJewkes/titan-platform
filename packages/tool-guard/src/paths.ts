@@ -141,9 +141,25 @@ export function toAbsolute(value: string, dir: string | null, home: string): str
   return [resolveFrom(home, expanded), resolveFrom("/", expanded)];
 }
 
-/** The entry covering an absolute, wildcard-free path. Matching is by whole segment. */
+/** Answers by list, then home and path; bounded, since every path a script names lands here. */
+const GUARDED_CACHE = new WeakMap<GuardedList, Map<string, GuardedPath | null>>();
+const MAX_GUARDED_ANSWERS = 1024;
+
+/**
+ * The entry covering an absolute, wildcard-free path. Matching is by whole segment. A script of N commands asks
+ * about the same few paths N times in each case pass, and testing them against every pattern each time made a
+ * 34 KiB script take seconds once the patterns ran as an NFA (TP-4255).
+ */
 export function matchGuarded(path: string, list: GuardedList, home: string): GuardedPath | null {
-  return list.paths.find((entry) => covers(entry, path, home)) ?? null;
+  const answers = GUARDED_CACHE.get(list) ?? new Map<string, GuardedPath | null>();
+  GUARDED_CACHE.set(list, answers);
+  const key = `${home}\u0000${path}`;
+  const known = answers.get(key);
+  if (known !== undefined) return known;
+  const entry = list.paths.find((candidate) => covers(candidate, path, home)) ?? null;
+  if (answers.size >= MAX_GUARDED_ANSWERS) answers.clear();
+  answers.set(key, entry);
+  return entry;
 }
 
 /** The first entry one of whose samples the glob `pattern` (absolute) would expand to. */

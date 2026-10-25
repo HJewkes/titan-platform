@@ -1,11 +1,13 @@
 import { existsSync, promises as fs, statSync } from 'node:fs';
 import Database from 'better-sqlite3';
+import lockfile from 'proper-lockfile';
 import { ConfigError } from '../errors.js';
 import { atomicWrite } from '../utils/fs-atomic.js';
 import { defaultGraphPath, openGraph } from './graph.js';
 import { preserveUnreachable } from './preserve.js';
 import { carryNonDerivable, graphTotals, sameTotals, type GraphTotals } from './rebuild-carry.js';
-import { runRefresh, withRefreshLock, type RefreshLockOptions } from './refresh.js';
+import { LOCK_STALE_MS, runRefresh, withRefreshLock, type RefreshLockOptions } from './refresh.js';
+import { isLockContention } from './scheduler.js';
 
 /**
  * `miner rebuild`: index the corpus into a fresh `graph.sqlite3.next`, then
@@ -51,14 +53,34 @@ const MAX_UNLOCKED_PASSES = 5;
 
 const PRUNED_ORIGIN = 'transcript pruned before a miner rebuild (TP-882)';
 
-function claimNext(nextPath: string, resume: boolean | undefined): void {
-  if (existsSync(nextPath) && !resume) {
-    throw new ConfigError(
-      `${nextPath} exists: a previous rebuild stopped before its swap. ` +
-        'Pass --resume to continue it, or delete it to start over.',
-    );
+async function lockNext(nextPath: string): Promise<() => Promise<void>> {
+  try {
+    return await lockfile.lock(nextPath, { realpath: false, stale: LOCK_STALE_MS, retries: 0 });
+  } catch (err) {
+    if (!isLockContention(err)) throw err;
+    throw new ConfigError(`${nextPath} is held by another rebuild; wait for it to finish.`);
   }
-  openGraph(nextPath).db.close();
+}
+
+/**
+ * The claim lasts the whole rebuild, because the build itself runs without the
+ * refresh lock: a check-then-open alone lets two rebuilds share one `.next`.
+ */
+async function claimNext(nextPath: string, resume: boolean | undefined): Promise<() => Promise<void>> {
+  const release = await lockNext(nextPath);
+  try {
+    if (existsSync(nextPath) && !resume) {
+      throw new ConfigError(
+        `${nextPath} exists: a previous rebuild stopped before its swap. ` +
+          'Pass --resume to continue it, or delete it to start over.',
+      );
+    }
+    openGraph(nextPath).db.close();
+    return release;
+  } catch (err) {
+    await release();
+    throw err;
+  }
 }
 
 /** Under the lock, because `preserveUnreachable` writes to the live file. */
@@ -157,11 +179,15 @@ async function swapIn(
 export async function rebuildGraph(options: RebuildOptions = {}): Promise<RebuildSummary> {
   const livePath = defaultGraphPath();
   const nextPath = `${livePath}.next`;
-  claimNext(nextPath, options.resume);
-  const seeded = await withRefreshLock(async () => seedNext(livePath, nextPath), options.lock);
-  const { passes } = await buildNext(nextPath);
-  return withRefreshLock(
-    () => swapIn(livePath, nextPath, { ...seeded, passes }, options.force),
-    options.lock,
-  );
+  const release = await claimNext(nextPath, options.resume);
+  try {
+    const seeded = await withRefreshLock(async () => seedNext(livePath, nextPath), options.lock);
+    const { passes } = await buildNext(nextPath);
+    return await withRefreshLock(
+      () => swapIn(livePath, nextPath, { ...seeded, passes }, options.force),
+      options.lock,
+    );
+  } finally {
+    await release();
+  }
 }

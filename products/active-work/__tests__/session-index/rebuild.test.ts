@@ -61,6 +61,24 @@ describe('rebuildGraph', () => {
       expect(existsSync(`${defaultGraphPath()}.next`)).toBe(false);
     }));
 
+  it('two rebuilds resuming the same .next at once: one swaps, the other is refused', () =>
+    withEmptyActiveRoot(async () => {
+      seedLive('SELECT 1');
+      openGraph(`${defaultGraphPath()}.next`).db.close();
+
+      const [first, second] = await Promise.allSettled([
+        rebuildGraph({ resume: true }),
+        rebuildGraph({ resume: true }),
+      ]);
+
+      const outcomes = [first, second].map((settled) =>
+        settled.status === 'fulfilled' ? settled.value.swapped : settled.reason instanceof ConfigError,
+      );
+      expect(outcomes.sort()).toEqual([true, true]);
+      expect([first.status, second.status].sort()).toEqual(['fulfilled', 'rejected']);
+      expect(existsSync(`${defaultGraphPath()}.next.lock`)).toBe(false);
+    }));
+
   it('carries PR forge columns and GitHub review verdicts into the new file, but not chat verdicts', () =>
     withEmptyActiveRoot(async () => {
       seedLive(`

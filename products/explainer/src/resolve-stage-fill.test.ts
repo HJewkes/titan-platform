@@ -32,7 +32,7 @@ describe("resolve stores the template fill's slots", () => {
 
     // Assert
     expect(slots).toEqual({ b1: { title: expect.any(String), rows: [{ id: "rows-1", text: "Two lanes", mark: "tick" }, { id: "rows-2", text: "One queue", mark: "cross" }] } });
-    expect(checks.notes).toEqual([]);
+    expect(checks.notes).toEqual(["check sim-check skipped: no sim-traces artifact"]);
     expect(check("emphasis-target")).toEqual({ name: "emphasis-target", gate: true, pass: true, detail: "0 of 1 emphasis cues fail" });
   });
 

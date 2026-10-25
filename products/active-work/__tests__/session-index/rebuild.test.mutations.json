@@ -2,48 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a rebuild starts over a .next it was not told to resume",
+      "name": "a rebuild claims .next without holding its lock",
       "file": "products/active-work/src/session-index/rebuild.ts",
-      "find": "  if (existsSync(nextPath) && !resume) {\n",
-      "replace": "  if (existsSync(nextPath) && resume) {\n",
+      "find": "  const release = await lockNext(nextPath);\n",
+      "replace": "  const release = async () => {};\n",
       "kills": [
-        "rebuildGraph refuses a .next a stopped rebuild left behind, and --resume continues it"
-      ]
-    },
-    {
-      "name": "chat review verdicts are carried along with GitHub ones",
-      "file": "products/active-work/src/session-index/rebuild-carry.ts",
-      "find": "  { table: 'pr_review', where: \"surface <> 'chat'\" },\n",
-      "replace": "  { table: 'pr_review' },\n",
-      "kills": [
-        "rebuildGraph carries PR forge columns and GitHub review verdicts into the new file, but not chat verdicts"
-      ]
-    },
-    {
-      "name": "transcript ids are not carried, so the new file renumbers them",
-      "file": "products/active-work/src/session-index/rebuild-carry.ts",
-      "find": "  { table: 'transcript', override: { last_offset: '0', prefix_hash: 'NULL' } },\n",
-      "replace": "",
-      "kills": [
-        "rebuildGraph keeps a pruned session's fact at offset 0 on its own transcript id after the rebuild"
-      ]
-    },
-    {
-      "name": "the swap keeps no backup of the old file",
-      "file": "products/active-work/src/session-index/rebuild.ts",
-      "find": "  await fs.link(livePath, backupPath);\n",
-      "replace": "",
-      "kills": [
-        "rebuildGraph carries PR forge columns and GitHub review verdicts into the new file, but not chat verdicts"
-      ]
-    },
-    {
-      "name": "the swap goes ahead when totals differ and refuses only when forced",
-      "file": "products/active-work/src/session-index/rebuild.ts",
-      "find": "  if (!force && !sameTotals(liveTotals, nextTotals)) {\n",
-      "replace": "  if (force && !sameTotals(liveTotals, nextTotals)) {\n",
-      "kills": [
-        "rebuildGraph turn totals that differ swap nothing and leave .next in place unless forced"
+        "rebuildGraph two rebuilds resuming the same .next at once: one swaps, the other is refused"
       ]
     }
   ]

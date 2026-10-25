@@ -100,7 +100,8 @@ export const BEAT_SLOTS = {
       seed: z.number().int(),
       params: z.record(z.string(), z.number()),
       sweep: z.object({ param: z.string().min(1), from: z.number(), to: z.number(), steps: z.number().int().min(2) }).strict(),
-      claim: z.object({ value: z.number(), tolerance: z.number().nonnegative() }).strict().optional(),
+      // The claimed value is a gathered number fact and the tolerance is doctrine, so the script cannot set its own bar.
+      claim: z.object({ fact: z.string().min(1), statistic: z.string().min(1), at: z.number() }).strict().optional(),
       readouts: z.array(z.object({ id: Id, label: Label }).strict()).min(1).max(4),
     })
     .strict(),

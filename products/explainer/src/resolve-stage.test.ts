@@ -87,7 +87,7 @@ describe("emphasis-target gate on the resolve stage", () => {
   it("runs on the slots resolve stored when no pin supplies them", () => {
     const { checks } = stageThenChecks({ script: json(cuedOnFigures("figures-1")) });
 
-    expect(checks.notes).toEqual([]);
+    expect(checks.notes).toEqual(["check sim-check skipped: no sim-traces artifact"]);
     expect(checks.checks.find((check) => check.name === "emphasis-target")).toMatchObject({ gate: true, pass: true });
   });
 
