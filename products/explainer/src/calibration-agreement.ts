@@ -5,6 +5,7 @@ import { AGREEMENT_BAR, CALIBRATION_JUDGES, MIN_LABELS_PER_JUDGE, type Calibrati
 const LABEL_OPTIONS = {
   verdict: { yes: "Yes", no: "No", unsure: "Can't tell" },
   pair: { yes: "A", no: "B", unsure: "Can't tell" },
+  listener: { yes: "Yes", no: "No", unsure: "Can't tell" },
 } as const;
 export type OwnerLabel = keyof (typeof LABEL_OPTIONS)["verdict"];
 
@@ -18,7 +19,7 @@ export const OWNER_LABELS: readonly OwnerLabel[] = ["yes", "no", "unsure"];
 /** The console refuses an option text that two questions share, so each option names its item. */
 export const optionText = (label: OwnerLabel, item: string, kind: ItemKind = "verdict"): string => `${LABEL_OPTIONS[kind][label]} (${item})`;
 
-const KINDS: readonly ItemKind[] = ["verdict", "pair"];
+const KINDS: readonly ItemKind[] = ["verdict", "pair", "listener"];
 
 /** The owner's labels from a round's feedback.json; a question left blank or answered off the options is unlabelled. */
 export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
@@ -28,6 +29,23 @@ export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
     return label ? [[a.questionId, label] as const] : [];
   }));
 }
+
+/** One labelled threshold example for the listener screen: the owner's yes or no beside the chapter's density. */
+export interface ListenerLabel {
+  case: string;
+  chapter: string;
+  density: number;
+  clear: boolean;
+  eval_version: string;
+}
+
+/** The round's listener items the owner answered yes or no; a "Can't tell" places no threshold. */
+export const listenerLabels = (entries: readonly KeyEntry[], labels: ReadonlyMap<string, OwnerLabel>): ListenerLabel[] =>
+  entries.flatMap((e) => {
+    const label = labels.get(e.id);
+    if (e.judge !== "listener" || e.density === undefined || (label !== "yes" && label !== "no")) return [];
+    return [{ case: e.case, chapter: e.target, density: e.density, clear: label === "yes", eval_version: e.evalVersion ?? "" }];
+  });
 
 const JudgeAgreementSchema = z.object({
   judge: z.enum(CALIBRATION_JUDGES),

@@ -2,7 +2,7 @@ import { optionText, OWNER_LABELS } from "./calibration-agreement.js";
 import type { CalibrationQueue, ItemKind, QueueItem } from "./calibration-queue.js";
 
 /** About how long one item takes: read an excerpt and answer yes or no, or read two storyboards and pick one. */
-const MINUTES_PER_ITEM: Record<ItemKind, number> = { verdict: 1.25, pair: 2 };
+const MINUTES_PER_ITEM: Record<ItemKind, number> = { verdict: 1.25, pair: 2, listener: 1.25 };
 
 export const roundMinutes = (items: readonly QueueItem[]): number => Math.round(items.reduce((total, item) => total + MINUTES_PER_ITEM[item.kind], 0));
 

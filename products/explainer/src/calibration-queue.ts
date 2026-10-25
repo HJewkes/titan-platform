@@ -3,9 +3,10 @@ import { z } from "zod";
 
 /**
  * The model judges the owner's labels calibrate: the cold probe, the cold-viewer rubric (J8 to J12) and L1, plus the
- * audition's two pickers, its code total and its cold rubric, which each prefer one storyboard of a pair.
+ * audition's two pickers, its code total and its cold rubric, which each prefer one storyboard of a pair. The
+ * listener is the screen itself: its labels are TP-4080's threshold examples, not a judge TP-4012 promotes.
  */
-export const CALIBRATION_JUDGES = ["cold", "cold-rubric", "l1", "audition-code", "audition-rubric"] as const;
+export const CALIBRATION_JUDGES = ["cold", "cold-rubric", "l1", "audition-code", "audition-rubric", "listener"] as const;
 export type CalibrationJudge = (typeof CALIBRATION_JUDGES)[number];
 
 /** The design's bar (§4.5): below it on agreement a judge stays reported. */
@@ -13,6 +14,8 @@ export const AGREEMENT_BAR = 0.8;
 /** Fewer labels than this say nothing about a judge, whatever share of them agree. */
 export const MIN_LABELS_PER_JUDGE = 5;
 export const QUEUE_SIZE = 20;
+/** Chapters asked "clear on one hearing?" on top of the queue, so no judge loses a label to them. */
+export const LISTENER_ITEMS = 3;
 
 /** Where an output came from; a holdout or owner-named case never reaches the queue. */
 export interface CaseRef {
@@ -22,8 +25,11 @@ export interface CaseRef {
   ownerNamed: boolean;
 }
 
-/** A verdict asks yes or no about one output; a pair asks which of storyboards A and B the owner would rather watch. */
-export type ItemKind = "verdict" | "pair";
+/**
+ * A verdict asks yes or no about one output; a pair asks which of storyboards A and B the owner would rather watch;
+ * a listener item asks whether a chapter is clear enough to follow on one hearing.
+ */
+export type ItemKind = "verdict" | "pair" | "listener";
 
 /**
  * One judge verdict the owner can label: "yes" to `question` means the judge should have passed it, and for a pair,
@@ -42,6 +48,8 @@ export interface JudgedOutput extends CaseRef {
   run: string;
   /** The judge's eval_version, so agreement pools only labels of one version of the judge. */
   evalVersion: string;
+  /** A listener item's chapter density (questions a sentence), which its label is a threshold example for. */
+  density?: number;
 }
 
 /** What the owner sees: no judge, no verdict. */
@@ -65,6 +73,7 @@ const KeyEntrySchema = z
     run: z.string(),
     /** Absent from round-1 keys, which predate it. */
     evalVersion: z.string().optional(),
+    density: z.number().nonnegative().optional(),
   })
   .strict();
 export type KeyEntry = z.infer<typeof KeyEntrySchema>;
@@ -127,8 +136,22 @@ function roundRobin(groups: readonly Unit[][], size: number): Unit[] {
 
 const eligible = (output: CaseRef): boolean => output.split !== "holdout" && !output.ownerNamed;
 
-const keyEntry = (id: string, o: JudgedOutput): KeyEntry =>
-  ({ id, judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run, evalVersion: o.evalVersion });
+const keyEntry = (id: string, o: JudgedOutput): KeyEntry => ({
+  id, judge: o.judge, case: o.case, videoType: o.videoType, target: o.target, pass: o.pass, configId: o.configId, run: o.run, evalVersion: o.evalVersion,
+  ...(o.density === undefined ? {} : { density: o.density }),
+});
+
+const nearest = (maxDensity: number) => (a: JudgedOutput, b: JudgedOutput) =>
+  Math.abs(a.density! - maxDensity) - Math.abs(b.density! - maxDensity) || a.case.localeCompare(b.case) || a.target.localeCompare(b.target);
+
+/**
+ * The chapters whose labels best place the listener threshold: the nearest to the screen's bar, taking turns between
+ * chapters that clear it and chapters that do not, so the owner's answers bracket it.
+ */
+export function pickListenerItems(candidates: readonly JudgedOutput[], maxDensity: number, count = LISTENER_ITEMS): JudgedOutput[] {
+  const side = (clear: boolean) => candidates.filter((o) => eligible(o) && o.pass === clear).sort(nearest(maxDensity)).map((o) => [o]);
+  return roundRobin([side(true), side(false)], count).flat();
+}
 
 const caseOf = (u: Unit) => u[0]!.case;
 
@@ -144,13 +167,22 @@ function caseOrder(picked: readonly Unit[], clarity: ReadonlyMap<string, number>
   return [...(first === undefined ? [] : [first]), ...cases.filter(isPair), ...rest];
 }
 
+/** A case's listener items come first, clearest chapter first, while the chapter is still a first hearing; the seed orders the rest. */
+function withinCase(mine: readonly Unit[], seed: string): Unit[] {
+  const isListener = (u: Unit) => u[0]!.kind === "listener";
+  const heard = mine.filter(isListener).sort((a, b) => a[0]!.density! - b[0]!.density!);
+  return [...heard, ...shuffled(mine.filter((u) => !isListener(u)), seed)];
+}
+
 /**
- * Grouped by case so the owner reads one video at a time; the seed fixes the order within a case. `clarity` ranks
- * cases, lower being easier to follow; an unranked case goes after every ranked one.
+ * Grouped by case so the owner reads one video at a time. `clarity` ranks cases, lower being easier to follow; an
+ * unranked case goes after every ranked one. `listener` items, picked by `pickListenerItems`, join on top of `size`.
  */
-export function buildQueue(outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012", clarity: ReadonlyMap<string, number> = new Map()): CalibrationQueue {
-  const picked = roundRobin(perJudge(units(outputs.filter(eligible)), seed), size);
-  const ordered = caseOrder(picked, clarity).flatMap((c) => shuffled(picked.filter((u) => caseOf(u) === c), seed));
+export function buildQueue(
+  outputs: readonly JudgedOutput[], size = QUEUE_SIZE, seed = "tp-4012", clarity: ReadonlyMap<string, number> = new Map(), listener: readonly JudgedOutput[] = [],
+): CalibrationQueue {
+  const picked = [...roundRobin(perJudge(units(outputs.filter(eligible)), seed), size), ...listener.filter(eligible).map((o) => [o])];
+  const ordered = caseOrder(picked, clarity).flatMap((c) => withinCase(picked.filter((u) => caseOf(u) === c), seed));
   const id = (i: number): string => `q${String(i + 1).padStart(2, "0")}`;
   return {
     items: ordered.map((u, i) => ({ id: id(i), case: caseOf(u), kind: u[0]!.kind, question: u[0]!.question, excerpt: u[0]!.excerpt })),
