@@ -9,6 +9,7 @@ import {
   successEnvelope,
   errorEnvelope,
   type AnyCommand,
+  type CliOption,
   type CliMeta,
   type CommandContext,
 } from './registry/index.js';
@@ -260,6 +261,19 @@ function refuseRepeat(flag: string): (value: string, previous: string | undefine
   };
 }
 
+function attachOption(sub: Command, cmd: AnyCommand, key: string, opt: CliOption): void {
+  const flags = buildOptionFlags(cmd, key, opt);
+  if (opt.required) {
+    sub.requiredOption(flags, opt.description);
+  } else if (unwrapZodType(fieldSchema(cmd.args, key)) === 'array') {
+    sub.option(flags, opt.description, collectRepeated);
+  } else if (SINGLE_USE_OPTIONS.has(`${cmd.name}:${key}`)) {
+    sub.option(flags, opt.description, refuseRepeat(opt.long));
+  } else {
+    sub.option(flags, opt.description);
+  }
+}
+
 /** Attach one registry command as a sub-command under its appropriate parent. */
 function attachCommand(root: Command, cmd: AnyCommand): void {
   const parts = splitName(cmd.name);
@@ -277,20 +291,8 @@ function attachCommand(root: Command, cmd: AnyCommand): void {
     sub.argument(display, `${pname}${zType ? ` (${zType})` : ''}`);
   }
 
-  if (meta.options) {
-    for (const [key, opt] of Object.entries(meta.options)) {
-      const flags = buildOptionFlags(cmd, key, opt);
-      const isArray = unwrapZodType(fieldSchema(cmd.args, key)) === 'array';
-      if (opt.required) {
-        sub.requiredOption(flags, opt.description);
-      } else if (isArray) {
-        sub.option(flags, opt.description, collectRepeated);
-      } else if (SINGLE_USE_OPTIONS.has(`${cmd.name}:${key}`)) {
-        sub.option(flags, opt.description, refuseRepeat(opt.long));
-      } else {
-        sub.option(flags, opt.description);
-      }
-    }
+  for (const [key, opt] of Object.entries(meta.options ?? {})) {
+    attachOption(sub, cmd, key, opt);
   }
 
   sub.action(makeAction(cmd, root));
