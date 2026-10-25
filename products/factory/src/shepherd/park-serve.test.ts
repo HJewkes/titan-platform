@@ -41,26 +41,27 @@ async function serve(fixture: ShepherdFixture, dir: string): Promise<FactoryServ
  * A fake `agent-chat` whose `agent park` reads Shepherd back from serve before it answers, as the real one does to rule
  * out a fix round. It marks the read, then holds the park open so the test can probe serve while the child still runs.
  */
-function reentrantAgentChat(dir: string, port: number): { bin: string; marker: string } {
+function reentrantAgentChat(dir: string, port: number): { bin: string; marker: string; release: string } {
   const marker = join(dir, "status-read");
+  const release = join(dir, "release");
   const child = join(dir, "child.mjs");
   writeFileSync(
     child,
-    `import { writeFileSync } from "node:fs";
+    `import { existsSync, writeFileSync } from "node:fs";
 const res = await fetch("http://127.0.0.1:${port}/rpc/shepherd.status", {
   method: "POST",
   headers: { "content-type": "application/json", "${CLIENT_HEADER}": "agent-chat" },
   body: JSON.stringify({ repo: "${REPO}", pr: 1 }),
   signal: AbortSignal.timeout(5_000),
-});
+}).catch(() => ({ status: 0 }));
 writeFileSync(${JSON.stringify(marker)}, String(res.status));
-await new Promise((resolve) => setTimeout(resolve, 1_000));
+while (!existsSync(${JSON.stringify(release)})) await new Promise((resolve) => setTimeout(resolve, 20));
 console.log("Parked " + process.argv.at(-1) + ".");
 `,
   );
   const bin = join(dir, "agent-chat");
   writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${child}" "$@"\n`, { mode: 0o755 });
-  return { bin, marker };
+  return { bin, marker, release };
 }
 
 const Registered = z.object({ data: z.object({ runId: z.string() }) });
@@ -69,16 +70,9 @@ async function until(done: () => boolean): Promise<void> {
   while (!done()) await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
-async function timedVersion(port: number): Promise<number> {
-  const started = performance.now();
-  const res = await fetch(`http://127.0.0.1:${port}/version`);
-  await res.text();
-  expect(res.status).toBe(200);
-  return performance.now() - started;
-}
-
 describe("a park whose agent-chat child reads Shepherd back from serve", () => {
-  it("completes, and serve answers /version well inside the old 15-20 s stall while the child runs", async () => {
+  // A park that blocked serve's event loop would answer /version only after the child had exited and the park settled.
+  it("completes, and serve answers /version while the child still runs", async () => {
     const dir = scratch();
     const fixture = shepherdFixture({ frozen: true });
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
@@ -90,14 +84,18 @@ describe("a park whose agent-chat child reads Shepherd back from serve", () => {
     });
     const body: unknown = await registered.json();
     const { data } = Registered.parse(body);
-    const { bin, marker } = reentrantAgentChat(dir, server.port);
+    const { bin, marker, release } = reentrantAgentChat(dir, server.port);
+    let settled = false;
 
-    const parking = parkImplementer(fixture.routes.shepherd!.store, (name) => parkAgent(bin, name, 10_000), { runId: data.runId, headSha: H1 });
+    const parking = parkImplementer(fixture.routes.shepherd!.store, (name) => parkAgent(bin, name, 10_000), { runId: data.runId, headSha: H1 }).finally(() => (settled = true));
     await until(() => existsSync(marker));
-    const versionMs = await timedVersion(server.port);
+    const version = await fetch(`http://127.0.0.1:${server.port}/version`);
+    const settledAtVersion = settled;
+    writeFileSync(release, "");
     const outcome = await parking;
 
+    expect(version.status).toBe(200);
+    expect(settledAtVersion).toBe(false);
     expect(outcome).toMatchObject({ kind: "parked", lines: expect.arrayContaining(["Parked impl-a."]) });
-    expect(versionMs).toBeLessThan(2_000);
   }, 20_000);
 });
