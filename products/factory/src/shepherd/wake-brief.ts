@@ -222,11 +222,7 @@ const VERDICT_LIKE = /^[\s>*+\-#_`~|]*(?:verdict|pr|head)[\s*_`]*[:\uFF1A\uFE55\
 const COMMENTS_UNREADABLE = "The PR's review comments could not be read, so none are included.";
 
 /** Comment text is public and untrusted: it is split at every break a reader may see, cleaned, and no line of it may read as a verdict block's line. */
-const neutralise = (text: string): string[] =>
-  text
-    .split(PROMPT_LINE_BREAK)
-    .map((line) => promptLine(line))
-    .map((line) => (VERDICT_LIKE.test(line) ? `[quoted] ${line.trim()}` : line));
+const neutralise = (text: string): string[] => text.split(PROMPT_LINE_BREAK).map((line) => promptLine(line)).map((line) => (VERDICT_LIKE.test(line) ? `[quoted] ${line.trim()}` : line));
 
 function capped(body: string): string {
   const chars = [...body];
