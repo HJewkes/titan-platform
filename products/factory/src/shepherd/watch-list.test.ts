@@ -21,6 +21,8 @@ function run(id: string, done = false): WorkflowRun {
 const idle: DigestInput = { row: row(100), run: run("run-100") };
 const gated = (n: number): DigestInput => ({ row: row(n, { phase: "awaiting-approval", pendingGate: { gateId: `run-${n}/ci-failed`, stepId: "ci-failed", since: "2026-10-10T00:00:00.000Z" } }), run: run(`run-${n}`) });
 const merged = (n: number): DigestInput => ({ row: row(n, { phase: "done", outcome: { kind: "merged", reason: null } }), run: run(`run-${n}`, true) });
+const stopped = (n: number): DigestInput => ({ row: row(n, { phase: "done", outcome: { kind: "stopped", reason: "closed" } }), run: run(`run-${n}`, true) });
+const failed = (n: number): DigestInput => ({ row: row(n, { phase: "failed" }), run: run(`run-${n}`, true) });
 
 /** An in-memory watch list keyed by run id, standing in for the store's table. */
 type TestWatches = DigestWatches & { left: () => string[]; add: (runId: string, on: WatchEvent[], seat: string) => void };
@@ -80,12 +82,47 @@ describe("watched runs in the seat digest", () => {
     expect(sent[0]!.text).toContain("- acme/widgets#1 merged\n- acme/widgets#2 merged");
   });
 
-  it("leaves a merge on the batch flush when the watch names only gated", async () => {
-    const { sent, sweep } = harness(watchList({ "run-1": ["gated"] }));
+  it("leaves a merge on the batch flush when the watch names only gated, and drops the watch once that flush tells it", async () => {
+    const watches = watchList({ "run-1": ["gated"] });
+    const { sent, sweep } = harness(watches);
 
-    await minutes(sweep, [merged(1)], 40);
+    await minutes(sweep, [merged(1)], 29);
+    const beforeFlush = watches.left();
+    for (let m = 30; m <= 40; m += 1) await sweep([idle, merged(1)], START + m * MINUTE);
 
+    expect(beforeFlush).toEqual(["run-1"]);
     expect(sent.map((s) => s.at)).toEqual([START + 30 * MINUTE]);
+    expect(watches.left()).toEqual([]);
+  });
+
+  it("drops a watch on merged once the batch flush tells the run stopped", async () => {
+    const watches = watchList({ "run-1": ["merged"] });
+    const { sent, sweep } = harness(watches);
+
+    await minutes(sweep, [stopped(1)], 40);
+
+    expect(sent.map((s) => [s.at, s.text.includes("acme/widgets#1 stopped (closed)")])).toEqual([[START + 30 * MINUTE, true]]);
+    expect(watches.left()).toEqual([]);
+  });
+
+  it("drops a watch whose run ended with no outcome to tell, sending nothing", async () => {
+    const watches = watchList({ "run-1": ["merged", "stopped", "gated"] });
+    const { sent, sweep } = harness(watches);
+
+    await minutes(sweep, [failed(1)], 2);
+
+    expect(sent).toEqual([]);
+    expect(watches.left()).toEqual([]);
+  });
+
+  it("tells a watching seat with no digest memory yet a stop its watch did not name, then drops the watch", async () => {
+    const watches = watchList({ "run-1": ["gated"] });
+    const { sent, sweep } = harness(watches);
+
+    for (let m = 0; m <= 40; m += 1) await sweep([stopped(1)], START + m * MINUTE);
+
+    expect(sent.map((s) => s.text.includes("acme/widgets#1 stopped"))).toEqual([true]);
+    expect(watches.left()).toEqual([]);
   });
 
   it("keeps the watch while the digest is held, and drops it once the digest that reports the merge is sent", async () => {

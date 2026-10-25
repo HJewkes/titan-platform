@@ -12,6 +12,18 @@
         "watched runs in the seat digest keeps the watch while the digest is held, and drops it once the digest that reports the merge is sent",
         "watched runs in the seat digest tells a watching seat with no digest memory yet the merge, and drops the watch only after that send"
       ]
+    },
+    {
+      "name": "a watch drops only when its on list matched the run's end",
+      "file": "products/factory/src/shepherd/seat-digest.ts",
+      "find": "  return view.ended.filter((end) => end.key === undefined || told.has(end.key)).map((end) => end.runId);",
+      "replace": "  return view.ended.filter((end) => end.key !== undefined && told.has(end.key) && view.watched.includes(end.key)).map((end) => end.runId);",
+      "kills": [
+        "watched runs in the seat digest leaves a merge on the batch flush when the watch names only gated, and drops the watch once that flush tells it",
+        "watched runs in the seat digest drops a watch on merged once the batch flush tells the run stopped",
+        "watched runs in the seat digest drops a watch whose run ended with no outcome to tell, sending nothing",
+        "watched runs in the seat digest tells a watching seat with no digest memory yet a stop its watch did not name, then drops the watch"
+      ]
     }
   ]
 }

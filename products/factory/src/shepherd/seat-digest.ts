@@ -67,8 +67,10 @@ interface SeatView {
   finished: DigestItem[];
   /** Every finished run read, with or without an outcome to report, so the next sweep need not read it again. */
   settled: string[];
-  /** The keys of open and finished items this seat's watch asked for: prompt-class, and a told end drops the watch. */
+  /** The keys of open and finished items this seat's watch asked for: only these are prompt-class. */
   watched: string[];
+  /** Each run this seat watches that has ended, whatever its watch's `on`, with its finished item's key if it has one. */
+  ended: { runId: string; key: string | undefined }[];
 }
 
 const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back"]);
@@ -114,7 +116,7 @@ function seatViews(inputs: readonly DigestInput[], routes: Pick<DigestRoutes, "s
     const copy = routes.copyOf?.(input.row);
     for (const seat of new Set([own, copy])) {
       if (seat === undefined) continue;
-      const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [], watched: [] }).get(seat)!;
+      const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [], watched: [], ended: [] }).get(seat)!;
       addRun(view, input, quiet, seat === (copy ?? own) ? routes.watches : undefined);
     }
   }
@@ -131,13 +133,16 @@ function addRun(view: SeatView, input: DigestInput, quiet: (input: DigestInput) 
   if (open) view.open.push(open);
   const finished = finishedItem(input.row);
   if (finished) view.finished.push(finished);
-  view.watched.push(...watchedKeys(watches?.of(input.row.runId), input.row, open?.key, finished?.key));
+  const watch = watches?.of(input.row.runId);
+  view.watched.push(...watchedKeys(watch, input.row, open?.key, finished?.key));
+  if (watch !== undefined && (finished !== undefined || FINISHED_PHASES.has(input.row.phase))) view.ended.push({ runId: input.row.runId, key: finished?.key });
   if (FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
 }
 
 /** A seat seen for the first time takes its finished runs as known, so a first sweep does not replay history; a watched end is still told. */
 function freshRuns(view: SeatView, last: SeatState | undefined): DigestItem[] {
-  const known = new Set(last?.finished ?? view.finished.filter((item) => !view.watched.includes(item.key)).map((item) => item.key));
+  const watchedEnds = new Set(view.ended.map((end) => end.key));
+  const known = new Set(last?.finished ?? view.finished.filter((item) => !watchedEnds.has(item.key)).map((item) => item.key));
   return view.finished.filter((item) => !known.has(item.key));
 }
 
@@ -150,6 +155,15 @@ function pendingItems(view: SeatView, fresh: readonly DigestItem[], last: SeatSt
     prompt: [...delta.added.map((item) => item.key), ...ended(fresh.filter(watchedEnd))],
     batch: [...delta.cleared.map((key) => `cleared:${key}`), ...ended(fresh.filter((item) => !watchedEnd(item)))],
   };
+}
+
+/**
+ * The watched runs whose end this seat now knows, so their watches drop: told in `fresh` now or in an earlier digest, or
+ * ended with no outcome to tell. The watch's `on` never enters into it; it only decides prompt or batch.
+ */
+function toldEnds(view: SeatView, fresh: readonly DigestItem[], last: SeatState | undefined): string[] {
+  const told = new Set([...fresh.map((item) => item.key), ...(last?.finished ?? [])]);
+  return view.ended.filter((end) => end.key === undefined || told.has(end.key)).map((end) => end.runId);
 }
 
 /** Finished runs stay known once heard of, because a sweep reads only the finished runs its seat has not heard of. */
@@ -246,7 +260,7 @@ export async function sendSeatDigests(
     try {
       if (text !== undefined) await ports.send(seat, text);
       if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);
-      if (text !== undefined) routes.watches?.drop(fresh.filter((item) => view.watched.includes(item.key)).map((item) => item.key));
+      routes.watches?.drop(toldEnds(view, fresh, last));
       if (text !== undefined) sent.push(seat);
     } catch (error) {
       failed.push({ seat, cause: error instanceof Error ? error.message : String(error) });
