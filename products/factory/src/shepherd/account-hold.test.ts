@@ -9,6 +9,7 @@ import type { ShepherdDeps } from "./phases.js";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("account-hold-head");
@@ -19,7 +20,7 @@ const HELD = `account-exhausted: ${ACCOUNT} until 2026-10-11T00:00:00.000Z; TP-1
 
 function migrated(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), accountLimitMigration(17), parkSettledMigration(21)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), accountLimitMigration(17), parkSettledMigration(21), mergeBaseExceptionMigration(42)]);
   return db;
 }
 

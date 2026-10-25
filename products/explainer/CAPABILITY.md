@@ -74,6 +74,8 @@ For a `sim` beat, a `SimModel` in `SIM_MODELS` simulates from the seed's generat
 `freezeSim` seals the runs as an `explainer.sim-trace/v1` trace (`SimTraceSchema`) keyed by its canonical-JSON sha256.
 `loadSims` reads the sim-model registry (`doctrine/sims/*.yaml`) and
 `checkSims` reports a model with no doctrine file, a file with no model, and a doctrine statistic the model never emits.
+`simCheck` passes a sim beat only when its run reproduces a gathered number fact within the doctrine tolerance, refusing a tolerance under 3 se, over a tenth of the claim, or on a fitted statistic, and
+`runSimPass` sweeps, freezes and checks every sim beat at resolve, which cuts the failing ones before tts behind the `sim-cut-orphan` gate.
 `explainer guide types` writes each type's planner guide to `doctrine/guides/planner/<type>.md`.
 `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
 For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new),
@@ -121,7 +123,9 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
+then render and QA through a host bridge file of today's template commands (marked as bridged in every report row),
+then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
+`fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
 resolve builds each `layer: "custom"` beat's layer through claude-print by default, behind an esbuild compile gate and import allowlist, and reuses an earlier run's build of an unchanged packet,
@@ -130,6 +134,11 @@ resolve builds each `layer: "custom"` beat's layer through claude-print by defau
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-edit/v1` (slot and tune fields per template beat, over a base run's script and render), and
+`applyEdit` applies it to the base script, refusing a stale base, an unknown or custom-layer beat and a slot change that drops an element a cue targets, and returns the new script and a field diff.
+`explainer edit check` prints that verdict with the slot-overrides gate, the template fill and the emphasis-target gate, and writes nothing,
+`explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
+`explainer edit list` lists a render's or a video's edits with their linked run's status.
 `renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
 mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
 `assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.

@@ -9,6 +9,7 @@ import type { ResyncReport } from "./resync.js";
 import type { ThawResult } from "./thaw-command.js";
 import type { WatchResult } from "./watch-command.js";
 import type { FixPrResult } from "./fix-pr-command.js";
+import type { MergeBaseResult } from "./merge-base-command.js";
 import type { Freeze } from "./freeze.js";
 import { lastAwaitClause } from "./none-reason.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
@@ -37,6 +38,7 @@ const FORMATTERS: Formatters = {
   "shepherd.freeze": formatRepoFreezes,
   "shepherd.thaw": formatThaw,
   "shepherd.fix-pr": formatFixPr,
+  "shepherd.merge-base": formatMergeBase,
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
@@ -86,6 +88,11 @@ function formatRepairStops({ changed, stops }: RepairStopResult): string {
 function formatWatches({ changed, watches }: WatchResult): string {
   const lines = watches.map((watch) => `${watch.repo}#${watch.pr}  on ${watch.on.join(",")}  ${watch.seat === null ? "to its digest seat" : `copy to ${watch.seat}`} (by ${watch.actor}, ${watch.at})`);
   return `${changed ? "changed; " : ""}${watches.length === 0 ? "no watches" : `watches:\n${lines.join("\n")}`}\n`;
+}
+
+function formatMergeBase({ runId, changed, exception }: MergeBaseResult): string {
+  if (exception) return `run ${runId}: fix rounds may merge the base (${exception.reason}; by ${exception.actor}, ${exception.at})\n`;
+  return `run ${runId}: ${changed ? "exception revoked; " : ""}fix rounds do not merge the base\n`;
 }
 
 function formatRepoFreezes({ detail, freezes, mainRed = [] }: RepoFreezeResult): string {

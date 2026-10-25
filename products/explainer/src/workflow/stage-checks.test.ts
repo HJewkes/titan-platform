@@ -176,6 +176,17 @@ describe("tts stage checks", () => {
     expect(verdict(run, "cue-resolution")).toMatchObject({ gate: true, pass: false, detail: "0 of 1 cues resolve; unresolved: h1:courier" });
   });
 
+  it("passes with a beat resolve cut, whose cue tts never voiced", () => {
+    const cue = (atCue: string) => ({ visual: { assertion: "The desk refuses unknown parcels", job: "numbers", cues: [{ action: "V6", target: "card", atCue }] } });
+    const script = choppy({ h1: cue("courier"), h3: cue("scan") });
+    const voiced = { ...script, beats: script.beats.filter((beat) => beat.id !== "h1") };
+    const resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats: [], budgets: [], cut: [{ id: "h1", chapter: "ch1", code: "E-SIM-MISS", detail: "synthetic miss" }] };
+
+    const run = runStageChecks("tts", input({ script: json(script), words: words(voiced), resolved: json(resolved) }));
+
+    expect(verdict(run, "cue-resolution")).toMatchObject({ gate: true, pass: true, detail: "1 of 1 cues resolve" });
+  });
+
   // Mutation: passing at 0 cues lets a script whose beat specs want emphasis render with no cue at all.
   it("gates on a script of no cues when a beat names a beat spec with emphasis targets", () => {
     const script = verdictLead([]);
@@ -211,6 +222,7 @@ describe("running a stage's checks", () => {
       eval: [], resolve: [
         "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
         "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate",
+        "sim-check:reported", "sim-cut-orphan:gate",
       ], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
     });
   });

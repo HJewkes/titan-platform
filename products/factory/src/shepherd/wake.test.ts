@@ -29,6 +29,7 @@ import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeSte
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
 
 const REPO = "octo/demo";
@@ -72,7 +73,7 @@ function fakeAgents(rows: AgentRow[]) {
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), mergeBaseExceptionMigration(42)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);

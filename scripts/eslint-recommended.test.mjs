@@ -117,6 +117,14 @@ describe("the root lint config with the wall-clock motion ban", () => {
     expect(messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", message: expect.stringContaining("`Date.now`") })]);
   });
 
+  it("fails a Date.now() in the explainer composition page", () => {
+    const result = lintClockFixture("products/explainer/src/composition/page-clock.ts");
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", message: expect.stringContaining("`Date.now`") })]);
+  });
+
   it("passes a Date.now() in explainer code outside the beat and motion paths", () => {
     const result = lintClockFixture("products/explainer/src/report-clock.ts");
 

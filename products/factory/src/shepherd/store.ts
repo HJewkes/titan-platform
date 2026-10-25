@@ -3,6 +3,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
@@ -165,7 +166,7 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(runId, this.byRun(runId)!);
   }
 
-  /** Points a registration, and the authors, hold events, proofs, settled parks and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
+  /** Points a registration, and the authors, hold events, proofs, settled parks, merge-base exception and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
   repoint(runId: string, newRunId: string): Registration {
     const move = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
@@ -173,6 +174,7 @@ export class ShepherdStore implements HoldLookup {
       this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
       repointParkSettled(this.db, runId, newRunId);
       repointRunRows(this.db, runId, newRunId);
+      repointMergeBaseException(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
     move();
@@ -249,6 +251,9 @@ export class ShepherdStore implements HoldLookup {
 
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
+
+  /** Planners' leave for a run's fix rounds to merge the base branch; read where a fix round's brief is built. */
+  readonly mergeBaseExceptions = (): MergeBaseExceptions => mergeBaseExceptionTable(this.db, () => this.stamp());
 
   /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
   readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());

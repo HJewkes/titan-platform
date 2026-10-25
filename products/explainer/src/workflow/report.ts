@@ -54,6 +54,8 @@ export interface RunReport {
   videoId: string;
   linked: LinkedRun[];
   videoUsd: number;
+  /** The owner edit this run carries, over the run it was drafted on. */
+  edit?: { editId: string; beats: number; baseRunId: string };
   rows: ReportRow[];
 }
 
@@ -110,6 +112,7 @@ export interface ReportInput {
   stop?: Stop;
   videoId: string;
   linked: readonly LinkedRun[];
+  edit?: RunReport["edit"];
 }
 
 export function buildReport(input: ReportInput): RunReport {
@@ -122,7 +125,8 @@ export function buildReport(input: ReportInput): RunReport {
     ...(input.run.error ? { error: input.run.error } : {}),
     from: input.from, to: input.to, budgetUsd: input.budgetUsd, ...(input.stop ? { stop: input.stop } : {}),
     runWallMs: end - Date.parse(input.run.startedAt), totals: sums,
-    videoId: input.videoId, linked: [...input.linked], videoUsd: sums.usd + input.linked.reduce((acc, run) => acc + run.usd, 0), rows,
+    videoId: input.videoId, linked: [...input.linked], videoUsd: sums.usd + input.linked.reduce((acc, run) => acc + run.usd, 0),
+    ...(input.edit ? { edit: input.edit } : {}), rows,
   };
 }
 
@@ -145,6 +149,7 @@ function header(report: RunReport): string[] {
     `- Cache hits: ${t.cacheHits} stages reused from a base run or the stage cache`,
     `- Video ${report.videoId}: ${report.linked.length + 1} runs, total ${usd(report.videoUsd)}`,
     ...report.linked.map((r) => `  - linked run ${r.runId}: ${usd(r.usd)}`),
+    ...(report.edit ? [`- Edit \`${report.edit.editId}\` (${report.edit.beats} beats) over run \`${report.edit.baseRunId}\``] : []),
     `- Bridged stages (today's template commands through the host's bridge file, not yet ported): ${report.rows.filter((r) => r.bridged).map((r) => r.stage).join(", ")}`,
   ];
 }

@@ -20,6 +20,8 @@ export const FROZEN_HOST_WRITE_VERBS: ReadonlySet<string> = new Set([
   "shepherd unfreeze",
   "shepherd thaw",
   "shepherd fix-pr",
+  "shepherd allow-merge-base",
+  "shepherd revoke-merge-base",
   "shepherd watch",
   "shepherd unwatch",
 ]);
