@@ -1,21 +1,27 @@
-import { existsSync, renameSync, rmSync } from 'node:fs';
-import { setTimeout as sleep } from 'node:timers/promises';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import Database from 'better-sqlite3';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultGraphPath, openGraph } from '../../src/session-index/graph.js';
-import { openLiveGraph } from '../../src/session-index/live-graph.js';
-import { withRefreshLock } from '../../src/session-index/refresh.js';
+import { openLiveGraph, type LiveGraph } from '../../src/session-index/live-graph.js';
+import { rebuildGraph } from '../../src/session-index/rebuild.js';
 import { withEmptyActiveRoot } from '../setup/test-helpers.js';
 
-/** What `miner rebuild` does to the path, without the corpus. */
-function swapFreshFileIn(file: string): void {
-  openGraph(`${file}.next`).db.close();
-  rmSync(`${file}-wal`, { force: true });
-  rmSync(`${file}-shm`, { force: true });
-  renameSync(`${file}.next`, file);
-}
+let configDir: string;
 
-/** A writer outside the daemon, with commits still only in the WAL. */
+beforeEach(() => {
+  configDir = mkdtempSync(path.join(os.tmpdir(), 'aw-live-graph-'));
+  vi.stubEnv('CLAUDE_CONFIG_DIRS', configDir);
+  vi.stubEnv('AGENT_CHAT_HOME', path.join(configDir, 'agent-chat'));
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  rmSync(configDir, { recursive: true, force: true });
+});
+
+/** A writer outside the daemon, with its commit still only in the WAL. */
 function openUncheckpointedWriter(file: string): Database.Database {
   const writer = new Database(file);
   writer.pragma('wal_autocheckpoint = 0');
@@ -23,30 +29,36 @@ function openUncheckpointedWriter(file: string): Database.Database {
   return writer;
 }
 
-describe('openLiveGraph', () => {
-  it("closing after a swap it never followed waits for the lock and leaves the new file's WAL and shm", () =>
+async function closingAfterSwapKeepsWal(closeOld: (live: LiveGraph) => Promise<unknown>) {
+  const file = defaultGraphPath();
+  openGraph(file).db.close();
+  const live = openLiveGraph({ path: file });
+  await rebuildGraph();
+  const writer = openUncheckpointedWriter(file);
+
+  await closeOld(live);
+  const kept = { wal: existsSync(`${file}-wal`), shm: existsSync(`${file}-shm`) };
+  const reader = new Database(file, { readonly: true });
+  const seen = reader.prepare('SELECT x FROM probe').all();
+  reader.close();
+  writer.close();
+  await live.close();
+
+  return { kept, seen };
+}
+
+describe('openLiveGraph after a miner rebuild swap', () => {
+  it("closing the swapped-out handle leaves the new file's WAL and shm to a writer still using them", () =>
     withEmptyActiveRoot(async () => {
-      const file = defaultGraphPath();
-      const live = openLiveGraph({ path: file });
-      swapFreshFileIn(file);
-      const writer = openUncheckpointedWriter(file);
-      let closed = false;
-      let closing: Promise<void> = Promise.resolve();
+      const result = await closingAfterSwapKeepsWal((live) => live.close());
 
-      const whileHeld = await withRefreshLock(async () => {
-        closing = live.close().then(() => {
-          closed = true;
-        });
-        await sleep(500);
-        const seen = { closed, wal: existsSync(`${file}-wal`), shm: existsSync(`${file}-shm`) };
-        writer.close();
-        return seen;
-      });
-      await closing;
+      expect(result).toEqual({ kept: { wal: true, shm: true }, seen: [{ x: 'after-swap' }] });
+    }));
 
-      expect(whileHeld).toEqual({ closed: false, wal: true, shm: true });
-      const reader = openGraph(file);
-      expect(reader.db.prepare('SELECT x FROM probe').all()).toEqual([{ x: 'after-swap' }]);
-      reader.db.close();
+  it("following the swap leaves the new file's WAL and shm to a writer still using them", () =>
+    withEmptyActiveRoot(async () => {
+      const result = await closingAfterSwapKeepsWal((live) => live.current());
+
+      expect(result).toEqual({ kept: { wal: true, shm: true }, seen: [{ x: 'after-swap' }] });
     }));
 });

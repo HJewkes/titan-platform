@@ -2,7 +2,6 @@ import { statSync } from 'node:fs';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
 import { startCheckpointer } from './checkpoint.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from './graph.js';
-import { withRefreshLock } from './refresh.js';
 
 /**
  * The daemon's one long-lived graph handle, which follows the file at
@@ -52,9 +51,10 @@ export function openLiveGraph(options: LiveGraphOptions = {}): LiveGraph {
   return {
     async current() {
       if (handle && handle.inode === inodeAt(file)) return handle.graph;
-      // Close before opening: closing the last connection to the old inode
-      // deletes `<path>-wal` and `<path>-shm` by name, which by now are the new
-      // file's. Under the lock they hold no frame, so nothing is lost.
+      // Closing the old inode leaves `<path>-wal` and `<path>-shm`, which by now
+      // are the new file's: SQLite skips the close-time checkpoint and delete
+      // once the path names another inode (SQLITE_FCNTL_HAS_MOVED). The
+      // live-graph test pins that, here and in close().
       if (handle) await closeHandle(handle);
       handle = null;
       clearDocumentFrequency(file);
@@ -62,13 +62,8 @@ export function openLiveGraph(options: LiveGraphOptions = {}): LiveGraph {
       return handle.graph;
     },
     async close() {
-      const closing = handle;
+      if (handle) await closeHandle(handle);
       handle = null;
-      if (!closing) return;
-      // A handle on a swapped-out inode deletes the new file's WAL and shm on
-      // close, which a writer outside the daemon may be using: wait it out.
-      if (closing.inode === inodeAt(file)) await closeHandle(closing);
-      else await withRefreshLock(() => closeHandle(closing));
     },
   };
 }
