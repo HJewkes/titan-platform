@@ -8,13 +8,14 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { LandedPr } from "../workflows/land-landed.js";
 import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
-import { judgeMain, mainRulesReader, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
+import { judgeMain, mainRulesReader, onlyCancels, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { MainCiReads } from "./main-watch.js";
 import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
 import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
+import { contains, unlessStale } from "./stale-red.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
 import { unlessThawed } from "./thawed-main-gates.js";
@@ -85,7 +86,7 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false, demotions: GateDemotions = GATE_DEMOTIONS): Promise<MainCi> {
   await restackLanded(ctx, target);
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
-  const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
+  const red = { repo: target.repo, pr: target.pr, mergeSha: result.verdict === "red" ? (result.readSha ?? target.mergeSha) : target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
     await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });
     await onMainGreen(ctx, red);
@@ -219,7 +220,7 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
     if (settled !== undefined) return { ...base, ...settled };
     if (!wasRed && watch.red !== undefined) clock = deadline(timing);
     if (clock.expired()) {
-      if (watch.red !== undefined) return { ...base, ...watch.red };
+      if (watch.red !== undefined) return { ...base, ...(await unlessStale(main, watch.red, await rules(), timing.now())) };
       const newest = await newestSettled(main, watch.sha, await rules()).catch(() => undefined);
       if (newest !== undefined) return { ...base, readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
       if (!watch.queued || rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, verdict: "none", detail: `no completed main run containing ${input.mergeSha} within ${((rechecks + 1) * timing.timeoutMs) / 60_000} min: ${watch.last}` };
@@ -298,11 +299,6 @@ function greenContainingReader(main: MainRead): () => Promise<string | undefined
 async function baseMainRules(port: GitHubPort, repo: RepoSlug, baseRef: string): Promise<{ base: string; rules: MainRules } | undefined> {
   const { rules } = await readMainRules(port, repo, baseRef);
   return rules === undefined ? undefined : { base: baseRef, rules };
-}
-
-/** True when `tip` is `sha`, or compare reads `sha` as the merge base, so `tip` is ahead of it. */
-async function contains(port: GitHubPort, repo: RepoSlug, tip: string, sha: string): Promise<boolean> {
-  return tip === sha || (await port.compareFiles(repo, sha, tip)).mergeBaseSha === sha;
 }
 
 /** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
@@ -386,7 +382,7 @@ function evaluate(mergeSha: string, runs: readonly CheckRun[], rules: MainRules 
   if (counted === 0) return { verdict: "pending", absent: true, detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
   const names = failed.map((run) => run.name).join(", ");
-  if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { verdict: "cancelled", detail: `cancelled: ${names}` };
+  if (onlyCancels(failed)) return { verdict: "cancelled", detail: `cancelled: ${names}` };
   if (failed.length > 0) return { verdict: "red", detail: `failed: ${names}` };
   if (findings.length > 0) return { verdict: "pending", queued: true, detail: `still running: ${findings.map((finding) => (finding.kind === "missing" ? finding.name : finding.run.name)).join(", ")}` };
   const warning = warningOf(warnings);
