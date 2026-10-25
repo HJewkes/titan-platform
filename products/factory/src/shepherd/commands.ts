@@ -22,6 +22,7 @@ import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { repairStopCommand } from "./repair-stop-command.js";
+import { mergeBaseCommand } from "./merge-base-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
 import { thawCommand } from "./thaw-command.js";
@@ -376,6 +377,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.freeze": repoFreezeCommand,
   "shepherd.thaw": thawCommand,
   "shepherd.fix-pr": fixPrCommand,
+  "shepherd.merge-base": mergeBaseCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,

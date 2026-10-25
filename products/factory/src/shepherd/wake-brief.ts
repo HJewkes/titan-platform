@@ -8,6 +8,7 @@ import { noRunWake } from "./ci-norun.js";
 import { failureOf } from "./error-class.js";
 import { boundedFindings, findingsText } from "@titan-design/review-panel";
 import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
+import type { MergeBaseException } from "./merge-base-exception.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
@@ -58,6 +59,8 @@ export interface WakeFacts {
   fixFirst?: number;
   /** The run whose step records hold the verdict, named when a review wake has no findings to hand over. */
   runId?: string;
+  /** A planner's leave for this run's fix rounds to merge the base; absent means a ci-red fixer is told not to. */
+  mergeBase?: Pick<MergeBaseException, "reason" | "actor">;
 }
 
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
@@ -283,9 +286,19 @@ const BASE_IS_SHEPHERDS = "Do not merge the base branch to re-run CI or to bring
 /** Workers cannot force-push, so a rebased or reset branch strands the round: its plain push is refused and the retry exits with no new head. */
 export const NO_REWRITE_RULE = "Never rebase or reset a pushed branch. To take an updated base or a sibling PR, `git merge` it and push a new commit with a plain `git push`. A refused push means merge, not retry.";
 
+/** The planner's words are outside text, so they stay in the fence and the rule itself is fixed. */
+const MERGE_BASE_ALLOWED = "A planner allowed this run's fix rounds to merge the base branch, because the fix needs code that has landed there; who allowed it and why are in the fenced merge-base exception below. If your fix needs that code, merge the base: `git fetch origin`, `git merge origin/<base>`, and push with a plain `git push`. Do not merge it for any other reason.";
+
+/** A conflict wake already asks for the merge, so only the other kinds carry the planner's leave. */
+function withMergeBase(input: WakeFacts, wake: { reason: string; payload: string }): { reason: string; payload: string } {
+  if (input.mergeBase === undefined || input.kind === "conflict") return wake;
+  const fence = dataFence("merge-base exception", `allowed by: ${input.mergeBase.actor}\nreason: ${input.mergeBase.reason}`);
+  return { reason: `${wake.reason} ${MERGE_BASE_ALLOWED}`, payload: `${wake.payload}\n\n${fence}` };
+}
+
 /** Why the agent is woken, and the data that shows it, fenced; `testRule` is the fixer rule for the host serve runs on. Every wake kind passes here, so the history rule is appended once. */
 export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest, testRule: string = MAC_SUITE_RULES.fixer): Promise<{ reason: string; payload: string }> {
-  const wake = await wakeBody(port, input, pr);
+  const wake = withMergeBase(input, await wakeBody(port, input, pr));
   return { ...wake, reason: `${wake.reason}\n\n${NO_REWRITE_RULE}\n\n${testRule}` };
 }
 
@@ -296,7 +309,8 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
       const noRun = noRunWake(head, input.payload);
       if (noRun) return noRun;
       const failing = await failingRuns(port, input);
-      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow. ${BASE_IS_SHEPHERDS}`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+      const baseRule = input.mergeBase === undefined ? ` ${BASE_IS_SHEPHERDS}` : "";
+      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.${baseRule}`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
     }
     case "review":
       return withReviewComments(port, input, reviewWake(input));

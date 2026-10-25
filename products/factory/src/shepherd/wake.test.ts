@@ -29,6 +29,7 @@ import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeSte
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
 
 const REPO = "octo/demo";
@@ -72,7 +73,7 @@ function fakeAgents(rows: AgentRow[]) {
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), mergeBaseExceptionMigration(42)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -896,6 +897,31 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     expect(message).not.toContain("generated");
     expect(message).not.toContain("take the base's side");
     expect(message).toContain(`\`\`\`conflict candidates\n${path}\n\`\`\``);
+  });
+
+  it("briefs a ci-red fixer with the merge-base exception a planner recorded on the run (TP-4242)", async () => {
+    const scene = wakeStep({ warmth: warm });
+    scene.store.get().mergeBaseExceptions().allow({ runId: "run-1", reason: "the fix needs #12 from main", actor: "demo-planner" });
+
+    await scene.run("ci-red");
+
+    const message = scene.agents.asked[0]!.message;
+    expect(message).toContain("A planner allowed this run's fix rounds to merge the base branch");
+    expect(message).not.toContain("Do not merge the base branch");
+    expect(message).toContain(dataFence("merge-base exception", "allowed by: demo-planner\nreason: the fix needs #12 from main"));
+  });
+
+  it("keeps the line against merging the base once the exception is revoked", async () => {
+    const scene = wakeStep({ warmth: warm });
+    const exceptions = scene.store.get().mergeBaseExceptions();
+    exceptions.allow({ runId: "run-1", reason: "the fix needs #12 from main", actor: "demo-planner" });
+    exceptions.revoke("run-1");
+
+    await scene.run("ci-red");
+
+    const message = scene.agents.asked[0]!.message;
+    expect(message).toContain("Do not merge the base branch");
+    expect(message).not.toContain("merge-base exception");
   });
 
   it("returns unhandled when the base branch is not a valid ref name", async () => {
