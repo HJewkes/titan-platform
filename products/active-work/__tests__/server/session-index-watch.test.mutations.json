@@ -27,6 +27,24 @@
       "kills": [
         "startSessionIndexWatch with transcripts on disk after a miner rebuild swap the watcher writes its next pass to the new file, whose turn and request totals equal the old one"
       ]
+    },
+    {
+      "name": "runNow waits out its budget behind a pass waiting on the lock",
+      "file": "products/active-work/src/session-index/scheduler.ts",
+      "find": "    if (current.lockWaiting) return false;\n",
+      "replace": "",
+      "kills": [
+        "startSessionIndexWatch runNow reads stale at once while a full pass waits on a lock another process holds"
+      ]
+    },
+    {
+      "name": "the full pass waits on the refresh lock without the abort signal",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "{ signal, onWait: () => onLockWait?.(true) }",
+      "replace": "{ onWait: () => onLockWait?.(true) }",
+      "kills": [
+        "startSessionIndexWatch close() while the pass waits on a lock held elsewhere returns without waiting it out"
+      ]
     }
   ]
 }

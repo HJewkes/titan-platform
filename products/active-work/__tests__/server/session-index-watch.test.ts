@@ -270,9 +270,9 @@ describe('startSessionIndexWatch', () => {
     const nextTurn = new Promise((resolve) => setImmediate(() => resolve('still waiting')));
     const freshness = await Promise.race([scheduler.runNow(800), nextTurn]);
     abort.abort(new Error('test over'));
-    await scheduler.close();
     letGo();
     await held;
+    await scheduler.close();
 
     expect(freshness).toBe('stale');
   });
