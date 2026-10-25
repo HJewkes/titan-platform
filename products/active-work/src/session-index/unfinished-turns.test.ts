@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discoverTranscripts } from '@titan-design/session-read';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
-import { rollupYielding } from './unfinished-turns.js';
+import { rollupUnfinishedTurns, rollupYielding, unfinishedSessionIds } from './unfinished-turns.js';
 
 const SESSIONS = ['sess-a', 'sess-b', 'sess-c'];
 
@@ -72,5 +72,40 @@ describe('sliced rollup', () => {
     expect(updated).toBe(SESSIONS.length);
     expect(yields).toBe(SESSIONS.length);
     expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+});
+
+describe('unfinished-session read', () => {
+  it('hands the loop back before the first rollup', async () => {
+    await unfinishedSessions();
+    const unfinishedAtYield: unknown[] = [];
+
+    await rollupUnfinishedTurns(graph, async () => {
+      unfinishedAtYield.push(unfinishedTurns());
+    });
+
+    expect(unfinishedAtYield[0]).toEqual({ n: SESSIONS.length });
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+
+  it('reads every session across pages, yielding after each page', async () => {
+    await unfinishedSessions();
+    let yields = 0;
+
+    const ids = await unfinishedSessionIds(graph, async () => {
+      yields += 1;
+    }, 1);
+
+    expect(ids.sort()).toEqual(SESSIONS);
+    expect(yields).toBe(SESSIONS.length);
+  });
+
+  it('includes the session whose facts carry an unfinished turn of another', async () => {
+    await unfinishedSessions();
+    graph.db.prepare("UPDATE fact SET session_id = 'sess-z' WHERE session_id = 'sess-c'").run();
+
+    const ids = await unfinishedSessionIds(graph, async () => {});
+
+    expect(ids.sort()).toEqual([...SESSIONS, 'sess-z']);
   });
 });
