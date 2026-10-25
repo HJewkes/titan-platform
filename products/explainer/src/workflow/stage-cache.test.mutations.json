@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a new render keeps the old qa entry",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "qa: [\"mp4\", \"words\", \"script\", \"page\"]",
+      "replace": "qa: [\"words\", \"script\", \"page\"]",
+      "kills": [
+        "stage cache over whole runs same script, new render variant: only render, qa and sheets run again"
+      ]
+    }
+  ]
+}
