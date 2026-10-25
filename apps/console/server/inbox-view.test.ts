@@ -467,6 +467,14 @@ describe("a deposit's typed op", () => {
     expect(held!.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
     expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
   });
+
+  it("shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge", () => {
+    const [held] = inboxItems([deposited({ ...mergeOp, pr: 3 })], [row(RUN_G10, 3, "g10-adversary: authority change")]);
+    const [open] = inboxItems([deposited(mergeOp)], [row(RUN_PLAIN, 7)]);
+
+    expect(held).toMatchObject({ action: { kind: "owner-op" }, hold: { class: "g10-adversary", reason: "g10-adversary: authority change" } });
+    expect(open).not.toHaveProperty("hold");
+  });
 });
 
 describe("inbox ordering", () => {
