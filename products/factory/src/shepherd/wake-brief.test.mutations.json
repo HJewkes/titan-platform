@@ -11,7 +11,7 @@
       ]
     },
     {
-      "name": "a ci-red brief keeps the line against merging the base under a planner's exception",
+      "name": "ci-red keeps the no-merge-base line under a planner exception",
       "file": "products/factory/src/shepherd/wake-brief.ts",
       "find": "const baseRule = input.mergeBase === undefined ? ` ${BASE_IS_SHEPHERDS}` : \"\";",
       "replace": "const baseRule = ` ${BASE_IS_SHEPHERDS}`;",
