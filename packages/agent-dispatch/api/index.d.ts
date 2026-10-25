@@ -389,16 +389,35 @@ interface AgentRow {
      * from no one. Absent when the broker does not report it, which proves nothing.
      */
     predecessor?: string | null;
+    /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
+    retired?: boolean;
+}
+/**
+ * Every row the broker's log holds, retired generations included. `complete` is false when the installed agent-chat
+ * predates `--include-retired`, so `rows` lacks the retired generations and cannot prove who spawned whom.
+ */
+interface AgentLineage {
+    rows: AgentRow[];
+    complete: boolean;
 }
 interface RetireResult {
     name: string;
     /** What the broker could not do on a successful retire, verbatim. */
     caveats: string[];
 }
-declare function buildListAgentsArgs(): string[];
+declare function buildListAgentsArgs(options?: {
+    includeRetired?: boolean;
+}): string[];
 declare function buildRetireArgs(name: string, force?: boolean): string[];
-/** Every agent the broker's log knows, live or ended. */
-declare function listAgents(agentChatBinPath: string, timeoutMs: number): Promise<AgentRow[]>;
+/** Every agent the broker's log knows, live or ended; retired generations only with `includeRetired`. */
+declare function listAgents(agentChatBinPath: string, timeoutMs: number, options?: {
+    includeRetired?: boolean;
+}): Promise<AgentRow[]>;
+/**
+ * The roster with retired generations, for a lineage walk. An agent-chat that predates the flag gets the plain roster,
+ * marked incomplete, so a caller can refuse to prove independence instead of failing the read.
+ */
+declare function listAgentLineage(agentChatBinPath: string, timeoutMs: number): Promise<AgentLineage>;
 /**
  * Release the agent's isolation, end its process and free its name. `force`
  * discards uncommitted or unmerged work its worktree holds. Rejects with
@@ -476,4 +495,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire };
