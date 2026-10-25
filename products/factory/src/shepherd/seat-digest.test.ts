@@ -149,6 +149,19 @@ describe("seat digests", () => {
     expect(ports.sent[1]!.text).toContain("Cleared: acme/widgets#1, acme/widgets#2\nStill open: 1 unchanged gate;");
   });
 
+  it("reads an item moving to another gate on the same PR as a change, not a clearance", async () => {
+    const ports = fakePorts();
+    const memory = memoryMap();
+    await sendSeatDigests([gated(1, "ci-failed"), gated(2, "approve-merge")], ports, memory);
+
+    await sendSeatDigests([gated(1, "approve-merge"), plain(row(2))], ports, memory);
+
+    const delta = ports.sent[1]!.text;
+    expect(delta).toContain("Changed:\n- acme/widgets#1 waits on approve-merge: `titan-factory gate resolve run-1 approve-merge --json '<payload>'`");
+    expect(delta).toMatch(/^Cleared: acme\/widgets#2$/m);
+    expect(delta).not.toContain("New:");
+  });
+
   it("collapses three new gates on one step into one line that still carries each resolve command", async () => {
     const ports = fakePorts();
     const memory = memoryMap();
