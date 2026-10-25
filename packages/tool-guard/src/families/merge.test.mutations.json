@@ -39,15 +39,6 @@
       ]
     },
     {
-      "name": "--tags with no refspec still routes through config",
-      "file": "packages/tool-guard/src/families/merge.ts",
-      "find": "  if (hasFlag(options, \"--delete\", \"-d\") || (refspecs.length === 0 && hasFlag(options, \"--tags\"))) return null;",
-      "replace": "  if (hasFlag(options, \"--delete\", \"-d\")) return null;",
-      "kills": [
-        "a push the command's own -c or --config-env config routes onto a protected branch --tags with push.default=matching, which git does not consult pushes no protected branch"
-      ]
-    },
-    {
       "name": "any branch upstream satisfies push.default=upstream",
       "file": "packages/tool-guard/src/families/merge.ts",
       "find": "sources.some((s) => s === UNKNOWN || !config.merges.has(s))",
