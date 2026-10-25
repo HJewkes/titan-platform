@@ -62,7 +62,7 @@ describe("a digest rerouted from a dead seat carries only what is recent and unh
     await sendSeatDigests([gated(1), finished(2, 72)], out, memory, { seatOf: () => DEAD }, NOW);
 
     expect(out.sent).toEqual([
-      { seat: DEAD, text: ["Shepherd digest for old-coord: 1 open, 1 newly finished.", "Open:", "- acme/widgets#1 waits on approve-merge: `titan-factory gate resolve run-1 approve-merge --json '<payload>'`", "Finished:", "- acme/widgets#2 merged"].join("\n") },
+      { seat: DEAD, text: ["Shepherd digest for old-coord: 1 open, 1 newly finished.", "New:","- acme/widgets#1 waits on approve-merge: `titan-factory gate resolve run-1 approve-merge --json '<payload>'`", "Finished:", "- acme/widgets#2 merged"].join("\n") },
     ]);
   });
 

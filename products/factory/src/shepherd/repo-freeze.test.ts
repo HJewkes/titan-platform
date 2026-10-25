@@ -122,7 +122,7 @@ describe("shepherd.freeze", () => {
 
     const result = await repoFreezeCommand.run({ action: "unfreeze", repo: REPO }, ctx);
 
-    expect(result).toEqual({ changed: false, detail: `${REPO} was not frozen; nothing changed`, freezes: [] });
+    expect(result).toEqual({ changed: false, detail: `${REPO} was not frozen; nothing changed`, freezes: [], mainRed: [] });
     expect(formatShepherd("shepherd.freeze", result)).toBe(`${REPO} was not frozen; nothing changed\nno repo freezes\n`);
   });
 

@@ -9,6 +9,15 @@
       "kills": [
         "gate resolve with owner presence the stored resolver names the owner-signed presence record, which the resolve spent"
       ]
+    },
+    {
+      "name": "owner-release drops the hold-release record from the owner resolver",
+      "file": "products/factory/src/gate-resolve.ts",
+      "find": "  return { ...owner, confirmEvent: minted.confirmEvent };\n",
+      "replace": "  return owner;\n",
+      "kills": [
+        "ownerResolver refuses an agent shell without a signed hold release, names its record with one, and asks nothing of the owner's own terminal"
+      ]
     }
   ]
 }

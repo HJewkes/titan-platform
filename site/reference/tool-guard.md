@@ -91,6 +91,7 @@ through a symlinked parent, is refused just before the append.
 - It does not follow commands built at run time (`$(...)`, `eval "$x"`), and reads a script run
   by path one level deep.
 - An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
+- A gh command whose group or verb is only known at run time (`gh $X`, `gh pr $X`), whose last command word gh may run as a config alias or an extension (`gh m 1`), or whose `GH_CONFIG_DIR`, `XDG_CONFIG_HOME` or `HOME` prefix points gh at another config, reads as a merge, a release and a gist upload at once, and as a switch to an unknown branch (TP-2703). Behind a dynamic command word only a run-time word counts (`"$G" pr $X 5`), so `"$EDITOR" file` passes.
 - A GitHub REST write (any method but GET or HEAD) to a ruleset route (`repos/<o>/<r>/rulesets`, `repositories/<id>/rulesets`, `orgs/<o>/rulesets`, `enterprises/<e>/rulesets`) or to `branches/<b>/protection` on any branch, through gh api, curl, wget or httpie, reads as `authority-config`. A gh endpoint known only at run time (TP-2707 d), a filled `{owner}/{repo}` slot whose fill reroutes the path (TP-2755 b) and GraphQL ruleset mutations (TP-2831) are not read here.
 - A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - A line that defines a shell alias is refused whole, with its own reason: `alias y=git`, `alias -g`, `enable -a`,
@@ -113,9 +114,12 @@ through a symlinked parent, is refused just before the append.
 - A git push that moves a tag reads as `release` (`bash.release.git-push-tag`), as a tag move is a charter hard
   stop: `--tags`, `--follow-tags`, `git -c push.followTags[=<true>]`, a refspec whose destination is `refs/tags/…`,
   `tags/…`, a `v<digit>` name (`v1`, `v2.3.0`) or a changesets tag (`@scope/pkg@1.2.0`, `pkg@1.2.0`), and
-  `tag <name>`. A branch named in one of those shapes reads as a tag too. Not seen: a tag of any other name
-  (`git push origin r2` cannot be told from a branch without the repository), an abbreviated long option (`--ta`,
-  `--fol`), a tag named only at run time, and `push.followTags` from a config file or `--config-env`.
+  `tag <name>`. A branch named in one of those shapes reads as a tag too. A push long option given as a prefix is
+  read as git reads it, against `git push`'s own option list: `--ta` is `--tags`, `--fol` is `--follow-tags`, `--al`
+  is `--all`, `--mir` is `--mirror`. An ambiguous prefix such as `--t` (`--tags` or `--thin`) makes git refuse the
+  push, and reads as a push to an unknown branch (TP-4173). Not seen: a tag of any other name
+  (`git push origin r2` cannot be told from a branch without the repository), a tag named only at run time, and
+  `push.followTags` from a config file or `--config-env`.
 - It does not classify `titan-factory` verbs.
 
 ## merge-lint

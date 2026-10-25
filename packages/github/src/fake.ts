@@ -36,7 +36,8 @@ export function fakeSha(tag: string): string {
 }
 
 export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success", appId = GITHUB_ACTIONS_APP_ID, headSha = ""): CheckRun {
-  return { id, name, status: "completed", conclusion, startedAt, headSha, appId, workflowRunId: 1000 + id, pullRequests: [], url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
+  const url = `https://example.test/actions/runs/${1000 + id}/job/${id}`;
+  return { id, name, status: "completed", conclusion, startedAt, completedAt: startedAt, title: null, headSha, appId, workflowRunId: 1000 + id, pullRequests: [], url };
 }
 
 /** The App id the fake posts check runs as unless `fakeGitHub({ appId })` says otherwise. */
@@ -88,7 +89,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviewComments: new Map(),
     forcePushes: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, autoMerge: false, ...fields };
+      const number = prs.size + 1;
+      const pr: PullRequest = {
+        number, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${number}`, headRepo: repo, baseRef: base,
+        draft: false, mergeableState: "clean", behind: false, autoMerge: false, ...fields,
+      };
       if (pr.merged && pr.mergedAt === null) pr.mergedAt = FAKE_MERGED_AT;
       prs.set(pr.number, pr);
       return { ...pr };
@@ -276,7 +281,11 @@ function resolveCommit(fake: FakeGitHub, runs: Map<string, CheckRun[]>, sha: str
 /** Like GitHub, the run is stamped with the posting App's id, which is what `latestCheckRuns` and `mergeReadiness` read. */
 function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: number, repo: string, request: CreateCheckRunRequest, n: number): { id: number } {
   const id = 9000 + n;
-  const run: CheckRun = { id, name: request.name, status: "completed", conclusion: request.conclusion, startedAt: "2026-01-01T00:00:00Z", headSha: request.headSha, appId, workflowRunId: null, pullRequests: [], url: `https://example.test/runs/${id}` };
+  const at = "2026-01-01T00:00:00Z";
+  const run: CheckRun = {
+    id, name: request.name, status: "completed", conclusion: request.conclusion, startedAt: at, completedAt: at, title: null, headSha: request.headSha,
+    appId, workflowRunId: null, pullRequests: [], url: `https://example.test/runs/${id}`,
+  };
   fake.createdCheckRuns.push({ id, repo, request: { ...request } });
   runs.set(request.headSha, [...(runs.get(request.headSha) ?? []), run]);
   return { id };

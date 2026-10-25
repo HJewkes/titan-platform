@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discoverTranscripts } from '@titan-design/session-read';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
-import { rollupYielding } from './unfinished-turns.js';
+import { rollupUnfinishedTurns, rollupYielding } from './unfinished-turns.js';
 
 const SESSIONS = ['sess-a', 'sess-b', 'sess-c'];
 
@@ -71,6 +71,44 @@ describe('sliced rollup', () => {
 
     expect(updated).toBe(SESSIONS.length);
     expect(yields).toBe(SESSIONS.length);
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+
+  it('gathers unfinished turns a page at a time, yielding after each page', async () => {
+    await unfinishedSessions();
+    let yields = 0;
+
+    const updated = await rollupUnfinishedTurns(
+      graph,
+      async () => {
+        yields += 1;
+      },
+      1,
+    );
+
+    expect(updated).toBe(SESSIONS.length);
+    expect(yields).toBe(SESSIONS.length * 2);
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+
+  it('hands the loop back before the first rollup', async () => {
+    await unfinishedSessions();
+    const unfinishedAtYield: unknown[] = [];
+
+    await rollupUnfinishedTurns(graph, async () => {
+      unfinishedAtYield.push(unfinishedTurns());
+    });
+
+    expect(unfinishedAtYield[0]).toEqual({ n: SESSIONS.length });
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+
+  it('rolls up a turn whose facts another session carries', async () => {
+    await unfinishedSessions();
+    graph.db.prepare("UPDATE fact SET session_id = 'sess-z' WHERE session_id = 'sess-c'").run();
+
+    await rollupUnfinishedTurns(graph, async () => {});
+
     expect(unfinishedTurns()).toEqual({ n: 0 });
   });
 });

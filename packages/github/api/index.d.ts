@@ -235,6 +235,10 @@ interface CheckRun {
     status: string;
     conclusion: string | null;
     startedAt: string | null;
+    /** Null until the run completes. */
+    completedAt: string | null;
+    /** The run's `output.title`, which `gh pr checks` prints as a check's description; null when the run set none. */
+    title: string | null;
     /** The commit the run checked; a run at any other sha says nothing about this head. */
     headSha: string;
     /** The GitHub App that posted the run; a required context counts only from an allowed app. */

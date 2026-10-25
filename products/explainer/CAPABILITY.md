@@ -62,6 +62,7 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `beatSpecFor` rejects an unknown beat,
 `parseBeatSlots` rejects bad slots and duplicate emphasis ids,
 `cueElement` resolves a cue target to exactly one emphasis element, and
+`fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
@@ -122,6 +123,7 @@ a per-beat take cache),
 then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
+resolve builds each `layer: "custom"` beat's layer through claude-print by default, behind an esbuild compile gate and import allowlist, and reuses an earlier run's build of an unchanged packet,
 `explainer stage` runs one stage from stored shas,
 `--from`/`--to`/`--pin` start and stop mid-pipeline,
 `--budget-usd` is a resumable hard stop,
