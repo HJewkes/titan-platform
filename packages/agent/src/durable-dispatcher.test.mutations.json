@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "native maxTurns maps back to the ambiguous runtime_error",
+      "file": "packages/agent/src/claude-code-result.ts",
+      "find": "case \"max_turns\": return { kind: \"limit_exceeded\", reason: `native maxTurns reached: ${reason}`, unit: \"agent_iterations\" };",
+      "replace": "case \"max_turns\": return { kind: \"runtime_error\", reason: `native maxTurns reached: ${reason}` };",
+      "kills": [
+        "durable harness dispatch persists a Claude run that reached its native maxTurns as a terminal failure"
+      ]
+    }
+  ]
+}
