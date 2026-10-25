@@ -4,7 +4,7 @@
     {
       "name": "resolve stores no slots artifact",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "const slots = artifacts.slots === undefined ? generatedSlots(script, beats, read(\"code\")) : undefined;",
+      "find": "const slots = artifacts.slots === undefined ? generatedSlots(script, resolved, read(\"code\")) : undefined;",
       "replace": "const slots: string | undefined = undefined;",
       "kills": [
         "resolve stores the template fill's slots writes each beat's generated slots by beat id when no slots pin is present, and the emphasis gate runs on them"
