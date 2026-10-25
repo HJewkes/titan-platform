@@ -76,7 +76,7 @@ For a `sim` beat, a `SimModel` in `SIM_MODELS` simulates from the seed's generat
 `checkSims` reports a model with no doctrine file, a file with no model, and a doctrine statistic the model never emits.
 `simCheck` passes a sim beat only when its run reproduces a gathered number fact within the doctrine tolerance, refusing a tolerance under 3 se, over a tenth of the claim, or on a fitted statistic, and
 `runSimPass` sweeps, freezes and checks every sim beat at resolve, which cuts the failing ones before tts behind the `sim-cut-orphan` gate.
-`reviewRounds` is the pilot model (`review-rounds`: round 1 passes with chance p1, later rounds with chance q, emitting mean reviews and the 5+ share), and
+`reviewRounds` is the pilot model (`review-rounds`: round 1 passes with chance p1, later rounds with chance q, emitting mean reviews and the 5+ share, refusing a q under `MIN_LATER_PASS` or a prs over `MAX_REVIEW_PRS`), and
 `fitLaterRoundPass` solves q from a gathered 5+ share, which the doctrine lists in `fittedFrom`.
 `explainer guide types` writes each type's planner guide to `doctrine/guides/planner/<type>.md`.
 `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.

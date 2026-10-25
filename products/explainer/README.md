@@ -925,7 +925,9 @@ A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contrac
 - **Pilot.** `review-rounds` (`reviewRounds`) runs `prs` PRs: round 1 passes with chance `p1`, every later round with
   chance `q`. It emits `mean-reviews` (the first review counts) and `share-5plus`, whose closed forms
   `1 + (1 - p1) / q` and `(1 - p1)(1 - q)^3` are its test oracle. `fitLaterRoundPass(p1, share5plus)` solves `q` from a
-  gathered 5+ share, so `share-5plus` is in `fittedFrom` and only the held-out mean can be claimed. Its doctrine holds
+  gathered 5+ share, so `share-5plus` is in `fittedFrom` and only the held-out mean can be claimed. Doctrine bounds are not
+  enforced before `simulate`, so the model refuses a `q` under `MIN_LATER_PASS` and a `prs` over `MAX_REVIEW_PRS`
+  itself: the resolve stage cuts that beat as `E-SIM-NO-RUN` rather than hanging. Its doctrine holds
   no article values; they come from `facts.jsonl` at run time.
 
 ## Composition page
