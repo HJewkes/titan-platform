@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "shepherd verbs drop the serve wait for the 20 s default",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "  const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);",
+      "replace": "  const probe = await probeServe(opts.port);",
+      "kills": [
+        "shepherd register against a serve that is busy rather than down exits 69 saying the serve is busy when it accepts the connection but never answers"
+      ]
+    },
+    {
+      "name": "a refused connection is reported only once the attempt's wait runs out",
+      "file": "products/factory/src/serve-probe.ts",
+      "find": "    return controller.signal.aborted ? { state: \"timeout\" } : { state: \"refused\" };",
+      "replace": "    return controller.signal.aborted ? { state: \"timeout\" } : await new Promise<Attempt>((resolve) => setTimeout(() => resolve({ state: \"refused\" }), timeoutMs));",
+      "kills": [
+        "shepherd register against a serve that is busy rather than down exits 69 quickly saying the connection was refused when nothing is listening"
+      ]
+    }
+  ]
+}
