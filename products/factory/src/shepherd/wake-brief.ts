@@ -9,6 +9,7 @@ import { failureOf } from "./error-class.js";
 import { boundedFindings, findingsText } from "@titan-design/review-panel";
 import { FixFirstEntrySchema, defectClassSection, fixFirstEntry, sameClassAsEarlier, type FixFirstEntry } from "./fix-first-trail.js";
 import type { MergeBaseException } from "./merge-base-exception.js";
+export { withMergeBaseException } from "./merge-base-exception.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
