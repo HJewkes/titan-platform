@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import path from "node:path";
 
 const TYPES: Readonly<Record<string, string>> = {
@@ -40,12 +39,13 @@ export function serveTree(dir: string): Promise<ServedTree> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo;
+      const address = server.address();
+      if (address === null || typeof address === "string") return reject(new Error("the qa page server has no TCP port"));
       const close = () => new Promise<void>((done) => {
         server.close(() => done());
         server.closeAllConnections();
       });
-      resolve({ origin: `http://127.0.0.1:${port}`, close });
+      resolve({ origin: `http://127.0.0.1:${address.port}`, close });
     });
   });
 }
