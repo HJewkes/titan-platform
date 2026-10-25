@@ -53,6 +53,7 @@ describe("pinGitProtocols", () => {
       ...caller, GIT_CONFIG_KEY_1: "protocol.ext.allow", GIT_CONFIG_VALUE_1: "never", GIT_CONFIG_COUNT: "2",
     });
     expect(withPinnedGitProtocols(pinned)).toEqual(pinned);
+    expect(withPinnedGitProtocols(EXT_NEVER)).toEqual(EXT_NEVER);
   });
   it.each([
     [{ GIT_CONFIG_COUNT: "x" }], [{ GIT_CONFIG_COUNT: "-1" }], [{ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "a.b" }],
