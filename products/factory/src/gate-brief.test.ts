@@ -75,7 +75,7 @@ describe("the D21 owner card", () => {
   const ALL_KEYS = ["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"] as const;
   const FILES = "https://github.com/octo/demo/pull/7/files";
   const CI = ".github/workflows/ci.yml";
-  const weakened = (keys: readonly string[], rest: object = {}) => ({ kind: "MERGE", headSha: HEAD, evidence: { ciPolicy: { kind: "weakened", keys }, ...rest } }) as const;
+  const weakened = (keys: readonly string[], rest: object = {}) => ({ kind: "MERGE", headSha: HEAD, evidence: { head: HEAD, ciPolicy: { kind: "weakened", keys }, ...rest } }) as const;
   const cardOf = (changes: unknown, unreadFacts?: string[]) => ciPolicyAt(weakened(["permissions"], { record: { ciPolicyChanges: changes }, ...(unreadFacts && { unreadFacts }) }), HEAD)!;
   const decoy = { path: CI, lines: [{ side: "-", n: 3, text: "  contents: read" }, { side: "+", n: 3, text: "  contents: read # x" }, { side: "+", n: 4, text: '  id-token: "write"' }], omitted: 2 };
 
@@ -84,7 +84,7 @@ describe("the D21 owner card", () => {
 
     expect(ciPolicyAt(merge, HEAD)).toEqual({ keys: ["permissions"], changes: [decoy] });
     expect(ciPolicyAt(merge, OTHER)).toBeUndefined();
-    expect(ciPolicyAt({ kind: "MERGE", headSha: HEAD, evidence: { ciPolicy: { kind: "unchanged" } } }, HEAD)).toBeUndefined();
+    expect(ciPolicyAt({ kind: "MERGE", headSha: HEAD, evidence: { head: HEAD, ciPolicy: { kind: "unchanged" } } }, HEAD)).toBeUndefined();
   });
 
   it("shows every stored line of a file in diff order with its side and number, then the count left out, and links the diff last", () => {

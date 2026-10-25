@@ -80,16 +80,17 @@ export interface CiPolicyCard {
 }
 
 const StoredCard = z.looseObject({
+  head: z.string(),
   ciPolicy: CiPolicySchema,
   record: z.looseObject({ ciPolicyChanges: CiPolicyChangesSchema }).optional().catch(undefined),
   unreadFacts: z.array(z.string()).optional().catch(undefined),
 });
 
-/** The D21 card of the MERGE evidence at exactly this head; stored lines of another shape read as none read, never as none weakened. */
+/** The D21 card of the MERGE evidence collected at exactly this head; stored lines of another shape read as none read, never as none weakened. */
 export function ciPolicyAt(verdict: Verdict | undefined, headSha: string): CiPolicyCard | undefined {
   if (verdict?.kind !== "MERGE" || verdict.headSha !== headSha) return undefined;
   const stored = StoredCard.safeParse(verdict.evidence).data;
-  if (stored?.ciPolicy?.kind !== "weakened") return undefined;
+  if (stored?.head !== headSha || stored.ciPolicy?.kind !== "weakened") return undefined;
   const changes = stored.record?.ciPolicyChanges;
   const unread = (stored.unreadFacts ?? []).filter((fact) => fact.startsWith(CI_POLICY_UNREAD_PREFIX));
   return { keys: stored.ciPolicy.keys, ...(changes && { changes }), ...(unread.length > 0 && { unread }) };
