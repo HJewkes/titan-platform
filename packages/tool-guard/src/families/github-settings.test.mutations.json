@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "an unknown reading that names no mutation passes",
+      "name": "an unknown reading counts only when no mutation is named",
       "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "(reading.unknown && reading.mutations.length === 0) || ",
-      "replace": "",
+      "find": "  return reading.unknown || reading.mutations",
+      "replace": "  return (reading.unknown && reading.mutations.length === 0) || reading.mutations",
       "kills": [
-        "githubSettings, a GraphQL request it cannot read in full denies gh api graphql -F 'query=mutation{{owner}(input:{repositoryRulesetId:\"RRS_x\"}){clientMutationId}}'"
+        "githubSettings, each reading adds a reason to deny denies a filled ruleset name behind a decoy branch mutation"
       ]
     },
     {
@@ -39,12 +39,12 @@
       ]
     },
     {
-      "name": "the family matches mutation names in raw text, undecoded and unbounded",
+      "name": "a GraphQL-reading gh endpoint skips the REST settings reading",
       "file": "packages/tool-guard/src/families/github-settings.ts",
-      "find": "reading.mutations.some((m) => RULESET_MUTATIONS.has(m));",
-      "replace": "texts.some((t) => [...RULESET_MUTATIONS].some((m) => t.includes(m)));",
+      "find": "  if (write) return [classified(\"bash.config.gh-api-ruleset\"",
+      "replace": "  if (write && !isGraphqlEndpoint(request.endpoint)) return [classified(\"bash.config.gh-api-ruleset\"",
       "kills": [
-        "githubSettings, a GraphQL ruleset mutation passes gh api graphql -f 'query=mutation{deleteRepositoryRulesetX(input:{repositoryRulesetId:\"RRS\"}){clientMutationId}}'"
+        "githubSettings, each reading adds a reason to deny denies the REST route behind a GraphQL-looking endpoint gh api -X DELETE graphql/repos/o/r/rulesets/42"
       ]
     }
   ]
