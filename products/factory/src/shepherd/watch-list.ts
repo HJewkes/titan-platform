@@ -11,7 +11,7 @@ export const WATCH_EVENTS = ["merged", "stopped", "gated"] as const;
 export const WatchEventSchema = z.enum(WATCH_EVENTS);
 export type WatchEvent = z.infer<typeof WatchEventSchema>;
 
-export const PrWatchSchema = z.object({ repo: z.string(), pr: z.number().int(), seat: z.string().nullable(), on: z.array(WatchEventSchema), actor: z.string(), at: z.string() });
+const PrWatchSchema = z.object({ repo: z.string(), pr: z.number().int(), seat: z.string().nullable(), on: z.array(WatchEventSchema), actor: z.string(), at: z.string() });
 export type PrWatch = z.infer<typeof PrWatchSchema>;
 
 const WATCH_DDL = `
@@ -46,7 +46,8 @@ export function watchListTable(db: Db, stamp: () => string): WatchList {
   return {
     set: (watch) => {
       const stored: PrWatch = { ...watch, repo: watch.repo.toLowerCase(), at: stamp() };
-      db.prepare("INSERT OR REPLACE INTO shepherd_watch (repo, pr, seat, events, actor, at) VALUES (?, ?, ?, ?, ?, ?)").run(stored.repo, stored.pr, stored.seat, JSON.stringify(stored.on), stored.actor, stored.at);
+      const insert = db.prepare("INSERT OR REPLACE INTO shepherd_watch (repo, pr, seat, events, actor, at) VALUES (?, ?, ?, ?, ?, ?)");
+      insert.run(stored.repo, stored.pr, stored.seat, JSON.stringify(stored.on), stored.actor, stored.at);
       return stored;
     },
     clear: (repo, pr) => db.prepare("DELETE FROM shepherd_watch WHERE repo = ? AND pr = ?").run(repo.toLowerCase(), pr).changes > 0,
