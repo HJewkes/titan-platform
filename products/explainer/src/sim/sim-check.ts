@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { BEAT_SLOTS } from "../beat-slots.js";
 import { claimText } from "../lint-claims.js";
 import { hasSpokenDigits } from "../spoken-numbers.js";
@@ -37,16 +37,22 @@ export interface SimBeat {
 
 export const simFailure = (beat: string, code: SimCheckCode, detail: string, measured: Partial<SimVerdict> = {}): SimVerdict => ({ beat, pass: false, ...measured, code, detail });
 
+const NumberFactSchema = z.object({ id: z.string().min(1), kind: z.literal("number"), value: z.number().finite() });
+
+const parsedLine = (line: string): unknown => {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+};
+
 /** The gathered `number` facts by id, from a JSON-lines facts pack; any other line holds no claim value. */
 export function numberFacts(text: string | undefined): Map<string, number> {
   const facts = new Map<string, number>();
   for (const line of (text ?? "").split("\n").filter((row) => row.trimStart().startsWith("{"))) {
-    try {
-      const fact = JSON.parse(line) as { id?: unknown; kind?: unknown; value?: unknown };
-      if (typeof fact.id === "string" && fact.kind === "number" && typeof fact.value === "number" && Number.isFinite(fact.value)) facts.set(fact.id, fact.value);
-    } catch {
-      continue;
-    }
+    const fact = NumberFactSchema.safeParse(parsedLine(line));
+    if (fact.success) facts.set(fact.data.id, fact.data.value);
   }
   return facts;
 }
