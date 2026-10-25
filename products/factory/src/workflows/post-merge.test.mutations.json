@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a timed-out chore's group is sent SIGTERM, which the chore can trap",
+      "file": "products/factory/src/workflows/post-merge.ts",
+      "find": "    if (child.pid !== undefined) process.kill(-child.pid, \"SIGKILL\");",
+      "replace": "    if (child.pid !== undefined) process.kill(-child.pid, \"SIGTERM\");",
+      "kills": [
+        "execChore kills a chore that traps SIGTERM once its timeout passes"
+      ]
+    },
+    {
+      "name": "a timeout leaves the chore's pipes open for a grandchild to hold",
+      "file": "products/factory/src/workflows/post-merge.ts",
+      "find": "    child.kill(\"SIGKILL\");\n  }\n  child.stdout?.destroy();\n  child.stderr?.destroy();",
+      "replace": "    child.kill(\"SIGKILL\");\n  }",
+      "kills": [
+        "execChore settles a timed-out chore whose grandchild left its process group and still holds the output"
+      ]
+    },
+    {
+      "name": "an exited chore is settled only once a daemon releases its output",
+      "file": "products/factory/src/workflows/post-merge.ts",
+      "find": "    graceTimer = setTimeout(() => settle({ exitCode, signal }), options.pipeGraceMs ?? POST_MERGE_PIPE_GRACE_MS);",
+      "replace": "    void POST_MERGE_PIPE_GRACE_MS;",
+      "kills": [
+        "execChore settles on the chore's exit plus the pipe grace when a setsid'd daemon holds its output"
+      ]
+    }
+  ]
+}

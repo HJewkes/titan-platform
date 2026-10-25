@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "close waits ten times the grace for a hung tick",
+      "file": "products/factory/src/serve-shutdown.ts",
+      "find": "    timer = setTimeout(resolve, graceMs);",
+      "replace": "    timer = setTimeout(resolve, graceMs * 10);",
+      "kills": [
+        "serve's bounded shutdown close gives a hung tick the grace and no longer"
+      ]
+    },
+    {
+      "name": "a tick abandoned at the grace keeps its signal, so its child lives on",
+      "file": "products/factory/src/serve-shutdown.ts",
+      "find": "  for (const sweep of abandoned) sweep.abort();",
+      "replace": "  void abandoned;",
+      "kills": [
+        "serve's bounded shutdown a hung tick's child process is killed at the end of the grace"
+      ]
+    }
+  ]
+}
