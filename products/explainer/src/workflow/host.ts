@@ -4,7 +4,8 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
-import type { BeatWorker } from "../build/beat-worker.js";
+import { layerRepairerFor } from "../build/agent-chat-repairer.js";
+import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { beatWorkerFor } from "../build/claude-print-worker.js";
 import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
@@ -50,6 +51,8 @@ export interface RunHost {
   media?: MediaExec;
   /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
   beatWorker?: BeatWorker | null;
+  /** Repairs a layer that fails the compile gate: agent-chat when absent and its binary exists; `null` for none. */
+  layerRepairer?: LayerRepairer | null;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -195,8 +198,9 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
   const worker = beatWorkerFor(host.beatWorker);
+  const repairer = layerRepairerFor(host.layerRepairer);
   const children = childRoutes({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(worker ? { worker } : {}),
+    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(worker ? { worker } : {}), ...(repairer ? { repairer } : {}),
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
     ...(host.media ? { media: host.media } : {}),

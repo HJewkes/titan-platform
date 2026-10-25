@@ -1,7 +1,7 @@
 import path from "node:path";
 import { codeRecordRoute, codeRoute, codeStep, mapItems, type StepResult, type StepRoute, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { BuilderRefSchema, LayerBuildSchema, packetKey, type BeatWorker, type BuilderRef, type LayerBuild } from "../build/beat-worker.js";
+import { BuilderRefSchema, LayerBuildSchema, packetKey, type BeatWorker, type BuilderRef, type LayerBuild, type LayerRepair, type LayerRepairer, type RepairRequest } from "../build/beat-worker.js";
 import { LayerBuildCache } from "../build/build-cache.js";
 import { compileLayer } from "../build/compile-gate.js";
 import { buildLayerPacket, type LayerPacket } from "../build/layer-packet.js";
@@ -23,6 +23,8 @@ const STAGE = "resolve";
 export const CUSTOM_LAYERS = "custom-layers";
 /** Under the data dir: the cross-run build cache's pointers, by packet key. */
 export const LAYER_BUILDS_DIR = "layer-builds";
+/** Under a run's dir: one scratch dir per repaired build, by packet key, that the repair agent writes into. */
+export const LAYER_REPAIRS_DIR = "layer-repairs";
 const BUILD_CONCURRENCY = 4;
 // The same input variable `codeStep` uses: an item step needs the whole StepResult, usage included, for the budget.
 const INPUT_VAR = "CODE_STEP_INPUT";
@@ -105,6 +107,8 @@ interface LayerRouteDeps {
   store: ArtifactStore;
   /** Builds each custom layer; absent, custom beats are left unbuilt with a note. */
   worker?: BeatWorker;
+  /** Runs one repair round on a build that fails the compile gate; absent, the build stays marked for repair. */
+  repairer?: LayerRepairer;
   signal?: AbortSignal;
 }
 
@@ -128,10 +132,32 @@ function buildRoute(deps: LayerRouteDeps): StepRoute {
     const packet = { packet: LayerPacketJson.parse(JSON.parse(json)), json, bytes: Buffer.byteLength(json) };
     const build: LayerBuild = LayerBuildSchema.parse(await worker.build(packet, deps.signal ? { signal: deps.signal } : {}));
     const verdict = await compileLayer(build.module);
-    if (!verdict.ok) return { result: build, needsRepair: { error: verdict.error }, usage: stepUsage(build.usage) };
-    cache.put(key, build, { runId: step.runId, stage: STAGE });
-    return { result: build, usage: stepUsage(build.usage) };
+    const scratchDir = path.join(runPaths(deps.dataDir, step.runId).runDir, LAYER_REPAIRS_DIR, key);
+    const gated = verdict.ok ? { build } : await repairOnce(deps, { packet, key, module: build.module, error: verdict.error, scratchDir }, build);
+    if (gated.error !== undefined) return { result: gated.build, needsRepair: { error: gated.error }, usage: stepUsage(gated.build.usage) };
+    cache.put(key, gated.build, { runId: step.runId, stage: STAGE });
+    return { result: gated.build, usage: stepUsage(gated.build.usage) };
   });
+}
+
+/**
+ * One repair round (round caps are TP-2616's), then the compile gate again. Whatever the round spent joins the build's
+ * usage, and its session id stays on the build, whether or not the repair passed.
+ */
+async function repairOnce(deps: LayerRouteDeps, request: RepairRequest, build: LayerBuild): Promise<{ build: LayerBuild; error?: string }> {
+  if (!deps.repairer) return { build, error: request.error };
+  let repair: LayerRepair;
+  try {
+    repair = await deps.repairer.repair(request, deps.signal ? { signal: deps.signal } : {});
+  } catch (error) {
+    return { build, error: `${request.error}; repair not started: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const session = repair.sessionId ? ` (repair session ${repair.sessionId})` : "";
+  const repaired: LayerBuild = { ...build, ...(repair.module ? { module: repair.module } : {}), usage: addUsage(build.usage, repair.usage), ...(repair.sessionId ? { repairSessionId: repair.sessionId } : {}) };
+  if (repair.error !== undefined) return { build: repaired, error: `${request.error}; repair failed${session}: ${repair.error}` };
+  if (!repair.module) return { build: repaired, error: `${request.error}; the repair wrote no module${session}` };
+  const verdict = await compileLayer(repair.module);
+  return verdict.ok ? { build: repaired } : { build: repaired, error: `still fails after repair${session}: ${verdict.error}` };
 }
 
 const buildsUsage = (builds: readonly LayerBuild[]) => builds.reduce((sum, build) => addUsage(sum, build.usage), NO_USAGE);

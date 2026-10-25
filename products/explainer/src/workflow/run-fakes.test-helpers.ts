@@ -287,7 +287,7 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   let tick = Date.parse("2026-10-22T00:00:00Z");
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
-  // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
-  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now, beatWorker: null };
+  // No beat worker or repairer unless a test passes one: the defaults would spawn a real claude or agent wherever one is installed.
+  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, media: fakeMedia(), evalChecks: [l0Check(true)], now, beatWorker: null, layerRepairer: null };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
 }
