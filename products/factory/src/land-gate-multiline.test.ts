@@ -135,47 +135,54 @@ describe("a live-shaped multi-line MRG-AU gate", () => {
   });
 });
 
-describe.each(OWNER_AT_HEAD)("a live-shaped multi-line %s gate", (rule) => {
-  const row = rule.slice(rule.indexOf("/") + 1);
+/** Each D21 merge-guard row the owner reads at their own head, named as the remote paths name it in their refusals. */
+const ownerRows = OWNER_AT_HEAD.map((rule) => ({ rule, row: rule.slice(rule.indexOf("/") + 1) }));
 
+describe("a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate", () => {
   it("reads as its rule, and a coordinator's merge is refused on evidence that matches it", async () => {
-    const { pr, gate, gateId } = await gatedPr(world(), rule);
+    for (const { rule } of ownerRows) {
+      const { pr, gate, gateId } = await gatedPr(world(), rule);
 
-    const reason = landGate(gate)!.reason;
+      const reason = landGate(gate)!.reason;
 
-    expect(gate.prompt.split("\n").length).toBeGreaterThan(2);
-    expect(landGate(gate)?.rule).toBe(rule);
-    expect(coordinatorEvidencePolicy(gate, COORDINATOR, { decision: "merge", headSha: H }, mergeEvidence(gateId, pr, rule, reason))).toBe(false);
+      expect(gate.prompt.split("\n").length).toBeGreaterThan(2);
+      expect(landGate(gate)?.rule).toBe(rule);
+      expect(coordinatorEvidencePolicy(gate, COORDINATOR, { decision: "merge", headSha: H }, mergeEvidence(gateId, pr, rule, reason))).toBe(false);
+    }
   });
 
   it("is refused by a console tap and by merge-at-head, which starts no land-pr", async () => {
-    const w = world();
-    const { pr, runId, gateId } = await gatedPr(w, rule);
+    for (const { rule, row } of ownerRows) {
+      const w = world();
+      const { pr, runId, gateId } = await gatedPr(w, rule);
 
-    const tapped = await resolveGate(tapRead(runId, gateId, pr), w.services.port, w.host);
-    const merged = await mergeAtHead("act-1", { op: { kind: "merge-at-head", repo: REPO, pr, headSha: H }, confirmEvent: CONFIRM }, w.deps);
+      const tapped = await resolveGate(tapRead(runId, gateId, pr), w.services.port, w.host);
+      const merged = await mergeAtHead("act-1", { op: { kind: "merge-at-head", repo: REPO, pr, headSha: H }, confirmEvent: CONFIRM }, w.deps);
 
-    expect(tapped).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining(`a ${row} gate`) });
-    expect(merged).toMatchObject({ outcome: "refused", reason: "class" });
-    expect(landRuns(w.host)).toEqual([]);
-    expect(w.host.gates.get(gateId)?.status).toBe("pending");
+      expect(tapped).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining(`a ${row} gate`) });
+      expect(merged).toMatchObject({ outcome: "refused", reason: "class" });
+      expect(landRuns(w.host)).toEqual([]);
+      expect(w.host.gates.get(gateId)?.status).toBe("pending");
+    }
   });
 
   it("is refused in a gate batch, by a standing answer and by a Ship answer", async () => {
-    const w = world();
-    const mechanical = await gatedPr(w, MRG_AU);
-    const held = await gatedPr(w, rule);
-    await w.answers.add({ actionId: "act-2", confirmEvent: CONFIRM, repo: REPO, pr: held.pr, headSha: H, runId: held.runId, expiresAt: "2026-10-25T12:00:00.000Z" });
-    const request = { runId: held.runId, gateId: held.gateId, headSha: H, tree: "t", packetSha: "p", roundId: "r", choice: "merge" as const };
-    const files = { round: new Uint8Array(), packet: new Uint8Array(), feedback: new Uint8Array() };
+    for (const { rule, row } of ownerRows) {
+      const w = world();
+      const mechanical = await gatedPr(w, MRG_AU);
+      const held = await gatedPr(w, rule);
+      await w.answers.add({ actionId: "act-2", confirmEvent: CONFIRM, repo: REPO, pr: held.pr, headSha: H, runId: held.runId, expiresAt: "2026-10-25T12:00:00.000Z" });
+      const request = { runId: held.runId, gateId: held.gateId, headSha: H, tree: "t", packetSha: "p", roundId: "r", choice: "merge" as const };
+      const files = { round: new Uint8Array(), packet: new Uint8Array(), feedback: new Uint8Array() };
 
-    const batched = itemsRefusal(w.host, [mergeItem(mechanical.runId, mechanical.gateId, mechanical.pr), mergeItem(held.runId, held.gateId, held.pr)]);
-    const swept = await sweepStandingAnswers(w.host, w.services, w.answers, new Date(NOW_MS));
-    const shipped = await checkAnswer({ host: w.host, port: w.services.port, request, files, now: new Date(NOW_MS) });
+      const batched = itemsRefusal(w.host, [mergeItem(mechanical.runId, mechanical.gateId, mechanical.pr), mergeItem(held.runId, held.gateId, held.pr)]);
+      const swept = await sweepStandingAnswers(w.host, w.services, w.answers, new Date(NOW_MS));
+      const shipped = await checkAnswer({ host: w.host, port: w.services.port, request, files, now: new Date(NOW_MS) });
 
-    expect(batched).toBe(`item 2: ${held.gateId} is a ${row} gate; it stays one per proof`);
-    expect(swept).toEqual([{ kind: "pending", actionId: "act-2", runId: held.runId, reason: `${held.gateId} is a ${row} gate, which no standing answer gives` }]);
-    expect(shipped).toMatchObject({ kind: "refused", reason: "not-land-gate", detail: `gate ${held.gateId} is a ${row} gate, which no Ship answer gives` });
-    expect(w.host.gates.get(held.gateId)?.status).toBe("pending");
+      expect(batched).toBe(`item 2: ${held.gateId} is a ${row} gate; it stays one per proof`);
+      expect(swept).toEqual([{ kind: "pending", actionId: "act-2", runId: held.runId, reason: `${held.gateId} is a ${row} gate, which no standing answer gives` }]);
+      expect(shipped).toMatchObject({ kind: "refused", reason: "not-land-gate", detail: `gate ${held.gateId} is a ${row} gate, which no Ship answer gives` });
+      expect(w.host.gates.get(held.gateId)?.status).toBe("pending");
+    }
   });
 });

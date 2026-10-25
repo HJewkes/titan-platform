@@ -7,10 +7,8 @@
       "find": "new Set([\"skill-path\", \"ci-policy-weakened\", \"ci-policy-malformed\"])",
       "replace": "new Set([\"skill-path\"])",
       "kills": [
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
       ]
     },
     {
@@ -19,12 +17,8 @@
       "find": "  if (ownerRow !== undefined) return `a ${ownerRow} gate`;\n",
       "replace": "",
       "kills": [
-        "a live-shaped multi-line shepherd-merge-guard/skill-path gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/skill-path gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
       ]
     },
     {
@@ -33,9 +27,7 @@
       "find": "    return ownerAtHeadRow(land) === undefined ? land : undefined;",
       "replace": "    return land;",
       "kills": [
-        "a live-shaped multi-line shepherd-merge-guard/skill-path gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused by a console tap and by merge-at-head, which starts no land-pr",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr"
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr"
       ]
     },
     {
@@ -44,9 +36,7 @@
       "find": "    if (ownerRow !== undefined) return { kind: \"pending\", actionId, runId, reason: `${pending.gate.id} is a ${ownerRow} gate, which no standing answer gives` };\n",
       "replace": "",
       "kills": [
-        "a live-shaped multi-line shepherd-merge-guard/skill-path gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
       ]
     },
     {
@@ -55,9 +45,7 @@
       "find": "  if (ownerRow !== undefined) return refused(\"not-land-gate\", `gate ${gate.id} is a ${ownerRow} gate, which no Ship answer gives`);\n",
       "replace": "",
       "kills": [
-        "a live-shaped multi-line shepherd-merge-guard/skill-path gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-weakened gate is refused in a gate batch, by a standing answer and by a Ship answer",
-        "a live-shaped multi-line shepherd-merge-guard/ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer"
       ]
     }
   ]
