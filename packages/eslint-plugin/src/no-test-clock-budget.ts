@@ -150,9 +150,12 @@ function propertyReadsClock(prop: Flow, walk: Walk, [key, ...rest]: Path): boole
   return readsClock(prop.value, walk, rest);
 }
 
+/** Deeper than any real property read; a self-write such as `node = node.parent` grows the path once per pass. */
+const MAX_PATH = 8;
+
 function nameReadsClock(node: Flow, walk: Walk, path: Path): boolean {
   const variable = walk.resolved.get(node) ?? null;
-  if (variable === null) return false;
+  if (variable === null || path.length > MAX_PATH) return false;
   const paths = walk.seen.get(variable) ?? new Set<string>();
   if (paths.has(path.join("."))) return false;
   walk.seen.set(variable, paths.add(path.join(".")));
