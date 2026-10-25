@@ -1,7 +1,7 @@
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
-import { ciPolicyChanges, shownLine, type CiPolicyChange, type CiPolicyFile } from "./ci-policy-changes.js";
+import { readCiPolicyChanges, type CiPolicyChange, type CiPolicyChangesRead } from "./ci-policy-changes.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
@@ -340,19 +340,14 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
-  const card = await ciPolicyCard(port, input, pr.baseRef, merge.changedPaths);
+  const card = input.ciPolicy?.kind === "weakened" ? await readCiPolicyChanges(port, input, pr.baseRef, input.ciPolicy.keys, merge.changedPaths.filter(isGithubPath)) : undefined;
   return { pr, merge, runs, ...readGaps(required.readable ? undefined : required.reason, paths, [bypassable.unread, unread, ...(card?.unread ?? [])], card) };
-}
-
-interface CardRead {
-  changes: CiPolicyChange[];
-  unread: string[];
 }
 
 type ReadGaps = Omit<Observed, "pr" | "merge" | "runs">;
 
 /** Folds what was read closed, or only on a weakened line, into the observation's optional fields. */
-function readGaps(requiredUnknown: string | undefined, paths: { unread?: string; changedLines?: number }, unread: readonly (string | undefined)[], card?: CardRead): ReadGaps {
+function readGaps(requiredUnknown: string | undefined, paths: { unread?: string; changedLines?: number }, unread: readonly (string | undefined)[], card?: CiPolicyChangesRead): ReadGaps {
   const unreadFacts = unread.filter((fact) => fact !== undefined);
   return {
     ...(requiredUnknown !== undefined && { requiredChecksUnknown: requiredUnknown }),
@@ -361,34 +356,6 @@ function readGaps(requiredUnknown: string | undefined, paths: { unread?: string;
     ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }),
     ...(card && { ciPolicyChanges: card.changes }),
   };
-}
-
-/** At most this many `.github/` files are read for the D21 card; the rest are named as unread, and the owner reads them in the diff. */
-const MAX_CARD_FILES = 10;
-
-/**
- * Reads each changed `.github/` file at the base branch and the head for a weakened line. A read that fails is named as an
- * unread fact and its file left off the card; the weakened gate opens all the same.
- */
-async function ciPolicyCard(port: GitHubPort, input: MergeEvidenceInput, baseRef: string, changedPaths: readonly string[]): Promise<CardRead | undefined> {
-  if (input.ciPolicy?.kind !== "weakened") return undefined;
-  const github = changedPaths.filter(isGithubPath);
-  const read = github.slice(0, MAX_CARD_FILES);
-  const reads = await Promise.all(read.map((path) => cardFile(port, input.repo, path, baseRef, input.head)));
-  const files = reads.filter((file): file is CiPolicyFile => !("unread" in file));
-  const unread = reads.flatMap((file) => ("unread" in file ? [file.unread] : []));
-  const skipped = github.length - read.length;
-  if (skipped > 0) unread.push(`the CI-policy lines of ${skipped} more .github/ files were not read (cap ${MAX_CARD_FILES})`);
-  return { changes: ciPolicyChanges(input.ciPolicy.keys, files), unread };
-}
-
-async function cardFile(port: GitHubPort, repo: RepoSlug, path: string, baseRef: string, head: string): Promise<CiPolicyFile | { unread: string }> {
-  try {
-    const [before, after] = await Promise.all([port.getFile(repo, path, baseRef), port.getFile(repo, path, head)]);
-    return { path, before: before?.content ?? "", after: after?.content ?? "" };
-  } catch (error) {
-    return { unread: `the CI-policy lines of ${shownLine(path)} are unreadable: ${statusOf(error)}` };
-  }
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
@@ -419,6 +386,5 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     riskTier: riskTier(risk),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  const card = ciPolicyChanges && { ciPolicyChanges };
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...card, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...(ciPolicyChanges && { ciPolicyChanges }), ...grantWithheldField(input), commentId: comment.id };
 }

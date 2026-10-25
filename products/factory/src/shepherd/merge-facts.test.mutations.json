@@ -4,8 +4,8 @@
     {
       "name": "a weakened line reads no file",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "  if (input.ciPolicy?.kind !== \"weakened\") return undefined;",
-      "replace": "  return undefined;",
+      "find": "  const card = input.ciPolicy?.kind === \"weakened\" ? await readCiPolicyChanges(port, input, pr.baseRef, input.ciPolicy.keys, merge.changedPaths.filter(isGithubPath)) : undefined;",
+      "replace": "  const card = undefined;",
       "kills": [
         "mergeEvidence reads a weakened line's before→after lines from the base branch and the head, for the D21 card (TP-2407 c)",
         "mergeEvidence still gates a weakened line whose file read fails, naming the unread file"
@@ -14,15 +14,15 @@
     {
       "name": "an unchanged line reads the files too",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "  if (input.ciPolicy?.kind !== \"weakened\") return undefined;",
-      "replace": "  if (input.ciPolicy?.kind !== \"weakened\" && input.ciPolicy?.kind !== \"unchanged\") return undefined;",
+      "find": "  const card = input.ciPolicy?.kind === \"weakened\" ? await readCiPolicyChanges(port, input, pr.baseRef, input.ciPolicy.keys, merge.changedPaths.filter(isGithubPath)) : undefined;",
+      "replace": "  const card = input.ciPolicy !== undefined ? await readCiPolicyChanges(port, input, pr.baseRef, (input.ciPolicy.kind === \"weakened\" ? input.ciPolicy.keys : [\"permissions\"]), merge.changedPaths.filter(isGithubPath)) : undefined;",
       "kills": [
         "mergeEvidence reads no file for an unchanged line"
       ]
     },
     {
       "name": "base and head reads swapped",
-      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "file": "products/factory/src/shepherd/ci-policy-changes.ts",
       "find": "port.getFile(repo, path, baseRef), port.getFile(repo, path, head)",
       "replace": "port.getFile(repo, path, head), port.getFile(repo, path, baseRef)",
       "kills": [

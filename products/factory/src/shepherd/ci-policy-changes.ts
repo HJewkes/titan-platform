@@ -1,11 +1,13 @@
+import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { CI_POLICY_KEYS, type CiPolicyKey } from "@titan-design/session-read";
 import { z } from "zod";
+import { statusOf } from "../required-checks.js";
 
 /** The PR author writes these lines, and they reach the owner's prompt, so each is bounded and stripped of control characters. */
 export const MAX_LINES_PER_FILE = 20;
 export const MAX_LINE_CHARS = 160;
 
-export interface CiPolicyFile {
+interface CiPolicyFile {
   path: string;
   /** The file at the base; empty when it is absent there. */
   before: string;
@@ -131,4 +133,33 @@ function capped(changes: readonly CiPolicyChange[]): CiPolicyChange[] {
 /** The before→after lines of exactly the weakened keys in each file, read by code from base and head, never from the reviewer. */
 export function ciPolicyChanges(keys: readonly CiPolicyKey[], files: readonly CiPolicyFile[]): CiPolicyChange[] {
   return files.flatMap((file) => capped(fileChanges(keys, file)));
+}
+
+/** At most this many `.github/` files are read for the D21 card; the rest are named as unread, and the owner reads them in the diff. */
+const MAX_CARD_FILES = 10;
+
+export interface CiPolicyChangesRead {
+  changes: CiPolicyChange[];
+  /** The files whose lines could not be read, as unread facts; their lines are left off the card. */
+  unread: string[];
+}
+
+/** Reads each changed `.github/` file at the base branch and at the head; a failed read never stops the weakened gate opening. */
+export async function readCiPolicyChanges(port: GitHubPort, at: { repo: RepoSlug; head: string }, baseRef: string, keys: readonly CiPolicyKey[], githubPaths: readonly string[]): Promise<CiPolicyChangesRead> {
+  const read = githubPaths.slice(0, MAX_CARD_FILES);
+  const reads = await Promise.all(read.map((path) => cardFile(port, at.repo, path, baseRef, at.head)));
+  const files = reads.filter((file): file is CiPolicyFile => !("unread" in file));
+  const unread = reads.flatMap((file) => ("unread" in file ? [file.unread] : []));
+  const skipped = githubPaths.length - read.length;
+  if (skipped > 0) unread.push(`the CI-policy lines of ${skipped} more .github/ files were not read (cap ${MAX_CARD_FILES})`);
+  return { changes: ciPolicyChanges(keys, files), unread };
+}
+
+async function cardFile(port: GitHubPort, repo: RepoSlug, path: string, baseRef: string, head: string): Promise<CiPolicyFile | { unread: string }> {
+  try {
+    const [before, after] = await Promise.all([port.getFile(repo, path, baseRef), port.getFile(repo, path, head)]);
+    return { path, before: before?.content ?? "", after: after?.content ?? "" };
+  } catch (error) {
+    return { unread: `the CI-policy lines of ${shownLine(path)} are unreadable: ${statusOf(error)}` };
+  }
 }

@@ -90,7 +90,7 @@ export function ciPolicyAt(verdict: Verdict | undefined, headSha: string): CiPol
   return { keys: ciPolicy.keys, ...(changes && { changes }) };
 }
 
-export const d21Line = (keys: readonly CiPolicyKey[]): string => `Class D21 (CI policy weakened): ${keys.join(", ")}.`;
+const d21Line = (keys: readonly CiPolicyKey[]): string => `Class D21 (CI policy weakened): ${keys.join(", ")}.`;
 
 /**
  * Lines the PR author wrote are stripped and capped again here, so a stored line can never pose as a line of the prompt;
