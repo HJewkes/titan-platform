@@ -3,6 +3,7 @@ import { GateAlreadySettled, GateExpired, GateNotFound, GatePayloadInvalid, Gate
 import { AWAIT_NEW_HEAD, MERGE_GATE, SENT_BACK_GATE, gatePr, landGate, pinnedHead, stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { batchRefusal } from "../gate-batch-plan.js";
+import { WAIVE_PROOF } from "../gate-brief.js";
 import { pendingGateId } from "../gate-resolve.js";
 import type { FactoryHost } from "../host.js";
 import { headGateAsks } from "../shepherd/stale-gates.js";
@@ -12,13 +13,18 @@ import type { GateAction, Read } from "./record.js";
 
 /**
  * The steps a console tap may resolve and the decisions it may give on each. Policy as data: an approve-merge gate at a pinned
- * head, the Version Packages Ship under `shepherd-release/*` included (314A), and an sh-sent-back wait, which merges nothing
- * (TP-3949). Hardware, after-stages and every other step stay on the terminal; hitl's rule is beneath this.
+ * head, the Version Packages Ship under `shepherd-release/*` included (314A), and an sh-sent-back wait (TP-3949) or fix-proof
+ * waiver at one head (TP-3626), neither of which merges anything. A waiver is given only where the gate's own schema offers it,
+ * which Shepherd does on a fix-proof send-back alone. Hardware, after-stages and every other step stay on the terminal; hitl's
+ * rule is beneath this.
  */
 const CONSOLE_STEPS: ReadonlyMap<string, readonly string[]> = new Map([
   [MERGE_GATE, Object.freeze(["merge"])],
-  [SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD])],
+  [SENT_BACK_GATE, Object.freeze([AWAIT_NEW_HEAD, WAIVE_PROOF])],
 ]);
+
+/** A waiver's `anyOf` shape pins the head, which `pinnedHead` reads only at the top level, so its answer always names it. */
+const HEAD_PINNED_DECISIONS: ReadonlySet<string> = new Set([WAIVE_PROOF]);
 
 /** The decision enum a gate's stored JSON schema offers; a schema without one offers nothing the console may give. */
 const DecisionEnum = z.object({ properties: z.object({ decision: z.object({ enum: z.array(z.string()) }) }) });
@@ -79,9 +85,10 @@ function headOf(host: FactoryHost, gateId: string): string | undefined {
   return gate ? targetOf(gate)?.head : undefined;
 }
 
-/** A gate whose schema pins the head takes it in the answer; a sent-back wait's answer is the decision alone. */
+/** A gate or decision that pins the head takes it in the answer; a sent-back wait's answer is the decision alone. */
 function payloadOf(gate: GateRecord, action: GateAction): Record<string, string> {
-  return pinnedHead(gate.schema) === undefined ? { decision: action.decision } : { decision: action.decision, headSha: action.headSha };
+  const pinned = pinnedHead(gate.schema) !== undefined || HEAD_PINNED_DECISIONS.has(action.decision);
+  return pinned ? { decision: action.decision, headSha: action.headSha } : { decision: action.decision };
 }
 
 /** The store settles a gate once, so of two concurrent posts of one record only one resolves; the other reads back `already`. */

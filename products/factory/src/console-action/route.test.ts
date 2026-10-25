@@ -401,17 +401,6 @@ describe("POST /owner/console-action", () => {
       expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
     });
 
-    it("refuses with 403 class a waive-proof on a waivable gate: the console tap waives no fix-proof", async () => {
-      const w = await sentBackWorld({ waivable: "true" });
-      w.record({ decision: "waive-proof" });
-
-      const res = await post(w.server, { actionId: ACTION_ID });
-
-      expect(await reply(res)).toMatchObject([403, { outcome: "refused", reason: "class" }]);
-      expect(w.store().proofWaivers().waivedAt(w.runId, H)).toBe(false);
-      expect(w.server.host.gates.get(w.sentBackId)?.status).toBe("pending");
-    });
-
     it("refuses with 403 class an await-new-head the gate's own schema does not offer", async () => {
       const w = await sentBackWorld({ decisions: "abandon" });
       w.record();
