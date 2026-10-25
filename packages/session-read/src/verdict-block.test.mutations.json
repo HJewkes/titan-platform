@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unknown verdict word reads as no block",
+      "file": "packages/session-read/src/verdict-block.ts",
+      "find": "\"Verdict: WAIT\") return { ok: false, reason: \"bad_verdict\" };",
+      "replace": "\"Verdict: WAIT\") return { ok: false, reason: \"no_block\" };",
+      "kills": [
+        "parseVerdictBlock parses a long single-line message in linear time"
+      ]
+    }
+  ]
+}
