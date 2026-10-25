@@ -57,4 +57,21 @@ describe("MergeEvidenceSchema", () => {
 
     expect(MergeEvidenceSchema.safeParse(bad).success).toBe(false);
   });
+
+  it("keeps stored D21 lines of the current shape", () => {
+    const ciPolicyChanges = [{ path: ".github/workflows/ci.yml", lines: [{ side: "+", n: 4, text: "  contents: write" }], omitted: 0 }];
+
+    const parsed = MergeEvidenceSchema.parse({ ...evidence(), record: { ...evidence().record, ciPolicyChanges } });
+
+    expect(parsed.record.ciPolicyChanges).toEqual(ciPolicyChanges);
+  });
+
+  it("reads stored D21 lines of the pre-redesign per-key shape as none and keeps the rest of the evidence", () => {
+    const ciPolicyChanges = [{ path: ".github/workflows/ci.yml", key: "permissions", removed: [], added: ["L4:  contents: write"], omitted: 0 }];
+
+    const parsed = MergeEvidenceSchema.parse({ ...evidence(), record: { ...evidence().record, ciPolicyChanges } });
+
+    expect(parsed.record.ciPolicyChanges).toBeUndefined();
+    expect(parsed.record.head).toBe(HEAD);
+  });
 });
