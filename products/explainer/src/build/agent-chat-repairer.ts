@@ -1,4 +1,4 @@
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { dataFence, dispatchToAgentChat, listAgents, retire, type AgentRow } from "@titan-design/agent-dispatch";
 import type { LayerRepair, LayerRepairer, RepairRequest } from "./beat-worker.js";
@@ -84,29 +84,4 @@ export function agentChatRepairer(deps: AgentChatRepairerDeps): LayerRepairer {
       return { ...(existsSync(target) ? { module: readFileSync(target, "utf8") } : {}), usage, ...(row.sessionId ? { sessionId: row.sessionId } : {}) };
     },
   };
-}
-
-function executable(file: string): boolean {
-  try {
-    accessSync(file, constants.X_OK);
-    return statSync(file).isFile();
-  } catch {
-    return false;
-  }
-}
-
-/** The first executable `agent-chat` on PATH; `AGENT_CHAT_BIN` wins. */
-export function resolveAgentChatBin(env: NodeJS.ProcessEnv): string | undefined {
-  if (env.AGENT_CHAT_BIN) return env.AGENT_CHAT_BIN;
-  return (env.PATH ?? "").split(path.delimiter).map((dir) => path.join(dir, "agent-chat")).find((file) => path.isAbsolute(file) && executable(file));
-}
-
-/**
- * The host's repairer: the one it set, none when it set `null`, and the agent-chat repairer by default when an
- * `agent-chat` binary is on this host. With none, a build that fails the gate stays marked for repair.
- */
-export function layerRepairerFor(configured: LayerRepairer | null | undefined, env: NodeJS.ProcessEnv = process.env): LayerRepairer | undefined {
-  if (configured !== undefined) return configured ?? undefined;
-  const agentChatBin = resolveAgentChatBin(env);
-  return agentChatBin ? agentChatRepairer({ agentChatBin }) : undefined;
 }

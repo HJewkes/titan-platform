@@ -285,9 +285,10 @@ is read back and the gate runs again. The agent's spend is priced from its own t
 session id, at the price table, so the `mapItems` budget sees a known cost at once. A transcript that is not on this
 host, or an agent that is not seen to exit in time, marks the spend unknown rather than free. The repair's spend joins
 the build's usage, and its session id is kept as `repairSessionId` on the build and in `layers.json`. A repair that
-still fails stays `needsRepair` (its error names the repair session), keeps its spend, and is not cached. The host's
-`layerRepairer` defaults to this runner when an `agent-chat` binary is found (`AGENT_CHAT_BIN` or `PATH`); `null`
-turns repairs off. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
+still fails stays `needsRepair` (its error names the repair session), keeps its spend, and is not cached. Repairs are
+off unless the host passes a `layerRepairer`: no agent-chat binary on `PATH` or in `AGENT_CHAT_BIN` turns them on,
+because the installed `beat-builder` profile predates its TSX variant. They turn on by default after TP-2608 ships
+that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
 and no resumed session.
 
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own

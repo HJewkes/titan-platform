@@ -4,7 +4,6 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
-import { layerRepairerFor } from "../build/agent-chat-repairer.js";
 import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { beatWorkerFor } from "../build/claude-print-worker.js";
 import type { L0Check } from "../eval-l0.js";
@@ -26,6 +25,13 @@ import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-r
 import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
+
+// Repairs only when the host passes a repairer: the installed beat-builder profile predates TP-2608's TSX variant.
+function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
+  const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : {};
+  const worker = beatWorkerFor(host.beatWorker);
+  return { ...(worker ? { worker } : {}), ...repairer };
+}
 
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
@@ -51,8 +57,8 @@ export interface RunHost {
   media?: MediaExec;
   /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
   beatWorker?: BeatWorker | null;
-  /** Repairs a layer that fails the compile gate: agent-chat when absent and its binary exists; `null` for none. */
-  layerRepairer?: LayerRepairer | null;
+  /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
+  layerRepairer?: LayerRepairer;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -188,12 +194,6 @@ export interface Runtime {
 const stageExtras = (host: RunHost): Pick<StageDeps, "stylePacks" | "reflection"> => ({
   ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
 });
-
-function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
-  const worker = beatWorkerFor(host.beatWorker);
-  const repairer = layerRepairerFor(host.layerRepairer);
-  return { ...(worker ? { worker } : {}), ...(repairer ? { repairer } : {}) };
-}
 
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {

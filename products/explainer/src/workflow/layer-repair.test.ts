@@ -1,13 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { agentChatRepairer } from "../build/agent-chat-repairer.js";
-import type { BeatWorker, BuilderRef, LayerBuild } from "../build/beat-worker.js";
-import { FAKE_SESSION_ID, fakeAgentChat } from "../build/fake-agent-chat.test-helpers.js";
-import { resolveScript, visual } from "../resolve-fixtures.test-helpers.js";
-import { ArtifactStore } from "./artifacts.js";
-import { openState, runOneStage } from "./host.js";
+import type { BeatWorker } from "../build/beat-worker.js";
+import { FAKE_SESSION_ID } from "../build/fake-agent-chat.test-helpers.js";
+import { runOneStage } from "./host.js";
 import { CUSTOM_LAYERS } from "./layer-build.js";
+import { BROKEN, brokenWorker, customBeatInputs, fakeAgentChatBeside, REPAIRED } from "./layer-repair.test-helpers.js";
 import { StageRecordSchema } from "./records.js";
 import { readJson, runPaths } from "./run-dir.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
@@ -16,40 +15,8 @@ import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./
 let fx: Fixture;
 afterEach(() => fx.cleanup());
 
-const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
-const CUSTOM = { visual: visual({ layer: "custom", anchors: ["B2:E5"] }), fact_ids: ["F-1"] };
-const FACTS = JSON.stringify({ items: [{ id: "F-1", text: "Each scan waits for a ledger entry." }] });
-const BROKEN = "export default function Layer() {\n  return <div>;\n}\n";
-const REPAIRED = "export default function Layer() {\n  return <div id=\"ledger\" />;\n}\n";
-
-/** A worker whose every build fails the compile gate, at a fixed price. */
-function brokenWorker() {
-  const calls: string[] = [];
-  const worker: BeatWorker = {
-    builder: BUILDER,
-    build: async ({ packet }): Promise<LayerBuild> => {
-      calls.push(packet.beat_id);
-      return { module: BROKEN, anchors: packet.anchors, elements: [], usage: { usd: 0.01, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, calls: 1 } };
-    },
-  };
-  return { calls, worker };
-}
-
-function inputs(): Record<string, string> {
-  const db = openState(fx.dataDir);
-  try {
-    const store = new ArtifactStore(fx.dataDir, db);
-    const texts = { script: JSON.stringify(resolveScript([["b1", "WHAT", CUSTOM]])), facts: FACTS };
-    return Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, store.putText(text, name, { runId: "input", stage: "input" })]));
-  } finally {
-    db.close();
-  }
-}
-
 function hostWith(worker: BeatWorker, repaired?: string) {
-  const root = path.join(path.dirname(fx.dataDir), "agent-chat");
-  mkdirSync(root, { recursive: true });
-  const fake = fakeAgentChat(root, { ...(repaired === undefined ? {} : { repaired }), tokens: { input: 10_000, output: 2_000 } });
+  const fake = fakeAgentChatBeside(fx.dataDir, repaired);
   const layerRepairer = agentChatRepairer({ agentChatBin: fake.bin, profilesDir: fake.profilesDir, claudeConfigDir: fake.configDir, pollMs: 1 });
   return { fake, host: fakeHost(fx, fakeScriptModel(), fakeBridge(), { beatWorker: worker, layerRepairer }) };
 }
@@ -63,7 +30,7 @@ describe("the repair round on a custom layer that fails the compile gate", () =>
     fx = fixture();
     const { host, fake } = hostWith(brokenWorker().worker, REPAIRED);
 
-    const record = await runOneStage({ stage: "resolve", inputs: inputs() }, host);
+    const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, host);
 
     const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
     expect(fake.spawn()?.argv).toContain("--brief-stdin");
@@ -77,7 +44,7 @@ describe("the repair round on a custom layer that fails the compile gate", () =>
 
   it("keeps a repair that still fails marked for repair, with its spend and session, and never caches it", async () => {
     fx = fixture();
-    const pins = inputs();
+    const pins = customBeatInputs(fx.dataDir);
     const { host } = hostWith(brokenWorker().worker, BROKEN);
 
     const run = runOneStage({ stage: "resolve", inputs: pins }, host);
@@ -95,7 +62,7 @@ describe("the repair round on a custom layer that fails the compile gate", () =>
     fx = fixture();
     const { host } = hostWith(brokenWorker().worker);
 
-    const run = runOneStage({ stage: "resolve", inputs: inputs() }, host);
+    const run = runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, host);
 
     await expect(run).rejects.toThrow(/b1 \(needs repair: layer\.tsx:.*; the repair wrote no module \(repair session /);
     expect(failedRecords()[0]?.usage.usd).toBeCloseTo(0.05, 10);

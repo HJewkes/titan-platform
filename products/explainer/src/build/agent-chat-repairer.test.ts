@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { agentChatRepairer, layerRepairerFor } from "./agent-chat-repairer.js";
+import { agentChatRepairer } from "./agent-chat-repairer.js";
 import { oneBeat, resolvedOne, visual } from "../resolve-fixtures.test-helpers.js";
 import { BEAT_WORKER_IDS, type RepairRequest } from "./beat-worker.js";
 import { claudePrintWorker } from "./claude-print-worker.js";
@@ -86,17 +86,5 @@ describe("the beat worker registry", () => {
     expect(BEAT_WORKERS["claude-print"]({ basePrompt: "base" }).builder.id).toBe("claude-print");
     expect(BEAT_WORKERS["agent-chat"]({ agentChatBin: "/bin/false" }).id).toBe("agent-chat");
     expect(claudePrintWorker).toBe(BEAT_WORKERS["claude-print"]);
-  });
-});
-
-describe("the host's default repairer", () => {
-  it("is agent-chat when a binary is configured, none without one, and none when set to null", () => {
-    const configured = layerRepairerFor(undefined, { AGENT_CHAT_BIN: "/opt/fake/agent-chat" });
-    const none = layerRepairerFor(undefined, { PATH: "" });
-    const off = layerRepairerFor(null, { AGENT_CHAT_BIN: "/opt/fake/agent-chat" });
-
-    expect(configured?.id).toBe("agent-chat");
-    expect(none).toBeUndefined();
-    expect(off).toBeUndefined();
   });
 });
