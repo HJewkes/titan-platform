@@ -69,9 +69,9 @@ with the same ETag cache, 304 rules and next-page guard. The client, `octokitCli
 - `@octokit/plugin-retry` retries 5xx answers on GET and HEAD only, so a write that may have
   landed is never sent twice.
 - Errors carry the status and a redacted message, with no body and no token.
-- It has the same rate-floor guard as `restCaller`, and its GraphQL deadline only:
+- It has the same rate-floor guard and deadlines as `restCaller`:
   - Every call first acquires `sharedRateBudget`, or the client's `budget`, so below `RATE_FLOOR` remaining, calls spread over the time left.
-  - A GraphQL call fails after `GRAPHQL_TIMEOUT_MS` (30 s). `restCaller` also kills a core REST call's `gh` and fails it after `CORE_TIMEOUT_MS` (60 s); a timed-out read is not retried. The Octokit core lane has no deadline yet.
+  - A REST call fails after `CORE_TIMEOUT_MS` (60 s) and a GraphQL call after `GRAPHQL_TIMEOUT_MS` (30 s); a timed-out call is not retried. The deadline spans the call's retries and throttle waits.
 
 `client.budget()` reports the last `x-ratelimit-*` window per lane (`rest`, `graphql`), and the
 cooldowns the throttle is still waiting out. `createCheckRun` posts as the App on its own
