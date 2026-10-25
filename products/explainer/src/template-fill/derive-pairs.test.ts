@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { emphasisTargets } from "../beat-load.js";
+import { shippedSpecs } from "../resolve-fixtures.test-helpers.js";
 import { fillSolo } from "./fill-fixtures.test-helpers.js";
 
 const SPOKEN = "Before one queue, after two lanes; before hand checks, after ledger checks.";
@@ -35,6 +37,17 @@ describe("template fill: compare beats", () => {
       { target: "rows-3", part: "left", atCue: "hand" },
       { target: "rows-4", part: "right", atCue: "ledger" },
     ]);
+  });
+
+  it("gives a cue on any label's number exactly one element to light", () => {
+    // Arrange
+    const found = fillSolo(compare, SPOKEN);
+
+    // Act
+    const targets = emphasisTargets(shippedSpecs.get("compare")!, found.slots);
+
+    // Assert
+    expect(targets.sort()).toEqual(["rows-1", "rows-2", "rows-3", "rows-4"]);
   });
 
   it("falls back to a list when every label is on one side", () => {

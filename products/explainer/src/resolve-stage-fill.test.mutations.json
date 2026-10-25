@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "resolve stores no slots artifact",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "const slots = artifacts.slots === undefined ? generatedSlots(script, beats, read(\"code\")) : undefined;",
+      "replace": "const slots: string | undefined = undefined;",
+      "kills": [
+        "resolve stores the template fill's slots writes each beat's generated slots by beat id when no slots pin is present, and the emphasis gate runs on them"
+      ]
+    },
+    {
+      "name": "resolve overwrites a slots pin",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "const slots = artifacts.slots === undefined ? generatedSlots(",
+      "replace": "const slots = true ? generatedSlots(",
+      "kills": [
+        "resolve stores the template fill's slots writes no slots output when a slots pin is present, so the pin's sha stands"
+      ]
+    },
+    {
+      "name": "template-fill registered as reported, not a gate",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"template-fill\", gate: true,",
+      "replace": "{ name: \"template-fill\", gate: false,",
+      "kills": [
+        "template-fill gate on the resolve stage fails the stage on an override that leaves the fill invalid, naming the beat"
+      ]
+    },
+    {
+      "name": "a fallback fails the template-fill gate",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return { pass: true, detail: `${filled.beats.length} beats filled",
+      "replace": "return { pass: fallbacks.length === 0, detail: `${filled.beats.length} beats filled",
+      "kills": [
+        "template-fill gate on the resolve stage passes a beat that falls back and names the fallback, its cues read against the list it draws"
+      ]
+    },
+    {
+      "name": "fallback beats read against the resolver's spec",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "chosen.set(beat.id, beat.spec);",
+      "replace": "chosen.set(beat.id, beat.fallback.from);",
+      "kills": [
+        "template-fill gate on the resolve stage passes a beat that falls back and names the fallback, its cues read against the list it draws"
+      ]
+    }
+  ]
+}
