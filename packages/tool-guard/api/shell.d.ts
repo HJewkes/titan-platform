@@ -228,6 +228,10 @@ interface GitInvocation {
     otherPaths: Array<string | null>;
     /** `-c key=value` overrides. */
     config: string[];
+    /** `--config-env key=ENVVAR` entries, whose values live in the environment. */
+    configEnv: string[];
+    /** `-c` entries, as typed, that are dynamic or that a case attribute may have changed. */
+    configUnsure: string[];
     sub: string | null;
     /** True when the subcommand is, or an unquoted dynamic option word could split into, a word git could run as anything. */
     subDynamic: boolean;
