@@ -35,7 +35,6 @@ const MOTION_PATHS = [
 const CLOCK_BUDGET_BASELINE = [
   "apps/console/server/events-relay.test.ts",
   "apps/console/server/rounds-submit.test.ts",
-  "packages/agent-surface/src/run-agent.test.ts",
   "packages/anthropic-account/src/node/login.test.ts",
   "packages/anthropic-account/src/node/refresh.test.ts",
   "packages/anthropic-account/src/node/usage-file.test.ts",
@@ -43,10 +42,6 @@ const CLOCK_BUDGET_BASELINE = [
   "packages/daemon/src/lifecycle.test.ts",
   "packages/egress-scan/src/git.test.ts",
   "packages/github/src/octokit-client.test.ts",
-  "packages/retrieval/src/fail-open.test.ts",
-  "packages/session-read/src/review-verdict.test.ts",
-  "packages/session-read/src/spawn-assignment.test.ts",
-  "packages/session-read/src/verdict-block.test.ts",
   "packages/speech-tts/src/command-tts.test.ts",
   "packages/speech-tts/src/fake-tts.test.ts",
   "packages/speech-tts/src/http-tts.test.ts",
