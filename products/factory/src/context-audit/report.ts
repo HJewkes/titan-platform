@@ -8,11 +8,11 @@ export interface AuditedSession {
   scan: SessionScan;
 }
 
-export interface RoleSpend extends Spend {
+interface RoleSpend extends Spend {
   sessions: number;
 }
 
-export interface Inventory {
+interface Inventory {
   /** `<profile>/<role>`: the profile directory and the role class of the session holding the newest snapshot. */
   key: string;
   role: string;
@@ -20,14 +20,14 @@ export interface Inventory {
   instructions: InstructionFile[];
 }
 
-export interface AuditReport {
+interface AuditReport {
   spend: Map<string, RoleSpend>;
   inventory: Inventory[];
   carried: Map<string, Map<string, { raw: number; carried: number }>>;
 }
 
 /** Role classes by agent name and project directory, as the TP-4164 plan section 0 defines them. */
-export function roleOf(project: string, name: string | null): string {
+function roleOf(project: string, name: string | null): string {
   const n = name ?? "";
   if (n.endsWith("-adversary")) return "adversary";
   if (n.startsWith("rv-")) return "reviewer";

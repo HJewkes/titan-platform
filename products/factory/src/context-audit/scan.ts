@@ -44,7 +44,7 @@ const str = (value: unknown): string => (typeof value === "string" ? value : "")
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 /** A Bash call's kind is its program, plus the subcommand for the multi-verb CLIs, after any leading VAR=value. */
-export function bashKind(command: string): string {
+function bashKind(command: string): string {
   const match = /^\s*(?:[A-Z_]+=\S+\s+)*([\w./-]+)(?:\s+([\w-]+))?/.exec(command);
   if (!match) return "bash:?";
   const program = match[1]!.split("/").at(-1)!;

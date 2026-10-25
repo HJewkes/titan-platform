@@ -30,7 +30,7 @@ const dirs = (dir: string): string[] => {
 };
 
 /** `<root>/<profile>/projects/<project>/*.jsonl` modified since the cutoff; subagent transcripts one level deeper are not sessions. */
-export function readSessions(root: string, since: number): AuditedSession[] {
+function readSessions(root: string, since: number): AuditedSession[] {
   return dirs(root).flatMap((profile) =>
     dirs(path.join(root, profile, "projects")).flatMap((project) => {
       const dir = path.join(root, profile, "projects", project);
