@@ -1,0 +1,49 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "landGate matches the whole multi-line prompt again",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "LAND_PROMPT.exec(gate.prompt.split(\"\\n\", 1)[0]!)",
+      "replace": "LAND_PROMPT.exec(gate.prompt)",
+      "kills": [
+        "a live-shaped multi-line MRG-AU gate reads as a land gate on its policy line, with the owner brief below it",
+        "a live-shaped multi-line MRG-AU gate admits a coordinator's mechanical merge on matching evidence",
+        "a live-shaped multi-line MRG-AU gate is resolved at once by the owner's merge-at-head tap, starting no land-pr",
+        "a live-shaped multi-line MRG-AU gate rides in a gate batch beside another such gate",
+        "a live-shaped multi-line MRG-AU gate is resolved by a console tap as owner-remote"
+      ]
+    },
+    {
+      "name": "batchRefusal lets a skill-path gate ride in a batch",
+      "file": "products/factory/src/gate-batch-plan.ts",
+      "find": "  if (isSkillPathLand(land)) return \"a skill-path gate\";\n",
+      "replace": "",
+      "kills": [
+        "a live-shaped multi-line skill-path gate is refused by a console tap and by merge-at-head, which starts no land-pr",
+        "a live-shaped multi-line skill-path gate is refused in a gate batch, by a standing answer and by a Ship answer"
+      ]
+    },
+    {
+      "name": "the console tap targets a skill-path gate",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "    return isSkillPathLand(land) ? undefined : land;",
+      "replace": "    return land;",
+      "kills": ["a live-shaped multi-line skill-path gate is refused by a console tap and by merge-at-head, which starts no land-pr"]
+    },
+    {
+      "name": "a standing answer resolves a skill-path gate",
+      "file": "products/factory/src/owner-ops/standing-answers.ts",
+      "find": "    if (isSkillPathLand(land)) return { kind: \"pending\", actionId, runId, reason: `${pending.gate.id} is a skill-path gate, which no standing answer gives` };\n",
+      "replace": "",
+      "kills": ["a live-shaped multi-line skill-path gate is refused in a gate batch, by a standing answer and by a Ship answer"]
+    },
+    {
+      "name": "a Ship answer reaches a skill-path gate",
+      "file": "products/factory/src/gate-answer-check.ts",
+      "find": "  if (isSkillPathLand(landGate(gate))) return refused(\"not-land-gate\", `gate ${gate.id} is a skill-path gate, which no Ship answer gives`);\n",
+      "replace": "",
+      "kills": ["a live-shaped multi-line skill-path gate is refused in a gate batch, by a standing answer and by a Ship answer"]
+    }
+  ]
+}
