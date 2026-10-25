@@ -147,9 +147,11 @@ function ciOf(cached: CachedRuns | undefined, required?: readonly string[]): PrR
   return { head: cached.sha, state, requiredMissing, ...listed, settled: cached.settled, at: iso(cached.at) };
 }
 
-const checkOf = (run: CheckRun): PrRowCheck => ({ name: run.name, status: run.status, conclusion: run.conclusion, startedAt: run.startedAt, completedAt: run.completedAt, url: run.url, title: run.title });
+const checkOf = ({ name, status, conclusion, startedAt, completedAt, url, title }: CheckRun): PrRowCheck => ({ name, status, conclusion, startedAt, completedAt, url, title });
 
-const statusOf = (status: CommitStatus): PrRowStatus => ({ context: status.context, state: status.state, targetUrl: status.targetUrl ?? null, description: status.description ?? null, createdAt: status.createdAt ?? null, updatedAt: status.updatedAt ?? null });
+function statusOf({ context, state, targetUrl, description, createdAt, updatedAt }: CommitStatus): PrRowStatus {
+  return { context, state, targetUrl: targetUrl ?? null, description: description ?? null, createdAt: createdAt ?? null, updatedAt: updatedAt ?? null };
+}
 
 function latest<T>(run: WorkflowRun, stepId: string, schema: z.ZodType<T>): { step: StepResult; data: T } | undefined {
   const found = Object.values(run.stepResults).filter((step) => stepIdMatches(stepId, step.stepId)).flatMap((step) => {
