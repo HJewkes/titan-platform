@@ -108,6 +108,8 @@ function passLogLine(summary: RefreshSummary, maxStallMs: number): object {
     scanned: summary.scanned,
     filesOpened: summary.filesOpened,
     bytesRead: summary.bytesRead,
+    rowsWritten: summary.rowsWritten,
+    dbBytes: summary.dbBytes,
     durationMs: summary.durationMs,
     maxStallMs,
     phases: summary.phases,
