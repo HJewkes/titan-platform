@@ -753,3 +753,23 @@ new stage key.
   override on a custom-layer beat. A script with neither field resolves to the same bytes as before. Both fields
   are the owner's: the script stage's prompt shape (`DraftScriptSchema`) leaves them out, and a draft reply naming
   them loses them as `script-unknown-keys`.
+
+### The sim kit
+
+A `sim` beat's picture is a model we ran (TP-4027). `src/sim/` holds its contract, in TypeScript only:
+
+- **Contract.** A `SimModel` has an `id` (its `doctrine/sims/<id>.yaml`), a `version` bumped on any behaviour
+  change, and `simulate(params, random)`. `simulate` is pure: its only randomness is `random`, the seed's
+  `seededRandom` generator from `@titan-design/evidence`. `runPure` swaps `Math.random`, `Date.now` and
+  `performance.now` for throwing stubs while a model runs, so a model that reaches for them fails with
+  `SimPurityError`. The code registry is `SIM_MODELS`.
+- **Sweep.** `sweepSim(model, base, { param, values }, seed, facet?)` runs one `SimRun` per point, each seeded with
+  `` `${seed}:${param}=${value}` `` (plus `:${facet}=${value}` with a facet), so adding a point leaves every other
+  point's run unchanged. The facet's values become the small multiples.
+- **Trace.** `freezeSim(swept, doctrineSha)` validates an `explainer.sim-trace/v1` trace (`SimTraceSchema`: at most
+  64 steps a run, at least one statistic with its Monte Carlo `se`) and keys it by the sha256 of its canonical JSON
+  (`canonicalJson` from the eval store). A trace is a run artifact, never committed; only synthetic fixtures are.
+- **Registry.** `loadSims` reads `doctrine/sims/*.yaml` (`sim-model/v1`: params with bounds, statistics with a
+  tolerance and its `why`, and `fittedFrom`). `simDoctrineSha` is the sha a trace records as `doctrine`.
+  `checkSims(SIM_MODELS, loadSims())` reports a model with no doctrine file (`E-SIM-NO-DOCTRINE`), a doctrine file
+  with no model (`E-SIM-NO-MODEL`) and a doctrine statistic the model does not emit (`E-SIM-STAT-UNEMITTED`).

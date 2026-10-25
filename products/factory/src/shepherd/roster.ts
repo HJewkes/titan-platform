@@ -1,16 +1,16 @@
-import { listAgents, type AgentRow } from "@titan-design/agent-dispatch";
+import { listAgentLineage, listAgents, type AgentLineage, type AgentRow } from "@titan-design/agent-dispatch";
 
 /** How long one `agent ls --json` answers every caller in the serve process. */
 export const ROSTER_TTL_MS = 12_000;
 export const ROSTER_TIMEOUT_MS = 90_000;
 
 /** `unknown` carries the read's own error, so a caller can still tell a broker that is down from a refusal. */
-export type RosterRead = { kind: "known"; rows: readonly AgentRow[] } | { kind: "unknown"; error: unknown };
+export type RosterRead<T = readonly AgentRow[]> = { kind: "known"; rows: T } | { kind: "unknown"; error: unknown };
 
-export interface RosterReader {
-  read(): Promise<RosterRead>;
+export interface RosterReader<T = readonly AgentRow[]> {
+  read(): Promise<RosterRead<T>>;
   /** The rows of a known read; an unknown read throws its error, so it is never mistaken for an empty roster. */
-  rows(): Promise<readonly AgentRow[]>;
+  rows(): Promise<T>;
   /** Drops the cached rows and any read in flight, so the next caller sees the broker after a spawn, resume or retire. */
   invalidate(): void;
 }
@@ -21,26 +21,26 @@ export interface RosterReaderOptions {
 }
 
 /** Concurrent callers share one read in flight; a known read is reused for `ttlMs`, and a failed one is never cached. */
-export function createRosterReader(fetchRows: () => Promise<readonly AgentRow[]>, options: RosterReaderOptions = {}): RosterReader {
+export function createRosterReader<T = readonly AgentRow[]>(fetchRows: () => Promise<T>, options: RosterReaderOptions = {}): RosterReader<T> {
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? ROSTER_TTL_MS;
-  let cached: { rows: readonly AgentRow[]; at: number } | undefined;
-  let inFlight: Promise<RosterRead> | undefined;
+  let cached: { rows: T; at: number } | undefined;
+  let inFlight: Promise<RosterRead<T>> | undefined;
   let generation = 0;
 
-  const start = (): Promise<RosterRead> => {
+  const start = (): Promise<RosterRead<T>> => {
     const mine = generation;
     const at = now();
-    const settle = (read: RosterRead): RosterRead => {
+    const settle = (read: RosterRead<T>): RosterRead<T> => {
       if (mine !== generation) return read;
       inFlight = undefined;
       if (read.kind === "known") cached = { rows: read.rows, at };
       return read;
     };
-    return fetchRows().then((rows): RosterRead => settle({ kind: "known", rows }), (error: unknown) => settle({ kind: "unknown", error }));
+    return fetchRows().then((rows): RosterRead<T> => settle({ kind: "known", rows }), (error: unknown) => settle({ kind: "unknown", error }));
   };
 
-  const read = (): Promise<RosterRead> => {
+  const read = (): Promise<RosterRead<T>> => {
     if (cached !== undefined && now() - cached.at < ttlMs) return Promise.resolve({ kind: "known", rows: cached.rows });
     inFlight ??= start();
     return inFlight;
@@ -65,6 +65,12 @@ export function createRosterReader(fetchRows: () => Promise<readonly AgentRow[]>
 export function agentChatRoster(agentChatBin: string, options: RosterReaderOptions & { timeoutMs?: number } = {}): RosterReader {
   const timeoutMs = options.timeoutMs ?? ROSTER_TIMEOUT_MS;
   return createRosterReader(async () => listAgents(agentChatBin, timeoutMs), options);
+}
+
+/** A reader over `agent ls --json --include-retired`, kept apart from the roster so no retired row reaches a roster consumer. */
+export function agentChatLineage(agentChatBin: string, options: RosterReaderOptions & { timeoutMs?: number } = {}): RosterReader<AgentLineage> {
+  const timeoutMs = options.timeoutMs ?? ROSTER_TIMEOUT_MS;
+  return createRosterReader(async () => listAgentLineage(agentChatBin, timeoutMs), options);
 }
 
 /** Runs a mutation of the broker's roster, then invalidates the reader whether it landed or not, since a timeout may still have landed. */

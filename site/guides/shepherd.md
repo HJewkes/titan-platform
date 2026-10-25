@@ -1623,6 +1623,82 @@ To recompute `locatorSha256`, take the stored locator, run `JSON.stringify` on i
 in their original insertion order, and take the SHA-256 hex digest. Only the reader that
 produced the locator keeps that key order, so a re-serialized copy may not match.
 
+## Loop contract with codewatch {#loop-contract}
+
+codewatch's fix loop and Shepherd's PR loop share one written contract, `loop-contract-2026-10-24`.
+This section restates only the parts of it that Shepherd does today, as read from main at
+`cb470f493`. Each part links to the section above that covers it in full. codewatch proposes
+further rules in its own contract, and none of them is built here.
+
+### Kind and oracle {#loop-contract-oracle}
+
+An oracle is the mechanical check that shows a change did what its kind claims. It runs outside
+the agent. A run reads the fix-proof oracle when its kind is `correctness`, `security` or
+`test-only`, or when its head branch starts `fix/`, whatever the kind
+(`products/factory/src/shepherd/task-kind.ts`, `fix-proof.ts`). Every other run is review-only.
+
+| Kind | What proves it | What fails it | Neither | On a fail |
+| --- | --- | --- | --- | --- |
+| Correctness fix | fix-proof `reproduced`: the tests the PR adds or changes fail at the merge base and pass at head | a `vacuous` or `no-tests` line that its mutants do not prove, which reads `NO_REPRO` | `error`, `untrusted` or `unread` go to review marked unverified, and a MERGE keeps the merge-on-green grant (owner decision 303) | `NO_REPRO` wakes the implementer for a reproducing test at most twice. The third goes to `sh-sent-back` ([register](#register)) |
+| Test-only | either a mutation spec that `provedByMutants` accepts, or, with `noReproProceed` on, a spec-free `correctness` or `test-only` diff that the classifier reads as test material alone. That diff goes to review marked `no-repro-test-only` and gets a blocking tests member ([the test-only kind](#the-test-only-kind), [review panel](#review-panel)) | a surviving mutation, a changed test with no spec, a refused spec, a deleted test, source in the diff, or a diff the classifier cannot read in full. Each of these reads `NO_REPRO`. A `FIX_FIRST` from the tests member sends the head back | none | as for a correctness fix |
+| Value or refactor (`feature`, `refactor`, `unknown`) | no mechanical oracle, so only the review proves it | a reviewer's `FIX_FIRST` | none | the [routing](#routing) table |
+| Security | fix-proof `reproduced` only. The test-only path is closed to it (`no-repro-test-only.ts`), and a `security` run never leaves `security` | `NO_REPRO`, as for a correctness fix | as for a correctness fix | as for a correctness fix. A reviewed MERGE never carries to a new head |
+| Workflow-only, on a run that reads the oracle | CI at the merge base and at head: a required check failed at the merge base and every required check passed at head (`workflow-ci-proof.ts`) | any other CI reading, which is `NO_REPRO` | none | no fixer is woken, because no push can redden the base. The owner gets the waivable `sh-sent-back` at once (`send-back.ts`, TP-4109) |
+| Docs-only, on a run that does not read the oracle | no mechanical oracle, so only the review proves it | a reviewer's `FIX_FIRST` | none | the [routing](#routing) table |
+
+The diff decides the test-only path, not the label. The classifier reads the diff again at
+every head, so a later push that touches source closes the path.
+
+An owner waiver can stand in for any of the fix-proof rows. The owner answers `waive-proof` to a
+`NO_REPRO` `sh-sent-back`. Only the owner may give it, and Shepherd never recommends it. The
+waiver is stored for that run and head. The MERGE that follows withholds the merge-on-green
+grant, so it reaches only `approve-merge`, and a new head is gated again. A coordinator never
+gives it ([resolving a gate](#resolving-a-gate-is-cli-only), owner decision 529).
+
+### Review and carry {#loop-contract-review}
+
+A verdict names `Verdict: MERGE` or `Verdict: FIX_FIRST`, then the PR and the `Head:` it judged.
+Every MERGE carries `CI-policy:` on the line after `Head:` ([MRG-AU-RV](#the-mrg-au-rv-row-and-the-merge-evidence)).
+From the second round on, a re-review carries a `Defect class:` section. A `Closer: yes|no` line
+says whether the head is closer to MERGE than the last one. Shepherd keeps at most 16,000
+characters of a `FIX_FIRST` ([routing](#routing)). Under `scopeCheck: on`, a scoped round whose
+blocking items cite only lines outside the fix ranges, with no `Important:` and `Class:` tag, or
+that restate an open finding, gets one correction turn ([fix-round re-review](#fix-round-rereview)).
+
+A panel needs a MERGE at the head from every blocking member. A `FIX_FIRST` from any blocking
+member sends the head back, and a blocking member that gave no verdict ends the review with no
+verdict, never a MERGE ([review panel](#review-panel)).
+
+Whether a verdict or an answer carries to a new head depends on how the head moved:
+
+| Head move | Reviewer MERGE carries | Owner `merge` answer carries | Fix-proof or waiver carries |
+| --- | --- | --- | --- |
+| Clean merge-up of the reviewed head with the base | yes for `correctness`, `feature` and `refactor` (MRG-AU-RC), and across a remerge that resolved nothing reviewed (MRG-AU-RM) | yes for the same kinds, with a reviewer MERGE at exactly the new head and green required CI ([carried answer](#carried-answer)) | no: the judge's line is read at every head, and a waiver names one head |
+| Tree-equal update off the reviewed line with the PR's patch id unchanged, on a run that never held G10 | yes (`patchEqual`, TP-3725) | no | no |
+| Shepherd's own disjoint clean merge-up on a `security` run | no | yes, and on no other move | no |
+| Any other move on a `security`, `test-only` or `unknown` run | never: each head gets a fresh review | no | no |
+| A fixer commit, a rebase or a conflict resolution | no | no: the range is judged by tree equality (TP-3070, `fix-carry.ts`) | no |
+
+### Convergence {#loop-contract-convergence}
+
+These exits stop Shepherd waking a fixer (`route-table.ts`, `fix-proof-cap.ts`):
+
+| Exit | Trigger | Route |
+| --- | --- | --- |
+| `fix-first-runaway` | 3 `FIX_FIRST` reviews at a task | D8: one fresh convergence reviewer reads the trail, and its `FIX_FIRST` goes to the planner through a seat notice. When the head's fix-proof said `NO_REPRO`, D8 is skipped and `approve-merge` opens |
+| `no-progress` | 2 `FIX_FIRST` reviews in a row with `Closer: no` | as for `fix-first-runaway` |
+| `failed-rounds` | 3 stuck rounds: silence, a timeout, a re-read of a hold's reviewer, or a conflict | one fallback reviewer, then a D7 ops notice or seat notice, and a wait for a new head |
+| `NO_REPRO` cap | a third `NO_REPRO` at a run | `sh-sent-back`, which the owner may waive |
+| Workflow-only `NO_REPRO` | CI did not prove a workflow-only diff | `sh-sent-back` at once, with no fixer |
+| `repair-budget` | 10 fixer wakes of every kind at a run (`MAX_REPAIRS`) | `sh-sent-back` |
+| No new head | the fixer exits with no push, or no fixer could start | a seat notice and a wait for a new head. The gate opens only when no notice can be sent ([seat work](#seat-gates)) |
+| `conflict` | a conflict that survives one fixer attempt | a fresh fixer, then a seat notice, else `approve-merge` |
+
+Precedence: `fix-first-runaway` is checked before `no-progress`, so a third `FIX_FIRST` always
+names the planner route. A `NO_REPRO` is not a reviewer's `FIX_FIRST`. It spends only its own
+cap and never counts toward `fix-first-runaway` (TP-3900). `MAX_REPAIRS` is a backstop across
+every wake kind, and a `FIX_FIRST` keeps its tighter cap as well.
+
 ## What is not built yet
 
 The land core, the hold, the policy resolution, the gates, the post-merge main CI read and
