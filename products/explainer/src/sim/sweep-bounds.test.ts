@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SimModel } from "./model.js";
 import { runSimPass, type SimPassInput } from "./sim-resolve.js";
 import { toySpec } from "./sim-fixtures.test-helpers.js";
+import { choppy } from "../rewrite-fixtures.test-helpers.js";
 
 // Synthetic: below its doctrine min this model would never terminate; a step budget turns that into a throw so a regression fails instead of hanging.
 const spinBelowMin: SimModel<{ p: number }> = {
@@ -14,10 +15,10 @@ const spinBelowMin: SimModel<{ p: number }> = {
 };
 
 const input = (slots: Record<string, unknown>): SimPassInput => ({
-  beats: [{ id: "b1", spoken: "A synthetic beat.", visual: { beat: "sim" } as never }],
+  beats: choppy().beats.slice(0, 1).map((beat) => ({ ...beat, id: "b1" })),
   filled: new Map([["b1", { slots: { model: "spin", seed: 1, params: {}, sweep: { param: "p", from: 0.5, to: 1, steps: 2 }, readouts: [{ id: "m", label: "Mean" }], ...slots } }]]),
   facts: undefined,
-  registry: { models: { spin: spinBelowMin as SimModel }, specs: new Map([["spin", toySpec("spin")]]) },
+  registry: { models: { spin: spinBelowMin }, specs: new Map([["spin", toySpec("spin")]]) },
   putTrace: () => "0".repeat(64),
 });
 
