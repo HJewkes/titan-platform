@@ -162,6 +162,25 @@ describe("one fixture per bash.merge spelling", () => {
     });
   });
 
+  describe("a readHead that throws reads as an unknown protected head", () => {
+    const throwing: ClassifyContext = {
+      home: HOME,
+      readLink: () => null,
+      readHead: () => {
+        throw new Error("EACCES");
+      },
+      readScript: () => null,
+    };
+    const run = (command: string) => classify({ kind: "bash", command, cwd: REPO, toolName: "Bash", sessionId: null, toolUseId: null }, throwing);
+
+    it.each([
+      ["git push origin HEAD", "bash.merge.git-push-protected"],
+      ["git merge x", "bash.merge.git-merge-protected"],
+    ])("%s", (command, spelling) => {
+      expect(run(command)).toEqual([expect.objectContaining({ action: "merge", spelling, subject: { branch: "unknown" } })]);
+    });
+  });
+
   it("finds a merge chained after other commands and inside a subshell", () => {
     expect(spellings(bash("pnpm test && (gh pr merge 4 --squash)"))).toEqual(["bash.merge.gh-pr-merge"]);
   });
@@ -252,7 +271,7 @@ describe("normal work classifies nothing", () => {
     ["git push -u origin HEAD on a feature branch", "git push -u origin HEAD", "feat/x"],
     ["git push with no refspec on a feature branch", "git push", "feat/x"],
     ["git push on a detached head", "git push", null],
-    ["git push --tags on main", "git push origin --tags", "main"],
+    ["git push to a branch whose name holds tags/", "git push origin HEAD:feat/tags/v1", "main"],
     ["gh pr merge --disable-auto", "gh pr merge 12 --disable-auto", "feat/x"],
     ["gh pr view and gh pr create", "gh pr view 12 && gh pr create --base main --fill", "feat/x"],
     ["a GET of a PR's merge status", "gh api repos/o/r/pulls/12/merge", "feat/x"],

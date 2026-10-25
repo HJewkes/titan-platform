@@ -42,6 +42,7 @@
     "@titan-design/code-graph": "workspace:^",
     "@titan-design/code-read": "workspace:^",
     "@titan-design/evidence": "workspace:^",
+    "@titan-design/frame-capture": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/graph-layout": "workspace:^",
     "@titan-design/hitl": "workspace:^",
@@ -56,6 +57,7 @@
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
+    "playwright-core": "^1.63.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-native-web": "^0.21.0",
@@ -63,13 +65,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@titan-design/frame-capture": "workspace:^",
     "@titan-design/test-kit": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "autoprefixer": "^10.6.1",
-    "playwright-core": "1.63.0",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.17",
     "vite": "^8.0.3"

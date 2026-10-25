@@ -1,9 +1,10 @@
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentLineage, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatAgents } from "./agents.js";
-import { agentChatRoster, type RosterReader } from "./roster.js";
+import type { Lineage } from "./lineage.js";
+import { agentChatLineage, agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch, type ReviewTarget } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
@@ -38,6 +39,8 @@ export interface AgentChatReviewerDispatchOptions {
   spawnTimeoutMs?: number;
   /** The serve process's shared roster reader; absent means one of this dispatch's own. */
   roster?: RosterReader;
+  /** The reader of the roster with retired generations; absent means one of this dispatch's own. */
+  lineage?: RosterReader<AgentLineage>;
   /** Admits each spawn; a deferral is a busy refusal, asked again on the step's next wait. */
   gate?: SpawnGate;
   /** True for the PR that fixes its repo's red main, whose review the gate admits ahead of the others; absent means none is. */
@@ -47,7 +50,10 @@ export interface AgentChatReviewerDispatchOptions {
 }
 
 export interface AgentChatReviewerDispatch extends ReviewerDispatch {
+  /** Agents a reviewer can be chosen, resumed or found among; a retired generation is never one of them. */
   roster(): Promise<readonly ReviewerRosterRow[]>;
+  /** Every generation, retired ones included, for the independence proof only. */
+  lineage(): Promise<Lineage>;
 }
 
 /** Expands a leading home prefix only, without a shell; every other character stays literal. */
@@ -128,23 +134,35 @@ function lastWrittenAt(transcriptPath: string | null): { lastWrittenAt?: number 
   }
 }
 
-/** agent-dispatch checks only a row's required strings, so the optional fields are narrowed here. */
-function rosterRow(row: AgentRow): ReviewerRosterRow {
-  const transcriptPath = typeof row.transcriptPath === "string" ? row.transcriptPath : null;
+/** The identity and parent links a lineage walk reads; a retired row needs no transcript stat. */
+function lineageRow(row: AgentRow): ReviewerAgent {
   return {
     name: row.name,
     agentId: row.agentId,
     sessionId: row.sessionId,
     presence: toPresence(row.presence),
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
+    ...(row.predecessor !== undefined && { predecessor: row.predecessor }),
+  };
+}
+
+/** agent-dispatch checks only a row's required strings, so the optional fields are narrowed here. */
+function rosterRow(row: AgentRow): ReviewerRosterRow {
+  const transcriptPath = typeof row.transcriptPath === "string" ? row.transcriptPath : null;
+  return {
+    ...lineageRow(row),
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
-    ...(row.predecessor !== undefined && { predecessor: row.predecessor }),
     ...(row.profile !== "" && { profile: row.profile }),
     ...(row.cwd !== "" && { cwd: row.cwd }),
     ...lastWrittenAt(transcriptPath),
   };
 }
+
+/** The plain `agent ls` returns no retired row; the filter keeps that true if the reader ever asks for them. */
+const rosterRows = (rows: readonly AgentRow[]): ReviewerRosterRow[] => rows.filter((row) => row.retired !== true).map(rosterRow);
+
+const toLineage = ({ rows, complete }: AgentLineage): Lineage => ({ rows: rows.map(lineageRow), complete });
 
 const REVIEWER_NAME = /^rv-/;
 
@@ -177,7 +195,7 @@ function runningReviewers(rows: readonly ReviewerRosterRow[], now: number): stri
 async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSeen: Map<string, number>): Promise<number[]> {
   let rows: ReviewerRosterRow[];
   try {
-    rows = (await roster.rows()).map(rosterRow);
+    rows = rosterRows(await roster.rows());
   } catch (error) {
     gate.noteReviewers({ rosterError: error instanceof Error ? error.message : String(error) });
     throw error;
@@ -196,6 +214,7 @@ function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerD
 export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOptions): AgentChatReviewerDispatch {
   const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
+  const lineage = options.lineage ?? agentChatLineage(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const firstSeen = new Map<string, number>();
   const runningReviews = async () => (options.gate ? readRunningReviews(roster, options.gate, firstSeen) : []);
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
@@ -206,7 +225,8 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
     await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer, intentAt), ...(options.gate && { runningReviews: await runningReviews() }) });
   };
   return {
-    roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
+    roster: () => askBroker(async () => rosterRows(await roster.rows())),
+    lineage: () => askBroker(async () => toLineage(await lineage.rows())),
     spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
     resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer)), options.onMachineHold),
   };

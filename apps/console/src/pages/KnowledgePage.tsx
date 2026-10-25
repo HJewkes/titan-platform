@@ -3,13 +3,14 @@ import { Alert, Button, ButtonText, EmptyState, HStack, Input, Select, Spinner, 
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
+import { KnowledgeGraph } from "./KnowledgeGraph.js";
 import { KnowledgeRecordPage } from "./KnowledgeRecordPage.js";
 import { KnowledgeSearch } from "./KnowledgeSearch.js";
 import { KnowledgeTable } from "./KnowledgeTable.js";
 
 type KnowledgeRow = ConsoleCommands["work.notes"]["result"]["records"][number];
 
-const TABS = ["browse", "search"] as const;
+const TABS = ["browse", "search", "graph"] as const;
 type FilterKey = "initiative" | "kind" | "since";
 const KIND_OPTIONS: SelectOption[] = [
   { value: "note", label: "Notes only" },
@@ -17,22 +18,29 @@ const KIND_OPTIONS: SelectOption[] = [
 ];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** `#/knowledge` lists and searches; `#/knowledge/<ref>` reads one record. */
+/** `#/knowledge` lists, searches and graphs `?ref=`; `#/knowledge/<ref>` reads one record or graphs it. */
 export function KnowledgePage({ route }: { route: Route }): ReactNode {
-  if (route.id) return <KnowledgeRecordPage recordRef={route.id} />;
   const params = new URLSearchParams(route.query);
-  const tab = params.get("tab") === "search" ? 1 : 0;
+  if (route.id) return <KnowledgeRecordPage recordRef={route.id} graph={params.get("tab") === "graph"} />;
+  const tab = Math.max(0, TABS.findIndex((name) => name === params.get("tab")));
   return (
     <VStack gap={4}>
       <Tabs index={tab} onChange={(index) => open({ view: "knowledge", ...(index === 0 ? {} : { query: `tab=${TABS[index]}` }) })}>
         <TabList>
           <Tab>Browse</Tab>
           <Tab>Search</Tab>
+          <Tab>Graph</Tab>
         </TabList>
       </Tabs>
-      {tab === 0 ? <Browse params={params} /> : <KnowledgeSearch key={params.get("q") ?? ""} q={params.get("q") ?? ""} />}
+      <TabBody tab={TABS[tab]!} params={params} />
     </VStack>
   );
+}
+
+function TabBody({ tab, params }: { tab: (typeof TABS)[number]; params: URLSearchParams }): ReactNode {
+  if (tab === "search") return <KnowledgeSearch key={params.get("q") ?? ""} q={params.get("q") ?? ""} />;
+  if (tab === "graph") return <KnowledgeGraph center={params.get("ref")} />;
+  return <Browse params={params} />;
 }
 
 /** Every filter lives in the query string, so a filtered list is a link. */

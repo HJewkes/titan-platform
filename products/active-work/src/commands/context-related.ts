@@ -19,6 +19,7 @@ import {
   RELATED_DEFAULT_CLASSES,
   RELATED_DEFAULT_LIMIT,
   relatedContext,
+  type RelatedInput,
   type RelatedResult,
 } from '../search/related.js';
 import {
@@ -27,6 +28,7 @@ import {
   type EnsureFresh,
 } from '../session-index/freshness.js';
 import { readerGate } from '../session-index/reader-gate.js';
+import { humanOnlyPredicate } from './_list-scope.js';
 import { nowIso } from '../utils/today.js';
 
 const CLASS_NAMES = SEARCH_CLASSES.map((cls) => cls.name);
@@ -94,28 +96,54 @@ export interface RelatedDeps {
 const STALE_INDEX = {
   source: 'index',
   reason: 'stale',
-  message: `the session index did not catch up within ${RELATED_FRESH_BUDGET_MS} ms; recent writes may be missing`,
+  message: `the workspace index did not catch up within ${RELATED_FRESH_BUDGET_MS} ms; recent writes may be missing`,
 };
+
+type Servable = (initiative: string | null) => boolean;
+
+/**
+ * A trigger renders hits into an agent's prompt, so human-only initiatives stay out. An
+ * unreadable charter cannot say which those are, so only the caller's own initiative is served.
+ */
+async function servableFor(args: Args, activeRoot: string, warnings: string[]): Promise<Servable> {
+  if (args.trigger === undefined) return () => true;
+  const humanOnly = await humanOnlyPredicate(activeRoot, warnings);
+  if (!humanOnly.known) return (initiative) => initiative !== null && initiative === args.initiative;
+  return (initiative) => initiative === null || !humanOnly.isHumanOnly(initiative);
+}
+
+function relatedInput(args: Args, deps: RelatedDeps, servable: Servable): RelatedInput {
+  return {
+    text: args.for,
+    activeRoot: deps.activeRoot,
+    servable,
+    ...(deps.dbPath !== undefined ? { dbPath: deps.dbPath } : {}),
+    ...(args.initiative !== undefined ? { initiative: args.initiative } : {}),
+    ...(args.limit !== undefined ? { limit: args.limit } : {}),
+    ...(args.budget !== undefined ? { budget: args.budget } : {}),
+    ...(args.classes !== undefined ? { classes: args.classes } : {}),
+    ...(args.exclude !== undefined ? { exclude: args.exclude } : {}),
+  };
+}
 
 /** The command's body, with the index and hit log injectable so tests never touch the live ones. */
 export async function runRelated(args: Args, deps: RelatedDeps): Promise<RelatedResult> {
+  const charterWarnings: string[] = [];
+  const servable = await servableFor(args, deps.activeRoot, charterWarnings);
   // Before entering the gate, which would otherwise hold off the very pass this waits on.
-  const ensureFresh = deps.ensureFresh ?? ((budgetMs) => indexFreshness.ensure(budgetMs));
-  const freshness = await ensureFresh(RELATED_FRESH_BUDGET_MS).catch(() => 'stale' as const);
+  const ensureFresh = deps.ensureFresh ?? ((budgetMs, scope) => indexFreshness.ensure(budgetMs, scope));
+  // Related ranks workspace documents only, so a transcript pass would buy it nothing.
+  const freshness = await ensureFresh(RELATED_FRESH_BUDGET_MS, 'workspace').catch(
+    () => 'stale' as const,
+  );
   // A daemon refresh pass holds off while this runs, so the request waits for one chunk at most.
   const release = readerGate.enter();
   try {
-    const result = await relatedContext({
-      text: args.for,
-      activeRoot: deps.activeRoot,
-      ...(deps.dbPath !== undefined ? { dbPath: deps.dbPath } : {}),
-      ...(args.initiative !== undefined ? { initiative: args.initiative } : {}),
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.budget !== undefined ? { budget: args.budget } : {}),
-      ...(args.classes !== undefined ? { classes: args.classes } : {}),
-      ...(args.exclude !== undefined ? { exclude: args.exclude } : {}),
-    });
+    const result = await relatedContext(relatedInput(args, deps, servable));
     if (freshness === 'stale') result.degraded.push({ ...STALE_INDEX });
+    for (const message of charterWarnings) {
+      result.degraded.push({ source: 'charter', reason: 'unreadable', message });
+    }
     await logServed(args, result, deps.hitLog ?? fileHitLog());
     return result;
   } finally {

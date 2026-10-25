@@ -35,6 +35,7 @@
   "private": true,
   "dependencies": {
     "@titan-design/agent": "workspace:^",
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",

@@ -7,6 +7,7 @@ import { behindMain, type BehindMain } from "./behind-main.js";
 import { openServeBot, type BotHealth, type BotIdentity } from "./bot-identity.js";
 import { buildSha } from "./build-info.js";
 import { ownClosure } from "./checkout-closure.js";
+import { factoryStateDir } from "./config.js";
 import { startDeployPacer } from "./deploy-pacer-sweep.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import { gateNotifyWatch, type GateNotifyOptions, type GateNotifyWatch } from "./gate-notify-sweep.js";
@@ -94,7 +95,7 @@ export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweep
   ingress?: ServeIngressOptions;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
   build?: { sha: string; behindMain?: BehindMain };
-  /** Where health's `lastDeploy` reads deploy.json; defaults to the XDG state dir the deployer writes. */
+  /** Where health's `lastDeploy` reads deploy.json and the console's deploy-pause-clear finds the pause; defaults to the XDG state dir the deployer writes. */
   deployStateDir?: string;
   /** Resync Shepherd's runs and gates with GitHub before the first adoption; defaults to true. */
   resyncOnStart?: boolean;
@@ -179,7 +180,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const notifySweep = notify?.start();
   const deliverySweep = startVisualDeliverySweep(host, services, log);
   const shipSweep = startRoundShipSweep(host, services, options.consoleAnswers?.roundsDir, log, options.now);
-  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now }, log);
+  const standingSweep = startStandingAnswerSweep(host, services, { actionsDir: options.consoleAnswers?.actionsDir, stateDir, now: options.now, tell: options.consoleAnswers?.tellOwner }, log);
   const reconciler = startServeReconciler(options.reconciler, bot.access(), { sources: options.sources ?? DEFAULT_SOURCES, db: host.db, log, now: options.now, stamp: passStamp });
   reconcilerRef.health = reconciler.health;
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep];
@@ -252,6 +253,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const { proofs, start, notify, ingress, passStamp, bot, reconciler } = extras;
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
+  const deployStateDir = options.deployStateDir ?? factoryStateDir(process.env);
   return {
     registry: createFactoryRegistry(log),
     createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
@@ -262,7 +264,8 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
     health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot(), reconciler: reconciler() }),
-    mountRoutes: (app) => mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), log }),
+    mountRoutes: (app) =>
+      mountServeRoutes(app, { host, ...proofs, now: options.now ?? Date.now, routes: options.routes, consoleAnswers: options.consoleAnswers, stateDir: stateDirOf(options), deployStateDir, log }),
     logger: options.logger,
   };
 }

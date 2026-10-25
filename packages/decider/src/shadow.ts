@@ -1,7 +1,7 @@
 import type { LedgerRow, Prediction } from "./ledger.js";
 import { normalizeKey } from "./normalize.js";
 import { stripRecommended } from "./outcome.js";
-import { categoryPolicy, setCategoryMode, type CategoryPolicy, type RoutingPolicy } from "./policy.js";
+import { categoryPolicy, policyCategory, setCategoryMode, type CategoryPolicy, type RoutingPolicy } from "./policy.js";
 
 /** Overrules within this many days that drop an auto category back to shadow (plan 3.4). */
 export const DEMOTE_OVERRULES = 2;
@@ -108,7 +108,7 @@ function tallies(predictions: ReadonlyMap<string, Prediction>, ledger: readonly 
   const now = options.now().getTime();
   const byCategory = new Map<string, Tally>();
   const tallyFor = (category: string): Tally => {
-    const key = normalizeKey(category);
+    const key = policyCategory(category);
     const tally = byCategory.get(key) ?? emptyTally();
     byCategory.set(key, tally);
     return tally;

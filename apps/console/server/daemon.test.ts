@@ -363,6 +363,8 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
   async function startFakeFactory(): Promise<{ hosts: string[] }> {
     const hosts: string[] = [];
     const server = createServer((req, res) => {
+      // The events relay dials /events on its own schedule; only the reads a request makes are under test.
+      if (req.url === "/events") return void res.writeHead(404).end();
       hosts.push(req.headers.host ?? "");
       req.resume().on("end", () => {
         res.writeHead(200, { "content-type": "application/json" });

@@ -88,9 +88,14 @@ describe("serve's deploy pacer sweep", () => {
     await world.ticks(3);
     const after = await health(server);
 
-    expect(before.deployPending).toEqual({ sha: WANTED, since: new Date(T0).toISOString(), deploysBy: new Date(T0 + DEPLOY_MAX_WAIT_MS).toISOString() });
+    expect(before.deployPending).toEqual({
+      sha: WANTED,
+      since: new Date(T0).toISOString(),
+      deploysBy: new Date(T0 + DEPLOY_MAX_WAIT_MS).toISOString(),
+      waiting: { why: "inside the quiet window", until: new Date(T0 + DEPLOY_QUIET_MS).toISOString() },
+    });
     expect(world.spawned).toEqual([WANTED]);
-    expect(after.deployPending).toMatchObject({ sha: WANTED, spawnedSha: WANTED, spawnedAt: new Date(T0 + DEPLOY_QUIET_MS + MIN).toISOString() });
+    expect(after.deployPending).toMatchObject({ sha: WANTED, spawnedSha: WANTED, spawnedAt: new Date(T0 + DEPLOY_QUIET_MS + MIN).toISOString(), waiting: { why: `deployer already started for ${WANTED}` } });
   });
 
   it("holds the spawn while a run is busy", async () => {

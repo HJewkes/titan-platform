@@ -436,6 +436,27 @@ describe("the inbox page, acting from the console", () => {
     expect(outcome.className).toContain("success");
   });
 
+  it("offers a g10-held merge-at-head both taps, and the approve-and-wait tap prepares and acts with the wait and lands as approved", async () => {
+    const hold = { class: "g10-adversary", reason: "g10-adversary: authority change" };
+    const op = item("op-3", { sources: [{ system: "deposit", ref: "fixture-agent/op-3" }], kind: "do", summary: "Hand-merge example/repo#18", hold, action: { kind: "owner-op", op: { kind: "merge-at-head", repo: "example/repo", pr: 18, headSha: HEAD } } });
+    const readBack = { repo: "example/repo", pr: 18, title: "an authority change", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", hold, authority: "MRG-OR: gate", proposedBy: "fixture-agent", proposal: "Hand-merge example/repo#18", waitFor: "adversary-loop", effect: "Approve the merge of example/repo#18 at 0b7e2c1 now; Shepherd merges it by itself once the adversary loop closes with MERGE at this head" };
+    const approved = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "approved", runId: "run-held" }, message: "Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE" }));
+    const calls = renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-3", action: op.action, readBack })), "inbox.act": approved });
+    const row = await screen.findByTestId("inbox-row-op-3");
+
+    expect(within(row).getByText("Merge without both MERGEs")).toBeTruthy();
+    expect(within(row).queryByText("Merge at head")).toBeNull();
+    fireEvent.click(within(row).getByText("Approve; merge when the loop closes"));
+    expect(await screen.findByText(readBack.effect)).toBeTruthy();
+    await tapConfirm();
+
+    expect(calls.filter((call) => call.name === "inbox.prepare" || call.name === "inbox.act").map((call) => [call.name, call.args])).toEqual([
+      ["inbox.prepare", { itemId: "op-3", waitFor: "adversary-loop" }],
+      ["inbox.act", { itemId: "op-3", waitFor: "adversary-loop", confirm: CONFIRM }],
+    ]);
+    expect(screen.getByTestId("inbox-confirm-outcome").className).toContain("success");
+  });
+
   it("taps a deposit's close-pr op as Close PR, reads back that the branch is kept, and shows the close as landed", async () => {
     const op = item("op-2", { sources: [{ system: "deposit", ref: "fixture-agent/op-2" }], kind: "do", summary: "Close example/repo#17", action: { kind: "owner-op", op: { kind: "close-pr", repo: "example/repo", pr: 17, headSha: HEAD } } });
     const readBack = { repo: "example/repo", pr: 17, title: "a superseded fixture", headSha: HEAD, base: "main", behind: false, mergeableState: "clean", authority: "PRC-OR: allow", proposedBy: "fixture-agent", proposal: "Close example/repo#17", effect: "Close example/repo#17 at 0b7e2c1 on GitHub; the branch is kept and reopen is one click" };
@@ -446,6 +467,22 @@ describe("the inbox page, acting from the console", () => {
     await tapConfirm();
     const outcome = screen.getByTestId("inbox-confirm-outcome");
     expect(outcome.textContent).toContain("PR closed at 0b7e2c1; its branch is kept");
+    expect(outcome.className).toContain("success");
+  });
+
+  it("taps a deposit's deploy-pause-clear as Clear deploy pause, reads back the pause and the pacer's resume, and shows the clear as landed", async () => {
+    const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: HEAD } as const;
+    const op = item("op-3", { sources: [{ system: "deposit", ref: "fixture-agent/op-3" }], kind: "do", summary: "Clear the fixture deploy pause", action: { kind: "owner-op", op: pauseOp } });
+    const effect = "Clear the deploy pause from 2026-10-18T12:00:00.000Z over 0b7e2c1; the deploy pacer resumes and may deploy within about a minute";
+    const readBack = { pausedAt: pauseOp.pausedAt, target: HEAD, why: "the restarted build failed its watch", rollback: "verified", authority: "DRS-OR: gate", proposedBy: "fixture-agent", proposal: "Clear the fixture deploy pause", effect };
+    const cleared = () => Promise.resolve(successEnvelope({ actionId: CONFIRM, outcome: { status: "pause-cleared", clearedPause: pauseOp.pausedAt, stillHeld: null }, message: "Deploy pause cleared; the deploy pacer may deploy within about a minute" }));
+    renderInbox(inboxAnswer({ items: [op] }), { "inbox.prepare": () => Promise.resolve(ready({ itemId: "op-3", action: op.action, readBack })), "inbox.act": cleared });
+    fireEvent.click(within(await screen.findByTestId("inbox-row-op-3")).getByText("Clear deploy pause"));
+    expect(await screen.findByText(effect)).toBeTruthy();
+    expect(screen.getByText("Paused: the restarted build failed its watch")).toBeTruthy();
+    await tapConfirm();
+    const outcome = screen.getByTestId("inbox-confirm-outcome");
+    expect(outcome.textContent).toContain("Deploy pause cleared; the deploy pacer may deploy within about a minute");
     expect(outcome.className).toContain("success");
   });
 

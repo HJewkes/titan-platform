@@ -20,6 +20,34 @@
       "kills": [
         "listAgents passes through a predecessor naming that it took over from no one"
       ]
+    },
+    {
+      "name": "a retired row loses its marker",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "...optionalField(value, \"retired\", isBoolean),",
+      "replace": "...{},",
+      "kills": [
+        "listAgents passes through the marker on a retired generation's row",
+        "listAgentLineage asks for retired generations too and calls the lineage complete"
+      ]
+    },
+    {
+      "name": "an agent-chat that predates --include-retired fails the lineage read",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "if (!UNKNOWN_INCLUDE_RETIRED.test(result.stderr)) throw refusal(\"agent ls\", result);",
+      "replace": "throw refusal(\"agent ls\", result);",
+      "kills": [
+        "listAgentLineage falls back to the plain roster, marked incomplete, on an agent-chat that predates the flag"
+      ]
+    },
+    {
+      "name": "the plain-roster fallback claims a complete lineage",
+      "file": "packages/agent-dispatch/src/agents.ts",
+      "find": "return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: false };",
+      "replace": "return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: true };",
+      "kills": [
+        "listAgentLineage falls back to the plain roster, marked incomplete, on an agent-chat that predates the flag"
+      ]
     }
   ]
 }

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "pixel dedupe drops a focus step whose still matches the one before it",
+      "file": "products/explainer/src/contact-sheet-render.ts",
+      "find": "for (const { chapter, cells: group } of chapterSheets(framed)) {",
+      "replace": "for (const { chapter, cells: all } of chapterSheets(framed)) {\n    const group = all.filter((cell, i) => i === 0 || cell.beat !== all[i - 1]!.beat || cell.sha !== all[i - 1]!.sha);",
+      "kills": [
+        "writeContactSheets tiles every cell, even a focus step whose still matches the step before it"
+      ]
+    },
+    {
+      "name": "the label is drawn on the frame instead of a strip under it",
+      "file": "products/explainer/src/contact-sheet-render.ts",
+      "find": "`scale=${width}:-2,${strip},${text}`",
+      "replace": "`scale=${width}:-2,${text}`",
+      "kills": [
+        "writeContactSheets draws the label in a strip under the frame and seeks to the cell's time"
+      ]
+    }
+  ]
+}

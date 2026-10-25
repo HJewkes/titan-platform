@@ -1,0 +1,59 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a merge-at-head deposit never joins its PR's live row",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "item.op.kind === \"release-hold\" || item.op.kind === \"merge-at-head\" ? rowOfPr",
+      "replace": "item.op.kind === \"release-hold\" ? rowOfPr",
+      "kills": [
+        "a deposit's typed op shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge"
+      ]
+    },
+    {
+      "name": "a deploy-pause-clear deposit gets no console tap",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\"]);",
+      "replace": "new Set([\"merge-at-head\", \"close-pr\"]);",
+      "kills": [
+        "a deposit's typed op becomes an owner-op tap for a deploy-pause-clear"
+      ]
+    },
+    {
+      "name": "a factory-config-set deposit gets a console tap before its effect lands",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\"]);",
+      "replace": "new Set([\"merge-at-head\", \"close-pr\", \"deploy-pause-clear\", \"factory-config-set\"]);",
+      "kills": [
+        "a deposit's typed op stays on the terminal for a kind with no console tap yet"
+      ]
+    },
+    {
+      "name": "inbox.list drops the missed-notice rows",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": ", ...blocked, ...missed.value]",
+      "replace": ", ...blocked]",
+      "kills": [
+        "inbox.list's machine-derived rows a round notice the start-up sweep could not send lists a missed-notice row linking the round until a later sweep reaches the seat"
+      ]
+    },
+    {
+      "name": "inbox.list drops the round notices gap",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": ", ...missed.gaps]",
+      "replace": "]",
+      "kills": [
+        "inbox.list's machine-derived rows a round notice the start-up sweep could not send names an unreadable rounds dir as a round notices gap"
+      ]
+    },
+    {
+      "name": "an unreadable rounds dir reads as no rounds instead of a gap",
+      "file": "apps/console/server/round-notice-gaps.ts",
+      "find": "    if (isMissing(error)) return [];\n    throw error;\n",
+      "replace": "    return [];\n",
+      "kills": [
+        "inbox.list's machine-derived rows a round notice the start-up sweep could not send names an unreadable rounds dir as a round notices gap"
+      ]
+    }
+  ]
+}
