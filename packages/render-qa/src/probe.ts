@@ -131,8 +131,9 @@ function clips(p: Prober, el: Element): ProbedClip[] {
   for (let e: Element | null = el; e && e !== document.documentElement; e = e.parentElement) {
     const style = getComputedStyle(e)
     const r = e.getBoundingClientRect()
+    const paddingBox = { x: r.left + e.clientLeft, y: r.top + e.clientTop, width: e.clientWidth, height: e.clientHeight }
     if (style.clipPath !== 'none') out.push({ element: p.describe(e), box: p.insetBox(e, style.clipPath) })
-    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') out.push({ element: p.describe(e), box: { x: r.left + e.clientLeft, y: r.top + e.clientTop, width: e.clientWidth, height: e.clientHeight } })
+    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') out.push({ element: p.describe(e), box: paddingBox })
   }
   return out
 }
