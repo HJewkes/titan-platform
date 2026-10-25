@@ -25,6 +25,10 @@ describe("expandsAtRunTime reads only characters outside quotes", () => {
     expect(expandsAtRunTime(word("'='ls"))).toBe(false);
   });
 
+  it("reads a bare = after a quoted lead as literal, since zsh expands =cmd only at a word's start", () => {
+    expect(expandsAtRunTime(word("'x'=ls"))).toBe(false);
+  });
+
   it("counts a spliced word as bare throughout once its value is rewritten after lexing", () => {
     const quoted = word("query='{viewer{login}}'");
 

@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a spliced word counts as bare throughout, ignoring its recorded spans",
+      "file": "packages/tool-guard/src/shell/word-build.ts",
+      "find": "  if (w.bare?.text === w.value) return w.bare.spans;",
+      "replace": "  if (w.bare?.text === \"\\u0000\") return w.bare.spans;",
+      "kills": [
+        "expandsAtRunTime reads only characters outside quotes a quoted GraphQL selection after a bare key: query='{viewer{login}}' reads false",
+        "expandsAtRunTime reads only characters outside quotes a quoted list type after a bare key: query='[ID!]' reads false",
+        "expandsAtRunTime reads only characters outside quotes keeps a field's key when only its quoted value holds braces"
+      ]
+    },
+    {
+      "name": "recorded spans are trusted after the word's value is rewritten",
+      "file": "packages/tool-guard/src/shell/word-build.ts",
+      "find": "  if (w.bare?.text === w.value) return w.bare.spans;",
+      "replace": "  if (w.bare !== undefined) return w.bare.spans;",
+      "kills": [
+        "expandsAtRunTime reads only characters outside quotes counts a spliced word as bare throughout once its value is rewritten after lexing"
+      ]
+    },
+    {
+      "name": "a span's end index counts as bare",
+      "file": "packages/tool-guard/src/families/field-words.ts",
+      "find": "spans.some(([start, end]) => start <= i && i < end)",
+      "replace": "spans.some(([start, end]) => start <= i && i <= end)",
+      "kills": [
+        "expandsAtRunTime reads only characters outside quotes a glob character quoted between bare text: a\"*\"b reads false"
+      ]
+    },
+    {
+      "name": "a leading = reads as =cmd whether or not it was quoted",
+      "file": "packages/tool-guard/src/families/field-words.ts",
+      "find": "(kept[0] === bare[0] && bareText.startsWith(\"=\"))",
+      "replace": "word.value.startsWith(\"=\")",
+      "kills": [
+        "expandsAtRunTime reads only characters outside quotes reads a quoted = leading a spliced word as literal, which zsh never expands as =cmd"
+      ]
+    },
+    {
+      "name": "a bare = after a quoted lead reads as =cmd",
+      "file": "packages/tool-guard/src/families/field-words.ts",
+      "find": "(kept[0] === bare[0] && bareText.startsWith(\"=\"))",
+      "replace": "bareText.startsWith(\"=\")",
+      "kills": [
+        "expandsAtRunTime reads only characters outside quotes reads a bare = after a quoted lead as literal, since zsh expands =cmd only at a word's start"
+      ]
+    }
+  ]
+}
