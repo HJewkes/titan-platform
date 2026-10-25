@@ -1,49 +1,46 @@
 import { rollupSessions } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from './graph.js';
 
-const UNFINISHED_TURNS_PAGE = `
-  SELECT rowid AS id, session_id, prompt_id FROM turn
-  WHERE ended_at IS NULL AND rowid > ?
-  ORDER BY rowid LIMIT ?`;
+const UNFINISHED_PAGE = 2_000;
 
+const UNFINISHED_TURNS = `
+  SELECT rowid, session_id, prompt_id FROM turn
+  WHERE ended_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?`;
+
+/**
+ * Both owners: a turn's row keeps the lower session id on a prompt-id clash,
+ * while the rollup aggregates by the session its facts carry.
+ */
 const FACT_OWNERS = `
-  SELECT DISTINCT session_id FROM fact
-  WHERE prompt_id IN (SELECT value FROM json_each(?))`;
-
-/** One page's selection costs about a millisecond locally (TP-4200). */
-const UNFINISHED_PAGE_TURNS = 1_000;
+  SELECT DISTINCT session_id FROM fact WHERE prompt_id IN (SELECT value FROM json_each(?))`;
 
 interface UnfinishedTurn {
-  id: number;
+  rowid: number;
   session_id: string;
   prompt_id: string;
 }
 
 /**
- * Every session that still has a turn with no `ended_at`, read in keyset pages
- * of `pageTurns` turns with a yield after each. As one statement, the read
- * joined every unfinished turn to its facts and held the loop for seconds on a
- * loaded runner after the rollup itself was sliced (TP-4200). Both owners: a
- * turn's row keeps the lower session id on a prompt-id clash, while the rollup
- * aggregates by the session its facts carry. A throw at a yield point rolls up
- * nothing, which is safe: the turns stay unfinished for the next pass.
+ * Every session owning an unfinished turn, read a page at a time with a yield
+ * after each. As one query over 125k unfinished turns it held the loop for
+ * about 120 ms locally and past a second on a loaded CI runner (TP-4200).
  */
-export async function unfinishedSessionIds(
+async function unfinishedSessions(
   graph: WorkspaceGraph,
   yieldPoint: () => Promise<void>,
-  pageTurns: number = UNFINISHED_PAGE_TURNS,
-): Promise<string[]> {
-  const page = graph.db.prepare<[number, number], UnfinishedTurn>(UNFINISHED_TURNS_PAGE);
+  pageSize: number,
+): Promise<Set<string>> {
+  const turns = graph.db.prepare<[number, number], UnfinishedTurn>(UNFINISHED_TURNS);
   const owners = graph.db.prepare<[string], { session_id: string }>(FACT_OWNERS);
   const sessions = new Set<string>();
-  for (let after = 0; ; ) {
-    const turns = page.all(after, pageTurns);
-    const last = turns.at(-1);
-    if (last === undefined) return [...sessions];
-    for (const turn of turns) sessions.add(turn.session_id);
-    const promptIds = JSON.stringify(turns.map((turn) => turn.prompt_id));
-    for (const owner of owners.all(promptIds)) sessions.add(owner.session_id);
-    after = last.id;
+  let cursor = 0;
+  for (;;) {
+    const page = turns.all(cursor, pageSize);
+    if (page.length === 0) return sessions;
+    for (const turn of page) sessions.add(turn.session_id);
+    const promptIds = JSON.stringify(page.map((turn) => turn.prompt_id));
+    for (const row of owners.all(promptIds)) sessions.add(row.session_id);
+    cursor = page[page.length - 1].rowid;
     await yieldPoint();
   }
 }
@@ -87,7 +84,8 @@ export async function rollupYielding(
 export async function rollupUnfinishedTurns(
   graph: WorkspaceGraph,
   yieldPoint: () => Promise<void>,
+  pageSize = UNFINISHED_PAGE,
 ): Promise<number> {
-  const sessionIds = await unfinishedSessionIds(graph, yieldPoint);
-  return rollupYielding(graph, sessionIds, yieldPoint);
+  const sessions = await unfinishedSessions(graph, yieldPoint, pageSize);
+  return rollupYielding(graph, [...sessions], yieldPoint);
 }

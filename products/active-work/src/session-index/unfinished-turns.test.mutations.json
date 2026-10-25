@@ -20,31 +20,22 @@
       ]
     },
     {
-      "name": "the unfinished-session read never yields between pages",
+      "name": "the unfinished-turn gather reads every page without yielding",
       "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "    after = last.id;\n    await yieldPoint();\n",
-      "replace": "    after = last.id;\n",
+      "find": "    cursor = page[page.length - 1].rowid;\n    await yieldPoint();\n",
+      "replace": "    cursor = page[page.length - 1].rowid;\n",
       "kills": [
-        "unfinished-session read hands the loop back before the first rollup",
-        "unfinished-session read reads every session across pages, yielding after each page"
+        "sliced rollup gathers unfinished turns a page at a time, yielding after each page",
+        "sliced rollup hands the loop back before the first rollup"
       ]
     },
     {
-      "name": "a page walks the turns backwards",
+      "name": "the gather drops the sessions that own an unfinished turn's facts",
       "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "ORDER BY rowid LIMIT ?",
-      "replace": "ORDER BY rowid DESC LIMIT ?",
-      "kills": [
-        "unfinished-session read reads every session across pages, yielding after each page"
-      ]
-    },
-    {
-      "name": "the read drops the sessions that own an unfinished turn's facts",
-      "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "    for (const owner of owners.all(promptIds)) sessions.add(owner.session_id);\n",
+      "find": "    for (const row of owners.all(promptIds)) sessions.add(row.session_id);\n",
       "replace": "",
       "kills": [
-        "unfinished-session read includes the session whose facts carry an unfinished turn of another"
+        "sliced rollup rolls up a turn whose facts another session carries"
       ]
     }
   ]

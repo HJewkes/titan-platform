@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discoverTranscripts } from '@titan-design/session-read';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
-import { rollupUnfinishedTurns, rollupYielding, unfinishedSessionIds } from './unfinished-turns.js';
+import { rollupUnfinishedTurns, rollupYielding } from './unfinished-turns.js';
 
 const SESSIONS = ['sess-a', 'sess-b', 'sess-c'];
 
@@ -73,9 +73,24 @@ describe('sliced rollup', () => {
     expect(yields).toBe(SESSIONS.length);
     expect(unfinishedTurns()).toEqual({ n: 0 });
   });
-});
 
-describe('unfinished-session read', () => {
+  it('gathers unfinished turns a page at a time, yielding after each page', async () => {
+    await unfinishedSessions();
+    let yields = 0;
+
+    const updated = await rollupUnfinishedTurns(
+      graph,
+      async () => {
+        yields += 1;
+      },
+      1,
+    );
+
+    expect(updated).toBe(SESSIONS.length);
+    expect(yields).toBe(SESSIONS.length * 2);
+    expect(unfinishedTurns()).toEqual({ n: 0 });
+  });
+
   it('hands the loop back before the first rollup', async () => {
     await unfinishedSessions();
     const unfinishedAtYield: unknown[] = [];
@@ -88,24 +103,12 @@ describe('unfinished-session read', () => {
     expect(unfinishedTurns()).toEqual({ n: 0 });
   });
 
-  it('reads every session across pages, yielding after each page', async () => {
-    await unfinishedSessions();
-    let yields = 0;
-
-    const ids = await unfinishedSessionIds(graph, async () => {
-      yields += 1;
-    }, 1);
-
-    expect(ids.sort()).toEqual(SESSIONS);
-    expect(yields).toBe(SESSIONS.length);
-  });
-
-  it('includes the session whose facts carry an unfinished turn of another', async () => {
+  it('rolls up a turn whose facts another session carries', async () => {
     await unfinishedSessions();
     graph.db.prepare("UPDATE fact SET session_id = 'sess-z' WHERE session_id = 'sess-c'").run();
 
-    const ids = await unfinishedSessionIds(graph, async () => {});
+    await rollupUnfinishedTurns(graph, async () => {});
 
-    expect(ids.sort()).toEqual([...SESSIONS, 'sess-z']);
+    expect(unfinishedTurns()).toEqual({ n: 0 });
   });
 });

@@ -13,8 +13,8 @@
     {
       "name": "unfinished turns roll up in one transaction",
       "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "  return rollupYielding(graph, sessionIds, yieldPoint);\n",
-      "replace": "  return rollupSessions(graph, sessionIds);\n",
+      "find": "  return rollupYielding(graph, [...sessions], yieldPoint);\n",
+      "replace": "  return rollupSessions(graph, [...sessions]);\n",
       "kills": [
         "session index pass over 500 dirty transcripts a pass resuming unfinished turns never stalls the event loop for a second"
       ]
