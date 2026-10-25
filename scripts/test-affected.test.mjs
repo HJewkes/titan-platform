@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { forceRerunTriggers, packageDirOf, repoTierDirs, resolveBase, vitestArgs } from "./test-affected.mjs";
+import { forceRerunTriggers, packageDirOf, repoTierDirs, resolveBase, unselectedProjects, vitestArgs } from "./test-affected.mjs";
 
 const PLAIN = [
   "run",
@@ -70,5 +71,17 @@ describe("force-rerun triggers", () => {
 
   it("escapes glob metacharacters in the root", () => {
     expect(forceRerunTriggers("/r/p(1)")[0]).toBe("/r/p\\(1\\)/**/package.json/**");
+  });
+});
+
+describe("project list guard", () => {
+  it("finds no root project outside the list in the real vitest config", () => {
+    const source = readFileSync(new URL("../vitest.config.ts", import.meta.url), "utf8");
+
+    expect(unselectedProjects(source)).toEqual([]);
+  });
+
+  it("names a root project the list lacks", () => {
+    expect(unselectedProjects('test: {\n  name: "threads",\n}\n{\n  name: "newcomer",\n}')).toEqual(["newcomer"]);
   });
 });

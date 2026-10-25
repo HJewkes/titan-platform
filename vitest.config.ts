@@ -25,6 +25,8 @@ const needsProcess = [
 // os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
 const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
 const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+// Date rendering in these tests must not depend on the host zone.
+const activeWorkEnv = { TZ: "UTC" };
 // These assign process.env.HOME or spy on os.homedir() in-process.
 const activeWorkNeedsProcess = [
   "products/active-work/__tests__/commands/setup.test.ts",
@@ -113,6 +115,7 @@ export default defineConfig({
         test: {
           name: "active-work",
           pool: "threads",
+          env: activeWorkEnv,
           include: activeWorkTests,
           exclude: ["**/node_modules/**", ...activeWorkNeedsProcess],
           setupFiles: activeWorkSetup,
@@ -125,6 +128,7 @@ export default defineConfig({
           pool: "forks",
           maxWorkers: 1,
           execArgv: forksHeap,
+          env: activeWorkEnv,
           include: activeWorkNeedsProcess,
           setupFiles: activeWorkSetup,
         },

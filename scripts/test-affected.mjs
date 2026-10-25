@@ -4,7 +4,7 @@
 // requests by the package graph (test-scope.mjs), and main's full run is the authority.
 // Usage: node scripts/test-affected.mjs [base]   (base: TEST_AFFECTED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
-import { globSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,9 +53,17 @@ export function repoTierDirs(root = ROOT) {
   return new Set(files.map(packageDirOf).filter(Boolean));
 }
 
+// "repo" is not here: vitestArgs adds it only when a change touches a repo-tier package.
+export const ALWAYS_PROJECTS = ["threads", "forks", "active-work", "active-work-forks"];
+
+/** Root projects named in the vitest config that this script would never select, so their tests would be skipped silently. */
+export function unselectedProjects(configSource) {
+  const names = [...configSource.matchAll(/^\s*name: "([^"]+)",/gm)].map((match) => match[1]);
+  return names.filter((name) => name !== "repo" && !ALWAYS_PROJECTS.includes(name));
+}
+
 export function vitestArgs(base, changed, repoDirs) {
-  const projects = ["threads", "forks", "active-work", "active-work-forks"];
-  const args = ["run", "--changed", base, "--passWithNoTests", ...projects.flatMap((project) => ["--project", project])];
+  const args = ["run", "--changed", base, "--passWithNoTests", ...ALWAYS_PROJECTS.flatMap((project) => ["--project", project])];
   const touchesRepoTier = changed.some((path) => repoDirs.has(packageDirOf(path)));
   return touchesRepoTier ? [...args, "--project", "repo"] : args;
 }
@@ -74,6 +82,8 @@ export function changedFiles(base, cwd = ROOT) {
 
 function main() {
   const base = resolveBase(process.env, process.argv.slice(2));
+  const unselected = unselectedProjects(readFileSync(join(ROOT, "vitest.config.ts"), "utf8"));
+  if (unselected.length) throw new Error(`vitest.config.ts has projects missing from ALWAYS_PROJECTS: ${unselected.join(", ")}`);
   const args = vitestArgs(base, changedFiles(base), repoTierDirs());
   console.log(`test:affected: vitest ${args.join(" ")}`);
   const vitest = join(ROOT, "node_modules", "vitest", "vitest.mjs");
