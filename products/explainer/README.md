@@ -649,7 +649,7 @@ with the owner.
   is judge `listener`, passes when the chapter clears the bar, and carries the chapter's `density`.
 - The command takes the judges' unvoided rows for that exact script. It skips cold zeros that code wrote rather
   than the judge (a bare list item, an unanswered question, a failed call). Each question keeps one verdict, the
-  last one written, and the key names the `configId` and `run` it came from. It turns each verdict into a yes or
+  last one written, and the key names the `configId` and `run` it came from (round-1 keys have neither, and still parse). It turns each verdict into a yes or
   no question:
   - cold probe: does the chapter answer the question the viewer was asked about an item, in that kind's own
     words (what-why, invariant or term), with a score above 0? An `inv` item gives two questions.
@@ -667,7 +667,8 @@ with the owner.
 - It writes `round.json`, a questions-only console round with one section per video. A section shows the script
   as spoken, then that video's items as optional `Yes` / `No` / `Can't tell` pick-ones (`A` / `B` / `Can't tell`
   for a pair). The header gives the estimated minutes (1.25 a yes or no item, listener items included, 2 a
-  pair). The round shows no judge name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
+  pair). Section ids are `case-<slug>`, and a slug past the console's 32-character id rule keeps a prefix and ends in
+  a hash of the case; `calibration-round.test.ts` checks every id against the console's `/^[A-Za-z0-9_-]{1,32}$/`. The round shows no judge name, verdict or recommendation. The verdicts go to the answer key, named `<unit>-r<round>`, which is kept
   outside the round directory. The command never overwrites an existing round or key.
 - `--round-dir` is a staging directory. File the round from it with `titan-console decisions file
   <dir>/round.json --seat <seat> --initiative <initiative>`, which writes the asker and notifies the owner.

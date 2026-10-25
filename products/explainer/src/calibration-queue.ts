@@ -69,8 +69,9 @@ const KeyEntrySchema = z
     videoType: z.string().min(1),
     target: z.string().min(1),
     pass: z.boolean(),
-    configId: z.string(),
-    run: z.string(),
+    /** Absent from round-1 keys, which predate them; agreement reads neither. */
+    configId: z.string().optional(),
+    run: z.string().optional(),
     /** Absent from round-1 keys, which predate it. */
     evalVersion: z.string().optional(),
     density: z.number().nonnegative().optional(),
