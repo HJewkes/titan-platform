@@ -93,8 +93,11 @@ async function isSealed(
  */
 function currentFacets(graph: Pick<SessionGraph, 'db'>): Set<number> {
   const rows = graph.db
-    .prepare(`SELECT transcript_id FROM ${FACET_TABLE} WHERE facet = ? AND version >= ?`)
-    .all(AUDIT_FACET, EXTRACT_VERSION) as { transcript_id: number }[];
+    .prepare<
+      [string, number],
+      { transcript_id: number }
+    >(`SELECT transcript_id FROM ${FACET_TABLE} WHERE facet = ? AND version >= ?`)
+    .all(AUDIT_FACET, EXTRACT_VERSION);
   return new Set(rows.map((row) => row.transcript_id));
 }
 
