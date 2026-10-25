@@ -131,10 +131,18 @@ export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): La
 }
 
 /**
- * The owner reads a repo skill diff at its own head (CC-1120). Until TP-4141 every live skill-path gate's multi-line prompt
- * kept it off the console tap, standing answers, Ship answers and batches; it stays off them.
+ * The D21 merge-guard rows the owner reads at their own head: a repo skill diff (CC-1120) and a weakened or malformed CI
+ * policy. Until TP-4141 a multi-line prompt kept such a gate off the console tap, merge-at-head, standing answers, Ship
+ * answers and batches; it stays off them.
  */
-export const isSkillPathLand = (land: LandGate | undefined): boolean => land?.rule === "shepherd-merge-guard/skill-path";
+const OWNER_AT_HEAD_ROWS: ReadonlySet<string> = new Set(["skill-path", "ci-policy-weakened", "ci-policy-malformed"]);
+const MERGE_GUARD = "shepherd-merge-guard/";
+
+/** The row of a gate the remote paths refuse, named in their refusal; undefined for any other gate. */
+export function ownerAtHeadRow(land: LandGate | undefined): string | undefined {
+  const row = land?.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : undefined;
+  return row !== undefined && OWNER_AT_HEAD_ROWS.has(row) ? row : undefined;
+}
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
   const head = (schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;

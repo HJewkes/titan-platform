@@ -3,7 +3,7 @@ import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
 import { acceptSetNote, approvedSetOf, type AfterDigest, type ApprovedSet } from "./approved-set.js";
-import { MERGE_GATE, isSkillPathLand, landGate, pinnedHead, stepOf, type LandGate } from "./coordinator-evidence.js";
+import { MERGE_GATE, landGate, ownerAtHeadRow, pinnedHead, stepOf, type LandGate } from "./coordinator-evidence.js";
 import { stepIdMatches } from "./definition.js";
 import { gateStaleness } from "./gate-batch.js";
 import { pendingGateId, repeatedResolution } from "./gate-resolve.js";
@@ -113,7 +113,8 @@ export async function checkAnswer(inputs: AnswerInputs): Promise<AnswerCheck> {
   const gate = host.gates.get(request.gateId);
   const answerable = gate && Object.keys(SHIP_CHOICES).some((step) => stepIdMatches(`${request.runId}/${step}`, gate.id));
   if (!gate || !answerable) return refused("unknown-gate", `run ${request.runId} has no ${Object.keys(SHIP_CHOICES).join(" or ")} gate ${request.gateId}`);
-  if (isSkillPathLand(landGate(gate))) return refused("not-land-gate", `gate ${gate.id} is a skill-path gate, which no Ship answer gives`);
+  const ownerRow = ownerAtHeadRow(landGate(gate));
+  if (ownerRow !== undefined) return refused("not-land-gate", `gate ${gate.id} is a ${ownerRow} gate, which no Ship answer gives`);
   const land = gateHead(gate);
   if (!land) return refused("not-land-gate", `gate ${gate.id} does not pin a PR head`);
   const early = land.step === VISUAL_ACCEPT_GATE ? choiceRefusal(inputs, land) : undefined;
