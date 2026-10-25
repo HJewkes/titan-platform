@@ -5,14 +5,17 @@ import type { Logger, StartDaemonOptions } from "@titan-design/daemon";
 import type { GitHubPort } from "@titan-design/github";
 import { GateAlreadySettled, GateExpired, GateNotFound, GatePayloadInvalid, GateResolverRefused, type GateResolver } from "@titan-design/hitl";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
+import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { z } from "zod";
 import { MAX_SET_FILES, afterDigest, keptImages, setPacketOf, type AfterDigest } from "./approved-set.js";
 import { configPath, loadConfig } from "./config.js";
 import { stepOf } from "./coordinator-evidence.js";
 import { stepIdMatches } from "./definition.js";
+import { ownerInboxDir } from "./deploy-watch-ports.js";
 import { checkAnswer, type AcceptFiles, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
+import type { TellOwner } from "./owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
 import { VISUAL_ACCEPT_GATE, configuredVisualSetCarry } from "./shepherd/visual-accept.js";
 import { deliveryFileFor } from "./shepherd/visual-delivery.js";
@@ -69,13 +72,18 @@ export interface ConsoleAnswersOptions {
   actionsDir?: string;
   /** `shepherd.agentChatBin`, which a console retire-agent op runs through. */
   agentChatBin?: string;
+  /** Files an owner inbox item, such as the notice that a merge approval was voided. */
+  tellOwner?: TellOwner;
 }
 
-/** `shepherd.consoleAnswers` from the factory config; absent means the route is not mounted. */
+/** `shepherd.consoleAnswers` from the factory config, telling the owner through the console's deposit spool; absent means the route is not mounted. */
 export function configuredConsoleAnswers(env: NodeJS.ProcessEnv): ConsoleAnswersOptions | undefined {
   const shepherd = loadConfig(configPath(env)).shepherd;
-  if (shepherd?.consoleAnswers === undefined) return undefined;
-  return { ...shepherd.consoleAnswers, ...(shepherd.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
+  const configured = shepherd?.consoleAnswers;
+  if (configured === undefined) return undefined;
+  const inbox = ownerInboxDir(env);
+  const tellOwner: TellOwner = async (deposit) => void (await writeDeposit(inbox, deposit));
+  return { ...configured, tellOwner, ...(shepherd?.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
 }
 
 /**

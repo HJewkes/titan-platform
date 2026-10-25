@@ -2,48 +2,48 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the pause read-back compares only the target, not pausedAt",
+      "name": "the posted op drops the owner's wait for the adversary loop",
       "file": "apps/console/server/inbox-op.ts",
-      "find": "if (since !== op.pausedAt || lastRollback.target !== op.target)",
-      "replace": "if (lastRollback.target !== op.target)",
+      "find": ", ...(readBack.waitFor && { waitFor: readBack.waitFor }) };",
+      "replace": " };",
       "kills": [
-        "inbox deploy-pause-clear op offers no action when a newer pause than the deposit names stands"
+        "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
       ]
     },
     {
-      "name": "the pause read-back offers a tap while a deployer runs",
+      "name": "the wait is offered on a PR with no g10 hold",
       "file": "apps/console/server/inbox-op.ts",
-      "find": "  if (pause.deployerRunning) return \"a deployer is running now; read the item again once it ends\";\n",
+      "find": "  if (!held) return `${facts.repo}#${facts.pr} holds no g10 hold, so there is no adversary loop to wait for; merge at head instead`;\n",
       "replace": "",
       "kills": [
-        "inbox deploy-pause-clear op offers no action while a deployer is running"
+        "inbox owner-op merge-at-head on a g10-held PR offers no wait on a PR with no g10 hold"
       ]
     },
     {
-      "name": "the pause read-back promises a deploy while a manual hold stands",
+      "name": "the forced merge on a g10-held PR reads back as a plain merge",
       "file": "apps/console/server/inbox-op.ts",
-      "find": "const said = pause.manualHold === null ? effect(at) :",
-      "replace": "const said = true ? effect(at) :",
+      "find": "return held ? { ...facts, effect: `${facts.effect}${PAST_HOLD}` } : facts;",
+      "replace": "return facts;",
       "kills": [
-        "inbox deploy-pause-clear op says a manual hold stays held when one stands beside the pause, before and after the clear"
+        "inbox owner-op merge-at-head on a g10-held PR reads the forced merge back as skipping the hold and posts it with no wait"
       ]
     },
     {
-      "name": "a moved pause reads as a moved PR head",
+      "name": "the act re-reads the read-back without the owner's wait",
       "file": "apps/console/server/inbox-actions.ts",
-      "find": "return outcome.currentPause === undefined ?",
-      "replace": "return true ?",
+      "find": "  const readBack = await readBackOf(ctx.sources, item, action, tap.waitFor);\n",
+      "replace": "  const readBack = await readBackOf(ctx.sources, item, action);\n",
       "kills": [
-        "inbox deploy-pause-clear op reads the factory's moved as a newer pause that is kept"
+        "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
       ]
     },
     {
-      "name": "a cleared pause says the pacer resumes though a hand hold stands",
+      "name": "a standing approval reads as a queued land run",
       "file": "apps/console/server/inbox-actions.ts",
-      "find": "return outcome.stillHeld === null ? \"Deploy pause cleared;",
-      "replace": "return true ? \"Deploy pause cleared;",
+      "find": "      return \"Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you\";\n",
+      "replace": "      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;\n",
       "kills": [
-        "inbox deploy-pause-clear op says a manual hold stays held when one stands beside the pause, before and after the clear"
+        "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
       ]
     }
   ]

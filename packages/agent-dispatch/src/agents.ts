@@ -59,6 +59,17 @@ export interface AgentRow {
    * from no one. Absent when the broker does not report it, which proves nothing.
    */
   predecessor?: string | null;
+  /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
+  retired?: boolean;
+}
+
+/**
+ * Every row the broker's log holds, retired generations included. `complete` is false when the installed agent-chat
+ * predates `--include-retired`, so `rows` lacks the retired generations and cannot prove who spawned whom.
+ */
+export interface AgentLineage {
+  rows: AgentRow[];
+  complete: boolean;
 }
 
 export interface RetireResult {
@@ -67,26 +78,47 @@ export interface RetireResult {
   caveats: string[];
 }
 
-export function buildListAgentsArgs(): string[] {
-  return ["agent", "ls", "--json"];
+const INCLUDE_RETIRED = "--include-retired";
+
+export function buildListAgentsArgs(options: { includeRetired?: boolean } = {}): string[] {
+  return ["agent", "ls", "--json", ...(options.includeRetired === true ? [INCLUDE_RETIRED] : [])];
 }
 
 export function buildRetireArgs(name: string, force = false): string[] {
   return ["agent", "retire", name, ...(force ? ["--force"] : [])];
 }
 
-/** Every agent the broker's log knows, live or ended. */
+/** Every agent the broker's log knows, live or ended; retired generations only with `includeRetired`. */
 export async function listAgents(
   agentChatBinPath: string,
   timeoutMs: number,
+  options: { includeRetired?: boolean } = {},
 ): Promise<AgentRow[]> {
   const result = await runAgentChatAsync(
     agentChatBinPath,
-    buildListAgentsArgs(),
+    buildListAgentsArgs(options),
     timeoutMs,
   );
   if (result.status !== 0) throw refusal("agent ls", result);
   return parseAgentRows(result.stdout);
+}
+
+/** Commander's usage error from an agent-chat built before `--include-retired`. */
+const UNKNOWN_INCLUDE_RETIRED = /unknown option '--include-retired'/;
+
+/**
+ * The roster with retired generations, for a lineage walk. An agent-chat that predates the flag gets the plain roster,
+ * marked incomplete, so a caller can refuse to prove independence instead of failing the read.
+ */
+export async function listAgentLineage(
+  agentChatBinPath: string,
+  timeoutMs: number,
+): Promise<AgentLineage> {
+  const args = buildListAgentsArgs({ includeRetired: true });
+  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs);
+  if (result.status === 0) return { rows: parseAgentRows(result.stdout), complete: true };
+  if (!UNKNOWN_INCLUDE_RETIRED.test(result.stderr)) throw refusal("agent ls", result);
+  return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: false };
 }
 
 export interface RetireOptions {
@@ -196,6 +228,7 @@ function toAgentRow(value: unknown): AgentRow | undefined {
     ...optionalField(value, "account", isStringOrNull),
     ...optionalField(value, "teleportFrom", isStringOrNull),
     ...optionalField(value, "predecessor", isStringOrNull),
+    ...optionalField(value, "retired", isBoolean),
   };
 }
 

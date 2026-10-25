@@ -2,9 +2,10 @@
  * The client of titan-factory's `POST /owner/console-action`: the body names an action id, and the factory reads what to do from
  * the console's own record file `<actionsDir>/<id>.json`. The console depends on the factory only across this HTTP call, so the
  * response shapes are pinned here, not imported: `resolved` and `already` for a gate, `released` and `already` for an owner-asked
- * hold, `accepted` (a land run started that merges at the pinned head) and `already` for a `merge-at-head` op, `retired` and
- * `already` for a `retire-agent` op, `pr-closed` and `already` (each with the closed head) for a `close-pr` op, `pause-cleared`
- * and `already` (each with the cleared pause) for a `deploy-pause-clear` op, and `moved`, `gone` and `refused` for any of them.
+ * hold, `accepted` (a land run started that merges at the pinned head), `approved` (the owner's approval stands until the
+ * adversary loop closes on a g10-held PR) and `already` for a `merge-at-head` op, `retired` and `already` for a
+ * `retire-agent` op, `pr-closed` and `already` (each with the closed head) for a `close-pr` op, `pause-cleared` and
+ * `already` (each with the cleared pause) for a `deploy-pause-clear` op, and `moved`, `gone` and `refused` for any of them.
  */
 import { z } from "zod";
 
@@ -15,6 +16,7 @@ export type ActionOutcome =
   | { status: "resolved"; gateId: string }
   | { status: "released"; runId: string; stillHeld: string | null }
   | { status: "accepted"; runId: string }
+  | { status: "approved"; runId: string }
   | { status: "retired"; name: string; caveats: string[] }
   | { status: "pr-closed"; closedHead: string }
   | { status: "pause-cleared"; clearedPause: string; stillHeld: string | null }
@@ -55,7 +57,7 @@ const unreachable = (detail: string): Unreachable => ({ status: "unreachable", d
 function settledOutcome({ outcome, gateId, runId, stillHeld, name, caveats, closedHead, clearedPause }: RouteBody): ActionOutcome | undefined {
   if (outcome === "resolved" && gateId) return { status: "resolved", gateId };
   if (outcome === "released" && runId && stillHeld !== undefined) return { status: "released", runId, stillHeld };
-  if (outcome === "accepted" && runId) return { status: "accepted", runId };
+  if ((outcome === "accepted" || outcome === "approved") && runId) return { status: outcome, runId };
   if (outcome === "retired" && name && caveats) return { status: "retired", name, caveats };
   if (outcome === "pr-closed" && closedHead) return { status: "pr-closed", closedHead };
   if (outcome === "pause-cleared" && clearedPause && stillHeld !== undefined) return { status: "pause-cleared", clearedPause, stillHeld };

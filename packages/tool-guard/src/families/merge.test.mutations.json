@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a readHead that throws reads as no branch checked out",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  } catch {\n    return UNKNOWN;\n  }",
+      "replace": "  } catch {\n    return null;\n  }",
+      "kills": [
+        "one fixture per bash.merge spelling a readHead that throws reads as an unknown protected head git push origin HEAD",
+        "one fixture per bash.merge spelling a readHead that throws reads as an unknown protected head git merge x"
+      ]
+    }
+  ]
+}

@@ -11,6 +11,8 @@ export type Outcome =
   | { outcome: "already"; runId: string }
   /** A merge-at-head tap started (or found) the land run its standing answer waits on. */
   | { outcome: "accepted"; runId: string }
+  /** A merge-at-head tap that waits out a g10 hold left the owner's approval standing on the PR's Shepherd run. */
+  | { outcome: "approved"; runId: string }
   | { outcome: "retired"; name: string; caveats: string[] }
   | { outcome: "already"; name: string }
   /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
@@ -54,6 +56,7 @@ export function statusOf(outcome: Outcome): Status {
     case "resolved":
     case "released":
     case "accepted":
+    case "approved":
     case "retired":
     case "pr-closed":
     case "pause-cleared":
