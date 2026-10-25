@@ -709,6 +709,12 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
 
+  packages/review-burden:
+    dependencies:
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
+
   packages/review-panel:
     dependencies:
       '@titan-design/evidence':

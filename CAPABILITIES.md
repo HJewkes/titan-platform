@@ -32,6 +32,7 @@ Before adding code:
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
+| [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
@@ -427,6 +428,25 @@ You must accept an action only when the owner signed a statement for it with an 
 Key exports:
 
 - `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
+
+<a id="cap-review-burden"></a>
+
+### [`review-burden`](https://hjewkes.github.io/titan-platform/reference/review-burden)
+
+Tier 0, `@titan-design/review-burden@0.0.0`. Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser
+
+**Use this when:**
+
+You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. `burdenScore` turns a numstat-shaped file list, the `$tiers` map, the changed `package.json` sides and the PR body into a 0 to 100 score with every part shown; `doorFacts` lists the one-way facts (migration path, major changeset, authority-protected path, removed `exports`/`bin`/`name` key, deleted stored-data path); `parseFooter` reads the author's `` footer. It does no git or GitHub I/O, so a CLI and Shepherd compute the same number; to decide who may merge, use authority.
+
+Key exports:
+
+- `config`: `resolveConfig`
+- `path-class`: `classifyPath`, `pathClassifier`
+- `footer`: `hasContract`, `parseFooter`
+- `door`: `doorFacts`, `effectiveDoor`, `underDeclared`
+- `score`: `burdenFacts`, `burdenScore`, `scoreParts`, `unitOf`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-burden)
 
 <a id="cap-rpc-protocol"></a>
 
