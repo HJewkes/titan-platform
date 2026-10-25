@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
@@ -24,6 +25,11 @@ export async function walkSourceFiles(
   return out;
 }
 
+// A virtualenv can carry any name; its marker file is the reliable signal.
+function isVirtualenv(entries: readonly Dirent[]): boolean {
+  return entries.some((e) => e.name === "pyvenv.cfg" && e.isFile());
+}
+
 async function collectFiles(
   dir: string,
   rootDir: string,
@@ -32,8 +38,7 @@ async function collectFiles(
   out: string[],
 ): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  // A virtualenv can carry any name; its marker file is the reliable signal.
-  if (dir !== rootDir && entries.some((e) => e.name === "pyvenv.cfg" && e.isFile())) return;
+  if (dir !== rootDir && isVirtualenv(entries)) return;
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     // Prune excluded directories (node_modules, dist, .git, …) instead of
