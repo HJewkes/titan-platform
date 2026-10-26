@@ -178,7 +178,7 @@ export function shepherdLandOptions(
     const verdict = verdictFor(headSha);
     return verdict?.kind === "MERGE" && reread.has(verdict) ? { ...verdict, evidence: reread.get(verdict) } : verdict;
   };
-  const proof = proofOnBase((headSha) => mergeEvidenceAt(headSha, current), (headSha) => mergeEvidenceAt(headSha, verdictFor));
+  const proof = proofOnBase((headSha) => mergeEvidenceAt(headSha, current));
   const refresh = async (ctx: WorkflowContext, headSha: string): Promise<void> => {
     await rereadEvidence(ctx, headSha, { verdictFor, current, reread }, effective().visualPaths);
     await proof.reread(ctx, headSha, decidedBase());
@@ -194,7 +194,7 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, readOn: proof.readIfUnread, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
 }
 
 interface Reviews {
@@ -213,9 +213,9 @@ async function rereadEvidence(ctx: WorkflowContext, headSha: string, reviews: Re
 /**
  * A decision on evidence read on another base than the one being decided gates: a retarget and back during the re-read
  * could otherwise merge on the other base's review rules and merge tree. So does a fix-proof that judged another base,
- * until a read on this one proves the head. Every outcome but deny is guarded, not only an allow: a mechanical authority
- * gate a coordinator may resolve would otherwise merge without the read. Evidence with no base, or a decision with no
- * checked base, is left as it is.
+ * or proved none, until a read on this one proves the head. An allow and a mechanical MRG-AU gate a coordinator may resolve
+ * become no-facts; any other gate keeps its rule and names the off-base proof first. Evidence with no base, or a decision with
+ * no checked base, is left as it is.
  */
 function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined, proof: ProofOnBase): GateDecision {
   if (decision.outcome === "deny" || base === undefined || headSha === undefined) return decision;
@@ -223,9 +223,16 @@ function onDecidedBase(decision: GateDecision, headSha: string | undefined, base
   const factsElsewhere = evidenceBase !== undefined && evidenceBase !== base;
   const offBase = factsElsewhere ? `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` : proof.unproven(headSha, base);
   if (offBase === undefined) return decision;
+  if (decision.outcome === "gate" && !isAutoMergeRule(decision.rule)) return { ...decision, reason: `${offBase}; ${decision.reason}` };
   const reason = decision.outcome === "gate" ? `${offBase}; ${decision.reason}` : offBase;
   return { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason };
 }
+
+/**
+ * The MRG-AU rows a coordinator may resolve mechanically; off the decided base they become no-facts. Every other gate keeps its own
+ * rule, so the visual-path packet, the D21 owner-at-head row and the decision class still key on it.
+ */
+const isAutoMergeRule = (rule: PolicyRule): boolean => rule.table === "authority" && rule.rowId.startsWith("MRG-AU");
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
   const reason = escalationReason(escalated.escalation, escalated.detail, escalated.words);

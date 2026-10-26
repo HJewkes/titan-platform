@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the land refresh never reads the fix-proof again on the decided base",
-      "file": "products/factory/src/shepherd/policy.ts",
-      "find": "    await proof.reread(ctx, headSha, decidedBase());",
-      "replace": "    await proof.reread(ctx, headSha, undefined);",
+      "name": "land decides before taking the missing fix-proof read on the decided base",
+      "file": "products/factory/src/shepherd/proof-base.ts",
+      "find": "    readIfUnread: async (ctx, headSha, base) => (reads.has(`${headSha}@${base}`) ? undefined : reread(ctx, headSha, base)),",
+      "replace": "    readIfUnread: async () => undefined,",
       "kills": [
-        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on that MERGE until a fix-proof line judged on main at the head is read, past a title edit's skipped judge"
+        "a PR reviewed on main whose MERGE record names no proof base (TP-4259) merges a kind outside the fix-proof gate on a skipped read on main taken before its first decision"
       ]
     },
     {
@@ -17,35 +17,35 @@
       "replace": ": undefined;",
       "kills": [
         "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the line on main is vacuous",
-        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the line on main is an error"
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing after a retarget when the parent run's clean line names no base, and gates as no-facts"
       ]
     },
     {
-      "name": "a record without proofBase is not guarded on its review's evidence base",
+      "name": "an unverified re-read on the decided base clears the gate",
       "file": "products/factory/src/shepherd/proof-base.ts",
-      "find": "current(headSha)?.record.proofBase ?? reviewed(headSha)?.record.baseRef",
-      "replace": "current(headSha)?.record.proofBase",
-      "kills": [
-        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) still guards a MERGE whose record names no proof base, on the base its review read the evidence on"
-      ]
-    },
-    {
-      "name": "any read on the decided base clears the gate, unverified or not",
-      "file": "products/factory/src/shepherd/proof-base.ts",
-      "find": "if (standing.waivedAt !== undefined || standing.unverified === undefined) return {};",
-      "replace": "return {};",
+      "find": "  if (standing.unverified !== undefined) return { unproven: `its fix-proof on ${base} is unverified: ${proofUnverifiedOf(standing)}` };\n",
+      "replace": "",
       "kills": [
         "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the line on main is an error",
         "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the PR changes the fix-proof harness, whatever the line on main says"
       ]
     },
     {
-      "name": "a skipped judge from a non-base edit counts as a fix-proof run",
-      "file": "products/factory/src/shepherd/fix-proof.ts",
-      "find": " && run.conclusion !== \"skipped\";",
-      "replace": ";",
+      "name": "a clean re-read clears the gate whatever base its line names",
+      "file": "products/factory/src/shepherd/proof-base.ts",
+      "find": "  if (PROVEN_ON_ANY_BASE.has(proof.kind) || proofBaseOf(proof, headSha) === base) return {};",
+      "replace": "  return {};",
       "kills": [
-        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on that MERGE until a fix-proof line judged on main at the head is read, past a title edit's skipped judge"
+        "a PR reviewed on main whose MERGE record names no proof base (TP-4259) merges nothing on a recorded re-read on main whose clean line names no base, from a reader before TP-4259"
+      ]
+    },
+    {
+      "name": "a gate that cannot be read reads as skipped, which clears the base guard",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (\"unreadable\" in gate) return { kind: \"error\", reason: gate.unreadable };",
+      "replace": "if (\"unreadable\" in gate) return { kind: \"skipped\", reason: gate.unreadable };",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the re-read on main cannot read the fix/ PR's head branch, never reading it as skipped"
       ]
     }
   ]

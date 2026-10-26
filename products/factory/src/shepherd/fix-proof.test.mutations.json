@@ -39,13 +39,12 @@
       ]
     },
     {
-      "name": "a gate that cannot be read reads as skipped, which clears the base guard",
+      "name": "a line that names no base binds to whatever base is asked",
       "file": "products/factory/src/shepherd/fix-proof.ts",
-      "find": "if (\"unreadable\" in gate) return { kind: \"error\", reason: gate.unreadable };",
-      "replace": "if (\"unreadable\" in gate) return { kind: \"skipped\", reason: gate.unreadable };",
+      "find": "(candidate.run.status !== \"completed\" || base === binding.baseRef)",
+      "replace": "(candidate.run.status !== \"completed\" || base === undefined || base === binding.baseRef)",
       "kills": [
-        "readFixProof reads error, never skipped, when the PR's head branch cannot be read, so the gate it may hold is not waved through",
-        "readFixProof reads error, never skipped, when the registration store cannot be read"
+        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) never binds a line that names no base, so the read errors at the deadline instead of standing on it"
       ]
     }
   ]

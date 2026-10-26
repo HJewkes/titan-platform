@@ -53,6 +53,24 @@ interface World {
   judged: (id: number, line: string, conclusion?: string) => void;
   /** While on, the PR cannot be read inside a fix-proof read on a decided base. */
   prUnreadable: { on: boolean };
+  /** When set, a fix-proof read on a decided base records this result, as a reader from before TP-4259 would have. */
+  baseReadRecords: { result?: object };
+}
+
+/** A fix-proof read on a decided base records `recorded.result` in place of its own, keeping the step's envelope. */
+function recordedBaseReads(recorded: { result?: object }): (route: StepRoute) => StepRoute {
+  const swapped = (route: StepRoute): StepRoute => ({
+    ...route,
+    runner: {
+      run: async (input) => {
+        const done = await route.runner.run(input);
+        if (!done.ok || recorded.result === undefined || !input.stepId.includes("@")) return done;
+        const record: unknown = JSON.parse(done.output);
+        return { ...done, output: JSON.stringify({ ...(typeof record === "object" ? record : {}), result: recorded.result }) };
+      },
+    },
+  });
+  return (route) => (route.match === "sh-fix-proof" ? swapped(route) : route);
 }
 
 /** While `failing.on`, a fix-proof read on a decided base cannot read the PR, as a GitHub 5xx during that read would leave it. */
@@ -125,7 +143,9 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
   const onBase = evidenceBase === undefined ? (route: StepRoute) => route : evidenceReadOn(fake, evidenceBase);
   const prUnreadable = { on: false };
   const unreadable = prUnreadableInBaseReads(fake, prUnreadable);
-  const wrap = (route: StepRoute) => unreadable(onBase(route));
+  const baseReadRecords: { result?: object } = {};
+  const recorded = recordedBaseReads(baseReadRecords);
+  const wrap = (route: StepRoute) => recorded(unreadable(onBase(route)));
   const given = factoryRoutesFor({
     port: githubPort(fake.wire),
     store,
@@ -140,7 +160,7 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, ...(kind !== undefined && { kind }) });
-  return { fake, host, runId, mergedInto, judged, prUnreadable };
+  return { fake, host, runId, mergedInto, judged, prUnreadable, baseReadRecords };
 }
 
 const stepIds = ({ host, runId }: World): string[] => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
@@ -205,16 +225,19 @@ const REFUSED_JOB = 70;
 const MAIN_JOB = 71;
 const SKIPPED_JOB = 69;
 
-/** A judge's line at H1; `base` is the base it judged, and a refused line also names the default branch it was not. */
-function proofLine(verdict: FixProofResult["verdict"], base: string): string {
+/** A judge's line at H1; `base` is the base it judged, null for a judge from before the field. A refused line also names the default branch it was not. */
+function proofLine(verdict: FixProofResult["verdict"], base: string | null): string {
   const counts = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
   const refused = verdict === "refused" && { defaultBranch: "main" };
-  return formatResultLine({ head: H1, mergeBase: fakeSha("stack-merge-base"), verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, base, ...refused });
+  return formatResultLine({ head: H1, mergeBase: fakeSha("stack-merge-base"), verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(base !== null && { base }), ...refused });
 }
 
 const proofReads = (w: World, base: string) => Object.values(w.host.runtime.status(w.runId)!.stepResults).filter((result) => result.stepId === `sh-fix-proof:${H1}@${base}`);
 const promptOf = (w: World) => w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt;
 const OFF_BASE = `judged base ${PARENT}, not main, the base being decided`;
+/** A MERGE record whose fix-proof read named no base: an untrusted, unread or pre-field read proved none. */
+const NO_BASE = "judged no base, not main, the base being decided";
+const lastDecision = (w: World) => mergePolicies(w).at(-1)!.data;
 
 describe("a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259)", () => {
   /** A correctness PR on the parent whose only judge refused there; its review takes that refusal and writes MERGE. */
@@ -275,7 +298,7 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     const w = await gatedOnMain([proofLine("reproduced", "main")], [{ path: "src/a.ts", status: "modified" }, { path: "scripts/fix-proof-run.sh", status: "modified" }]);
 
     expect(w.fake.effects.merge).toBe(0);
-    expect(promptOf(w)).toContain(OFF_BASE);
+    expect(promptOf(w)).toContain(NO_BASE);
     expect(promptOf(w)).toContain("its fix-proof on main is unverified: untrusted");
     expect(promptOf(w)).toContain("harness: scripts/fix-proof-run.sh");
   });
@@ -310,9 +333,9 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     expect(promptOf(w)).toContain("its fix-proof on main is unverified: unread (head branch unreadable");
   });
 
-  it("still guards a MERGE whose record names no proof base, on the base its review read the evidence on", async () => {
+  it("merges nothing after a retarget when the parent run's clean line names no base, and gates as no-facts", async () => {
     const w = world(PARENT, AUTO, undefined, undefined, "correctness");
-    w.judged(REFUSED_JOB, "Run pnpm fix-proof");
+    w.judged(REFUSED_JOB, proofLine("reproduced", null));
     await waitingForRetarget(w);
 
     w.fake.pr(1).baseRef = "main";
@@ -322,8 +345,46 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     expect(evidence!.data).toMatchObject({ result: { record: { baseRef: PARENT, proofUnverified: expect.stringContaining("unread") } } });
     expect(evidence!.data).not.toMatchObject({ result: { record: { proofBase: expect.anything() } } });
     expect(w.fake.effects.merge).toBe(0);
-    expect(promptOf(w)).toContain(OFF_BASE);
-    expect(promptOf(w)).toContain("its fix-proof on main is unverified: unread");
+    expect(lastDecision(w)).toMatchObject({ result: { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } } });
+    expect(promptOf(w)).toContain(NO_BASE);
+    expect(promptOf(w)).toContain("its fix-proof on main is unverified: unread (no fix-proof run at this head judged the PR's base");
+  });
+});
+
+describe("a PR reviewed on main whose MERGE record names no proof base (TP-4259)", () => {
+  it("merges nothing on a line on main that names no base, and asks the owner", async () => {
+    const w = world("main", AUTO, undefined, undefined, "correctness");
+    w.judged(MAIN_JOB, proofLine("reproduced", null));
+
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(lastDecision(w)).toMatchObject({ result: { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } } });
+    expect(promptOf(w)).toContain(NO_BASE);
+    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "error" } });
+  });
+
+  it("merges nothing on a recorded re-read on main whose clean line names no base, from a reader before TP-4259", async () => {
+    const w = world("main", AUTO, undefined, undefined, "correctness");
+    w.judged(MAIN_JOB, proofLine("reproduced", null));
+    w.baseReadRecords.result = { kind: "result", line: proofLine("reproduced", null), verdict: "reproduced" };
+
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "result", verdict: "reproduced" } });
+    expect(promptOf(w)).toContain("its fix-proof read on main names no base, not main");
+  });
+
+  it("merges a kind outside the fix-proof gate on a skipped read on main taken before its first decision", async () => {
+    const w = world("main", AUTO);
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
+
+    expect(w.mergedInto).toEqual(["main"]);
+    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "skipped" } });
+    expect(mergePolicies(w).map((result) => result.data)).toEqual([expect.objectContaining({ result: expect.objectContaining({ outcome: "allow" }) })]);
+    expect(pendingGate(w)).toBeUndefined();
   });
 });
 
@@ -346,6 +407,7 @@ describe("a stacked PR on a seat that grants merge-into-feature-base", () => {
     await vi.waitFor(() => expect(mergePolicies(w).length).toBeGreaterThan(0));
 
     expect(stepIds(w).filter((id) => id.startsWith("base-wait"))).toEqual([]);
-    expect(stepIds(w).filter((id) => id === `${MERGE_EVIDENCE_STEP}:${H1}`)).toHaveLength(1);
+    const evidenceBases = Object.values(w.host.runtime.status(w.runId)!.stepResults).filter((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${H1}`);
+    expect(evidenceBases.map((result) => result.data)).toEqual(evidenceBases.map(() => expect.objectContaining({ result: expect.objectContaining({ record: expect.objectContaining({ baseRef: PARENT }) }) })));
   });
 });

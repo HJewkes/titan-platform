@@ -10,6 +10,25 @@
         "merge evidence read on another base than the one being decided turns a mechanical MRG-AU gate into a merge-guard gate when the fix-proof judged the parent branch, so no coordinator resolves it into a merge",
         "merge evidence read on another base than the one being decided turns a mechanical MRG-AU gate into a merge-guard gate when the merge facts were read on the parent branch, so no coordinator resolves it into a merge"
       ]
+    },
+    {
+      "name": "every off-base gate becomes no-facts, erasing its own rule",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "  if (decision.outcome === \"gate\" && !isAutoMergeRule(decision.rule)) return { ...decision, reason: `${offBase}; ${decision.reason}` };\n",
+      "replace": "",
+      "kills": [
+        "merge evidence read on another base than the one being decided keeps a visual-path gate's own rule on an off-base proof, naming the proof first",
+        "merge evidence read on another base than the one being decided keeps a files-unread gate's own rule on an off-base proof, naming the proof first"
+      ]
+    },
+    {
+      "name": "a record without proofBase is trusted on its evidence base",
+      "file": "products/factory/src/shepherd/proof-base.ts",
+      "find": "if (evidence === undefined || evidence.record.proofBase === base) return undefined;",
+      "replace": "if (evidence === undefined || (evidence.record.proofBase ?? evidence.record.baseRef) === base) return undefined;",
+      "kills": [
+        "merge evidence read on another base than the one being decided gates an allow on main whose MERGE record names no proof base, as no-facts: a record without one proved no base"
+      ]
     }
   ]
 }

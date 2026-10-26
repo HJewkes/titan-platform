@@ -133,12 +133,14 @@ async function seen(port: GitHubPort, repo: RepoSlug, head: string, run: CheckRu
 
 /**
  * GitHub lists a run's PR on the PR's live base, so after a retarget a run that judged the old base reads as bound to the new one.
- * A line naming the base it judged binds only to that base; a line from a judge that predates the field binds as GitHub lists it.
+ * A run binds only through a line that names the base it judged, and only to that base. A line from a judge that predates the
+ * field, or a completed run with no line, judged no base it can name, so it never binds and the read stalls into an error
+ * (TP-4259). A run still going has no line yet, so it is waited for.
  */
 const judgedOn = (binding: Binding) => (candidate: Seen) => {
   const parsed = candidate.line === undefined ? undefined : parseResultLine(candidate.line);
   const base = parsed?.ok ? parsed.result.base : undefined;
-  return base === undefined || ("baseRef" in binding && base === binding.baseRef);
+  return "baseRef" in binding && (candidate.run.status !== "completed" || base === binding.baseRef);
 };
 
 const newestSeen = (candidates: readonly Seen[]): Seen | undefined => candidates.find((candidate) => candidate.run === newestOf(candidates.map(({ run }) => run)));
@@ -301,7 +303,7 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
   if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
   try {
-    const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head);
+    const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, input.base);
     if (ci !== undefined) return ci;
     const read = await readResult(deps.port, input, gate.pr, timing, signal);
     const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
@@ -373,9 +375,13 @@ export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head:
   return unverified === undefined ? undefined : { unverified };
 }
 
-/** The base branch the read's line says it judged, which its MERGE records; a line from an older judge names none. */
+/**
+ * The base a trusted read positively judged, which its MERGE records: a result line's `base`, or the base a workflow-ci read cited.
+ * An untrusted read, or a line from an older judge, proves no base.
+ */
 export function proofBaseOf(read: z.infer<typeof FixProofReadSchema>, head: string): string | undefined {
-  if ((read.kind !== "result" && read.kind !== "untrusted") || typeof read.line !== "string") return undefined;
+  if (read.kind === "workflow-ci") return read.head === head && typeof read.baseRef === "string" ? read.baseRef : undefined;
+  if (read.kind !== "result" || typeof read.line !== "string") return undefined;
   const parsed = parseResultLine(read.line);
   return parsed.ok && parsed.result.head === head ? parsed.result.base : undefined;
 }

@@ -352,9 +352,33 @@ describe("merge evidence read on another base than the one being decided", () =>
     expect(options.policy.decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { table: "authority", rowId: "MRG-AU" } });
   });
 
-  it("allows when the evidence was read on the base being decided, or no base was checked", () => {
-    expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+  const proved = (evidence: MergeEvidence, proofBase: string): MergeEvidence => ({ ...evidence, record: { ...evidence.record, proofBase } });
+
+  it("allows when the evidence and the fix-proof were both read on the base being decided, or no base was checked", () => {
+    expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(proved(onBase("main"), "main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
     expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("agent-chat/parent"))).policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+  });
+
+  it("gates an allow on main whose MERGE record names no proof base, as no-facts: a record without one proved no base", () => {
+    const decision = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
+    expect(decision.reason).toContain(`the fix-proof at ${HEAD} judged no base, not main`);
+  });
+
+  const onMain = (paths: string[], changedFilesUnread?: string): MergeEvidence => {
+    const evidence = evidenceAt(HEAD, paths);
+    return { ...evidence, ...(changedFilesUnread !== undefined && { changedFilesUnread }), record: { ...evidence.record, baseRef: "main", proofBase: "agent-chat/parent" } };
+  };
+
+  it.each([
+    ["visual-path", "acme/design", ["packages/ui/src/components/Button.tsx"], undefined, "the owner decides visual changes: packages/ui/src/components/Button.tsx"],
+    ["files-unread", "acme/gizmos", ["src/a.ts"], "the PR file list could not be read", "the PR file list could not be read"],
+  ])("keeps a %s gate's own rule on an off-base proof, naming the proof first", (rowId, repo, paths, unread, own) => {
+    const decision = shepherdLandOptions(() => effective(repo), reviewed(onMain(paths, unread)), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId } });
+    expect(decision.reason).toMatch(new RegExp(`the fix-proof at ${HEAD} judged base agent-chat/parent, not main, .*; ${own}`));
   });
 });
 
