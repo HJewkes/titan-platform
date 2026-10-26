@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BeatSlotError, UnknownBeatError } from "../beat-load.js";
 import { parseTimeline } from "../composition/timeline.js";
 import { StoryboardSchema } from "../storyboard.js";
+import { sha256 } from "../workflow/artifacts.js";
+import type { PageExtras } from "./board-from-fill.js";
 import { compileTimeline, writeTimeline } from "./compile-timeline.js";
 
 const rawBoard = (cues: Record<string, string[]> = {}) => ({
@@ -34,6 +36,14 @@ const words = () => ({
     { id: "beat-03", durationS: 3.1, words: [word("That", 0.1), word("fix.", 0.9)] },
   ],
 });
+
+const listExtras = (reveals: PageExtras["reveals"]): Map<string, PageExtras> => new Map([["beat-02", {
+  reveals,
+  chips: [{ kind: "source", text: "A synthetic source" }],
+  hints: { headingYields: true },
+  headline: "Two rows land in order",
+  chapter: { n: 2, of: 3, label: "The rows" },
+}]]);
 
 const reverseKeys = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(reverseKeys);
@@ -139,6 +149,55 @@ describe("compileTimeline", () => {
 
     expect(path.endsWith("timeline.json")).toBe(true);
     expect(parseTimeline(JSON.parse(readFileSync(path, "utf8")))).toEqual(timeline);
+  });
+});
+
+describe("compileTimeline page extras", () => {
+  it("lands each reveal on its cue word's spoken start and carries the chrome inputs", () => {
+    const extras = listExtras([{ target: "rows-1", atCue: "first" }, { target: "rows-2", part: "right", atCue: "row#2" }]);
+
+    const timeline = compileTimeline(board(), words(), { extras });
+
+    expect(timeline.beats[1]).toMatchObject({
+      reveals: [{ target: "rows-1", atS: 0.2 }, { target: "rows-2", part: "right", atS: 2.3 }],
+      chips: [{ kind: "source", text: "A synthetic source" }],
+      hints: { headingYields: true },
+      headline: "Two rows land in order",
+      chapter: { n: 2, of: 3, label: "The rows" },
+    });
+    expect(timeline.beats[0]).not.toHaveProperty("reveals");
+  });
+
+  it("lands reveals at planned-word times scaled to the planned seconds when there are no words", () => {
+    const extras = listExtras([{ target: "rows-1", atCue: "then" }, { target: "rows-2", atCue: "row#2" }]);
+
+    const timeline = compileTimeline(board(), undefined, { extras });
+
+    const [first, second] = timeline.beats[1]?.reveals ?? [];
+    expect(first?.atS).toBeCloseTo((2 / 6) * 5, 9);
+    expect(second?.atS).toBeCloseTo((5 / 6) * 5, 9);
+  });
+
+  it("refuses a reveal whose cue is never spoken, naming the beat, voiced or not", () => {
+    const extras = listExtras([{ target: "rows-1", atCue: "zebra" }]);
+
+    const voiced = () => compileTimeline(board(), words(), { extras });
+    const planned = () => compileTimeline(board(), undefined, { extras });
+
+    expect(voiced).toThrow('cue "zebra" is not spoken in beat-02');
+    expect(planned).toThrow('cue "zebra" is not spoken in beat-02');
+  });
+
+  it("writes the same bytes as before page extras existed when none are given", () => {
+    const cues = { "beat-01": ["fail"], "beat-02": ["row#2", "then"] };
+
+    const voiced = readFileSync(writeTimeline(scratch(), compileTimeline(board(cues), words())));
+    const planned = readFileSync(writeTimeline(scratch(), compileTimeline(board(cues))));
+
+    expect([sha256(voiced), sha256(planned)]).toEqual([
+      "1f1c680b7c3b0b1f17b325cb5aa91180e6f749645fabeec14f0820340eb609c7",
+      "52addf4758d29e4542dda75f02dd8e684c48fc01e90b1cbc9eae0bf7ba0f938e",
+    ]);
   });
 });
 
