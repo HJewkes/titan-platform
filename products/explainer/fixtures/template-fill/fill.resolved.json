@@ -212,8 +212,8 @@
       "row": "verdict",
       "beat": "verdict-card",
       "component": {
-        "name": "VerdictChip",
-        "maturity": "doc"
+        "name": "ListBeat",
+        "maturity": "spike"
       },
       "band": "story",
       "framing": "focus",

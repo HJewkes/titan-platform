@@ -12,7 +12,7 @@ import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
 import { linkEditRun } from "./edit-ledger.js";
 import { editOf, editPins } from "./edit-run.js";
-import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
+import { runBridgeFile, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
 import { checkPins, findBase, inputArtifacts, neededInputs, reusedFromBase, startsFresh } from "./host-plan.js";
 import { stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
@@ -23,6 +23,7 @@ import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } fro
 import type { CheckJudge } from "./stage-checks.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { QaEngine } from "../qa/qa-engine.js";
+import type { RenderEngine } from "../render/render-stage.js";
 import type { TimingProfile } from "../qa/timing-gates.js";
 import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
 import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
@@ -49,8 +50,8 @@ export interface RunHost {
   evalChecks?: readonly L0Check[];
   /** Runs the reported `listener-questions` check on the script stage, on the run's judge; off by default since it spends. */
   listener?: { threshold?: number };
-  /** Runs a bridged command; tests pass a fake. */
-  exec?: BridgeExec;
+  /** The render stage's page build and capture; the composition page and Chromium by default, tests pass a fake. */
+  renderEngine?: RenderEngine;
   /** The tts stage's engine; speech-tts Kokoro by default, tests pass a fake. */
   ttsEngine?: () => Promise<TtsEngine>;
   /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
@@ -217,16 +218,15 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
   const runners = layerRunners(host);
   const children = childRoutes({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...runners,
+    dataDir: host.dataDir, store, now, ...listenerJudge(host, plan), ...runners,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
     ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.qaTiming ? { qaTiming: host.qaTiming } : {}),
+    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
   });
   const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
-  const stage = {
-    dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host),
-  };
+  const stage = { dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host) };
   const routes = plan ? [...children, stageRoute({ ...stage, plan })] : children;
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), childStepIds(stage));

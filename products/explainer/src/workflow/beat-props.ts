@@ -5,15 +5,9 @@ import { cueResolverFromWords, type CueResolver } from "../cues.js";
 import { keptBeats, type ResolvedSchema } from "../resolve-stage.js";
 import { beatCues, type ScriptBeat, type ScriptV1 } from "../script-schema.js";
 import { fillScript, type FilledBeat } from "../template-fill/fill.js";
-import { isBridgeStage } from "./records.js";
 
 type Resolved = z.infer<typeof ResolvedSchema>;
 
-/**
- * Whether the render draws a beat from the template fill. Flipped when TP-2992 S3 moves render in-process onto
- * `fillScript`; until then a saved edit changes the script but not the MP4.
- */
-const RENDER_READS_FILL = false;
 
 /** How long before a beat ends its frame counts as settled: late enough for every reveal, before the next beat's cut. */
 export const SETTLE_LEAD_S = 0.3;
@@ -28,7 +22,8 @@ interface RenderPath {
   readsFill: boolean;
 }
 
-const RENDER_TODAY: RenderPath = { bridged: isBridgeStage("render"), readsFill: RENDER_READS_FILL };
+// TP-2992 S3 moved render in-process onto the template fill, so a saved edit reaches the MP4.
+const RENDER_TODAY: RenderPath = { bridged: false, readsFill: true };
 
 /** Save is on only when the render that follows a save draws the edited slots. */
 export function saveBackOf(render: RenderPath = RENDER_TODAY): SaveBack {

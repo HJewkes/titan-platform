@@ -7,6 +7,9 @@ import { deadline, type Deadline } from "../workflows/deadline.js";
 import { consoleTextOf, errorClass, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
+import { closesTask, otherOpenOnTask, type TaskClose } from "./task-close.js";
+
+export type { TaskClose } from "./task-close.js";
 
 /** The CC-188 grace clock: a retire waits this long past the agent's exit, so its last writes settle. */
 export const SH_CLEANUP_GRACE_MS = 3 * 60_000;
@@ -59,6 +62,8 @@ export interface CleanupDeps {
   cleanup?: CleanupPorts;
   /** An advisory repo's head ref is never deleted, even after a human merge. */
   advisory?: (repo: RepoSlug) => boolean;
+  /** Absent means `keep`: every merge of an unsliced PR closes its task. */
+  taskClose?: TaskClose;
 }
 
 /** What the run's own merge step knew of the PR it merged; with it, cleanup reads no PR. */
@@ -204,9 +209,27 @@ async function settleTask(deps: CleanupDeps, registration: Registration, input: 
   const tasks = deps.cleanup!.tasks;
   const pr = await retrying(`merge sha of #${input.pr}`, () => prAfterMerge(deps.port, input), wait);
   const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
+  if (deps.taskClose === "last-slice-only") return pr === undefined ? "unread" : settleLastSliceOnly(deps, registration, input, landing, wait);
   if (registration.slice === null) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, pr !== undefined), tasks);
   if (pr === undefined) return "unread";
-  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `${registration.slice} landed in ${landing}`).then(() => "noted"), tasks);
+  return onOpenTask(registration.task, wait, noteSlice(tasks, registration.slice, landing), tasks);
+}
+
+const noteSlice = (tasks: CleanupTasks, slice: string, landing: string) => (initiative: string, id: string) => tasks.appendNote(initiative, id, `${slice} landed in ${landing}`).then(() => "noted");
+
+/**
+ * Unlike `keep`, a PR body or open-PR list that cannot be read leaves the task open, since a wrong close is what this mode
+ * guards against. A slice registration still notes its slice landed, before a last-slice close reads the plan's slices.
+ */
+async function settleLastSliceOnly(deps: CleanupDeps, registration: Registration, input: CleanupInput, landing: string, wait: Waiter): Promise<string> {
+  const tasks = deps.cleanup!.tasks;
+  const read = async () => closesTask(registration, (await deps.port.getPr(input.repo, input.pr)).body, await otherOpenOnTask(deps.port, deps.store.get().all(), registration));
+  const closes = await retrying(`last slice of #${input.pr}`, read, wait);
+  if (closes === undefined) return "unread";
+  if (registration.slice !== null) await onOpenTask(registration.task, wait, noteSlice(tasks, registration.slice, landing), tasks);
+  if (closes) return onOpenTask(registration.task, wait, closeUnlessSliced(tasks, landing, true), tasks);
+  if (registration.slice !== null) return "noted";
+  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `slice merged: ${landing}`).then(() => "slice-noted"), tasks);
 }
 
 /** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */

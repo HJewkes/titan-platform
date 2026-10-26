@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "beat windows end at the float boundary, so two beats share a frame",
+      "file": "products/explainer/src/composition/Composition.tsx",
+      "find": "durationS={beat.durationS - BOUNDARY_S}",
+      "replace": "durationS={beat.durationS}",
+      "kills": [
+        "the QA cue gate holds no error on the kind sheet's stage beats"
+      ]
+    }
+  ]
+}

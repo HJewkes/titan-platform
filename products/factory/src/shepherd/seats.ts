@@ -167,6 +167,12 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
 }
 
+/** The check name the seat that owns `repo` declares for its visual baselines, if any. */
+export function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
+  const found = lookupSeat(book, repo);
+  return found.kind === "seat" ? found.seat.visualBaselines?.check : undefined;
+}
+
 /** The checkout a seat binds to `repo`; a repo no seat lists takes the one `unseated` names, keyed by owner/name in any case; a denied repo has none. */
 export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<Record<string, { path?: string }>> = {}): string | undefined {
   const found = lookupSeat(book, repo);

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { editHarness } from "./edit-cli.test-helpers.js";
 import { runVideo } from "./host.js";
 import { runPropsCli } from "./props-cli.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run or render.
 let fx: Fixture;
@@ -20,20 +20,20 @@ describe("explainer props --mp4-sha", () => {
   it("reads the run whose export linked that mp4, not a newer run that rendered it without exporting", async () => {
     fx = fixture();
     const base = await baseRun();
-    const newer = await runVideo({ from: "resolve", base: base.result.runId, to: "render" }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const newer = await runVideo({ from: "resolve", base: base.result.runId, to: "render" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     const { code, result } = await props(base.mp4Sha);
 
     expect(newer.report.rows.find((r) => r.stage === "render")!.outputs.mp4).toBe(base.mp4Sha);
     expect(code).toBe(0);
-    expect(result).toMatchObject({ found: true, runId: base.result.runId, videoId: base.result.runId, saveBack: { enabled: false } });
+    expect(result).toMatchObject({ found: true, runId: base.result.runId, videoId: base.result.runId, saveBack: { enabled: true } });
     expect(result.beats).toEqual(expect.arrayContaining([expect.objectContaining({ id: "h1", spec: expect.any(String), schema: expect.any(Object) })]));
   });
 
   it("of two runs that exported the same mp4, reads the newer", async () => {
     fx = fixture();
     const base = await baseRun();
-    const rerun = await runVideo({ from: "resolve", base: base.result.runId }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const rerun = await runVideo({ from: "resolve", base: base.result.runId }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     const { result } = await props(base.mp4Sha);
 

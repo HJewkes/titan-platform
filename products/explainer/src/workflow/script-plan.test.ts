@@ -8,7 +8,7 @@ import { budgetSection, draftBeatLengths, draftBudgets, draftRuntime, draftWordB
 import type { ScriptV1 } from "../script-schema.js";
 import { shippedVisualRouter } from "../visual-router.js";
 import { runVideo } from "./host.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type FakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type FakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture | undefined;
 afterEach(() => fx?.cleanup());
@@ -113,7 +113,7 @@ describe("the script stage's plan retry", () => {
     fx = fixture();
     const model = plansOnRetry(plannedAt(5));
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts[0]).toContain("The beats' plannedS sum to about 180 s, and never below 120 s or above 240 s.");
@@ -128,7 +128,7 @@ describe("the script stage's plan retry", () => {
     fx = fixture();
     const model = plansOnRetry(plannedAt(5), { never: true });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(2);

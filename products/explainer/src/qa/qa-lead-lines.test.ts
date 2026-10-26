@@ -23,10 +23,10 @@ describe("qa lead-line beats", () => {
     expect([...leadLineBeats(bridged)]).toEqual(["b1-verdict"]);
   });
 
-  it("takes an in-process verdict card's lead line from the template fill's hints", () => {
+  it("takes an in-process verdict card's lead line from the fill's hints, under its storyboard id", () => {
     const verdict = inProcess({ beat: "verdict-card", labels: ["Ship it: lanes hold", "Scans clear in minutes"] });
 
-    expect([...leadLineBeats(verdict)]).toEqual(["s1"]);
+    expect([...leadLineBeats(verdict)]).toEqual(["beat-01"]);
   });
 
   it("exempts no beat the fill drew as a plain list", () => {

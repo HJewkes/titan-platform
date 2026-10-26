@@ -17,6 +17,14 @@ const git = (args: string[], cwd: string): string =>
   }).trim();
 const quote = (value: string): string =>
   "'" + value.replaceAll("'", "'\\''") + "'";
+// A sibling thread's fork can inherit our write fd and make the shim's exec fail ETXTBSY, which park reads as a
+// detached HEAD (TP-4280); cp writes in a process that has exited before the first exec.
+function installShim(file: string, contents: string): void {
+  const staging = `${file}.staging`;
+  fs.writeFileSync(staging, contents, { mode: 0o755 });
+  execFileSync("cp", ["-p", staging, file]);
+  fs.rmSync(staging);
+}
 afterEach(() => {
   vi.unstubAllEnvs();
   for (const root of roots.splice(0))
@@ -40,12 +48,11 @@ function fixture() {
   const fetches = path.join(root, "fetches");
   const target = { gitRoot: repo, worktree, branch };
   const script = (action = "") => {
-    fs.writeFileSync(
+    installShim(
       path.join(bin, "git"),
       `#!/bin/sh\nif [ "$1" = fetch ]; then\nprintf 'fetch\\n' >> ${quote(
         fetches
-      )}\n${action}\nfi\nexec ${quote(realGit)} "$@"\n`,
-      { mode: 0o755 }
+      )}\n${action}\nfi\nexec ${quote(realGit)} "$@"\n`
     );
     vi.stubEnv("PATH", bin + path.delimiter + (process.env.PATH ?? ""));
   };
@@ -252,7 +259,7 @@ describe("explicit fetched DEFAULT park proof", () => {
       const marker = path.join(f.root, "late-failure");
       const file = path.join(f.bin, "git");
       const script = fs.readFileSync(file, "utf8");
-      fs.writeFileSync(
+      installShim(
         file,
         script.replace(
           `exec ${quote(realGit)}`,

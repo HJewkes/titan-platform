@@ -2,7 +2,7 @@ schema: beat-spec/v1
 type: verdict-card
 summary: "The bottom line first: an imperative one-line summary, the call and why."
 role: open
-component: { name: VerdictChip, maturity: doc }
+component: { name: ListBeat, maturity: spike }
 slots: verdict-card
 speech: { band: story }
 durationS: [5, 9, 16]

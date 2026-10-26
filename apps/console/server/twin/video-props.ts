@@ -1,5 +1,5 @@
-// A synthetic `videos.props` answer for the twin's theater player: one compare beat and one list beat, with the JSON
-// Schema shapes zod emits for those slots. Every value is invented.
+// Synthetic `videos.props` and `videos.edits` answers for the twin's theater player: one compare beat and one list beat,
+// with the JSON Schema shapes zod emits for those slots, and two saved edits over them. Every value is invented.
 import type { ServedCommands } from "../../src/data/rpc.js";
 
 const ID = { type: "string", pattern: "^[a-z0-9]+(-[a-z0-9]+)*$" };
@@ -15,7 +15,7 @@ export const TWIN_VIDEO_PROPS: ServedCommands["videos.props"]["result"] = {
   props: {
     runId: "run-twin-0001",
     scriptSha: "cd".repeat(32),
-    saveBack: { enabled: false, reason: "renders ignore edits until TP-2992 S3" },
+    saveBack: { enabled: true },
     beats: [
       {
         id: "b-compare", chapter: "c1", spec: "compare", slots: "compare", schema: COMPARE, overridden: [], locked: ["latency"], startS: 0, endS: 6.4, stillS: 6.1,
@@ -27,5 +27,21 @@ export const TWIN_VIDEO_PROPS: ServedCommands["videos.props"]["result"] = {
       },
     ],
   },
+  gaps: [],
+};
+
+const BASE = { runId: "run-twin-0001", scriptSha: "cd".repeat(32), mp4Sha: "ab".repeat(32) };
+
+export const TWIN_VIDEO_EDITS: ServedCommands["videos.edits"]["result"] = {
+  edits: [
+    {
+      editId: "edit-0000000000000a01", base: BASE, beats: { "b-list": { slots: { title: "Before you merge" } } }, fromNote: "0123456789abcdef",
+      createdAt: "2031-03-05T09:00:00.000Z", status: "started", runId: "run-twin-0002", runStatus: "completed",
+    },
+    {
+      editId: "edit-0000000000000a02", base: BASE, beats: { "b-compare": { slots: { leftTitle: "Polling loop" } }, "b-list": { slots: { title: "Ready to ship" } } },
+      createdAt: "2031-03-05T10:00:00.000Z", status: "started", runStatus: "starting",
+    },
+  ],
   gaps: [],
 };

@@ -235,6 +235,14 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   the registration names a `--slice`. It appends `closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the
   task's notes first, skips a task already done (so a replay adds no second note), and records an unreachable
   active-work as a caveat on the step's result instead of failing the run.
+- `shepherd.taskClose` picks when that close happens (TP-4274). `keep`, the default when absent, is the rule above.
+  Under `last-slice-only` an unsliced PR closes its task only when it is the last slice: its body has a line
+  `Last slice: yes` (any case), or it was registered with `--last-slice`, or no other open PR is registered with the
+  same `--task` and the body has no `Last slice: no` line. Otherwise the task stays open and its notes gain
+  `slice merged: <owner/repo>#<n> at <merge sha>`. A `--slice` registration closes the task only on a last-slice
+  marker, after noting its slice landed. An unreadable PR body or open-PR list leaves the task open in this mode.
+  Every close goes through active-work's `task.done`, which writes `done_at`; the only reopen path is
+  `active-work task edit <slug> <id> status open`.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
@@ -820,6 +828,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.minFreeBytes` | Optional, default 5 GiB. The spawn gate defers a reviewer while the filesystem that holds review checkouts (the app data dir's `checkouts/reviews`) has fewer free bytes |
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
+| `shepherd.taskClose` | Optional, `keep` (default) or `last-slice-only`, read live. When a merged PR closes its `--task`; see `sh-cleanup` above |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:

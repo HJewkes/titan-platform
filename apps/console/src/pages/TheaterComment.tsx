@@ -109,26 +109,23 @@ export function TheaterComment({ videoId, videoRef }: { videoId: string; videoRe
   const playhead = usePlayhead(videoRef);
   if (!available) return null;
   return (
-    <>
-      <div aria-hidden className="h-32 md:hidden" />
-      <VStack gap={2} className="fixed inset-x-0 bottom-0 z-10 border-t border-divider bg-surface-base p-3 md:static md:max-w-3xl md:border-0 md:p-0" testID="theater-comment-bar">
-        {error === null ? null : <Alert status="warning" message={error} testID="theater-comment-error" />}
-        {draftAt === null ? null : (
-          <Draft atS={draftAt} text={text} onText={setText} about={about} onAbout={setAbout} sending={sending} onSend={() => void submitComment(draftAt)} onCancel={() => setDraftAt(null)} />
-        )}
-        <HStack gap={2} wrap>
-          <Button onPress={startComment} isDisabled={sending || draftAt !== null} testID="theater-comment-start">
-            <ButtonText>{`Comment at ${formatAt(playhead)}`}</ButtonText>
-          </Button>
-          <Button color="success" variant="outline" onPress={() => markVerdict("ship")} isDisabled={sending} testID="theater-verdict-ship">
-            <ButtonText>Ship</ButtonText>
-          </Button>
-          <Button color="warning" variant="outline" onPress={() => markVerdict("needs-changes")} isDisabled={sending} testID="theater-verdict-needs-changes">
-            <ButtonText>Needs changes</ButtonText>
-          </Button>
-        </HStack>
-      </VStack>
-    </>
+    <VStack gap={2} className="fixed inset-x-0 bottom-0 z-10 border-t border-divider bg-surface-base p-3 md:static md:max-w-3xl md:border-0 md:p-0" testID="theater-comment-bar">
+      {error === null ? null : <Alert status="warning" message={error} testID="theater-comment-error" />}
+      {draftAt === null ? null : (
+        <Draft atS={draftAt} text={text} onText={setText} about={about} onAbout={setAbout} sending={sending} onSend={() => void submitComment(draftAt)} onCancel={() => setDraftAt(null)} />
+      )}
+      <HStack gap={2} wrap>
+        <Button onPress={startComment} isDisabled={sending || draftAt !== null} testID="theater-comment-start">
+          <ButtonText>{`Comment at ${formatAt(playhead)}`}</ButtonText>
+        </Button>
+        <Button color="success" variant="outline" onPress={() => markVerdict("ship")} isDisabled={sending} testID="theater-verdict-ship">
+          <ButtonText>Ship</ButtonText>
+        </Button>
+        <Button color="warning" variant="outline" onPress={() => markVerdict("needs-changes")} isDisabled={sending} testID="theater-verdict-needs-changes">
+          <ButtonText>Needs changes</ButtonText>
+        </Button>
+      </HStack>
+    </VStack>
   );
 }
 

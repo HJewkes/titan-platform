@@ -17,6 +17,7 @@ import {
   writeWanted,
   type DeploySpawn,
   type DeployWanted,
+  type GreenRead,
   type PacerMemo,
   type WantedStore,
 } from "./deploy-pacer.js";
@@ -41,7 +42,7 @@ function memoryStore(): WantedStore & { files: Map<string, string> } {
 }
 
 /** A pacer over an in-memory state dir and a settable clock, recording every spawn as `[minute, sha]`. */
-function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean; express?: (sha: string) => boolean } = {}) {
+function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean; express?: (sha: string) => boolean; green?: (sha: string) => GreenRead } = {}) {
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
@@ -53,9 +54,10 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
     runningSha: RUNNING,
     lastDeploy: options.lastDeploy,
     deployWindow: undefined as WatchIntent | undefined,
+    green: options.green ?? ((sha: string): GreenRead => ({ sha })),
   };
   const merge = (sha: string) => writeWanted(STATE, store, noteWanted(readWanted(STATE, store), sha, world.now));
-  const record: DeploySpawn = (sha, target) => (spawns.push([world.now / MIN, target?.main === true ? `origin/main for ${sha}` : sha]), { pid: 1 });
+  const record: DeploySpawn = (sha) => (spawns.push([world.now / MIN, sha]), { pid: 1 });
   const tick = (spawn: DeploySpawn = record) =>
     pacerTick({
       stateDir: STATE,
@@ -64,6 +66,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       runningSha: () => world.runningSha,
       ...(options.runningHolds && { runningHolds: options.runningHolds }),
       ...(options.express && { express: options.express }),
+      green: (sha) => world.green(sha),
       lastDeploy: () => world.lastDeploy,
       deployWindow: () => world.deployWindow,
       busy: () => world.busy,
@@ -96,11 +99,15 @@ interface DecideExtra {
   runningHoldsWanted?: boolean;
   paused?: boolean;
   express?: boolean;
+  green?: GreenRead;
+  runningHoldsGreen?: boolean;
 }
 
 const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: DecideExtra = {}) =>
   paceDecision({
     wanted,
+    green: extra.green ?? { sha: wanted?.sha ?? "" },
+    runningHoldsGreen: extra.runningHoldsGreen ?? false,
     now: nowMin * MIN,
     runningSha: extra.runningSha ?? RUNNING,
     runningHoldsWanted: extra.runningHoldsWanted ?? false,
@@ -371,32 +378,18 @@ function rolledBackInWatch() {
 }
 
 describe("the deploy pacer and the health watch of the deploy that contains the ask", () => {
-  it("an ask survives a rollback inside the watch and asks for origin/main once the pause is cleared", () => {
-    const { p } = rolledBackInWatch();
-    p.ticksUntil(30);
-    const pausedSpawns = [...p.spawns];
-
-    p.world.paused = false;
-    p.ticksUntil(31);
-
-    expect(pausedSpawns).toEqual([[15, "a"]]);
-    expect(p.spawns).toEqual([[15, "a"], [31, "origin/main for a"]]);
-    expect(p.logs).toContain("deploy pacer: deployer pid 1 deploys origin/main for a, whose containing deploy rolled back");
-  });
-
-  it("an origin/main re-ask the deployer holds, since main is still the rolled-back sha, is dropped after the stale timeout and never asked again", () => {
+  it("an ask survives a rollback inside the watch and is never re-asked as origin/main, whose CI nobody read (TP-4279)", () => {
     const { p } = rolledBackInWatch();
     p.ticksUntil(30);
     p.world.paused = false;
-    p.ticksUntil(31);
 
-    p.ticksUntil(31 + DEPLOY_STALE_SPAWN_MS / MIN + 1);
+    const unpaused = p.tick();
 
-    expect(p.spawns).toEqual([[15, "a"], [31, "origin/main for a"]]);
-    expect(p.wanted()).toBeUndefined();
+    expect(p.spawns).toEqual([[15, "a"]]);
+    expect(unpaused).toEqual({ kind: "wait", why: "deployer already started for a", until: 15 * MIN + DEPLOY_STALE_SPAWN_MS });
   });
 
-  it("an ask is cleared once the origin/main re-ask lands a build that contains it and passes its watch", () => {
+  it("an ask is cleared once a later deploy lands a build that contains it and passes its watch", () => {
     const { p, contains } = rolledBackInWatch();
     p.ticksUntil(30);
     p.world.paused = false;
@@ -452,6 +445,49 @@ describe("the deploy pacer and the health watch of the deploy that contains the 
     const record = { outcome: "rolled-back" as const, target: "b", from: RUNNING, at: new Date(17 * MIN).toISOString() };
 
     expect(decide(wantedAt("a", 0, 0), 20, { runningSha: "b", runningHoldsWanted: true, lastDeploy: record })).toEqual({ kind: "spawn", sha: "a" });
+  });
+});
+
+describe("the deploy pacer and the ask's own main CI run (TP-4279)", () => {
+  const ownRun = (status: string) => `the own CI run of tip is ${status}`;
+  const fallbackTo = (green: string, status: string) => (sha: string): GreenRead => (sha === "tip" ? { sha: green, why: ownRun(status) } : { sha });
+
+  it("never deploys an ask whose run is in progress after a failed parent while the service holds the last green, and deploys it once its run succeeds", () => {
+    const run = { status: "in_progress" };
+    const p = pacer({ runningHolds: (sha) => sha === "green", green: (sha) => (run.status === "success" ? { sha } : fallbackTo("green", run.status)(sha)) });
+    p.merge("tip");
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 30);
+    const whileRunning = [...p.spawns];
+
+    run.status = "success";
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 31);
+
+    expect(whileRunning).toEqual([]);
+    expect(p.logs).toContain(`deploy pacer: waiting for tip: ${ownRun("in_progress")}; the service already holds green, the newest green sha`);
+    expect(p.spawns).toEqual([[DEPLOY_MAX_WAIT_MS / MIN + 31, "tip"]]);
+  });
+
+  it("deploys the newest green sha in place of an ask whose run was cancelled, and does not ask again once deploy.json records it", () => {
+    const p = pacer({ green: fallbackTo("green", "cancelled") });
+    p.merge("tip");
+    p.ticksUntil(15);
+    p.world.lastDeploy = { outcome: "deployed", target: "green", from: RUNNING, at: new Date(16 * MIN).toISOString() };
+
+    p.ticksUntil(15 + 2 * (DEPLOY_STALE_SPAWN_MS / MIN));
+
+    expect(p.spawns).toEqual([[15, "green"]]);
+    expect(p.logs).toContain(`deploy pacer: deployer pid 1 deploys green, the newest green sha, for tip (${ownRun("cancelled")})`);
+    expect(p.wanted()).toMatchObject({ sha: "tip", spawnedSha: "green" });
+  });
+
+  it("holds the ask with no end, past the cap, when main CI cannot be read", () => {
+    const p = pacer({ green: () => ({ why: "main's ci.yml runs could not be read" }) });
+    p.merge("tip");
+
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 30);
+
+    expect(p.spawns).toEqual([]);
+    expect(p.waits.wait).toEqual({ sha: "tip", why: "no green sha to deploy: main's ci.yml runs could not be read", key: "no green sha to deploy: main's ci.yml runs could not be read" });
   });
 });
 

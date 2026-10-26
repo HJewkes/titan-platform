@@ -1,5 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { appDirs } from "@titan-design/app-paths";
 import { serveTree } from "../qa/serve-tree.js";
 import { sha256 } from "../workflow/artifacts.js";
 
@@ -58,6 +60,24 @@ export async function cachedPage(source: PageSource, cacheRoot: string, build: P
   }
   return { dir, sha: treeSha(dir) };
 }
+
+// src/render/ and dist/render/ both sit two levels under the package root; the page builds from its sources in src/.
+const PACKAGE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const PAGE_SOURCE: PageSource = {
+  root: path.join(PACKAGE_ROOT, "src", "composition"),
+  extra: [path.join(PACKAGE_ROOT, "src", "beat-slots.ts"), path.join(PACKAGE_ROOT, "package.json")],
+};
+
+async function viteBuild(outDir: string): Promise<void> {
+  const { build } = await import("vite");
+  await build({ configFile: path.join(PAGE_SOURCE.root, "vite.config.ts"), logLevel: "warn", build: { outDir, emptyOutDir: true } });
+}
+
+/** The composition page from this package's sources, built with Vite at most once per source sha under `cacheRoot`. */
+export const compositionPage = (cacheRoot: string): Promise<BuiltPage> => cachedPage(PAGE_SOURCE, cacheRoot, viteBuild);
+
+/** The composition page in the host's explainer cache, where the render CLI and the render stage share one build. */
+export const defaultCompositionPage = (): Promise<BuiltPage> => compositionPage(path.join(appDirs("explainer").cache, "composition"));
 
 interface ServedPage {
   /** The page's URL with `?timeline=` pointing at the served timeline.json. */

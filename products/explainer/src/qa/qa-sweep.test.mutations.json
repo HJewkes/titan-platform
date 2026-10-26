@@ -7,8 +7,7 @@
       "find": "sweepMoments([lead, beat], { settleBy: (b) => (b === beat ? settleBy(beat) : 0) })",
       "replace": "sweepMoments([lead, beat])",
       "kills": [
-        "qa stage on a beat that fades out over its last second passes content-fill on an outro, whose settled sample comes before its fade",
-        "qa stage on a beat that fades out over its last second names a bridged beat's kind from its resolved component, so an OutroBeat settles before its fade too"
+        "qa stage on a beat that fades out over its last second passes content-fill on an outro, whose settled sample comes before its fade"
       ]
     },
     {

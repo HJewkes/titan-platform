@@ -170,7 +170,7 @@ interface Run {
   readonly marks: Uint32Array;
   /** Pending states of a closure; a state is pushed once per edge into it, so it holds every edge. */
   readonly stack: Int32Array;
-  readonly length: number;
+  length: number;
   generation: number;
 }
 
@@ -227,15 +227,31 @@ function advance(run: Run, current: StateSet, char: string, position: number, ne
   return matched;
 }
 
+/** Starts `run` on an input `length` long with no state marked, clearing the marks only once their generations wrap. */
+function restart(run: Run, length: number): void {
+  run.length = length;
+  if (run.generation >= MAX_GENERATION - length - 2) {
+    run.marks.fill(0);
+    run.generation = 0;
+  }
+  run.generation += 1;
+}
+
+const MAX_GENERATION = 0xffff_ffff;
+
 function compile(source: string, flags: string): (input: string) => boolean {
   const states: State[] = [{ kind: "match" }];
   const start = build(new Parser(source, flags).parse(), 0, states);
-  const edges = edgesOf(states);
   // `test` searches, so a match may begin at any position; an anchored source stops reading once no state is left.
   const searches = beginsInside(states, start);
+  // Allocated once: a script's words can test a glob hundreds of thousands of times, and four typed arrays made per
+  // test were most of the hook's CPU on a 64 KB one (TP-4272).
+  const run = newRun(states, edgesOf(states), 0);
+  const sets = [stateSet(states.length), stateSet(states.length)] as const;
   return (input) => {
-    const run = newRun(states, edges, input.length);
-    let [current, next] = [stateSet(states.length), stateSet(states.length)];
+    restart(run, input.length);
+    let [current, next] = sets;
+    current.size = 0;
     let matched = close(run, start, 0, current);
     for (let position = 0; position < input.length && !matched && (searches || current.size > 0); position += 1) {
       next.size = 0;

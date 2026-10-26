@@ -67,6 +67,8 @@ describe("factory rows", () => {
       expect.objectContaining({ ok: false, reason: "invalid" }),
     );
     expect(checkEditableValue("factory", "shepherd.gateReset.heldRepair", "shadow").ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.gateReset.nonSourceNoRepro", "seat-waives").ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.gateReset.nonSourceNoRepro", "record-fact").ok).toBe(true);
     expect(checkEditableValue("factory", "shepherd.gateReset.twoMergeRelease", "shadow")).toEqual(
       expect.objectContaining({ ok: true, value: "shadow" }),
     );
@@ -78,12 +80,19 @@ describe("factory rows", () => {
       "shepherd.spawnGate.load5",
       "shepherd.spawnGate.buildLoad5",
       "shepherd.gateReset.noReproProceed",
+      "shepherd.gateReset.nonSourceNoRepro",
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
       "shepherd.review.adversaryProfile",
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",
+      "shepherd.taskClose",
     ]);
+  });
+
+  it("takes taskClose as keep or last-slice-only only", () => {
+    expect(checkEditableValue("factory", "shepherd.taskClose", "last-slice-only").ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.taskClose", "on").ok).toBe(false);
   });
 
   it("accepts a profile name and refuses one that reads as a flag or a path", () => {

@@ -7,10 +7,11 @@ import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import { proceedsOnNoRepro } from "./no-repro-test-only.js";
+import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
+import { sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
 const FIX_PROOF_STEP = "sh-fix-proof";
@@ -43,15 +44,24 @@ const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
 /** `boundBase` is the base the read looked for, stamped where the binding is made; trust plays no part in it (TP-4259). */
 type Bound = { boundBase?: string };
-type FixProofRead =
+/** `nonSourceProceed` marks a NO_REPRO on a diff with no source path that `nonSourceNoRepro: record-fact` sends on to review. */
+type FixProofRead = (
   | ({ kind: "result"; testOnlyProceed?: true } & Parsed & Bound)
   | ({ kind: "untrusted"; reason: string } & Parsed & Bound)
   | ({ kind: "skipped" | "missing" | "error"; reason: string } & Bound)
-  | WorkflowCiRead;
+  | WorkflowCiRead
+) & { nonSourceProceed?: true };
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string(), testOnlyProceed: z.literal(true).optional(), boundBase: z.string().optional() }),
+  z.looseObject({
+    kind: z.literal("result"),
+    line: z.string(),
+    verdict: z.string(),
+    testOnlyProceed: z.literal(true).optional(),
+    nonSourceProceed: z.literal(true).optional(),
+    boundBase: z.string().optional(),
+  }),
   z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string(), boundBase: z.string().optional() }),
   z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string(), boundBase: z.string().optional() }),
   WorkflowCiReadSchema,
@@ -298,18 +308,15 @@ async function readResult(port: GitHubPort, input: FixProofInput, pr: number | n
  * The body of the sh-fix-proof step. A kind outside the gate makes no GitHub call; a read that fails is recorded and the review proceeds.
  * A diff that is only workflows has no test to run, so CI at the merge base and the head is its proof instead of the fix-proof run.
  */
-export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed" | "nonSourceNoRepro">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const input = FixProofInputSchema.parse(raw);
   const gate = await gateOf(deps.port, deps.store, input.runId);
   if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
   const binding = await bindingOf(deps.port, input.repo, gate.pr, input.base);
   try {
-    const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, "baseRef" in binding ? binding.baseRef : input.base);
-    if (ci !== undefined) return ci;
-    const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
-    const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
-    return boundTo(read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read, binding);
+    const read = await gatedRead(deps, input, gate, binding, timing, signal);
+    return boundTo((await nonSourceProceeds(deps, input, gate, read)) ? { ...read, nonSourceProceed: true } : read, binding);
   } catch (error) {
     signal.throwIfAborted();
     return boundTo({ kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` }, binding);
@@ -318,6 +325,29 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
 
 /** Every read taken under a binding names the base it looked for; a workflow-ci read names its own `baseRef`. */
 const boundTo = (read: FixProofRead, binding: Binding): FixProofRead => ("baseRef" in binding && read.kind !== "workflow-ci" ? { ...read, boundBase: binding.baseRef } : read);
+
+type OpenGate = Extract<Gate, { open: true }>;
+
+async function gatedRead(deps: Pick<ShepherdDeps, "port" | "noReproProceed">, input: FixProofInput, gate: OpenGate, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+  const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, "baseRef" in binding ? binding.baseRef : input.base);
+  if (ci !== undefined) return ci;
+  const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
+  const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
+  return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
+}
+
+/**
+ * TP-4275: under `nonSourceNoRepro: record-fact`, a NO_REPRO on a diff with no source path is recorded on the run and the review
+ * goes ahead, so no sh-sent-back gate opens; the merge grant is unchanged. Security keeps its gate, as on the test-only path.
+ * Source is what the proof paths already read: a workflow-ci read exists only for a diff `workflowCiProof` read as workflows alone,
+ * and a result line proceeds only on a diff the fix-proof plan reads with no source path under the trusted configs.
+ */
+async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoRepro">, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
+  if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security" || fixProofVerdict(read, input.head) === undefined) return false;
+  if (read.kind === "workflow-ci") return true;
+  if (read.kind !== "result" || read.testOnlyProceed === true || !mayProceedLine(read.line)) return false;
+  return sourceFreeDiff(deps.port, input.repo, gate.pr, input.head);
+}
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
   codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
@@ -356,7 +386,7 @@ export function noReproOfLine(line: string, head: string): Extract<Verdict, { ki
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
 }
 
-export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only";
+export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
 
 /** A line's verdict word that leaves its trusted read unverified: it ran nothing, or it could not finish. */
 const UNVERIFIED_VERDICTS: ReadonlyMap<string, FixProofUnverified> = new Map([
@@ -369,6 +399,7 @@ const UNVERIFIED_VERDICTS: ReadonlyMap<string, FixProofUnverified> = new Map([
  * A head can force each of these reads, so none may pass as if the bug were reproduced.
  */
 export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head: string): { unverified: FixProofUnverified } | undefined {
+  if (read.nonSourceProceed === true && fixProofVerdict(read, head)) return { unverified: "no-repro-non-source" };
   if (read.kind === "result" && read.testOnlyProceed === true && fixProofVerdict(read, head)) return { unverified: "no-repro-test-only" };
   if (read.kind === "untrusted") return { unverified: "untrusted" };
   if (read.kind === "error") return { unverified: "unread" };

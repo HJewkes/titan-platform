@@ -249,9 +249,9 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
 | `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
-| `render` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
-| `qa` | in-process, no model call: render-qa's gate at the cue moments and the 2 Hz sweep over the served page tree in Chromium, the gate profile's verdict, the DOM probe, and ffprobe and ffmpeg for the MP4's length and frame change (below) | mp4, words, script, page (+ timeline, resolved, visual, code, slots when a run has them) → qa, qa-crops, framediff and qa-probe past 64 kB |
-| `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-json, qa, visual when a run has them) → sidecar, poster, fingerprint |
+| `render` | in-process, no model call: the template fill to a storyboard, `compileTimeline`, the composition page and `renderVideo` behind the pre-capture QA gate (below) | script, resolved, words, audio (+ code, slots, generated-slots when a run has them) → mp4, vtt, render-manifest, timeline, page |
+| `qa` | in-process, no model call: render-qa's gate at the cue moments and the 2 Hz sweep over the served page tree in Chromium, the gate profile's verdict, the DOM probe, and ffprobe and ffmpeg for the MP4's length and frame change (below) | mp4, timeline, words, script, resolved, page (+ visual, code, slots when a run has them) → qa, qa-crops, framediff and qa-probe past 64 kB |
+| `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-manifest, qa, visual when a run has them) → sidecar, poster, fingerprint |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
 **Custom layers, keyed by packet** (`build/`, `workflow/layer-build.ts`, TP-2607). After the resolve body, each beat
@@ -344,7 +344,27 @@ provider, engine build, voice, rate and where they came from, and per beat its b
 found and the rate measured). Takes are cached per beat in `<dataDir>/tts-takes/` under
 `sha(spoken, voice, words a minute, engine version)`, so a re-voiced script synthesizes only the beats whose text or band changed and
 keeps the others' audio byte for byte. A host `bridge.json` that still has a `tts` block is refused: delete it, and
-move any command it ran besides TTS (a sample builder) to the start of `render`.
+drop any sample builder it ran, since render draws the storyboard itself.
+
+**The render stage (TP-2992 S3).** `runRenderStage` (`src/render/render-stage.ts`) fills the beats resolve kept with
+the template fill as resolve gated it (cited `code`, the owner's `slots` pin, else the `generated-slots` layer), and
+`boardFromFill` makes the storyboard: each beat's spec type and slots, its planned seconds and its script cue words.
+`storyboardIds` (`src/render/beat-ids.ts`) is the one place script ids become `beat-01`, `beat-02`, ... in script
+order; it renames the `words.json` beats and links each `<script id>.wav` of the `audio` tree under its new name, and
+qa's lead-line set goes through it too. A custom-layer beat is drawn from its template spec, with a stage note, until
+TP-2607 C4 renders custom layers. `compileTimeline` writes `timeline.json`; the built composition page is copied into
+the `page` tree, with the render variant's style pack as `style-pack.css` (`:root { --pack-<slot>: var(--<token>); }`)
+linked from its head, and served beside the timeline; `renderVideo` renders it behind the run type's gate profile
+(`qa { mode: "gate", gate: loadQaGate(type) }`, or `"skip"` with `noQa`). The stage stores `mp4`, `vtt`,
+`render-manifest`, `timeline` and the `page` tree it served, which is the tree qa serves again. Render variant params:
+`workers` (capture workers, `min(16, cores)` by default, part of the key since worker count is still part of a
+render's identity), `twoRun` (render twice at the same worker count and report whether the MP4 bytes match, the
+`two-run` check, never a gate) and `noQa` (the manifest records `qaGate: "skipped"`). The page and capture sit behind
+`RenderEngine`; the composition page and Chromium are the default, and tests pass a fake. A host `bridge.json` that
+still has a `render` block is refused, naming where each retired command went: `build_sample.py` (the template fill),
+the spike page's `vite build` (the composition page, built once per source sha in the explainer cache) and `render.ts`
+(`renderVideo`: capture, mix, `captions.vtt`, `render-manifest.json` and its QA gate). Its mid and end−1 s contact
+sheet (`sheet`) is dropped until the beat-aware sheets (TP-3000), and `render-json` is now `render-manifest`.
 
 **The sheets stage (TP-4018).** The port of the host's `write_video_meta.py`. ffprobe reads the MP4's duration and
 ffmpeg grabs a 480 px poster at `posterAtS`, 30 % in rounded to a tenth of a second. `buildSidecar` writes
@@ -365,15 +385,14 @@ null until the beat-aware sheets land. The sidecar's copy carries the grams by h
 still has a `sheets` block is refused: delete it, along with its `sheets.sh` and `write_video_meta.py` commands.
 
 **QA stage** (`src/qa/`, TP-2999 part A). `runQaStage` builds the QA timeline from the render's `timeline` artifact
-(its beats and beat-local cue seconds), or, for a bridged render that wrote none, from `words` (beat lengths, back to
-back) with the `script` cues resolved by `cueResolverFromWords` over the beats `keptBeats` keeps. It materialises the
-`page` tree, serves it on loopback (`serveTree`) and opens the composition page with `?timeline=` or, without a
-timeline, the bridged spike page with `?page=<theater stem>`. It samples render-qa's cue moments and its 2 Hz sweep
+(its beats and beat-local cue seconds), which it requires: a run without one is refused rather than rebuilt from
+words and script. `words.json` and the script's held beats are read under the timeline's storyboard ids
+(`storyboardIds` over `script` and `resolved`). It materialises the `page` tree with the timeline beside it, serves it on loopback (`serveTree`) and
+opens the composition page with `?timeline=`. It samples render-qa's cue moments and its 2 Hz sweep
 (`qaSampleMoments`; the variant param `sweep: false` keeps the cue moments only). With the sweep, each beat's settled
-`end` moment is the sweep's, which a beat of the `outro` kind (timeline `kind`, or `OutroBeat` as resolve's component)
-takes 1 s before its end, ahead of its fade. At every moment it runs `inspectAt`, then
+`end` moment is the sweep's, which a beat of the `outro` kind (timeline `kind`) takes 1 s before its end, ahead of its fade. At every moment it runs `inspectAt`, then
 `addLateFill` over every beat but the lead-line beats (`leadLineBeats`: `qaLeadLine` in a bridged render's `visual`,
-else the template fill's `qaLeadLine` hint, as the spike's `examples/qa.ts` skips a verdict card) and `classify` with the gate profile's gating kinds, writes an annotated crop per held error (at most 8
+else the template fill's `qaLeadLine` hint under its storyboard id, as the spike's `examples/qa.ts` skips a verdict card) and `classify` with the gate profile's gating kinds, writes an annotated crop per held error (at most 8
 per kind) as the `qa-crops` tree, reads the MP4's length through ffprobe, and writes `qa.json` (`explainer.qa/v1`:
 `pass`, `profile`, `gateProfileSha`, `gate`, `timeline`, `moments`, `errorCounts`, `infoCounts`, `errors` and `info`
 by beat with `kind`, `ts`, `at`, `reason`, `el`, `text` and `crop`, `mp4 { durationS, timelineS, frameS }`, `sweep`,
@@ -401,19 +420,12 @@ defines. The default gates every kind render-qa can gate, as the spike's `exampl
 resolved policy are part of the qa key, as is the MP4, so a new render reruns QA. A host `bridge.json` that still has
 a `qa` block is refused: delete it.
 
-The bridge is temporary: it runs today's template commands, Python included, from a host file kept outside the repo,
-so none of them ships here. Each stage leaves the bridge as its TypeScript port lands. `bridge.json`
-(`explainer-bridge/v1`) maps each bridged stage to `inputs` (artifact name → path under the workdir, written before
-the commands run), `outputs` (name → path, `tree: true` for a directory) and `commands` (`argv`, optional `cwd`,
-`env`, `timeoutS`, `check`, which records the command's verdict, and `gate`, `true` by default; a `check` command
-with `gate: false` is reported only, so its non-zero exit records a failed verdict and the commands after it still
-run), plus `vars`, the defaults for `{var.<name>}`
-tokens a stage variant may set. `{workdir}`, `{in.<name>}` and `{out.<name>}` expand to absolute paths. `theater`
-names the folder, the file stem and the suffix per artifact for `export`; `--theater <dir>` links into another folder
-instead. A type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads
-`bridges/<name>.json` from the per-user explainer data dir, whatever `--data-dir` says, so one host bridge serves
-every run of the type with no per-run copy. A bridged stage's `inputs` are also its
-cache key: declare every artifact its commands read, or a changed input will hit an old cache entry.
+Every stage runs in TypeScript since TP-2992 S3 moved render off the bridge; the stage runner that ran template
+commands from the host file is gone. The host file `bridge.json` (`explainer-bridge/v1`) is kept for `theater`: the
+folder, the file stem and the suffix per artifact for `export`; `--theater <dir>` links into another folder instead. A
+file that still has a `stages` block for a ported stage (`tts`, `render`, `qa`, `sheets`) is refused with the fix. A
+type profile may name its bridge (`bridge: daily`): a run with that `--profile` reads `bridges/<name>.json` from the
+per-user explainer data dir, whatever `--data-dir` says, so one host file serves every run of the type.
 
 **Checks as stage steps.** Each `explainer.<stage>` child run is two code steps: the body, then `checks:<stage>`,
 which runs the stage's deterministic checks from the workflow plan's §5.1 over its input and output artifacts. Every
@@ -439,13 +451,12 @@ it ran with; use `--sample script=<k>` to run the check on a draft already made.
 same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
-| `render` | the `check` commands of the host's `bridge.json` block (for example the render cue gate) | `check` commands with `gate: false` |
+| `render` | `duration-agreement`: the manifest's page and mix lengths agree within 1e-6 s (renderVideo refuses first; this re-asserts it over the stored manifest) | `two-run`: two renders at the same worker count gave the same MP4 bytes, when the variant sets `twoRun` |
 | `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
-speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism
-(TP-2992), the QA timing gates (TP-2669), and the variety lints (PP-9). Each becomes a row of
-`STAGE_CHECKS` in `src/workflow/stage-checks.ts`, or a `check` command while its stage is bridged. The judges stay
+speech-vet and a rate-band check over `voice.json` (TP-3004), the QA timing gates (TP-2669), and the variety lints
+(PP-9). Each becomes a row of `STAGE_CHECKS` in `src/workflow/stage-checks.ts`. The judges stay
 reported only until the owner labels about 20 items to calibrate them (owner answer Q6 A).
 
 The checks are also the `products/evals/units/explainer-*` suites. Scoring them over cases into a scorecard waits on
@@ -453,8 +464,8 @@ TP-690; until then `explainer stage <name> --json` prints a stage's record with 
 (exit 1), which is what a check engine reads.
 
 **Stage cache.** A stage's key is `sha(stage, definition version, config, the input shas it reads, sample)`. The
-config is the run's settings for that stage (script model; judge and rounds; for a bridged stage its whole
-`bridge.json` block and `vars`) with the stage variant's params laid over them. Outputs are never keyed: Kokoro TTS
+config is the run's settings for that stage (script model; judge and rounds; render's workers, switches, gate profile
+and style CSS) with the stage variant's params laid over them. Outputs are never keyed: Kokoro TTS
 does not reproduce its audio byte for byte, so a stage downstream of TTS keys on the shas TTS actually wrote. The
 `explainer_stage_runs` table in `state.sqlite3` maps a key to its child run, status and outputs. A finished key
 returns its outputs at no cost (status `cached` in the report). A key whose child is still running, here or orphaned
@@ -462,10 +473,10 @@ by a crash, is adopted rather than started twice; the row is committed with the 
 a fresh child.
 
 A variant file (`explainer.variant/v1`: `stage`, `name`, `params`) sets `model` for `script`, `model` and `rounds`
-for `rewrite`, and any declared `vars` for a bridged stage; `--variant render=w8.json` reruns render and whatever
+for `rewrite`, and `workers`, `twoRun` and `noQa` for `render`; `--variant render=w8.json` reruns render and whatever
 reads its outputs. A render variant may also set `stylePack` to a pack in `doctrine/style-packs/`: the pack's
-content hash joins the render key (an edit to the pack's file misses the cache), and the bridge gets `{var.stylePack}`,
-`{var.styleTheme}` (`dark` or `light`) and `{var.styleCss}` (`--pack-<slot>: var(--<token>);` per slot). No other
+content hash joins the render key (an edit to the pack's file misses the cache), and its CSS (`--pack-<slot>:
+var(--<token>);` per slot) is served with the page, so qa, which serves that page tree, reruns too. No other
 stage takes a pack, so a new pack reruns render and never TTS. `--sample stage=k` puts sample index `k` in that stage's key, so n samples are n cached runs.
 `--to <stage>` stops after it (such a run never reaches the theater). `--pin name=sha` lays a stored artifact over
 the base run's; with pins and no `--base`, `--from` starts mid-pipeline from the pins alone.
@@ -556,7 +567,7 @@ stage, and fails. `explainer run resume <runId> [--budget-usd <usd>]` drives a c
 to a stopped or failed one from the stage it did not finish. `explainer run report <runId> [--json]` writes
 `run-report.md` and `run-report.json` into the run directory: per stage the wall time and its share, usd and its share,
 tokens, calls, retries, whether it was reused (a cache hit), check counts (pass, gate fail, reported fail) and
-output shas, with each bridged stage marked, a "Checks" table with every verdict, its role and its detail, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
+output shas, with any stage a reused pre-port record says was bridged marked, a "Checks" table with every verdict, its role and its detail, and every other run of the same video with its spend and the video total. `--compare <runId>` adds, per
 stage, the spend and wall time delta, the stages the run took from a cache, and the output names whose sha changed.
 `--facts-from gatherDaily --type daily-overview [--day <YYYY-MM-DD>] [--repo <owner/name>]... [--transcripts <dir>]...
 [--initiative <slug>]` replaces `--facts`: the adapter writes `digest.json` and `facts.md` under
@@ -895,7 +906,11 @@ new stage key.
     `explainer run --from resolve --base <run> --pin script=<sha> --edit <editId> --budget-usd 0.25` detached, its
     output in `edits/<editId>.log`, and returns at once. The run pins the base's `custom-layers`, so a template edit
     never rebuilds a layer; its tts takes are all cached, so it voices nothing; it links its id into the ledger as it
-    starts, joins the base's video, and its report says which edit it carries. One save makes one run: once the ledger
+    starts, joins the base's video, and its report says which edit it carries.
+    When a systemd user manager is reachable (`$XDG_RUNTIME_DIR/systemd/private` exists and `systemd-run` runs), the run starts
+    as a transient unit `explainer-run-<editId>` (`systemd-run --user --collect`, output appended to the same log), so a restart
+    of the calling service does not kill it; otherwise, or if `systemd-run` refuses, it is the detached child described above
+    (`workflow/edit-launch.ts`). One save makes one run: once the ledger
     row is `started`, any later `apply` of the same edit, with or without `--start`, is refused (exit 1) and leaves the
     row and its run id alone.
   - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
@@ -907,9 +922,8 @@ new stage key.
     are left out) it gives `id`, `chapter`, the drawn `spec` and its `slots` ref, `schema` (`z.toJSONSchema` of
     `BEAT_SLOTS[ref]`, input side), `value` (`fillScript` with the run's `slots` artifact pinned and the owner's
     overrides laid over it), `overridden` fields, `locked` ids (the ids its cues target), `startS`/`endS` from the
-    `words` artifact, and `stillS`, the later of `endS - 0.3` and its last cue. `saveBack { enabled, reason }` is on
-    only once render is in process and draws from the fill; until TP-2992 S3 it reads "renders ignore edits until
-    TP-2992 S3". Tune schemas join each beat when page kinds declare them (H1).
+    `words` artifact, and `stillS`, the later of `endS - 0.3` and its last cue. `saveBack { enabled, reason }` is on:
+    render is in process and draws from the fill (TP-2992 S3), so a saved edit reaches the MP4. Tune schemas join each beat when page kinds declare them (H1).
 
 ### Template fill
 
@@ -1023,4 +1037,4 @@ which writes `<stem>.mp4` (stem from the `beats.json` name), `captions.vtt` and 
 - The render is QA-gated with the board video type's policy from `doctrine/qa/gate-profile.yaml`; held errors refuse
   the render and write `qa.json`. `--no-qa` skips the gate and the manifest records `qaGate: "skipped"`.
 
-The render stage is still bridged; TP-2992 S3 moves it onto this path. TP-2993 writes the full first-video guide.
+The `render` stage of `explainer run` takes the same path from script and resolved (above). TP-2993 writes the full first-video guide.

@@ -1,18 +1,57 @@
 import { Typography } from "@titan-design/react-ui";
 import { Beat, BeatFrame, MotionProvider, type SeekClock } from "@titan-design/react-ui/motion";
+import type { ReactElement } from "react";
+import { Chrome, Stage } from "./beats/stage/Chrome.js";
+import { BeatFrame as StageFrame } from "./beats/stage/BeatFrame.js";
+import { RevealContext, revealFrom } from "./beats/stage/reveal.js";
 import { resolveBeat } from "./registry.js";
 import type { Timeline, TimelineBeat } from "./timeline.js";
 
 const LAYER = { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" } as const;
 
-function TimelineBeatView({ beat }: { beat: TimelineBeat }) {
+interface ViewProps {
+  beat: TimelineBeat;
+  view: ReactElement;
+  headline: boolean;
+}
+
+/** A page kind owns the whole canvas, with no chrome. */
+function PageBeat({ beat, view }: ViewProps) {
   return (
-    <Beat startS={beat.startS} durationS={beat.durationS} cues={beat.cues}>
-      <div style={LAYER}>
-        <BeatFrame kind={beat.kind} className="items-center justify-center">
-          {resolveBeat(beat.kind).render(beat.slots)}
-        </BeatFrame>
-      </div>
+    <div style={LAYER}>
+      <BeatFrame kind={beat.kind} className="items-center justify-center">
+        {view}
+      </BeatFrame>
+    </div>
+  );
+}
+
+/** A stage kind sits in the box between the chrome bands, its elements landing on their reveal times. */
+function StageBeat({ beat, view, headline }: ViewProps) {
+  return (
+    <RevealContext value={revealFrom(beat.reveals ?? [])}>
+      <Stage beat={beat.id}>
+        <StageFrame kind={beat.kind}>{view}</StageFrame>
+      </Stage>
+      <Chrome headline={headline ? beat.headline : undefined} chips={beat.chips ?? []} chapter={beat.chapter} />
+    </RevealContext>
+  );
+}
+
+/**
+ * react-ui's Beat reads `now - startS >= durationS` as over. At the next beat's start that subtraction can land one ulp
+ * short of durationS, so both beats would draw the boundary frame (QA reads two chromes). A nanosecond off each
+ * window leaves exactly one beat at every boundary and moves no frame a viewer could see.
+ */
+const BOUNDARY_S = 1e-9;
+
+function TimelineBeatView({ beat }: { beat: TimelineBeat }) {
+  const definition = resolveBeat(beat.kind);
+  const view = definition.render(beat.slots, { hints: beat.hints ?? {}, ...(beat.chapter ? { chapter: beat.chapter.label } : {}) });
+  const Frame = definition.stage ? StageBeat : PageBeat;
+  return (
+    <Beat startS={beat.startS} durationS={beat.durationS - BOUNDARY_S} cues={beat.cues}>
+      <Frame beat={beat} view={view} headline={definition.headline} />
     </Beat>
   );
 }
