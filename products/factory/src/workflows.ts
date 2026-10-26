@@ -221,6 +221,7 @@ export function bindAll(db: Db, ...refs: { bind(db: Db): () => void }[]): () => 
 
 /** `shepherd.repos` as the config file writes it, re-read per call as the seat book is. */
 type UnseatedRepos = () => Record<string, ShepherdRepoConfig>;
+type CwdFor = (repo: string) => string | undefined;
 
 /** The PR registered as its frozen repo's fix; a store the host has not bound reads as no fixer, so the review queues like any other. */
 function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
@@ -330,7 +331,7 @@ function configuredVisualPacket(
   env: NodeJS.ProcessEnv,
   roster: RosterReader | undefined,
   gate: SpawnGate,
-  cwdFor: (repo: string) => string | undefined,
+  cwdFor: CwdFor,
 ): VisualPacketPorts | undefined {
   const mode = shepherd?.visualPacket ?? "off";
   if (mode === "off") return undefined;
@@ -341,7 +342,7 @@ function configuredVisualPacket(
 }
 
 /** The planner spawns through the shared roster and spawn gate, at the configured profile as given, and reports to the hub seat. */
-function configuredDiagnosis(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate, cwdFor: (repo: string) => string | undefined): DiagnosisPorts {
+function configuredDiagnosis(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate, cwdFor: CwdFor): DiagnosisPorts {
   const agentChatBin = shepherd?.agentChatBin;
   const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
   const hubSeat = shepherd?.hubSeat;
