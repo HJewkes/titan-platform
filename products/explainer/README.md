@@ -906,7 +906,11 @@ new stage key.
     `explainer run --from resolve --base <run> --pin script=<sha> --edit <editId> --budget-usd 0.25` detached, its
     output in `edits/<editId>.log`, and returns at once. The run pins the base's `custom-layers`, so a template edit
     never rebuilds a layer; its tts takes are all cached, so it voices nothing; it links its id into the ledger as it
-    starts, joins the base's video, and its report says which edit it carries. One save makes one run: once the ledger
+    starts, joins the base's video, and its report says which edit it carries.
+    When a systemd user manager is reachable (`$XDG_RUNTIME_DIR/systemd/private` exists and `systemd-run` runs), the run starts
+    as a transient unit `explainer-run-<editId>` (`systemd-run --user --collect`, output appended to the same log), so a restart
+    of the calling service does not kill it; otherwise, or if `systemd-run` refuses, it is the detached child described above
+    (`workflow/edit-launch.ts`). One save makes one run: once the ledger
     row is `started`, any later `apply` of the same edit, with or without `--start`, is refused (exit 1) and leaves the
     row and its run id alone.
   - `explainer edit list --mp4-sha <sha> | --video <id> [--json]` lists the ledger rows with each linked run's
