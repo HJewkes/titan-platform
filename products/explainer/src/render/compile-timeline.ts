@@ -8,9 +8,9 @@ import type { Beat, Storyboard } from "../storyboard.js";
 import { readTiming, type ScriptTiming } from "../timing.js";
 
 /** Parses one beat's raw slots for its spec type into the props the page reads. */
-export type SlotsFor = (type: string, raw: unknown) => Record<string, unknown>;
+type SlotsFor = (type: string, raw: unknown) => Record<string, unknown>;
 
-export interface CompileDeps {
+interface CompileDeps {
   slotsFor?: SlotsFor;
 }
 
