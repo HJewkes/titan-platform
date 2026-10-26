@@ -7,7 +7,7 @@ import type { Storyboard } from "../storyboard.js";
 import { fillScript } from "../template-fill/fill.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import { storyboardIds } from "./beat-ids.js";
-import { boardFromFill } from "./board-from-fill.js";
+import { boardFromFill, type PageExtras } from "./board-from-fill.js";
 
 interface BoardInput {
   artifacts: Readonly<Record<string, string>>;
@@ -16,6 +16,8 @@ interface BoardInput {
 
 interface RenderBoard {
   board: Storyboard;
+  /** The page extras by storyboard id, for compileTimeline. */
+  extras: Map<string, PageExtras>;
   /** Script beat id to storyboard id, for words.json and the voiced wavs. */
   ids: Map<string, string>;
   notes: string[];
@@ -52,5 +54,5 @@ export function renderBoard(input: BoardInput): RenderBoard {
   const ids = storyboardIds(script, resolved);
   const custom = resolved.beats.filter((row) => row.layer === "custom" && ids.has(row.id)).map((row) => row.id);
   const notes = custom.length === 0 ? [] : [`custom layers drawn from their template spec until TP-2607 C4: ${custom.join(", ")}`];
-  return { board: boardFromFill(script, filled, ids), ids, notes };
+  return { ...boardFromFill(script, filled, ids), ids, notes };
 }

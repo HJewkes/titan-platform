@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+const RevealSchema = z.object({ target: z.string().min(1), part: z.enum(["left", "right"]).optional(), atS: z.number().min(0) });
+
+const HintsSchema = z.object({
+  placeholder: z.literal(true).optional(),
+  headingYields: z.literal(true).optional(),
+  qaLeadLine: z.literal(true).optional(),
+  continues: z.string().optional(),
+  titleOmitted: z.literal(true).optional(),
+});
+
 // The page reads only what it renders; compileTimeline (TP-2990) owns the rest of timeline.json.
 const TimelineBeatSchema = z.object({
   id: z.string().min(1),
@@ -8,6 +18,12 @@ const TimelineBeatSchema = z.object({
   durationS: z.number().positive(),
   cues: z.record(z.string(), z.number().min(0)).optional(),
   slots: z.unknown(),
+  // What the template fill drew beside the slots (TP-4276): each element's beat-local landing time and the chrome inputs.
+  reveals: z.array(RevealSchema).optional(),
+  chips: z.array(z.object({ kind: z.string().min(1), text: z.string() })).optional(),
+  hints: HintsSchema.optional(),
+  headline: z.string().optional(),
+  chapter: z.object({ n: z.number().int().positive(), of: z.number().int().positive(), label: z.string() }).optional(),
 });
 
 const TimelineSchema = z
