@@ -1,9 +1,5 @@
 import { buildMoments, sweepMoments, type CueRecord, type Moment } from "@titan-design/render-qa";
 import { parseTimeline } from "../composition/timeline.js";
-import { cueResolverFromWords, type CueResolver } from "../cues.js";
-import { keptBeats } from "../resolve-stage.js";
-import { beatCues, type ScriptV1 } from "../script-schema.js";
-import { readTiming, type ScriptTiming } from "../timing.js";
 
 /** A cue as QA reads it: the script's `word` or `word#n`, at seconds from its beat's start. */
 interface QaCue {
@@ -13,7 +9,7 @@ interface QaCue {
 
 interface QaBeat {
   id: string;
-  /** The beat's kind or component, when the timeline or resolve names one. */
+  /** The beat's kind, as the timeline names it. */
   kind?: string;
   startS: number;
   durationS: number;
@@ -30,43 +26,6 @@ export function timelineFromArtifact(json: unknown): QaTimeline {
   const beats = parseTimeline(json).beats.map(({ id, kind, startS, durationS, cues }) => ({
     id, kind, startS, durationS, cues: Object.entries(cues ?? {}).map(([name, atS]) => ({ name, atS })),
   }));
-  return { beats };
-}
-
-function resolvedCues(resolve: CueResolver, beat: ScriptV1["beats"][number]): QaCue[] {
-  const cues: QaCue[] = [];
-  for (const name of beatCues(beat.visual)) {
-    try {
-      cues.push({ name, atS: resolve(beat.id, name) });
-    } catch {
-      // The tts stage's cue-resolution gate already failed any cue the voice never spoke.
-    }
-  }
-  return cues;
-}
-
-/** What the words fallback reads of `resolved`: the beats it cut, and each kept beat's component. */
-type ResolvedBeats = Parameters<typeof keptBeats>[1] & { beats?: readonly { id: string; component: { name?: string } }[] };
-
-const wordsByBeat = (timing: ScriptTiming) => Object.fromEntries([...timing].map(([id, beat]) => [id, beat.words ?? []]));
-
-/**
- * The QA timeline of a render that wrote no `timeline` (a bridged render): the voiced beats resolve kept, back to back
- * in the order tts voiced them, each with its script cues resolved against the words it spoke.
- */
-export function timelineFromWords(words: unknown, script: ScriptV1, resolved?: ResolvedBeats): QaTimeline {
-  const timing = readTiming(words);
-  const kept = new Map((resolved ? keptBeats(script.beats, resolved) : script.beats).map((beat) => [beat.id, beat]));
-  const components = new Map((resolved?.beats ?? []).map((beat) => [beat.id, beat.component.name]));
-  const resolve = cueResolverFromWords(wordsByBeat(timing));
-  const beats: QaBeat[] = [];
-  let startS = 0;
-  for (const [id, { durationS }] of timing) {
-    const beat = kept.get(id);
-    const kind = components.get(id);
-    if (beat) beats.push({ id, ...(kind === undefined ? {} : { kind }), startS, durationS, cues: resolvedCues(resolve, beat) });
-    startS += durationS;
-  }
   return { beats };
 }
 
@@ -94,7 +53,7 @@ export function qaMoments(timeline: QaTimeline): Moment[] {
 
 /** The outro fades out over its last second (the spike's OutroBeat), so its picture is settled a second before it ends. */
 const OUTRO_KINDS: ReadonlySet<string> = new Set(["outro", "OutroBeat"]);
-export const OUTRO_SETTLE_S = 1;
+const OUTRO_SETTLE_S = 1;
 
 const settleBy = (beat: QaBeat): number => (beat.kind !== undefined && OUTRO_KINDS.has(beat.kind) ? OUTRO_SETTLE_S : 0);
 

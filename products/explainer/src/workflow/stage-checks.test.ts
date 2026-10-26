@@ -223,7 +223,7 @@ describe("running a stage's checks", () => {
         "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
         "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "template-fill:gate",
         "sim-check:reported", "sim-cut-orphan:gate",
-      ], tts: ["cue-resolution:gate"], render: [], qa: ["held-errors:gate", "mp4-duration:gate", "motion-happened:gate", "clipped-text:gate", "content-fill:gate", "stage-empty:reported"], sheets: [],
+      ], tts: ["cue-resolution:gate"], render: ["duration-agreement:gate"], qa: ["held-errors:gate", "mp4-duration:gate", "motion-happened:gate", "clipped-text:gate", "content-fill:gate", "stage-empty:reported"], sheets: [],
     });
   });
 });

@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { JudgeConfigSchema } from "../eval-harness.js";
-import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { BridgeFileSchema } from "../workflow/bridge.js";
 import { stageSpec, type RunSettings, type Variant } from "../workflow/stage-spec.js";
 import { FULL_STAGE } from "./qa-fakes.test-helpers.js";
 import { qaStageHarness } from "./qa-stage.test-helpers.js";
-import { OUTRO_SETTLE_S, qaSampleMoments, timelineFromWords } from "./qa-timeline.js";
 
 const harness = qaStageHarness();
 
@@ -42,24 +40,12 @@ describe("qa stage on a beat that fades out over its last second", () => {
 
     expect(checks["content-fill"]).toMatchObject({ gate: true, pass: false });
   });
-
-  it("names a bridged beat's kind from its resolved component, so an OutroBeat settles before its fade too", () => {
-    const script = choppy();
-    const words = { beats: script.beats.map((b) => ({ id: b.id, durationS: 4, words: [] })) };
-    const last = script.beats.at(-1)!.id;
-    const resolved = { beats: [{ id: last, component: { name: "OutroBeat" } }] };
-
-    const settled = qaSampleMoments(timelineFromWords(words, script, resolved), true).filter((m) => m.kind === "end");
-
-    expect(settled.find((m) => m.beat === last)!.local).toBeLessThan(4 - OUTRO_SETTLE_S);
-    expect(settled.filter((m) => m.beat !== last).every((m) => m.local === 3.5)).toBe(true);
-  });
 });
 
 describe("qa stage spec sweep param", () => {
   const settings: RunSettings = { scriptModel: "sonnet", judge: JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" }), rounds: 1 };
-  const bridge = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", workdir: "/work", theater: { dir: "/theater", stem: "demo", files: {} }, stages: {} });
-  const artifacts = { mp4: "a".repeat(64), words: "b".repeat(64), script: "c".repeat(64), page: "d".repeat(64) };
+  const bridge = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", theater: { dir: "/theater", stem: "demo", files: {} } });
+  const artifacts = { mp4: "a".repeat(64), timeline: "f".repeat(64), words: "b".repeat(64), script: "c".repeat(64), page: "d".repeat(64) };
   const spec = (params?: Variant["params"]) =>
     stageSpec({ stage: "qa", artifacts, settings, sample: 0, remainingUsd: 1, bridge, ...(params ? { variant: { sha: "e".repeat(64), value: { schema: "explainer.variant/v1", stage: "qa", name: "cues-only", params } } } : {}) });
 

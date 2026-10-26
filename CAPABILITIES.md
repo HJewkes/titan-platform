@@ -1554,7 +1554,7 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render through a host bridge file of today's template commands (marked as bridged in every report row),
+then the render stage in process (`runRenderStage`: the template fill to a storyboard under beat-NN ids from `storyboardIds`, `compileTimeline`, the composition page with the style pack's CSS, `renderVideo` behind the run type's gate profile, a `duration-agreement` gate over the manifest and a reported `two-run` check, behind a `RenderEngine` seam),
 then the qa stage in process (`runQaStage`: render-qa's gate at the cue moments and the 2 Hz sweep in Chromium behind a `QaEngine` seam, the `doctrine/qa/gate-profile.yaml` verdict through `loadQaGate`, the probe and framediff behind the motion-happened, clipped-text, content-fill and stage-empty checks, and `qa.json` as `explainer.qa/v1` with findings by beat and anchor),
 then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
 `fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
@@ -1571,7 +1571,7 @@ For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-
 `explainer edit check` prints that verdict with the slot-overrides gate, the template fill and the emphasis-target gate, and writes nothing,
 `explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
 `explainer edit list` lists a render's or a video's edits with their linked run's status.
-`explainer props --mp4-sha <sha>` reads the run that exported a render and gives each kept template beat its slot JSON Schema, filled value with overrides, overridden fields, cue-locked ids, span and still time, plus whether a save can change the render yet.
+`explainer props --mp4-sha <sha>` reads the run that exported a render and gives each kept template beat its slot JSON Schema, filled value with overrides, overridden fields, cue-locked ids, span and still time, plus whether a save can change the render (it can, now render draws from the fill).
 `compileTimeline` turns a storyboard and an optional words.json (its only reader) into the page's `timeline.json`: heard durations or planned ones with `provisional: true`, beat-local cue seconds for `word` or `word#n`, and slots parsed by `BEAT_SLOTS` until `@titan-design/beats` publishes; `writeTimeline` writes it as canonical JSON.
 `renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
 mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.

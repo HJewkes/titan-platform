@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { captureFrames, mixAudio, startEncoder, type Encoder, type FramesOptions, type FramesResult } from "@titan-design/frame-capture";
 import { z } from "zod";
@@ -12,6 +13,8 @@ import { silentMix } from "./silent-mix.js";
 
 export const RENDER_FPS = 30;
 const VIEWPORT = { width: 1920, height: 1080 };
+
+export const defaultRenderWorkers = (): number => Math.min(16, availableParallelism());
 
 /** The fields render reads from a compiled timeline; TP-2990's `Timeline` must stay assignable to it. */
 export interface RenderTimeline {

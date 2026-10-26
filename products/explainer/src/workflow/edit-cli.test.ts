@@ -11,7 +11,7 @@ import { openState } from "./host.js";
 import { CUSTOM_LAYERS } from "./layer-build.js";
 import { RunPlanSchema } from "./pipeline.js";
 import { runRunCli } from "./run-cli.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fakeVoice, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 let fx: Fixture;
@@ -45,7 +45,7 @@ function planOf(runId: string) {
 /** Runs the launched argv in this process, as the detached `explainer run` would, on a voice that counts its takes. */
 async function runLaunched(argv: readonly string[], extra: Parameters<typeof fakeHost>[3] = {}) {
   const voice = fakeVoice();
-  const host = fakeHost(fx, fakeScriptModel(), fakeBridge(), { ttsEngine: voice.engine, ...extra });
+  const host = fakeHost(fx, fakeScriptModel(), fakeRender(), { ttsEngine: voice.engine, ...extra });
   const code = await runRunCli([...argv], { host, out: () => {}, err: () => {} });
   return { code, voice };
 }

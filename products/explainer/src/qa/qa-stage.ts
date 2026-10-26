@@ -3,8 +3,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DEFAULT_OPTIONS } from "@titan-design/render-qa";
 import { RENDER_FPS } from "../render/render-video.js";
-import { ResolvedSchema } from "../resolve-stage.js";
-import { ScriptSchema } from "../script-schema.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import type { StageOutcome } from "../workflow/records.js";
@@ -13,15 +11,14 @@ import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
 import { measuredFindings } from "./qa-measured.js";
 import { INLINE_MAX_BYTES, qaReport, qaSummary, type QaReport } from "./qa-report.js";
-import { timelineFromArtifact, timelineFromWords, timelineS, type QaTimeline } from "./qa-timeline.js";
+import { timelineFromArtifact, timelineS } from "./qa-timeline.js";
 import type { QaGate } from "./gate-profile.js";
+import type { QaTimeline } from "./qa-timeline.js";
 import { serveTree } from "./serve-tree.js";
 
 export interface QaConfig extends QaGate {
   /** The run's video type, recorded in qa.json. */
   profile?: string;
-  /** The bridged spike page's `?page=` stem, read only when the render wrote no `timeline`. */
-  page?: string;
   /** The 2 Hz sweep joins the cue moments unless this is false. */
   sweep?: boolean;
 }
@@ -41,28 +38,16 @@ function need(input: QaInput, name: string): string {
 
 const json = (input: QaInput, sha: string): unknown => JSON.parse(input.store.readText(sha));
 
-function readTimeline(input: QaInput): QaTimeline {
-  const { timeline, resolved } = input.artifacts;
-  if (timeline !== undefined) return timelineFromArtifact(json(input, timeline));
-  const script = ScriptSchema.parse(json(input, need(input, "script")));
-  return timelineFromWords(json(input, need(input, "words")), script, resolved === undefined ? undefined : ResolvedSchema.parse(json(input, resolved)));
-}
-
-/** Lays the page tree out in `dir` and names the page to open: the composition page on the timeline, else the spike page. */
-function pageQuery(input: QaInput, dir: string, config: QaConfig): string {
+/** Lays the render's page tree out in `dir` with its timeline beside it, and names the page to open on it. */
+function pageQuery(input: QaInput, dir: string): string {
   input.store.materialise(need(input, "page"), dir);
-  const { timeline } = input.artifacts;
-  if (timeline !== undefined) {
-    input.store.materialise(timeline, path.join(dir, TIMELINE_FILE));
-    return `?timeline=${TIMELINE_FILE}`;
-  }
-  if (!config.page) throw new Error("stage qa has no timeline artifact and no page stem to open the bridged page with");
-  return `?page=${encodeURIComponent(config.page)}`;
+  input.store.materialise(need(input, "timeline"), path.join(dir, TIMELINE_FILE));
+  return `?timeline=${TIMELINE_FILE}`;
 }
 
 async function servedInspection(input: QaInput, engine: QaEngine, timeline: QaTimeline, config: QaConfig, scratch: string): Promise<CueGateResult> {
   const tree = path.join(scratch, "page");
-  const query = pageQuery(input, tree, config);
+  const query = pageQuery(input, tree);
   const served = await serveTree(tree);
   try {
     return await cueGate(engine, `${served.origin}/${query}`, timeline, config, { lead: leadLineBeats(input), cropDir: path.join(scratch, "crops"), sweep: config.sweep !== false, probe: true });
@@ -104,7 +89,7 @@ async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, i
  */
 export async function runQaStage(input: QaInput, config: QaConfig, engine: QaEngine): Promise<StageOutcome> {
   const mp4 = input.store.path(need(input, "mp4"));
-  const timeline = readTimeline(input);
+  const timeline = timelineFromArtifact(json(input, need(input, "timeline")));
   const scratch = mkdtempSync(path.join(tmpdir(), "explainer-qa-"));
   try {
     const inspection = await servedInspection(input, engine, timeline, config, scratch);
@@ -112,10 +97,9 @@ export async function runQaStage(input: QaInput, config: QaConfig, engine: QaEng
     const outputs: Record<string, string> = {};
     const measured = await measure(input, engine, timeline, inspection, config, outputs);
     const mp4S = { durationS: await engine.durationS(mp4), timelineS: timelineS(timeline), frameS: 1 / RENDER_FPS };
-    const source = input.artifacts.timeline === undefined ? "words" : "timeline";
     const report = qaReport(held, {
-      profile: config.profile ?? null, gateProfileSha: config.sha, gate: config.gate, timeline: source, moments: inspection.moments, mp4: mp4S, ...measured,
-      notes: [`${timeline.beats.length} beats from ${source}`],
+      profile: config.profile ?? null, gateProfileSha: config.sha, gate: config.gate, timeline: "timeline", moments: inspection.moments, mp4: mp4S, ...measured,
+      notes: [`${timeline.beats.length} beats from timeline`],
     });
     outputs.qa = input.store.putText(`${JSON.stringify(report, null, 1)}\n`, "qa", input.from);
     if (held.errors.length > 0) outputs["qa-crops"] = input.store.putTree(path.join(scratch, "crops"), "qa-crops", input.from);

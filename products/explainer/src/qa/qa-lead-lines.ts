@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { fillAtResolve } from "../resolve-stage.js";
+import { storyboardIds } from "../render/beat-ids.js";
+import { fillAtResolve, ResolvedSchema } from "../resolve-stage.js";
+import { ScriptSchema } from "../script-schema.js";
 import { FillError } from "../template-fill/fill.js";
 import type { CheckInput } from "../workflow/stage-checks.js";
 
@@ -11,7 +13,10 @@ type LeadInput = Pick<CheckInput, "artifacts" | "store">;
 function fromFill(input: LeadInput): Set<string> {
   const filled = fillAtResolve(input);
   if (filled instanceof FillError) return new Set();
-  return new Set(filled.beats.filter((beat) => beat.hints.qaLeadLine).map((beat) => beat.id));
+  // The render's timeline names beats by storyboard id, so QA's lead-line set must too.
+  const json = (name: string): unknown => JSON.parse(input.store.readText(input.artifacts[name]!));
+  const ids = storyboardIds(ScriptSchema.parse(json("script")), ResolvedSchema.parse(json("resolved")));
+  return new Set(filled.beats.filter((beat) => beat.hints.qaLeadLine).map((beat) => ids.get(beat.id)!));
 }
 
 /**

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "qa runs without the render's timeline",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "qa: [\"mp4\", \"timeline\", \"words\", \"script\", \"page\"]",
+      "replace": "qa: [\"mp4\", \"words\", \"script\", \"page\"]",
+      "kills": [
+        "qa without a render timeline is refused at the spec, naming the timeline artifact"
+      ]
+    }
+  ]
+}

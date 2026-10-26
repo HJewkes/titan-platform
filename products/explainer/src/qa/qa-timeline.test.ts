@@ -1,43 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { choppy } from "../rewrite-fixtures.test-helpers.js";
-import { qaCues, qaMoments, timelineFromArtifact, timelineFromWords, timelineS } from "./qa-timeline.js";
+import { JudgeConfigSchema } from "../eval-harness.js";
+import { BridgeFileSchema } from "../workflow/bridge.js";
+import { stageSpec, type RunSettings } from "../workflow/stage-spec.js";
+import { fakeQa } from "./qa-fakes.test-helpers.js";
+import { runQaStage } from "./qa-stage.js";
+import { FROM, qaStageHarness } from "./qa-stage.test-helpers.js";
+import { qaCues, qaMoments, timelineFromArtifact, timelineS } from "./qa-timeline.js";
 
-/** Every beat of the synthetic script spoken one word each half second, after a 0.25 s lead. */
-function wordsOf(script: ReturnType<typeof choppy>) {
-  const beats = script.beats.map((beat) => {
-    const words = beat.spoken.split(/\s+/).map((word, i) => ({ word, start: 0.25 + i * 0.5 }));
-    return { id: beat.id, durationS: 0.5 + words.length * 0.5, words };
-  });
-  return { beats };
-}
+const harness = qaStageHarness();
 
 describe("QA timeline", () => {
-  it("builds the same moments from words and script as from the render's timeline when they agree", () => {
-    const script = choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "list", cues: [{ action: "V6", target: "rows-1", atCue: "courier" }] } } });
-    const words = wordsOf(script);
-    const courierS = words.beats.find((beat) => beat.id === "h1")!.words.find((w) => w.word.toLowerCase().startsWith("courier"))!.start;
-    let startS = 0;
-    const beats = words.beats.map(({ id, durationS }) => {
-      const beat = { id, kind: "list", startS, durationS, slots: {}, ...(id === "h1" ? { cues: { courier: courierS } } : {}) };
-      startS += durationS;
-      return beat;
-    });
-    const given = timelineFromArtifact({ durationS: startS, beats });
+  it("reads beats, kinds and beat-local cue seconds from the render's timeline", () => {
+    const given = { durationS: 5, beats: [{ id: "beat-01", kind: "list", startS: 0, durationS: 2, slots: {} }, { id: "beat-02", kind: "title", startS: 2, durationS: 3, cues: { courier: 1.25 }, slots: {} }] };
 
-    const derived = timelineFromWords(words, script);
+    const timeline = timelineFromArtifact(given);
 
-    expect(qaMoments(derived)).toEqual(qaMoments(given));
-    expect(qaCues(derived)).toEqual([{ beat: "h1", word: "courier", nth: 1, atS: courierS }]);
-    expect(timelineS(derived)).toBeCloseTo(startS);
+    expect(qaCues(timeline)).toEqual([{ beat: "beat-02", word: "courier", nth: 1, atS: 1.25 }]);
+    expect(qaMoments(timeline).filter((m) => m.beat === "beat-02").every((m) => m.t >= 2)).toBe(true);
+    expect(timelineS(timeline)).toBe(5);
+  });
+});
+
+describe("qa without a render timeline", () => {
+  const settings: RunSettings = { scriptModel: "sonnet", judge: JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" }), rounds: 1 };
+  const bridge = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", theater: { dir: "/theater", stem: "demo", files: {} } });
+
+  it("is refused at the spec, naming the timeline artifact", () => {
+    const artifacts = { mp4: "a".repeat(64), words: "b".repeat(64), script: "c".repeat(64), page: "d".repeat(64) };
+
+    const spec = () => stageSpec({ stage: "qa", artifacts, settings, sample: 0, remainingUsd: 1, bridge });
+
+    expect(spec).toThrow(/stage qa needs artifact "timeline"/);
   });
 
-  it("leaves out a beat resolve cut, keeping the beats after it at their spoken start", () => {
-    const script = choppy();
-    const words = wordsOf(script);
-    const [first, cut, third] = words.beats;
+  it("is refused by the stage body rather than rebuilt from words and script", async () => {
+    const store = harness.store();
+    const text = (body: string, kind: string) => store.putText(body, kind, FROM);
+    const artifacts = { mp4: text('{"durationS":4}', "mp4"), words: text("{}", "words"), script: text("{}", "script") };
 
-    const timeline = timelineFromWords(words, script, { cut: [{ id: cut!.id, chapter: "c", code: "sim", detail: "cut" }] });
+    const run = runQaStage({ artifacts, store, from: FROM, remainingUsd: 0 }, { sha: "f".repeat(64), gate: [], inspect: {} }, fakeQa());
 
-    expect(timeline.beats.slice(0, 2).map((beat) => [beat.id, beat.startS])).toEqual([[first!.id, 0], [third!.id, first!.durationS + cut!.durationS]]);
+    await expect(run).rejects.toThrow(/stage qa needs artifact "timeline"/);
   });
 });

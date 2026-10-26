@@ -8,7 +8,7 @@ import { gatherReview } from "../presets/repo-explainer/gather.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { ResolvedSchema } from "../resolve-stage.js";
 import { runVideo } from "./host.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, SPINE, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, SPINE, type Fixture } from "./run-fakes.test-helpers.js";
 
 const FIXTURE = fileURLToPath(new URL("../../fixtures/review-whiteboard", import.meta.url));
 const PIN = "2ddf3eb6c13d97b1d04a932c21de9a92029adaf9";
@@ -54,7 +54,7 @@ describe("the script stage's companion doc", () => {
     fx = fixture();
     const facts = await whiteboardFacts(fx.dataDir);
 
-    const result = await runVideo({ spine: fx.spine, facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     const outputs = result.report.rows.find((row) => row.stage === "script")!.outputs;
@@ -68,7 +68,7 @@ describe("the script stage's companion doc", () => {
   it("writes no companion for a run whose facts are not gathered review facts", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(Object.keys(result.report.rows.find((row) => row.stage === "script")!.outputs)).toEqual(["draft"]);
@@ -82,7 +82,7 @@ describe("companion links through export", () => {
     const facts = await whiteboardFacts(fx.dataDir);
     const model = fakeScriptModel(scriptWithCard(feature));
 
-    const result = await runVideo({ spine: featuresSpine(fx.dataDir), facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: featuresSpine(fx.dataDir), facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     const resolved = ResolvedSchema.parse(JSON.parse(artifact(result.report.rows.find((row) => row.stage === "resolve")!.outputs.resolved!)));
@@ -105,7 +105,7 @@ describe("companion links through export", () => {
     writeFileSync(bridgeFile, JSON.stringify(bridge));
     const facts = await whiteboardFacts(fx.dataDir);
 
-    const result = await runVideo({ spine: fx.spine, facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(readdirSync(fx.theater).sort()).toEqual(["companion.md", "demo.mp4", "demo.vtt"]);
@@ -114,7 +114,7 @@ describe("companion links through export", () => {
   it("exports no companion doc for a run whose facts are not gathered review facts", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(readdirSync(fx.theater).sort()).toEqual(["demo.mp4", "demo.vtt"]);

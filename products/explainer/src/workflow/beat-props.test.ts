@@ -102,7 +102,7 @@ describe("explainer props: save-back", () => {
     expect(saveBackOf({ bridged: false, readsFill: true })).toEqual({ enabled: true });
   });
 
-  it("is off today, with render bridged", () => {
-    expect(saveBackOf()).toMatchObject({ enabled: false, reason: expect.stringContaining("TP-2992 S3") });
+  it("is on today, with render in process on the template fill", () => {
+    expect(saveBackOf()).toEqual({ enabled: true });
   });
 });

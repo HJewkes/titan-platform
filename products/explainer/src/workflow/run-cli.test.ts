@@ -11,7 +11,7 @@ import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
 const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
-import { fakeBridge, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -35,7 +35,7 @@ function cli(host: ReturnType<typeof fakeHost>) {
 describe("explainer run CLI", () => {
   it("runs a video, exits 0, and `run report` prints the stage table", async () => {
     fx = fixture();
-    const { run, out } = cli(fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const { run, out } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     const code = await run("--spine", fx.spine, "--facts", fx.facts);
     const runId = /^run (\S+): completed/.exec(out[0] ?? "")?.[1];
@@ -49,7 +49,7 @@ describe("explainer run CLI", () => {
 
   it("exits 1 on a stopped run and prints how to resume it", async () => {
     fx = fixture();
-    const { run, err } = cli(fakeHost(fx, fakeScriptModel(undefined, { usd: 0.05 }), fakeBridge()));
+    const { run, err } = cli(fakeHost(fx, fakeScriptModel(undefined, { usd: 0.05 }), fakeRender()));
 
     const code = await run("--spine", fx.spine, "--facts", fx.facts, "--budget-usd", "0.05");
 
@@ -59,7 +59,7 @@ describe("explainer run CLI", () => {
 
   it("exits 2 on an unknown stage or a runaway cap", async () => {
     fx = fixture();
-    const { run } = cli(fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const { run } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(await run("--from", "mix")).toBe(2);
     expect(await run("--budget-usd", "2000")).toBe(2);
@@ -69,7 +69,7 @@ describe("explainer run CLI", () => {
 describe("explainer stage and run variants CLI", () => {
   it("run --variant reruns from the varied stage, and report --compare names the cache hits", async () => {
     fx = fixture();
-    const host = fakeHost(fx, fakeScriptModel(), fakeBridge());
+    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
     const { run, out } = cli(host);
     const variant = path.join(fx.dataDir, "render.json");
     writeFileSync(variant, JSON.stringify({ schema: "explainer.variant/v1", stage: "render", name: "w8", params: { workers: 8 } }));
@@ -89,7 +89,7 @@ describe("explainer stage and run variants CLI", () => {
 
   it("stage runs one stage from stored shas and prints a cache hit the second time", async () => {
     fx = fixture();
-    const host = fakeHost(fx, fakeScriptModel(), fakeBridge());
+    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
     const draft = await scriptDraft(cli(host));
     const lines: string[] = [];
     const stage = (...argv: string[]) => runStageCli(["stage", ...argv, "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: (t) => lines.push(t) });
@@ -105,10 +105,10 @@ describe("explainer stage and run variants CLI", () => {
 
   it("stage --json prints the failed record with its gate verdict and exits 1", async () => {
     fx = fixture();
-    const draft = await scriptDraft(cli(fakeHost(fx, fakeScriptModel(), fakeBridge())));
+    const draft = await scriptDraft(cli(fakeHost(fx, fakeScriptModel(), fakeRender())));
     const drafted = choppy().beats[0]!.spoken;
     const redOnceRewritten: L0Check = (input) => l0Check(input.script.beats[0]!.spoken === drafted)(input);
-    const host = fakeHost(fx, fakeScriptModel(), fakeBridge(), { evalChecks: [redOnceRewritten] });
+    const host = fakeHost(fx, fakeScriptModel(), fakeRender(), { evalChecks: [redOnceRewritten] });
     const lines: string[] = [];
 
     const code = await runStageCli(["stage", "rewrite", "--in", `draft=${draft}`, "--json", "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: () => undefined });
@@ -140,7 +140,7 @@ describe("explainer run --from gather --type daily-overview", () => {
     const daily = ["--facts-from", "gatherDaily", "--day", DAY, "--repo", REPO, "--transcripts", path.join(DAILY_FIXTURE, "transcripts"), "--initiative", "demo"];
 
     await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
-      host: fakeHost(fx, fakeBriefModels(fakeScriptModel(overGoalWalk(), { followLeads: true })), fakeBridge()), gather, out: (t) => out.push(t), err: (t) => err.push(t),
+      host: fakeHost(fx, fakeBriefModels(fakeScriptModel(overGoalWalk(), { followLeads: true })), fakeRender()), gather, out: (t) => out.push(t), err: (t) => err.push(t),
     });
 
     expect(err.join("")).not.toContain("--spine");
@@ -159,7 +159,7 @@ describe("explainer run --from gather --type daily-overview", () => {
     const writer = fakeScriptModel(overGoalWalk(), { followLeads: true });
 
     await runRunCli(["run", ...daily, "--type", "daily-overview", "--from", "gather", "--to", "script", "--data-dir", fx.dataDir], {
-      host: fakeHost(fx, fakeBriefModels(writer), fakeBridge()), gather, out: () => undefined, err: () => undefined,
+      host: fakeHost(fx, fakeBriefModels(writer), fakeRender()), gather, out: () => undefined, err: () => undefined,
     });
 
     expect(writer.prompts[0]).toContain("## Coverage (coverage.json)");

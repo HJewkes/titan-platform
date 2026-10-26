@@ -7,7 +7,7 @@ import { runPrVideoTrigger } from "../presets/pr-overview/trigger.js";
 import { BRIEF_LAST_STAGE, BRIEF_STOPS, briefRunStart, type BriefStop } from "./brief-run.js";
 import { STAGES } from "./records.js";
 import type { ReadAt } from "./run-gather.js";
-import { fakeBridge, fakeBriefModels, fakeHost, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeBriefModels, fakeHost, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 
@@ -16,7 +16,7 @@ const fakeClone: ReadAt = async (_clone, head, file) => `export const at = "${fi
 
 function sweep(options: { view?: typeof VIEW; models?: ReturnType<typeof fakeBriefModels>; through?: BriefStop } = {}) {
   const models = options.models ?? fakeBriefModels();
-  const host = fakeHost(fx, models, fakeBridge(), { gather: { prGh: fakeGh(options.view), callEdges: fakeEdges(), readAt: fakeClone } });
+  const host = fakeHost(fx, models, fakeRender(), { gather: { prGh: fakeGh(options.view), callEdges: fakeEdges(), readAt: fakeClone } });
   const waiting = { owner: [gate()], seat: [] };
   return runPrVideoTrigger({ dataDir: fx.dataDir, readWaiting: async () => waiting, start: briefRunStart(host, (repo) => (repo === REPO ? "/clone/widgets" : undefined), options.through) });
 }
@@ -107,7 +107,7 @@ describe("a triggered decision-brief run", () => {
 
     const none = await runPrVideoTrigger({
       dataDir: fx.dataDir, readWaiting: async () => ({ owner: [gate()], seat: [] }),
-      start: briefRunStart(fakeHost(fx, fakeAuditionModel(), fakeBridge()), () => undefined),
+      start: briefRunStart(fakeHost(fx, fakeAuditionModel(), fakeRender()), () => undefined),
     });
 
     expect(none.map((r) => r.outcome)).toEqual(["refused"]);
