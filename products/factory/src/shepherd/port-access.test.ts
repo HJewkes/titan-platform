@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SHEPHERD_COMMANDS, type ShepherdCommandName } from "./commands.js";
+import { SHEPHERD_COMMAND_MAP, SHEPHERD_COMMANDS, type ShepherdCommandName } from "./commands.js";
 import { SHEPHERD_PORT_ACCESS, writesPort } from "./port-access.js";
+
+const isRegistered = (name: string): name is ShepherdCommandName => name in SHEPHERD_COMMAND_MAP;
 
 const declared = (): string[] => Object.keys(SHEPHERD_PORT_ACCESS).sort();
 
@@ -12,7 +14,7 @@ describe("shepherd port access declarations", () => {
   });
 
   it("refuses in-process exactly the commands the hand-kept list named before", () => {
-    const refused = SHEPHERD_COMMANDS.map((command) => command.name as ShepherdCommandName).filter((name) => writesPort(name, {}));
+    const refused = SHEPHERD_COMMANDS.map((command) => command.name).filter((name) => isRegistered(name) && writesPort(name, {}));
 
     expect(refused.sort()).toEqual(["shepherd.hold", "shepherd.merge", "shepherd.release", "shepherd.repair-stop", "shepherd.resync", "shepherd.review"]);
   });
