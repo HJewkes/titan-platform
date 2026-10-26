@@ -1,0 +1,28 @@
+{
+  "durationS": 7.5,
+  "beats": [
+    { "id": "opening", "kind": "hook", "startS": 0, "durationS": 2, "slots": { "line": "A synthetic day on the factory floor", "cards": [] } },
+    {
+      "id": "pause",
+      "kind": "held",
+      "startS": 2,
+      "durationS": 3,
+      "slots": { "line": "Two lanes moved; one waits on a decision" },
+      "headline": "The router lane shipped its matcher rewrite",
+      "chips": [{ "kind": "verified", "text": "demo@0a1b2c3:src/router/match.ts:12-40; docs/routing.md" }],
+      "chapter": { "n": 2, "of": 4, "label": "Lanes" }
+    },
+    {
+      "id": "showcase",
+      "kind": "catalogue",
+      "startS": 5,
+      "durationS": 2.5,
+      "slots": {
+        "file": { "path": "src/router/match.ts", "loc": 212, "fanIn": 6, "fanOut": 3 },
+        "schemaLabel": "Route table",
+        "schema": { "tables": [{ "id": "route", "name": "route", "fields": [{ "id": "id", "name": "id", "type": "int", "key": "primary" }, { "id": "path", "name": "path", "type": "text" }] }] },
+        "annotate": { "text": "first match wins", "kind": "underline" }
+      }
+    }
+  ]
+}

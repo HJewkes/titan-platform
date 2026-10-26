@@ -33,7 +33,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "build:page": "vite build -c src/composition/vite.config.ts"
+    "build:page": "vite build -c src/composition/vite.config.ts",
+    "page:sheet": "esbuild src/composition/parity-sheet-cli.ts --bundle --platform=node --format=esm --packages=external --log-level=warning --outfile=dist/sheet/page-sheet.mjs && node dist/sheet/page-sheet.mjs"
   },
   "dependencies": {
     "@titan-design/agent": "workspace:^",
