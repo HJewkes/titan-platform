@@ -8,14 +8,14 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { LandedPr } from "../workflows/land-landed.js";
 import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
-import { judgeMain, mainRulesReader, onlyCancels, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
+import { judgeMain, mainRulesReader, onlyCancels, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { MainCiReads } from "./main-watch.js";
 import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
 import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
-import { contains, runningDescendant, unlessStale } from "./stale-red.js";
+import { greenContainingReader, heldRed } from "./stale-red.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
 import { unlessThawed } from "./thawed-main-gates.js";
@@ -225,8 +225,10 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
     if (settled !== undefined) return { ...base, ...awaited(watch), ...settled };
     if (!wasRed && watch.red !== undefined) clock = deadline(timing);
     if (watch.red !== undefined && (clock.expired() || watch.awaiting !== undefined)) {
-      const stands = (await redOrAwaiting(main, watch, watch.red, await rules(), timing.now())) ?? (clock.expired() && rechecks >= SH_MAIN_CI_RECHECKS ? watch.red : undefined);
-      if (stands !== undefined) return { ...base, ...awaited(watch), ...stands };
+      const read = await heldRed(main, watch.red, watch.awaiting, await rules(), timing.now());
+      if (read.verdict !== "awaiting") return { ...base, ...awaited(watch), ...read };
+      watch.awaiting = read.awaitedSha;
+      if (clock.expired() && rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, ...awaited(watch), ...watch.red };
     }
     if (clock.expired()) {
       const unsettled = watch.awaiting === undefined ? await unsettledAtLimit(main, watch, await rules(), rechecks, timing.timeoutMs) : undefined;
@@ -239,18 +241,6 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
 }
 
 const awaited = (watch: Watch): Pick<Settled, "awaitedSha"> => (watch.awaiting === undefined ? {} : { awaitedSha: watch.awaiting });
-
-/**
- * The red, or its stale ack, once the base tip containing it is no longer running; undefined, with the tip recorded,
- * while it is. A held red re-reads only the tip each poll, and reads the green line again once the tip stops running.
- */
-async function redOrAwaiting(main: MainRead, watch: Watch, red: Settled, rules: MainRules | undefined, now: number): Promise<Settled | undefined> {
-  const held = watch.awaiting === undefined ? undefined : await runningDescendant(main, red.readSha ?? main.mergeSha, rules).catch(() => undefined);
-  const read = held === undefined ? await unlessStale(main, red, rules, now) : { verdict: "awaiting" as const, awaitedSha: held };
-  if (read.verdict !== "awaiting") return read;
-  watch.awaiting = read.awaitedSha;
-  return undefined;
-}
 
 /** At a limit with no red: the newest settled push containing the merge, `none` once nothing is queued or no re-check is left, else undefined to wait again. */
 async function unsettledAtLimit(main: MainRead, watch: Watch, rules: MainRules | undefined, rechecks: number, timeoutMs: number): Promise<Settled | undefined> {
@@ -306,28 +296,6 @@ function failedPoll(watch: Watch, error: unknown): undefined {
   watch.last = failureOf(error);
   watch.queued = false;
   return undefined;
-}
-
-/**
- * Reads the base branch's required contexts and app pins once they are readable, then answers the base tip when it is or
- * contains the merge sha and judgeMain finds nothing on it. No PR, unreadable or empty rules, or a tip that does not
- * contain the merge answers undefined, so nothing is acknowledged on a guess.
- */
-function greenContainingReader(main: MainRead): () => Promise<string | undefined> {
-  let rules: { base: string; rules: MainRules } | undefined;
-  return async () => {
-    if (main.base === undefined) return undefined;
-    rules ??= await baseMainRules(main.port, main.repo, await main.base());
-    if (rules === undefined) return undefined;
-    const tip = await main.port.getHeadSha(main.repo, rules.base);
-    if (tip === null || !(await contains(main.port, main.repo, tip, main.mergeSha))) return undefined;
-    return judgeMain(tip, await main.port.checkRuns(main.repo, tip), rules.rules).findings.length === 0 ? tip : undefined;
-  };
-}
-
-async function baseMainRules(port: GitHubPort, repo: RepoSlug, baseRef: string): Promise<{ base: string; rules: MainRules } | undefined> {
-  const { rules } = await readMainRules(port, repo, baseRef);
-  return rules === undefined ? undefined : { base: baseRef, rules };
 }
 
 /** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
