@@ -109,7 +109,13 @@ export const TypeProfileSchema = z
     bridge: Kebab.optional(),
     layers: z.object({ customMin: z.number().int().nonnegative(), templateMaxShare: Share, componentMaxShare: Share }).strict(),
     variety: z.object({ window: z.number().int().positive(), minFramings: z.number().int().positive(), ngram: z.number().int().positive(), mode: z.enum(["warn", "gate"]) }).strict(),
-    pacing: z.object({ pictureChangeMaxS: z.number().positive(), staticMaxS: z.number().positive(), held: Band, reHookS: Band }).strict(),
+    /** `pictureChangeMaxS` is the warn line, `pictureChangeFailS` the fail line; the qa stage's timing gates default the optional ones (TP-2669). */
+    pacing: z
+      .object({
+        pictureChangeMaxS: z.number().positive(), pictureChangeFailS: z.number().positive().optional(), staticMaxS: z.number().positive(), held: Band, reHookS: Band,
+        cueOnsetS: z.number().positive().optional(), readingCps: z.number().positive().optional(), readingMinS: z.number().positive().optional(),
+      })
+      .strict(),
     coverage: z.array(Kebab),
     publish: z.object({ ownerAskPerVideo: z.boolean(), checks: z.array(Kebab) }).strict().optional(),
     styles: StylesSchema,

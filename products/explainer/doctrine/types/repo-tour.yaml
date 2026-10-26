@@ -3,7 +3,7 @@
 # Coverage restores the owner's seven subjects (VT §7.2) and the titan verdict (VT §5.3).
 schema: type-profile/v1
 type: repo-tour
-version: 0.3.0
+version: 0.3.1
 family: review-repo
 intent: "After one watch the viewer can say what the repo is for, how it is laid out, where execution starts, its 2-4 key features and where each lives, one or two things worth knowing, and what titan should adopt, adapt or avoid, and where to read first."
 audience: { default: owner-internal, allow: [owner-internal, public-youtube] }

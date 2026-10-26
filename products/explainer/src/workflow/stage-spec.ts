@@ -15,6 +15,7 @@ import { SIDECAR_STATUSES } from "../video-sidecar.js";
 import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { loadQaGate, QaInspectSchema } from "../qa/gate-profile.js";
+import { timingProfile, TimingProfileSchema } from "../qa/timing-gates.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
@@ -25,7 +26,7 @@ import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type 
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x10c", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x10d", sheets: "x10",
 };
 
 /** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
@@ -99,8 +100,10 @@ export const StageConfigSchema = z.object({
   /** The sheets stage's sidecar take and status, the theater stem its poster is named after, and the structure registry by hash. */
   sheets: z.object({ take: z.string(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
   video: VideoRefSchema.optional(),
-  /** The qa stage's gate profile for the run's type, by content hash, the bridged spike page's stem, and whether it sweeps at 2 Hz. */
-  qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, page: z.string().optional(), sweep: z.boolean().optional() }).optional(),
+  /** The qa stage's gate profile for the run's type, by content hash, the bridged spike page's stem, whether it sweeps at 2 Hz, and the type's timing thresholds. */
+  qa: z
+    .object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, page: z.string().optional(), sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() })
+    .optional(),
   /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
   builder: BuilderRefSchema.optional(),
 });
@@ -167,10 +170,11 @@ function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParams
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
-/** The gate profile is read when the spec is built, so an edit to it or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
+/** The gate profile and the type's pacing are read when the spec is built, so an edit to either or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
 function qaConfig(settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
   const { sweep = true } = z.strictObject({ sweep: z.boolean().optional() }).parse(params);
-  const qa = { ...loadQaGate(settings.profile), page: bridge().theater.stem, sweep };
+  const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+  const qa = { ...loadQaGate(settings.profile), page: bridge().theater.stem, sweep, timing };
   return { qa, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
