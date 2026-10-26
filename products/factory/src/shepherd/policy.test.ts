@@ -1,7 +1,10 @@
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
+import { partialFake } from "@titan-design/test-kit";
+import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MergeEvidence } from "./merge-facts.js";
+import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
 import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
@@ -406,5 +409,66 @@ describe("a seat with visual paths", () => {
     const policy = effective("acme/design");
 
     expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
+  });
+});
+
+describe("a seat with visual baselines (TP-2662)", () => {
+  const BASELINES = { check: "visual", paths: ["packages/ui/specimen/baseline/**"] };
+  const BASELINED: Seat = { ...DESIGN, name: "baselined-seat", remotes: ["acme/baselined"], visualBaselines: BASELINES };
+  const UNOPTED: Seat = { ...GATED, name: "unopted-seat", remotes: ["acme/unopted"], visualBaselines: BASELINES };
+  const resolved = (seat: Seat) => resolveEffectivePolicy(lookupSeat({ seats: [seat], denied: [] }, seat.remotes[0]!));
+  const base: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "t", visualPaths: VISUAL_GLOBS };
+  const component = "packages/ui/src/components/Beat.tsx";
+
+  /** MRG-AU-RV facts at HEAD with a Beat.tsx change and the baseline check green from GitHub Actions. */
+  function clearedEvidence(changedPaths = [component]): MergeEvidence {
+    const evidence = evidenceAt(HEAD, changedPaths);
+    evidence.merge.checkRuns = [...evidence.merge.checkRuns, { name: "visual", appId: 15368, headSha: HEAD, conclusion: "success" }];
+    return evidence;
+  }
+
+  it("carries the seat's baselines into the run policy, and none for a seat without visual paths", () => {
+    expect(resolved(BASELINED)).toMatchObject({ visualPaths: VISUAL_GLOBS, visualBaselines: BASELINES });
+    expect(resolved(UNOPTED)).not.toHaveProperty("visualBaselines");
+  });
+
+  it("round-trips baselines through the stored policy schema and refuses an unknown baseline key", () => {
+    const policy = resolved(BASELINED);
+
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
+    expect(EffectivePolicySchema.safeParse({ ...policy, visualBaselines: { ...BASELINES, threshold: 1 } }).success).toBe(false);
+  });
+
+  it("keeps baselines in a stricter policy only when both sides carry the same ones", () => {
+    const other = { check: "visual", paths: ["snapshots/**"] };
+
+    expect(stricterPolicy({ ...base, visualBaselines: BASELINES }, { ...base, visualBaselines: { ...BASELINES } }).visualBaselines).toEqual(BASELINES);
+    expect(stricterPolicy({ ...base, visualBaselines: BASELINES }, { ...base, visualBaselines: other })).not.toHaveProperty("visualBaselines");
+    expect(stricterPolicy({ ...base, visualBaselines: BASELINES }, base)).not.toHaveProperty("visualBaselines");
+    expect(stricterPolicy(base, { ...base, visualBaselines: BASELINES })).not.toHaveProperty("visualBaselines");
+  });
+
+  it("allows a visual head that changed no baseline on the green check, and gates one that changed a baseline", () => {
+    const policy = resolved(BASELINED);
+    const baseline = "packages/ui/specimen/baseline/beat/default-chromium-linux.png";
+
+    const cleared = shepherdGatePolicy(policy, reviewed(clearedEvidence())).decide("merge", { headSha: HEAD });
+    const changed = shepherdGatePolicy(policy, reviewed(clearedEvidence([component, baseline]))).decide("merge", { headSha: HEAD });
+
+    expect(cleared).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" }, reason: expect.stringContaining(`visual files ${component} changed no baseline and visual passed`) });
+    expect(changed).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" }, reason: expect.stringContaining(baseline) });
+  });
+
+  it("re-reads unsettled evidence with the run's baselines, so the comment's decision matches decide", async () => {
+    const inputs: Record<string, unknown>[] = [];
+    const dispatch = async <T extends Record<string, unknown>>(stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> => {
+      inputs.push(JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}") as Record<string, unknown>);
+      return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { result: "re-read" } as unknown as T };
+    };
+    const ctx = partialFake<WorkflowContext>({ runId: "run-1", dispatch });
+
+    await refreshMergeEvidence(ctx, clearedEvidence(), resolved(BASELINED));
+
+    expect(inputs).toEqual([expect.objectContaining({ visualPaths: VISUAL_GLOBS, visualBaselines: BASELINES })]);
   });
 });

@@ -228,7 +228,7 @@ describe("the CI-policy line across the review's own steps", () => {
     const asked: Asked[] = [];
     const evidence = await evidenceFor(modified(CI_YML), UNCHANGED);
 
-    await refreshMergeEvidence(recordingCtx(asked, evidence), evidence, undefined);
+    await refreshMergeEvidence(recordingCtx(asked, evidence), evidence, {});
 
     expect(evidenceInput(asked).ciPolicy).toEqual(UNCHANGED);
   });

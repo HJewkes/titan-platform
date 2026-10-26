@@ -66,7 +66,7 @@ function mergingReviewers(clock: () => number) {
 function visualRun(files: PrFile[]) {
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("visual-merge") });
-  fake.setRuns(HEAD, [successRun("validate", 1), successRun("visual", 2)]);
+  fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2), successRun("visual", 3)]);
   fake.prFiles.set(PR, files);
   let clock = T0;
   const store = shepherdStoreRef(() => clock);
