@@ -2,19 +2,19 @@
   "v": 1,
   "mutations": [
     {
-      "name": "shepherd merge dropped from the refused set",
-      "file": "products/factory/src/cli-shepherd.ts",
-      "find": "new Set([\"shepherd.merge\", ",
-      "replace": "new Set([",
+      "name": "shepherd merge declared a read",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.merge\": \"write\",",
+      "replace": "\"shepherd.merge\": \"read\",",
       "kills": [
         "write verbs in an agent env with no serve answering shepherd merge exits UNAVAILABLE and makes no GitHub call"
       ]
     },
     {
-      "name": "shepherd order dropped from the refused set",
-      "file": "products/factory/src/cli-shepherd.ts",
-      "find": ", \"shepherd.order\"]);",
-      "replace": "]);",
+      "name": "shepherd order declared a read",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.order\": \"list-or-write\",",
+      "replace": "\"shepherd.order\": \"read\",",
       "kills": [
         "write verbs in an agent env with no serve answering order clear exits UNAVAILABLE and leaves the reservation in place"
       ]

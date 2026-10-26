@@ -21,6 +21,7 @@ import { probeServe } from "./serve-probe.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/commands.js";
 import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
+import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import type { ReviewSlots } from "./shepherd/review-slots.js";
@@ -210,11 +211,6 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
-
-/** The commands whose in-process fallback writes, the ones the brief names; repair-stop and order write only when their action is not `list`. */
-const PORT_WRITES: ReadonlySet<ShepherdCommandName> = new Set(["shepherd.merge", "shepherd.review", "shepherd.release", "shepherd.hold", "shepherd.resync", "shepherd.repair-stop", "shepherd.order"]);
-
-const writesPort = (name: ShepherdCommandName, args: object): boolean => PORT_WRITES.has(name) && !("action" in args && args.action === "list");
 
 /** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
 async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
