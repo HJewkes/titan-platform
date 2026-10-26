@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { editHarness } from "./edit-cli.test-helpers.js";
 import { editLogFile } from "./edit-ledger.js";
 import type { LaunchIo } from "./edit-launch.js";
@@ -28,7 +29,7 @@ async function applyStarted(launch: LaunchIo) {
   fx = fixture();
   const base = await baseRun();
   const { text } = await cli(["apply", editFile(base, { h1: { slots: { figures } } }), "--start", "--json"], { launch });
-  return JSON.parse(text).editId as string;
+  return z.object({ editId: z.string() }).parse(JSON.parse(text)).editId;
 }
 
 describe("explainer edit apply --start through the default launcher", () => {
