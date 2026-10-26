@@ -58,7 +58,7 @@ function world(fixture: Fixture, options: { taskClose?: TaskClose; body?: string
 }
 
 describe("shepherd.taskClose", () => {
-  it.each([TP4264, TP4259])("absent, closes $task on #$merged though another PR on it is open, as today", async (fixture) => {
+  it.each([TP4264, TP4259])("absent, closes the task #$merged delivers though another PR on it is open, as today", async (fixture) => {
     const w = world(fixture);
 
     const result = await w.run();
@@ -67,7 +67,7 @@ describe("shepherd.taskClose", () => {
     expect(w.task).toMatchObject({ status: "done", notes: `closed by Shepherd: ${w.landing} merged` });
   });
 
-  it.each([TP4264, TP4259])("last-slice-only notes $task's slice and leaves it open while another registered PR is open", async (fixture) => {
+  it.each([TP4264, TP4259])("last-slice-only notes #$merged as a slice and leaves its task open while another registered PR is open", async (fixture) => {
     const w = world(fixture, { taskClose: "last-slice-only" });
 
     const result = await w.run();
