@@ -26,13 +26,15 @@ export function changedShare(a: Uint8Array, b: Uint8Array): number {
  */
 export async function* spawnFfmpeg(args: readonly string[], bin = 'ffmpeg', read: 'stdout' | 'stderr' = 'stdout'): AsyncIterable<Uint8Array> {
   const proc = spawn(bin, args, { stdio: ['ignore', read === 'stdout' ? 'pipe' : 'ignore', 'pipe'] })
+  // stdio fixes stderr to a pipe and stdout to one when read is 'stdout'; the spawn types cannot see that.
+  const errStream = proc.stderr!
   let stderr = ''
   const log = (chunk: Buffer) => (stderr += chunk.toString())
-  if (read === 'stdout') proc.stderr.on('data', log)
+  if (read === 'stdout') errStream.on('data', log)
   const exited = new Promise<number | null>((resolve, reject) => proc.on('error', reject).on('close', resolve))
   // A spawn error fires while stdout is still being read; without a handler now it is unhandled and kills the process.
   exited.catch(() => undefined)
-  for await (const chunk of (read === 'stdout' ? proc.stdout : proc.stderr) as AsyncIterable<Buffer>) {
+  for await (const chunk of (read === 'stdout' ? proc.stdout! : errStream) as AsyncIterable<Buffer>) {
     if (read === 'stderr') log(chunk)
     yield chunk
   }

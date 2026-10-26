@@ -13,8 +13,8 @@
     {
       "name": "stderr mode yields stdout",
       "file": "packages/render-qa/src/framediff.ts",
-      "find": "(read === 'stdout' ? proc.stdout : proc.stderr)",
-      "replace": "proc.stdout",
+      "find": "(read === 'stdout' ? proc.stdout! : errStream)",
+      "replace": "proc.stdout!",
       "kills": [
         "mediaScan on a clip ffmpeg makes finds the black second, the 2.5 s silence and the frozen stretch, and not the 1.5 s silence"
       ]
