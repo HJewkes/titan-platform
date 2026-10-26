@@ -18,6 +18,15 @@
       "kills": [
         "qa on a render's storyboard ids excuses a still picture on a beat the script holds, though the timeline names it beat-01"
       ]
+    },
+    {
+      "name": "qa's timing gates read words.json under script ids",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "readTiming(renameWordsBeats(json(input, need(input, \"words\")), ids))",
+      "replace": "readTiming(json(input, need(input, \"words\")))",
+      "kills": [
+        "qa on a render's storyboard ids reads words.json under the timeline's beat-01, so a text the narration says needs no reading hold"
+      ]
     }
   ]
 }

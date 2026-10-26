@@ -2,6 +2,7 @@ import { launch } from "@titan-design/frame-capture";
 import {
   frameDiffs,
   inspectAt,
+  mediaScan,
   openQaPage,
   probeMoments,
   writeCrops,
@@ -9,6 +10,7 @@ import {
   type CueRecord,
   type FrameInspection,
   type InspectOptions,
+  type MediaScan,
   type ProbeAt,
   type ProbedMoment,
 } from "@titan-design/render-qa";
@@ -29,6 +31,8 @@ export interface QaEngine {
   durationS: MediaExec["durationS"];
   /** The share of pixels each frame changed from the one before (render-qa's `frameDiffs`). */
   frameDiffs(mp4: string): Promise<number[]>;
+  /** Black, silent (2 s and more) and frozen stretches of the MP4 (render-qa's `mediaScan`). */
+  mediaScan(mp4: string): Promise<MediaScan>;
 }
 
 /** Real Chromium through frame-capture and render-qa, and the host's ffprobe and ffmpeg. */
@@ -51,5 +55,6 @@ export function chromiumQaEngine(media: Pick<MediaExec, "durationS"> = ffmpegMed
     },
     durationS: (mp4) => media.durationS(mp4),
     frameDiffs: (mp4) => frameDiffs(mp4),
+    mediaScan: (mp4) => mediaScan(mp4),
   };
 }

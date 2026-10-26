@@ -3,9 +3,9 @@
   "mutations": [
     {
       "name": "a red that stood its wait is never checked for a green descendant",
-      "file": "products/factory/src/shepherd/post-merge.ts",
-      "find": "...(await unlessStale(main, watch.red, await rules(), timing.now()))",
-      "replace": "...watch.red",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "const green = await greenContaining(read, redSha, rules, now).catch(() => undefined);",
+      "replace": "const green = undefined;",
       "kills": [
         "readMainCi on a red that main has moved past while its tip still runs reads the red as stale when a commit between it and the tip is green on every required context",
         "shepherd-pr on a main red that is stale or only cancelled freezes nothing and files no task for a red at the merge once a descendant went green"

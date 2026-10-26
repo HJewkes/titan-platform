@@ -1,5 +1,6 @@
-import { countByKind, type Held, type HeldFinding } from "@titan-design/render-qa";
+import { countByKind, type Held, type HeldFinding, type MediaInterval, type MediaScan } from "@titan-design/render-qa";
 import { z } from "zod";
+import type { QaTimeline } from "./qa-timeline.js";
 import { TIMING_GATES } from "./timing-gates.js";
 
 const RectSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
@@ -52,6 +53,12 @@ const TimingGateSchema = z.object({
 /** The DIRECTION timing gates (`timing-gates.ts`), and the two counts ar target 3 reads (TP-4033). */
 const TimingSchema = z.object({ gates: z.array(TimingGateSchema), static_window_count: z.number().int().nonnegative(), picture_change_gap_max: z.number() });
 
+const MediaIntervalSchema = z.object({ startS: z.number(), endS: z.number(), beats: z.array(z.string()) });
+
+/** render-qa's `mediaScan` of the MP4, each interval with the beats it overlaps; reported only. */
+const MediaScanSchema = z.object({ black: z.array(MediaIntervalSchema), silence: z.array(MediaIntervalSchema), freeze: z.array(MediaIntervalSchema) });
+export type MediaScanReport = z.infer<typeof MediaScanSchema>;
+
 /** The measured codes that fail the stage; `stage-empty` is reported only. */
 const MEASURED_GATES: readonly string[] = ["motion-happened", "clipped-text", "content-fill"];
 
@@ -82,6 +89,7 @@ export const QaReportSchema = z.object({
   probe: z.union([z.strictObject({ moments: z.array(ProbedMomentSchema) }), z.strictObject({ artifact: z.string() })]),
   measured: z.array(MeasuredFindingSchema),
   timing: TimingSchema,
+  mediaScan: MediaScanSchema,
   notes: z.array(z.string()),
 });
 export type QaReport = z.infer<typeof QaReportSchema>;
@@ -99,6 +107,16 @@ export function qaReport(held: Held, base: QaReportBase): QaReport {
     schema: "explainer.qa/v1", pass: held.errors.length === 0 && !gated, ...base,
     errorCounts: countByKind(held.errors), infoCounts: countByKind(held.info), errors: held.errors.map(finding), info: held.info.map(finding),
   };
+}
+
+const beatsDuring = (timeline: QaTimeline) => ({ startS, endS }: MediaInterval) => ({
+  startS, endS, beats: timeline.beats.filter((beat) => beat.startS < endS && beat.startS + beat.durationS > startS).map((beat) => beat.id),
+});
+
+/** Names the beats each scanned interval overlaps, so a check can say where the stretch fell. */
+export function mediaScanByBeat(scan: MediaScan, timeline: QaTimeline): MediaScanReport {
+  const named = beatsDuring(timeline);
+  return { black: scan.black.map(named), silence: scan.silence.map(named), freeze: scan.freeze.map(named) };
 }
 
 /** The spike `qa.ts` one-line summary, held errors counted by kind; the measured checks give their own. */

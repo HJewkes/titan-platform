@@ -66,4 +66,26 @@ describe("qa on a render's storyboard ids", () => {
     expect(held.checks["static-window"]).toMatchObject({ gate: true, pass: true });
     expect(moving.checks["static-window"]).toMatchObject({ gate: true, pass: false });
   });
+
+  /** "Parcel desk" on screen for half a second, under 1.5 s reading time, on a beat whose words.json says it, or not. */
+  async function briefText(spoken: boolean) {
+    const script = soloScript({ beat: "list", labels: ["tick Two lanes"] });
+    const resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats: resolvedFor(script).beats, budgets: [] };
+    const said = spoken ? [{ word: "Parcel", start: 1.1, end: 1.2 }, { word: "desk", start: 1.2, end: 1.3 }] : [];
+    const words = { beats: [{ id: script.beats[0]!.id, startS: 0, durationS: 4, words: said }] };
+    const timeline = { durationS: 4, beats: [{ id: "beat-01", kind: "list", startS: 0, durationS: 4, slots: {} }] };
+    const store = harness.store();
+    const put = (value: unknown, kind: string) => store.putText(JSON.stringify(value), kind, FROM);
+    const extra = () => ({ script: put(script, "script"), resolved: put(resolved, "resolved"), words: put(words, "words") });
+    const shown = (t: number) => (t >= 1 && t < 1.4 ? FULL_STAGE : { texts: [], boxes: FULL_STAGE.boxes });
+    return harness.run({ probeAt: shown }, { timeline, extra });
+  }
+
+  it("reads words.json under the timeline's beat-01, so a text the narration says needs no reading hold", async () => {
+    const spoken = await briefText(true);
+    const unspoken = await briefText(false);
+
+    expect(spoken.checks["reading-hold"]).toMatchObject({ gate: true, pass: true });
+    expect(unspoken.checks["reading-hold"]).toMatchObject({ gate: true, pass: false });
+  });
 });

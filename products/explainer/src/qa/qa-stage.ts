@@ -14,7 +14,7 @@ import { cueGate, type CueGateResult } from "./cue-gate.js";
 import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
 import { measuredFindings } from "./qa-measured.js";
-import { INLINE_MAX_BYTES, qaReport, qaSummary, type QaReport } from "./qa-report.js";
+import { INLINE_MAX_BYTES, mediaScanByBeat, qaReport, qaSummary, type QaReport } from "./qa-report.js";
 import { timelineFromArtifact, timelineS, type QaTimeline } from "./qa-timeline.js";
 import type { QaGate } from "./gate-profile.js";
 import { serveTree } from "./serve-tree.js";
@@ -70,7 +70,7 @@ function storedIfLarge(input: QaInput, outputs: Record<string, string>, name: st
   return outputs[name];
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -86,7 +86,8 @@ function heldBeats(input: QaInput, ids: ReadonlyMap<string, string>): Set<string
 
 /** The MP4's frame change and the probe, inline or by sha, and the page-measured findings they give. */
 async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, inspection: CueGateResult, config: QaConfig, outputs: Record<string, string>): Promise<Measured> {
-  const diffs = await engine.frameDiffs(input.store.path(need(input, "mp4")));
+  const mp4 = input.store.path(need(input, "mp4"));
+  const diffs = await engine.frameDiffs(mp4);
   const options = { ...DEFAULT_OPTIONS, ...config.inspect };
   const { sampled: moments, probed } = inspection;
   const framediff = storedIfLarge(input, outputs, "framediff", diffs);
@@ -100,13 +101,14 @@ async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, i
     probe: probe === undefined ? { moments: probed } : { artifact: probe },
     measured: measuredFindings({ timeline, moments, probed, diffs, fps: RENDER_FPS, stage: { width: options.W, height: options.H } }),
     timing,
+    mediaScan: mediaScanByBeat(await engine.mediaScan(mp4), timeline),
   };
 }
 
 /**
  * The `explainer.qa` body (workflow plan §2.3 stage 9): render-qa's gate over the served page at the cue moments and
  * the 2 Hz sweep, the page-measured checks over the probe and the MP4's frame change, the DIRECTION timing gates, the
- * MP4's length against the timeline QA inspected, and `qa.json` (`explainer.qa/v1`). It never fails on a finding; the stage's checks read
+ * MP4's black, silent and frozen stretches by beat, the MP4's length against the timeline QA inspected, and `qa.json` (`explainer.qa/v1`). It never fails on a finding; the stage's checks read
  * `qa.json` and gate.
  */
 export async function runQaStage(input: QaInput, config: QaConfig, engine: QaEngine): Promise<StageOutcome> {

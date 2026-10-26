@@ -1,5 +1,5 @@
 import type { Check } from "../workflow/records.js";
-import { QaReportSchema, qaSummary, type QaReport } from "./qa-report.js";
+import { QaReportSchema, qaSummary, type MediaScanReport, type QaReport } from "./qa-report.js";
 import { TIMING_GATES, type TimingGate } from "./timing-gates.js";
 
 type Verdict = Pick<Check, "pass" | "detail">;
@@ -56,3 +56,10 @@ export function directionVerdict(input: QaCheckInput): Verdict {
   const failed = ported.filter((gate) => !gate.pass);
   return { pass: failed.length === 0, detail: `${ported.length - failed.length}/${ported.length} pass${failed.length > 0 ? `; ${failed.map(gateDetail).join("; ")}` : ""}` };
 }
+
+/** One media scan's intervals, reported: none passes; the detail names each stretch's span and beats. */
+export const mediaScanVerdict = (kind: keyof MediaScanReport, label: string) => (input: QaCheckInput): Verdict => {
+  const found = report(input).mediaScan[kind];
+  const shown = found.slice(0, DETAIL_FINDINGS).map(({ startS, endS, beats }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s [${beats.join(",")}]`).join("; ");
+  return { pass: found.length === 0, detail: found.length === 0 ? `no ${label}` : `${found.length} ${label}: ${shown}` };
+};
