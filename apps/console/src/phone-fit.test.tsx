@@ -92,4 +92,13 @@ describe("on a 390px phone", () => {
     expect(rowItems.filter((element) => !isCappedToRow(element))).toEqual([]);
     expect(fields.filter((element) => !element.classList.contains("min-w-0") && !element.closest(".min-w-0"))).toEqual([]);
   });
+
+  it("keeps the saved edits' rows and a note's Turn into edit inside the page", async () => {
+    await renderAt("#/theater/v-relay-intro");
+
+    const edits = await screen.findByTestId("theater-edits");
+    const items = [...edits.querySelectorAll("[data-testid^=theater-edit-status-]"), await screen.findByTestId("theater-note-edit-0123456789abcdef")];
+    expect(items.length).toBe(3);
+    expect(items.filter((element) => !isCappedToRow(element))).toEqual([]);
+  });
 });

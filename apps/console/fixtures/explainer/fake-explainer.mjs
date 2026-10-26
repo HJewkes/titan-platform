@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // A stand-in `explainer` for console tests and screenshots: canned synthetic props, and an `edit check` that applies
-// a draft to them and reports length, row-count and locked-id problems the way the real CLI words them.
-// EXPLAINER_FAKE_PROPS=unknown answers found:false; =fail exits 2. EXPLAINER_FAKE_LOG appends each argv, stdin and
+// a draft to them and reports length, row-count and locked-id problems the way the real CLI words them, an `edit apply`
+// that answers a synthetic edit id after the same check, and an `edit list` of two synthetic saved edits.
+// EXPLAINER_FAKE_PROPS=unknown answers found:false; =fail exits 2. EXPLAINER_FAKE_APPLY=started refuses a second save. EXPLAINER_FAKE_LOG appends each argv, stdin and
 // the TITAN_CONSOLE_* names that reached it, which must be none.
 import { appendFileSync, readFileSync } from "node:fs";
 
@@ -54,6 +55,19 @@ if (argv[0] === "props") {
   const verdict = check(JSON.parse(stdin));
   print(verdict);
   process.exitCode = verdict.ok ? 0 : 1;
+} else if (argv[0] === "edit" && argv[1] === "apply") {
+  const verdict = check(JSON.parse(stdin));
+  if (process.env.EXPLAINER_FAKE_APPLY === "started") {
+    process.stderr.write("edit: edit edit-00000000000000aa already started run run-synthetic-0002; one save makes one run\n");
+    process.exitCode = 1;
+  } else if (!verdict.ok) {
+    print(verdict);
+    process.exitCode = 1;
+  } else {
+    print({ editId: "edit-00000000000000bb", scriptSha: "6".repeat(64), started: argv.includes("--start") });
+  }
+} else if (argv[0] === "edit" && argv[1] === "list") {
+  print(JSON.parse(readFileSync(new URL("./edits.json", import.meta.url), "utf8")));
 } else {
   process.stderr.write(`fake explainer: no ${argv.join(" ")}\n`);
   process.exit(2);

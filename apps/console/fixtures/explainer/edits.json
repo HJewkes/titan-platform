@@ -1,0 +1,26 @@
+[
+  {
+    "schema": "explainer.edit-ledger/v1",
+    "editId": "edit-00000000000000aa",
+    "base": { "runId": "run-synthetic-0001", "scriptSha": "5555555555555555555555555555555555555555555555555555555555555555", "mp4Sha": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "videoId": "video-synthetic-0001",
+    "scriptSha": "7777777777777777777777777777777777777777777777777777777777777777",
+    "beats": { "b-compare": { "slots": { "leftTitle": "Polling loop" } }, "b-list": { "slots": { "title": "Ready to ship" } } },
+    "fromNote": "0123456789abcdef",
+    "createdAt": "2031-03-05T11:00:00.000Z",
+    "status": "started",
+    "runId": "run-synthetic-0002",
+    "runStatus": "completed"
+  },
+  {
+    "schema": "explainer.edit-ledger/v1",
+    "editId": "edit-00000000000000cc",
+    "base": { "runId": "run-synthetic-0001", "scriptSha": "5555555555555555555555555555555555555555555555555555555555555555", "mp4Sha": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "videoId": "video-synthetic-0001",
+    "scriptSha": "8888888888888888888888888888888888888888888888888888888888888888",
+    "beats": { "b-list": { "slots": { "title": "Before you merge" } } },
+    "createdAt": "2031-03-05T11:30:00.000Z",
+    "status": "started",
+    "runStatus": "starting"
+  }
+]

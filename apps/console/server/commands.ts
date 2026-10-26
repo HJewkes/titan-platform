@@ -72,7 +72,7 @@ export interface ConsoleSources {
   videos?: VideoCatalog;
   /** Optional so test sources need not build one; absent, `videos.note` stores comments and tells no seat. */
   videoNotify?: SeatNotifier;
-  /** Optional so test sources need not set one; absent, `videos.props` and `videos.edit-check` answer one gap naming the setting. */
+  /** Optional so test sources need not set one; absent, `videos.props`, `videos.edit-check`, `videos.edit` and `videos.edits` answer one gap naming the setting. */
   explainerBin?: string;
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
