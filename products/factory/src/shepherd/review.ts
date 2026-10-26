@@ -122,7 +122,7 @@ const ReviewDispatchInputSchema = ReviewTargetSchema.extend({
   fixFirsts: z.number().int().positive().optional(),
   ownerBrief: z.boolean().optional(),
   fixProof: z.string().optional(),
-  fixProofUnverified: z.enum(["error", "refused", "untrusted", "unread", "no-repro-test-only"]).optional(),
+  fixProofUnverified: z.enum(["error", "refused", "untrusted", "unread", "no-repro-test-only", "no-repro-non-source"]).optional(),
   fixProofWaivedAt: HeadSchema.optional(),
   workflowCiProof: z.object({ mergeBase: HeadSchema, head: HeadSchema }).optional(),
   shape: z.enum(OVERLAY_SHAPES).optional(),

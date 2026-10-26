@@ -212,6 +212,14 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("show it fails on the base");
   });
 
+  it("a non-source head sent on without a base-failing test is told to judge its tests, deletions and workflow edits, not to show one fail on the base", () => {
+    const brief = reviewerBrief({ ...target, fixProof: fixProofResult(target.head, "vacuous"), fixProofUnverified: "no-repro-non-source" });
+
+    expect(brief).toContain("the PR changes no source");
+    expect(brief).toContain("no workflow edit weakens, skips or renames a check");
+    expect(brief).not.toContain("show it fails on the base");
+  });
+
   describe("an owner's fix-proof waiver", () => {
     const vacuous = { ...target, fixProof: fixProofResult(target.head, "vacuous") };
 

@@ -50,7 +50,7 @@ import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
-import { boundCheckout, loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
+import { boundCheckout, loadSeatBook, lookupSeat, seatBaselineCheck, type SeatBook } from "./shepherd/seats.js";
 import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type AdvisoryRead, type IsAdvisory } from "./shepherd/advisory.js";
 import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
@@ -139,6 +139,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   heldRepair?: Live<"off" | "on" | undefined>;
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. A getter is read per check. */
   noReproProceed?: Live<"off" | "on" | undefined>;
+  /** `record-fact` sends a NO_REPRO on a diff with no source path on to review; absent means `keep-owner`. A getter is read per check. */
+  nonSourceNoRepro?: Live<"keep-owner" | "record-fact" | undefined>;
   /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`, every merge closes. A getter is read per cleanup. */
   taskClose?: Live<TaskClose | undefined>;
   /** `shepherd.visualPacket` and the ports its spawn uses; absent means `off`. */
@@ -184,7 +186,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const shadow = { shadow: trainShadowRef(), port: deps.port, reads: deps.snapshot ?? portReads(deps.port), held: shadowHeldCheck({ port: deps.port, holds, freezes: () => freeze.get(), advisory: isAdvisory, now: deps.now, snapshot: deps.snapshot }), advisory: isAdvisory, now: deps.now ?? Date.now };
-  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, successorAccounts: successorAccounts(deps.agentChatConfigDir, deps.review?.accounts), roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, get heldRepair() { return current(deps.heldRepair); }, get noReproProceed() { return current(deps.noReproProceed); }, get taskClose() { return current(deps.taskClose); }, visualPacket: deps.visualPacket, diagnosis: deps.diagnosis, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
+  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, successorAccounts: successorAccounts(deps.agentChatConfigDir, deps.review?.accounts), roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, pushes: deps.pushes, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits, prFiles: deps.prFiles, stackRestack: deps.stackRestack, get heldRepair() { return current(deps.heldRepair); }, get noReproProceed() { return current(deps.noReproProceed); }, get nonSourceNoRepro() { return current(deps.nonSourceNoRepro); }, get taskClose() { return current(deps.taskClose); }, visualPacket: deps.visualPacket, diagnosis: deps.diagnosis, consoleAnswers: deps.consoleAnswers, visualBaselineCheck: (repo: string) => seatBaselineCheck(deps.seats?.() ?? NO_SEATS, repo) };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy), inheritedRed: inheritedRedCheck(shepherdDeps, () => freeze.get()) }).map((route) => {
     if (route.match === "base-wait") return leaveTrainToWait(route, train);
     if (route.match === "update-branch") return shadowRefresh(advisoryUpdates(route, isAdvisory, timing), shadow);
@@ -230,12 +232,6 @@ function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
       return false;
     }
   };
-}
-
-/** The check name the seat that owns `repo` declares for its visual baselines, if any. */
-function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
-  const found = lookupSeat(book, repo);
-  return found.kind === "seat" ? found.seat.visualBaselines?.check : undefined;
 }
 
 /** Tells every seat that owns `repo` over agent-chat; a repo no seat owns has nobody to tell, which throws so the alert is tried again. */
@@ -318,7 +314,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
   const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
-  const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), ...overrides, seats });
+  const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), ...overrides, seats });
   return withAutoresearch(Object.assign(routes, { config }), config.get().autoresearch);
 }
 

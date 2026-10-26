@@ -54,6 +54,7 @@ export const EDITABLE_FIELDS: readonly EditableField[] = [
   field("factory", "shepherd.spawnGate.load5", load, "live"),
   field("factory", "shepherd.spawnGate.buildLoad5", load, "live"),
   shaped("factory", "shepherd.gateReset.noReproProceed", onOff, "live"),
+  shaped("factory", "shepherd.gateReset.nonSourceNoRepro", z.enum(["keep-owner", "record-fact"]), "live"),
   shaped("factory", "shepherd.gateReset.heldRepair", onOff, "live"),
   shaped("factory", "shepherd.gateReset.twoMergeRelease", z.enum(["off", "shadow", "on"]), "live"),
   shaped("factory", "shepherd.review.adversaryProfile", profileName, "live"),

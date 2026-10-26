@@ -134,6 +134,13 @@ describe("loadConfig", () => {
     expect(() => load({ noReproProceed: "shadow" })).toThrow(/noReproProceed/);
   });
 
+  it("reads the non-source NO_REPRO key, and rejects seat-waives until its resolver path exists", () => {
+    const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
+
+    expect(load({ nonSourceNoRepro: "record-fact" }).shepherd?.gateReset).toEqual({ nonSourceNoRepro: "record-fact" });
+    expect(() => load({ nonSourceNoRepro: "seat-waives" })).toThrow(/nonSourceNoRepro/);
+  });
+
   it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
     const repos = { "acme/widgets": { path: "/src/widgets", advisory: true } };
     const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { repos: block } })));

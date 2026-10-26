@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the key is ignored, so every non-source NO_REPRO proceeds",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (deps.nonSourceNoRepro !== \"record-fact\" || gate.kind === \"security\" || fixProofVerdict(read, input.head) === undefined) return false;",
+      "replace": "if (gate.kind === \"security\" || fixProofVerdict(read, input.head) === undefined) return false;",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) ends a test-only conversion as NO_REPRO, for the owner's sent-back gate, when the key is absent",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) ends a test-only conversion as NO_REPRO, for the owner's sent-back gate, when the key is keep-owner"
+      ]
+    },
+    {
+      "name": "a security run proceeds on a non-source diff",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (deps.nonSourceNoRepro !== \"record-fact\" || gate.kind === \"security\" || fixProofVerdict(read, input.head) === undefined) return false;",
+      "replace": "if (deps.nonSourceNoRepro !== \"record-fact\" || fixProofVerdict(read, input.head) === undefined) return false;",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO for a security run under record-fact"
+      ]
+    },
+    {
+      "name": "the proof standing ignores a non-source proceed",
+      "file": "products/factory/src/shepherd/proof-waiver.ts",
+      "find": "noReproProceedOf(unverified?.unverified) !== undefined;",
+      "replace": "unverified?.unverified === \"no-repro-test-only\";",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a test-only conversion's NO_REPRO as a fact and lets review proceed under record-fact",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a workflow-only diff's unproved CI read as a fact under record-fact",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a diff that only deletes a test as a fact under record-fact, for the reviewer to judge"
+      ]
+    },
+    {
+      "name": "a workflow-only diff's unproved CI read never proceeds",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (read.kind === \"workflow-ci\") return true;",
+      "replace": "if (read.kind === \"workflow-ci\") return false;",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a workflow-only diff's unproved CI read as a fact under record-fact"
+      ]
+    },
+    {
+      "name": "a line carrying mutants proceeds on a non-source diff",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "read.testOnlyProceed === true || !mayProceedLine(read.line)) return false;",
+      "replace": "read.testOnlyProceed === true) return false;",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO under record-fact when the line carries a surviving mutation",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO under record-fact when the line carries a refused mutation spec"
+      ]
+    }
+  ]
+}
