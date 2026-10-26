@@ -86,7 +86,13 @@ describe("factory rows", () => {
       "shepherd.review.adversaryProfile",
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",
+      "shepherd.taskClose",
     ]);
+  });
+
+  it("takes taskClose as keep or last-slice-only only", () => {
+    expect(checkEditableValue("factory", "shepherd.taskClose", "last-slice-only").ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.taskClose", "on").ok).toBe(false);
   });
 
   it("accepts a profile name and refuses one that reads as a flag or a path", () => {

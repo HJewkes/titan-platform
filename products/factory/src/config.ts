@@ -248,6 +248,12 @@ export const FactoryConfigSchema = z.object({
         })
         .optional(),
       /**
+       * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
+       * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
+       * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
+       */
+      taskClose: z.enum(["keep", "last-slice-only"]).optional(),
+      /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
        * `actionsDir` also mounts `POST /owner/console-action`, which resolves an approve-merge gate as owner-remote from the

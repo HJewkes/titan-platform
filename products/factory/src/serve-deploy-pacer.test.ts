@@ -6,7 +6,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
-import { ghDeployNow, startDeployPacer } from "./deploy-pacer-sweep.js";
+import { ghDeployNow, ghMainGreen, greenAmong, startDeployPacer } from "./deploy-pacer-sweep.js";
 import { deployWindowPath } from "./deploy-output.js";
 import { deployHoldPath, deployPausePath } from "./deploy-pause.js";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "./serve.js";
@@ -36,7 +36,14 @@ function pacerWorld(morningQueuesDir?: string) {
   const spawned: string[] = [];
   let reads = 0;
   const store: WantedStore = { ...nodeWantedStore, readFile: (path) => ((reads += 1), nodeWantedStore.readFile(path)) };
-  const pacer: DeployPacerOptions = { stateDir, store, sweepMs: 10, spawn: (sha) => (spawned.push(sha), { pid: 4242 }), ...(morningQueuesDir !== undefined && { morningQueuesDir }) };
+  const pacer: DeployPacerOptions = {
+    stateDir,
+    store,
+    sweepMs: 10,
+    spawn: (sha) => (spawned.push(sha), { pid: 4242 }),
+    green: async (sha) => ({ sha }),
+    ...(morningQueuesDir !== undefined && { morningQueuesDir }),
+  };
   const clock = { now: T0 };
   const ticks = async (count: number) => {
     const until = reads + count;
@@ -309,6 +316,67 @@ describe("the deploy pacer's Morning empty-read count", () => {
     expect(afterOneRead).toMatchObject({ source: SOURCE });
     expect(holdOnDisk(world.stateDir)).toBeUndefined();
     expect(world.spawned).toEqual([WANTED]);
+  });
+});
+
+describe("the deploy pacer reads the asked sha's own main CI run (TP-4279)", () => {
+  const GREEN = "b".repeat(40);
+  const RED = "d".repeat(40);
+  const RUNNING = "a".repeat(40);
+  const run = (sha: string, status: string, conclusion: string | null) => ({ sha, status, conclusion });
+  /** The asked sha's run in progress after its parent's run failed, the last green two back, as on the 10-26 lastDeploy. */
+  const inProgressAfterRed = [run(WANTED, "in_progress", null), run(RED, "completed", "failure"), run(GREEN, "completed", "success")];
+  const gh = (runs: unknown) => async () => ({ code: 0, stdout: JSON.stringify(runs), stderr: "" });
+
+  it("asks GitHub for main's ci.yml push runs and deploys the asked sha only when its own run succeeded", async () => {
+    const calls: string[][] = [];
+    const probe = ghMainGreen("o/r", async (file, args) => (calls.push([file, ...args]), { code: 0, stdout: JSON.stringify([run(WANTED, "completed", "success")]), stderr: "" }));
+
+    const read = await probe(WANTED);
+
+    expect(read).toEqual({ sha: WANTED });
+    expect(calls).toEqual([["gh", "api", "repos/o/r/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=50", "--jq", "[.workflow_runs[] | {sha: .head_sha, status, conclusion}]"]]);
+  });
+
+  it.each([
+    ["in progress after a failed parent", inProgressAfterRed, `the own CI run of ${WANTED} is in_progress`],
+    ["cancelled", [run(WANTED, "completed", "cancelled"), run(GREEN, "completed", "success")], `the own CI run of ${WANTED} is cancelled`],
+    ["skipped", [run(WANTED, "completed", "skipped"), run(GREEN, "completed", "success")], `the own CI run of ${WANTED} is skipped`],
+  ])("falls back to the newest older green sha when the asked sha's own run is %s", (_case, runs, why) => {
+    expect(greenAmong(WANTED, runs)).toEqual({ sha: GREEN, why });
+  });
+
+  it("skips a fallback whose own newest run did not succeed, and a green run listed newer than the asked sha", () => {
+    const runs = [run("e".repeat(40), "completed", "success"), run(WANTED, "completed", "cancelled"), run(GREEN, "completed", "cancelled"), run(GREEN, "completed", "success")];
+
+    expect(greenAmong(WANTED, runs)).toEqual({ why: `the own CI run of ${WANTED} is cancelled, and no older listed main sha has a green run` });
+  });
+
+  it.each([
+    ["no run listed for the asked sha", gh([run(GREEN, "completed", "success")])],
+    ["a gh failure", async () => ({ code: 1, stdout: "", stderr: "HTTP 502" })],
+    ["gh missing", async () => undefined],
+    ["unparseable output", async () => ({ code: 0, stdout: "not json", stderr: "" })],
+  ])("answers no sha on %s, so nothing deploys", async (_case, reply) => {
+    expect((await ghMainGreen("o/r", reply)(WANTED)).sha).toBeUndefined();
+  });
+
+  async function sweepOnce(runs: unknown, holds: string[]) {
+    const world = pacerWorld();
+    const service = { now: () => T0 + DEPLOY_MAX_WAIT_MS + MIN, runningSha: RUNNING, busy: () => 0 };
+    const pacer = { ...world.pacer, sweepMs: 3_600_000, green: ghMainGreen("o/r", gh(runs)), isAncestor: async (ancestor: string) => holds.includes(ancestor) };
+    const sweep = startDeployPacer(pacer, service, silentLogger)!;
+    await sweep.inFlight();
+    await sweep.stop();
+    return world.spawned;
+  }
+
+  it("spawns nothing past the cap while the asked sha's run is in progress and the service already holds the last green", async () => {
+    expect(await sweepOnce(inProgressAfterRed, [GREEN])).toEqual([]);
+  });
+
+  it("deploys the last green sha, never the asked one, when the asked sha's run was cancelled", async () => {
+    expect(await sweepOnce([run(WANTED, "completed", "cancelled"), run(GREEN, "completed", "success")], [])).toEqual([GREEN]);
   });
 });
 

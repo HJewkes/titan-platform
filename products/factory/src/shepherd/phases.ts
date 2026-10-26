@@ -2,7 +2,7 @@ import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import type { CleanupPorts } from "./cleanup.js";
+import type { CleanupPorts, TaskClose } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { RemoveDir } from "./review-checkout.js";
@@ -154,6 +154,8 @@ export interface ShepherdDeps {
   noReproProceed?: "off" | "on";
   /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */
   nonSourceNoRepro?: "keep-owner" | "record-fact";
+  /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`. */
+  taskClose?: TaskClose;
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */
