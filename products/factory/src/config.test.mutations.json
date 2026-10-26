@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the config accepts seat-waives before its resolver path exists",
+      "file": "products/factory/src/config.ts",
+      "find": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\"]).optional(),",
+      "replace": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\", \"seat-waives\"]).optional(),",
+      "kills": ["loadConfig reads the non-source NO_REPRO key, and rejects seat-waives until its resolver path exists"]
+    }
+  ]
+}

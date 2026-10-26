@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the non-source NO_REPRO row takes off and on instead of its own values",
+      "file": "packages/coordinator/src/editable-fields.ts",
+      "find": "shaped(\"factory\", \"shepherd.gateReset.nonSourceNoRepro\", z.enum([\"keep-owner\", \"record-fact\"]), \"live\"),",
+      "replace": "shaped(\"factory\", \"shepherd.gateReset.nonSourceNoRepro\", onOff, \"live\"),",
+      "kills": ["factory rows refuses a gateReset switch outside its enum"]
+    }
+  ]
+}
