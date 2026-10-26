@@ -20,15 +20,24 @@ export function changedShare(a: Uint8Array, b: Uint8Array): number {
   return changed / a.length
 }
 
-/** `bin` is the ffmpeg to run; a binary that cannot start (missing, not executable) rejects like a failed run. */
-export async function* spawnFfmpeg(args: readonly string[], bin = 'ffmpeg'): AsyncIterable<Uint8Array> {
-  const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+/**
+ * `bin` is the ffmpeg to run; a binary that cannot start (missing, not executable) rejects like a failed run. `read`
+ * picks the stream to yield: stdout for decoded frames, stderr for what filters log (`mediaScan`).
+ */
+export async function* spawnFfmpeg(args: readonly string[], bin = 'ffmpeg', read: 'stdout' | 'stderr' = 'stdout'): AsyncIterable<Uint8Array> {
+  const proc = spawn(bin, args, { stdio: ['ignore', read === 'stdout' ? 'pipe' : 'ignore', 'pipe'] })
+  // stdio fixes stderr to a pipe and stdout to one when read is 'stdout'; the spawn types cannot see that.
+  const errStream = proc.stderr!
   let stderr = ''
-  proc.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()))
+  const log = (chunk: Buffer) => (stderr += chunk.toString())
+  if (read === 'stdout') errStream.on('data', log)
   const exited = new Promise<number | null>((resolve, reject) => proc.on('error', reject).on('close', resolve))
   // A spawn error fires while stdout is still being read; without a handler now it is unhandled and kills the process.
   exited.catch(() => undefined)
-  yield* proc.stdout as AsyncIterable<Buffer>
+  for await (const chunk of (read === 'stdout' ? proc.stdout! : errStream) as AsyncIterable<Buffer>) {
+    if (read === 'stderr') log(chunk)
+    yield chunk
+  }
   const code = await exited
   if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${stderr.trim()}`)
 }
