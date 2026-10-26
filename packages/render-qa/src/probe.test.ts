@@ -67,3 +67,34 @@ describe('probeMoments on the probe fixture', { timeout: BROWSER_TIMEOUT_MS }, (
     assert.deepEqual(moments, [['b1-clip', 0.5], ['b1-clip', 2]])
   })
 })
+
+describe('probeMoments on the paint fixture', { timeout: BROWSER_TIMEOUT_MS }, () => {
+  let painted: string[]
+
+  before(async () => {
+    const session = await openQaPage(browser, served.url('probe-paint-fixture'))
+    try {
+      const [moment] = await probeMoments(session.page, [{ beat: 'b1-paint', t: 0 }])
+      painted = (moment?.boxes ?? []).map((b) => b.element)
+    } finally {
+      await session.page.context().close()
+    }
+  }, BROWSER_TIMEOUT_MS)
+
+  test('rgb and rgba fills paint unless their alpha is 0', () => {
+    assert.ok(painted.includes('div.swatch.rgb-opaque'))
+    assert.ok(painted.includes('div.swatch.rgb-half'))
+    assert.ok(!painted.includes('div.swatch.rgb-clear'))
+  })
+
+  test('a display-p3 fill paints opaque and at alpha 0.5, and not at alpha 0', () => {
+    assert.ok(painted.includes('div.swatch.p3-opaque'))
+    assert.ok(painted.includes('div.swatch.p3-half'))
+    assert.ok(!painted.includes('div.swatch.p3-clear'))
+  })
+
+  test('an oklch fill with a percentage lightness paints at alpha 0.5, and not at alpha 0', () => {
+    assert.ok(painted.includes('div.swatch.oklch-half'))
+    assert.ok(!painted.includes('div.swatch.oklch-clear'))
+  })
+})
