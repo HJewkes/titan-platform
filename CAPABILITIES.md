@@ -1575,7 +1575,8 @@ For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-
 `renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
 mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
 `assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.
-`RenderManifestSchema` is `explainer.render-manifest/v1`: workers, frames, durations, draft, `qaGate: "absent"`, a strict `RenderHostSchema` host with no hostname or paths (`collectRenderHost`), and the timeline, page, mix, mp4, vtt and words shas.
+`renderVideo` with `qa: { mode: "gate" }` runs render-qa's cue-moment gate (`src/qa/cue-gate.ts`, shared with the qa stage) before mixing; held errors write `qa.json` and throw `QaRefused`, leaving no mix, mp4 or manifest.
+`RenderManifestSchema` is `explainer.render-manifest/v1`: workers, frames, durations, draft, `qaGate` (`absent` with no `qa` option, `passed` with `qa: { heldErrors: 0, gateProfile }`, or `skipped`), a strict `RenderHostSchema` host with no hostname or paths (`collectRenderHost`), and the timeline, page, mix, mp4, vtt and words shas.
 `toVtt` and `captionCues` write WebVTT from timed words (42 characters or 8 words a cue, broken at sentence ends, held 0.3 s).
 
 Key exports:
