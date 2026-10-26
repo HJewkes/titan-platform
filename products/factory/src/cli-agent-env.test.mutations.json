@@ -7,7 +7,7 @@
       "find": "new Set([\"shepherd.merge\", ",
       "replace": "new Set([",
       "kills": [
-        "shepherd merge exits UNAVAILABLE and makes no GitHub call"
+        "write verbs in an agent env with no serve answering shepherd merge exits UNAVAILABLE and makes no GitHub call"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": ", \"shepherd.order\"]);",
       "replace": "]);",
       "kills": [
-        "order clear exits UNAVAILABLE and leaves the reservation in place"
+        "write verbs in an agent env with no serve answering order clear exits UNAVAILABLE and leaves the reservation in place"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "find": "if (refusedInProcess(verbs, probe, opts.port, \"land\")) return;",
       "replace": "",
       "kills": [
-        "land exits UNAVAILABLE and makes no GitHub call"
+        "write verbs in an agent env with no serve answering land exits UNAVAILABLE and makes no GitHub call"
       ]
     },
     {
@@ -34,7 +34,7 @@
       "find": "if (await refusedWithoutServe(verbs, opts.port, \"resume\")) return;",
       "replace": "",
       "kills": [
-        "resume exits UNAVAILABLE and makes no GitHub call"
+        "write verbs in an agent env with no serve answering resume exits UNAVAILABLE and makes no GitHub call"
       ]
     }
   ]
