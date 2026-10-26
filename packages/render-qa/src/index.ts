@@ -38,7 +38,6 @@ export {
   parseMediaScan,
   SILENCE_MIN_S,
   SILENCE_NOISE_DB,
-  spawnFfmpegLog,
   type MediaInterval,
   type MediaScan,
 } from './media-scan.js'

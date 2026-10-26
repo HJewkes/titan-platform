@@ -19,7 +19,7 @@ import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
-import { directionVerdict, heldErrorsVerdict, measuredVerdict, mp4DurationVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
+import { directionVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
 import { doctrineG2p } from "./voice-g2p.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
@@ -194,6 +194,9 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "cue-onset", gate: true, reads: ["qa"], run: timingVerdict("cue-onset") },
     { name: "reading-hold", gate: true, reads: ["qa"], run: timingVerdict("reading-hold") },
     { name: "direction-gates", gate: false, reads: ["qa"], run: directionVerdict },
+    { name: "black-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("black", "black stretch") },
+    { name: "silence-2s", gate: false, reads: ["qa"], run: mediaScanVerdict("silence", "silence of 2 s or more") },
+    { name: "frozen-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("freeze", "frozen stretch") },
   ],
   sheets: [],
 };

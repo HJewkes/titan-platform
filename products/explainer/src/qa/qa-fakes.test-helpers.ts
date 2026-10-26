@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { CroppedFinding, CueRecord, Finding, ProbedMoment } from "@titan-design/render-qa";
+import type { CroppedFinding, CueRecord, Finding, MediaScan, ProbedMoment } from "@titan-design/render-qa";
 import { z } from "zod";
 import { RENDER_FPS } from "../render/render-video.js";
 import type { QaEngine, QaPage } from "./qa-engine.js";
@@ -39,6 +39,8 @@ export interface FakeQaOptions {
   probeAt?: (t: number) => Probe;
   /** The share of pixels frame `n` changed from the one before; 0.02 by default, so every beat moves. */
   diffAt?: (frame: number) => number;
+  /** What ffmpeg's detect filters find in the MP4; nothing by default. */
+  mediaScan?: MediaScan;
 }
 
 /** The fake render's MP4 is JSON naming its own length (run-fakes.test-helpers' render.ts writes it). */
@@ -88,6 +90,7 @@ export function fakeQa(options: FakeQaOptions = {}): FakeQa {
       return fakePage(options, inspected, probed);
     },
     durationS: async (mp4) => mp4S(mp4),
+    mediaScan: async () => options.mediaScan ?? { black: [], silence: [], freeze: [] },
     frameDiffs: async (mp4) => Array.from({ length: Math.round(mp4S(mp4) * RENDER_FPS) }, (_, n) => (n === 0 ? 0 : (options.diffAt?.(n) ?? 0.02))),
   };
 }

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "stderr mode keeps no log for the failure message",
+      "file": "packages/render-qa/src/framediff.ts",
+      "find": "    if (read === 'stderr') log(chunk)\n",
+      "replace": "",
+      "kills": [
+        "mediaScan on a clip ffmpeg makes a video ffmpeg cannot read fails instead of reading as clean"
+      ]
+    },
+    {
+      "name": "stderr mode yields stdout",
+      "file": "packages/render-qa/src/framediff.ts",
+      "find": "(read === 'stdout' ? proc.stdout : proc.stderr)",
+      "replace": "proc.stdout",
+      "kills": [
+        "mediaScan on a clip ffmpeg makes finds the black second, the 2.5 s silence and the frozen stretch, and not the 1.5 s silence"
+      ]
+    },
+    {
+      "name": "a failed ffmpeg run resolves",
+      "file": "packages/render-qa/src/framediff.ts",
+      "find": "if (code !== 0) throw",
+      "replace": "if (code === -1) throw",
+      "kills": [
+        "mediaScan on a clip ffmpeg makes a video ffmpeg cannot read fails instead of reading as clean"
+      ]
+    }
+  ]
+}

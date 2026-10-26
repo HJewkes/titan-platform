@@ -3,8 +3,7 @@
  * The filters report on stderr, so the scan reads ffmpeg's log, not its output, through the same exec seam as
  * framediff.
  */
-import { spawn } from 'node:child_process'
-import type { FfmpegExec } from './framediff.js'
+import { spawnFfmpeg, type FfmpegExec } from './framediff.js'
 
 /** A blank picture this long reads as a dropped frame run, not a cut's dip to black. */
 export const BLACK_MIN_S = 0.5
@@ -36,19 +35,8 @@ export function mediaScanArgs(video: string): string[] {
   ]
 }
 
-/** Like `spawnFfmpeg`, but yields ffmpeg's stderr, where the detect filters log. */
-export async function* spawnFfmpegLog(args: readonly string[], bin = 'ffmpeg'): AsyncIterable<Uint8Array> {
-  const proc = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
-  let tail = ''
-  const exited = new Promise<number | null>((resolve, reject) => proc.on('error', reject).on('close', resolve))
-  exited.catch(() => undefined)
-  for await (const chunk of proc.stderr as AsyncIterable<Buffer>) {
-    tail = (tail + chunk.toString()).slice(-4000)
-    yield chunk
-  }
-  const code = await exited
-  if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${tail.trim()}`)
-}
+/** The detect filters log to stderr; frames go nowhere. */
+const readLog: FfmpegExec = (args) => spawnFfmpeg(args, 'ffmpeg', 'stderr')
 
 const NUM = '(-?\\d+(?:\\.\\d+)?(?:e[-+]?\\d+)?)'
 const BLACK = new RegExp(`\\[blackdetect @ [^\\]]*\\] black_start:\\s*${NUM} black_end:\\s*${NUM}`)
@@ -95,7 +83,7 @@ export function parseMediaScan(log: string): MediaScan {
 }
 
 /** Scans `video`; rejects when ffmpeg fails, so an unreadable video never reads as a clean one. */
-export async function mediaScan(video: string, { exec = spawnFfmpegLog }: { exec?: FfmpegExec } = {}): Promise<MediaScan> {
+export async function mediaScan(video: string, { exec = readLog }: { exec?: FfmpegExec } = {}): Promise<MediaScan> {
   const decoder = new TextDecoder()
   let log = ''
   for await (const chunk of exec(mediaScanArgs(video))) log += decoder.decode(chunk, { stream: true })

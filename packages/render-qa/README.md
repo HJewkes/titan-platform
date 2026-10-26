@@ -67,6 +67,20 @@ const diffs = await frameDiffs('out/video.mp4') // one share per frame; tests pa
   levels since the frame before (frame 0 is 0). Counting pixels, not a mean, is what catches a small element's fade.
   It rejects when ffmpeg fails, so an unreadable video never reads as a still one.
 
+## Media scan
+
+```ts
+import { mediaScan } from '@titan-design/render-qa'
+
+const { black, silence, freeze } = await mediaScan('out/video.mp4') // each a list of { startS, endS }
+```
+
+- `mediaScan(video, { exec? })`: one ffmpeg pass of `blackdetect` (at least `BLACK_MIN_S`, 0.5 s), `silencedetect`
+  (below `SILENCE_NOISE_DB`, -50 dB, for at least `SILENCE_MIN_S`, 2 s) and `freezedetect` (at least `FREEZE_MIN_S`,
+  3 s), read from the log the filters write to stderr (`spawnFfmpeg(args, bin, 'stderr')`, the same exec seam as
+  `frameDiffs`). A stretch still open at the last frame ends at the input's duration. `parseMediaScan(log)` is the
+  parser alone. It rejects when ffmpeg fails, so an unreadable video never reads as a clean one.
+
 ## Finding kinds
 
 `ERROR_KINDS` lists every kind that may gate: `text-overlap`, `text-box`, `box-overlap`, `occluded`, `edge-crossing`,

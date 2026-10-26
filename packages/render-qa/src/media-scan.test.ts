@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll as after, beforeAll as before, describe, test } from 'vitest'
-import { mediaScan, parseMediaScan, spawnFfmpegLog } from './media-scan.js'
+import { spawnFfmpeg } from './framediff.js'
+import { mediaScan, parseMediaScan } from './media-scan.js'
 
 const FFMPEG_TIMEOUT_MS = 60_000
 
@@ -61,7 +62,7 @@ describe('mediaScan on a clip ffmpeg makes', { timeout: FFMPEG_TIMEOUT_MS }, () 
   test('an ffmpeg that cannot start rejects the scan', async () => {
     const missing = join(dir, 'no-such-ffmpeg')
 
-    await assert.rejects(mediaScan('clip.mp4', { exec: (args) => spawnFfmpegLog(args, missing) }), /ENOENT/)
+    await assert.rejects(mediaScan('clip.mp4', { exec: (args) => spawnFfmpeg(args, missing, 'stderr') }), /ENOENT/)
   })
 })
 
