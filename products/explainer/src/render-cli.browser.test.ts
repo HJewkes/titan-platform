@@ -40,7 +40,7 @@ function writeNarration(): string {
 }
 
 async function render(out: string, extra: readonly string[]): Promise<void> {
-  const code = await runRenderCli(["render", writeBoard(), "--no-qa", "--workers", "2", "--out", out, ...extra], { page: async () => page });
+  const code = await runRenderCli(["render", writeBoard(), "--no-qa", "--workers", "2", "--out", out, ...extra], { page: async () => page, out: () => undefined });
   expect(code).toBe(0);
 }
 
