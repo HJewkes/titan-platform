@@ -22,7 +22,7 @@ import type { ScriptTiming } from "../timing.js";
 import { timelineS, type QaTimeline } from "./qa-timeline.js";
 
 /** A frame counts as changed when more than 10 pixels of the 320x180 grey frame moved (the spike's static level). */
-export const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
+const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
 /** TD-856: no text on screen under 40 px. */
 export const TEXT_FLOOR_PX = 40;
 const FIRST_MOTION_S = 0.2;
@@ -48,8 +48,10 @@ export type TimingProfile = z.infer<typeof TimingProfileSchema>;
 /** The profile's pacing over the defaults; a run with no profile gets the defaults and no length band. */
 export function timingProfile(profile?: Pick<TypeProfile, "pacing" | "runtime">): TimingProfile {
   if (!profile) return { pacing: { ...PACING_DEFAULTS } };
-  const { reHookS: _reHook, ...pacing } = profile.pacing;
-  return { pacing: { ...PACING_DEFAULTS, ...pacing }, runtime: { minS: profile.runtime.minS, maxS: profile.runtime.maxS } };
+  const { pictureChangeMaxS, staticMaxS, held, ...optional } = profile.pacing;
+  const { pictureChangeFailS, cueOnsetS, readingCps, readingMinS } = { ...PACING_DEFAULTS, ...optional };
+  const pacing = { pictureChangeMaxS, pictureChangeFailS, staticMaxS, held, cueOnsetS, readingCps, readingMinS };
+  return { pacing, runtime: { minS: profile.runtime.minS, maxS: profile.runtime.maxS } };
 }
 
 export interface TimingGate {
@@ -244,11 +246,12 @@ function g9Labels({ probed }: TimingInput): TimingGate {
     const n = tokens(t.text).length;
     return ((t.tag === "h1" || t.tag === "h2") && n > HEADLINE_WORDS) || (/label/.test(t.cls) && n > LABEL_WORDS);
   });
-  return { id: "G9", value: uniq(long.map((t) => t.text)).length, threshold: `headline ≤ ${HEADLINE_WORDS} words; label ≤ ${LABEL_WORDS}`, pass: long.length === 0, beats: uniq(long.map((t) => t.beat)) };
+  const threshold = `headline ≤ ${HEADLINE_WORDS} words; label ≤ ${LABEL_WORDS}`;
+  return { id: "G9", value: uniq(long.map((t) => t.text)).length, threshold, pass: long.length === 0, beats: uniq(long.map((t) => t.beat)) };
 }
 
 /** Longest run of consecutive words a display text shares with its beat's narration. */
-export function sharedRun(display: string, spoken: string): number {
+function sharedRun(display: string, spoken: string): number {
   const a = tokens(display);
   const b = tokens(spoken);
   let best = 0;
@@ -279,7 +282,8 @@ function g12Held({ timeline, held, profile }: TimingInput): TimingGate {
 
 /** G13: the narration says "verdict" within the first 10 % of the runtime. */
 function g13Verdict({ timeline, words }: TimingInput): TimingGate {
-  const said = timeline.beats.flatMap((beat) => (words.get(beat.id)?.words ?? []).filter((w) => /^verdict/i.test(w.word)).map((w) => ({ beat: beat.id, t: beat.startS + w.startS })));
+  const verdictWords = (id: string) => (words.get(id)?.words ?? []).filter((w) => /^verdict/i.test(w.word));
+  const said = timeline.beats.flatMap((beat) => verdictWords(beat.id).map((w) => ({ beat: beat.id, t: beat.startS + w.startS })));
   const first = said[0];
   const pass = first !== undefined && first.t <= VERDICT_SHARE * timelineS(timeline);
   return { id: "G13", value: first === undefined ? null : r(first.t, 1), threshold: `≤ ${VERDICT_SHARE * 100} % of runtime`, pass, beats: first ? [first.beat] : [] };
@@ -288,7 +292,7 @@ function g13Verdict({ timeline, words }: TimingInput): TimingGate {
 /** The gates that fail the qa stage (the TP-2669 done_when); every other gate is reported. */
 export const TIMING_GATES: readonly string[] = ["picture-change", "static-window", "cue-onset", "reading-hold"];
 
-export function timingGates(input: TimingInput): TimingGate[] {
+function timingGates(input: TimingInput): TimingGate[] {
   return [
     pictureChange(input), staticWindow(input), cueOnset(input), readingHold(input),
     ...g1Length(input), g7FirstMotion(input), g8TextSize(input), g9Labels(input), g10Shared(input), g12Held(input), g13Verdict(input),
