@@ -986,3 +986,24 @@ and `slots`; `compileTimeline` (TP-2990) owns the rest of `timeline.json`.
 `compileTimeline(board, words?)` (`src/render/compile-timeline.ts`) is the only reader of words.json: it writes heard
 durations and beat-local cue seconds, or planned durations and `provisional: true` without words, and parses slots
 with `BEAT_SLOTS` until `@titan-design/beats` publishes.
+
+### `explainer render`: a storyboard to an MP4
+
+```
+pnpm explainer render <beats.json> --out <dir> [--audio <dir>] [--workers <n>] [--no-qa]
+```
+
+`src/render-cli.ts` (TP-2992 S2) parses `beats.json` with `StoryboardSchema`, compiles it with `compileTimeline` and
+writes `<dir>/timeline.json`. It builds the composition page with Vite once per page-source sha (the files under
+`src/composition/` minus tests, `src/beat-slots.ts` and the package's `package.json`) into
+`<user cache>/explainer/composition/<sha>/`, serves the build and the timeline on loopback, and calls `renderVideo`,
+which writes `<stem>.mp4` (stem from the `beats.json` name), `captions.vtt` and `render-manifest.json`.
+
+- `--audio <dir>` is a narration bundle v1: `words.json` (`explainer.words/v1`) and one `<beat id>.wav` per board beat.
+  A words.json that names a beat the board lacks, or a missing wav, fails before the page is built. Without
+  `--audio` the timeline is provisional, so the page stamps DRAFT and the manifest records `draft: true`.
+- `--workers` defaults to `min(16, availableParallelism())`.
+- The render is QA-gated with the board video type's policy from `doctrine/qa/gate-profile.yaml`; held errors refuse
+  the render and write `qa.json`. `--no-qa` skips the gate and the manifest records `qaGate: "skipped"`.
+
+The render stage is still bridged; TP-2992 S3 moves it onto this path. TP-2993 writes the full first-video guide.
