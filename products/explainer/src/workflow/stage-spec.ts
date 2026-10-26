@@ -16,6 +16,7 @@ import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { loadQaGate, QaInspectSchema } from "../qa/gate-profile.js";
 import { defaultRenderWorkers } from "../render/render-video.js";
+import { timingProfile, TimingProfileSchema } from "../qa/timing-gates.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
@@ -26,19 +27,19 @@ import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "m10", qa: "x10d", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "m10", qa: "x10e", sheets: "x10",
 };
 
 /** The artifacts each stage reads. */
 const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
   gather: [], audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"],
-  render: ["script", "resolved", "words", "audio"], qa: ["mp4", "timeline", "words", "script", "page"], sheets: ["mp4", "script"],
+  render: ["script", "resolved", "words", "audio"], qa: ["mp4", "timeline", "words", "script", "resolved", "page"], sheets: ["mp4", "script"],
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  render: ["code", "slots", "generated-slots"], qa: ["resolved", "visual", "code", "slots"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
+  render: ["code", "slots", "generated-slots"], qa: ["visual", "code", "slots"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -98,8 +99,8 @@ export const StageConfigSchema = z.object({
   /** The sheets stage's sidecar take and status, the theater stem its poster is named after, and the structure registry by hash. */
   sheets: z.object({ take: z.string(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
   video: VideoRefSchema.optional(),
-  /** The qa stage's gate profile for the run's type, by content hash, and whether it sweeps at 2 Hz. */
-  qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional() }).optional(),
+  /** The qa stage's gate profile for the run's type, by content hash, whether it sweeps at 2 Hz, and the type's timing thresholds. */
+  qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() }).optional(),
   /** The render's capture workers, its two-run and no-QA switches, the pre-capture gate profile and the style pack's CSS. */
   render: z.object({
     workers: z.number().int().positive(), twoRun: z.boolean(), noQa: z.boolean(),
@@ -157,10 +158,11 @@ function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParams
   return { sheets, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}), ...(settings.video ? { video: settings.video() } : {}) };
 }
 
-/** The gate profile is read when the spec is built, so an edit to it or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
+/** The gate profile and the type's pacing are read when the spec is built, so an edit to either or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
 function qaConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const { sweep = true } = z.strictObject({ sweep: z.boolean().optional() }).parse(params);
-  return { qa: { ...loadQaGate(settings.profile), sweep }, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
+  const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
+  return { qa: { ...loadQaGate(settings.profile), sweep, timing }, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
 /** Render gates on the same profile qa reads, so an edit to it re-keys render too; a host's worker count is part of the key. */

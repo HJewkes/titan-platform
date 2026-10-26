@@ -20,6 +20,7 @@ import { treeSha } from "../render/composition-page.js";
 import { fakeRenderDeps, type FakeRenderOptions } from "../render/render-fakes.test-helpers.js";
 import type { RenderEngine } from "../render/render-stage.js";
 import { renderVideo, type RenderInput } from "../render/render-video.js";
+import { PACING_DEFAULTS, type TimingProfile } from "../qa/timing-gates.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
 export const SPINE = `# Story spine: parcel-desk
@@ -247,6 +248,9 @@ export function spokenOf(fx: Fixture, sha: string): string {
   return beats.map((beat) => beat.spoken).join("\n");
 }
 
+/** The fixture's beats run 16-18 s with no cues, so the DIRECTION timing gates would stop every run at qa; these never fire. */
+const LAX_TIMING: TimingProfile = { pacing: { ...PACING_DEFAULTS, pictureChangeMaxS: 600, pictureChangeFailS: 600, staticMaxS: 600, held: [0, 600] } };
+
 export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
   const rewriter = extra.rewriter ?? fakeRewriter();
   const rubric = extra.rubric ?? fakeRubricJudge();
@@ -254,7 +258,7 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender
   const now = () => new Date((tick += 1000));
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
-  const media = { media: fakeMedia(), qaEngine: fakeQa() };
+  const media = { media: fakeMedia(), qaEngine: fakeQa(), qaTiming: LAX_TIMING };
   const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, beatWorker: null };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
 }

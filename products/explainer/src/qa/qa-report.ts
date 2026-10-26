@@ -1,5 +1,6 @@
 import { countByKind, type Held, type HeldFinding } from "@titan-design/render-qa";
 import { z } from "zod";
+import { TIMING_GATES } from "./timing-gates.js";
 
 const RectSchema = z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() });
 
@@ -44,6 +45,13 @@ const MeasuredFindingSchema = z.object({
 });
 export type MeasuredFinding = z.infer<typeof MeasuredFindingSchema>;
 
+const TimingGateSchema = z.object({
+  id: z.string(), value: z.number().nullable(), threshold: z.string(), pass: z.boolean(), warn: z.boolean().optional(), beats: z.array(z.string()),
+});
+
+/** The DIRECTION timing gates (`timing-gates.ts`), and the two counts ar target 3 reads (TP-4033). */
+const TimingSchema = z.object({ gates: z.array(TimingGateSchema), static_window_count: z.number().int().nonnegative(), picture_change_gap_max: z.number() });
+
 /** The measured codes that fail the stage; `stage-empty` is reported only. */
 const MEASURED_GATES: readonly string[] = ["motion-happened", "clipped-text", "content-fill"];
 
@@ -73,6 +81,7 @@ export const QaReportSchema = z.object({
   /** The probe at every sampled moment, in time order, inline or as the `qa-probe` artifact's sha. */
   probe: z.union([z.strictObject({ moments: z.array(ProbedMomentSchema) }), z.strictObject({ artifact: z.string() })]),
   measured: z.array(MeasuredFindingSchema),
+  timing: TimingSchema,
   notes: z.array(z.string()),
 });
 export type QaReport = z.infer<typeof QaReportSchema>;
@@ -85,7 +94,7 @@ const finding = (held: HeldFinding & { crop?: string }): QaFinding => ({
 type QaReportBase = Omit<QaReport, "schema" | "pass" | "errorCounts" | "infoCounts" | "errors" | "info">;
 
 export function qaReport(held: Held, base: QaReportBase): QaReport {
-  const gated = base.measured.some((finding) => MEASURED_GATES.includes(finding.code));
+  const gated = base.measured.some((finding) => MEASURED_GATES.includes(finding.code)) || base.timing.gates.some((gate) => TIMING_GATES.includes(gate.id) && !gate.pass);
   return {
     schema: "explainer.qa/v1", pass: held.errors.length === 0 && !gated, ...base,
     errorCounts: countByKind(held.errors), infoCounts: countByKind(held.info), errors: held.errors.map(finding), info: held.info.map(finding),

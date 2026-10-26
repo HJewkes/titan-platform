@@ -45,7 +45,7 @@ describe("qa stage on a beat that fades out over its last second", () => {
 describe("qa stage spec sweep param", () => {
   const settings: RunSettings = { scriptModel: "sonnet", judge: JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" }), rounds: 1 };
   const bridge = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", theater: { dir: "/theater", stem: "demo", files: {} } });
-  const artifacts = { mp4: "a".repeat(64), timeline: "f".repeat(64), words: "b".repeat(64), script: "c".repeat(64), page: "d".repeat(64) };
+  const artifacts = { mp4: "a".repeat(64), timeline: "f".repeat(64), words: "b".repeat(64), script: "c".repeat(64), resolved: "e".repeat(64), page: "d".repeat(64) };
   const spec = (params?: Variant["params"]) =>
     stageSpec({ stage: "qa", artifacts, settings, sample: 0, remainingUsd: 1, bridge, ...(params ? { variant: { sha: "e".repeat(64), value: { schema: "explainer.variant/v1", stage: "qa", name: "cues-only", params } } } : {}) });
 

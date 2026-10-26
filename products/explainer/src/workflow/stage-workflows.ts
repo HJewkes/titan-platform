@@ -21,6 +21,7 @@ import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
 import { runQaStage } from "../qa/qa-stage.js";
 import { defaultRenderEngine, runRenderStage, type RenderEngine } from "../render/render-stage.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 
 interface BodyDeps {
   dataDir: string;
@@ -40,6 +41,8 @@ interface BodyDeps {
   qaEngine?: QaEngine;
   /** The render stage's page build and capture; the composition page and Chromium by default. */
   renderEngine?: RenderEngine;
+  /** The qa stage's timing thresholds in place of the spec's; the type profile's by default. */
+  qaTiming?: TimingProfile;
 }
 
 /** One `explainer.<stage>` run: the stage body on the spec it was started with, resolve's custom-layer builds, then the stage's checks over its artifacts. */
@@ -104,7 +107,7 @@ function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps
 
 function runQaBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.qa) throw new Error("qa stage spec has no gate profile");
-  const settings = { ...config.qa, ...(config.profile ? { profile: config.profile.type } : {}) };
+  const settings = { ...config.qa, ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
   return runQaStage({ ...input, store: deps.store }, settings, deps.qaEngine ?? chromiumQaEngine(deps.media));
 }
 

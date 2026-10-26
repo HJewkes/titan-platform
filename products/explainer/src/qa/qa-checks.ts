@@ -1,5 +1,6 @@
 import type { Check } from "../workflow/records.js";
 import { QaReportSchema, qaSummary, type QaReport } from "./qa-report.js";
+import { TIMING_GATES, type TimingGate } from "./timing-gates.js";
 
 type Verdict = Pick<Check, "pass" | "detail">;
 
@@ -32,3 +33,26 @@ export const measuredVerdict = (code: string) => (input: QaCheckInput): Verdict 
   const shown = found.slice(0, DETAIL_FINDINGS).map(({ anchors, message }) => (anchors.length > 0 ? `[${anchors.join(",")}] ${message}` : message)).join("; ");
   return { pass: found.length === 0, detail: found.length === 0 ? `no ${code} finding` : `${found.length} ${code}: ${shown}` };
 };
+
+const timingGate = (input: QaCheckInput, id: string) => report(input).timing.gates.find((gate) => gate.id === id);
+
+const gateDetail = ({ id, value, threshold, beats }: TimingGate): string => `${id} ${value ?? "n/a"} (${threshold})${beats.length > 0 ? `: ${beats.join(", ")}` : ""}`;
+
+/** One timing gate's verdict; a gate qa.json does not carry fails, as a qa.json from before the gate would. */
+export const timingVerdict = (id: string) => (input: QaCheckInput): Verdict => {
+  const gate = timingGate(input, id);
+  return gate === undefined ? { pass: false, detail: `qa.json has no ${id} timing gate` } : { pass: gate.pass, detail: gateDetail(gate) };
+};
+
+/** A gate's warn line, read as its own reported check. */
+export const timingWarnVerdict = (id: string) => (input: QaCheckInput): Verdict => {
+  const gate = timingGate(input, id);
+  return gate === undefined ? { pass: false, detail: `qa.json has no ${id} timing gate` } : { pass: gate.warn !== true, detail: gateDetail(gate) };
+};
+
+/** The ported spike gates (G1-G13), reported together until one is promoted to a gate of its own. */
+export function directionVerdict(input: QaCheckInput): Verdict {
+  const ported = report(input).timing.gates.filter((gate) => !TIMING_GATES.includes(gate.id));
+  const failed = ported.filter((gate) => !gate.pass);
+  return { pass: failed.length === 0, detail: `${ported.length - failed.length}/${ported.length} pass${failed.length > 0 ? `; ${failed.map(gateDetail).join("; ")}` : ""}` };
+}

@@ -4,6 +4,7 @@ import path from "node:path";
 import { ERROR_KINDS } from "@titan-design/render-qa";
 import type { Db } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach } from "vitest";
+import { resolvedFor, soloScript } from "../template-fill/fill-fixtures.test-helpers.js";
 import { ArtifactStore } from "../workflow/artifacts.js";
 import { openState } from "../workflow/host.js";
 import { runStageChecks } from "../workflow/stage-checks.js";
@@ -16,6 +17,9 @@ export const FROM = { runId: "qa-test", stage: "qa" };
 /** One 4 s beat with no cues: render-qa's cue moments sample it at 0, 0.3, 2 (mid) and 3.8 s (settled end). */
 const TIMELINE = { durationS: 4, beats: [{ id: "b1", kind: "title", startS: 0, durationS: 4, slots: {} }] };
 const CONFIG: QaConfig = { sha: "f".repeat(64), gate: [...ERROR_KINDS], inspect: {} };
+/** A one-beat script the fill draws as a plain list, so no beat is a lead-line beat, and the resolve that kept it. */
+const SCRIPT = soloScript({ beat: "list", labels: ["tick Two lanes"] });
+const RESOLVED = { schema: "explainer.resolved/v1", profile: SCRIPT.profile, beats: resolvedFor(SCRIPT).beats, budgets: [] };
 
 interface QaRun {
   timeline?: { durationS: number };
@@ -38,7 +42,8 @@ function stageInputs(root: string, store: ArtifactStore, timeline: { durationS: 
   writeFileSync(mp4, JSON.stringify({ durationS: timeline.durationS }));
   return {
     mp4: store.putFile(mp4, "mp4", FROM), page: store.putTree(page, "page", FROM), timeline: store.putText(JSON.stringify(timeline), "timeline", FROM),
-    words: store.putText("{}", "words", FROM), script: store.putText("{}", "script", FROM),
+    words: store.putText(JSON.stringify({ beats: [] }), "words", FROM), script: store.putText(JSON.stringify(SCRIPT), "script", FROM),
+    resolved: store.putText(JSON.stringify(RESOLVED), "resolved", FROM),
   };
 }
 

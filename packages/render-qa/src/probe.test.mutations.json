@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an alpha after the slash is ignored so a clear fill reads as paint",
+      "file": "packages/render-qa/src/probe.ts",
+      "find": "return value > 0.05",
+      "replace": "return true",
+      "kills": [
+        "a display-p3 fill paints opaque and at alpha 0.5, and not at alpha 0",
+        "an oklch fill with a percentage lightness paints at alpha 0.5, and not at alpha 0"
+      ]
+    },
+    {
+      "name": "a legacy rgba fill with alpha 0 reads as paint",
+      "file": "packages/render-qa/src/probe.ts",
+      "find": "return Number.parseFloat(legacy[3] ?? '') > 0.05",
+      "replace": "return true",
+      "kills": [
+        "boxes are the elements that hold text or paint, with decor marked; empty layout wrappers are left out",
+        "before the stage fills, only the chrome holds content, and each moment keeps its beat and time",
+        "rgb and rgba fills paint unless their alpha is 0"
+      ]
+    }
+  ]
+}

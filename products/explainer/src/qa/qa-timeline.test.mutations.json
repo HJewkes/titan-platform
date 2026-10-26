@@ -4,10 +4,19 @@
     {
       "name": "qa runs without the render's timeline",
       "file": "products/explainer/src/workflow/stage-spec.ts",
-      "find": "qa: [\"mp4\", \"timeline\", \"words\", \"script\", \"page\"]",
-      "replace": "qa: [\"mp4\", \"words\", \"script\", \"page\"]",
+      "find": "qa: [\"mp4\", \"timeline\", \"words\", \"script\", \"resolved\", \"page\"]",
+      "replace": "qa: [\"mp4\", \"words\", \"script\", \"resolved\", \"page\"]",
       "kills": [
         "qa without a render timeline is refused at the spec, naming the timeline artifact"
+      ]
+    },
+    {
+      "name": "qa's held beats keep their script ids",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": ".flatMap((beat) => ids.get(beat.id) ?? [])",
+      "replace": ".map((beat) => beat.id)",
+      "kills": [
+        "qa on a render's storyboard ids excuses a still picture on a beat the script holds, though the timeline names it beat-01"
       ]
     }
   ]

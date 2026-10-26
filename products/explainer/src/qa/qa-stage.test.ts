@@ -67,7 +67,7 @@ describe("qa stage spec", () => {
   const settings: RunSettings = { scriptModel: "sonnet", judge: JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" }), rounds: 1 };
   const bridge = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", theater: { dir: "/theater", stem: "demo", files: {} } });
   const spec = (mp4: string) =>
-    stageSpec({ stage: "qa", artifacts: { mp4, timeline: "f".repeat(64), words: "b".repeat(64), script: "c".repeat(64), page: "d".repeat(64) }, settings, sample: 0, remainingUsd: 1, bridge });
+    stageSpec({ stage: "qa", artifacts: { mp4, timeline: "f".repeat(64), words: "b".repeat(64), script: "c".repeat(64), resolved: "e".repeat(64), page: "d".repeat(64) }, settings, sample: 0, remainingUsd: 1, bridge });
 
   it("keys on the MP4, so a new render reruns qa and the same render hits the cache", () => {
     const first = spec("a".repeat(64));

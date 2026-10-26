@@ -24,6 +24,7 @@ import type { CheckJudge } from "./stage-checks.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { QaEngine } from "../qa/qa-engine.js";
 import type { RenderEngine } from "../render/render-stage.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
 import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
 import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
@@ -61,6 +62,8 @@ export interface RunHost {
   media?: MediaExec;
   /** The qa stage's browser and ffprobe; real Chromium by default, tests pass a fake. */
   qaEngine?: QaEngine;
+  /** The qa stage's timing thresholds in place of the type profile's; tests of the run's plumbing pass lax ones. */
+  qaTiming?: TimingProfile;
   /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
   beatWorker?: BeatWorker | null;
   /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
@@ -218,13 +221,12 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     dataDir: host.dataDir, store, now, ...listenerJudge(host, plan), ...runners,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
-    ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
+    ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.qaTiming ? { qaTiming: host.qaTiming } : {}),
+    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
   });
   const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
-  const stage = {
-    dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host),
-  };
+  const stage = { dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host) };
   const routes = plan ? [...children, stageRoute({ ...stage, plan })] : children;
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), childStepIds(stage));
