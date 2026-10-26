@@ -747,7 +747,7 @@ every earlier note an earlier-render note: it stays in the file as history and i
 On a paused explainer render, **Edit this beat** opens the template beat under the playhead (the
 beat whose `[startS, endS)` holds it) with a form generated from its slot JSON Schema, and seeks the
 player to the beat's `stillS`, so the still is the render itself. Beat starts are ticks on the strip
-under the video. Both reads run the installed explainer CLI with a fixed argv, no shell and a 20 s
+under the video. All four commands run the installed explainer CLI with a fixed argv, no shell and a 20 s
 timeout; the console never imports explainer. The child gets only `PATH`, `HOME`, `USER`, the
 locale, `TMPDIR`, the `XDG_*` dirs and `EXPLAINER_*` variables, never the daemon's `TITAN_CONSOLE_*`
 settings. A props answer is kept per render sha for 10 minutes, so reopening a video does not run
@@ -761,9 +761,27 @@ the CLI again; a failed read is not kept.
   that writes nothing. It returns `{ verdict: { ok, problems, diff }, gaps }`; a draft over 64 KB is
   refused. The form shows each problem at the field it names and the diff as before and after.
 
+- **`videos.edit`** (owner-write) `{ videoId, runId, scriptSha, beats, fromNote? }` builds the same
+  slot-edit over the current render and pipes it to `explainer edit apply - --start --json`, which
+  stores the edited script, writes the edit's ledger row and launches the linked run from resolve,
+  detached, so the request never waits on a render. It returns `{ saved: { editId, scriptSha, started },
+  problems, gaps }`; `saved` is null with explainer's problems when it refuses the edit, such as a
+  second save of a started edit. `fromNote` is the id of a note on this video, refused (65) otherwise.
+  It is refused like `videos.note` on loopback, with a bearer and while `TITAN_CONSOLE_OWNER_WRITES`
+  is off.
+- **`videos.edits`** (read) `{ videoId }` runs `explainer edit list --mp4-sha <the render's sha256>
+  --json` and returns `{ edits, gaps }`: each saved edit's beats, the note it cites and its run status.
+
 Save stays visible but disabled with `saveBack.reason` until explainer reports that the render reads
-edits (TP-2992 S3). An explainer that does not report the run's script sha gets a gap line and no
-draft check (TP-4263).
+edits (TP-2992 S3). Once it does, Save is on while the draft changes a field and the latest check
+found no problem. The draft is one per video (TP-4021 Q-O1): edits to several beats collect until one
+"Save and render" sends them as one edit, one script and one run. "Turn into edit" on a comment made
+on the current render opens the beat under the note's time with the note cited in the draft; the
+note itself is not changed. The editor lists the video's saved edits with their run status and reads
+them again every 5 s while a run is going. Export replaces the mp4 in place when the run finishes,
+so the theater then plays the new render, its earlier notes read as on an earlier render, and the
+pre-edit render stays only in explainer's artifact store. An explainer that does not report the
+run's script sha gets a gap line and no draft check or save (TP-4263).
 
 ### Video metadata
 

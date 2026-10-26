@@ -4,10 +4,10 @@
     {
       "name": "the beat editor's Save button is not capped to its row",
       "file": "apps/console/src/pages/TheaterBeatEditor.tsx",
-      "find": "<Button isDisabled className=\"max-w-full\" testID=\"beat-editor-save\">",
-      "replace": "<Button isDisabled testID=\"beat-editor-save\">",
+      "find": "<Button isDisabled={!enabled} onPress={() => void send(batch, fromNote)} className=\"max-w-full\" testID=\"beat-editor-save\">",
+      "replace": "<Button isDisabled={!enabled} onPress={() => void send(batch, fromNote)} testID=\"beat-editor-save\">",
       "kills": [
-        "keeps the beat editor's fields, row buttons and save row inside the page"
+        "on a 390px phone keeps the beat editor's fields, row buttons and save row inside the page"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "isDisabled={!canRemoveRow(rows, index, control, locked)} className=\"max-w-full\"",
       "replace": "isDisabled={!canRemoveRow(rows, index, control, locked)}",
       "kills": [
-        "keeps the beat editor's fields, row buttons and save row inside the page"
+        "on a 390px phone keeps the beat editor's fields, row buttons and save row inside the page"
       ]
     }
   ]

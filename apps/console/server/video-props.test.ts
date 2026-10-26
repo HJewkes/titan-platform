@@ -5,7 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
-import type { ConsoleContext } from "./owner-guard.js";
+import type { RequestAuth } from "@titan-design/daemon";
+import { REFUSALS, type ConsoleContext } from "./owner-guard.js";
+import { appendNote } from "./video-notes.js";
 import { EXPLAINER_NOT_FOUND, MAX_EDIT_BYTES, NOT_FROM_EXPLAINER, videoPropsCommands } from "./video-props.js";
 import { videoCatalog, videoId } from "./videos.js";
 
@@ -15,7 +17,8 @@ const MP4_SHA = createHash("sha256").update(SYNTHETIC_MP4).digest("hex");
 const SCRIPT_SHA = "5".repeat(64);
 const AT = new Date("2031-03-05T12:00:00.000Z");
 const context: ConsoleContext = { warnings: [], format: "json", surface: "http", auth: null, ownerWrites: false };
-
+const OWNER_AUTH: RequestAuth = { credential: "session", issuedAt: 1_000, peerLocal: false };
+const ownerContext: ConsoleContext = { ...context, auth: OWNER_AUTH, ownerWrites: true };
 
 let dir: string;
 let root: string;
@@ -171,10 +174,84 @@ describe("videos.edit-check", () => {
   });
 });
 
-describe("the props reads", () => {
-  it("are both read commands, so neither can write on the owner's behalf", () => {
+async function save(beats: Record<string, unknown>, extra: Record<string, unknown> = {}, ctx: ConsoleContext = ownerContext) {
+  const { envelope } = await invokeCommand(commands()["videos.edit"], { videoId: cutId(), runId: "run-synthetic-0001", scriptSha: SCRIPT_SHA, beats, ...extra }, ctx);
+  return envelope;
+}
+
+describe("videos.edit", () => {
+  it.each([
+    ["on loopback, which carries no credential", context, REFUSALS.noCredential],
+    ["with a bearer token", { ...ownerContext, auth: { credential: "bearer", issuedAt: null, peerLocal: false } } satisfies ConsoleContext, REFUSALS.bearer],
+    ["while owner writes are off", { ...ownerContext, ownerWrites: false }, REFUSALS.disabled],
+  ])("is refused %s, and explainer is never run", async (_label, ctx, reason) => {
+    const envelope = await save({ "b-list": { slots: { title: "Ready" } } }, {}, ctx);
+
+    expect(envelope).toEqual({ ok: false, error: `owner-write command refused: ${reason}`, code: EXIT.NOPERM });
+    await expect(readFile(log, "utf8")).rejects.toThrow(/ENOENT/);
+  });
+
+  it("saves edits to two beats as one `edit apply --start` over the current render, citing the note", async () => {
+    const note = await appendNote(path.join(root, "orbit", "cut.mp4"), cutId(), { kind: "comment", about: "content", atS: 2, text: "say polling loop" });
+    const beats = { "b-compare": { slots: { leftTitle: "Polling loop" } }, "b-list": { slots: { title: "Ready to ship" } } };
+
+    const envelope = await save(beats, { fromNote: note.id });
+
+    const applies = (await calls()).filter((call) => call.argv[1] === "apply");
+    expect(applies.map((call) => call.argv)).toEqual([["edit", "apply", "-", "--start", "--json"]]);
+    expect(JSON.parse(applies[0]!.stdin)).toEqual({
+      schema: "explainer.slot-edit/v1",
+      base: { runId: "run-synthetic-0001", scriptSha: SCRIPT_SHA, mp4Sha: MP4_SHA },
+      beats,
+      createdAt: AT.toISOString(),
+      fromNote: note.id,
+    });
+    expect(envelope).toEqual({ ok: true, data: { saved: { editId: "edit-00000000000000bb", scriptSha: "6".repeat(64), started: true }, problems: [], gaps: [] } });
+  });
+
+  it("refuses a note that is not on this video without running explainer", async () => {
+    const envelope = await save({ "b-list": { slots: { title: "Ready" } } }, { fromNote: "0123456789abcdef" });
+
+    expect(envelope).toMatchObject({ ok: false, code: EXIT.DATAERR });
+    await expect(readFile(log, "utf8")).rejects.toThrow(/ENOENT/);
+  });
+
+  it("returns explainer's problems when it refuses the edit, and saves nothing", async () => {
+    const envelope = await save({ "b-compare": { slots: { leftTitle: "A title that runs well past the forty-eight character cap" } } });
+
+    expect(envelope).toEqual({ ok: true, data: { saved: null, problems: ["beats.b-compare.visual.slots.leftTitle: Too big: expected string to have <=48 characters"], gaps: [] } });
+  });
+
+  it("returns explainer's refusal line for a second save of a started edit", async () => {
+    vi.stubEnv("EXPLAINER_FAKE_APPLY", "started");
+
+    const envelope = await save({ "b-list": { slots: { title: "Ready" } } });
+
+    expect(envelope).toMatchObject({ ok: true, data: { saved: null, problems: ["edit: edit edit-00000000000000aa already started run run-synthetic-0002; one save makes one run"] } });
+  });
+});
+
+describe("videos.edits", () => {
+  it("lists the edits drafted over the render's sha256, each with its run status", async () => {
+    const { envelope } = await invokeCommand(commands()["videos.edits"], { videoId: cutId() }, context);
+
+    expect((await calls())[0]!.argv).toEqual(["edit", "list", "--mp4-sha", MP4_SHA, "--json"]);
+    expect(envelope).toMatchObject({ ok: true, data: { edits: [{ editId: "edit-00000000000000aa", fromNote: "0123456789abcdef", runStatus: "completed" }, { editId: "edit-00000000000000cc", runStatus: "starting" }], gaps: [] } });
+  });
+
+  it("answers a gap line when no explainer binary is configured", async () => {
+    const { envelope } = await invokeCommand(commands(null)["videos.edits"], { videoId: cutId() }, context);
+
+    expect(envelope).toEqual({ ok: true, data: { edits: [], gaps: [EXPLAINER_NOT_FOUND] } });
+  });
+});
+
+describe("the props commands' classes", () => {
+  it("serve the reads as reads and the save as the one owner-write", () => {
     const served = commands();
 
-    expect([served["videos.props"].commandClass, served["videos.edit-check"].commandClass]).toEqual(["read", "read"]);
+    const classes = (["videos.props", "videos.edit-check", "videos.edits", "videos.edit"] as const).map((name) => served[name].commandClass);
+
+    expect(classes).toEqual(["read", "read", "read", "owner-write"]);
   });
 });
