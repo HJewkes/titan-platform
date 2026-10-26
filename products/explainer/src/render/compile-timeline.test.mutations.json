@@ -18,6 +18,34 @@
       "kills": [
         "storyboard cues rejects word#0 and a cue of two words, and accepts word#2"
       ]
+    },
+    {
+      "name": "reveals land at zero instead of their cue word",
+      "file": "products/explainer/src/render/compile-timeline.ts",
+      "find": "atS: resolve(beatId, atCue)",
+      "replace": "atS: 0",
+      "kills": [
+        "compileTimeline page extras lands each reveal on its cue word's spoken start and carries the chrome inputs",
+        "compileTimeline page extras lands reveals at planned-word times scaled to the planned seconds when there are no words"
+      ]
+    },
+    {
+      "name": "planned reveals skip the planned-seconds scale",
+      "file": "products/explainer/src/render/compile-timeline.ts",
+      "find": "beat.spoken.split(/\\s+/).length) * beat.duration_s;",
+      "replace": "beat.spoken.split(/\\s+/).length);",
+      "kills": [
+        "compileTimeline page extras lands reveals at planned-word times scaled to the planned seconds when there are no words"
+      ]
+    },
+    {
+      "name": "page extras keep only the reveals",
+      "file": "products/explainer/src/render/compile-timeline.ts",
+      "find": "return { reveals, chips, hints, headline, chapter };",
+      "replace": "return { reveals };",
+      "kills": [
+        "compileTimeline page extras lands each reveal on its cue word's spoken start and carries the chrome inputs"
+      ]
     }
   ]
 }

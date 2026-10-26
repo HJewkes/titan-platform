@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "extras keyed by script id, not storyboard id",
+      "file": "products/explainer/src/render/board-from-fill.ts",
+      "find": "extras.set(id, pageExtras",
+      "replace": "extras.set(drawn.id, pageExtras",
+      "kills": [
+        "boardFromFill page extras keys each beat's extras by its storyboard id, in fill order, carrying what the fill drew"
+      ]
+    },
+    {
+      "name": "extras drop the fill's chips",
+      "file": "products/explainer/src/render/board-from-fill.ts",
+      "find": "chips: drawn.chips,",
+      "replace": "chips: [],",
+      "kills": [
+        "boardFromFill page extras keys each beat's extras by its storyboard id, in fill order, carrying what the fill drew"
+      ]
+    },
+    {
+      "name": "chapter numbered from zero",
+      "file": "products/explainer/src/render/board-from-fill.ts",
+      "find": "n: index + 1,",
+      "replace": "n: index,",
+      "kills": [
+        "boardFromFill page extras takes the headline from the beat's assertion and numbers its chapter out of the script's"
+      ]
+    },
+    {
+      "name": "headline read from the spoken line",
+      "file": "products/explainer/src/render/board-from-fill.ts",
+      "find": "headline: beat.visual.assertion,",
+      "replace": "headline: beat.spoken,",
+      "kills": [
+        "boardFromFill page extras takes the headline from the beat's assertion and numbers its chapter out of the script's"
+      ]
+    }
+  ]
+}

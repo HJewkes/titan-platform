@@ -76,9 +76,9 @@ function stagedPage(built: BuiltPage, styleCss: string | undefined, dir: string)
 }
 
 async function prepare(input: RenderStageInput, config: RenderConfig, engine: RenderEngine, scratch: string): Promise<Prepared> {
-  const { board, ids, notes } = renderBoard(input);
+  const { board, extras, ids, notes } = renderBoard(input);
   const words = renameWordsBeats(json(input, "words"), ids);
-  const timeline = compileTimeline(board, words);
+  const timeline = compileTimeline(board, words, { extras });
   const pageDir = path.join(scratch, "page");
   const pageSha = stagedPage(await engine.page(), config.styleCss, pageDir);
   return { timeline, pageDir, pageSha, audio: { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) }, notes };
