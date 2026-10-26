@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "mergeVerdict leaves the run's baselines off the evidence request",
+      "file": "products/factory/src/shepherd/take-verdict.ts",
+      "find": ", ...(visualBaselines && { visualBaselines }) };",
+      "replace": " };",
+      "kills": [
+        "a glob-matched PR on a seat with visual baselines merges with no approve-merge gate when it changes no baseline and the visual check is green"
+      ]
+    },
+    {
+      "name": "the land decision passes no baselines to decideAutoMerge",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "effective.visualPaths, effective.visualBaselines);",
+      "replace": "effective.visualPaths);",
+      "kills": [
+        "a glob-matched PR on a seat with visual baselines merges with no approve-merge gate when it changes no baseline and the visual check is green"
+      ]
+    },
+    {
+      "name": "a changed baseline file no longer gates",
+      "file": "products/factory/src/shepherd/visual-gate.ts",
+      "find": "  return paths.filter(caseFoldedMatcher(globs));\n",
+      "replace": "  return [];\n",
+      "kills": [
+        "a glob-matched PR on a seat with visual baselines opens one visual-path gate naming the baseline when the head also changes a baseline PNG"
+      ]
+    }
+  ]
+}

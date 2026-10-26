@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "stricterPolicy unions the two sides' baselines",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "  if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;\n",
+      "replace": "  const either = trusted.visualBaselines ?? other.visualBaselines;\n  if (either) stricter.visualBaselines = { check: either.check, paths: [...new Set([...(trusted.visualBaselines?.paths ?? []), ...(other.visualBaselines?.paths ?? [])])] };\n",
+      "kills": [
+        "a seat with visual baselines (TP-2662) keeps baselines in a stricter policy only when both sides carry the same ones"
+      ]
+    },
+    {
+      "name": "rereadInput drops the run's baselines",
+      "file": "products/factory/src/shepherd/merge-settle.ts",
+      "find": "    ...(visualBaselines && { visualBaselines }),\n",
+      "replace": "",
+      "kills": [
+        "a seat with visual baselines (TP-2662) re-reads unsettled evidence with the run's baselines, so the comment's decision matches decide"
+      ]
+    },
+    {
+      "name": "decide passes no baselines to decideAutoMerge",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "effective.visualPaths, effective.visualBaselines);",
+      "replace": "effective.visualPaths);",
+      "kills": [
+        "a seat with visual baselines (TP-2662) allows a visual head that changed no baseline on the green check, and gates one that changed a baseline"
+      ]
+    },
+    {
+      "name": "resolveEffectivePolicy drops the seat's baselines",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "    ...(seat?.visualPaths && seat.visualBaselines && { visualBaselines: seat.visualBaselines }),\n",
+      "replace": "",
+      "kills": [
+        "a seat with visual baselines (TP-2662) carries the seat's baselines into the run policy, and none for a seat without visual paths",
+        "a seat with visual baselines (TP-2662) allows a visual head that changed no baseline on the green check, and gates one that changed a baseline"
+      ]
+    },
+    {
+      "name": "resolveEffectivePolicy keeps baselines on a seat without visual paths",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "...(seat?.visualPaths && seat.visualBaselines && {",
+      "replace": "...(seat?.visualBaselines && {",
+      "kills": [
+        "a seat with visual baselines (TP-2662) carries the seat's baselines into the run policy, and none for a seat without visual paths"
+      ]
+    }
+  ]
+}

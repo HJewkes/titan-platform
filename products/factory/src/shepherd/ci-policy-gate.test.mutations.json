@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "rereadInput drops the reviewer's CI-policy line",
+      "file": "products/factory/src/shepherd/merge-settle.ts",
+      "find": "    ...(evidence.ciPolicy && { ciPolicy: evidence.ciPolicy }),\n",
+      "replace": "",
+      "kills": [
+        "the CI-policy line across the review's own steps survives an unsettled re-read at the same head"
+      ]
+    }
+  ]
+}
