@@ -991,3 +991,7 @@ The registry holds `hook`, whose slots are `BEAT_SLOTS.hook`, and `catalogue` (r
 `Annotate`) until `@titan-design/beats` is published (TD-907), when the page resolves kinds through that package
 instead. The page reads only `durationS`, `provisional` and each beat's `id`, `kind`, `startS`, `durationS`, `cues`
 and `slots`; `compileTimeline` (TP-2990) owns the rest of `timeline.json`.
+
+`compileTimeline(board, words?)` (`src/render/compile-timeline.ts`) is the only reader of words.json: it writes heard
+durations and beat-local cue seconds, or planned durations and `provisional: true` without words, and parses slots
+with `BEAT_SLOTS` until `@titan-design/beats` publishes.

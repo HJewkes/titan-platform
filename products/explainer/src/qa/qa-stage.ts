@@ -1,18 +1,19 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { addLateFill, classify, DEFAULT_OPTIONS, type Held, type InspectOptions, type Moment, type ProbedMoment, type SampledFrame } from "@titan-design/render-qa";
+import { DEFAULT_OPTIONS } from "@titan-design/render-qa";
 import { RENDER_FPS } from "../render/render-video.js";
 import { ResolvedSchema } from "../resolve-stage.js";
 import { ScriptSchema } from "../script-schema.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import type { StageOutcome } from "../workflow/records.js";
-import type { QaEngine, QaPage } from "./qa-engine.js";
+import { cueGate, type CueGateResult } from "./cue-gate.js";
+import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
 import { measuredFindings } from "./qa-measured.js";
 import { INLINE_MAX_BYTES, qaReport, qaSummary, type QaReport } from "./qa-report.js";
-import { qaCues, qaSampleMoments, timelineFromArtifact, timelineFromWords, timelineS, type QaTimeline } from "./qa-timeline.js";
+import { timelineFromArtifact, timelineFromWords, timelineS, type QaTimeline } from "./qa-timeline.js";
 import type { QaGate } from "./gate-profile.js";
 import { serveTree } from "./serve-tree.js";
 
@@ -59,45 +60,12 @@ function pageQuery(input: QaInput, dir: string, config: QaConfig): string {
   return `?page=${encodeURIComponent(config.page)}`;
 }
 
-async function sampleFrames(page: QaPage, moments: readonly Moment[], options: InspectOptions): Promise<SampledFrame[]> {
-  const frames: SampledFrame[] = [];
-  for (const moment of moments) {
-    const { contentRuns, findings } = await page.inspectAt(moment.t, options);
-    frames.push({ beat: moment.beat, local: moment.local, t: moment.t, kind: moment.kind, contentRuns, findings });
-  }
-  return frames;
-}
-
-interface Inspection {
-  held: Held;
-  moments: Moment[];
-  /** The probe at each of `moments`, in the same order. */
-  probed: ProbedMoment[];
-}
-
-/** Seeks to every moment, holds what persists under the profile's gating kinds, crops each held error, and probes the DOM. */
-async function inspectPage(engine: QaEngine, url: string, timeline: QaTimeline, config: QaConfig, cropDir: string, lead: Set<string>): Promise<Inspection> {
-  const options: InspectOptions = { ...DEFAULT_OPTIONS, ...config.inspect };
-  const cues = qaCues(timeline);
-  const moments = qaSampleMoments(timeline, config.sweep !== false);
-  const page = await engine.open(url, options, cues);
-  try {
-    const frames = await sampleFrames(page, moments, options);
-    addLateFill(frames.filter((frame) => !lead.has(frame.beat)), cues, new Map(timeline.beats.map((beat) => [beat.id, beat.durationS])));
-    const held = classify(frames, { gate: config.gate });
-    if (held.errors.length > 0) await page.crops(held.errors, cropDir, options);
-    return { held, moments, probed: await page.probe(moments) };
-  } finally {
-    await page.close();
-  }
-}
-
-async function servedInspection(input: QaInput, engine: QaEngine, timeline: QaTimeline, config: QaConfig, scratch: string): Promise<Inspection> {
+async function servedInspection(input: QaInput, engine: QaEngine, timeline: QaTimeline, config: QaConfig, scratch: string): Promise<CueGateResult> {
   const tree = path.join(scratch, "page");
   const query = pageQuery(input, tree, config);
   const served = await serveTree(tree);
   try {
-    return await inspectPage(engine, `${served.origin}/${query}`, timeline, config, path.join(scratch, "crops"), leadLineBeats(input));
+    return await cueGate(engine, `${served.origin}/${query}`, timeline, config, { lead: leadLineBeats(input), cropDir: path.join(scratch, "crops"), sweep: config.sweep !== false, probe: true });
   } finally {
     await served.close();
   }
@@ -114,10 +82,10 @@ function storedIfLarge(input: QaInput, outputs: Record<string, string>, name: st
 type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured">;
 
 /** The MP4's frame change and the probe, inline or by sha, and the page-measured findings they give. */
-async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, inspection: Inspection, config: QaConfig, outputs: Record<string, string>): Promise<Measured> {
+async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, inspection: CueGateResult, config: QaConfig, outputs: Record<string, string>): Promise<Measured> {
   const diffs = await engine.frameDiffs(input.store.path(need(input, "mp4")));
   const options = { ...DEFAULT_OPTIONS, ...config.inspect };
-  const { moments, probed } = inspection;
+  const { sampled: moments, probed } = inspection;
   const framediff = storedIfLarge(input, outputs, "framediff", diffs);
   const probe = storedIfLarge(input, outputs, "qa-probe", probed);
   return {
@@ -146,7 +114,7 @@ export async function runQaStage(input: QaInput, config: QaConfig, engine: QaEng
     const mp4S = { durationS: await engine.durationS(mp4), timelineS: timelineS(timeline), frameS: 1 / RENDER_FPS };
     const source = input.artifacts.timeline === undefined ? "words" : "timeline";
     const report = qaReport(held, {
-      profile: config.profile ?? null, gateProfileSha: config.sha, gate: config.gate, timeline: source, moments: inspection.moments.length, mp4: mp4S, ...measured,
+      profile: config.profile ?? null, gateProfileSha: config.sha, gate: config.gate, timeline: source, moments: inspection.moments, mp4: mp4S, ...measured,
       notes: [`${timeline.beats.length} beats from ${source}`],
     });
     outputs.qa = input.store.putText(`${JSON.stringify(report, null, 1)}\n`, "qa", input.from);

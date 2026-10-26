@@ -14,8 +14,8 @@
     {
       "name": "the qa stage sweeps even when the variant sets sweep: false",
       "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "qaSampleMoments(timeline, config.sweep !== false)",
-      "replace": "qaSampleMoments(timeline, true)",
+      "find": "sweep: config.sweep !== false, probe: true }",
+      "replace": "sweep: true, probe: true }",
       "kills": [
         "qa stage sampling samples the cue moments only when the variant sets sweep: false"
       ]

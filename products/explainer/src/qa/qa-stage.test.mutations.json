@@ -23,8 +23,8 @@
     {
       "name": "qa runs late-fill over lead-line beats too",
       "file": "products/explainer/src/qa/qa-stage.ts",
-      "find": "addLateFill(frames.filter((frame) => !lead.has(frame.beat)), cues",
-      "replace": "addLateFill(frames, cues",
+      "find": "{ lead: leadLineBeats(input), cropDir",
+      "replace": "{ cropDir",
       "kills": [
         "qa stage late-fill on a lead-line beat passes held-errors when visual marks the beat qaLeadLine, as the spike's qa skips it"
       ]
