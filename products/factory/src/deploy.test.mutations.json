@@ -2,42 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a skip is never widened to origin/main",
+      "name": "an ask the checkout is already past exits 0 instead of being refused",
       "file": "products/factory/src/deploy.ts",
-      "find": "return prepareOnly ? plan : widenSkip(deploy, plan);",
-      "replace": "return plan;",
+      "find": "return refuse(`${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`);",
+      "replace": "return { kind: \"stop\", code: 0, message: past };",
       "kills": [
-        "titan-factory service deploy deploys origin/main when the asked sha reaches no factory path but a later main commit does"
-      ]
-    },
-    {
-      "name": "origin/main deploys though nothing past the asked sha reaches the factory build",
-      "file": "products/factory/src/deploy.ts",
-      "find": "if (wider.kind !== \"go\" || wider.go.touched.length === 0) return plan;",
-      "replace": "if (wider.kind !== \"go\") return plan;",
-      "kills": [
-        "titan-factory service deploy fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build",
-        "titan-factory service deploy records a Version Packages merge as skipped without building or restarting"
-      ]
-    },
-    {
-      "name": "an ask the checkout is already past is refused again",
-      "file": "products/factory/src/deploy.ts",
-      "find": "return planFor(deploy, main, prepareOnly);",
-      "replace": "return refuse(past);",
-      "kills": [
-        "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha",
-        "titan-factory service deploy after a containing deploy rolls back and the pause is cleared, the older asked sha deploys origin/main and the origin/main re-ask finds it deployed (TP-4083)"
-      ]
-    },
-    {
-      "name": "an ask the checkout is already past deploys the checkout's rolled-back head",
-      "file": "products/factory/src/deploy.ts",
-      "find": "return planFor(deploy, main, prepareOnly);",
-      "replace": "return planFor(deploy, head, prepareOnly);",
-      "kills": [
-        "titan-factory service deploy deploys origin/main when a rollback left the checkout's main past the asked sha",
-        "titan-factory service deploy after a containing deploy rolls back and the pause is cleared, the older asked sha deploys origin/main and the origin/main re-ask finds it deployed (TP-4083)"
+        "titan-factory service deploy refuses as superseded, building nothing, when a rollback left the checkout's main past the asked sha (TP-4279)",
+        "titan-factory service deploy after a deploy rolls back and the pause is cleared, an older asked sha is refused and the next asked sha deploys (TP-4083, TP-4279)"
       ]
     },
     {

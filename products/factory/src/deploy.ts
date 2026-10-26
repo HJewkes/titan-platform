@@ -145,20 +145,7 @@ async function planDeploy(deploy: Deploy): Promise<Plan> {
   if (fetched.code !== 0) return refuse(`git fetch origin main failed: ${detail(fetched)}`);
   const target = await resolveTarget(ports, deploy.options.expect);
   if (typeof target !== "object") return refuse(target);
-  const prepareOnly = !serviceRunsFromCheckout(ports, deploy.options.checkout);
-  const plan = await planFor(deploy, target.sha, prepareOnly);
-  return prepareOnly ? plan : widenSkip(deploy, plan);
-}
-
-/** A skip records the asked sha as answered, so factory commits main already holds past it would wait for a merge that may never come. */
-async function widenSkip(deploy: Deploy, plan: Plan): Promise<Plan> {
-  if (plan.kind !== "go" || plan.go.touched.length > 0 || cleanSha(plan.go.running) === undefined) return plan;
-  const main = (await deploy.ports.git(["rev-parse", "--verify", "--quiet", `${ORIGIN_MAIN}^{commit}`])).stdout.trim();
-  if (main === "" || main === plan.go.target) return plan;
-  const wider = await planFor(deploy, main, false);
-  if (wider.kind !== "go" || wider.go.touched.length === 0) return plan;
-  deploy.io.stdout(`${plan.go.target} reaches no factory path, but ${ORIGIN_MAIN} at ${main} does; deploying ${main} instead\n`);
-  return wider;
+  return planFor(deploy, target.sha, !serviceRunsFromCheckout(ports, deploy.options.checkout));
 }
 
 async function ensureCheckout({ ports, options }: Deploy): Promise<Stop | undefined> {
@@ -220,7 +207,7 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   const from = cleanSha(running);
   if (!prepareOnly && from !== undefined && (await isAncestor(ports, target, from))) return { kind: "stop", code: 0, message: `already deployed: build ${from} contains ${target}` };
   const head = (await ports.git(["rev-parse", "HEAD"])).stdout.trim();
-  if (head !== target && (await isAncestor(ports, target, head))) return pastTarget(deploy, head, target, prepareOnly);
+  if (head !== target && (await isAncestor(ports, target, head))) return pastTarget(ports, head, target);
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
   const changed = from === undefined ? undefined : await changedPaths(ports.git, from, target);
   const go = { target, running, closure, touched: await runtimeTouched(ports.git, touchedPaths(changed, closure), from, target), prepareOnly };
@@ -228,15 +215,11 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   return native === undefined ? { kind: "go", go } : refuse(native);
 }
 
-/** A rollback restores dist but not the checkout's main, so refusing would strand every older ask; origin/main holds both. */
-async function pastTarget(deploy: Deploy, head: string, target: string, prepareOnly: boolean): Promise<Plan> {
-  const { ports } = deploy;
+/** Only the asked sha deploys, since the pacer checked its CI and no other sha's (TP-4279); deploy-health reads this refusal as superseded. */
+async function pastTarget(ports: DeployPorts, head: string, target: string): Promise<Plan> {
   const past = `the checkout's main is at ${head}, already past ${target}`;
   if (!(await isAncestor(ports, head, ORIGIN_MAIN))) return refuse(`${past} with commits that are not on ${ORIGIN_MAIN}; push or remove them from the checkout's main, then rerun`);
-  const main = (await ports.git(["rev-parse", "--verify", "--quiet", `${ORIGIN_MAIN}^{commit}`])).stdout.trim();
-  if (main === "") return refuse(`${past}, and ${ORIGIN_MAIN} does not resolve`);
-  deploy.io.stdout(`${past}; deploying ${ORIGIN_MAIN} at ${main} instead\n`);
-  return planFor(deploy, main, prepareOnly);
+  return refuse(`${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`);
 }
 
 /** setupEnv pins ignore_scripts, so a changed native addon would install uncompiled and a dist rollback could not undo it. */
