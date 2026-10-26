@@ -51,6 +51,32 @@ interface World {
   mergedInto: string[];
   /** Adds a completed fix-proof judge run at H1 that printed `line`; GitHub lists it on the PR's live base, whatever base it judged. */
   judged: (id: number, line: string, conclusion?: string) => void;
+  /** While on, the PR cannot be read inside a fix-proof read on a decided base. */
+  prUnreadable: { on: boolean };
+}
+
+/** While `failing.on`, a fix-proof read on a decided base cannot read the PR, as a GitHub 5xx during that read would leave it. */
+function prUnreadableInBaseReads(fake: FakeGitHub, failing: { on: boolean }): (route: StepRoute) => StepRoute {
+  let inBaseRead = false;
+  const getPr = fake.wire.getPr;
+  fake.wire.getPr = async (...args) => {
+    if (failing.on && inBaseRead) throw new Error("HTTP 502 from GitHub");
+    return getPr(...args);
+  };
+  const during = (route: StepRoute): StepRoute => ({
+    ...route,
+    runner: {
+      run: async (input) => {
+        inBaseRead = input.stepId.includes("@");
+        try {
+          return await route.runner.run(input);
+        } finally {
+          inBaseRead = false;
+        }
+      },
+    },
+  });
+  return (route) => (route.match === "sh-fix-proof" ? during(route) : route);
 }
 
 /** Every merge-evidence read sees the PR on `base`, standing in for GitHub retargeting it there and back during each read. */
@@ -96,7 +122,10 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
   fake.wire.merge = async (...args) => (mergedInto.push(fake.pr(1).baseRef), merge(...args));
   const store = shepherdStoreRef();
   let clock = 0;
-  const wrap = evidenceBase === undefined ? (route: StepRoute) => route : evidenceReadOn(fake, evidenceBase);
+  const onBase = evidenceBase === undefined ? (route: StepRoute) => route : evidenceReadOn(fake, evidenceBase);
+  const prUnreadable = { on: false };
+  const unreadable = prUnreadableInBaseReads(fake, prUnreadable);
+  const wrap = (route: StepRoute) => unreadable(onBase(route));
   const given = factoryRoutesFor({
     port: githubPort(fake.wire),
     store,
@@ -111,7 +140,7 @@ function world(base: string, policy: EffectivePolicy, afterReview: (fake: FakeGi
   hosts.push(host);
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, ...(kind !== undefined && { kind }) });
-  return { fake, host, runId, mergedInto, judged };
+  return { fake, host, runId, mergedInto, judged, prUnreadable };
 }
 
 const stepIds = ({ host, runId }: World): string[] => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
@@ -263,6 +292,22 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
 
     expect(w.mergedInto).toEqual([PARENT]);
     expect(stepIds(w).filter((id) => id.startsWith(`sh-fix-proof:${H1}@`))).toEqual([]);
+  });
+
+  it("asks the owner instead of merging when the re-read on main cannot read the fix/ PR's head branch, never reading it as skipped", async () => {
+    const w = world(PARENT, AUTO, undefined, undefined, "feature");
+    w.fake.pr(1).headRef = "fix/stacked";
+    w.judged(REFUSED_JOB, proofLine("refused", PARENT));
+    w.prUnreadable.on = true;
+    await waitingForRetarget(w);
+
+    w.fake.pr(1).baseRef = "main";
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "error", reason: expect.stringContaining("head branch unreadable") } });
+    expect(promptOf(w)).toContain(OFF_BASE);
+    expect(promptOf(w)).toContain("its fix-proof on main is unverified: unread (head branch unreadable");
   });
 
   it("still guards a MERGE whose record names no proof base, on the base its review read the evidence on", async () => {

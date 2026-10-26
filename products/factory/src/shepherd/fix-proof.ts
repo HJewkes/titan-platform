@@ -61,20 +61,23 @@ type FixProofInput = z.infer<typeof FixProofInputSchema>;
 
 type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
 
-type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string };
+type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string } | { unreadable: string };
 
-/** A store that cannot be read gives no kind, so the gate stays shut and the review proceeds with the reason recorded. */
+/**
+ * A gate that could not be read is not a gate that does not apply: a store, registration or head branch that cannot be read
+ * is `unreadable`, which the read reports as an error, so no caller that clears on a clean standing passes it (TP-4259).
+ */
 async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string): Promise<Gate> {
   let registration: Registration | undefined;
   try {
     registration = store.get().byRun(runId);
   } catch (error) {
-    return { open: false, reason: `the registered kind is unreadable: ${failureOf(error)}` };
+    return { unreadable: `the registered kind is unreadable: ${failureOf(error)}` };
   }
-  if (registration === undefined) return { open: false, reason: "no registration for this run" };
+  if (registration === undefined) return { unreadable: "no registration for this run" };
   if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr, kind: registration.kind };
   const branch = await headBranchOf(port, registration);
-  if (typeof branch !== "string") return { open: false, reason: branch.unreadable };
+  if (typeof branch !== "string") return branch;
   // A branch only ever tightens the kind: a fix/ branch runs the gate whatever kind was registered.
   if (branch.startsWith(FIX_BRANCH_PREFIX)) return { open: true, pr: registration.pr, kind: registration.kind };
   return { open: false, reason: `kind ${registration.kind}` };
@@ -295,6 +298,7 @@ async function readResult(port: GitHubPort, input: FixProofInput, pr: number | n
 export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const input = FixProofInputSchema.parse(raw);
   const gate = await gateOf(deps.port, deps.store, input.runId);
+  if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
   try {
     const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head);

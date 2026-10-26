@@ -710,10 +710,18 @@ describe("readFixProof", () => {
     expect(fake.calls).toEqual(["getPr"]);
   });
 
-  it("skips the gate with the reason recorded when the PR's head branch cannot be read", async () => {
+  it("reads error, never skipped, when the PR's head branch cannot be read, so the gate it may hold is not waved through", async () => {
     const { read } = registered("feature", [fixProofRun()], { unreadablePr: true });
 
-    expect(await read()).toEqual({ kind: "skipped", reason: expect.stringContaining("head branch unreadable") });
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("head branch unreadable") });
+  });
+
+  it("reads error, never skipped, when the registration store cannot be read", async () => {
+    const unbound = shepherdStoreRef();
+
+    const read = await readFixProof({ port: githubPort(fakeGitHub().wire), store: unbound }, { repo: REPO, head: H, runId: "run-1" }, { now: () => 0, sleep: async () => undefined }, signal);
+
+    expect(read).toEqual({ kind: "error", reason: expect.stringContaining("the registered kind is unreadable") });
   });
 
   it("settles as missing after the short grace when the head has no GitHub Actions run at all", async () => {
