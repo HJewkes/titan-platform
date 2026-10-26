@@ -1,5 +1,5 @@
 import { LINEAR_WORK_LIMIT, linearWork } from "@titan-design/test-kit";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LinearRegExp, linearRegExpSteps } from "./linear-regexp.js";
 
 function seededRandom(seed: number): (below: number) => number {
@@ -77,6 +77,28 @@ describe("LinearRegExp", () => {
       return () => regexp.test(input);
     }, { from: 1, to: 1024, steady, meter: linearRegExpSteps });
     expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+  });
+
+  it("tests again and again without allocating a buffer per test", () => {
+    const regexp = new LinearRegExp("^/home/you/app/[0]$");
+    regexp.test("warm");
+    let allocated = 0;
+    const counting = <T extends typeof Int32Array | typeof Uint32Array>(base: T) =>
+      new Proxy(base, {
+        construct(target, args) {
+          allocated += 1;
+          return Reflect.construct(target, args);
+        },
+      });
+    vi.stubGlobal("Int32Array", counting(Int32Array));
+    vi.stubGlobal("Uint32Array", counting(Uint32Array));
+    try {
+      for (let i = 0; i < 100; i += 1) regexp.test(`/home/you/${i}`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(allocated).toBe(0);
   });
 
   it("counts steps in proportion to the input it reads", () => {
