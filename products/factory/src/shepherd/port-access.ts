@@ -5,7 +5,7 @@ import type { ShepherdCommandName } from "./commands.js";
  * against the database here, and a `list-or-write` reads only when its action is `list`. Register is not declared a write:
  * without --offline it is refused before this is read.
  */
-export type PortAccess = "read" | "write" | "list-or-write";
+type PortAccess = "read" | "write" | "list-or-write";
 
 /** One entry per registry command, so a new verb cannot reach the in-process fallback without saying whether it writes. */
 export const SHEPHERD_PORT_ACCESS = {
