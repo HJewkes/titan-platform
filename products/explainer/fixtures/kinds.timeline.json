@@ -1,16 +1,36 @@
 {
-  "durationS": 7.5,
+  "durationS": 44.949999999999996,
   "beats": [
-    { "id": "opening", "kind": "hook", "startS": 0, "durationS": 2, "slots": { "line": "A synthetic day on the factory floor", "cards": [] } },
+    {
+      "id": "opening",
+      "kind": "hook",
+      "startS": 0,
+      "durationS": 2,
+      "slots": {
+        "line": "A synthetic day on the factory floor",
+        "cards": []
+      }
+    },
     {
       "id": "pause",
       "kind": "held",
       "startS": 2,
       "durationS": 3,
-      "slots": { "line": "Two lanes moved; one waits on a decision" },
+      "slots": {
+        "line": "Two lanes moved; one waits on a decision"
+      },
       "headline": "The router lane shipped its matcher rewrite",
-      "chips": [{ "kind": "verified", "text": "demo@0a1b2c3:src/router/match.ts:12-40; docs/routing.md" }],
-      "chapter": { "n": 2, "of": 4, "label": "Lanes" }
+      "chips": [
+        {
+          "kind": "verified",
+          "text": "demo@0a1b2c3:src/router/match.ts:12-40; docs/routing.md"
+        }
+      ],
+      "chapter": {
+        "n": 2,
+        "of": 4,
+        "label": "Lanes"
+      }
     },
     {
       "id": "showcase",
@@ -18,10 +38,321 @@
       "startS": 5,
       "durationS": 2.5,
       "slots": {
-        "file": { "path": "src/router/match.ts", "loc": 212, "fanIn": 6, "fanOut": 3 },
+        "file": {
+          "path": "src/router/match.ts",
+          "loc": 212,
+          "fanIn": 6,
+          "fanOut": 3
+        },
         "schemaLabel": "Route table",
-        "schema": { "tables": [{ "id": "route", "name": "route", "fields": [{ "id": "id", "name": "id", "type": "int", "key": "primary" }, { "id": "path", "name": "path", "type": "text" }] }] },
-        "annotate": { "text": "first match wins", "kind": "underline" }
+        "schema": {
+          "tables": [
+            {
+              "id": "route",
+              "name": "route",
+              "fields": [
+                {
+                  "id": "id",
+                  "name": "id",
+                  "type": "int",
+                  "key": "primary"
+                },
+                {
+                  "id": "path",
+                  "name": "path",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        "annotate": {
+          "text": "first match wins",
+          "kind": "underline"
+        }
+      }
+    },
+    {
+      "id": "beat-01",
+      "kind": "verdict-card",
+      "startS": 7.5,
+      "durationS": 6.6,
+      "cues": {
+        "clean": 3.35,
+        "noon": 5.45
+      },
+      "slots": {
+        "verdict": "Ship it: the router lane holds",
+        "call": "Ship it",
+        "reasons": [
+          {
+            "id": "reasons-1",
+            "text": "Matcher rewrite merged clean"
+          },
+          {
+            "id": "reasons-2",
+            "text": "No refusals since noon"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "reasons-1",
+          "atS": 3.35
+        },
+        {
+          "target": "reasons-2",
+          "atS": 5.45
+        }
+      ],
+      "chips": [
+        {
+          "kind": "verified",
+          "text": "demo@0a1b2c3:src/router/match.ts:12-40"
+        }
+      ],
+      "hints": {
+        "placeholder": true,
+        "qaLeadLine": true
+      },
+      "headline": "The floor shipped the router lane today",
+      "chapter": {
+        "n": 1,
+        "of": 5,
+        "label": "Bottom line"
+      }
+    },
+    {
+      "id": "beat-02",
+      "kind": "list",
+      "startS": 14.1,
+      "durationS": 7.3,
+      "cues": {
+        "matcher": 1.95,
+        "warmed": 3.35,
+        "split": 5.1
+      },
+      "slots": {
+        "title": "Lanes",
+        "rows": [
+          {
+            "id": "rows-1",
+            "text": "Matcher rewrite",
+            "mark": "dot",
+            "lane": "router"
+          },
+          {
+            "id": "rows-2",
+            "text": "Cache warmed",
+            "mark": "tick"
+          },
+          {
+            "id": "rows-3",
+            "text": "Lane split",
+            "mark": "open"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "rows-1",
+          "atS": 1.95
+        },
+        {
+          "target": "rows-2",
+          "atS": 3.35
+        },
+        {
+          "target": "rows-3",
+          "atS": 5.1
+        }
+      ],
+      "chips": [
+        {
+          "kind": "verified",
+          "text": "demo@0a1b2c3:src/router/match.ts:12-40"
+        }
+      ],
+      "hints": {},
+      "headline": "Three lanes moved toward their goals",
+      "chapter": {
+        "n": 2,
+        "of": 5,
+        "label": "Lanes"
+      }
+    },
+    {
+      "id": "beat-03",
+      "kind": "list",
+      "startS": 21.4,
+      "durationS": 4.85,
+      "cues": {
+        "night": 1.6
+      },
+      "slots": {
+        "title": "Lanes",
+        "rows": [
+          {
+            "id": "held-2",
+            "text": "Cache warmed",
+            "mark": "tick"
+          },
+          {
+            "id": "held-3",
+            "text": "Lane split",
+            "mark": "open"
+          },
+          {
+            "id": "rows-1",
+            "text": "Night queue",
+            "mark": "risk"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "held-2",
+          "atS": 0.2
+        },
+        {
+          "target": "held-3",
+          "atS": 0.2
+        },
+        {
+          "target": "rows-1",
+          "atS": 1.6
+        }
+      ],
+      "chips": [],
+      "hints": {
+        "continues": "d2"
+      },
+      "headline": "The night queue is the one risk left",
+      "chapter": {
+        "n": 2,
+        "of": 5,
+        "label": "Lanes"
+      }
+    },
+    {
+      "id": "beat-04",
+      "kind": "fact-flash",
+      "startS": 26.25,
+      "durationS": 5.9,
+      "cues": {
+        "renamed": 2.3,
+        "flaky": 4.4
+      },
+      "slots": {
+        "facts": [
+          {
+            "id": "facts-1",
+            "text": "Docs lane renamed two pages"
+          },
+          {
+            "id": "facts-2",
+            "text": "One flaky test retired"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "facts-1",
+          "atS": 2.3
+        },
+        {
+          "target": "facts-2",
+          "atS": 4.4
+        }
+      ],
+      "chips": [],
+      "hints": {
+        "placeholder": true
+      },
+      "headline": "Two side quests closed on the way",
+      "chapter": {
+        "n": 3,
+        "of": 5,
+        "label": "Side quests"
+      }
+    },
+    {
+      "id": "beat-05",
+      "kind": "claim-card",
+      "startS": 32.15,
+      "durationS": 5.55,
+      "slots": {
+        "claim": "Small lanes ship faster than one big queue",
+        "source": {
+          "label": "demo@0a1b2c3:docs/lanes.md:4",
+          "ref": "lanes-ship-faster"
+        }
+      },
+      "reveals": [
+        {
+          "target": "claim",
+          "atS": 0.2
+        }
+      ],
+      "chips": [
+        {
+          "kind": "docs-claim",
+          "text": "demo@0a1b2c3:docs/lanes.md:4"
+        }
+      ],
+      "hints": {},
+      "headline": "Small lanes keep paying off",
+      "chapter": {
+        "n": 4,
+        "of": 5,
+        "label": "Reflection"
+      }
+    },
+    {
+      "id": "beat-06",
+      "kind": "button",
+      "startS": 37.699999999999996,
+      "durationS": 3.8,
+      "slots": {
+        "line": "Read the digest",
+        "action": "Open digest"
+      },
+      "reveals": [
+        {
+          "target": "line",
+          "atS": 0.2
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "Read the digest for the rest",
+      "chapter": {
+        "n": 5,
+        "of": 5,
+        "label": "Ask"
+      }
+    },
+    {
+      "id": "beat-07",
+      "kind": "outro",
+      "startS": 41.49999999999999,
+      "durationS": 3.45,
+      "slots": {
+        "line": "That is the day"
+      },
+      "reveals": [
+        {
+          "target": "line",
+          "atS": 0.2
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "That is the day",
+      "chapter": {
+        "n": 5,
+        "of": 5,
+        "label": "Ask"
       }
     }
   ]

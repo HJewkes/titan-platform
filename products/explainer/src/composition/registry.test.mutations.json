@@ -16,7 +16,7 @@
       "find": "HeldBeat, { stage: true })",
       "replace": "HeldBeat, { stage: false })",
       "kills": [
-        "hook and catalogue draw on the whole page and held draws in the stage box"
+        "hook and catalogue draw on the whole page and every spec kind past them in the stage box"
       ]
     },
     {

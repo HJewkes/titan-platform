@@ -2,7 +2,7 @@ schema: beat-spec/v1
 type: fact-flash
 summary: "One to four quick facts at speed."
 role: evidence
-component: { name: HookBeat, maturity: spike }
+component: { name: ListBeat, maturity: spike }
 slots: fact-flash
 speech: { band: concept }
 durationS: [3, 5, 9]
