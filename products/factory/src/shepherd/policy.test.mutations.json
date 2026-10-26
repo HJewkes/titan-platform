@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the decided-base guard checks only allows, so a mechanical MRG-AU gate skips it",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "if (decision.outcome === \"deny\" || base === undefined || headSha === undefined) return decision;",
+      "replace": "if (decision.outcome !== \"allow\" || base === undefined || headSha === undefined) return decision;",
+      "kills": [
+        "merge evidence read on another base than the one being decided turns a mechanical MRG-AU gate into a merge-guard gate when the fix-proof judged the parent branch, so no coordinator resolves it into a merge",
+        "merge evidence read on another base than the one being decided turns a mechanical MRG-AU gate into a merge-guard gate when the merge facts were read on the parent branch, so no coordinator resolves it into a merge"
+      ]
+    }
+  ]
+}

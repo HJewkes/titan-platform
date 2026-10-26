@@ -1,9 +1,11 @@
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mechanicalAuthorityReason } from "../coordinator-evidence.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
 import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { escalationReason } from "./route-table.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
@@ -319,6 +321,35 @@ describe("merge evidence read on another base than the one being decided", () =>
 
     expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
     expect(decision.reason).toContain("read on base agent-chat/parent, not on main");
+  });
+
+  /** Main's evidence with a check still running, so MRG-AU gates on a reason a coordinator may resolve, its proof judged on `proofBase`. */
+  const mechanicallyGated = (baseRef: string, proofBase: string): MergeEvidence => {
+    const evidence = onBase(baseRef);
+    evidence.merge.checkRuns = [{ name: "validate", appId: 15368, headSha: HEAD, conclusion: null }];
+    return { ...evidence, record: { ...evidence.record, proofBase } };
+  };
+
+  it.each([
+    ["the fix-proof judged the parent branch", mechanicallyGated("main", "agent-chat/parent"), "judged base agent-chat/parent, not main"],
+    ["the merge facts were read on the parent branch", mechanicallyGated("agent-chat/parent", "main"), "read on base agent-chat/parent, not on main"],
+  ])("turns a mechanical MRG-AU gate into a merge-guard gate when %s, so no coordinator resolves it into a merge", (_scene, evidence, offBase) => {
+    const unguarded = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidence)).decide("merge", { headSha: HEAD });
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidence), undefined, () => "main");
+
+    const decision = options.policy.decide("merge", { headSha: HEAD });
+
+    expect(unguarded).toMatchObject({ outcome: "gate", rule: { table: "authority", rowId: "MRG-AU" } });
+    expect(mechanicalAuthorityReason(escalationReason("policy-denial", unguarded.reason))).toBe(true);
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
+    expect(decision.reason).toContain(offBase);
+    expect(decision.reason).toContain("no-non-green-run");
+  });
+
+  it("leaves a mechanical MRG-AU gate as it is when the facts and the fix-proof were both read on the base being decided", () => {
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(mechanicallyGated("main", "main")), undefined, () => "main");
+
+    expect(options.policy.decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { table: "authority", rowId: "MRG-AU" } });
   });
 
   it("allows when the evidence was read on the base being decided, or no base was checked", () => {

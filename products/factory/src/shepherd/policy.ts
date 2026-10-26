@@ -211,16 +211,20 @@ async function rereadEvidence(ctx: WorkflowContext, headSha: string, reviews: Re
 }
 
 /**
- * An allow judged on evidence read on another base than the one being decided gates: a retarget and back during the
- * re-read could otherwise merge on the other base's review rules and merge tree. So does a fix-proof that judged another
- * base, until a read on this one proves the head. Evidence with no base, or a decision with no checked base, is left as it is.
+ * A decision on evidence read on another base than the one being decided gates: a retarget and back during the re-read
+ * could otherwise merge on the other base's review rules and merge tree. So does a fix-proof that judged another base,
+ * until a read on this one proves the head. Every outcome but deny is guarded, not only an allow: a mechanical authority
+ * gate a coordinator may resolve would otherwise merge without the read. Evidence with no base, or a decision with no
+ * checked base, is left as it is.
  */
 function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined, proof: ProofOnBase): GateDecision {
-  if (decision.outcome !== "allow" || base === undefined || headSha === undefined) return decision;
+  if (decision.outcome === "deny" || base === undefined || headSha === undefined) return decision;
   const evidenceBase = mergeEvidenceAt(headSha, verdictFor)?.record.baseRef;
   const factsElsewhere = evidenceBase !== undefined && evidenceBase !== base;
   const offBase = factsElsewhere ? `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` : proof.unproven(headSha, base);
-  return offBase === undefined ? decision : { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason: offBase };
+  if (offBase === undefined) return decision;
+  const reason = decision.outcome === "gate" ? `${offBase}; ${decision.reason}` : offBase;
+  return { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
