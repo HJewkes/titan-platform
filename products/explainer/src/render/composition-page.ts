@@ -49,9 +49,12 @@ export async function cachedPage(source: PageSource, cacheRoot: string, build: P
   if (!existsSync(dir)) {
     const staging = `${dir}.building-${process.pid}`;
     rmSync(staging, { recursive: true, force: true });
-    await build(staging);
-    if (existsSync(dir)) rmSync(staging, { recursive: true, force: true });
-    else renameSync(staging, dir);
+    try {
+      await build(staging);
+      if (!existsSync(dir)) renameSync(staging, dir);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
   }
   return { dir, sha: treeSha(dir) };
 }

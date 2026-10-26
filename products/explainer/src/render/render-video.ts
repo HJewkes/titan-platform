@@ -16,7 +16,8 @@ const VIEWPORT = { width: 1920, height: 1080 };
 /** The fields render reads from a compiled timeline; TP-2990's `Timeline` must stay assignable to it. */
 export interface RenderTimeline {
   durationS: number;
-  provisional: boolean;
+  /** Optional as in the page's timeline schema; compileTimeline always sets it. */
+  provisional?: boolean;
   beats: readonly GateBeat[];
 }
 
@@ -142,7 +143,7 @@ async function manifestFor(input: RenderInput, paths: OutPaths, { frames, wallS,
   return {
     schema: "explainer.render-manifest/v1", workers: input.workers, fps: RENDER_FPS, frames: frames.frames,
     durationS: mixDurationS(input.timeline), pageDurationS: frames.pageDurationS, renderWallS: Number(wallS.toFixed(2)),
-    draft: !input.audio || input.timeline.provisional, ...qa, host,
+    draft: !input.audio || input.timeline.provisional === true, ...qa, host,
     shas: { timeline: sha256(canonicalJson(input.timeline)), page: input.pageSha, mix, mp4, vtt, ...(words ? { words } : {}) },
   };
 }
