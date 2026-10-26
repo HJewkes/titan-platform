@@ -19,7 +19,7 @@ import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
-import { heldErrorsVerdict, mp4DurationVerdict } from "../qa/qa-checks.js";
+import { heldErrorsVerdict, measuredVerdict, mp4DurationVerdict } from "../qa/qa-checks.js";
 import { doctrineG2p } from "./voice-g2p.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
@@ -184,6 +184,10 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   qa: [
     { name: "held-errors", gate: true, reads: ["qa"], run: heldErrorsVerdict },
     { name: "mp4-duration", gate: true, reads: ["qa"], run: mp4DurationVerdict },
+    { name: "motion-happened", gate: true, reads: ["qa"], run: measuredVerdict("motion-happened") },
+    { name: "clipped-text", gate: true, reads: ["qa"], run: measuredVerdict("clipped-text") },
+    { name: "content-fill", gate: true, reads: ["qa"], run: measuredVerdict("content-fill") },
+    { name: "stage-empty", gate: false, reads: ["qa"], run: measuredVerdict("stage-empty") },
   ],
   sheets: [],
 };

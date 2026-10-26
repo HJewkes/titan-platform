@@ -22,3 +22,13 @@ export function mp4DurationVerdict(input: QaCheckInput): Verdict {
   const offS = Math.abs(durationS - timelineS);
   return { pass: offS <= frameS, detail: `mp4 ${durationS.toFixed(3)} s, timeline ${timelineS.toFixed(3)} s: off by ${offS.toFixed(3)} s (at most ${frameS.toFixed(3)})` };
 }
+
+/** Shown in a measured check's detail; the rest are in `qa.json`. */
+const DETAIL_FINDINGS = 3;
+
+/** The page-measured findings of one code: none passes; the detail quotes the first few with their anchor cells. */
+export const measuredVerdict = (code: string) => (input: QaCheckInput): Verdict => {
+  const found = report(input).measured.filter((finding) => finding.code === code);
+  const shown = found.slice(0, DETAIL_FINDINGS).map(({ anchors, message }) => (anchors.length > 0 ? `[${anchors.join(",")}] ${message}` : message)).join("; ");
+  return { pass: found.length === 0, detail: found.length === 0 ? `no ${code} finding` : `${found.length} ${code}: ${shown}` };
+};
