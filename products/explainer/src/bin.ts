@@ -4,6 +4,7 @@ import { runSheetsCli } from "./contact-sheet-cli.js";
 import { runEvalCli } from "./eval-cli.js";
 import { runGuideCli } from "./guide-plan-cli.js";
 import { runPrCli } from "./presets/pr-overview/pr-cli.js";
+import { runRenderCli } from "./render-cli.js";
 import { runRewriteCli } from "./rewrite-cli.js";
 import { runRunCli } from "./workflow/run-cli.js";
 import { runEditCli } from "./workflow/edit-cli.js";
@@ -20,6 +21,7 @@ const SUBCOMMANDS = new Map<string | undefined, (argv: string[]) => Promise<numb
   ["guide", runGuideCli],
   ["pr", runPrCli],
   ["props", runPropsCli],
+  ["render", runRenderCli],
   ["rewrite", runRewriteCli],
   ["run", runRunCli],
   ["sheets", runSheetsCli],
