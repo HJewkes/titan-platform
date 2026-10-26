@@ -22,13 +22,13 @@ const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "f
  * Above the four-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
  */
-export const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
+const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
 /**
  * A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it, or the head opted out
  * with `[skip ci]`. In a repo whose base runs fix-proof, the grace ends in `error`, not `missing`.
  */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
-export const LOG_TAIL_LINES = 200;
+const LOG_TAIL_LINES = 200;
 const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
@@ -93,14 +93,14 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
  * Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. So is a skipped
  * judge: an `edited` event that changes no base skips every job, and that run printed no line.
  */
-export const isFixProofRun = (head: string) => (run: CheckRun) =>
+const isFixProofRun = (head: string) => (run: CheckRun) =>
   run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head && run.conclusion !== "skipped";
 
 const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
   runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
 
 /** The PR and base branch the registration names; a run is bound to it only if GitHub ties the run to that very pair. */
-export type Binding = { pr: number; baseRef: string } | { unbound: string };
+type Binding = { pr: number; baseRef: string } | { unbound: string };
 
 async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<Binding> {
   if (pr === null) return { unbound: "the registration names no PR, so no run can be bound to it" };
@@ -117,7 +117,7 @@ const isBoundTo = (binding: Binding) => (run: CheckRun) => "pr" in binding && ru
 export const REFUSAL = /fix-proof runs only against the default branch: base \S+ is not ([^\s)]+)/;
 
 /** A line fix-proof-run.sh printed when it refused a stacked base: it says nothing about the fix on any base (TP-4259). */
-export function isRefusal(line: string | undefined): boolean {
+function isRefusal(line: string | undefined): boolean {
   const parsed = line === undefined ? undefined : parseResultLine(line);
   return parsed?.ok === true && parsed.result.verdict === "error" && REFUSAL.test(parsed.result.error ?? "");
 }
@@ -188,7 +188,7 @@ function deadlineRead(chosen: Chosen | undefined, execSeen: boolean): Polled {
 }
 
 /** Where a proof is read: `pastRefusal` waits for a run that is no refusal instead of taking a refused one as the head's line. */
-export interface ProofTarget {
+interface ProofTarget {
   repo: RepoSlug;
   head: string;
   pr: number | null;
