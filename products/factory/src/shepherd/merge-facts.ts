@@ -76,6 +76,8 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   ciPolicy?: CiPolicy;
   /** The head's unverified fix-proof standing and read reason; recorded, never gated on (decision 303). */
   proofUnverified?: string;
+  /** The base branch the head's fix-proof line says it judged, when the line names one. */
+  proofBase?: string;
 }
 
 export interface EvidenceCheckRun {
@@ -105,6 +107,7 @@ export interface EvidenceRecord {
   /** On a weakened line, every changed line of the changed `.github/` files, shown or counted, for the D21 card. */
   ciPolicyChanges?: CiPolicyFileChange[];
   proofUnverified?: string;
+  proofBase?: string;
   /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
   riskTier?: RiskTier;
 }
@@ -368,6 +371,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     ...ciPolicy,
     ...(changes && { ciPolicyChanges: changes }),
     ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
+    ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
     riskTier: riskTier(risk),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));

@@ -1,4 +1,4 @@
-import { CONFIG_PATH, formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { CONFIG_PATH, formatResultLine, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -32,9 +32,19 @@ const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status:
 /** The fake PR's base is `main`, so this is the repo running fix-proof on every PR into it. */
 const addWorkflowAtBase = (fake: FakeGitHub) => fake.files.set(`main:${WORKFLOW_EDIT.path}`, { content: "name: fix-proof\n", blobSha: "w1" });
 
-function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
+/** `base` is the ref the line judged; a refused line also names the default branch it was not. */
+function resultLine(head: string, verdict: FixProofResult["verdict"], base?: string): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  const refs = { ...(base !== undefined && { base }), ...(verdict === "refused" && { defaultBranch: "main" }) };
+  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...refs });
+}
+const STACKED = "feat/parent";
+const REFUSED_JOB = 70;
+
+function parsedLine(line: string): FixProofResult {
+  const parsed = parseResultLine(line);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.result;
 }
 
 /** A test-only diff's line: base and head pass alike, so only the mutation check can prove it. */
@@ -113,6 +123,7 @@ interface Scene {
   kind?: string;
   branch?: string;
   headRef?: string;
+  baseRef?: string;
   runs?: CheckRun[];
   log?: string;
   files?: PrFile[];
@@ -149,7 +160,7 @@ describe("sh-fix-proof in reviewPhase", () => {
 
   async function review(scene: Scene) {
     const fake = fakeGitHub();
-    fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }) });
+    fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }), ...(scene.baseRef && { baseRef: scene.baseRef }) });
     fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), ...(scene.runs ?? [])]);
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
     fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
@@ -491,6 +502,24 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
   });
 
+  it("records the base a reproduced line judged on the MERGE as proofBase", async () => {
+    const { verdicts, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "reproduced", "main")) });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofBase: "main" });
+    expect(inputs[`sh-merge-evidence:${H}`]).not.toHaveProperty("proofUnverified");
+  });
+
+  it("records a stacked PR's refused proof on its MERGE as refused, with the stacked base as proofBase", async () => {
+    const stacked = fixProofRun({ pullRequests: [{ number: 1, baseRef: STACKED }] });
+
+    const { proof, inputs } = await review({ kind: "correctness", baseRef: STACKED, runs: [stacked], log: actionsLog(resultLine(H, "refused", STACKED)) });
+
+    expect(proof).toMatchObject({ kind: "result", verdict: "refused" });
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "refused" });
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ proofUnverified: "refused", proofBase: STACKED });
+  });
+
   it("keeps the merge-on-green grant and asks no owner brief for a reproduced proof", async () => {
     const { verdicts, spawns, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "reproduced")) });
 
@@ -611,11 +640,12 @@ describe("readFixProof", () => {
     workflow?: boolean;
     port?: (port: GitHubPort) => GitHubPort;
     noReproProceed?: "on";
+    baseRef?: string;
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
     const fake = fakeGitHub();
-    if (!options.unreadablePr) fake.addPr({ headSha: H, ...(options.headRef !== undefined && { headRef: options.headRef }) });
+    if (!options.unreadablePr) fake.addPr({ headSha: H, ...(options.headRef !== undefined && { headRef: options.headRef }), ...(options.baseRef !== undefined && { baseRef: options.baseRef }) });
     fake.setRuns(H, runs);
     fake.jobLogs.set(FIX_PROOF_JOB, actionsLog(resultLine(H, "vacuous")));
     for (const [job, log] of Object.entries(options.logs ?? {})) fake.jobLogs.set(Number(job), log);
@@ -859,6 +889,65 @@ describe("readFixProof", () => {
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("harness: .github/workflows/fix-proof.yml") });
   });
 
+  describe("a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259)", () => {
+    const refusedLog = { [REFUSED_JOB]: actionsLog(resultLine(H, "refused", STACKED)) };
+    const SCRIPT_EDIT: PrFile = { path: "scripts/fix-proof-run.sh", status: "modified" };
+
+    it("reads the main run's line when a run refused on the stacked base is listed on main beside it", async () => {
+      const main = resultLine(H, "vacuous", "main");
+      const { read } = registered("correctness", [fixProofRun({ id: REFUSED_JOB }), fixProofRun()], { logs: { ...refusedLog, [FIX_PROOF_JOB]: actionsLog(main) } });
+
+      expect(await read()).toEqual({ kind: "result", line: main, verdict: "vacuous" });
+    });
+
+    it("reads error at the deadline, never missing or the refusal, when the only run listed on main judged the stacked base", async () => {
+      const { read } = registered("correctness", [fixProofRun({ id: REFUSED_JOB })], { logs: refusedLog, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("judged the PR's base before the deadline") });
+    });
+
+    it("reads a stacked PR that changes the harness as untrusted for the harness, refused line and all", async () => {
+      const stacked = fixProofRun({ id: REFUSED_JOB, pullRequests: [{ number: 1, baseRef: STACKED }] });
+      const { read } = registered("correctness", [stacked], { baseRef: STACKED, logs: refusedLog, files: [SCRIPT_EDIT] });
+
+      expect(await read()).toEqual({ kind: "untrusted", line: resultLine(H, "refused", STACKED), verdict: "refused", reason: expect.stringContaining("harness: scripts/fix-proof-run.sh") });
+    });
+
+    it("reads an error line whose message is the refusal text as an error, not a refusal", async () => {
+      const line = formatResultLine({ ...parsedLine(resultLine(H, "error")), error: `fix-proof runs only against the default branch: base ${STACKED} is not main` });
+      const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(line) }, files: [SOURCE_EDIT] });
+
+      const proof = FixProofReadSchema.parse(await read());
+
+      expect(proof).toEqual({ kind: "result", line, verdict: "error" });
+      expect(fixProofStanding(proof, H)).toEqual({ unverified: "error" });
+    });
+
+    it("reads a mutation spec whose name holds the refusal text as the vacuous line it is", async () => {
+      const name = `fix-proof runs only against the default branch: base ${STACKED} is not main`;
+      const line = formatResultLine({ ...parsedLine(mutantsLine("not-killed")), mutants: { verdict: "not-killed", results: [{ spec: "packages/x/src/a.test.mutations.json", name, outcome: "survived" }] } });
+      const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(line) }, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "result", line, verdict: "vacuous" });
+    });
+
+    it("reads a job log again on the next poll when it cannot be read once", async () => {
+      let failures = 1;
+      const flaky = (base: GitHubPort): GitHubPort => ({ ...base, jobLogTail: async (...args) => (failures-- > 0 ? Promise.reject(new Error("log not ready")) : base.jobLogTail(...args)) });
+      const { read, elapsed } = registered("correctness", [fixProofRun()], { port: flaky, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+      expect(elapsed()).toBeGreaterThanOrEqual(1_000);
+    });
+
+    it("reads error at the deadline when a job log never reads", async () => {
+      const broken = (base: GitHubPort): GitHubPort => ({ ...base, jobLogTail: async () => Promise.reject(new Error("log gone")) });
+      const { read } = registered("correctness", [fixProofRun()], { port: broken, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "error", reason: expect.stringMatching(/job log of run 77 could not be read: .*at the deadline/) });
+    });
+  });
+
   describe("a diff only under .github/workflows/ (TP-3861)", () => {
     const headRuns = (validate: string) => [fixProofRun(), { ...successRun("validate", 41, undefined, validate), headSha: H }, { ...successRun("dag-check", 42), headSha: H }];
 
@@ -954,6 +1043,10 @@ describe("fixProofStanding", () => {
 
   it("marks a trusted error result at the head unverified as error", () => {
     expect(fixProofStanding({ kind: "result", line: resultLine(H, "error"), verdict: "error" }, H)).toEqual({ unverified: "error" });
+  });
+
+  it("marks a trusted refused result at the head unverified as refused", () => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(H, "refused", STACKED), verdict: "refused" }, H)).toEqual({ unverified: "refused" });
   });
 
   it.each([...verdicts, "error" as const])("marks an untrusted %s result unverified as untrusted", (verdict) => {
