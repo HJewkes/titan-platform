@@ -28,7 +28,9 @@ function row(overrides: Partial<Row> = {}): Row {
   };
 }
 
-const ok = <T>(value: T): StripRead<T> => ({ ok: true, value });
+function ok<T>(value: T): StripRead<T> {
+  return { ok: true, value };
+}
 const green = { kind: "ci", stepId: "sh-ci-wait", headSha: HEAD, conclusion: "green", runUrl: null };
 const verdict = (reviewer: string, value: "MERGE" | "FIX_FIRST", headSha = HEAD, n = 1) => ({ kind: "verdict", stepId: `sh-await-verdict:${n}`, verdict: value, headSha, locator: null, reviewer });
 const holdEvent = (reason: string, actor: string) => ({ kind: "event", event: "hold", reason, actor, at: "2026-10-10T01:00:00.000Z", headSha: HEAD });

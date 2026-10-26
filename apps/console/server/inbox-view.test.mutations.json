@@ -36,6 +36,16 @@
       "kills": [
         "inbox ordering orders live-sized items in work linear in their count"
       ]
+    },
+    {
+      "name": "an inbox item never carries its live row's gate strip",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "...(gates !== undefined && { gates })",
+      "replace": "",
+      "kills": [
+        "inbox.list on a fixture factory joins each gate on a live PR to its gate strip at that head",
+        "inbox.list on a fixture factory shows a gate's unreadable sources as unknown unmet rows without failing the list"
+      ]
     }
   ]
 }
