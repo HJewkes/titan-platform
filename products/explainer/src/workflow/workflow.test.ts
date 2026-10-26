@@ -10,7 +10,7 @@ import { ArtifactStore, sha256 } from "./artifacts.js";
 import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
 import { openState, resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
 let fx: Fixture;
@@ -33,13 +33,13 @@ function storeText(fx: Fixture, text: string, kind: string): string {
 describe("explainer run", () => {
   it("runs every stage in order and ends with the MP4 linked into the theater", async () => {
     fx = fixture();
-    const bridge = fakeBridge();
+    const render = fakeRender();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
 
     expect(result.status, result.error).toBe("completed");
     expect(result.report.rows.map((r) => [r.stage, r.status])).toEqual(STAGES.map((stage) => [stage, stage === "gather" || stage === "audition" ? "not run" : "ran"]));
-    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
+    expect(render.renders).toHaveLength(1);
     const theaterMp4 = path.join(fx.theater, "demo.mp4");
     expect(sha256(readFileSync(theaterMp4))).toBe(row(result, "render").outputs.mp4);
     expect(row(result, "export").outputs.mp4).toBe(row(result, "render").outputs.mp4);
@@ -52,7 +52,7 @@ describe("explainer run", () => {
     const draft = choppy();
     const last = draft.chapters[draft.chapters.length - 1]!.id;
     const script = { ...draft, chapters: draft.chapters.map((c) => (c.id === last ? { ...c, id: "reflection" } : c)), beats: draft.beats.map((b) => (b.chapter === last ? { ...b, chapter: "reflection" } : b)) };
-    const host = () => fakeHost(fx, fakeScriptModel(script), fakeBridge(), { reflection });
+    const host = () => fakeHost(fx, fakeScriptModel(script), fakeRender(), { reflection });
 
     const first = await runVideo({ spine: fx.spine, facts: fx.facts }, host());
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, from: "export", base: first.runId }, host());
@@ -65,9 +65,9 @@ describe("explainer run", () => {
 
   it("voices the rewritten script, not the draft", async () => {
     fx = fixture();
-    const bridge = fakeBridge();
+    const render = fakeRender();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
 
     expect(spokenOf(fx, row(result, "tts").outputs.words!)).toBe(spokenOf(fx, row(result, "rewrite").outputs.script!));
     expect(spokenOf(fx, row(result, "rewrite").outputs.script!)).not.toBe(spokenOf(fx, row(result, "script").outputs.draft!));
@@ -75,16 +75,16 @@ describe("explainer run", () => {
 
   it("stops at the script stage's l0 gate when an error-severity L0 check fails, before the rewrite spends", async () => {
     fx = fixture();
-    const bridge = fakeBridge();
+    const render = fakeRender();
     const model = fakeScriptModel();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, bridge, { evalChecks: [l0Check(false)] }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, render, { evalChecks: [l0Check(false)] }));
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(1 + MAX_REPAIR_ROUNDS);
     expect(row(result, "script")).toMatchObject({ status: "failed", checks: "10 pass, 1 gate fail, 1 reported fail" });
     expect(result.error).toContain("script: gate l0 failed");
-    expect(bridge.calls).toEqual([]);
+    expect(render.renders).toEqual([]);
     expect(row(result, "rewrite").status).toBe("not run");
   });
 
@@ -92,7 +92,7 @@ describe("explainer run", () => {
     fx = fixture();
     const model = fakeScriptModel(undefined, { invalid: 1, usd: 0.05 });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
@@ -109,7 +109,7 @@ describe("explainer run", () => {
     const unknownKind = { ...script, beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, visual: { ...beat.visual, cues: [{ action: "V6", target: "recipe-script:plan", atCue: "courier" }] } } : beat)) };
     const model = fakeScriptModel(script, { invalid: 1, invalidReply: unknownKind });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
@@ -123,7 +123,7 @@ describe("explainer run", () => {
     const withExtras = { ...script, beats: script.beats.map((beat, i) => (i < 2 ? { ...beat, chips: ["extra"], cues: [] } : beat)) };
     const model = fakeScriptModel(script, { invalid: 1, invalidReply: withExtras });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(1);
@@ -142,7 +142,7 @@ describe("explainer run", () => {
     const withOverrides = { ...script, beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, visual: { ...beat.visual, ...ownerFields } } : beat)) };
     const model = fakeScriptModel(script, { invalid: 1, invalidReply: withOverrides });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts[0]).not.toContain('"tune"');
@@ -158,7 +158,7 @@ describe("explainer run", () => {
     const broken = { ...script, chapters: [], beats: script.beats.map((beat, i) => (i === 0 ? { ...beat, cues: [] } : beat)) };
     const model = fakeScriptModel(script, { invalid: 1, invalidReply: broken });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
@@ -172,7 +172,7 @@ describe("explainer run", () => {
     const model = fakeScriptModel(draft, { repaired: { ...draft, id: `${draft.id}-repaired` } });
     const passesOnceRepaired: L0Check = (input) => l0Check(input.script.id.endsWith("-repaired"))(input);
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge(), { evalChecks: [passesOnceRepaired] }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender(), { evalChecks: [passesOnceRepaired] }));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
@@ -185,7 +185,7 @@ describe("explainer run", () => {
     const draft = choppy();
     const model = fakeScriptModel({ ...draft, video: { ...draft.video, thesis_refs: [draft.beats[0]!.id, draft.beats[1]!.id, draft.beats.at(-1)!.id] } });
 
-    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge(), { evalChecks: [flowCheck] }));
+    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender(), { evalChecks: [flowCheck] }));
 
     expect(model.prompts[1]).toMatch(/\n- Q-F4: .*\n {2}Found: the midpoint thesis ref /);
   });
@@ -196,7 +196,7 @@ describe("explainer run", () => {
     const joined = choppy({ h2: { spoken: "The desk checks every parcel with shelfscan today." } });
     const model = fakeScriptModel(joined, { repaired: choppy({ h2: { spoken: "The desk checks every parcel with shelf scan today." } }) });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts).toHaveLength(2);
@@ -208,7 +208,7 @@ describe("explainer run", () => {
     fx = fixture();
     const model = fakeScriptModel({ ...choppy(), structure: "bluf" });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
     expect(draft.structure).toBe("design-journey");
@@ -220,7 +220,7 @@ describe("explainer run", () => {
     writeFileSync(fx.spine, SPINE.replace("\n\n## 3. Journey", `\n\nStructure: scqa\n\n## 3. Journey`) + LEAD_ORDER);
     const model = fakeScriptModel({ ...choppy(), profile: "daily-briefing", structure: "design-journey" }, { followLeads: true });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     const draft = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(result, "script").outputs.draft!), "utf8"));
@@ -233,7 +233,7 @@ describe("explainer run", () => {
     writeFileSync(fx.spine, SPINE + LEAD_ORDER);
     const model = fakeScriptModel(choppy(), { invalid: 1, invalidReply: choppy(), followLeads: true });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(model.prompts[1]).toContain("lead beats: ch1's lead beat verdict-card is on none of its beats");
@@ -243,7 +243,7 @@ describe("explainer run", () => {
     fx = fixture();
     const model = fakeScriptModel();
 
-    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(model.prompts).toHaveLength(1);
   });
@@ -252,7 +252,7 @@ describe("explainer run", () => {
     fx = fixture();
     const model = fakeScriptModel(undefined, { invalid: 2, usd: 0.05 });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status).toBe("failed");
     expect(model.prompts).toHaveLength(2);
@@ -264,7 +264,7 @@ describe("explainer run", () => {
 describe("the cold rubric on every run", () => {
   it("scores J8 to J12 on the final script and records them as a note and an artifact, never a check", async () => {
     fx = fixture();
-    const host = fakeHost(fx, fakeScriptModel(), fakeBridge());
+    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
 
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, host);
 
@@ -282,15 +282,15 @@ describe("the cold rubric on every run", () => {
     ["throws", throwingRubric],
   ])("cannot fail the run or gate a stage when the rubric judge %s", async (_, harness) => {
     fx = fixture();
-    const bridge = fakeBridge();
+    const render = fakeRender();
     const rubric = { harness, calls: [] as string[] };
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { rubric }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render, { rubric }));
 
     expect(result.status, result.error).toBe("completed");
     expect(row(result, "eval").checks).toBe("2 pass, 0 gate fail, 0 reported fail");
     expect(row(result, "eval").notes[0]).toMatch(/^cold rubric \(reported only\)/);
-    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
+    expect(render.renders).toHaveLength(1);
   });
 });
 
@@ -298,9 +298,9 @@ describe("explainer run --from", () => {
   it("from tts spends nothing on models, and the unchanged script hits the stage cache from tts on", async () => {
     fx = fixture();
     const model = fakeScriptModel();
-    const bridge = fakeBridge();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, bridge));
-    const host = fakeHost(fx, model, bridge);
+    const render = fakeRender();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, render));
+    const host = fakeHost(fx, model, render);
 
     const second = await runVideo({ from: "tts" }, host);
 
@@ -322,15 +322,15 @@ describe("explainer run --from", () => {
 
   it("fills fresh at resolve after a base that went past resolve, since its stored generated slots are not a pin", async () => {
     fx = fixture();
-    const bridge = fakeBridge();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge));
-    const carried = await runVideo({ from: "tts", base: first.runId }, fakeHost(fx, fakeScriptModel(), bridge));
+    const render = fakeRender();
+    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
+    const carried = await runVideo({ from: "tts", base: first.runId }, fakeHost(fx, fakeScriptModel(), render));
     const script = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(first, "rewrite").outputs.script!), "utf8"));
     const h1 = script.beats.find((beat: { id: string }) => beat.id === "h1");
     h1.visual = { ...h1.visual, beat: "stat", labels: ["4 scans a minute"], cues: [] };
     const restated = storeText(fx, `${JSON.stringify(script)}\n`, "script");
 
-    const third = await runVideo({ from: "resolve", to: "resolve", base: carried.runId, pins: { script: restated } }, fakeHost(fx, fakeScriptModel(), bridge));
+    const third = await runVideo({ from: "resolve", to: "resolve", base: carried.runId, pins: { script: restated } }, fakeHost(fx, fakeScriptModel(), render));
 
     expect(third.status, third.error).toBe("completed");
     const generated = row(third, "resolve").outputs["generated-slots"]!;
@@ -340,10 +340,10 @@ describe("explainer run --from", () => {
 
   it("refuses a --from whose base run never finished the stages before it, naming the stage", async () => {
     fx = fixture();
-    const bridge = fakeBridge();
-    const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), bridge, { qaEngine: fakeQa(heldOverlap()) }));
+    const render = fakeRender();
+    const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render, { qaEngine: fakeQa(heldOverlap()) }));
 
-    await expect(runVideo({ from: "sheets", base: failed.runId }, fakeHost(fx, fakeScriptModel(), bridge))).rejects.toThrow(/has no completed qa stage/);
+    await expect(runVideo({ from: "sheets", base: failed.runId }, fakeHost(fx, fakeScriptModel(), render))).rejects.toThrow(/has no completed qa stage/);
   });
 });
 
@@ -352,7 +352,7 @@ describe("spend cap", () => {
     fx = fixture();
     const model = fakeScriptModel(undefined, { usd: 0.05 });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, budgetUsd: 0.05 }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, budgetUsd: 0.05 }, fakeHost(fx, model, fakeRender()));
 
     expect(result.status).toBe("failed");
     expect(result.report.stop).toEqual({ stage: "rewrite", spentUsd: 0.05, capUsd: 0.05 });
@@ -363,10 +363,10 @@ describe("spend cap", () => {
   it("resumes a stopped run from the named stage under a higher cap, without paying for the script again", async () => {
     fx = fixture();
     const model = fakeScriptModel(undefined, { usd: 0.05 });
-    const bridge = fakeBridge();
-    const stopped = await runVideo({ spine: fx.spine, facts: fx.facts, budgetUsd: 0.05 }, fakeHost(fx, model, bridge));
+    const render = fakeRender();
+    const stopped = await runVideo({ spine: fx.spine, facts: fx.facts, budgetUsd: 0.05 }, fakeHost(fx, model, render));
 
-    const resumed = await resumeVideo(stopped.runId, fakeHost(fx, model, bridge), { budgetUsd: 5 });
+    const resumed = await resumeVideo(stopped.runId, fakeHost(fx, model, render), { budgetUsd: 5 });
 
     expect(resumed.status, resumed.error).toBe("completed");
     expect(resumed.report.from).toBe("rewrite");
@@ -379,35 +379,35 @@ describe("spend cap", () => {
     fx = fixture();
     const model = fakeScriptModel();
 
-    await runVideo({ spine: fx.spine, facts: fx.facts, budgetUsd: 1.5 }, fakeHost(fx, model, fakeBridge()));
+    await runVideo({ spine: fx.spine, facts: fx.facts, budgetUsd: 1.5 }, fakeHost(fx, model, fakeRender()));
 
     expect(model.budgets).toEqual([1.5]);
   });
 });
 
-describe("bridged stages", () => {
-  it("fails the run at the stage whose command exits non-zero, and a resume starts there", async () => {
+describe("the render stage", () => {
+  it("fails the run at render when capture fails, and a resume starts there", async () => {
     fx = fixture();
-    const failing = fakeBridge({ renderFails: true });
-    const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), failing));
-    const bridge = fakeBridge();
+    const failed = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender({ fails: true })));
+    const render = fakeRender();
 
-    const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), bridge));
+    const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), render));
 
-    expect(failed.error).toContain("bridge render: command 1 (render.ts) exited 1: capture failed at b1");
+    expect(failed.error).toContain("capture failed at beat-01");
     expect(row(failed, "render")).toMatchObject({ status: "failed" });
     expect(resumed.status, resumed.error).toBe("completed");
     expect(resumed.report.from).toBe("render");
-    expect(bridge.calls).toEqual(["render.ts", "variety.mjs"]);
+    expect(render.renders).toHaveLength(1);
   });
 
-  it("writes each command's output to the run's log directory", async () => {
+  it("stores the mp4 and vtt export and sheets read, beside the manifest, timeline and page tree", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
-    const renderChild = row(result, "render").childRunId!;
-    expect(readFileSync(path.join(fx.dataDir, "runs", renderChild, "logs", "render-1.log"), "utf8")).toContain('{"frames":30}');
+    expect(Object.keys(row(result, "render").outputs).sort()).toEqual(["mp4", "page", "render-manifest", "timeline", "vtt"]);
+    expect(row(result, "render")).toMatchObject({ checks: "1 pass, 0 gate fail, 0 reported fail" });
+    expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(true);
   });
 });
 
@@ -417,40 +417,30 @@ describe("checks as stage steps", () => {
 
   it("fails the tts stage when the voice has no phonemes for a word, before render", async () => {
     fx = fixture();
-    const bridge = fakeBridge();
+    const render = fakeRender();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), bridge, { ttsEngine: fakeVoice({ dropWord: "courier" }).engine }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), render, { ttsEngine: fakeVoice({ dropWord: "courier" }).engine }));
 
     expect(result.status).toBe("failed");
     expect(result.error).toContain('no phonemes for 1 word(s): "courier"');
     expect(row(result, "tts").status).toBe("failed");
     expect(row(result, "render").status).toBe("not run");
-    expect(bridge.calls).toEqual([]);
+    expect(render.renders).toEqual([]);
   });
 
   it("passes the cue gate when every cue word is voiced", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(cued()), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(row(result, "tts").checks).toBe("1 pass, 0 gate fail, 0 reported fail");
   });
 
-  it("records a failed reported-only bridge check and runs on to the theater", async () => {
-    fx = fixture();
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge({ varietyFails: true })));
-
-    expect(result.status, result.error).toBe("completed");
-    expect(row(result, "render").checks).toBe("0 pass, 0 gate fail, 1 reported fail");
-    expect(readFileSync(result.reportPath, "utf8")).toContain("| render | variety | reported | **fail** | variety WARN: 3 beats in a row share a framing |");
-  });
-
   it("lists every stage's verdicts with their role in the report", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     const md = readFileSync(result.reportPath, "utf8");
     expect(md).toContain("| script | l0 | gate | pass |");
@@ -464,7 +454,7 @@ describe("run report", () => {
     fx = fixture();
     const model = fakeScriptModel(undefined, { usd: 0.05 });
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     const { report } = result;
     const rewrite = row(result, "rewrite");
@@ -478,14 +468,14 @@ describe("run report", () => {
     expect(report.totals.calls).toBe(1 + rewrite.calls + 1);
   });
 
-  it("marks exactly the bridged stages, and lists each stage's output shas", async () => {
+  it("marks no stage bridged, and lists each stage's output shas", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     const md = readFileSync(result.reportPath, "utf8");
     const bridgedRows = md.split("\n").filter((line) => line.includes("**bridge**")).map((line) => line.split("|")[1]!.trim());
-    expect(bridgedRows).toEqual(["render"]);
+    expect(bridgedRows).toEqual([]);
     expect(md).toContain(`mp4 ${row(result, "render").outputs.mp4!.slice(0, 12)}`);
     expect(md).toContain("qa PASS: 0 held errors");
     expect(existsSync(result.reportPath.replace(/\.md$/, ".json"))).toBe(true);

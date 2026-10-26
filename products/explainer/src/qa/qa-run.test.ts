@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runVideo } from "../workflow/host.js";
 import { StageRecordSchema } from "../workflow/records.js";
 import { runPaths } from "../workflow/run-dir.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "../workflow/run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "../workflow/run-fakes.test-helpers.js";
 import { fakeQa, heldOverlap } from "./qa-fakes.test-helpers.js";
 import { QaReportSchema } from "./qa-report.js";
 
@@ -18,7 +18,7 @@ describe("explainer run through the qa stage", () => {
     fx = fixture();
     const qa = fakeQa(heldOverlap());
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge(), { qaEngine: qa }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender(), { qaEngine: qa }));
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/qa: gate held-errors failed \(qa FAIL: \d+ held errors \(text-overlap \d+\)/);
@@ -30,18 +30,18 @@ describe("explainer run through the qa stage", () => {
       ["direction-gates", false, false], ["black-frames", false, true], ["silence-2s", false, true], ["frozen-frames", false, true],
     ]);
     const report = QaReportSchema.parse(JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", failed.outputs.qa!), "utf8")));
-    expect(report.timeline).toBe("words");
+    expect(report.timeline).toBe("timeline");
     expect(new Set(report.errors.map((error) => error.beat)).size).toBeGreaterThan(1);
   });
 
-  it("opens the bridged page by its theater stem with the cues it resolved, and passes a clean page", async () => {
+  it("opens the render's page tree on its timeline, and passes a clean page", async () => {
     fx = fixture();
     const qa = fakeQa();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge(), { qaEngine: qa }));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender(), { qaEngine: qa }));
 
     expect(result.status, result.error).toBe("completed");
     expect(row(result, "qa")).toMatchObject({ checks: "14 pass, 0 gate fail, 1 reported fail" });
-    expect(qa.opened.map(({ url }) => url)).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/\?page=demo$/)]);
+    expect(qa.opened.map(({ url }) => url)).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/\?timeline=qa-timeline\.json$/)]);
   });
 });

@@ -15,30 +15,31 @@ import { SIDECAR_STATUSES } from "../video-sidecar.js";
 import { sha256, type ArtifactStore } from "./artifacts.js";
 import { resolveConfig } from "../resolve-stage.js";
 import { loadQaGate, QaInspectSchema } from "../qa/gate-profile.js";
+import { defaultRenderWorkers } from "../render/render-video.js";
 import { timingProfile, TimingProfileSchema } from "../qa/timing-gates.js";
 import { auditionConfig, profileRef } from "./audition-stage.js";
 import { GatherRequestSchema, type GatherRequest } from "./run-gather.js";
 import type { BridgeFile } from "./bridge.js";
-import { isBridgeStage, CACHED_STAGES, type BridgeStage, type CachedStage, type StageName } from "./records.js";
+import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
 
 /**
  * Bumped when a stage's body changes what it makes from the same inputs, so an old cache entry is never read as
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "x4", qa: "x10e", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x8", rewrite: "x4", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "m10", qa: "x10f", sheets: "x10",
 };
 
-/** The artifacts each in-process stage reads; a bridged stage reads what `bridge.json` declares as its inputs. */
-const IN_PROCESS_INPUTS: Record<Exclude<CachedStage, BridgeStage>, readonly string[]> = {
+/** The artifacts each stage reads. */
+const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
   gather: [], audition: ["facts"], script: ["spine", "facts"], rewrite: ["draft"], eval: ["script", "spine"], resolve: ["script"], tts: ["script", "resolved"],
-  qa: ["mp4", "words", "script", "page"], sheets: ["mp4", "script"],
+  render: ["script", "resolved", "words", "audio"], qa: ["mp4", "timeline", "words", "script", "resolved", "page"], sheets: ["mp4", "script"],
 };
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  qa: ["timeline", "resolved", "visual", "code", "slots"], sheets: ["render-json", "resolved", "slots", "qa", "visual"],
+  render: ["code", "slots", "generated-slots"], qa: ["visual", "code", "slots"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */
@@ -67,6 +68,7 @@ const ScriptParamsSchema = z.strictObject({ model: z.string().min(1).optional() 
 const RewriteParamsSchema = z.strictObject({ model: z.string().min(1).optional(), rounds: z.number().int().min(1).max(MAX_REWRITE_ROUNDS).optional() });
 const TtsParamsSchema = z.strictObject({ voice: z.string().min(1).optional(), rate: z.number().min(0.5).max(2).optional() });
 const SheetsParamsSchema = z.strictObject({ take: z.string().min(1).optional(), status: z.enum(SIDECAR_STATUSES).optional() });
+const RenderParamsSchema = z.strictObject({ workers: z.number().int().positive().optional(), twoRun: z.boolean().optional(), noQa: z.boolean().optional() });
 
 /** A video and every run of it, oldest first: the sidecar lists them, so a new linked run re-keys the sheets stage. */
 export const VideoRefSchema = z.object({ id: z.string(), runIds: z.array(z.string()) });
@@ -88,9 +90,6 @@ export const StageConfigSchema = z.object({
   structures: z.string().optional(),
   /** The resolve stage's beat specs, profiles and router, by content hash. */
   doctrine: z.string().optional(),
-  /** A bridged stage's own block of `bridge.json`, so an edited command misses the cache. */
-  bridge: z.unknown().optional(),
-  vars: z.record(z.string(), z.string()).optional(),
   /** The tts stage's voice band: the profile's, with a tts variant's `voice` and `rate` over it. */
   voice: z.object({ id: z.string(), rate: z.number(), source: z.string() }).optional(),
   /** The tts stage's words a minute per speech band, from doctrine `speech-bands.yaml`, so a band edit re-voices. */
@@ -100,10 +99,13 @@ export const StageConfigSchema = z.object({
   /** The sheets stage's sidecar take and status, the theater stem its poster is named after, and the structure registry by hash. */
   sheets: z.object({ take: z.string(), status: z.enum(SIDECAR_STATUSES), stem: z.string(), structures: z.string() }).optional(),
   video: VideoRefSchema.optional(),
-  /** The qa stage's gate profile for the run's type, by content hash, the bridged spike page's stem, whether it sweeps at 2 Hz, and the type's timing thresholds. */
-  qa: z
-    .object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, page: z.string().optional(), sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() })
-    .optional(),
+  /** The qa stage's gate profile for the run's type, by content hash, whether it sweeps at 2 Hz, and the type's timing thresholds. */
+  qa: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema, sweep: z.boolean().optional(), timing: TimingProfileSchema.optional() }).optional(),
+  /** The render's capture workers, its two-run and no-QA switches, the pre-capture gate profile and the style pack's CSS. */
+  render: z.object({
+    workers: z.number().int().positive(), twoRun: z.boolean(), noQa: z.boolean(),
+    gate: z.object({ sha: z.string(), gate: z.array(z.string()), inspect: QaInspectSchema }), styleCss: z.string().optional(),
+  }).optional(),
   /** Who builds resolve's custom layers, so a new builder or base prompt misses the cache. */
   builder: BuilderRefSchema.optional(),
 });
@@ -138,20 +140,6 @@ export function stageKey(spec: Omit<StageSpec, "key" | "remainingUsd">): string 
   return sha256(canonicalJson({ stage: spec.stage, version: STAGE_VERSIONS[spec.stage], config: spec.config, inputs: spec.inputs, sample: spec.sample }));
 }
 
-function bridgeBlock(stage: BridgeStage, bridge: () => BridgeFile) {
-  const block = bridge().stages[stage];
-  if (!block) throw new Error(`bridge host file has no "${stage}" stage`);
-  return block;
-}
-
-function bridgeConfig(stage: BridgeStage, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
-  const block = bridgeBlock(stage, bridge);
-  const unknown = Object.keys(params).filter((name) => block.vars[name] === undefined);
-  if (unknown.length > 0) throw new Error(`variant for ${stage} sets ${unknown.join(", ")}, which its bridge.json block declares no default for in "vars"`);
-  const vars = { ...block.vars, ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])) };
-  return { bridge: block, vars };
-}
-
 /** Read when the spec is built, so a profile's new voice is a new key. */
 function ttsVoice(profile: string | undefined, params: z.infer<typeof TtsParamsSchema>): NonNullable<StageConfig["voice"]> {
   const band = profile ? profileFor(loadProfiles(), profile).voice : DEFAULT_VOICE;
@@ -171,11 +159,17 @@ function sheetsConfig(settings: RunSettings, params: z.infer<typeof SheetsParams
 }
 
 /** The gate profile and the type's pacing are read when the spec is built, so an edit to either or to the run's type re-keys qa; `sweep: false` keeps the cue moments only. */
-function qaConfig(settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
+function qaConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
   const { sweep = true } = z.strictObject({ sweep: z.boolean().optional() }).parse(params);
   const timing = timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined);
-  const qa = { ...loadQaGate(settings.profile), page: bridge().theater.stem, sweep, timing };
-  return { qa, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
+  return { qa: { ...loadQaGate(settings.profile), sweep, timing }, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
+}
+
+/** Render gates on the same profile qa reads, so an edit to it re-keys render too; a host's worker count is part of the key. */
+function renderConfig(settings: RunSettings, params: Variant["params"]): StageConfig {
+  const p = RenderParamsSchema.parse(params);
+  const render = { workers: p.workers ?? defaultRenderWorkers(), twoRun: p.twoRun ?? false, noQa: p.noQa ?? false, gate: loadQaGate(settings.profile) };
+  return { render, ...(settings.profile ? { profile: profileRef(settings.profile) } : {}) };
 }
 
 function settingsConfig(stage: CachedStage, settings: RunSettings, params: Variant["params"], bridge: () => BridgeFile): StageConfig {
@@ -201,12 +195,9 @@ function settingsConfig(stage: CachedStage, settings: RunSettings, params: Varia
   if (stage === "resolve") return { ...z.strictObject({}).parse(params), ...resolveConfig() };
   if (stage === "tts") return { voice: ttsVoice(settings.profile, TtsParamsSchema.parse(params)), rates: bandRates() };
   if (stage === "sheets") return sheetsConfig(settings, SheetsParamsSchema.parse(params), bridge);
-  if (stage === "qa") return qaConfig(settings, params, bridge);
-  return bridgeConfig(stage, params, bridge);
+  if (stage === "qa") return qaConfig(settings, params);
+  return renderConfig(settings, params);
 }
-
-const inputNames = (stage: CachedStage, bridge: () => BridgeFile): readonly string[] =>
-  isBridgeStage(stage) ? Object.keys(bridgeBlock(stage, bridge).inputs) : IN_PROCESS_INPUTS[stage];
 
 export interface SpecRequest {
   stage: CachedStage;
@@ -227,23 +218,19 @@ const shippedStylePacks = (): ReadonlyMap<string, StylePack> => (shipped ??= loa
 
 interface StyleChoice {
   stylePack: { id: string; sha: string };
-  vars: Record<string, string>;
+  css: string;
 }
 
 /** The render variant param that picks a style pack (plan §A.2): the pack is a render setting, never a TTS one. */
 export const STYLE_PACK_PARAM = "stylePack";
 
-/**
- * Lifts the style pack out of a render variant's params: the pack's id, theme and CSS reach the bridge as
- * `{var.stylePack}`, `{var.styleTheme}` and `{var.styleCss}`, and its content hash goes into the config.
- */
+/** Lifts the style pack out of a render variant's params: its CSS goes to the page and its content hash into the config. */
 function styleConfig(stage: CachedStage, params: Variant["params"], packs: () => ReadonlyMap<string, StylePack>): { params: Variant["params"]; style?: StyleChoice } {
   const { [STYLE_PACK_PARAM]: id, ...rest } = params;
   if (id === undefined) return { params };
   if (stage !== "render") throw new Error(`variant for ${stage} sets ${STYLE_PACK_PARAM}, which only a render variant may set`);
   const pack = stylePackFor(packs(), String(id));
-  const vars = { stylePack: pack.id, styleTheme: pack.theme, styleCss: stylePackCss(pack) };
-  return { params: rest, style: { stylePack: { id: pack.id, sha: stylePackSha(pack) }, vars } };
+  return { params: rest, style: { stylePack: { id: pack.id, sha: stylePackSha(pack) }, css: stylePackCss(pack) } };
 }
 
 /** Builds a stage's spec and key from what it reads; a missing input fails here, before any child run starts. */
@@ -251,7 +238,7 @@ export function stageSpec(request: SpecRequest): StageSpec {
   const { stage, variant } = request;
   if (variant && variant.value.stage !== stage) throw new Error(`variant "${variant.value.name}" is for stage ${variant.value.stage}, not ${stage}`);
   const inputs: Record<string, string> = {};
-  for (const name of inputNames(stage, request.bridge)) {
+  for (const name of STAGE_INPUTS[stage]) {
     const sha = request.artifacts[name];
     if (sha === undefined) throw new Error(`stage ${stage} needs artifact "${name}", which no earlier stage produced and no --pin supplied`);
     inputs[name] = sha;
@@ -265,7 +252,7 @@ export function stageSpec(request: SpecRequest): StageSpec {
   const config: StageConfig = {
     ...(variant ? { variant: { name: variant.value.name, sha: variant.sha } } : {}),
     ...settings,
-    ...(style ? { stylePack: style.stylePack, vars: { ...settings.vars, ...style.vars } } : {}),
+    ...(style && settings.render ? { stylePack: style.stylePack, render: { ...settings.render, styleCss: style.css } } : {}),
     ...(stage === "resolve" && request.builder ? { builder: request.builder } : {}),
   };
   const keyed = { stage, inputs, config, sample: request.sample };

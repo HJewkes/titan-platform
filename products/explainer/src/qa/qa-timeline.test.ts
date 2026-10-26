@@ -1,43 +1,91 @@
 import { describe, expect, it } from "vitest";
-import { choppy } from "../rewrite-fixtures.test-helpers.js";
-import { qaCues, qaMoments, timelineFromArtifact, timelineFromWords, timelineS } from "./qa-timeline.js";
+import { JudgeConfigSchema } from "../eval-harness.js";
+import { RENDER_FPS } from "../render/render-video.js";
+import { resolvedFor, soloScript } from "../template-fill/fill-fixtures.test-helpers.js";
+import { BridgeFileSchema } from "../workflow/bridge.js";
+import { stageSpec, type RunSettings } from "../workflow/stage-spec.js";
+import { FULL_STAGE, fakeQa } from "./qa-fakes.test-helpers.js";
+import { runQaStage } from "./qa-stage.js";
+import { FROM, qaStageHarness } from "./qa-stage.test-helpers.js";
+import { qaCues, qaMoments, timelineFromArtifact, timelineS } from "./qa-timeline.js";
 
-/** Every beat of the synthetic script spoken one word each half second, after a 0.25 s lead. */
-function wordsOf(script: ReturnType<typeof choppy>) {
-  const beats = script.beats.map((beat) => {
-    const words = beat.spoken.split(/\s+/).map((word, i) => ({ word, start: 0.25 + i * 0.5 }));
-    return { id: beat.id, durationS: 0.5 + words.length * 0.5, words };
-  });
-  return { beats };
-}
+const harness = qaStageHarness();
 
 describe("QA timeline", () => {
-  it("builds the same moments from words and script as from the render's timeline when they agree", () => {
-    const script = choppy({ h1: { visual: { assertion: "The desk refuses unknown parcels", job: "numbers", beat: "list", cues: [{ action: "V6", target: "rows-1", atCue: "courier" }] } } });
-    const words = wordsOf(script);
-    const courierS = words.beats.find((beat) => beat.id === "h1")!.words.find((w) => w.word.toLowerCase().startsWith("courier"))!.start;
-    let startS = 0;
-    const beats = words.beats.map(({ id, durationS }) => {
-      const beat = { id, kind: "list", startS, durationS, slots: {}, ...(id === "h1" ? { cues: { courier: courierS } } : {}) };
-      startS += durationS;
-      return beat;
-    });
-    const given = timelineFromArtifact({ durationS: startS, beats });
+  it("reads beats, kinds and beat-local cue seconds from the render's timeline", () => {
+    const given = { durationS: 5, beats: [{ id: "beat-01", kind: "list", startS: 0, durationS: 2, slots: {} }, { id: "beat-02", kind: "title", startS: 2, durationS: 3, cues: { courier: 1.25 }, slots: {} }] };
 
-    const derived = timelineFromWords(words, script);
+    const timeline = timelineFromArtifact(given);
 
-    expect(qaMoments(derived)).toEqual(qaMoments(given));
-    expect(qaCues(derived)).toEqual([{ beat: "h1", word: "courier", nth: 1, atS: courierS }]);
-    expect(timelineS(derived)).toBeCloseTo(startS);
+    expect(qaCues(timeline)).toEqual([{ beat: "beat-02", word: "courier", nth: 1, atS: 1.25 }]);
+    expect(qaMoments(timeline).filter((m) => m.beat === "beat-02").every((m) => m.t >= 2)).toBe(true);
+    expect(timelineS(timeline)).toBe(5);
+  });
+});
+
+describe("qa without a render timeline", () => {
+  const settings: RunSettings = { scriptModel: "sonnet", judge: JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" }), rounds: 1 };
+  const bridge = () => BridgeFileSchema.parse({ schema: "explainer-bridge/v1", theater: { dir: "/theater", stem: "demo", files: {} } });
+
+  it("is refused at the spec, naming the timeline artifact", () => {
+    const artifacts = { mp4: "a".repeat(64), words: "b".repeat(64), script: "c".repeat(64), resolved: "e".repeat(64), page: "d".repeat(64) };
+
+    const spec = () => stageSpec({ stage: "qa", artifacts, settings, sample: 0, remainingUsd: 1, bridge });
+
+    expect(spec).toThrow(/stage qa needs artifact "timeline"/);
   });
 
-  it("leaves out a beat resolve cut, keeping the beats after it at their spoken start", () => {
-    const script = choppy();
-    const words = wordsOf(script);
-    const [first, cut, third] = words.beats;
+  it("is refused by the stage body rather than rebuilt from words and script", async () => {
+    const store = harness.store();
+    const text = (body: string, kind: string) => store.putText(body, kind, FROM);
+    const artifacts = { mp4: text('{"durationS":4}', "mp4"), words: text("{}", "words"), script: text("{}", "script") };
 
-    const timeline = timelineFromWords(words, script, { cut: [{ id: cut!.id, chapter: "c", code: "sim", detail: "cut" }] });
+    const run = runQaStage({ artifacts, store, from: FROM, remainingUsd: 0 }, { sha: "f".repeat(64), gate: [], inspect: {} }, fakeQa());
 
-    expect(timeline.beats.slice(0, 2).map((beat) => [beat.id, beat.startS])).toEqual([[first!.id, 0], [third!.id, first!.durationS + cut!.durationS]]);
+    await expect(run).rejects.toThrow(/stage qa needs artifact "timeline"/);
+  });
+});
+
+describe("qa on a render's storyboard ids", () => {
+  /** A 6 s still picture with no text to read, on the one beat of a script that declares it held, or not. */
+  async function stillBeat(heldS: number | undefined) {
+    const solo = soloScript({ beat: "list", labels: ["tick Two lanes"] });
+    const script = { ...solo, beats: solo.beats.map((beat) => ({ ...beat, ...(heldS === undefined ? {} : { heldS }) })) };
+    const resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats: resolvedFor(script).beats, budgets: [] };
+    const timeline = { durationS: 6, beats: [{ id: "beat-01", kind: "list", startS: 0, durationS: 6, slots: {} }] };
+    const store = harness.store();
+    const extra = () => ({ script: store.putText(JSON.stringify(script), "script", FROM), resolved: store.putText(JSON.stringify(resolved), "resolved", FROM) });
+    const still = (n: number) => (n > RENDER_FPS && n <= RENDER_FPS + 93 ? 0 : 0.02);
+    return harness.run({ probeAt: () => ({ texts: [], boxes: FULL_STAGE.boxes }), diffAt: still }, { timeline, extra });
+  }
+
+  it("excuses a still picture on a beat the script holds, though the timeline names it beat-01", async () => {
+    const held = await stillBeat(6);
+    const moving = await stillBeat(undefined);
+
+    expect(held.checks["static-window"]).toMatchObject({ gate: true, pass: true });
+    expect(moving.checks["static-window"]).toMatchObject({ gate: true, pass: false });
+  });
+
+  /** "Parcel desk" on screen for half a second, under 1.5 s reading time, on a beat whose words.json says it, or not. */
+  async function briefText(spoken: boolean) {
+    const script = soloScript({ beat: "list", labels: ["tick Two lanes"] });
+    const resolved = { schema: "explainer.resolved/v1", profile: script.profile, beats: resolvedFor(script).beats, budgets: [] };
+    const said = spoken ? [{ word: "Parcel", start: 1.1, end: 1.2 }, { word: "desk", start: 1.2, end: 1.3 }] : [];
+    const words = { beats: [{ id: script.beats[0]!.id, startS: 0, durationS: 4, words: said }] };
+    const timeline = { durationS: 4, beats: [{ id: "beat-01", kind: "list", startS: 0, durationS: 4, slots: {} }] };
+    const store = harness.store();
+    const put = (value: unknown, kind: string) => store.putText(JSON.stringify(value), kind, FROM);
+    const extra = () => ({ script: put(script, "script"), resolved: put(resolved, "resolved"), words: put(words, "words") });
+    const shown = (t: number) => (t >= 1 && t < 1.4 ? FULL_STAGE : { texts: [], boxes: FULL_STAGE.boxes });
+    return harness.run({ probeAt: shown }, { timeline, extra });
+  }
+
+  it("reads words.json under the timeline's beat-01, so a text the narration says needs no reading hold", async () => {
+    const spoken = await briefText(true);
+    const unspoken = await briefText(false);
+
+    expect(spoken.checks["reading-hold"]).toMatchObject({ gate: true, pass: true });
+    expect(unspoken.checks["reading-hold"]).toMatchObject({ gate: true, pass: false });
   });
 });

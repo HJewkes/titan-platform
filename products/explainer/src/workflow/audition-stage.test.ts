@@ -10,7 +10,7 @@ import { runStageCli } from "./stage-cli.js";
 import { stageSpec, type RunSettings } from "./stage-spec.js";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -31,7 +31,7 @@ describe("audition stage", () => {
     fx = fixture();
     const facts = factsFile();
 
-    const result = await runVideo({ from: "audition", to: "audition", facts: facts.file, profile: "pr-overview" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()));
+    const result = await runVideo({ from: "audition", to: "audition", facts: facts.file, profile: "pr-overview" }, fakeHost(fx, fakeAuditionModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     const row = result.report.rows.find((r) => r.stage === "audition")!;
@@ -46,7 +46,7 @@ describe("audition stage", () => {
   it("runs alone on stored facts, and the second run with the same key is a cache hit", async () => {
     fx = fixture();
     const facts = factsFile();
-    const host = fakeHost(fx, fakeAuditionModel(), fakeBridge());
+    const host = fakeHost(fx, fakeAuditionModel(), fakeRender());
     await runVideo({ from: "audition", to: "audition", facts: facts.file, profile: "pr-overview" }, host);
     const lines: string[] = [];
     const stage = () => runStageCli(["stage", "audition", "--in", `facts=${facts.sha}`, "--profile", "pr-overview", "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: (t) => lines.push(t) });
@@ -59,19 +59,19 @@ describe("audition stage", () => {
   it("a run from audition with no profile is refused before it starts", async () => {
     fx = fixture();
 
-    await expect(runVideo({ from: "audition", to: "audition", facts: factsFile().file }, fakeHost(fx, fakeAuditionModel(), fakeBridge()))).rejects.toThrow(/--profile/);
+    await expect(runVideo({ from: "audition", to: "audition", facts: factsFile().file }, fakeHost(fx, fakeAuditionModel(), fakeRender()))).rejects.toThrow(/--profile/);
   });
 
   it("a run from audition to script needs --spine for a profile whose spine is not its audition pick", async () => {
     fx = fixture();
 
-    await expect(runVideo({ from: "audition", to: "script", facts: factsFile().file, profile: "repo-tour" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()))).rejects.toThrow(/--spine/);
+    await expect(runVideo({ from: "audition", to: "script", facts: factsFile().file, profile: "repo-tour" }, fakeHost(fx, fakeAuditionModel(), fakeRender()))).rejects.toThrow(/--spine/);
   });
 
   it("writes the pick as the spine for pr-overview, so a run to script needs no --spine", async () => {
     fx = fixture();
 
-    const result = await runVideo({ from: "audition", to: "audition", facts: factsFile().file, profile: "pr-overview" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()));
+    const result = await runVideo({ from: "audition", to: "audition", facts: factsFile().file, profile: "pr-overview" }, fakeHost(fx, fakeAuditionModel(), fakeRender()));
 
     const spine = result.report.rows.find((r) => r.stage === "audition")!.outputs.spine!;
     expect(readFileSync(path.join(fx.dataDir, "artifacts", spine), "utf8")).toMatch(/^# Story spine: pr-overview-scqa\n/);
@@ -80,7 +80,7 @@ describe("audition stage", () => {
   it("writes the pick as the spine for daily-overview too, naming its structure and each chapter's lead beat", async () => {
     fx = fixture();
 
-    const result = await runVideo({ from: "audition", to: "audition", facts: factsFile().file, profile: "daily-overview" }, fakeHost(fx, fakeAuditionModel(), fakeBridge()));
+    const result = await runVideo({ from: "audition", to: "audition", facts: factsFile().file, profile: "daily-overview" }, fakeHost(fx, fakeAuditionModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     const spine = result.report.rows.find((r) => r.stage === "audition")!.outputs.spine;
@@ -94,7 +94,7 @@ describe("audition stage", () => {
   it("a default run from script skips the audition", async () => {
     fx = fixture();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(result.report.rows.find((r) => r.stage === "audition")?.status).toBe("not run");
   });
@@ -119,7 +119,7 @@ describe("audition stage key", () => {
     fx = fixture();
     const db = openState(fx.dataDir);
     try {
-      const { store } = newRuntime(db, fakeHost(fx, fakeAuditionModel(), fakeBridge()));
+      const { store } = newRuntime(db, fakeHost(fx, fakeAuditionModel(), fakeRender()));
       const facts = store.putText(FACTS, "facts", { runId: "input", stage: "input" });
       const stale = { ...auditionConfig("pr-overview", MODELS), structures: "c".repeat(64) };
       const input = { artifacts: { facts }, store, from: { runId: "r", stage: "audition" }, remainingUsd: 1 };
@@ -132,7 +132,7 @@ describe("audition stage key", () => {
 
   it("one-stage runs with two profiles are two cached runs", async () => {
     fx = fixture();
-    const host = fakeHost(fx, fakeAuditionModel(), fakeBridge());
+    const host = fakeHost(fx, fakeAuditionModel(), fakeRender());
     const facts = factsFile();
     await runVideo({ from: "audition", to: "audition", facts: facts.file, profile: "pr-overview" }, host);
 
@@ -157,7 +157,7 @@ const auditionOf = (sha: string) => JSON.parse(readFileSync(path.join(fx.dataDir
 async function audition(profile: string, facts: string, extra: Parameters<typeof fakeHost>[3] = {}, model = fakeAuditionModel()) {
   const file = path.join(fx.dataDir, "facts.md");
   writeFileSync(file, facts);
-  const result = await runVideo({ from: "audition", to: "audition", facts: file, profile }, fakeHost(fx, model, fakeBridge(), extra));
+  const result = await runVideo({ from: "audition", to: "audition", facts: file, profile }, fakeHost(fx, model, fakeRender(), extra));
   const row = result.report.rows.find((r) => r.stage === "audition")!;
   return { result, row, model, record: row.outputs.audition ? auditionOf(row.outputs.audition) : undefined };
 }

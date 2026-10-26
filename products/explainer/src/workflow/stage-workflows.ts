@@ -7,10 +7,9 @@ import { runResolveStage } from "../resolve-stage.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { runAuditionStage } from "./audition-stage.js";
 import { runGatherStage } from "./gather-stage.js";
-import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { buildCustomLayers, LAYER_STEP_IDS, layerRoutes } from "./layer-build.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
-import { addUsage, isBridgeStage, NO_USAGE, StageRecordSchema, stepUsage, type CachedStage, type StageName, type StageOutcome, type StageRecord } from "./records.js";
+import { addUsage, NO_USAGE, StageRecordSchema, stepUsage, type CachedStage, type StageName, type StageOutcome, type StageRecord } from "./records.js";
 import type { GatherDeps } from "./run-gather.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
@@ -21,13 +20,12 @@ import { runTtsStage, type TtsEngine } from "./tts-stage.js";
 import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
 import { runQaStage } from "../qa/qa-stage.js";
+import { defaultRenderEngine, runRenderStage, type RenderEngine } from "../render/render-stage.js";
 import type { TimingProfile } from "../qa/timing-gates.js";
 
 interface BodyDeps {
   dataDir: string;
   store: ArtifactStore;
-  bridge: () => BridgeFile;
-  exec: BridgeExec;
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
   /** The L0 checks the script, rewrite and eval stages run; all of them by default. */
@@ -41,6 +39,8 @@ interface BodyDeps {
   media?: MediaExec;
   /** The qa stage's browser and ffprobe; real Chromium and the host's ffprobe by default. */
   qaEngine?: QaEngine;
+  /** The render stage's page build and capture; the composition page and Chromium by default. */
+  renderEngine?: RenderEngine;
   /** The qa stage's timing thresholds in place of the spec's; the type profile's by default. */
   qaTiming?: TimingProfile;
 }
@@ -76,10 +76,8 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   if (stage === "tts") return runTtsBody(config, input, deps);
   if (stage === "sheets") return runSheetsBody(config, input, deps);
   if (stage === "qa") return runQaBody(config, input, deps);
-  return runBridgeStage({
-    stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
-    logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
-  });
+  if (!config.render) throw new Error("render stage spec has no render settings");
+  return runRenderStage({ ...input, store: deps.store }, config.render, deps.renderEngine ?? defaultRenderEngine());
 }
 
 function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -116,7 +114,7 @@ function runQaBody(config: StageSpec["config"], input: ModelStageInput, deps: Bo
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {
   return {
     stage,
-    bridged: isBridgeStage(stage),
+    bridged: false,
     startedAt: startedAt.toISOString(),
     endedAt: endedAt.toISOString(),
     wallMs: endedAt.getTime() - startedAt.getTime(),

@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { BuiltPage } from "./render/composition-page.js";
 import { probeStreams, sineWav } from "./render/render-fixtures.test-helpers.js";
 import { RenderManifestSchema } from "./render/render-manifest.js";
-import { compositionPage, runRenderCli } from "./render-cli.js";
+import { compositionPage, type BuiltPage } from "./render/composition-page.js";
+import { runRenderCli } from "./render-cli.js";
 
 const BROWSER_TIMEOUT_MS = 300_000;
 const BEAT_IDS = ["beat-01", "beat-02", "beat-03"];

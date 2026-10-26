@@ -7,7 +7,7 @@ import { ConsoleSidecarSchema } from "../video-meta-mirror.test-helpers.js";
 import { ArtifactStore } from "./artifacts.js";
 import { BridgeFileSchema } from "./bridge.js";
 import { openState, runOneStage, runVideo } from "./host.js";
-import { fakeBridge, fakeHost, fakeMedia, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeMedia, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 import { ffmpegMedia } from "./sheets-stage.js";
 
 let fx: Fixture | undefined;
@@ -28,7 +28,7 @@ function linkSidecarIntoTheater(fixture: Fixture): void {
 
 async function firstRun(fixture: Fixture) {
   const media = fakeMedia();
-  const result = await runVideo({ spine: fixture.spine, facts: fixture.facts }, fakeHost(fixture, fakeScriptModel(), fakeBridge(), { media }));
+  const result = await runVideo({ spine: fixture.spine, facts: fixture.facts }, fakeHost(fixture, fakeScriptModel(), fakeRender(), { media }));
   return { result, media };
 }
 
@@ -53,7 +53,7 @@ describe("the sheets stage in a run", () => {
     fx = fixture();
     const { result: first } = await firstRun(fx);
 
-    const repair = await runVideo({ from: "sheets", base: first.runId }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const repair = await runVideo({ from: "sheets", base: first.runId }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(repair.status, repair.error).toBe("completed");
     expect(sidecarOf(row(repair, "sheets").outputs.sidecar!).explainer).toMatchObject({ videoId: first.runId, runIds: [first.runId, repair.runId] });
@@ -64,7 +64,7 @@ describe("explainer stage sheets", () => {
   it("lists the runs of the video it names, hits the cache on the same runs and misses it once the video has a new run", async () => {
     fx = fixture();
     const { result: first } = await firstRun(fx);
-    const host = fakeHost(fx, fakeScriptModel(), fakeBridge());
+    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
     const inputs = { mp4: row(first, "render").outputs.mp4!, script: row(first, "rewrite").outputs.script! };
 
     const once = await runOneStage({ stage: "sheets", inputs, video: first.runId }, host);
@@ -83,7 +83,7 @@ describe("explainer stage sheets", () => {
     const { result: first } = await firstRun(fx);
     const inputs = { mp4: row(first, "render").outputs.mp4!, script: row(first, "rewrite").outputs.script! };
 
-    const record = await runOneStage({ stage: "sheets", inputs }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const record = await runOneStage({ stage: "sheets", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     expect(sidecarOf(record.outputs.sidecar!).explainer).toMatchObject({ videoId: record.childRunId, runIds: [record.childRunId] });
   });
@@ -93,7 +93,7 @@ describe("explainer stage sheets", () => {
     const { result: first } = await firstRun(fx);
     const inputs = { mp4: row(first, "render").outputs.mp4!, script: row(first, "rewrite").outputs.script! };
 
-    const run = runOneStage({ stage: "sheets", inputs, video: "no-such-video" }, fakeHost(fx, fakeScriptModel(), fakeBridge()));
+    const run = runOneStage({ stage: "sheets", inputs, video: "no-such-video" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
 
     await expect(run).rejects.toThrow("no explainer-video run belongs to video no-such-video");
   });
@@ -105,14 +105,14 @@ describe.skipIf(!hasFfmpeg)("the sheets stage on a real video", () => {
   it("probes an ffmpeg-made video and grabs a 480 px poster 30 % in", async () => {
     fx = fixture();
     const { result: first } = await firstRun(fx);
-    const mp4File = path.join(fx.workdir, "synthetic.mp4");
+    const mp4File = path.join(path.join(fx.dataDir, ".."), "synthetic.mp4");
     const made = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=4:size=320x180:rate=10", "-pix_fmt", "yuv420p", mp4File]);
     expect(made.status, made.stderr.toString()).toBe(0);
     const db = openState(fx.dataDir);
     const mp4 = new ArtifactStore(fx.dataDir, db).putFile(mp4File, "mp4", { runId: "input", stage: "input" });
     db.close();
 
-    const record = await runOneStage({ stage: "sheets", inputs: { mp4, script: row(first, "rewrite").outputs.script! } }, fakeHost(fx, fakeScriptModel(), fakeBridge(), { media: ffmpegMedia() }));
+    const record = await runOneStage({ stage: "sheets", inputs: { mp4, script: row(first, "rewrite").outputs.script! } }, fakeHost(fx, fakeScriptModel(), fakeRender(), { media: ffmpegMedia() }));
 
     expect(sidecarOf(record.outputs.sidecar!).posterAtS).toBe(1.2);
     const probe = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name,width", "-of", "csv=p=0", path.join(fx.dataDir, "artifacts", record.outputs.poster!)]);

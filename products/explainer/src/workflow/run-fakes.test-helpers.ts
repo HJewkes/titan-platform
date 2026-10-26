@@ -12,11 +12,14 @@ import { beatsFor } from "../script-budget.js";
 import type { ScriptBeat, ScriptV1 } from "../script-schema.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
-import type { BridgeExec, BridgeFileSchema, ExecRequest } from "./bridge.js";
 import type { RunHost } from "./host.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { TtsEngine } from "./tts-stage.js";
 import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
+import { treeSha } from "../render/composition-page.js";
+import { fakeRenderDeps, type FakeRenderOptions } from "../render/render-fakes.test-helpers.js";
+import type { RenderEngine } from "../render/render-stage.js";
+import { renderVideo, type RenderInput } from "../render/render-video.js";
 import { PACING_DEFAULTS, type TimingProfile } from "../qa/timing-gates.js";
 
 /** A synthetic spine with the four required tables; nothing here quotes a real video. */
@@ -46,34 +49,21 @@ const FACTS = "# Facts\n\n| Id | Claim |\n|---|---|\n| F1 | Every scan passes th
 
 export interface Fixture {
   dataDir: string;
-  workdir: string;
+  /** A stand-in for the built composition page. */
+  page: string;
   theater: string;
   spine: string;
   facts: string;
   cleanup: () => void;
 }
 
-const BRIDGE: Omit<z.input<typeof BridgeFileSchema>, "workdir" | "theater"> = {
-  schema: "explainer-bridge/v1",
-  stages: {
-    render: {
-      inputs: { words: "out/words.json", audio: "out/audio" },
-      outputs: { mp4: { path: "out/demo.mp4", tree: false }, vtt: { path: "out/demo.vtt", tree: false }, page: { path: "out/page", tree: true } },
-      commands: [
-        { argv: ["node", "tools/render.ts", "{out.mp4}", "--workers", "{var.workers}"], timeoutS: 60 },
-        { argv: ["node", "tools/variety.mjs"], timeoutS: 60, check: "variety", gate: false },
-      ],
-      vars: { workers: "4" },
-    },
-  },
-};
-
 export function fixture(): Fixture {
   const root = mkdtempSync(path.join(tmpdir(), "explainer-run-"));
-  const dirs = { dataDir: path.join(root, "data"), workdir: path.join(root, "work"), theater: path.join(root, "theater") };
+  const dirs = { dataDir: path.join(root, "data"), page: path.join(root, "page"), theater: path.join(root, "theater") };
   for (const dir of Object.values(dirs)) mkdirSync(dir, { recursive: true });
-  const file = { ...BRIDGE, workdir: dirs.workdir, theater: { dir: dirs.theater, stem: "demo", files: { mp4: ".mp4", vtt: ".vtt" } } };
+  const file = { schema: "explainer-bridge/v1", theater: { dir: dirs.theater, stem: "demo", files: { mp4: ".mp4", vtt: ".vtt" } } };
   writeFileSync(path.join(dirs.dataDir, "bridge.json"), JSON.stringify(file));
+  writeFileSync(path.join(dirs.page, "index.html"), "<!doctype html><html><head><title>fake composition</title></head><body></body></html>\n");
   const spine = path.join(root, "spine.md");
   const facts = path.join(root, "facts.md");
   writeFileSync(spine, SPINE);
@@ -81,10 +71,11 @@ export function fixture(): Fixture {
   return { ...dirs, spine, facts, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-interface FakeBridge {
-  exec: BridgeExec;
-  /** Each command's script name, in order. */
-  calls: string[];
+interface FakeRender {
+  /** The render stage's engine over the fixture's stand-in page, with renderVideo on fake capture and encode. */
+  engine: (fx: Fixture) => RenderEngine;
+  /** Each render's input, in order. */
+  renders: RenderInput[];
 }
 
 const write = (file: string, text: string) => {
@@ -92,46 +83,18 @@ const write = (file: string, text: string) => {
   writeFileSync(file, text);
 };
 
-const at = (req: ExecRequest, rel: string) => path.join(req.cwd, rel);
-
-interface BridgeOptions {
-  /** The render command exits non-zero before writing anything. */
-  renderFails?: boolean;
-  /** The variety lint (a reported-only check) exits non-zero. */
-  varietyFails?: boolean;
-}
-
-const PlayedSchema = z.object({ beats: z.array(z.object({ durationS: z.number() })) });
-
-/** The fake render's MP4 plays its beats back to back, as the fake QA engine reads it. */
-const playedS = (words: string): number => PlayedSchema.parse(JSON.parse(words)).beats.reduce((sum, beat) => sum + beat.durationS, 0);
-
-/** Each template command's stand-in, by script name: it writes what the real one would, derived from its inputs. */
-function templateBodies(options: BridgeOptions): Record<string, (req: ExecRequest) => { code: number; stdout: string }> {
-  return {
-    "render.ts": (req) => {
-      if (options.renderFails) return { code: 1, stdout: "" };
-      const words = readFileSync(at(req, "out/words.json"), "utf8");
-      write(req.argv[2]!, JSON.stringify({ workers: req.argv[4], words: sha256(words), durationS: playedS(words) }));
-      write(at(req, "out/demo.vtt"), "WEBVTT\n");
-      write(at(req, "out/page/index.html"), "<!doctype html><title>demo</title>\n");
-      return { code: 0, stdout: '{"frames":30}\n' };
+/** Renders in process with no browser and no ffmpeg, and records each render's input. */
+export function fakeRender(options: FakeRenderOptions = {}): FakeRender {
+  const renders: RenderInput[] = [];
+  const deps = fakeRenderDeps(options);
+  const engine = (fx: Fixture): RenderEngine => ({
+    page: async () => ({ dir: fx.page, sha: treeSha(fx.page) }),
+    render: (input) => {
+      renders.push(input);
+      return renderVideo(input, deps);
     },
-    "variety.mjs": () => (options.varietyFails ? { code: 1, stdout: "variety WARN: 3 beats in a row share a framing\n" } : { code: 0, stdout: "variety ok\n" }),
-  };
-}
-
-/** Stands in for the template commands and records which ran. */
-export function fakeBridge(options: BridgeOptions = {}): FakeBridge {
-  const calls: string[] = [];
-  const bodies = templateBodies(options);
-  const exec: BridgeExec = async (req) => {
-    const name = path.basename(req.argv[1]!);
-    calls.push(name);
-    const { code, stdout } = bodies[name]!(req);
-    return { code, stdout, stderr: code === 0 ? "" : "capture failed at b1\n" };
-  };
-  return { exec, calls };
+  });
+  return { engine, renders };
 }
 
 const FAKE_DURATION_S = 200;
@@ -288,7 +251,7 @@ export function spokenOf(fx: Fixture, sha: string): string {
 /** The fixture's beats run 16-18 s with no cues, so the DIRECTION timing gates would stop every run at qa; these never fire. */
 const LAX_TIMING: TimingProfile = { pacing: { ...PACING_DEFAULTS, pictureChangeMaxS: 600, pictureChangeFailS: 600, staticMaxS: 600, held: [0, 600] } };
 
-export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
+export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender, extra: Partial<RunHost & Fakes> = {}): RunHost & Fakes {
   const rewriter = extra.rewriter ?? fakeRewriter();
   const rubric = extra.rubric ?? fakeRubricJudge();
   let tick = Date.parse("2026-10-22T00:00:00Z");
@@ -296,6 +259,6 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, bridge: FakeBridge
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
   const media = { media: fakeMedia(), qaEngine: fakeQa(), qaTiming: LAX_TIMING };
-  const seams = { runnerFor: model.runnerFor, harnessFor, exec: bridge.exec, ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, beatWorker: null };
+  const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, beatWorker: null };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
 }

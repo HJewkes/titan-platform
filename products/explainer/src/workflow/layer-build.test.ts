@@ -10,7 +10,7 @@ import { resolveScript, visual } from "../resolve-fixtures.test-helpers.js";
 import { ArtifactStore } from "./artifacts.js";
 import { DEFAULT_JUDGE, openState, runOneStage } from "./host.js";
 import { CUSTOM_LAYERS, LAYER_BUILDS_DIR, layerRoutes } from "./layer-build.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 import { CHECKS_STEP, childRecord, childWorkflow } from "./stage-cache.js";
 import { stageSpec } from "./stage-spec.js";
 import { bodyRoute, checksRoute, stageWorkflow } from "./stage-workflows.js";
@@ -56,7 +56,7 @@ function inputs(beats: Parameters<typeof resolveScript>[0], extra: Record<string
   }
 }
 
-const host = (worker?: BeatWorker) => fakeHost(fx, fakeScriptModel(), fakeBridge(), worker ? { beatWorker: worker } : {});
+const host = (worker?: BeatWorker) => fakeHost(fx, fakeScriptModel(), fakeRender(), worker ? { beatWorker: worker } : {});
 
 function treeFiles(sha: string): string[] {
   const db = openState(fx.dataDir);
@@ -137,8 +137,7 @@ describe("custom-layer builds in explainer.resolve", () => {
 /** The resolve child workflow on routes the test picks, so a checks step can hang where a crash would stop it. */
 function resolveRuntime(db: Db, worker: BeatWorker, checks: StepRoute) {
   const store = new ArtifactStore(fx.dataDir, db);
-  const bridge = () => { throw new Error("resolve runs no bridge"); };
-  const body = bodyRoute({ dataDir: fx.dataDir, store, bridge, exec: async () => { throw new Error("resolve runs no bridge"); } });
+  const body = bodyRoute({ dataDir: fx.dataDir, store });
   const runner = routedRunner([body, checks, ...layerRoutes({ dataDir: fx.dataDir, store, worker })]);
   const runtime = new WorkflowRuntime({ db, gates: new SqliteGateStore(db, { migrate: false }), runner, leaseMs: 60_000 });
   runtime.register(childWorkflow("resolve"), stageWorkflow(), { version: "test" });

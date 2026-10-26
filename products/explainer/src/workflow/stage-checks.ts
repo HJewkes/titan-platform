@@ -20,6 +20,8 @@ import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
 import { directionVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
+import { assertDurationAgreement } from "../render/duration-check.js";
+import { RenderManifestSchema } from "../render/render-manifest.js";
 import { doctrineG2p } from "./voice-g2p.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
@@ -87,6 +89,20 @@ function rewriteTargetRows(input: CheckInput): Verdict {
   return { pass: red.length === 0, detail: `${red.length} of ${report.after.length} target rows red${red.length ? `: ${red.join(", ")}` : ""}` };
 }
 
+/**
+ * The render manifest's page and mix lengths agree. renderVideo refuses a disagreeing render before it writes a
+ * manifest; this re-asserts it over whatever manifest the stage stored, so no other path past it goes unchecked.
+ */
+function durationAgreement(input: CheckInput): Verdict {
+  const { pageDurationS, durationS } = RenderManifestSchema.parse(JSON.parse(text(input, "render-manifest")));
+  try {
+    assertDurationAgreement(pageDurationS, durationS);
+    return { pass: true, detail: `page and mix both ${durationS} s` };
+  } catch (error) {
+    return { pass: false, detail: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 const shownList = (items: readonly string[]): string => items.slice(0, 5).join(", ") + (items.length > 5 ? ` and ${items.length - 5} more` : "");
 
 /** Every emphasis target the draft's beat specs declare has a cue to land on, so the render never holds a static frame. */
@@ -143,8 +159,8 @@ function cueResolution(input: CheckInput): Verdict {
 
 /**
  * Each in-process stage's §5.1 deterministic checks, run as the `checks:<stage>` step after its body. The eval stage
- * gates inside its body, before the reported-only judge spends; a bridged stage's other §5.1 checks are the
- * `check` commands of its `bridge.json` block until its TypeScript port lands.
+ * gates inside its body, before the reported-only judge spends; render reports its two-run check from its body,
+ * which is the step that rendered twice.
  */
 export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   gather: [],
@@ -180,7 +196,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "sim-cut-orphan", gate: true, reads: ["script", "resolved"], run: simCutOrphanVerdict },
   ],
   tts: [{ name: "cue-resolution", gate: true, reads: ["script", "words"], run: cueResolution }],
-  render: [],
+  render: [{ name: "duration-agreement", gate: true, reads: ["render-manifest"], run: durationAgreement }],
   qa: [
     { name: "held-errors", gate: true, reads: ["qa"], run: heldErrorsVerdict },
     { name: "mp4-duration", gate: true, reads: ["qa"], run: mp4DurationVerdict },

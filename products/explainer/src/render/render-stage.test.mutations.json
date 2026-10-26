@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "duration-agreement is reported only",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"duration-agreement\", gate: true,",
+      "replace": "{ name: \"duration-agreement\", gate: false,",
+      "kills": [
+        "the render stage's duration-agreement gate fails a stage whose manifest has the page outlasting the mix"
+      ]
+    },
+    {
+      "name": "render skips the QA gate unless the variant asks for it",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "noQa: p.noQa ?? false",
+      "replace": "noQa: p.noQa ?? true",
+      "kills": [
+        "the render stage gates on the qa profile by default, and records qaGate skipped under noQa"
+      ]
+    },
+    {
+      "name": "the style pack's CSS never reaches the render config",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "render: { ...settings.render, styleCss: style.css }",
+      "replace": "render: settings.render",
+      "kills": [
+        "the render stage serves a style pack's CSS from the page head, and no stylesheet without a pack"
+      ]
+    },
+    {
+      "name": "the twoRun param is dropped",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "twoRun: p.twoRun ?? false",
+      "replace": "twoRun: false",
+      "kills": [
+        "the render stage reports two-run as a failed, non-gating check when the second render's bytes differ"
+      ]
+    }
+  ]
+}

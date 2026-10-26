@@ -9,7 +9,7 @@ import { CUSTOM_LAYERS } from "./layer-build.js";
 import { BROKEN, brokenWorker, customBeatInputs, fakeAgentChatBeside, REPAIRED } from "./layer-repair.test-helpers.js";
 import { StageRecordSchema } from "./records.js";
 import { readJson, runPaths } from "./run-dir.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, a fake agent-chat and a one-request transcript; no real script, roster or session.
 let fx: Fixture;
@@ -18,7 +18,7 @@ afterEach(() => fx.cleanup());
 function hostWith(worker: BeatWorker, repaired?: string) {
   const fake = fakeAgentChatBeside(fx.dataDir, repaired);
   const layerRepairer = agentChatRepairer({ agentChatBin: fake.bin, profilesDir: fake.profilesDir, claudeConfigDir: fake.configDir, pollMs: 1 });
-  return { fake, host: fakeHost(fx, fakeScriptModel(), fakeBridge(), { beatWorker: worker, layerRepairer }) };
+  return { fake, host: fakeHost(fx, fakeScriptModel(), fakeRender(), { beatWorker: worker, layerRepairer }) };
 }
 
 const failedRecords = () => readdirSync(path.join(fx.dataDir, "runs"))

@@ -7,7 +7,7 @@
       "find": "return resolved === undefined ? new Set() : fromFill(input);",
       "replace": "return new Set();",
       "kills": [
-        "qa lead-line beats takes an in-process verdict card's lead line from the template fill's hints"
+        "qa lead-line beats takes an in-process verdict card's lead line from the fill's hints, under its storyboard id"
       ]
     }
   ]

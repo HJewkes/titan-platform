@@ -7,7 +7,16 @@
       "find": "  qa: 'still has a \"qa\" block,",
       "replace": "  qaX: 'still has a \"qa\" block,",
       "kills": [
-        "a host bridge after the qa port refuses a host file that still bridges qa, naming the block to delete and where the spike gate still runs"
+        "a host bridge after the qa port refuses a host file that still bridges qa, naming the block to delete"
+      ]
+    },
+    {
+      "name": "a host file's render block is silently ignored",
+      "file": "products/explainer/src/workflow/bridge.ts",
+      "find": "  render:\n    'still has a \"render\" block",
+      "replace": "  renderRetired:\n    'still has a \"render\" block",
+      "kills": [
+        "a host bridge after the render port refuses a host file that still bridges render, naming each retired command and where it went"
       ]
     }
   ]
