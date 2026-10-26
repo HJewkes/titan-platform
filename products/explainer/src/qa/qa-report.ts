@@ -17,6 +17,39 @@ const QaFindingSchema = z.object({
 });
 type QaFinding = z.infer<typeof QaFindingSchema>;
 
+const ProbeBoxSchema = z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() });
+
+/** render-qa's probe at one sampled moment: every visible text run with its lines and clipping ancestors, and every content box. */
+const ProbedMomentSchema = z.object({
+  beat: z.string(),
+  t: z.number(),
+  texts: z.array(
+    z.object({
+      text: z.string(), px: z.number(), tag: z.string(), cls: z.string(), element: z.string(),
+      lines: z.array(ProbeBoxSchema), clips: z.array(z.object({ element: z.string(), box: ProbeBoxSchema })),
+    }),
+  ),
+  boxes: z.array(z.object({ element: z.string(), box: ProbeBoxSchema, decor: z.boolean().optional() })),
+});
+
+/** A page-measured finding (motion, clipped text, content fill, empty stage) by beat and the anchor cells it sits on. */
+const MeasuredFindingSchema = z.object({
+  code: z.string(),
+  severity: z.enum(["error", "warning"]),
+  beat: z.string(),
+  t: z.number().optional(),
+  anchors: z.array(z.string()),
+  /** The check's own message, which leads with the beat. */
+  message: z.string(),
+});
+export type MeasuredFinding = z.infer<typeof MeasuredFindingSchema>;
+
+/** The measured codes that fail the stage; `stage-empty` is reported only. */
+const MEASURED_GATES: readonly string[] = ["motion-happened", "clipped-text", "content-fill"];
+
+/** Past this many bytes a series goes to its own artifact and qa.json keeps the sha, so qa.json stays small to read. */
+export const INLINE_MAX_BYTES = 64 * 1024;
+
 /** `qa.json`: the qa stage's whole verdict, which its checks read and nothing recomputes. */
 export const QaReportSchema = z.object({
   schema: z.literal("explainer.qa/v1"),
@@ -33,6 +66,13 @@ export const QaReportSchema = z.object({
   errors: z.array(QaFindingSchema),
   info: z.array(QaFindingSchema),
   mp4: z.object({ durationS: z.number(), timelineS: z.number(), frameS: z.number() }),
+  /** Whether the 2 Hz sweep joined the cue moments (variant param `sweep`, on unless set false). */
+  sweep: z.boolean(),
+  /** The MP4's per-frame changed share (render-qa `frameDiffs`), inline or as the `framediff` artifact's sha. */
+  framediff: z.union([z.strictObject({ fps: z.number(), shares: z.array(z.number()) }), z.strictObject({ fps: z.number(), artifact: z.string() })]),
+  /** The probe at every sampled moment, in time order, inline or as the `qa-probe` artifact's sha. */
+  probe: z.union([z.strictObject({ moments: z.array(ProbedMomentSchema) }), z.strictObject({ artifact: z.string() })]),
+  measured: z.array(MeasuredFindingSchema),
   notes: z.array(z.string()),
 });
 export type QaReport = z.infer<typeof QaReportSchema>;
@@ -45,15 +85,16 @@ const finding = (held: HeldFinding & { crop?: string }): QaFinding => ({
 type QaReportBase = Omit<QaReport, "schema" | "pass" | "errorCounts" | "infoCounts" | "errors" | "info">;
 
 export function qaReport(held: Held, base: QaReportBase): QaReport {
+  const gated = base.measured.some((finding) => MEASURED_GATES.includes(finding.code));
   return {
-    schema: "explainer.qa/v1", pass: held.errors.length === 0, ...base,
+    schema: "explainer.qa/v1", pass: held.errors.length === 0 && !gated, ...base,
     errorCounts: countByKind(held.errors), infoCounts: countByKind(held.info), errors: held.errors.map(finding), info: held.info.map(finding),
   };
 }
 
-/** The spike `qa.ts` one-line summary, held errors counted by kind. */
+/** The spike `qa.ts` one-line summary, held errors counted by kind; the measured checks give their own. */
 export function qaSummary(report: QaReport): string {
   const counts = Object.entries(report.errorCounts).map(([kind, n]) => `${kind} ${n}`).join(", ");
   const held = `${report.errors.length} held errors${counts ? ` (${counts})` : ""}`;
-  return `qa ${report.pass ? "PASS" : "FAIL"}: ${held}, ${report.info.length} info, ${report.moments} moments`;
+  return `qa ${report.errors.length === 0 ? "PASS" : "FAIL"}: ${held}, ${report.info.length} info, ${report.moments} moments`;
 }

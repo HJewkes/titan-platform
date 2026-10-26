@@ -250,7 +250,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render` | **bridged**: the argv in `bridge.json`, run in its `workdir` | as `bridge.json` declares |
-| `qa` | in-process, no model call: render-qa's cue-moment gate over the served page tree in Chromium, the gate profile's verdict, and ffprobe for the MP4's length (below) | mp4, words, script, page (+ timeline, resolved, visual, code, slots when a run has them) → qa, qa-crops |
+| `qa` | in-process, no model call: render-qa's gate at the cue moments and the 2 Hz sweep over the served page tree in Chromium, the gate profile's verdict, the DOM probe, and ffprobe and ffmpeg for the MP4's length and frame change (below) | mp4, words, script, page (+ timeline, resolved, visual, code, slots when a run has them) → qa, qa-crops, framediff and qa-probe past 64 kB |
 | `sheets` | in-process, no model call: ffprobe and ffmpeg for the poster, then the theater sidecar and the fingerprint (below) | mp4, script (+ resolved, slots, render-json, qa, visual when a run has them) → sidecar, poster, fingerprint |
 | `export` | hard links the declared artifacts into the theater folder, and a run's companion doc as `companion.md` beside them; the run ends here | mp4, sidecars and companion → the same shas |
 
@@ -368,13 +368,22 @@ still has a `sheets` block is refused: delete it, along with its `sheets.sh` and
 (its beats and beat-local cue seconds), or, for a bridged render that wrote none, from `words` (beat lengths, back to
 back) with the `script` cues resolved by `cueResolverFromWords` over the beats `keptBeats` keeps. It materialises the
 `page` tree, serves it on loopback (`serveTree`) and opens the composition page with `?timeline=` or, without a
-timeline, the bridged spike page with `?page=<theater stem>`. At every render-qa cue moment it runs `inspectAt`, then
+timeline, the bridged spike page with `?page=<theater stem>`. It samples render-qa's cue moments and its 2 Hz sweep
+(`qaSampleMoments`; the variant param `sweep: false` keeps the cue moments only). With the sweep, each beat's settled
+`end` moment is the sweep's, which a beat of the `outro` kind (timeline `kind`, or `OutroBeat` as resolve's component)
+takes 1 s before its end, ahead of its fade. At every moment it runs `inspectAt`, then
 `addLateFill` over every beat but the lead-line beats (`leadLineBeats`: `qaLeadLine` in a bridged render's `visual`,
 else the template fill's `qaLeadLine` hint, as the spike's `examples/qa.ts` skips a verdict card) and `classify` with the gate profile's gating kinds, writes an annotated crop per held error (at most 8
 per kind) as the `qa-crops` tree, reads the MP4's length through ffprobe, and writes `qa.json` (`explainer.qa/v1`:
 `pass`, `profile`, `gateProfileSha`, `gate`, `timeline`, `moments`, `errorCounts`, `infoCounts`, `errors` and `info`
-by beat with `kind`, `ts`, `at`, `reason`, `el`, `text` and `crop`, `mp4 { durationS, timelineS, frameS }`, `notes`).
-The body never fails on a finding: its `held-errors` and `mp4-duration` gates read `qa.json`, so a held error fails
+by beat with `kind`, `ts`, `at`, `reason`, `el`, `text` and `crop`, `mp4 { durationS, timelineS, frameS }`, `sweep`,
+`framediff`, `probe`, `measured`, `notes`). `framediff` is render-qa's `frameDiffs` share per MP4 frame and `probe` its
+`probeMoments` at every sampled moment, each inline or, past 64 kB, the sha of a `framediff` or `qa-probe` artifact.
+`measured` (`measuredFindings`) holds the page-measured findings: `motion-happened` (no frame changed between a beat's
+first frame and its settled one), `clipped-text` and `content-fill` (under 60 % of the frame width) at the settled
+moments, and `stage-empty` over every moment, each with the anchor cells of a DOM occupancy table built from the probe
+when the table holds its elements, else the beat alone.
+The body never fails on a finding: its gates read `qa.json`, so a held error fails
 the stage with the spike's one-line summary (`qa FAIL: 3 held errors (text-overlap 2, off-frame 1), …`) and the run
 stops before sheets. The browser and ffprobe sit behind `QaEngine`; `chromiumQaEngine` is the default and tests pass
 a fake. The gate profile `doctrine/qa/gate-profile.yaml` (`explainer.qa-gate-profile/v1`, `loadQaGate`) holds the
@@ -423,11 +432,11 @@ same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render` | the `check` commands of the host's `bridge.json` block (for example the render cue gate) | `check` commands with `gate: false` |
-| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame | — |
+| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code | `stage-empty`: no stage left empty past 3 s |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism
-(TP-2992), the QA sweep gates (TP-2610, TP-2669, TP-2998), and the variety lints (PP-9). Each becomes a row of
+(TP-2992), the QA timing gates (TP-2669), and the variety lints (PP-9). Each becomes a row of
 `STAGE_CHECKS` in `src/workflow/stage-checks.ts`, or a `check` command while its stage is bridged. The judges stay
 reported only until the owner labels about 20 items to calibrate them (owner answer Q6 A).
 
