@@ -1,6 +1,6 @@
 # Planner guide: repo-tour
 
-<!-- Generated from doctrine/types/repo-tour.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/repo-tour.yaml (profile 0.3.1) by `explainer guide types`. Do not edit. -->
 
 After one watch the viewer can say what the repo is for, how it is laid out, where execution starts, its 2-4 key features and where each lives, one or two things worth knowing, and what titan should adopt, adapt or avoid, and where to read first.
 

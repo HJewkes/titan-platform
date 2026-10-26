@@ -26,6 +26,8 @@ describe("explainer run through the qa stage", () => {
     const failed = StageRecordSchema.parse(JSON.parse(readFileSync(runPaths(fx.dataDir, row(result, "qa").childRunId!).failed("qa"), "utf8")));
     expect(failed.checks.map(({ name, gate, pass }) => [name, gate, pass])).toEqual([
       ["held-errors", true, false], ["mp4-duration", true, true], ["motion-happened", true, true], ["clipped-text", true, true], ["content-fill", true, true], ["stage-empty", false, true],
+      ["picture-change", true, true], ["picture-change-warn", false, true], ["static-window", true, true], ["cue-onset", true, true], ["reading-hold", true, true],
+      ["direction-gates", false, false],
     ]);
     const report = QaReportSchema.parse(JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", failed.outputs.qa!), "utf8")));
     expect(report.timeline).toBe("words");
@@ -39,7 +41,7 @@ describe("explainer run through the qa stage", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeBridge(), { qaEngine: qa }));
 
     expect(result.status, result.error).toBe("completed");
-    expect(row(result, "qa")).toMatchObject({ checks: "6 pass, 0 gate fail, 0 reported fail" });
+    expect(row(result, "qa")).toMatchObject({ checks: "11 pass, 0 gate fail, 1 reported fail" });
     expect(qa.opened.map(({ url }) => url)).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/\?page=demo$/)]);
   });
 });

@@ -3,7 +3,7 @@
 # Freytag (6 min and up) and the hero's journey (onboarding) fall outside this type's runtime and intent.
 schema: type-profile/v1
 type: repo-argument
-version: 0.2.0
+version: 0.2.1
 family: review-repo
 intent: "One idea from the repo lands and sticks for a senior engineer on a first watch: why it matters, how it works, and the one thing to take away."
 audience: { default: public-youtube, allow: [public-youtube, owner-internal] }

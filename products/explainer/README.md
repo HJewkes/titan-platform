@@ -377,12 +377,20 @@ else the template fill's `qaLeadLine` hint, as the spike's `examples/qa.ts` skip
 per kind) as the `qa-crops` tree, reads the MP4's length through ffprobe, and writes `qa.json` (`explainer.qa/v1`:
 `pass`, `profile`, `gateProfileSha`, `gate`, `timeline`, `moments`, `errorCounts`, `infoCounts`, `errors` and `info`
 by beat with `kind`, `ts`, `at`, `reason`, `el`, `text` and `crop`, `mp4 { durationS, timelineS, frameS }`, `sweep`,
-`framediff`, `probe`, `measured`, `notes`). `framediff` is render-qa's `frameDiffs` share per MP4 frame and `probe` its
+`framediff`, `probe`, `measured`, `timing`, `notes`). `framediff` is render-qa's `frameDiffs` share per MP4 frame and `probe` its
 `probeMoments` at every sampled moment, each inline or, past 64 kB, the sha of a `framediff` or `qa-probe` artifact.
 `measured` (`measuredFindings`) holds the page-measured findings: `motion-happened` (no frame changed between a beat's
 first frame and its settled one), `clipped-text` and `content-fill` (under 60 % of the frame width) at the settled
 moments, and `stage-empty` over every moment, each with the anchor cells of a DOM occupancy table built from the probe
 when the table holds its elements, else the beat alone.
+`timing` (`timing-gates.ts`, TP-2669) holds the DIRECTION timing gates, each `{ id, value, threshold, pass, warn?, beats }`,
+with thresholds from the run's type profile `pacing` (optional `pictureChangeFailS` 8, `cueOnsetS` 0.3, `readingCps` 13,
+`readingMinS` 1.5 default when a type leaves them out): `picture-change` (the longest gap between a beat's cut and the
+cues whose frames move; warns above `pictureChangeMaxS`, fails above `pictureChangeFailS`), `static-window` (a still
+picture over `staticMaxS` outside a held beat or a reading hold), `cue-onset` (each cue within `cueOnsetS` of its STT
+word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). The
+spike's G1, G7, G8, G9, G10, G12 and G13 are reported; the module doc says why the others are not ported. `timing`
+also carries `static_window_count` and `picture_change_gap_max`, ar target 3's metric (TP-4033).
 The body never fails on a finding: its gates read `qa.json`, so a held error fails
 the stage with the spike's one-line summary (`qa FAIL: 3 held errors (text-overlap 2, off-frame 1), …`) and the run
 stops before sheets. The browser and ffprobe sit behind `QaEngine`; `chromiumQaEngine` is the default and tests pass
@@ -432,7 +440,7 @@ same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render` | the `check` commands of the host's `bridge.json` block (for example the render cue gate) | `check` commands with `gate: false` |
-| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code | `stage-empty`: no stage left empty past 3 s |
+| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), duration agreement and two-run determinism

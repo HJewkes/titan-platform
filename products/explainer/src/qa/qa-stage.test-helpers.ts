@@ -38,7 +38,7 @@ function stageInputs(root: string, store: ArtifactStore, timeline: { durationS: 
   writeFileSync(mp4, JSON.stringify({ durationS: timeline.durationS }));
   return {
     mp4: store.putFile(mp4, "mp4", FROM), page: store.putTree(page, "page", FROM), timeline: store.putText(JSON.stringify(timeline), "timeline", FROM),
-    words: store.putText("{}", "words", FROM), script: store.putText("{}", "script", FROM),
+    words: store.putText(JSON.stringify({ beats: [] }), "words", FROM), script: store.putText(JSON.stringify({ beats: [] }), "script", FROM),
   };
 }
 
