@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import { describe, test } from "vitest";
+import { inkShare, kindCells } from "./parity-sheet.js";
+import { parseTimeline } from "./timeline.js";
+
+const beat = (id: string, kind: string, startS: number, durationS: number, extra: object = {}) => ({ id, kind, startS, durationS, slots: {}, ...extra });
+
+describe("the kind sheet's cells", () => {
+  test("take each kind's first reveal plus 0.6 s and its end less 0.1 s", () => {
+    const timeline = parseTimeline({ durationS: 5, beats: [beat("a", "held", 2, 3, { reveals: [{ target: "y", atS: 1.4 }, { target: "x", atS: 0.9 }] })] });
+
+    const cells = kindCells(timeline).map((c) => [c.tag, Number(c.t.toFixed(3))]);
+
+    assert.deepEqual(cells, [["first", 3.5], ["settled", 4.9]]);
+  });
+
+  test("start a beat with no reveals 0.6 s in", () => {
+    const timeline = parseTimeline({ durationS: 2, beats: [beat("a", "hook", 0, 2)] });
+
+    const [first] = kindCells(timeline);
+
+    assert.equal(first?.t, 0.6);
+  });
+
+  test("never put the first frame after the settled one", () => {
+    const timeline = parseTimeline({ durationS: 1, beats: [beat("a", "held", 0, 1, { reveals: [{ target: "x", atS: 0.8 }] })] });
+
+    const times = kindCells(timeline).map((c) => c.t);
+
+    assert.deepEqual(times, [0.9, 0.9]);
+  });
+
+  test("draw a kind once, from its first beat", () => {
+    const timeline = parseTimeline({ durationS: 6, beats: [beat("a", "held", 0, 2), beat("b", "hook", 2, 2), beat("c", "held", 4, 2)] });
+
+    const beats = [...new Set(kindCells(timeline).map((c) => `${c.kind}:${c.beat}`))];
+
+    assert.deepEqual(beats, ["held:a", "hook:b"]);
+  });
+});
+
+describe("a frame's ink share", () => {
+  test("is 0 for a frame of one grey", () => {
+    assert.equal(inkShare(new Uint8Array(100).fill(17)), 0);
+  });
+
+  test("counts pixels off the commonest grey, past the antialiasing tolerance", () => {
+    const frame = new Uint8Array(100).fill(17);
+    frame.fill(240, 0, 10);
+    frame.fill(22, 10, 30);
+
+    assert.equal(inkShare(frame), 0.1);
+  });
+});
