@@ -7,7 +7,7 @@ import { fakeQa } from "./qa/qa-fakes.test-helpers.js";
 import { qaGateWith } from "./render/qa-gate.js";
 import { FAKE_HOST, framesOf, pngFrame, sineWav } from "./render/render-fixtures.test-helpers.js";
 import { RenderManifestSchema } from "./render/render-manifest.js";
-import { defaultRenderDeps, renderVideo, type RenderInput, type RenderResult } from "./render/render-video.js";
+import { defaultRenderDeps, renderVideo, type RenderInput } from "./render/render-video.js";
 import { runRenderCli, type RenderCliDeps } from "./render-cli.js";
 
 const BEAT_IDS = ["beat-01", "beat-02", "beat-03"];
@@ -47,8 +47,11 @@ interface Recorded {
   err: string;
 }
 
-/** Real renderVideo over a fake browser; the built page is an empty stand-in, since nothing loads it. */
-function cliDeps(recorded: Recorded, overrides: Partial<RenderCliDeps> = {}): RenderCliDeps {
+/**
+ * Real renderVideo over a fake browser; the built page is an empty stand-in, since nothing loads it. `during` runs
+ * while the page is served, just before the render.
+ */
+function cliDeps(recorded: Recorded, during: (input: RenderInput) => Promise<void> = async () => undefined): RenderCliDeps {
   const pageDir = path.join(dir, "page");
   mkdirSync(pageDir, { recursive: true });
   writeFileSync(path.join(pageDir, "index.html"), "<!doctype html>");
@@ -58,8 +61,9 @@ function cliDeps(recorded: Recorded, overrides: Partial<RenderCliDeps> = {}): Re
       recorded.pages++;
       return { dir: pageDir, sha: "a".repeat(64) };
     },
-    render: (input) => {
+    render: async (input) => {
       recorded.renders.push(input);
+      await during(input);
       return renderVideo(input, fakeBrowser);
     },
     gate: (videoType) => {
@@ -68,7 +72,6 @@ function cliDeps(recorded: Recorded, overrides: Partial<RenderCliDeps> = {}): Re
     },
     out: () => undefined,
     err: (text) => void (recorded.err += text),
-    ...overrides,
   };
 }
 
@@ -146,7 +149,7 @@ describe("explainer render", { timeout: 60_000 }, () => {
 
   it("workers default to min(16, available parallelism) and --workers overrides them", async () => {
     const recorded = fresh();
-    const deps = cliDeps(recorded, { render: async (input) => (recorded.renders.push(input), { data: { frames: 1, durationS: 1, draft: true, qaGate: "skipped" } } as RenderResult) });
+    const deps = cliDeps(recorded);
 
     await runRenderCli(["render", writeBoard(), "--no-qa", "--out", outDir()], deps);
     await runRenderCli(["render", writeBoard(), "--no-qa", "--workers", "3", "--out", outDir()], deps);
@@ -157,13 +160,12 @@ describe("explainer render", { timeout: 60_000 }, () => {
   it("serves the built page and the compiled timeline.json on loopback while rendering", async () => {
     const recorded = fresh();
     const seen: { page?: string; timeline?: unknown } = {};
-    const fetchDuringRender: RenderCliDeps["render"] = async (input) => {
+    const fetchPage = async (input: RenderInput) => {
       seen.page = await (await fetch(input.pageUrl)).text();
       seen.timeline = await (await fetch(new URL("/timeline.json", input.pageUrl))).json();
-      return { data: { frames: 1, durationS: 3, draft: true, qaGate: "skipped" } } as RenderResult;
     };
 
-    const code = await runRenderCli(["render", writeBoard(), "--no-qa", "--out", outDir()], cliDeps(recorded, { render: fetchDuringRender }));
+    const code = await runRenderCli(["render", writeBoard(), "--no-qa", "--out", outDir()], cliDeps(recorded, fetchPage));
 
     expect(code).toBe(0);
     expect(seen.page).toBe("<!doctype html>");

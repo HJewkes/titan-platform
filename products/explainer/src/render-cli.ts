@@ -42,7 +42,7 @@ interface Narration {
 
 const readJson = (file: string): unknown => JSON.parse(readFileSync(file, "utf8"));
 
-export const defaultWorkers = (): number => Math.min(16, availableParallelism());
+const defaultWorkers = (): number => Math.min(16, availableParallelism());
 
 function workerCount(value: string): number {
   const n = Number(value);

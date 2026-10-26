@@ -34,7 +34,7 @@ export function treeSha(dir: string): string {
 }
 
 /** The sha of what a page build reads; tests are left out, so editing one does not rebuild the page. */
-export function pageSourceSha({ root, extra }: PageSource): string {
+function pageSourceSha({ root, extra }: PageSource): string {
   const own = treeFiles(root, isTestFile).map((file) => `${sha256(readFileSync(path.join(root, file)))}  ${file}`);
   const outside = extra.map((file) => `${sha256(readFileSync(file))}  extra:${path.basename(file)}`);
   return listingSha([...own, ...outside]);
@@ -59,7 +59,7 @@ export async function cachedPage(source: PageSource, cacheRoot: string, build: P
   return { dir, sha: treeSha(dir) };
 }
 
-export interface ServedPage {
+interface ServedPage {
   /** The page's URL with `?timeline=` pointing at the served timeline.json. */
   url: string;
   close(): Promise<void>;
