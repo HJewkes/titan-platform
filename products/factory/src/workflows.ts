@@ -50,7 +50,7 @@ import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
-import { boundCheckout, loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
+import { boundCheckout, loadSeatBook, lookupSeat, seatBaselineCheck, type SeatBook } from "./shepherd/seats.js";
 import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type AdvisoryRead, type IsAdvisory } from "./shepherd/advisory.js";
 import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
@@ -232,12 +232,6 @@ function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
       return false;
     }
   };
-}
-
-/** The check name the seat that owns `repo` declares for its visual baselines, if any. */
-function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
-  const found = lookupSeat(book, repo);
-  return found.kind === "seat" ? found.seat.visualBaselines?.check : undefined;
 }
 
 /** Tells every seat that owns `repo` over agent-chat; a repo no seat owns has nobody to tell, which throws so the alert is tried again. */
