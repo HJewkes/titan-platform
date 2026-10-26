@@ -15,7 +15,7 @@ import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun
 import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
-import { contains, unlessStale } from "./stale-red.js";
+import { contains, runningDescendant, unlessStale } from "./stale-red.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
 import { unlessThawed } from "./thawed-main-gates.js";
@@ -58,6 +58,8 @@ export const MainCiResult = z.looseObject({
   readSha: z.string().optional(),
   /** Set when a red, cancelled or missing read at the merge sha was acknowledged on this green main commit containing it. */
   acknowledgedSha: z.string().optional(),
+  /** Set when a red that stood its wait was held for the run at this later main commit containing it (TP-4273). */
+  awaitedSha: z.string().optional(),
   after: AfterStagesSchema,
   detail: z.string(),
   /** Set when a job outside the base branch's required contexts was red: recorded here, and never a freeze. */
@@ -188,7 +190,7 @@ export interface Timing {
 
 type Read = { verdict: "green"; detail: string; warning?: string } | { verdict: "red"; detail: string } | { verdict: "pending"; detail: string; queued?: true } | { verdict: "newer"; sha: string; detail: string };
 
-type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha" | "warning">;
+type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha" | "awaitedSha" | "warning">;
 
 interface Watch {
   sha: string;
@@ -196,6 +198,8 @@ interface Watch {
   queued: boolean;
   /** The first red read; it stands only once a fresh wait passes with no green main commit containing the merge. */
   red?: Settled;
+  /** The later main commit containing the red whose run the red is held for. */
+  awaiting?: string;
 }
 
 /**
@@ -203,7 +207,8 @@ interface Watch {
  * missing read keeps polling, and a main commit containing the merge sha that is green on every required context
  * acknowledges it; a red stands once a fresh SH_MAIN_CI_TIMEOUT_MS wait passes without one. At the limit it reads the
  * newest main push containing the merge sha once, and while a run is still queued or in progress it waits again, at most
- * SH_MAIN_CI_RECHECKS times. A read error or the final limit is `none`, never green.
+ * SH_MAIN_CI_RECHECKS times. A red whose wait passed while the base tip containing it still runs waits on that run
+ * within the same re-checks (TP-4273). A read error or the final limit is `none`, never green.
  */
 export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: Timing, signal: AbortSignal): Promise<MainCi> {
   const base = { mergeSha: input.mergeSha, after: input.after };
@@ -217,18 +222,42 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
   for (;;) {
     const wasRed = watch.red !== undefined;
     const settled = await pollOnce(main, watch, acknowledge, rules).catch((error: unknown) => failedPoll(watch, error));
-    if (settled !== undefined) return { ...base, ...settled };
+    if (settled !== undefined) return { ...base, ...awaited(watch), ...settled };
     if (!wasRed && watch.red !== undefined) clock = deadline(timing);
+    if (watch.red !== undefined && (clock.expired() || watch.awaiting !== undefined)) {
+      const stands = (await redOrAwaiting(main, watch, watch.red, await rules(), timing.now())) ?? (clock.expired() && rechecks >= SH_MAIN_CI_RECHECKS ? watch.red : undefined);
+      if (stands !== undefined) return { ...base, ...awaited(watch), ...stands };
+    }
     if (clock.expired()) {
-      if (watch.red !== undefined) return { ...base, ...(await unlessStale(main, watch.red, await rules(), timing.now())) };
-      const newest = await newestSettled(main, watch.sha, await rules()).catch(() => undefined);
-      if (newest !== undefined) return { ...base, readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
-      if (!watch.queued || rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, verdict: "none", detail: `no completed main run containing ${input.mergeSha} within ${((rechecks + 1) * timing.timeoutMs) / 60_000} min: ${watch.last}` };
+      const unsettled = watch.awaiting === undefined ? await unsettledAtLimit(main, watch, await rules(), rechecks, timing.timeoutMs) : undefined;
+      if (unsettled !== undefined) return { ...base, ...unsettled };
       rechecks += 1;
       clock = deadline(timing);
     }
     await clock.sleep(timing.pollMs, signal);
   }
+}
+
+const awaited = (watch: Watch): Pick<Settled, "awaitedSha"> => (watch.awaiting === undefined ? {} : { awaitedSha: watch.awaiting });
+
+/**
+ * The red, or its stale ack, once the base tip containing it is no longer running; undefined, with the tip recorded,
+ * while it is. A held red re-reads only the tip each poll, and reads the green line again once the tip stops running.
+ */
+async function redOrAwaiting(main: MainRead, watch: Watch, red: Settled, rules: MainRules | undefined, now: number): Promise<Settled | undefined> {
+  const held = watch.awaiting === undefined ? undefined : await runningDescendant(main, red.readSha ?? main.mergeSha, rules).catch(() => undefined);
+  const read = held === undefined ? await unlessStale(main, red, rules, now) : { verdict: "awaiting" as const, awaitedSha: held };
+  if (read.verdict !== "awaiting") return read;
+  watch.awaiting = read.awaitedSha;
+  return undefined;
+}
+
+/** At a limit with no red: the newest settled push containing the merge, `none` once nothing is queued or no re-check is left, else undefined to wait again. */
+async function unsettledAtLimit(main: MainRead, watch: Watch, rules: MainRules | undefined, rechecks: number, timeoutMs: number): Promise<Settled | undefined> {
+  const newest = await newestSettled(main, watch.sha, rules).catch(() => undefined);
+  if (newest !== undefined) return { readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
+  if (watch.queued && rechecks < SH_MAIN_CI_RECHECKS) return undefined;
+  return { verdict: "none", detail: `no completed main run containing ${main.mergeSha} within ${((rechecks + 1) * timeoutMs) / 60_000} min: ${watch.last}` };
 }
 
 /** One run's view of main: the repo, the merge it follows, and the merged PR's base branch, if a PR names one. */

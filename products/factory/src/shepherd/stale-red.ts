@@ -48,9 +48,30 @@ interface StandingRed {
 
 type StaleAck = { verdict: "green"; readSha: string; acknowledgedSha: string; detail: string };
 
-/** The red, unless a green main commit is or contains the sha it was read at; a failed read keeps the red. */
-export async function unlessStale<R extends StandingRed>(read: StaleRedRead & { mergeSha: string }, red: R, rules: MainRules | undefined, now: number): Promise<R | StaleAck> {
-  const green = await greenContaining(read, red.readSha ?? read.mergeSha, rules, now).catch(() => undefined);
-  if (green === undefined) return red;
-  return { readSha: green, acknowledgedSha: green, verdict: "green", detail: `${red.detail}; stale: main commit ${green} contains it and is green on every required context` };
+export type AwaitingRun = { verdict: "awaiting"; awaitedSha: string };
+
+/**
+ * The base tip when it is a later commit containing `redSha` whose required runs are still going with none failed, so a
+ * fix that merged after the red may yet clear it (TP-4273). Undefined with no base or rules, a settled or red tip, or a
+ * tip off the red's line; a read that fails throws and the caller keeps the red.
+ */
+export async function runningDescendant(read: StaleRedRead, redSha: string, rules: MainRules | undefined): Promise<string | undefined> {
+  if (read.base === undefined || rules === undefined) return undefined;
+  const tip = await read.port.getHeadSha(read.repo, await read.base());
+  if (tip === null || tip === redSha) return undefined;
+  const { findings } = judgeMain(tip, await read.port.checkRuns(read.repo, tip), rules);
+  if (!findings.some((finding) => finding.kind === "pending") || findings.some((finding) => finding.kind === "failed")) return undefined;
+  return (await contains(read.port, read.repo, tip, redSha)) ? tip : undefined;
+}
+
+/**
+ * The red, unless a green main commit is or contains the sha it was read at, or the base tip contains it and is still
+ * running, which the red then awaits; a failed read keeps the red.
+ */
+export async function unlessStale<R extends StandingRed>(read: StaleRedRead & { mergeSha: string }, red: R, rules: MainRules | undefined, now: number): Promise<R | StaleAck | AwaitingRun> {
+  const redSha = red.readSha ?? read.mergeSha;
+  const green = await greenContaining(read, redSha, rules, now).catch(() => undefined);
+  if (green !== undefined) return { readSha: green, acknowledgedSha: green, verdict: "green", detail: `${red.detail}; stale: main commit ${green} contains it and is green on every required context` };
+  const running = await runningDescendant(read, redSha, rules).catch(() => undefined);
+  return running === undefined ? red : { verdict: "awaiting", awaitedSha: running };
 }
