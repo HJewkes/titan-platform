@@ -17,7 +17,7 @@ export interface CueGateResult {
   moments: number;
 }
 
-export interface CueGateOptions {
+interface CueGateOptions {
   /** Beats whose stage holds only a lead line, which late-fill must not read as an empty stage. */
   lead?: ReadonlySet<string>;
   /** Where to write an annotated crop of each held error; no crops without it. */
