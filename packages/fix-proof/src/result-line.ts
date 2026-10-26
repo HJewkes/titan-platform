@@ -258,7 +258,8 @@ function validateRefs(value: UnknownRecord): string | null {
   if (value.base !== undefined && !isShownRef(value.base)) return "base must be a branch name as fix-proof-run.sh shows one";
   if (value.verdict !== "refused") return value.defaultBranch === undefined ? null : "defaultBranch is set only on a refused line";
   if (value.base === undefined || !isShownRef(value.defaultBranch)) return "a refused line must name its base and the default branch";
-  const counted = TEST_CLASSES.some((name) => (value.counts as UnknownRecord)[name] !== 0);
+  const { counts } = value;
+  const counted = !isRecord(counts) || TEST_CLASSES.some((name) => counts[name] !== 0);
   return counted || !Array.isArray(value.tests) || value.tests.length > 0 ? "a refused line must have no count and no test" : null;
 }
 
