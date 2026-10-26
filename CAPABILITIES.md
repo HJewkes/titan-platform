@@ -1572,6 +1572,7 @@ For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-
 `explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
 `explainer edit list` lists a render's or a video's edits with their linked run's status.
 `explainer props --mp4-sha <sha>` reads the run that exported a render and gives each kept template beat its slot JSON Schema, filled value with overrides, overridden fields, cue-locked ids, span and still time, plus whether a save can change the render yet.
+`compileTimeline` turns a storyboard and an optional words.json (its only reader) into the page's `timeline.json`: heard durations or planned ones with `provisional: true`, beat-local cue seconds for `word` or `word#n`, and slots parsed by `BEAT_SLOTS` until `@titan-design/beats` publishes; `writeTimeline` writes it as canonical JSON.
 `renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
 mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
 `assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.
