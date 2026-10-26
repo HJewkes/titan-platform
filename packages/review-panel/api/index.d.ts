@@ -284,7 +284,7 @@ declare class UninstalledProfileError extends Error {
 declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom): PanelPlan;
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
+type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only";
 /** The commits a workflow-only diff's CI proof read: a required check failed at `mergeBase` and every one passed at `head`. */
 interface WorkflowCiProof {
     mergeBase: string;
@@ -615,7 +615,7 @@ interface AggregateInput {
     /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
     source: LineSource;
     /**
-     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, a
+     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, `refused`, a
      * line naming another head, or anything unreadable makes the tests member blocking. A bare word never satisfies G10;
      * only a line pinned to the head can.
      */

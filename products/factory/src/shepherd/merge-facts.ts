@@ -345,6 +345,12 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   return { pr, merge, runs, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
+/** The head's fix-proof standing and judged base, absent keys left out so a record spreads them as they are. */
+const proofFields = (input: MergeEvidenceInput): Pick<EvidenceRecord, "proofUnverified" | "proofBase"> => ({
+  ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
+  ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
+});
+
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
   const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines, ciPolicyChanges: changes } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
@@ -370,8 +376,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     ...(merge.carry && { carry: merge.carry }),
     ...ciPolicy,
     ...(changes && { ciPolicyChanges: changes }),
-    ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
-    ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
+    ...proofFields(input),
     riskTier: riskTier(risk),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
