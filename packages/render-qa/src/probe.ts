@@ -65,6 +65,7 @@ interface Prober {
   insetBox(el: Element, clipPath: string): ProbeBox
   clips(el: Element): ProbedClip[]
   texts(): ProbedText[]
+  paints(color: string): boolean
   holdsContent(el: Element): boolean
   boxes(): ProbedBox[]
   probe(): Pick<ProbedMoment, 'texts' | 'boxes'>
@@ -153,14 +154,28 @@ function texts(p: Prober): ProbedText[] {
   return out
 }
 
+/** A computed colour paints when its alpha is above the threshold; the colour-space name and channel tokens are never read as alpha. */
+function paints(_p: Prober, color: string): boolean {
+  const args = color.match(/^\s*[a-z-]+\(([^)]*)\)\s*$/i)?.[1]
+  if (args === undefined) return false
+  const [channels = '', alpha] = args.split('/')
+  if (alpha === undefined) {
+    const legacy = channels.split(',').map((c) => c.trim())
+    if (legacy.length === 4) return Number.parseFloat(legacy[3] ?? '') > 0.05
+    return true
+  }
+  const token = alpha.trim()
+  const value = token.endsWith('%') ? Number.parseFloat(token) / 100 : token === 'none' ? 0 : Number(token)
+  return value > 0.05
+}
+
 /** Own text, a fill or border, or a replaced or drawn element; an empty layout wrapper holds nothing. */
-function holdsContent(_p: Prober, el: Element): boolean {
+function holdsContent(p: Prober, el: Element): boolean {
   if ([...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim())) return true
   if (['img', 'canvas', 'video'].includes(el.tagName.toLowerCase())) return true
   if (el instanceof SVGGraphicsElement) return !['svg', 'g', 'defs', 'marker'].includes(el.tagName.toLowerCase())
   const style = getComputedStyle(el)
-  const bg = style.backgroundColor.match(/[\d.]+/g)?.map(Number) ?? []
-  return (bg.length === 4 ? (bg[3] ?? 0) > 0.05 : bg.length === 3) || style.backgroundImage !== 'none' || (Number.parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none')
+  return p.paints(style.backgroundColor) || style.backgroundImage !== 'none' || (Number.parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none')
 }
 
 function boxes(p: Prober): ProbedBox[] {
@@ -175,7 +190,7 @@ function probe(p: Prober): Pick<ProbedMoment, 'texts' | 'boxes'> {
   return { texts: p.texts(), boxes: p.boxes() }
 }
 
-const STEPS: Steps = { shown, describe, box, union, lineBoxes, insetBox, clips, texts, holdsContent, boxes, probe }
+const STEPS: Steps = { shown, describe, box, union, lineBoxes, insetBox, clips, texts, paints, holdsContent, boxes, probe }
 
 function runProber(steps: Record<string, (p: unknown, ...args: unknown[]) => unknown>): unknown {
   const p: Record<string, (...args: unknown[]) => unknown> = {}
