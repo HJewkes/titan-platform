@@ -1,5 +1,5 @@
 import { RESULT_PREFIX, parseResultLine, provedByMutants, type FixProofResult } from "@titan-design/fix-proof";
-import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -7,6 +7,7 @@ import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { FIX_PROOF_CHECK, harnessTouch } from "./fix-proof-harness.js";
 import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
@@ -14,9 +15,10 @@ import { FIX_PROOF_KINDS } from "./task-kind.js";
 import { sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
+export { FIX_PROOF_CHECK };
+
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
-export const FIX_PROOF_CHECK = "fix-proof";
 /** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
 const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
 /**
@@ -33,11 +35,6 @@ const LOG_TAIL_LINES = 200;
 const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
-/**
- * On `pull_request` the PR merge ref supplies the workflow file and the run script, so a PR touching any of these
- * chose the code that printed its own result line.
- */
-const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/actions/", ".github/fix-proof.json", "scripts/fix-proof-run.sh"];
 /** Read at the PR's base ref, so a PR cannot delete its way out of the gate. */
 const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
@@ -55,12 +52,8 @@ type FixProofRead = (
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
   z.looseObject({
-    kind: z.literal("result"),
-    line: z.string(),
-    verdict: z.string(),
-    testOnlyProceed: z.literal(true).optional(),
-    nonSourceProceed: z.literal(true).optional(),
-    boundBase: z.string().optional(),
+    kind: z.literal("result"), line: z.string(), verdict: z.string(), boundBase: z.string().optional(),
+    testOnlyProceed: z.literal(true).optional(), nonSourceProceed: z.literal(true).optional(),
   }),
   z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string(), boundBase: z.string().optional() }),
   z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string(), boundBase: z.string().optional() }),
@@ -241,23 +234,6 @@ export function lastResultLine(log: string, head: string): string | undefined {
   return naming.at(-1);
 }
 
-const inHarness = (path: string): boolean => FIX_PROOF_HARNESS.some((prefix) => path.startsWith(prefix));
-const harnessPathOf = (files: readonly PrFile[]): string | undefined => files.flatMap((file) => [file.path, file.previousPath ?? file.path]).find(inHarness);
-
-/** Why the PR may have chosen its own harness, or undefined when its changed files are read in full and leave the harness alone. */
-async function harnessTouch(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<string | undefined> {
-  if (pr === null) return "the registration names no PR, so its changed files are unknown";
-  let files: PrFile[];
-  try {
-    files = await port.listPrFiles(repo, pr);
-  } catch (error) {
-    return `the PR's changed files could not be read: ${failureOf(error)}`;
-  }
-  if (files.length >= PR_FILES_CAP) return `the PR changes ${files.length} files, at GitHub's ${PR_FILES_CAP}-file list cap`;
-  const touched = harnessPathOf(files);
-  return touched && `the PR changes the ${FIX_PROOF_CHECK} harness: ${touched}`;
-}
-
 /** Why a line from `run` cannot be trusted, or undefined when the run succeeded on a harness the PR left alone. */
 async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
   if (run.conclusion !== "success") return `the ${FIX_PROOF_CHECK} run concluded ${run.conclusion ?? "nothing"}, not success`;
@@ -327,8 +303,9 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
 const boundTo = (read: FixProofRead, binding: Binding): FixProofRead => ("baseRef" in binding && read.kind !== "workflow-ci" ? { ...read, boundBase: binding.baseRef } : read);
 
 type OpenGate = Extract<Gate, { open: true }>;
+type GatedDeps = Pick<ShepherdDeps, "port" | "noReproProceed">;
 
-async function gatedRead(deps: Pick<ShepherdDeps, "port" | "noReproProceed">, input: FixProofInput, gate: OpenGate, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, "baseRef" in binding ? binding.baseRef : input.base);
   if (ci !== undefined) return ci;
   const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
