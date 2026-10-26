@@ -88,11 +88,12 @@ describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
     expect(await standingOf(files, "record-fact")).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
 
-  it.each([
+  const carried: [string, FixProofResult["mutants"]][] = [
     ["a surviving mutation", { verdict: "not-killed", results: [{ spec: "packages/x/src/parse.test.mutations.json", name: "drop the bound", outcome: "survived" }], uncovered: [] }],
     ["a refused mutation spec", { verdict: "error", results: [], error: "mutants: spec refused" }],
-  ] as const)("keeps NO_REPRO under record-fact when the line carries %s", async (_, mutants) => {
-    const line = vacuousLine({ ...mutants, results: [...mutants.results] });
+  ];
+  it.each(carried)("keeps NO_REPRO under record-fact when the line carries %s", async (_, mutants) => {
+    const line = vacuousLine(mutants);
 
     expect(await standingOf(TEST_CONVERSION, "record-fact", "correctness", line)).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
