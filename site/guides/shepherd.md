@@ -174,7 +174,8 @@ non-source goes to review marked `no-repro-non-source`, and no `sh-sent-back` ga
 means `*.test.*` (mutation sidecars included), `__tests__/`, `.github/workflows/`, `.changeset/`,
 a `docs/` directory or `*.md`. That covers a workflow-only diff's unproved CI read too. The mark is
 recorded on the head's proof standing and its merge evidence. The merge grant is unchanged, so a
-held or owner-gated run still goes to the owner. A `security` run, any source path, a file list
+held or owner-gated run still goes to the owner. The mutants rule above still holds: a line that
+carries `mutants` stays `NO_REPRO`. A `security` run, any source path, a file list
 that cannot be read in full, and a head that moved keep the `NO_REPRO`. It is a live editable row,
 so a `factory-config-set` owner op flips it with no restart, as for `heldRepair`. A third value,
 `seat-waives`, would let the owning seat answer the waivable gate. It is not built yet, so the config

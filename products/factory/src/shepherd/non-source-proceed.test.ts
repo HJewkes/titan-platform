@@ -18,21 +18,21 @@ const JOB = 77;
 /** A run that never waived, so its proof standing reads no waiver step. */
 const unwaived = partialFake<WorkflowContext>({ iteration: () => 0 });
 
-function vacuousLine(): string {
+function vacuousLine(mutants?: FixProofResult["mutants"]): string {
   const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head: H, mergeBase: MERGE_BASE, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  return formatResultLine({ head: H, mergeBase: MERGE_BASE, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
 }
 
 type Flag = "keep-owner" | "record-fact" | undefined;
 
 /** A registered correctness run whose fix-proof is vacuous at H; a workflow-only diff reads CI instead, green at both commits. */
-async function standingOf(files: PrFile[], flag: Flag, kind = "correctness") {
+async function standingOf(files: PrFile[], flag: Flag, kind = "correctness", line = vacuousLine()) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H });
   fake.prFiles.set(1, files);
   const proofRun = { ...successRun(FIX_PROOF_CHECK, JOB), pullRequests: [{ number: 1, baseRef: "main" }] };
   fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), proofRun]);
-  fake.jobLogs.set(JOB, `2026-10-11T12:00:00.0000000Z ${vacuousLine()}`);
+  fake.jobLogs.set(JOB, `2026-10-11T12:00:00.0000000Z ${line}`);
   fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
   fake.setRuns(MERGE_BASE, [successRun("validate", 31), successRun("dag-check", 32)]);
   const db = openDatabase(":memory:");
@@ -86,6 +86,15 @@ describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
     const files: PrFile[] = [{ path: "packages/x/docs/parse.md", previousPath: "packages/x/src/parse.ts", status: "renamed" }];
 
     expect(await standingOf(files, "record-fact")).toMatchObject({ ended: { kind: "NO_REPRO" } });
+  });
+
+  it.each([
+    ["a surviving mutation", { verdict: "not-killed", results: [{ spec: "packages/x/src/parse.test.mutations.json", name: "drop the bound", outcome: "survived" }], uncovered: [] }],
+    ["a refused mutation spec", { verdict: "error", results: [], error: "mutants: spec refused" }],
+  ] as const)("keeps NO_REPRO under record-fact when the line carries %s", async (_, mutants) => {
+    const line = vacuousLine({ ...mutants, results: [...mutants.results] });
+
+    expect(await standingOf(TEST_CONVERSION, "record-fact", "correctness", line)).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
 
   it("keeps NO_REPRO for a security run under record-fact", async () => {

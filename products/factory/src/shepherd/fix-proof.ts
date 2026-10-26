@@ -7,7 +7,7 @@ import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import { proceedsOnNoRepro } from "./no-repro-test-only.js";
+import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import { nonSourceDiff } from "./non-source-diff.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
@@ -318,7 +318,7 @@ async function gatedRead(deps: Pick<ShepherdDeps, "port" | "noReproProceed">, in
  */
 async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoRepro">, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
   if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security") return false;
-  if (read.kind === "result" && read.testOnlyProceed === true) return false;
+  if (read.kind === "result" && (read.testOnlyProceed === true || !mayProceedLine(read.line))) return false;
   return fixProofVerdict(read, input.head) !== undefined && (await nonSourceDiff(deps.port, input.repo, gate.pr, input.head));
 }
 

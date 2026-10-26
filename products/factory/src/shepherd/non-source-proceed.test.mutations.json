@@ -36,11 +36,14 @@
       "kills": ["shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO under record-fact when a rename moves a source path out of the diff"]
     },
     {
-      "name": "a docs directory reads as source",
-      "file": "products/factory/src/shepherd/non-source-diff.ts",
-      "find": "/(^|\\/)docs\\//, ",
-      "replace": "",
-      "kills": ["isNonSourcePath reads site/docs/guide.html as non-source"]
+      "name": "a line carrying mutants proceeds on a non-source diff",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "(read.testOnlyProceed === true || !mayProceedLine(read.line))",
+      "replace": "read.testOnlyProceed === true",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO under record-fact when the line carries a surviving mutation",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO under record-fact when the line carries a refused mutation spec"
+      ]
     }
   ]
 }
