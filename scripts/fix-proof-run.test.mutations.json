@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a refused line naming no default branch fails to parse",
+      "file": "packages/fix-proof/src/result-line.ts",
+      "find": "const SHOWN_REF = /^(?:[A-Za-z0-9._/+?-]+|<none>)$/;",
+      "replace": "const SHOWN_REF = /^[A-Za-z0-9._/+?-]+$/;",
+      "kills": ["fix-proof-run.sh judge with a refusal from the merge-base step keeps the line valid when a ref holds a quote or a backslash, or is missing"]
+    }
+  ]
+}

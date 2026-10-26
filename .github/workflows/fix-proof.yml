@@ -307,4 +307,8 @@ jobs:
           MERGE_BASE: ${{ steps.merge-base.outputs.refused && github.event.pull_request.base.sha || steps.merge-base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           FIX_PROOF_REFUSED: ${{ steps.merge-base.outputs.refused }}
+          FIX_PROOF_REFUSED_BASE: ${{ steps.merge-base.outputs.refused_base }}
+          FIX_PROOF_REFUSED_DEFAULT: ${{ steps.merge-base.outputs.refused_default }}
+          # The line names the base it judged, so a run GitHub lists on a later base is not read as that base's proof.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh judge "$GITHUB_WORKSPACE/runner" "$GITHUB_WORKSPACE/src" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-reports"

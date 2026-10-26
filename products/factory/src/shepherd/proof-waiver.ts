@@ -3,7 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { fixProofRoute, fixProofStanding, fixProofVerdict, type FixProofReadSchema } from "./fix-proof.js";
+import { fixProofRoute, fixProofStanding, fixProofVerdict, proofBaseOf, type FixProofReadSchema } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ProofStanding } from "./take-verdict.js";
 
@@ -82,5 +82,7 @@ export async function proofStandingAt(ctx: WorkflowContext, head: string, proof:
   const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
   const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
   if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
-  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {} };
+  const proofBase = proofBaseOf(proof, head);
+  const standing: ProofStanding = waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  return { standing: { ...standing, ...(proofBase !== undefined && { proofBase }) } };
 }

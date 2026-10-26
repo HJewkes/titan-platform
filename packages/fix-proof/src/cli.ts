@@ -13,7 +13,7 @@ const COMMON_USAGE = "--base <mergeBase> --head <sha> [--repo <dir>] [--budget-m
 export const USAGE = `usage: fix-proof run|exec|judge ${COMMON_USAGE}`;
 const RUN_USAGE = `usage: fix-proof run ${COMMON_USAGE}`;
 const EXEC_USAGE = `usage: fix-proof exec --side base|head|mutants --out <dir> [--${SANDBOX_FLAG} <name>] ${COMMON_USAGE}`;
-const JUDGE_USAGE = `usage: fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] [--mutants-report <file>] ${COMMON_USAGE}`;
+const JUDGE_USAGE = `usage: fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] [--mutants-report <file>] [--base-ref <branch>] ${COMMON_USAGE}`;
 
 type Values = Partial<Record<string, string>>;
 type Runner = typeof run;
@@ -88,9 +88,9 @@ const COMMANDS: Readonly<Record<string, Command>> = {
   },
   judge: {
     usage: JUDGE_USAGE,
-    flags: ["base-report", "head-report", "base-rerun-report", "mutants-report"],
+    flags: ["base-report", "head-report", "base-rerun-report", "mutants-report", "base-ref"],
     required: ["base-report", "head-report"],
-    act: (values, cwd) => judge({ ...common(values, cwd), reports: judgeReports(values, cwd) }),
+    act: (values, cwd) => judge({ ...common(values, cwd), reports: judgeReports(values, cwd), ...(values["base-ref"] !== undefined && { baseRef: values["base-ref"] }) }),
   },
 };
 

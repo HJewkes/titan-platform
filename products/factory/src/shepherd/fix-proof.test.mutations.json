@@ -37,6 +37,16 @@
       "kills": [
         "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member briefs every member, not only correctness, that an unreadable proof is unverified"
       ]
+    },
+    {
+      "name": "a run binds on GitHub's live base whatever base its line judged",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "return base === undefined || (\"baseRef\" in binding && base === binding.baseRef);",
+      "replace": "return base === undefined || \"baseRef\" in binding;",
+      "kills": [
+        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) reads the main run's line when a run refused on the stacked base is listed on main beside it",
+        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) reads error at the deadline, never missing or the refusal, when the only run listed on main judged the stacked base"
+      ]
     }
   ]
 }
