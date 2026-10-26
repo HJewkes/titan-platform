@@ -1,0 +1,243 @@
+{
+ "schema": "script/v1",
+ "id": "synthetic-day-kinds",
+ "profile": "daily-overview",
+ "facts_pack": "facts.tsv",
+ "video": {
+  "audience": {
+   "persona": "Floor lead",
+   "proximity": "runs the floor",
+   "gloss": "broad"
+  },
+  "stake": "TODO: stake",
+  "promise": "You can tell what the floor moved today",
+  "thesis_mechanism": "each lane reports what it merged against its goal",
+  "running_example": "TODO: example",
+  "simplifications": [],
+  "close_type": "callback"
+ },
+ "chapters": [
+  {
+   "id": "ch1",
+   "label": "Bottom line",
+   "question": "What did the floor decide today?"
+  },
+  {
+   "id": "ch2",
+   "label": "Lanes",
+   "question": "What did each lane move?"
+  },
+  {
+   "id": "ch3",
+   "label": "Side quests",
+   "question": "What else got done?"
+  },
+  {
+   "id": "ch4",
+   "label": "Reflection",
+   "question": "What slows the floor down?"
+  },
+  {
+   "id": "ch5",
+   "label": "Ask",
+   "question": "What happens next?"
+  }
+ ],
+ "beats": [
+  {
+   "id": "d1",
+   "chapter": "ch1",
+   "function": "VERDICT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "Ship it: the router lane holds, the matcher merged clean, and nothing was refused since noon.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "The floor shipped the router lane today",
+    "job": "numbers",
+    "beat": "verdict-card",
+    "labels": [
+     "Ship it: the router lane holds",
+     "Matcher rewrite merged clean",
+     "No refusals since noon"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "reasons-1",
+      "atCue": "clean"
+     },
+     {
+      "action": "V6",
+      "target": "reasons-2",
+      "atCue": "noon"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "verified",
+      "text": "demo@0a1b2c3:src/router/match.ts:12-40"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d2",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "The router lane rewrote its matcher, the cache lane warmed its store, and the split is still open.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Three lanes moved toward their goals",
+    "job": "numbers",
+    "beat": "list",
+    "labels": [
+     "router · Matcher rewrite",
+     "tick Cache warmed",
+     "open Lane split"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "rows-1",
+      "atCue": "matcher"
+     },
+     {
+      "action": "V6",
+      "target": "rows-2",
+      "atCue": "warmed"
+     },
+     {
+      "action": "V6",
+      "target": "rows-3",
+      "atCue": "split"
+     }
+    ],
+    "chips": [
+     {
+      "kind": "verified",
+      "text": "demo@0a1b2c3:src/router/match.ts:12-40"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d3",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "One risk remains: the night queue still backs up after ten.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "The night queue is the one risk left",
+    "job": "numbers",
+    "beat": "list",
+    "labels": [
+     "risk Night queue"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "rows-1",
+      "atCue": "night"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d4",
+   "chapter": "ch3",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "On the side, the docs lane renamed two pages and retired one flaky test.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Two side quests closed on the way",
+    "job": "numbers",
+    "beat": "fact-flash",
+    "labels": [
+     "Docs lane renamed two pages",
+     "One flaky test retired"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "facts-1",
+      "atCue": "renamed"
+     },
+     {
+      "action": "V6",
+      "target": "facts-2",
+      "atCue": "flaky"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d5",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "Small lanes ship faster than one big queue, and today showed it again.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Small lanes keep paying off",
+    "job": "numbers",
+    "beat": "claim-card",
+    "labels": [
+     "Small lanes ship faster than one big queue"
+    ],
+    "cues": [],
+    "chips": [
+     {
+      "kind": "docs-claim",
+      "text": "demo@0a1b2c3:docs/lanes.md:4",
+      "fact_id": "lanes-ship-faster"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d6",
+   "chapter": "ch5",
+   "function": "CLOSE",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "Read the digest, then pick the next lane.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Read the digest for the rest",
+    "job": "numbers",
+    "beat": "button",
+    "labels": [
+     "Read the digest",
+     "Open digest"
+    ],
+    "cues": []
+   }
+  },
+  {
+   "id": "d7",
+   "chapter": "ch5",
+   "function": "CLOSE",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "That is the day on the floor.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "That is the day",
+    "job": "numbers",
+    "beat": "button",
+    "labels": [
+     "That is the day"
+    ],
+    "cues": []
+   }
+  }
+ ]
+}

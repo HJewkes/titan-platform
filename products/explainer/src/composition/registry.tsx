@@ -4,33 +4,43 @@ import { BEAT_SLOTS } from "../beat-slots.js";
 import { CatalogueBeat, CatalogueSlots } from "./beats/catalogue.js";
 import { HeldBeat } from "./beats/held.js";
 import { HookBeat } from "./beats/hook.js";
+import { FactFlashBeat, ListKindBeat, VerdictCardBeat } from "./beats/list-kinds.js";
+import { ButtonBeat, OutroKindBeat } from "./beats/OutroBeat.js";
+import { ClaimCardBeat } from "./beats/TitleBeat.js";
 import { useReveal, type Reveal } from "./beats/stage/reveal.js";
 import type { TimelineBeat } from "./timeline.js";
 
 type BeatHints = NonNullable<TimelineBeat["hints"]>;
 
-/** What a beat view draws from: its parsed slots, when each slot element lands, and the fill's page hints. */
-export interface BeatViewProps<S> {
+/** What a view reads off its timeline beat beside the slots: the fill's page hints and the chapter label. */
+interface BeatContext {
+  hints: BeatHints;
+  chapter?: string;
+}
+
+/** What a beat view draws from: its parsed slots, when each slot element lands, the fill's hints and the chapter label. */
+export interface BeatViewProps<S> extends BeatContext {
   slots: S;
   reveal: Reveal;
-  hints: BeatHints;
 }
 
 /**
- * A beat kind: the schema its slots must satisfy, the component that draws them, and whether it sits in the stage
- * box under the chrome. A page kind (hook, catalogue) owns the whole canvas, as it did before the chrome existed.
+ * A beat kind: the schema its slots must satisfy, the component that draws them, whether it sits in the stage box
+ * under the chrome, and whether the chrome shows the headline over it. A page kind (hook, catalogue) owns the whole
+ * canvas, as it did before the chrome existed. A title or outro is its own headline, as the spike's NO_HEADLINE kept.
  */
 interface BeatDefinition {
   slots: z.ZodType;
   stage: boolean;
-  render(slots: unknown, hints: BeatHints): ReactElement;
+  headline: boolean;
+  render(slots: unknown, context: BeatContext): ReactElement;
 }
 
-function defineBeat<S extends z.ZodType>(slots: S, Component: ComponentType<BeatViewProps<z.infer<S>>>, { stage = false } = {}): BeatDefinition {
-  function Bound({ parsed, hints }: { parsed: z.infer<S>; hints: BeatHints }) {
-    return <Component slots={parsed} reveal={useReveal()} hints={hints} />;
+function defineBeat<S extends z.ZodType>(slots: S, Component: ComponentType<BeatViewProps<z.infer<S>>>, { stage = false, headline = true } = {}): BeatDefinition {
+  function Bound({ parsed, context }: { parsed: z.infer<S>; context: BeatContext }) {
+    return <Component slots={parsed} reveal={useReveal()} {...context} />;
   }
-  return { slots, stage, render: (raw, hints) => <Bound parsed={slots.parse(raw)} hints={hints} /> };
+  return { slots, stage, headline, render: (raw, context) => <Bound parsed={slots.parse(raw)} context={context} /> };
 }
 
 // Stands in for @titan-design/beats until TD-907 publishes it; the page then resolves kinds through that registry.
@@ -39,6 +49,12 @@ function defineBeat<S extends z.ZodType>(slots: S, Component: ComponentType<Beat
 const BEATS: Readonly<Record<string, BeatDefinition>> = {
   hook: defineBeat(BEAT_SLOTS.hook, HookBeat),
   held: defineBeat(BEAT_SLOTS.held, HeldBeat, { stage: true }),
+  list: defineBeat(BEAT_SLOTS.list, ListKindBeat, { stage: true }),
+  "verdict-card": defineBeat(BEAT_SLOTS["verdict-card"], VerdictCardBeat, { stage: true }),
+  "fact-flash": defineBeat(BEAT_SLOTS["fact-flash"], FactFlashBeat, { stage: true }),
+  "claim-card": defineBeat(BEAT_SLOTS["claim-card"], ClaimCardBeat, { stage: true, headline: false }),
+  button: defineBeat(BEAT_SLOTS.button, ButtonBeat, { stage: true, headline: false }),
+  outro: defineBeat(BEAT_SLOTS.outro, OutroKindBeat, { stage: true, headline: false }),
   catalogue: defineBeat(CatalogueSlots, CatalogueBeat),
 };
 

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an outro kind settles at its end, inside its fade",
+      "file": "products/explainer/src/composition/parity-sheet.ts",
+      "find": "const fade = Object.hasOwn(FADES_OUT_S, beat.kind) ? FADES_OUT_S[beat.kind]! : 0;",
+      "replace": "const fade = 0;",
+      "kills": [
+        "settle an outro kind before its 1 s fade, not in it"
+      ]
+    }
+  ]
+}

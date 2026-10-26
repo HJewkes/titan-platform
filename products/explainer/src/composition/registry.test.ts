@@ -17,12 +17,6 @@ const SHOWCASE_KINDS = new Set(["catalogue"]);
  * TP-4276 slice removes the kinds it ports; an entry the registry now draws fails the fence, so the list only shrinks.
  */
 const NOT_DRAWN: Readonly<Record<string, string>> = {
-  "verdict-card": "P2a ports ListBeat (verdict as heading, reasons as rows)",
-  list: "P2a ports ListBeat; every fill fallback lands here",
-  "fact-flash": "P2a draws facts as ListBeat dot rows",
-  "claim-card": "P2a draws it as the spec's TitleBeat (owner Q1 at P3)",
-  button: "P2a ports OutroBeat (line plus action)",
-  outro: "P2a ports OutroBeat; the fallback when a button has no action",
   stat: "P2b ports StatBeat",
   chart: "P2b ports BarChartBeat (bar) and GraphBeat (line); spark and gauge throw",
   compare: "P2b ports CompareBeat",
@@ -81,7 +75,7 @@ const shippedPageKinds = (): Map<string, Set<string>> =>
 
 describe("the composition page's beat registry", () => {
   test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, catalogue$/);
+    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, catalogue$/);
   });
 
   test("an inherited property name is not a beat kind", () => {
@@ -99,10 +93,17 @@ describe("the composition page's beat registry", () => {
     assert.throws(() => resolveBeat("catalogue").slots.parse(slots), /schemaLabel/);
   });
 
-  test("hook and catalogue draw on the whole page and held draws in the stage box", () => {
-    const stage = registeredKinds().filter((kind) => resolveBeat(kind).stage);
+  test("hook and catalogue draw on the whole page and every spec kind past them in the stage box", () => {
+    const page = registeredKinds().filter((kind) => !resolveBeat(kind).stage);
 
-    assert.deepEqual(stage, ["held"]);
+    assert.deepEqual(page, ["hook", "catalogue"]);
+  });
+
+  // Mutation: let claim-card keep the chrome headline; the title and the headline say the claim twice.
+  test("a title or outro kind is its own headline, so the chrome shows none over it", () => {
+    const bare = registeredKinds().filter((kind) => resolveBeat(kind).stage && !resolveBeat(kind).headline);
+
+    assert.deepEqual(bare, ["claim-card", "button", "outro"]);
   });
 });
 
@@ -152,7 +153,7 @@ describe("profile coverage fence", () => {
 
     const undrawn = [...daily].filter((kind) => !registeredKinds().includes(kind)).sort();
 
-    assert.deepEqual(undrawn, ["arch-map", "button", "chart", "claim-card", "compare", "fact-flash", "kanban-flow", "list", "metrics-panel", "outro", "stat", "verdict-card"]);
+    assert.deepEqual(undrawn, ["arch-map", "chart", "compare", "kanban-flow", "metrics-panel", "stat"]);
   });
 });
 
