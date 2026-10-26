@@ -359,11 +359,17 @@ describe("merge evidence read on another base than the one being decided", () =>
     expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("agent-chat/parent"))).policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
   });
 
-  it("gates an allow on main whose MERGE record names no proof base, as no-facts: a record without one proved no base", () => {
+  it("allows on main a MERGE whose record names no proof base: it was bound to none, so decision 303 governs it", () => {
     const decision = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
 
+    expect(decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RV" } });
+  });
+
+  it("gates an allow on main whose MERGE record was bound to the parent branch, as no-facts", () => {
+    const decision = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(proved(onBase("main"), "agent-chat/parent")), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
+
     expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
-    expect(decision.reason).toContain(`the fix-proof at ${HEAD} judged no base, not main`);
+    expect(decision.reason).toContain(`the fix-proof at ${HEAD} judged base agent-chat/parent, not main`);
   });
 
   const onMain = (paths: string[], changedFilesUnread?: string): MergeEvidence => {

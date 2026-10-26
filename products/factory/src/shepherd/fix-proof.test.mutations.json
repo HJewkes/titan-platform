@@ -39,12 +39,12 @@
       ]
     },
     {
-      "name": "a line that names no base binds to whatever base is asked",
+      "name": "a read that throws records no base it was bound to",
       "file": "products/factory/src/shepherd/fix-proof.ts",
-      "find": "(candidate.run.status !== \"completed\" || base === binding.baseRef)",
-      "replace": "(candidate.run.status !== \"completed\" || base === undefined || base === binding.baseRef)",
+      "find": "    return boundTo({ kind: \"error\", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` }, binding);",
+      "replace": "    return { kind: \"error\", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };",
       "kills": [
-        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) never binds a line that names no base, so the read errors at the deadline instead of standing on it"
+        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) the base the read was bound to is stamped on a read that throws"
       ]
     }
   ]

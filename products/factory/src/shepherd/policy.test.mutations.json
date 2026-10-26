@@ -22,12 +22,21 @@
       ]
     },
     {
-      "name": "a record without proofBase is trusted on its evidence base",
+      "name": "a record that names no proof base fires the guard as if bound elsewhere",
       "file": "products/factory/src/shepherd/proof-base.ts",
-      "find": "if (evidence === undefined || evidence.record.proofBase === base) return undefined;",
-      "replace": "if (evidence === undefined || (evidence.record.proofBase ?? evidence.record.baseRef) === base) return undefined;",
+      "find": "    return proofBase === undefined || proofBase === base ? undefined : `base ${proofBase}`;",
+      "replace": "    return proofBase === base ? undefined : `base ${proofBase ?? \"none\"}`;",
       "kills": [
-        "merge evidence read on another base than the one being decided gates an allow on main whose MERGE record names no proof base, as no-facts: a record without one proved no base"
+        "merge evidence read on another base than the one being decided allows on main a MERGE whose record names no proof base: it was bound to none, so decision 303 governs it"
+      ]
+    },
+    {
+      "name": "an allow is never gated on a fix-proof bound to another base",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": ": proof.unproven(headSha, base);",
+      "replace": ": undefined;",
+      "kills": [
+        "merge evidence read on another base than the one being decided gates an allow on main whose MERGE record was bound to the parent branch, as no-facts"
       ]
     }
   ]

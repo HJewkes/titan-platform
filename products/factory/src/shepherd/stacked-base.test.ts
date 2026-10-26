@@ -235,9 +235,24 @@ function proofLine(verdict: FixProofResult["verdict"], base: string | null): str
 const proofReads = (w: World, base: string) => Object.values(w.host.runtime.status(w.runId)!.stepResults).filter((result) => result.stepId === `sh-fix-proof:${H1}@${base}`);
 const promptOf = (w: World) => w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt;
 const OFF_BASE = `judged base ${PARENT}, not main, the base being decided`;
-/** A MERGE record whose fix-proof read named no base: an untrusted, unread or pre-field read proved none. */
-const NO_BASE = "judged no base, not main, the base being decided";
+const HARNESS: PrFile[] = [{ path: "src/a.ts", status: "modified" }, { path: "scripts/fix-proof-run.sh", status: "modified" }];
 const lastDecision = (w: World) => mergePolicies(w).at(-1)!.data;
+const reviewEvidence = (w: World) => Object.values(w.host.runtime.status(w.runId)!.stepResults).find((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${H1}`)!.data;
+const baseReads = (w: World) => stepIds(w).filter((id) => id.startsWith(`sh-fix-proof:${H1}@`));
+
+/** Judges `line` on main the first time the re-read on main polls the parent's run, and returns the merge count at that moment. */
+function judgedOnMainAtReread(w: World, line: string): () => number | undefined {
+  let mergesAtMainRead: number | undefined;
+  const getJobLog = w.fake.wire.getJobLog;
+  w.fake.wire.getJobLog = async (repo, jobId) => {
+    if (jobId === REFUSED_JOB && w.fake.pr(1).baseRef === "main" && mergesAtMainRead === undefined) {
+      mergesAtMainRead = w.fake.effects.merge;
+      w.judged(MAIN_JOB, line);
+    }
+    return getJobLog(repo, jobId);
+  };
+  return () => mergesAtMainRead;
+}
 
 describe("a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259)", () => {
   /** A correctness PR on the parent whose only judge refused there; its review takes that refusal and writes MERGE. */
@@ -251,21 +266,14 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
   it("merges nothing into main on that MERGE until a fix-proof line judged on main at the head is read, past a title edit's skipped judge", async () => {
     const w = refused();
     w.judged(SKIPPED_JOB, "Run pnpm fix-proof", "skipped");
-    let mergesAtMainRead: number | undefined;
-    const getJobLog = w.fake.wire.getJobLog;
-    w.fake.wire.getJobLog = async (repo, jobId) => {
-      if (jobId === REFUSED_JOB && w.fake.pr(1).baseRef === "main" && mergesAtMainRead === undefined) {
-        mergesAtMainRead = w.fake.effects.merge;
-        w.judged(MAIN_JOB, proofLine("reproduced", "main"));
-      }
-      return getJobLog(repo, jobId);
-    };
+    const mergesAtMainRead = judgedOnMainAtReread(w, proofLine("reproduced", "main"));
     await waitingForRetarget(w);
 
     w.fake.pr(1).baseRef = "main";
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
-    expect(mergesAtMainRead).toBe(0);
+    expect(reviewEvidence(w)).toMatchObject({ result: { record: { proofBase: PARENT } } });
+    expect(mergesAtMainRead()).toBe(0);
     expect(w.mergedInto).toEqual(["main"]);
     expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "result", verdict: "reproduced", line: proofLine("reproduced", "main") } });
   });
@@ -281,26 +289,34 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
   };
 
   it.each([
-    ["only the refused line stands at the head", [], "no fix-proof run at this head judged the PR's base before the deadline"],
-    ["the line on main is vacuous", [proofLine("vacuous", "main")], "its fix-proof on main is NO_REPRO (vacuous)"],
-    ["the line on main is an error", [proofLine("error", "main")], "its fix-proof on main is unverified: error"],
-    ["two runs judged main at the head", [proofLine("reproduced", "main"), proofLine("reproduced", "main")], "2 fix-proof runs at this head belong to PR #1 and judged main, not exactly one"],
-  ])("asks the owner instead of merging when %s", async (_scene, lines, reason) => {
-    const w = await gatedOnMain(lines);
+    ["only the refused line stands at the head", [], undefined, "its fix-proof read on main judged no base: no fix-proof run at this head judged the PR's base before the deadline"],
+    ["the review was untrusted and only the parent's line stands", [], HARNESS, "its fix-proof read on main judged no base: no fix-proof run at this head judged the PR's base"],
+    ["the line on main is vacuous", [proofLine("vacuous", "main")], undefined, "its fix-proof on main is NO_REPRO (vacuous)"],
+  ])("asks the owner instead of merging when %s", async (_scene, lines, files, reason) => {
+    const w = await gatedOnMain(lines, files);
 
     expect(w.fake.effects.merge).toBe(0);
+    expect(lastDecision(w)).toMatchObject({ result: { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } } });
     expect(promptOf(w)).toContain(OFF_BASE);
     expect(promptOf(w)).toContain(reason);
-    expect(proofReads(w, "main").length).toBeGreaterThan(0);
   });
 
-  it("asks the owner instead of merging when the PR changes the fix-proof harness, whatever the line on main says", async () => {
-    const w = await gatedOnMain([proofLine("reproduced", "main")], [{ path: "src/a.ts", status: "modified" }, { path: "scripts/fix-proof-run.sh", status: "modified" }]);
+  /** Decision 303: once a line on main is read, an unverified one is recorded, never gated on. */
+  it.each([
+    ["the line on main is an error", [proofLine("error", "main")], undefined, "result"],
+    ["two runs judged main at the head", [proofLine("reproduced", "main"), proofLine("reproduced", "main")], undefined, "untrusted"],
+    ["the PR changes the fix-proof harness and its line on main is untrusted", [proofLine("reproduced", "main")], HARNESS, "untrusted"],
+  ])("merges into main once read there when %s, its trust left to decision 303", async (_scene, lines, files, kind) => {
+    const w = refused(AUTO, files);
+    lines.forEach((line, i) => w.judged(MAIN_JOB + i, line));
+    await waitingForRetarget(w);
 
-    expect(w.fake.effects.merge).toBe(0);
-    expect(promptOf(w)).toContain(NO_BASE);
-    expect(promptOf(w)).toContain("its fix-proof on main is unverified: untrusted");
-    expect(promptOf(w)).toContain("harness: scripts/fix-proof-run.sh");
+    w.fake.pr(1).baseRef = "main";
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
+
+    expect(w.mergedInto).toEqual(["main"]);
+    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind, boundBase: "main" } });
+    expect(pendingGate(w)).toBeUndefined();
   });
 
   it("reads nothing again and merges on a seat that merges into the parent branch the proof was refused on", async () => {
@@ -314,7 +330,7 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
     expect(w.mergedInto).toEqual([PARENT]);
-    expect(stepIds(w).filter((id) => id.startsWith(`sh-fix-proof:${H1}@`))).toEqual([]);
+    expect(baseReads(w)).toEqual([]);
   });
 
   it("asks the owner instead of merging when the re-read on main cannot read the fix/ PR's head branch, never reading it as skipped", async () => {
@@ -330,61 +346,81 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     expect(w.fake.effects.merge).toBe(0);
     expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "error", reason: expect.stringContaining("head branch unreadable") } });
     expect(promptOf(w)).toContain(OFF_BASE);
-    expect(promptOf(w)).toContain("its fix-proof on main is unverified: unread (head branch unreadable");
+    expect(promptOf(w)).toContain("its fix-proof read on main judged no base: head branch unreadable");
   });
 
-  it("merges nothing after a retarget when the parent run's clean line names no base, and gates as no-facts", async () => {
+  it("merges nothing after a retarget on a review read that stalled into an error on the parent, until a line on main is read", async () => {
     const w = world(PARENT, AUTO, undefined, undefined, "correctness");
     w.judged(REFUSED_JOB, proofLine("reproduced", null));
+    const mergesAtMainRead = judgedOnMainAtReread(w, proofLine("reproduced", "main"));
+    await waitingForRetarget(w);
+
+    w.fake.pr(1).baseRef = "main";
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
+
+    expect(reviewEvidence(w)).toMatchObject({ result: { record: { baseRef: PARENT, proofBase: PARENT, proofUnverified: expect.stringContaining("unread") } } });
+    expect(mergesAtMainRead()).toBe(0);
+    expect(w.mergedInto).toEqual(["main"]);
+  });
+
+  it("asks the owner on a recorded re-read on main whose clean line names no base, from a reader before TP-4259", async () => {
+    const w = refused();
+    w.baseReadRecords.result = { kind: "result", line: proofLine("reproduced", null), verdict: "reproduced" };
     await waitingForRetarget(w);
 
     w.fake.pr(1).baseRef = "main";
     await gateOpened(w.host, gateId(w.runId, "approve-merge"));
 
-    const evidence = Object.values(w.host.runtime.status(w.runId)!.stepResults).find((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${H1}`);
-    expect(evidence!.data).toMatchObject({ result: { record: { baseRef: PARENT, proofUnverified: expect.stringContaining("unread") } } });
-    expect(evidence!.data).not.toMatchObject({ result: { record: { proofBase: expect.anything() } } });
     expect(w.fake.effects.merge).toBe(0);
-    expect(lastDecision(w)).toMatchObject({ result: { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } } });
-    expect(promptOf(w)).toContain(NO_BASE);
-    expect(promptOf(w)).toContain("its fix-proof on main is unverified: unread (no fix-proof run at this head judged the PR's base");
+    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "result", verdict: "reproduced" } });
+    expect(promptOf(w)).toContain("its fix-proof read on main judged no base: verdict reproduced");
+  });
+
+  it("asks the owner on an untrusted re-read bound to main whose newest run is the parent's line", async () => {
+    const w = refused(AUTO, HARNESS);
+    w.baseReadRecords.result = { kind: "untrusted", line: proofLine("refused", PARENT), verdict: "refused", reason: "0 fix-proof runs at this head belong to PR #1", boundBase: "main" };
+    await waitingForRetarget(w);
+
+    w.fake.pr(1).baseRef = "main";
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(promptOf(w)).toContain(`its fix-proof read on main judged ${PARENT}: 0 fix-proof runs`);
   });
 });
 
-describe("a PR reviewed on main whose MERGE record names no proof base (TP-4259)", () => {
-  it("merges nothing on a line on main that names no base, and asks the owner", async () => {
+describe("a PR reviewed on its own base, never retargeted, under decision 303 (TP-4259)", () => {
+  it("merges on green with an untrusted proof from a harness change, its MERGE recording proofBase main and taking no re-read", async () => {
+    const w = world("main", AUTO, undefined, undefined, "correctness");
+    w.fake.prFiles.set(1, HARNESS);
+    w.judged(MAIN_JOB, proofLine("reproduced", "main"));
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
+
+    expect(reviewEvidence(w)).toMatchObject({ result: { record: { proofBase: "main", proofUnverified: expect.stringContaining("untrusted") } } });
+    expect(baseReads(w)).toEqual([]);
+    expect(pendingGate(w)).toBeUndefined();
+  });
+
+  it("merges on green with a read that stalled into an error, recording the base it was bound to and taking no re-read", async () => {
     const w = world("main", AUTO, undefined, undefined, "correctness");
     w.judged(MAIN_JOB, proofLine("reproduced", null));
 
-    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
-    expect(w.fake.effects.merge).toBe(0);
-    expect(lastDecision(w)).toMatchObject({ result: { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } } });
-    expect(promptOf(w)).toContain(NO_BASE);
-    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "error" } });
+    expect(reviewEvidence(w)).toMatchObject({ result: { record: { proofBase: "main", proofUnverified: expect.stringContaining("unread") } } });
+    expect(baseReads(w)).toEqual([]);
   });
 
-  it("merges nothing on a recorded re-read on main whose clean line names no base, from a reader before TP-4259", async () => {
-    const w = world("main", AUTO, undefined, undefined, "correctness");
-    w.judged(MAIN_JOB, proofLine("reproduced", null));
-    w.baseReadRecords.result = { kind: "result", line: proofLine("reproduced", null), verdict: "reproduced" };
-
-    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
-
-    expect(w.fake.effects.merge).toBe(0);
-    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "result", verdict: "reproduced" } });
-    expect(promptOf(w)).toContain("its fix-proof read on main names no base, not main");
-  });
-
-  it("merges a kind outside the fix-proof gate on a skipped read on main taken before its first decision", async () => {
+  it("merges a kind outside the fix-proof gate with no proof base recorded and no re-read", async () => {
     const w = world("main", AUTO);
 
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 
     expect(w.mergedInto).toEqual(["main"]);
-    expect(proofReads(w, "main").at(-1)!.data).toMatchObject({ result: { kind: "skipped" } });
+    expect(reviewEvidence(w)).not.toMatchObject({ result: { record: { proofBase: expect.anything() } } });
+    expect(baseReads(w)).toEqual([]);
     expect(mergePolicies(w).map((result) => result.data)).toEqual([expect.objectContaining({ result: expect.objectContaining({ outcome: "allow" }) })]);
-    expect(pendingGate(w)).toBeUndefined();
   });
 });
 

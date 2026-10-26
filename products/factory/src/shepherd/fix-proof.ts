@@ -41,17 +41,19 @@ const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/act
 const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
+/** `boundBase` is the base the read looked for, stamped where the binding is made; trust plays no part in it (TP-4259). */
+type Bound = { boundBase?: string };
 type FixProofRead =
-  | ({ kind: "result"; testOnlyProceed?: true } & Parsed)
-  | ({ kind: "untrusted"; reason: string } & Parsed)
-  | { kind: "skipped" | "missing" | "error"; reason: string }
+  | ({ kind: "result"; testOnlyProceed?: true } & Parsed & Bound)
+  | ({ kind: "untrusted"; reason: string } & Parsed & Bound)
+  | ({ kind: "skipped" | "missing" | "error"; reason: string } & Bound)
   | WorkflowCiRead;
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string(), testOnlyProceed: z.literal(true).optional() }),
-  z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string() }),
-  z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string() }),
+  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string(), testOnlyProceed: z.literal(true).optional(), boundBase: z.string().optional() }),
+  z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string(), boundBase: z.string().optional() }),
+  z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string(), boundBase: z.string().optional() }),
   WorkflowCiReadSchema,
 ]);
 
@@ -278,8 +280,7 @@ async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, 
   return atBase === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, but ${atBase}` };
 }
 
-async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const binding = await bindingOf(port, input.repo, pr, input.base);
+async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
   if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
   if ("missing" in polled) return missingRead(port, input.repo, pr, binding, polled.missing);
@@ -302,17 +303,21 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
   const gate = await gateOf(deps.port, deps.store, input.runId);
   if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
+  const binding = await bindingOf(deps.port, input.repo, gate.pr, input.base);
   try {
-    const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, input.base);
+    const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, "baseRef" in binding ? binding.baseRef : input.base);
     if (ci !== undefined) return ci;
-    const read = await readResult(deps.port, input, gate.pr, timing, signal);
+    const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
     const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
-    return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
+    return boundTo(read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read, binding);
   } catch (error) {
     signal.throwIfAborted();
-    return { kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };
+    return boundTo({ kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` }, binding);
   }
 }
+
+/** Every read taken under a binding names the base it looked for; a workflow-ci read names its own `baseRef`. */
+const boundTo = (read: FixProofRead, binding: Binding): FixProofRead => ("baseRef" in binding && read.kind !== "workflow-ci" ? { ...read, boundBase: binding.baseRef } : read);
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
   codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
@@ -375,16 +380,6 @@ export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head:
   return unverified === undefined ? undefined : { unverified };
 }
 
-/**
- * The base a trusted read positively judged, which its MERGE records: a result line's `base`, or the base a workflow-ci read cited.
- * An untrusted read, or a line from an older judge, proves no base.
- */
-export function proofBaseOf(read: z.infer<typeof FixProofReadSchema>, head: string): string | undefined {
-  if (read.kind === "workflow-ci") return read.head === head && typeof read.baseRef === "string" ? read.baseRef : undefined;
-  if (read.kind !== "result" || typeof read.line !== "string") return undefined;
-  const parsed = parseResultLine(read.line);
-  return parsed.ok && parsed.result.head === head ? parsed.result.base : undefined;
-}
 
 /** A workflow-only diff that CI proved names its two commits to the reviewer; any other read adds nothing. */
 export const workflowCiFieldOf = (proof: z.infer<typeof FixProofReadSchema>): { workflowCiProof?: { mergeBase: string; head: string } } =>

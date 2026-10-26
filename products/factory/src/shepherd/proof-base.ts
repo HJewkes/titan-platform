@@ -1,7 +1,8 @@
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { z } from "zod";
-import { fixProofStepId, proofBaseOf, readFixProofAt, type FixProofReadSchema } from "./fix-proof.js";
-import { proofUnverifiedOf } from "./grant-withheld.js";
+import { fixProofStepId, readFixProofAt, type FixProofReadSchema } from "./fix-proof.js";
+import { judgedBaseOf } from "./fix-proof-base.js";
+import { inert } from "./grant-withheld.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import { proofStandingAt } from "./proof-waiver.js";
 
@@ -25,16 +26,17 @@ export interface ProofOnBase {
 }
 
 /**
- * `current` is the evidence as last re-read, which keeps the review's `proofBase`. Only a `proofBase` equal to the decided base
- * proves the head there; a record with none proved no base, so it gates until a read on the decided base shows it. A head with no
- * MERGE evidence has no proof to guard, and the policy gates it on the missing facts.
+ * `current` is the evidence as last re-read, which keeps the review's `proofBase`: the base its fix-proof read was bound to. The
+ * guard fires only when that base is positively another than the decided one. A record with none was bound to no base (a kind
+ * that needs no proof, a read that got no binding, or a record from before the field), so decision 303 governs it as it does
+ * any PR. A head with no MERGE evidence has no proof to guard, and the policy gates it on the missing facts.
  */
 export function proofOnBase(current: EvidenceAt): ProofOnBase {
   const reads = new Map<string, BaseRead>();
   const judgedElsewhere = (headSha: string, base: string): string | undefined => {
     const evidence = current(headSha);
-    if (evidence === undefined || evidence.record.proofBase === base) return undefined;
-    return evidence.record.proofBase === undefined ? "no base" : `base ${evidence.record.proofBase}`;
+    const proofBase = evidence?.record.proofBase;
+    return proofBase === undefined || proofBase === base ? undefined : `base ${proofBase}`;
   };
   const unproven = (headSha: string, base: string): string | undefined => {
     const judged = judgedElsewhere(headSha, base);
@@ -61,19 +63,20 @@ function decidedWithout(ctx: WorkflowContext, headSha: string, base: string): bo
   return next !== undefined && next !== fixProofStepId(headSha, base);
 }
 
-/** Reads that prove the head on any base: the registered kind needs no proof, or the base runs no fix-proof workflow and the PR left the harness alone. */
-const PROVEN_ON_ANY_BASE: ReadonlySet<string> = new Set(["skipped", "missing"]);
-
 /**
- * Only positive proof at `base` clears: a clean line or proved CI read that names `base`, a read that needs no proof there, or
- * the owner's waiver at the head. A clean read that names no base, or another one, proves nothing about `base`.
+ * A re-read on `base` clears when its run judged `base`, whatever its trust, which stays with decision 303 and is never gated on
+ * here; a kind that needs no proof, a believed missing run looked for on `base`, or the owner's waiver at the head clear too. A
+ * NO_REPRO, or a read that names no run on `base` or another base's, gates (TP-4259).
  */
 async function baseReadOf(ctx: WorkflowContext, headSha: string, base: string, proof: z.infer<typeof FixProofReadSchema>): Promise<BaseRead> {
   const gated = await proofStandingAt(ctx, headSha, proof);
   if ("ended" in gated) return { unproven: `its fix-proof on ${base} is NO_REPRO${"verdict" in proof ? ` (${proof.verdict})` : ""}` };
-  const { standing } = gated;
-  if (standing.waivedAt !== undefined) return {};
-  if (standing.unverified !== undefined) return { unproven: `its fix-proof on ${base} is unverified: ${proofUnverifiedOf(standing)}` };
-  if (PROVEN_ON_ANY_BASE.has(proof.kind) || proofBaseOf(proof, headSha) === base) return {};
-  return { unproven: `its fix-proof read on ${base} names ${proofBaseOf(proof, headSha) ?? "no base"}, not ${base}` };
+  if (gated.standing.waivedAt !== undefined || proof.kind === "skipped") return {};
+  if (proof.kind === "missing" && proof.boundBase === base) return {};
+  const judged = judgedBaseOf(proof, headSha);
+  if (judged === base) return {};
+  return { unproven: `its fix-proof read on ${base} judged ${judged ?? "no base"}: ${reasonOf(proof)}` };
 }
+
+const reasonOf = (proof: z.infer<typeof FixProofReadSchema>): string =>
+  typeof proof.reason === "string" ? inert(proof.reason) : "verdict" in proof ? `verdict ${String(proof.verdict)}` : proof.kind;
