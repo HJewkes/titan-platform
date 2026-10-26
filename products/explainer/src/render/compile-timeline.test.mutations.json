@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "cue word accepts occurrence zero",
+      "file": "products/explainer/src/storyboard.ts",
+      "find": "(#[1-9]\\d*)?$/",
+      "replace": "(#\\d+)?$/",
+      "kills": [
+        "storyboard cues rejects word#0 and a cue of two words, and accepts word#2"
+      ]
+    },
+    {
+      "name": "storyboard cues skip the cue-word regex",
+      "file": "products/explainer/src/storyboard.ts",
+      "find": "cues: z.array(z.string().regex(CUE_WORD, \"expected word or word#n\")).optional()",
+      "replace": "cues: z.array(z.string()).optional()",
+      "kills": [
+        "storyboard cues rejects word#0 and a cue of two words, and accepts word#2"
+      ]
+    }
+  ]
+}
