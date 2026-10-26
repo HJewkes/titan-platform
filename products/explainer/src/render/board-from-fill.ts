@@ -11,7 +11,7 @@ export interface PageExtras {
   chapter: { n: number; of: number; label: string };
 }
 
-export interface FillBoard {
+interface FillBoard {
   board: Storyboard;
   /** By storyboard id, in fill order; a side input to compileTimeline, so the storyboard schema stays as it is. */
   extras: Map<string, PageExtras>;
