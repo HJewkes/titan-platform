@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a gate that cannot be read reads as skipped, which clears the base guard",
-      "file": "products/factory/src/shepherd/fix-proof.ts",
-      "find": "if (\"unreadable\" in gate) return { kind: \"error\", reason: gate.unreadable };",
-      "replace": "if (\"unreadable\" in gate) return { kind: \"skipped\", reason: gate.unreadable };",
+      "name": "the land refresh never reads the fix-proof again on the decided base",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "    await proof.reread(ctx, headSha, decidedBase());",
+      "replace": "    await proof.reread(ctx, headSha, undefined);",
       "kills": [
-        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the re-read on main cannot read the fix/ PR's head branch, never reading it as skipped"
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on that MERGE until a fix-proof line judged on main at the head is read, past a title edit's skipped judge"
       ]
     },
     {

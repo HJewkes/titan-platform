@@ -39,13 +39,13 @@
       ]
     },
     {
-      "name": "a run binds on GitHub's live base whatever base its line judged",
+      "name": "a gate that cannot be read reads as skipped, which clears the base guard",
       "file": "products/factory/src/shepherd/fix-proof.ts",
-      "find": "return base === undefined || (\"baseRef\" in binding && base === binding.baseRef);",
-      "replace": "return base === undefined || \"baseRef\" in binding;",
+      "find": "if (\"unreadable\" in gate) return { kind: \"error\", reason: gate.unreadable };",
+      "replace": "if (\"unreadable\" in gate) return { kind: \"skipped\", reason: gate.unreadable };",
       "kills": [
-        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) reads the main run's line when a run refused on the stacked base is listed on main beside it",
-        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) reads error at the deadline, never missing or the refusal, when the only run listed on main judged the stacked base"
+        "readFixProof reads error, never skipped, when the PR's head branch cannot be read, so the gate it may hold is not waved through",
+        "readFixProof reads error, never skipped, when the registration store cannot be read"
       ]
     }
   ]
