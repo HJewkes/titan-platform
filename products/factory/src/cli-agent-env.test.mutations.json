@@ -11,6 +11,15 @@
       ]
     },
     {
+      "name": "shepherd order dropped from the refused set",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": ", \"shepherd.order\"]);",
+      "replace": "]);",
+      "kills": [
+        "order clear exits UNAVAILABLE and leaves the reservation in place"
+      ]
+    },
+    {
       "name": "land skips the agent-env refusal",
       "file": "products/factory/src/cli-land.ts",
       "find": "if (refusedInProcess(verbs, probe, opts.port, \"land\")) return;",

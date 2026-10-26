@@ -211,8 +211,8 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
 
-/** The commands whose in-process fallback writes, the ones the brief names; repair-stop writes only when its action is not `list`. */
-const PORT_WRITES: ReadonlySet<ShepherdCommandName> = new Set(["shepherd.merge", "shepherd.review", "shepherd.release", "shepherd.hold", "shepherd.resync", "shepherd.repair-stop"]);
+/** The commands whose in-process fallback writes, the ones the brief names; repair-stop and order write only when their action is not `list`. */
+const PORT_WRITES: ReadonlySet<ShepherdCommandName> = new Set(["shepherd.merge", "shepherd.review", "shepherd.release", "shepherd.hold", "shepherd.resync", "shepherd.repair-stop", "shepherd.order"]);
 
 const writesPort = (name: ShepherdCommandName, args: object): boolean => PORT_WRITES.has(name) && !("action" in args && args.action === "list");
 
