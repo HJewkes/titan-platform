@@ -284,7 +284,7 @@ declare class UninstalledProfileError extends Error {
 declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom): PanelPlan;
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only";
+type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
 /** The commits a workflow-only diff's CI proof read: a required check failed at `mergeBase` and every one passed at `head`. */
 interface WorkflowCiProof {
     mergeBase: string;

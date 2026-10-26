@@ -1,6 +1,7 @@
 import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { FIX_PROOF_CHECK, readFixProof } from "./fix-proof.js";
@@ -15,7 +16,7 @@ const MERGE_BASE = fakeSha("non-source-merge-base");
 const JOB = 77;
 
 /** A run that never waived, so its proof standing reads no waiver step. */
-const unwaived = { iteration: () => 0 } as unknown as WorkflowContext;
+const unwaived = partialFake<WorkflowContext>({ iteration: () => 0 });
 
 function vacuousLine(): string {
   const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
