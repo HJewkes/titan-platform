@@ -3,13 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256 } from "../workflow/artifacts.js";
-import { pngFrame, probeStreams, sineWav, timelineOf } from "./render-fixtures.test-helpers.js";
-import { RenderManifestSchema, type RenderHost } from "./render-manifest.js";
+import { FAKE_HOST, framesOf, pngFrame, probeStreams, sineWav, timelineOf } from "./render-fixtures.test-helpers.js";
+import { RenderManifestSchema } from "./render-manifest.js";
 import { defaultRenderDeps, renderVideo, type RenderDeps, type RenderInput, type RenderWords } from "./render-video.js";
-
-const FAKE_HOST: RenderHost = {
-  platform: "linux", arch: "x64", cpuModel: "Synthetic CPU", cpus: 4, node: "v0.0.0", ffmpeg: "ffmpeg version 0", chromium: "0.0.0.0",
-};
 
 let dir: string;
 let png: Buffer;
@@ -20,14 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-/** Stands in for the browser: emits the frames asked for and reports the page length it is given. */
-function fakeCapture(pageDurationS?: (frames: number, fps: number) => number): RenderDeps["captureFrames"] {
-  return async (options, sink) => {
-    const frames = options.frames ?? 0;
-    for (let i = 0; i < frames; i++) await sink(i, png);
-    return { frames, pageDurationS: pageDurationS ? pageDurationS(frames, options.fps) : frames / options.fps, fonts: [] };
-  };
-}
+const fakeCapture = (pageDurationS?: (frames: number, fps: number) => number) => framesOf(png, pageDurationS);
 
 function deps(overrides: Partial<RenderDeps> = {}): RenderDeps {
   return { ...defaultRenderDeps, captureFrames: fakeCapture(), host: async () => FAKE_HOST, now: () => 0, ...overrides };

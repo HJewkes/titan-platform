@@ -30,11 +30,13 @@ export const RenderManifestSchema = z.strictObject({
   renderWallS: z.number().nonnegative(),
   /** True when no narration was given: the video is a silent draft and the page shows the DRAFT stamp. */
   draft: z.boolean(),
-  /** No QA gate runs before a render yet (TP-2999), so nothing may read this manifest as QA-passed. */
-  qaGate: z.literal("absent"),
+  /** `absent` when the caller asked for no gate, so nothing may read the manifest as QA-passed; `skipped` for `--no-qa`. */
+  qaGate: z.enum(["absent", "passed", "skipped"]),
+  /** Set only when the gate passed: the held errors it counted and the gate profile's sha. */
+  qa: z.strictObject({ heldErrors: z.literal(0), gateProfile: Sha }).optional(),
   host: RenderHostSchema,
   shas: z.strictObject({ timeline: Sha, page: Sha, mix: Sha, mp4: Sha, vtt: Sha, words: Sha.optional() }),
-});
+}).refine((m) => (m.qa !== undefined) === (m.qaGate === "passed"), { message: "qa is recorded exactly when qaGate is passed" });
 export type RenderManifest = z.infer<typeof RenderManifestSchema>;
 
 export function renderManifestJson(manifest: RenderManifest): string {

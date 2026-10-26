@@ -6,6 +6,7 @@ import { canonicalJson } from "../eval-store.js";
 import { sha256 } from "../workflow/artifacts.js";
 import { toVtt, type CaptionWord } from "./captions.js";
 import { assertDurationAgreement } from "./duration-check.js";
+import { defaultQaGate, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
 import { collectRenderHost, renderManifestJson, type RenderHost, type RenderManifest } from "./render-manifest.js";
 import { silentMix } from "./silent-mix.js";
 
@@ -16,7 +17,7 @@ const VIEWPORT = { width: 1920, height: 1080 };
 export interface RenderTimeline {
   durationS: number;
   provisional: boolean;
-  beats: readonly { id: string; startS: number; durationS: number }[];
+  beats: readonly GateBeat[];
 }
 
 /** The part of an `explainer.words/v1` file render reads: per beat its start and its words relative to it. */
@@ -40,6 +41,8 @@ export interface RenderInput {
   workers: number;
   outDir: string;
   stem: string;
+  /** The pre-capture QA gate; without it the manifest records `qaGate: "absent"`. */
+  qa?: RenderQa;
 }
 
 export interface RenderDeps {
@@ -49,10 +52,11 @@ export interface RenderDeps {
   silentMix: typeof silentMix;
   host: () => Promise<RenderHost>;
   now: () => number;
+  qaGate: RenderQaGate;
 }
 
 export const defaultRenderDeps: RenderDeps = {
-  captureFrames, startEncoder, mixAudio, silentMix, host: collectRenderHost, now: () => performance.now(),
+  captureFrames, startEncoder, mixAudio, silentMix, host: collectRenderHost, now: () => performance.now(), qaGate: defaultQaGate,
 };
 
 export interface RenderResult {
@@ -67,6 +71,7 @@ interface OutPaths {
   mp4: string;
   vtt: string;
   manifest: string;
+  qa: string;
 }
 
 function outPaths({ outDir, stem }: RenderInput): OutPaths {
@@ -75,6 +80,7 @@ function outPaths({ outDir, stem }: RenderInput): OutPaths {
     mp4: path.join(outDir, `${stem}.mp4`),
     vtt: path.join(outDir, "captions.vtt"),
     manifest: path.join(outDir, "render-manifest.json"),
+    qa: path.join(outDir, "qa.json"),
   };
 }
 
@@ -111,13 +117,32 @@ async function capture(input: RenderInput, paths: OutPaths, deps: RenderDeps): P
 
 const fileSha = async (file: string): Promise<string> => sha256(await readFile(file));
 
-async function manifestFor(input: RenderInput, paths: OutPaths, frames: FramesResult, wallS: number, host: RenderHost): Promise<RenderManifest> {
+type QaVerdict = Pick<RenderManifest, "qaGate" | "qa">;
+
+/** Runs the gate before anything is mixed or captured; held errors write `qa.json` and refuse the render. */
+async function gateQa(input: RenderInput, qaJson: string, deps: RenderDeps): Promise<QaVerdict> {
+  if (!input.qa) return { qaGate: "absent" };
+  if (input.qa.mode === "skip") return { qaGate: "skipped" };
+  const result = await deps.qaGate(input.pageUrl, input.timeline, input.qa.gate);
+  await writeGateReport(qaJson, result, input.qa.gate);
+  const held = result.held.errors.length;
+  if (held > 0) throw new QaRefused(input.stem, qaJson, held);
+  return { qaGate: "passed", qa: { heldErrors: 0, gateProfile: input.qa.gate.sha } };
+}
+
+interface Run {
+  frames: FramesResult;
+  wallS: number;
+  qa: QaVerdict;
+}
+
+async function manifestFor(input: RenderInput, paths: OutPaths, { frames, wallS, qa }: Run, host: RenderHost): Promise<RenderManifest> {
   const [mix, mp4, vtt] = await Promise.all([fileSha(paths.mix), fileSha(paths.mp4), fileSha(paths.vtt)]);
   const words = input.audio ? sha256(canonicalJson(input.audio.words)) : undefined;
   return {
     schema: "explainer.render-manifest/v1", workers: input.workers, fps: RENDER_FPS, frames: frames.frames,
     durationS: mixDurationS(input.timeline), pageDurationS: frames.pageDurationS, renderWallS: Number(wallS.toFixed(2)),
-    draft: !input.audio || input.timeline.provisional, qaGate: "absent", host,
+    draft: !input.audio || input.timeline.provisional, ...qa, host,
     shas: { timeline: sha256(canonicalJson(input.timeline)), page: input.pageSha, mix, mp4, vtt, ...(words ? { words } : {}) },
   };
 }
@@ -137,17 +162,19 @@ async function encodeChecked(input: RenderInput, paths: OutPaths, deps: RenderDe
 
 /**
  * Renders a served timeline page to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json` in
- * `outDir`. The manifest is written last, so a render that failed leaves none behind.
+ * `outDir`. The manifest is written last, so a render that failed leaves none behind. With `qa` in gate mode the
+ * page is QA-gated first, and held errors throw `QaRefused` before any mix or frame exists.
  */
 export async function renderVideo(input: RenderInput, deps: RenderDeps = defaultRenderDeps): Promise<RenderResult> {
   const paths = outPaths(input);
   await mkdir(input.outDir, { recursive: true });
-  await rm(paths.manifest, { force: true });
+  await Promise.all([rm(paths.manifest, { force: true }), rm(paths.qa, { force: true })]);
+  const qa = await gateQa(input, paths.qa, deps);
   const started = deps.now();
   const frames = await encodeChecked(input, paths, deps);
   const wallS = (deps.now() - started) / 1000;
   await writeFile(paths.vtt, toVtt(input.audio ? captionWords(input.audio.words) : []));
-  const data = await manifestFor(input, paths, frames, wallS, await deps.host());
+  const data = await manifestFor(input, paths, { frames, wallS, qa }, await deps.host());
   await writeFile(paths.manifest, renderManifestJson(data));
   return { mp4: paths.mp4, vtt: paths.vtt, manifest: paths.manifest, data };
 }

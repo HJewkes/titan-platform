@@ -11,12 +11,12 @@
       ]
     },
     {
-      "name": "qaGate accepts any string",
+      "name": "a passed gate need not carry its qa record",
       "file": "products/explainer/src/render/render-manifest.ts",
-      "find": "qaGate: z.literal(\"absent\")",
-      "replace": "qaGate: z.string()",
+      "find": "(m.qa !== undefined) === (m.qaGate === \"passed\")",
+      "replace": "m.qa === undefined || m.qaGate === \"passed\"",
       "kills": [
-        "render manifest refuses a manifest that claims a QA gate ran"
+        "render manifest refuses a manifest that claims a QA gate passed with no qa record"
       ]
     }
   ]

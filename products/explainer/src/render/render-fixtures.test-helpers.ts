@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
-import type { RenderTimeline } from "./render-video.js";
+import type { RenderHost } from "./render-manifest.js";
+import type { RenderDeps, RenderTimeline } from "./render-video.js";
+
+export const FAKE_HOST: RenderHost = {
+  platform: "linux", arch: "x64", cpuModel: "Synthetic CPU", cpus: 4, node: "v0.0.0", ffmpeg: "ffmpeg version 0", chromium: "0.0.0.0",
+};
 
 /** A synthetic tone, made at test time so no audio is committed. */
 export function sineWav(out: string, durationS: number, frequency = 440): void {
@@ -39,4 +44,13 @@ export function timelineOf(durations: readonly number[], provisional = false): R
     return beat;
   });
   return { durationS: startS, provisional, beats };
+}
+
+/** Stands in for the browser: emits `png` for every frame asked for and reports the page length it is given. */
+export function framesOf(png: Buffer, pageDurationS?: (frames: number, fps: number) => number): RenderDeps["captureFrames"] {
+  return async (options, sink) => {
+    const frames = options.frames ?? 0;
+    for (let i = 0; i < frames; i++) await sink(i, png);
+    return { frames, pageDurationS: pageDurationS ? pageDurationS(frames, options.fps) : frames / options.fps, fonts: [] };
+  };
 }
