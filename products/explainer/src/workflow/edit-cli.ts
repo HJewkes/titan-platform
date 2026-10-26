@@ -11,7 +11,7 @@ import { ScriptSchema } from "../script-schema.js";
 import { ArtifactStore } from "./artifacts.js";
 import { fillProblems, type FillCheck } from "./edit-fill.js";
 import { EditLedgerSchema, editIdOf, editLogFile, ledgerFile, listLedgers, writeLedger, type EditLedger } from "./edit-ledger.js";
-import { editLauncher, type DetachedSpawn } from "./edit-launch.js";
+import { editLauncher, type DetachedSpawn, type LaunchIo } from "./edit-launch.js";
 import { dataDirOption } from "./run-cli.js";
 import { openState } from "./host.js";
 import { VIDEO_WORKFLOW } from "./pipeline.js";
@@ -32,6 +32,8 @@ export interface EditCliDeps {
   err?: (text: string) => void;
   readStdin?: () => string;
   spawn?: DetachedSpawn;
+  /** The launcher's process seams, for a test that checks the systemd path without starting a unit. */
+  launch?: LaunchIo;
   fill?: FillCheck;
 }
 
@@ -172,7 +174,7 @@ function storeEdit(dataDir: string, edit: SlotEdit, checked: Checked & { script:
     schema: "explainer.edit-ledger/v1", editId, base: edit.base, videoId: checked.view.videoId, scriptSha, beats: edit.beats,
     ...(edit.fromNote ? { fromNote: edit.fromNote } : {}), createdAt: edit.createdAt, status: start ? "started" : "stored",
   });
-  if (start) (deps.spawn ?? editLauncher(editId))(editRunArgv(dataDir, checked.view, editId, scriptSha), editLogFile(dataDir, editId));
+  if (start) (deps.spawn ?? editLauncher(editId, deps.launch))(editRunArgv(dataDir, checked.view, editId, scriptSha), editLogFile(dataDir, editId));
   return { editId, scriptSha, started: start };
 }
 
