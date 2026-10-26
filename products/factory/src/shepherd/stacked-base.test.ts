@@ -247,7 +247,7 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     const w = await gatedOnMain([proofLine("error", "the judge crashed")]);
 
     expect(w.fake.effects.merge).toBe(0);
-    expect(promptOf(w)).toContain("its verdict is error: the judge crashed");
+    expect(promptOf(w)).toContain("it is error: the judge crashed");
   });
 
   it("asks the owner instead of merging when the PR changes the fix-proof harness", async () => {
@@ -261,7 +261,7 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     const w = await gatedOnMain([proofLine("reproduced"), proofLine("reproduced")]);
 
     expect(w.fake.effects.merge).toBe(0);
-    expect(promptOf(w)).toContain("2 fix-proof runs at this head printed a line for PR #1 on main, not exactly one");
+    expect(promptOf(w)).toContain("it is untrusted: 2 fix-proof runs at this head belong to PR #1 on main, not exactly one");
   });
 
   it("reads nothing again and merges on a seat that merges into the parent branch the proof was refused on", async () => {

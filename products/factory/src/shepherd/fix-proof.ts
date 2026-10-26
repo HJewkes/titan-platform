@@ -56,9 +56,8 @@ export const FixProofReadSchema = z.discriminatedUnion("kind", [
 ]);
 
 const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1) });
-type FixProofInput = z.infer<typeof FixProofInputSchema>;
 
-type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
+export type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
 
 type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string };
 
@@ -101,7 +100,7 @@ const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
   runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
 
 /** The PR and base branch the registration names; a run is bound to it only if GitHub ties the run to that very pair. */
-type Binding = { pr: number; baseRef: string } | { unbound: string };
+export type Binding = { pr: number; baseRef: string } | { unbound: string };
 
 async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<Binding> {
   if (pr === null) return { unbound: "the registration names no PR, so no run can be bound to it" };
@@ -114,11 +113,46 @@ async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null): P
 
 const isBoundTo = (binding: Binding) => (run: CheckRun) => "pr" in binding && run.pullRequests.some((pr) => pr.number === binding.pr && pr.baseRef === binding.baseRef);
 
+/** fix-proof-run.sh's refusal. It shows a ref only in a plain ref alphabet, so the default branch it names ends at a space or `)`. */
+export const REFUSAL = /fix-proof runs only against the default branch: base \S+ is not ([^\s)]+)/;
+
+/** A line fix-proof-run.sh printed when it refused a stacked base: it says nothing about the fix on any base (TP-4259). */
+export function isRefusal(line: string | undefined): boolean {
+  const parsed = line === undefined ? undefined : parseResultLine(line);
+  return parsed?.ok === true && parsed.result.verdict === "error" && REFUSAL.test(parsed.result.error ?? "");
+}
+
+/** Each completed run's last line for `head`, read once; a log that cannot be read is tried again on the next poll. */
+async function logLines(port: GitHubPort, repo: RepoSlug, head: string, runs: readonly CheckRun[], lines: Map<number, string | undefined>): Promise<void> {
+  for (const run of runs) {
+    if (run.status !== "completed" || lines.has(run.id)) continue;
+    try {
+      lines.set(run.id, lastResultLine(await port.jobLogTail(repo, run.id, LOG_TAIL_LINES), head));
+    } catch {
+      continue;
+    }
+  }
+}
+
+/** The chosen run's line; its log is read again if it could not be read before, and that failure is the read's to report. */
+async function lineOf(port: GitHubPort, repo: RepoSlug, head: string, run: CheckRun, lines: ReadonlyMap<number, string | undefined>): Promise<string | undefined> {
+  return lines.has(run.id) ? lines.get(run.id) : lastResultLine(await port.jobLogTail(repo, run.id, LOG_TAIL_LINES), head);
+}
+
+type Chosen = { run: CheckRun; distrust?: string; refused?: true };
+
 /**
  * Another PR opened from the same head sha onto a base of its own runs its own workflow file, whose run shares the name, app and head
  * sha. Exactly one run bound to this PR is trusted; none or several are not, and the newest is still read so the reason is reported.
+ * A run that printed the stacked-base refusal is no proof run: GitHub lists a run's PR on its live base, so after a retarget the
+ * refused run reads as bound beside the run against the new base. Only when every run refused is a refused run chosen.
  */
-function chooseRun(candidates: readonly CheckRun[], binding: Binding): { run: CheckRun; distrust?: string } | undefined {
+function chooseRun(runs: readonly CheckRun[], binding: Binding, lines: ReadonlyMap<number, string | undefined>): Chosen | undefined {
+  const candidates = runs.filter((run) => !isRefusal(lines.get(run.id)));
+  if (candidates.length === 0) {
+    const run = newestOf(runs.filter(isBoundTo(binding))) ?? newestOf(runs);
+    return run && { run, refused: true };
+  }
   const bound = candidates.filter(isBoundTo(binding));
   if (bound.length === 1) return { run: bound[0]! };
   const run = newestOf(candidates);
@@ -144,24 +178,37 @@ const settledWithout = (runs: readonly CheckRun[], head: string, execSeen: boole
  * `stalled` is a fix-proof run that existed at the head but never completed, or exec jobs that ran with no judge after them by the
  * deadline, so the absence of a line is not believed.
  */
-type Polled = { run: CheckRun; distrust?: string } | { missing: string } | { stalled: string };
+type Polled = (Chosen & { line: string | undefined }) | { missing: string } | { stalled: string };
 
-function deadlineRead(chosen: { run: CheckRun } | undefined, execSeen: boolean): Polled {
+function deadlineRead(chosen: Chosen | undefined, execSeen: boolean): Polled {
+  if (chosen?.refused === true) return { stalled: `every ${FIX_PROOF_CHECK} run at this head printed the stacked-base refusal until the deadline` };
   if (chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
   if (execSeen) return { stalled: `the ${FIX_PROOF_CHECK} exec jobs ran at this head but no ${FIX_PROOF_CHECK} judge run completed before the deadline` };
   return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
 }
 
+/** Where a proof is read: `pastRefusal` waits for a run that is no refusal instead of taking a refused one as the head's line. */
+export interface ProofTarget {
+  repo: RepoSlug;
+  head: string;
+  pr: number | null;
+  binding: Binding;
+  pastRefusal?: boolean;
+}
+
 /** Absence is believed only on two polls in a row, since a job behind `needs:` is created after the runs it waits on finish. */
-async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
+async function completedRun(port: GitHubPort, { repo, head, binding, pastRefusal }: ProofTarget, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
   const clock = deadline({ ...timing, timeoutMs: timing.timeoutMs ?? DEFAULT_FIX_PROOF_WAIT_MS });
   const grace = deadline({ ...timing, startedAt: undefined, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
   let settledBefore = false;
   let execSeen = false;
+  const lines = new Map<number, string | undefined>();
   for (;;) {
     const runs = await port.checkRuns(repo, head);
-    const chosen = chooseRun(runs.filter(isFixProofRun(head)), binding);
-    if (chosen?.run.status === "completed") return chosen;
+    const proofRuns = runs.filter(isFixProofRun(head));
+    await logLines(port, repo, head, proofRuns, lines);
+    const chosen = chooseRun(proofRuns, binding, lines);
+    if (chosen?.run.status === "completed" && !(chosen.refused && pastRefusal)) return { ...chosen, line: await lineOf(port, repo, head, chosen.run, lines) };
     execSeen ||= execAt(runs, head);
     const settled = settledWithout(runs, head, execSeen);
     if (settled && settledBefore) return { missing: `every GitHub Actions run at this head completed with no ${FIX_PROOF_CHECK} check run` };
@@ -201,7 +248,7 @@ async function harnessTouch(port: GitHubPort, repo: RepoSlug, pr: number | null)
 }
 
 /** Why a line from `run` cannot be trusted, or undefined when the run succeeded on a harness the PR left alone. */
-export async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
+async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
   if (run.conclusion !== "success") return `the ${FIX_PROOF_CHECK} run concluded ${run.conclusion ?? "nothing"}, not success`;
   return harnessTouch(port, repo, pr);
 }
@@ -232,16 +279,20 @@ async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, 
   return atBase === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, but ${atBase}` };
 }
 
-async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const binding = await bindingOf(port, input.repo, pr);
-  const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
+/**
+ * The one fix-proof read, shared by the first read and the re-read after a retarget, so both choose and judge runs alike. A refused
+ * line proves nothing whoever printed it, so it is a result whose own message stands, never buried under a distrust reason.
+ */
+export async function readProofAt(port: GitHubPort, target: ProofTarget, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+  const polled = await completedRun(port, target, timing, signal);
   if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
-  if ("missing" in polled) return missingRead(port, input.repo, pr, binding, polled.missing);
-  const line = lastResultLine(await port.jobLogTail(input.repo, polled.run.id, LOG_TAIL_LINES), input.head);
+  if ("missing" in polled) return missingRead(port, target.repo, target.pr, target.binding, polled.missing);
+  const line = polled.line;
   if (line === undefined) return { kind: "error", reason: `the ${FIX_PROOF_CHECK} job log has no result line for this head` };
   const parsed = parseResultLine(line);
   if (!parsed.ok) return { kind: "error", reason: parsed.error };
-  const distrust = polled.distrust ?? (await distrustOf(port, input.repo, pr, polled.run));
+  if (polled.refused) return { kind: "result", line, verdict: parsed.result.verdict };
+  const distrust = polled.distrust ?? (await distrustOf(port, target.repo, target.pr, polled.run));
   const verdict = parsed.result.verdict;
   return distrust === undefined ? { kind: "result", line, verdict } : { kind: "untrusted", line, verdict, reason: distrust };
 }
@@ -257,7 +308,8 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
   try {
     const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head);
     if (ci !== undefined) return ci;
-    const read = await readResult(deps.port, input, gate.pr, timing, signal);
+    const binding = await bindingOf(deps.port, input.repo, gate.pr);
+    const read = await readProofAt(deps.port, { repo: input.repo, head: input.head, pr: gate.pr, binding }, timing, signal);
     const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
     return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
   } catch (error) {

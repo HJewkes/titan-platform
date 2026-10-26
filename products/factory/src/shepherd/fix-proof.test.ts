@@ -8,7 +8,7 @@ import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, fixProofVerdict, lastResultLine, readFixProof } from "./fix-proof.js";
+import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, fixProofVerdict, lastResultLine, readFixProof, standingReasonOf } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
@@ -868,6 +868,46 @@ describe("readFixProof", () => {
     const { read } = registered("correctness", [validate], { files: [SOURCE_EDIT, { path: ".github/workflows/fix-proof.yml", status: "removed" }] });
 
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("harness: .github/workflows/fix-proof.yml") });
+  });
+
+  describe("a head retargeted to main from a stacked base, whose refused run reads as bound on main beside any new run (TP-4259)", () => {
+    const REFUSED_JOB = 70;
+    const refusal = "fix-proof runs only against the default branch: base feat/parent is not main";
+    const refusalLine = formatResultLine({ head: H, mergeBase: BASE, verdict: "error", counts: { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 }, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, error: refusal });
+    const refusedRun = (id = REFUSED_JOB) => fixProofRun({ id });
+    const refusedLogs = (...ids: number[]) => Object.fromEntries(ids.map((id) => [id, actionsLog(refusalLine)]));
+
+    it("judges the run against main alone, so its vacuous line is NO_REPRO and not two untrusted runs", async () => {
+      const { read } = registered("correctness", [refusedRun(), fixProofRun()], { logs: refusedLogs(REFUSED_JOB) });
+
+      const proof = await read();
+
+      expect(proof).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+      expect(fixProofVerdict(FixProofReadSchema.parse(proof), H)).toMatchObject({ kind: "NO_REPRO" });
+    });
+
+    it("waits for the run against main while it is still in progress beside the refused one", async () => {
+      const pending = fixProofRun({ status: "in_progress", conclusion: null });
+      const { read } = registered("correctness", [refusedRun(), pending], { logs: { ...refusedLogs(REFUSED_JOB), [FIX_PROOF_JOB]: actionsLog(resultLine(H, "reproduced")) }, later: [{ ms: 2_000, runs: [refusedRun(), fixProofRun()] }] });
+
+      expect(await read()).toEqual({ kind: "result", line: resultLine(H, "reproduced"), verdict: "reproduced" });
+    });
+
+    it("keeps the refusal as the standing when the PR changes the harness and no run against main exists yet", async () => {
+      const { read } = registered("correctness", [refusedRun()], { logs: refusedLogs(REFUSED_JOB), files: [{ path: "scripts/fix-proof-run.sh", status: "modified" }] });
+
+      const proof = FixProofReadSchema.parse(await read());
+
+      expect(proof).toEqual({ kind: "result", line: refusalLine, verdict: "error" });
+      expect(fixProofStanding(proof, H)).toEqual({ unverified: "error" });
+      expect(standingReasonOf(proof)).toBe(refusal);
+    });
+
+    it("keeps the refusal as the standing when a reopened PR left two refused runs at the head", async () => {
+      const { read } = registered("correctness", [refusedRun(), refusedRun(REFUSED_JOB + 1)], { logs: refusedLogs(REFUSED_JOB, REFUSED_JOB + 1) });
+
+      expect(await read()).toEqual({ kind: "result", line: refusalLine, verdict: "error" });
+    });
   });
 
   describe("a diff only under .github/workflows/ (TP-3861)", () => {
