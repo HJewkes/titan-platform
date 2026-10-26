@@ -341,13 +341,7 @@ function configuredVisualPacket(
 }
 
 /** The planner spawns through the shared roster and spawn gate, at the configured profile as given, and reports to the hub seat. */
-function configuredDiagnosis(
-  shepherd: FactoryConfig["shepherd"],
-  env: NodeJS.ProcessEnv,
-  roster: RosterReader | undefined,
-  gate: SpawnGate,
-  cwdFor: (repo: string) => string | undefined,
-): DiagnosisPorts {
+function configuredDiagnosis(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate, cwdFor: (repo: string) => string | undefined): DiagnosisPorts {
   const agentChatBin = shepherd?.agentChatBin;
   const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
   const hubSeat = shepherd?.hubSeat;
