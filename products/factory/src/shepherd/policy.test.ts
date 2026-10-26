@@ -460,9 +460,10 @@ describe("a seat with visual baselines (TP-2662)", () => {
   });
 
   it("re-reads unsettled evidence with the run's baselines, so the comment's decision matches decide", async () => {
-    const inputs: Record<string, unknown>[] = [];
+    const inputs: unknown[] = [];
     const dispatch = async <T extends Record<string, unknown>>(_stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> => {
-      inputs.push(JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}") as Record<string, unknown>);
+      const input: unknown = JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}");
+      inputs.push(input);
       throw new Error("input recorded");
     };
     const ctx = partialFake<WorkflowContext>({ runId: "run-1", dispatch });
