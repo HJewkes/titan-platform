@@ -59,6 +59,7 @@ const READERS = {
   "shepherd.review.adversaryProfile": (s: Shepherd) => s.review?.adversaryProfile,
   "shepherd.review.fallbackConfigDirs": (s: Shepherd) => s.review?.fallbackConfigDirs,
   "shepherd.review.maxConcurrent": (s: Shepherd) => s.review?.maxConcurrent,
+  "shepherd.taskClose": (s: Shepherd) => s.taskClose,
 };
 
 type LiveValues = { [P in keyof typeof READERS]: ReturnType<(typeof READERS)[P]> };
