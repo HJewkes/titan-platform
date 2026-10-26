@@ -1,6 +1,4 @@
-import { spawn } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import { appDirs } from "@titan-design/app-paths";
 import { WorkflowRunStore } from "@titan-design/workflow";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
@@ -13,6 +11,7 @@ import { ScriptSchema } from "../script-schema.js";
 import { ArtifactStore } from "./artifacts.js";
 import { fillProblems, type FillCheck } from "./edit-fill.js";
 import { EditLedgerSchema, editIdOf, editLogFile, ledgerFile, listLedgers, writeLedger, type EditLedger } from "./edit-ledger.js";
+import { editLauncher, type DetachedSpawn, type LaunchIo } from "./edit-launch.js";
 import { dataDirOption } from "./run-cli.js";
 import { openState } from "./host.js";
 import { VIDEO_WORKFLOW } from "./pipeline.js";
@@ -26,14 +25,15 @@ export const EDIT_BUDGET_USD = 0.25;
 const MAX_EDIT_BYTES = 256 * 1024;
 
 type Resolved = z.infer<typeof ResolvedSchema>;
-/** Launches `explainer <argv>` detached, its output appended to `logFile`; tests pass a fake. */
-export type DetachedSpawn = (argv: readonly string[], logFile: string) => void;
+export type { DetachedSpawn };
 
 export interface EditCliDeps {
   out?: (text: string) => void;
   err?: (text: string) => void;
   readStdin?: () => string;
   spawn?: DetachedSpawn;
+  /** The launcher's process seams, for a test that checks the systemd path without starting a unit. */
+  launch?: LaunchIo;
   fill?: FillCheck;
 }
 
@@ -45,17 +45,6 @@ interface EditVerdict {
   problems: string[];
   diff: FieldChange[];
 }
-
-// The running bin is `explainer` itself, so the detached run is the same build that stored the edit.
-const spawnDetached: DetachedSpawn = (argv, logFile) => {
-  mkdirSync(path.dirname(logFile), { recursive: true });
-  const fd = openSync(logFile, "a");
-  try {
-    spawn(process.execPath, [process.argv[1]!, ...argv], { detached: true, stdio: ["ignore", fd, fd] }).unref();
-  } finally {
-    closeSync(fd);
-  }
-};
 
 const dataDirOf = (flags: { dataDir?: string }): string => flags.dataDir ?? appDirs("explainer").data;
 const issues = (error: z.ZodError, prefix = ""): string[] => error.issues.map((issue) => `${[prefix, ...issue.path.map(String)].filter(Boolean).join(".")}: ${issue.message}`);
@@ -185,7 +174,7 @@ function storeEdit(dataDir: string, edit: SlotEdit, checked: Checked & { script:
     schema: "explainer.edit-ledger/v1", editId, base: edit.base, videoId: checked.view.videoId, scriptSha, beats: edit.beats,
     ...(edit.fromNote ? { fromNote: edit.fromNote } : {}), createdAt: edit.createdAt, status: start ? "started" : "stored",
   });
-  if (start) (deps.spawn ?? spawnDetached)(editRunArgv(dataDir, checked.view, editId, scriptSha), editLogFile(dataDir, editId));
+  if (start) (deps.spawn ?? editLauncher(editId, deps.launch))(editRunArgv(dataDir, checked.view, editId, scriptSha), editLogFile(dataDir, editId));
   return { editId, scriptSha, started: start };
 }
 
