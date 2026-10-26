@@ -10,6 +10,7 @@ import { headWaits } from "./freeze-wait.js";
 import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
+import { proofOnBase, type ProofOnBase } from "./proof-base.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
@@ -177,13 +178,13 @@ export function shepherdLandOptions(
     const verdict = verdictFor(headSha);
     return verdict?.kind === "MERGE" && reread.has(verdict) ? { ...verdict, evidence: reread.get(verdict) } : verdict;
   };
+  const proof = proofOnBase((headSha) => mergeEvidenceAt(headSha, current), (headSha) => mergeEvidenceAt(headSha, verdictFor));
   const refresh = async (ctx: WorkflowContext, headSha: string): Promise<void> => {
-    const verdict = verdictFor(headSha);
-    const evidence = mergeEvidenceAt(headSha, current);
-    if (verdict && evidence) reread.set(verdict, await refreshMergeEvidence(ctx, evidence, effective().visualPaths));
+    await rereadEvidence(ctx, headSha, { verdictFor, current, reread }, effective().visualPaths);
+    await proof.reread(ctx, headSha, decidedBase());
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
-    const decision = onDecidedBase(shepherdGatePolicy(effective(), current).decide(action, target), target?.headSha, decidedBase(), current);
+    const decision = onDecidedBase(shepherdGatePolicy(effective(), current).decide(action, target), target?.headSha, decidedBase(), current, proof);
     if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
     if (escalated !== undefined && target?.headSha !== undefined && clearedByFreshMerge(escalated, decision, target.headSha, current)) return clearedDecision(escalated, decision, target.headSha);
@@ -196,15 +197,30 @@ export function shepherdLandOptions(
   return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
 }
 
+interface Reviews {
+  verdictFor: (headSha: string) => Verdict | undefined;
+  current: (headSha: string) => Verdict | undefined;
+  reread: WeakMap<Verdict, unknown>;
+}
+
+/** The MERGE evidence at the head read again, so later decisions about that review judge the re-read. */
+async function rereadEvidence(ctx: WorkflowContext, headSha: string, reviews: Reviews, visualPaths: string[] | undefined): Promise<void> {
+  const verdict = reviews.verdictFor(headSha);
+  const evidence = mergeEvidenceAt(headSha, reviews.current);
+  if (verdict && evidence) reviews.reread.set(verdict, await refreshMergeEvidence(ctx, evidence, visualPaths));
+}
+
 /**
  * An allow judged on evidence read on another base than the one being decided gates: a retarget and back during the
- * re-read could otherwise merge on the other base's review rules and merge tree. Evidence with no base, or a decision
- * with no checked base, is left as it is.
+ * re-read could otherwise merge on the other base's review rules and merge tree. So does a fix-proof that judged another
+ * base, until a read on this one proves the head. Evidence with no base, or a decision with no checked base, is left as it is.
  */
-function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): GateDecision {
-  const evidenceBase = headSha === undefined ? undefined : mergeEvidenceAt(headSha, verdictFor)?.record.baseRef;
-  if (decision.outcome !== "allow" || base === undefined || evidenceBase === undefined || evidenceBase === base) return decision;
-  return { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason: `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` };
+function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined, proof: ProofOnBase): GateDecision {
+  if (decision.outcome !== "allow" || base === undefined || headSha === undefined) return decision;
+  const evidenceBase = mergeEvidenceAt(headSha, verdictFor)?.record.baseRef;
+  const factsElsewhere = evidenceBase !== undefined && evidenceBase !== base;
+  const offBase = factsElsewhere ? `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` : proof.unproven(headSha, base);
+  return offBase === undefined ? decision : { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason: offBase };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

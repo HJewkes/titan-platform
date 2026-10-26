@@ -55,7 +55,8 @@ export const FixProofReadSchema = z.discriminatedUnion("kind", [
   WorkflowCiReadSchema,
 ]);
 
-const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1) });
+/** `base` binds the read to that base instead of the PR's live one: the base a merge is being decided on (TP-4259). */
+const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1), base: z.string().min(1).optional() });
 type FixProofInput = z.infer<typeof FixProofInputSchema>;
 
 type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
@@ -90,8 +91,12 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
   }
 }
 
-/** Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. */
-const isFixProofRun = (head: string) => (run: CheckRun) => run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head;
+/**
+ * Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. So is a skipped
+ * one: an edit that changes no base runs the workflow only to skip every job, and its judge printed no line.
+ */
+const isFixProofRun = (head: string) => (run: CheckRun) =>
+  run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head && run.conclusion !== "skipped";
 
 const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
   runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
@@ -99,8 +104,9 @@ const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
 /** The PR and base branch the registration names; a run is bound to it only if GitHub ties the run to that very pair. */
 type Binding = { pr: number; baseRef: string } | { unbound: string };
 
-async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<Binding> {
+async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null, base: string | undefined): Promise<Binding> {
   if (pr === null) return { unbound: "the registration names no PR, so no run can be bound to it" };
+  if (base !== undefined) return { pr, baseRef: base };
   try {
     return { pr, baseRef: (await port.getPr(repo, pr)).baseRef };
   } catch (error) {
@@ -268,7 +274,7 @@ async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, 
 }
 
 async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const binding = await bindingOf(port, input.repo, pr);
+  const binding = await bindingOf(port, input.repo, pr, input.base);
   const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
   if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
   if ("missing" in polled) return missingRead(port, input.repo, pr, binding, polled.missing);
@@ -305,13 +311,16 @@ export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
   codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
 
+export const fixProofStepId = (head: string, base?: string): string => `${FIX_PROOF_STEP}:${head}${base === undefined ? "" : `@${base}`}`;
+
 /**
  * The head's fix-proof read, taken once more when it failed (TP-2660 b), so a transient read error is not the head's standing.
  * Only the round's first read is retried, and a replay whose record took another step after that read keeps the one read.
+ * A `base` reads the proof on that base, under a step of its own.
  */
-export async function readFixProofAt(ctx: WorkflowContext, target: { repo: string; head: string }): Promise<z.infer<typeof FixProofReadSchema>> {
-  const stepId = `${FIX_PROOF_STEP}:${target.head}`;
-  const input = { repo: target.repo, head: target.head, runId: ctx.runId };
+export async function readFixProofAt(ctx: WorkflowContext, target: { repo: string; head: string; base?: string }): Promise<z.infer<typeof FixProofReadSchema>> {
+  const stepId = fixProofStepId(target.head, target.base);
+  const input = { repo: target.repo, head: target.head, runId: ctx.runId, ...(target.base !== undefined && { base: target.base }) };
   const first = await step(ctx, stepId, input, FixProofReadSchema);
   const next = ctx.historyNext();
   const rereads = first.kind === "error" && ctx.iteration(stepId) <= 1 && (next === undefined || next === stepId);
