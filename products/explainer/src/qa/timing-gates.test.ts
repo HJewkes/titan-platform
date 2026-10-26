@@ -157,3 +157,17 @@ describe("G8 text size", () => {
     expect(gate.threshold).toMatch(/≥ 40 px/);
   });
 });
+
+describe("G10 shared words", () => {
+  const said = "the desk reads the parcel row first".split(" ").map((word, i) => ({ word, startS: i * 0.4 }));
+  const words = new Map([["b1", { durationS: 4, words: said }]]);
+
+  it.each([
+    ["fails", "Desk reads the parcel row", false],
+    ["passes", "Parcel row first", true],
+  ])("%s display text %j against the beat's narration", (_verdict, display, pass) => {
+    const gate = timingReport(input({ words, probed: [moment(1, [display])] })).gates.find((g) => g.id === "G10");
+
+    expect(gate?.pass).toBe(pass);
+  });
+});

@@ -268,9 +268,9 @@ function sharedRun(display: string, spoken: string): number {
 /** G10: no display text repeats 5 or more words of its beat's narration in a row. */
 function g10Shared(input: TimingInput): TimingGate {
   const spoken = (beat: string) => (input.words.get(beat)?.words ?? []).map((w) => w.word).join(" ");
-  const seen = uniq(probedTexts(input.probed).map((t) => `${t.beat}\u0000${t.text}`)).map((key) => key.split("\u0000") as [string, string]);
-  const hits = seen.filter(([beat, text]) => sharedRun(text, spoken(beat)) >= SHARED_RUN_WORDS);
-  return { id: "G10", value: hits.length, threshold: `no run ≥ ${SHARED_RUN_WORDS} words`, pass: hits.length === 0, beats: uniq(hits.map(([beat]) => beat)) };
+  const seen = new Map(probedTexts(input.probed).map((t) => [`${t.beat}\u0000${t.text}`, t]));
+  const hits = [...seen.values()].filter((t) => sharedRun(t.text, spoken(t.beat)) >= SHARED_RUN_WORDS);
+  return { id: "G10", value: hits.length, threshold: `no run ≥ ${SHARED_RUN_WORDS} words`, pass: hits.length === 0, beats: uniq(hits.map((t) => t.beat)) };
 }
 
 /** G12: the count of declared held beats within the profile's `pacing.held` band. */
