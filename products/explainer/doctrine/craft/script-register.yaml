@@ -1,0 +1,11 @@
+# Spoken-register craft from the script-tells study (TP-3765): direction only. The bands behind each
+# device live in the Q-V11 register rows (src/lint-register.ts), never in a prompt (the leak rule).
+schema: doctrine-craft/v1
+rules:
+  - id: register-N6
+    source: { doc: script-register, ref: N6 }
+    text: "Narration, a FENCE beat above all, states a contrast as its own sentence or a but-clause, wrong belief first. Drop triads, colon reveals, \"Y, not X\" tails and semicolons. Say it with plain sequence and contrast words instead."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]

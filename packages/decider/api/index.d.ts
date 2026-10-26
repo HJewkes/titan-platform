@@ -772,73 +772,6 @@ type PrSectionFinding = AskFinding<PrSectionRule>;
 /** Every contract rule an owner PR section breaks, in rule order; an empty list means it passes. */
 declare function lintPrSection(section: string): PrSectionFinding[];
 
-declare const DECIDER_MODES: readonly ["off", "shadow", "auto"];
-type DeciderMode = (typeof DECIDER_MODES)[number];
-declare const CategoryPolicySchema: z.ZodObject<{
-    category: z.ZodString;
-    mode: z.ZodDefault<z.ZodEnum<{
-        off: "off";
-        shadow: "shadow";
-        auto: "auto";
-    }>>;
-    minConfidence: z.ZodDefault<z.ZodNumber>;
-    windowDays: z.ZodDefault<z.ZodNumber>;
-    minSamples: z.ZodDefault<z.ZodNumber>;
-    minAgreement: z.ZodDefault<z.ZodNumber>;
-    maxMissedRedirects: z.ZodDefault<z.ZodNumber>;
-}, z.core.$strip>;
-type CategoryPolicy = z.output<typeof CategoryPolicySchema>;
-declare const RoutingPolicySchema: z.ZodObject<{
-    categories: z.ZodDefault<z.ZodArray<z.ZodObject<{
-        category: z.ZodString;
-        mode: z.ZodDefault<z.ZodEnum<{
-            off: "off";
-            shadow: "shadow";
-            auto: "auto";
-        }>>;
-        minConfidence: z.ZodDefault<z.ZodNumber>;
-        windowDays: z.ZodDefault<z.ZodNumber>;
-        minSamples: z.ZodDefault<z.ZodNumber>;
-        minAgreement: z.ZodDefault<z.ZodNumber>;
-        maxMissedRedirects: z.ZodDefault<z.ZodNumber>;
-    }, z.core.$strip>>>;
-    hardStops: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    humanOnlyInitiatives: z.ZodDefault<z.ZodArray<z.ZodString>>;
-}, z.core.$strip>;
-type RoutingPolicy = z.output<typeof RoutingPolicySchema>;
-/** Always-ask and unlock-table categories: their mode is `off` and nothing raises it. */
-declare function isLockedCategory(category: string, list?: readonly AlwaysAskEntry[]): boolean;
-/** A parsed policy with category names normalized and every locked one forced to `off`, so stored data cannot raise one. */
-declare function parseRoutingPolicy(input: unknown): RoutingPolicy;
-/** The category's row, or the defaults: every category starts in shadow, locked ones off. */
-declare function categoryPolicy(policy: RoutingPolicy, category: string): CategoryPolicy;
-/** A new policy with the category at `mode`; raising a locked category above `off` throws. */
-declare function setCategoryMode(policy: RoutingPolicy, category: string, mode: DeciderMode): RoutingPolicy;
-
-interface RouteQuestion {
-    category: string;
-    question: string;
-    header?: string | null;
-    options: readonly string[];
-    initiative?: string | null;
-}
-interface RouteContext {
-    /** The asker's `AGENT_CHAT_AGENT_ID`; absent means an attended session. */
-    agentId?: string | null;
-    /** The asker cannot continue without the answer. */
-    blocking?: "parked" | "none";
-    /** The asker has other work it can do while it waits. */
-    otherWork?: boolean;
-}
-interface RouteDecision {
-    route: Route;
-    shadow: boolean;
-    rule: 1 | 2 | 3 | 4;
-    reason: string;
-}
-/** Pure rule table, first match wins; never calls a model. A decider may narrow `decider`, never widen an owner route. */
-declare function route(question: RouteQuestion, policy: RoutingPolicy, ctx?: RouteContext): RouteDecision;
-
 /** The confidence a reply needs in a category with no policy row (plan 3.3). */
 declare const DEFAULT_MIN_CONFIDENCE = 0.8;
 declare const DecidePrincipleSchema: z.ZodObject<{
@@ -907,9 +840,79 @@ declare function decideJsonSchemas(): {
     input: Record<string, unknown>;
     reply: Record<string, unknown>;
 };
+/** Rows match on `policyCategory`, so `Tech Design` reads `tech_design`; when several spellings match, the strictest threshold wins. */
 declare function minConfidenceFor(category: string, policy: DecidePolicy): number;
 /** Checks a raw reply against its input; a bad reply is a typed failure, never a throw. */
 declare function validate(reply: unknown, input: DecideInput, policy?: DecidePolicy): DecideValidation;
+
+declare const DECIDER_MODES: readonly ["off", "shadow", "auto"];
+type DeciderMode = (typeof DECIDER_MODES)[number];
+declare const CategoryPolicySchema: z.ZodObject<{
+    category: z.ZodString;
+    mode: z.ZodDefault<z.ZodEnum<{
+        off: "off";
+        shadow: "shadow";
+        auto: "auto";
+    }>>;
+    minConfidence: z.ZodDefault<z.ZodNumber>;
+    windowDays: z.ZodDefault<z.ZodNumber>;
+    minSamples: z.ZodDefault<z.ZodNumber>;
+    minAgreement: z.ZodDefault<z.ZodNumber>;
+    maxMissedRedirects: z.ZodDefault<z.ZodNumber>;
+}, z.core.$strip>;
+type CategoryPolicy = z.output<typeof CategoryPolicySchema>;
+declare const RoutingPolicySchema: z.ZodObject<{
+    categories: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        category: z.ZodString;
+        mode: z.ZodDefault<z.ZodEnum<{
+            off: "off";
+            shadow: "shadow";
+            auto: "auto";
+        }>>;
+        minConfidence: z.ZodDefault<z.ZodNumber>;
+        windowDays: z.ZodDefault<z.ZodNumber>;
+        minSamples: z.ZodDefault<z.ZodNumber>;
+        minAgreement: z.ZodDefault<z.ZodNumber>;
+        maxMissedRedirects: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>>;
+    hardStops: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    humanOnlyInitiatives: z.ZodDefault<z.ZodArray<z.ZodString>>;
+}, z.core.$strip>;
+type RoutingPolicy = z.output<typeof RoutingPolicySchema>;
+/** Always-ask and unlock-table categories: their mode is `off` and nothing raises it. */
+declare function isLockedCategory(category: string, list?: readonly AlwaysAskEntry[]): boolean;
+/** A parsed policy with category names normalized and every locked one forced to `off`, so stored data cannot raise one. */
+declare function parseRoutingPolicy(input: unknown): RoutingPolicy;
+/** The category's row, or the defaults: every category starts in shadow, locked ones off. */
+declare function categoryPolicy(policy: RoutingPolicy, category: string): CategoryPolicy;
+/** The thresholds `validate` reads, keyed the way `categoryPolicy` folds rows, so both agree on a category's minConfidence. */
+declare function decidePolicyFrom(policy: RoutingPolicy): DecidePolicy;
+/** A new policy with the category at `mode`; raising a locked category above `off` throws. */
+declare function setCategoryMode(policy: RoutingPolicy, category: string, mode: DeciderMode): RoutingPolicy;
+
+interface RouteQuestion {
+    category: string;
+    question: string;
+    header?: string | null;
+    options: readonly string[];
+    initiative?: string | null;
+}
+interface RouteContext {
+    /** The asker's `AGENT_CHAT_AGENT_ID`; absent means an attended session. */
+    agentId?: string | null;
+    /** The asker cannot continue without the answer. */
+    blocking?: "parked" | "none";
+    /** The asker has other work it can do while it waits. */
+    otherWork?: boolean;
+}
+interface RouteDecision {
+    route: Route;
+    shadow: boolean;
+    rule: 1 | 2 | 3 | 4;
+    reason: string;
+}
+/** Pure rule table, first match wins; never calls a model. A decider may narrow `decider`, never widen an owner route. */
+declare function route(question: RouteQuestion, policy: RoutingPolicy, ctx?: RouteContext): RouteDecision;
 
 /** Overrules within this many days that drop an auto category back to shadow (plan 3.4). */
 declare const DEMOTE_OVERRULES = 2;
@@ -1019,4 +1022,4 @@ declare function joinMorning(date: string, listText: string, answersText: string
 /** One cursor per answers file; a day whose list is missing is reported and retried, never joined blind. */
 declare function morningSource(options: MorningSourceOptions): LedgerSource;
 
-export { ALWAYS_ASK, ANSWERED_BY, ASK_RULES, type AlwaysAskEntry, type AnsweredBy, type ApplyFeedbackReport, type AskFinding, type AskItemFindings, type AskLintStats, type AskOption, type AskQuestion, type AskRule, CONDENSE_MIGRATIONS, type CategoryPolicy, CategoryPolicySchema, type CategoryScore, type CategoryThreshold, type Citation, type CiteDelta, CiteDeltaSchema, type ClassifyInput, type CondenseDelta, CondenseDeltaSchema, type CondenseOptions, type CondenseResult, type CondenseRun, type CondenseStore, DECIDABLE_CATEGORIES, DECIDER_MODES, DEFAULT_MIN_CONFIDENCE, DEMOTE_OVERRULES, DEMOTE_WINDOW_DAYS, type DecideInput, DecideInputSchema, type DecidePolicy, type DecidePrecedent, DecidePrecedentSchema, type DecidePrinciple, DecidePrincipleSchema, type DecideReply, DecideReplySchema, type DecideValidation, type DeciderMode, type DomainChanges, type DomainDoc, type DomainDocInput, type DomainRun, type ExclusionPolicy, type ExclusionReason, type ExclusionSubject, type ExclusionVerdict, type ExtractSummary, type FeedbackMapping, type FeedbackSkip, HARD_STOP_PREFIX, type InitiativeResolver, LEDGER_MIGRATIONS, LEDGER_SOURCES, type LedgerEntry, type LedgerLocator, LedgerLocatorSchema, type LedgerOption, LedgerOptionSchema, type LedgerRow, type LedgerRowFilter, LedgerRowSchema, type LedgerRowWire, type LedgerSource, type LedgerSourceName, LedgerStore, MORNING_SOURCE, type MorningAnswer, type MorningCounts, type MorningDayCounts, type MorningFileSystem, type MorningInitiativeResolver, type MorningItem, type MorningJoin, type MorningSourceOptions, NOTE_SOURCE, type NewPrinciple, type NoteSourceOptions, OUTCOMES, type Outcome, type OutcomeInput, PICK_TYPES, PRINCIPLE_DOMAINS, PR_SECTION_RULES, type ParsedAnswerLines, type ParsedAnswers, type PickType, type PrSectionFinding, type PrSectionRule, type Prediction, PredictionSchema, type Principle, type PrincipleDomain, type PrincipleFeedback, type PriorDoc, type ProposeDelta, ProposeDeltaSchema, ROUTES, type Reflector, type ReflectorInput, type RejectedCondenseDelta, type RenderOptions, type Route, type RouteContext, type RouteDecision, type RouteQuestion, type RoutingPolicy, RoutingPolicySchema, type RunChanges, type ScoreOptions, type SourceCandidate, type SourceRead, type SourceWatermark, type SourceWatermarks, TRANSCRIPT_SOURCE, type TranscriptFile, type TranscriptSourceOptions, UNLOCK_CATEGORIES, type UnlockCheck, type Verdict, type WriteDocsInput, type WrittenDoc, alwaysAskList, answerFor, applyDemotions, applyFeedback, assertDomain, carriesInstruction, categoryPolicy, changelogEntry, changesByDomain, checkUnlock, classifyOutcome, classifyQuestion, condense, condenseWatermarks, decideJsonSchemas, extractSource, feedbackForRow, initiativeForCwd, initiativesOfTaskIds, isAlwaysAsk, isEvidence, isExcluded, isLockedCategory, isRecommendedLabel, joinMorning, ledgerKeyOf, ledgerPredictions, ledgerRef, lintAsk, lintMorningList, lintOwnerQuestions, lintPrSection, minConfidenceFor, morningSource, noteKey, noteSource, openLedgerStore, parseAnswerText, parseMorningList, parseOwnerAnswers, parsePriorDoc, parseRoutingPolicy, principleBullet, principlesByDomain, quoteOf, recommendedOption, recommendsAuto, renderBody, renderDomainDoc, route, score, setCategoryMode, stripRecommended, taskIdsIn, toPrinciple, transcriptKey, transcriptSource, unlockTableRow, validate, verdict, writePrincipleDocs };
+export { ALWAYS_ASK, ANSWERED_BY, ASK_RULES, type AlwaysAskEntry, type AnsweredBy, type ApplyFeedbackReport, type AskFinding, type AskItemFindings, type AskLintStats, type AskOption, type AskQuestion, type AskRule, CONDENSE_MIGRATIONS, type CategoryPolicy, CategoryPolicySchema, type CategoryScore, type CategoryThreshold, type Citation, type CiteDelta, CiteDeltaSchema, type ClassifyInput, type CondenseDelta, CondenseDeltaSchema, type CondenseOptions, type CondenseResult, type CondenseRun, type CondenseStore, DECIDABLE_CATEGORIES, DECIDER_MODES, DEFAULT_MIN_CONFIDENCE, DEMOTE_OVERRULES, DEMOTE_WINDOW_DAYS, type DecideInput, DecideInputSchema, type DecidePolicy, type DecidePrecedent, DecidePrecedentSchema, type DecidePrinciple, DecidePrincipleSchema, type DecideReply, DecideReplySchema, type DecideValidation, type DeciderMode, type DomainChanges, type DomainDoc, type DomainDocInput, type DomainRun, type ExclusionPolicy, type ExclusionReason, type ExclusionSubject, type ExclusionVerdict, type ExtractSummary, type FeedbackMapping, type FeedbackSkip, HARD_STOP_PREFIX, type InitiativeResolver, LEDGER_MIGRATIONS, LEDGER_SOURCES, type LedgerEntry, type LedgerLocator, LedgerLocatorSchema, type LedgerOption, LedgerOptionSchema, type LedgerRow, type LedgerRowFilter, LedgerRowSchema, type LedgerRowWire, type LedgerSource, type LedgerSourceName, LedgerStore, MORNING_SOURCE, type MorningAnswer, type MorningCounts, type MorningDayCounts, type MorningFileSystem, type MorningInitiativeResolver, type MorningItem, type MorningJoin, type MorningSourceOptions, NOTE_SOURCE, type NewPrinciple, type NoteSourceOptions, OUTCOMES, type Outcome, type OutcomeInput, PICK_TYPES, PRINCIPLE_DOMAINS, PR_SECTION_RULES, type ParsedAnswerLines, type ParsedAnswers, type PickType, type PrSectionFinding, type PrSectionRule, type Prediction, PredictionSchema, type Principle, type PrincipleDomain, type PrincipleFeedback, type PriorDoc, type ProposeDelta, ProposeDeltaSchema, ROUTES, type Reflector, type ReflectorInput, type RejectedCondenseDelta, type RenderOptions, type Route, type RouteContext, type RouteDecision, type RouteQuestion, type RoutingPolicy, RoutingPolicySchema, type RunChanges, type ScoreOptions, type SourceCandidate, type SourceRead, type SourceWatermark, type SourceWatermarks, TRANSCRIPT_SOURCE, type TranscriptFile, type TranscriptSourceOptions, UNLOCK_CATEGORIES, type UnlockCheck, type Verdict, type WriteDocsInput, type WrittenDoc, alwaysAskList, answerFor, applyDemotions, applyFeedback, assertDomain, carriesInstruction, categoryPolicy, changelogEntry, changesByDomain, checkUnlock, classifyOutcome, classifyQuestion, condense, condenseWatermarks, decideJsonSchemas, decidePolicyFrom, extractSource, feedbackForRow, initiativeForCwd, initiativesOfTaskIds, isAlwaysAsk, isEvidence, isExcluded, isLockedCategory, isRecommendedLabel, joinMorning, ledgerKeyOf, ledgerPredictions, ledgerRef, lintAsk, lintMorningList, lintOwnerQuestions, lintPrSection, minConfidenceFor, morningSource, noteKey, noteSource, openLedgerStore, parseAnswerText, parseMorningList, parseOwnerAnswers, parsePriorDoc, parseRoutingPolicy, principleBullet, principlesByDomain, quoteOf, recommendedOption, recommendsAuto, renderBody, renderDomainDoc, route, score, setCategoryMode, stripRecommended, taskIdsIn, toPrinciple, transcriptKey, transcriptSource, unlockTableRow, validate, verdict, writePrincipleDocs };

@@ -96,6 +96,42 @@ describe("each merge call shape in a scanned file warns at its starting line", (
   });
 });
 
+describe("a push that names its destination ref warns, since it writes a branch with no PR", () => {
+  it.each([
+    ["the ratchet's leased fast-forward", 'await git(["push", "--quiet", `--force-with-lease=${move.ratchetRef}:${move.from}`, "origin", `HEAD:${move.ratchetRef}`], move.tree);'],
+    ["the ratchet's seed", 'await git(["push", "--quiet", `--force-with-lease=${seed.ratchetRef}:`, "origin", `${seed.pin}:${seed.ratchetRef}`], seed.tree)'],
+    ["a call with argv spread as arguments", 'await git(tree, "push", "--quiet", "origin", `${to}:${ratchetRef}`);'],
+    ["a literal refs/heads destination in argv", "run(['push', 'origin', 'HEAD:refs/heads/x'])"],
+    ["a shell push to refs/heads", "git push origin HEAD:refs/heads/x"],
+    ["a shell push to a templated ref", "git push -q origin HEAD:${ref}"],
+    ["a shell push in other case", "GIT PUSH origin HEAD:REFS/HEADS/x"],
+  ])("%s", (_name, text) => {
+    expect(hitsIn(`first line\n${text}`)).toEqual([[2, "git-refspec-push"]]);
+  });
+
+  it.each([
+    ["a push of a named branch", 'git(["push", "-q", "origin", "main"], repo);'],
+    ["prose naming a plain push", "commit and push with a plain `git push`. Never rewrite history or force-push."],
+    ["a refspec to a short branch name", 'const WORST_CASE = { git: ["push", "origin", "HEAD:main"] };'],
+    ["a destination ref on the line after the array closes", '["push", "origin"]\nconst ref = `x:${y}`;'],
+    ["a shell push whose refspec is on the next line", "git push origin\nHEAD:refs/heads/x"],
+  ])("%s does not warn", (_name, text) => {
+    expect(hitsIn(text)).toEqual([]);
+  });
+
+  it.each([
+    ["argv", `["push", ${'"a", '.repeat(2000)}`],
+    ["shell", `git push ${"a ".repeat(2000)}`],
+  ])("a long %s push with no destination ref scans quickly", (_name, text) => {
+    const started = performance.now();
+
+    const hits = hitsIn(text);
+
+    expect(hits).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
 describe("a gh pr merge in an agent brief warns", () => {
   it("the agent-brief fixture warns at lines 1-7 and the clean fixture warns at none", () => {
     const brief = scan([{ path: "agent-brief.md", text: fixture("agent-brief.md") }], rulesWith(), { scoped: false });
@@ -352,13 +388,60 @@ describe("the lint has no consumer", () => {
     expect([listing(repo), listing(dirname(repo)).filter((p) => !p.includes("/"))]).toEqual(before);
   });
 
-  it("merge-lint imports only node built-ins and its own modules", () => {
+  it("merge-lint imports only node built-ins, its own modules and the pure linear glob matcher", () => {
     const sources = readdirSync(here).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
     const specifiers = sources.flatMap((f) => [...readFileSync(join(here, f), "utf-8").matchAll(/from "([^"]+)"/g)].map((m) => m[1] ?? ""));
+    const allowed = new Set(["zod", "@titan-design/fix-proof/linear-regexp"]);
 
-    const foreign = specifiers.filter((s) => !s.startsWith("node:") && !s.startsWith("./") && s !== "zod");
+    const foreign = specifiers.filter((s) => !s.startsWith("node:") && !s.startsWith("./") && !allowed.has(s));
 
     expect(sources.length).toBeGreaterThan(5);
     expect(foreign).toEqual([]);
+  });
+});
+
+describe("the merge rule's own docs do not flag themselves", () => {
+  const I5 = [
+    "**Agents never call merge; only logged paths merge** (I5). The logged paths are the lander, `seat-merge`, Shepherd's",
+    "land loop and the version-packages write. A merge made any other way reads as the owner's own merge.",
+  ].join("\n");
+  const R27 = [
+    "From the bot account (A21, M1a) until M3's walk over main moves exists, this rule and the merge-lint warning are the",
+    "**only guard on R27**: no count of owner-intent moves can run before the walk (D-M3-11).",
+    "The lint warns until D-M3-03 and errors after; D-M8-07 narrows it. Run `pnpm merge:lint`; allowlist in `.github/merge-lint.json`.",
+  ].join("\n");
+
+  it.each([
+    ["I5", I5],
+    ["R27", R27],
+  ])("the %s sentence produces no finding", (_name, text) => {
+    const result = scan([{ path: "CLAUDE.md", text }], rulesWith(), { scoped: false });
+
+    expect(result.findings).toEqual([]);
+  });
+});
+
+describe("the repo docs carry the merge rule and stay lint-clean", () => {
+  const repoRoot = join(here, "..", "..", "..", "..");
+  const claudeMd = readFileSync(join(repoRoot, "CLAUDE.md"), "utf-8");
+  const shepherdGuide = readFileSync(join(repoRoot, "site", "guides", "shepherd.md"), "utf-8");
+
+  it("CLAUDE.md states the I5 rule and names the lint and its allowlist", () => {
+    expect(claudeMd).toContain("Agents never call merge; only logged paths merge");
+    expect(claudeMd).toContain("pnpm merge:lint");
+    expect(claudeMd).toContain(".github/merge-lint.json");
+  });
+
+  it("the shepherd guide states the R27 guard", () => {
+    expect(shepherdGuide).toContain("only guard on R27");
+  });
+
+  it("neither doc produces a merge-lint finding", () => {
+    const files = [
+      { path: "CLAUDE.md", text: claudeMd },
+      { path: "site/guides/shepherd.md", text: shepherdGuide },
+    ];
+
+    expect(scan(files, rulesWith(), { scoped: false }).findings).toEqual([]);
   });
 });

@@ -62,6 +62,8 @@ interface MachineInit {
   busy?: { runId: string; step: string; phase: string }[];
   /** After a kickstart onto a new build, `healthWithin` probes `from` to `to` (1-based, inclusive) list these runs as recovery_required. */
   parks?: { ids: string[]; from: number; to: number };
+  /** The parked runs strict replay parked as diverged, and the runs the diverged sweep restarted, each listed with a `<id>-next` successor. */
+  diverged?: { parked: string[]; restarted: string[] };
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
@@ -78,6 +80,8 @@ interface MachineInit {
   writeFails?: string;
   /** The running serve ignores SIGTERM: `kickstart -k` leaves its pid in place until `launchctl kill SIGKILL`. */
   wedged?: boolean;
+  /** Withdrawing the resolved deploy alarms throws this. */
+  resolveFails?: string;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -120,6 +124,13 @@ function parkedAnswer(answer: Record<string, unknown>, parks: NonNullable<Machin
   return { ...answer, runs: { ...runs, recovery_required: ids.length }, recoveryRequired: ids };
 }
 
+function divergedAnswer(answer: Record<string, unknown>, diverged: MachineInit["diverged"]): Record<string, unknown> {
+  if (diverged === undefined) return answer;
+  const listed = Array.isArray(answer.recoveryRequired) ? answer.recoveryRequired : [];
+  const parked = diverged.parked.filter((id) => listed.includes(id));
+  return { ...answer, recoveryReplayDiverged: parked, divergedRestarts: diverged.restarted.map((runId) => ({ runId, newRunId: `${runId}-next` })) };
+}
+
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
 function fakeMachine(init: MachineInit = {}) {
   const unit = `<string>${init.unitElsewhere || init.absent ? "/srv/dev-tree" : CHECKOUT}/products/factory/dist/bin.js</string>`;
@@ -134,6 +145,7 @@ function fakeMachine(init: MachineInit = {}) {
   let probes = 0;
   let probesSinceStart = 0;
   const incidents: DeployIncident[] = [];
+  let resolves = 0;
   const replaced = () => job.restarted && job.serving !== running;
   const git = fakeGit(state, init);
   let stuck = init.wedged ?? false;
@@ -203,9 +215,14 @@ function fakeMachine(init: MachineInit = {}) {
       if (!answer || !replaced()) return answer;
       if (init.misreports) return { ...answer, build: { sha: init.misreports } };
       const failing = init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
-      return init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing;
+      return divergedAnswer(init.parks ? parkedAnswer(failing, init.parks, probesSinceStart) : failing, init.diverged);
     },
     incident: async (incident) => void incidents.push(incident),
+    resolveAlarms: async () => {
+      resolves += 1;
+      if (init.resolveFails !== undefined) throw new Error(init.resolveFails);
+      return 3;
+    },
     mkdir: () => undefined,
     writeFile: (path, text) => {
       if (path === init.writeFails) throw new Error(`EACCES: permission denied, open '${path}'`);
@@ -237,7 +254,7 @@ function fakeMachine(init: MachineInit = {}) {
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
   const pause = () => readDeployPause(ports, STATE);
   const holds = () => readDeployHolds(ports, STATE);
-  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
+  return { ports, calls, files, trees, state, record, mutations, incidents, pause, holds, serving: () => job.serving, probes: () => probes, elapsed: () => clock, resolves: () => resolves };
 }
 
 const REMOTE = "https://example.test/org/titan-platform.git";
@@ -354,8 +371,8 @@ describe("titan-factory service deploy", () => {
     expect(machine.mutations()).toEqual([]);
   });
 
-  it("fast-forwards an untouched range without building or restarting, and records skipped", async () => {
-    const machine = fakeMachine();
+  it("fast-forwards an untouched range without building or restarting, and records skipped, when nothing on main after it reaches the factory build", async () => {
+    const machine = fakeMachine({ changes: { [DOCS]: ["README.md"], [CORE]: ["site/index.md"], [TIP]: ["site/guides/factory.md"] } });
 
     const { code } = await deploy(machine, DOCS);
 
@@ -365,11 +382,23 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toMatchObject({ outcome: "skipped", target: DOCS, from: BASE, touched: [] });
   });
 
+  it("deploys only the asked sha when it reaches no factory path, though a later main commit whose CI was never checked does (TP-4279)", async () => {
+    const machine = fakeMachine();
+
+    const { code } = await deploy(machine, DOCS);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${DOCS}`]);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.record()).toMatchObject({ outcome: "skipped", target: DOCS, from: BASE, touched: [] });
+  });
+
   const RELEASE = { [CORE]: ["products/factory/package.json", "products/factory/CHANGELOG.md"] };
   const factoryManifest = (version: string, dependencies: Record<string, string> = {}): string => JSON.stringify({ name: "@titan-design/factory", version, dependencies });
 
   it("records a Version Packages merge as skipped without building or restarting", async () => {
-    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: factoryManifest("0.19.0") };
+    const release = factoryManifest("0.19.0");
+    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: release, [`${TIP}:products/factory/package.json`]: release };
     const machine = fakeMachine({ changes: RELEASE, blobs });
 
     const { code } = await deploy(machine, CORE);
@@ -429,14 +458,17 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
-  it("refuses a target behind the checkout's main and names the commit to deploy instead", async () => {
-    const machine = fakeMachine({ head: TIP });
+  it("refuses as superseded, building nothing, when a rollback left the checkout's main past the asked sha (TP-4279)", async () => {
+    const rolledBack = { outcome: "rolled-back", target: CORE, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "1 more run(s) failed during the watch" };
+    const machine = fakeMachine({ head: CORE, files: { [RECORD]: JSON.stringify(rolledBack) } });
 
-    const { code, err } = await deploy(machine, CORE);
+    const { code, err } = await deploy(machine, DOCS);
 
     expect(code).toBe(1);
-    expect(err).toContain(`already past ${CORE}; deploy that commit instead with titan-factory service deploy --expect ${TIP}`);
+    expect(err).toBe(`error: deploy refused: the checkout's main is at ${CORE}, already past ${DOCS}; deploy that commit instead with titan-factory service deploy --expect ${CORE}\n`);
     expect(machine.mutations()).toEqual([]);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.record()).toEqual(rolledBack);
   });
 
   it("refuses before the fast-forward when the lockfile changes a native-build package, naming it", async () => {
@@ -655,6 +687,22 @@ describe("titan-factory service deploy", () => {
     expect(machine.record()).toEqual(rolledBack);
   });
 
+  it("after a deploy rolls back and the pause is cleared, an older asked sha is refused and the next asked sha deploys (TP-4083, TP-4279)", async () => {
+    const machine = fakeMachine({ crashes: [CORE] });
+    await deploy(machine, CORE);
+    const afterRollback = { record: machine.record(), head: machine.state.head, serving: machine.serving() };
+    machine.files.delete(deployPausePath(STATE));
+
+    const reAsk = await deploy(machine, DOCS);
+    const next = await deploy(machine, TIP);
+
+    expect(afterRollback).toEqual({ record: expect.objectContaining({ outcome: "rolled-back", target: CORE }), head: CORE, serving: BASE });
+    expect(reAsk).toMatchObject({ code: 1, err: expect.stringContaining(`already past ${DOCS}; deploy that commit instead`) });
+    expect(next).toMatchObject({ code: 0 });
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP, from: BASE });
+    expect(machine.serving()).toBe(TIP);
+  });
+
   it("deploys when /health does not answer, since an unknown build counts as touched", async () => {
     const machine = fakeMachine({ running: null });
 
@@ -753,6 +801,34 @@ describe("service deploy rollback pause", () => {
       const { code } = await deploy(machine);
 
       expect(code).toBe(1);
+      expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    });
+  });
+
+  describe("after a deploy that changed a workflow's step shape, as on 2026-10-21 (TP-3889)", () => {
+    const parked = ["s7", "s8", "c1", "c2", "c3", "c4"];
+    const diverged = { parked, restarted: ["s1", "s2", "s3", "s4", "s5", "s6"] };
+
+    it("stays up when 8 runs are superseded and 4 end on closed PRs with none failed, and reports them", async () => {
+      const machine = fakeMachine({ parks: { ids: parked, from: 2, to: Infinity }, diverged });
+
+      const { code, out } = await deploy(machine);
+
+      expect(code).toBe(0);
+      expect(machine.serving()).toBe(TIP);
+      expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+      expect(machine.pause()).toEqual({ paused: false });
+      expect(out).toContain("replay diverged under the new build, not counted against it: 6 run(s) restarted (s1 -> s1-next");
+      expect(out).toContain("6 run(s) parked for the diverged sweep (s7, s8, c1, c2, c3, c4)");
+    });
+
+    it("still rolls back when a run fails under the new build", async () => {
+      const machine = fakeMachine({ parks: { ids: parked, from: 2, to: Infinity }, diverged, failsRunAfter: 3 });
+
+      const { code } = await deploy(machine);
+
+      expect(code).toBe(1);
+      expect(machine.serving()).toBe(BASE);
       expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
     });
   });
@@ -857,6 +933,35 @@ describe("service deploy rollback pause", () => {
     expect(machine.elapsed()).toBeGreaterThanOrEqual(120_000);
     expect(machine.pause()).toEqual({ paused: false });
     expect(machine.incidents).toEqual([]);
+  });
+
+  it("withdraws the open deploy alarms once a deploy holds through its watch window", async () => {
+    const machine = fakeMachine();
+
+    const { code, out } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.resolves()).toBe(1);
+    expect(out).toContain("withdrew 3 resolved deploy alarm(s) from the owner inbox");
+  });
+
+  it("leaves the deploy alarms open when the restarted build rolls back", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.resolves()).toBe(0);
+  });
+
+  it("still records the deploy, and says why, when the deploy alarms cannot be withdrawn", async () => {
+    const machine = fakeMachine({ resolveFails: "EACCES: the spool is not writable" });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(err).toContain("error: could not withdraw resolved deploy alarms: EACCES: the spool is not writable");
   });
 
   it("raises one alert, stays paused and never retries when the restored build does not come back", async () => {

@@ -27,6 +27,8 @@ export interface ShepherdServices extends SnapshotServices {
   prFiles?: PrFilesRead;
   /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
   now?: () => number;
+  /** Where `head-regression` lines go; absent means the daemon log. */
+  headLog?: (line: string) => void;
   /** Arms each resync PR read's deadline; absent means the wall clock. */
   readTimer?: ReadTimer;
   /** Serve's GitHub gateway behind `shepherd.ghRead` and `shepherd.ghBudget`; absent on a host that is not serve. */
@@ -35,6 +37,15 @@ export interface ShepherdServices extends SnapshotServices {
   reviewSlots?: () => ReviewSlots | undefined;
   /** `shepherd.visualDelivery` on or in shadow; absent means serve starts no delivery sweep. */
   visualDelivery?: VisualDeliveryWatch;
+  /** Where `shepherd thaw` alerts, by the main CI watch's red-event route; absent means each thaw only logs its alert. */
+  thawAlert?: ThawAlertPorts;
+}
+
+/** The main CI watch's ports, described by shape here so this file stays a leaf. */
+export interface ThawAlertPorts {
+  hubSeat(): string | undefined;
+  redSeat?(repo: string): string | undefined;
+  send(seat: string, text: string): Promise<void>;
 }
 
 /** Serve's pending gates, and one gate read afresh, for a sweep that must not import the host. */

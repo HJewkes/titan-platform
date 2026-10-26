@@ -296,7 +296,7 @@ describe("land core", () => {
 
   it("returns ci-failed with the failing check and its Actions run, without asking to merge", async () => {
     const scenario = landScenario();
-    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, headSha: pr.headSha, appId: 15368, workflowRunId: 77, pullRequests: [], url: "u" }]);
+    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, [{ id: 9, name: "validate", status: "completed", conclusion: "failure", startedAt: null, completedAt: null, title: null, headSha: pr.headSha, appId: 15368, workflowRunId: 77, pullRequests: [], url: "u" }]);
     const host = hostFor(scenario);
 
     const run = await host.runtime.wait(host.runtime.start("land-test"));
@@ -383,20 +383,16 @@ function staleBaseScenario(options: { strict: boolean; baseCommittedAt: string }
   return { ...scenario, greenAtMerge };
 }
 
-describe("land refreshes a head whose base moved after its last green run", () => {
-  it("updates a non-strict branch whose base moved after green, and merges only once the new head is green", async () => {
+describe("land at a head whose base moved after its last green run", () => {
+  it("merges a non-strict branch at its green head with no update, though its base moved after green", async () => {
     const scenario = staleBaseScenario({ strict: false, baseCommittedAt: "2026-01-01T00:10:00Z" });
     const host = hostFor(scenario);
 
     const run = await host.runtime.wait(host.runtime.start("land-test"));
 
-    const head = scenario.fake.pr(1).headSha;
     expect(run.status).toBe("completed");
-    expect(head).not.toBe(H1);
-    expect(scenario.fake.commits.get(head)?.parents[0]).toBe(H1);
-    expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
-    expect(scenario.greenAtMerge).toEqual([true]);
-    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: head });
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 0, merge: 1 });
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
   });
 
   it("merges a non-strict branch without an update when its base has not moved since green", async () => {
@@ -455,7 +451,7 @@ describe("readCi on a blocked head", () => {
 });
 
 describe("land in a repo that does not require up-to-date heads", () => {
-  it("asks for approval without updating, refreshes once after it, and merges though the base keeps moving", async () => {
+  it("asks for approval without updating and merges the approved head as it stands, though the base keeps moving", async () => {
     const scenario = landScenario();
     scenario.fake.rules.strict = false;
     const keepGreen = scenario.fake.onGetPr!;
@@ -470,8 +466,8 @@ describe("land in a repo that does not require up-to-date heads", () => {
 
     expect(run.status).toBe("completed");
     expect(updatesBeforeApproval).toBe(0);
-    expect(scenario.fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
-    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged" });
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: 0, merge: 1 });
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
     expect(host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
   });
 });

@@ -1,17 +1,20 @@
-import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { CONFIG_PATH, formatResultLine, parseResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
+import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, fixProofVerdict, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
+import type { PanelMode } from "./review-panel-plan.js";
+import { proofWaiverMigration, waiveProof } from "./proof-waiver.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -22,14 +25,26 @@ const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: tru
 const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
 const UNVERIFIED_BRIEF = "Shepherd marks this head's fix-proof unverified";
+const UNREAD_BRIEF = "could not read a fix-proof result for this head";
+const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base";
 const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status: "modified" };
 
 /** The fake PR's base is `main`, so this is the repo running fix-proof on every PR into it. */
 const addWorkflowAtBase = (fake: FakeGitHub) => fake.files.set(`main:${WORKFLOW_EDIT.path}`, { content: "name: fix-proof\n", blobSha: "w1" });
 
-function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
+/** `base` is the ref the line judged; a refused line also names the default branch it was not. */
+function resultLine(head: string, verdict: FixProofResult["verdict"], base?: string): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  const refs = { ...(base !== undefined && { base }), ...(verdict === "refused" && { defaultBranch: "main" }) };
+  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...refs });
+}
+const STACKED = "feat/parent";
+const REFUSED_JOB = 70;
+
+function parsedLine(line: string): FixProofResult {
+  const parsed = parseResultLine(line);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.result;
 }
 
 /** A test-only diff's line: base and head pass alike, so only the mutation check can prove it. */
@@ -52,6 +67,29 @@ const TEST_ONLY_FILES: PrFile[] = [
   { path: "packages/x/src/a.test.ts", status: "modified" },
   { path: "packages/x/src/a.test.mutations.json", status: "added" },
 ];
+
+const MERGE_BASE = fakeSha("fix-proof-merge-base");
+const CI_PIN: PrFile = { path: ".github/workflows/ci.yml", status: "modified" };
+const SOURCE_EDIT: PrFile = { path: "src/a.ts", status: "modified" };
+const CI_PROOF_BRIEF = "Shepherd's fix-proof for this head is CI";
+
+/** The fake's base requires `validate` and `dag-check`; at the merge base `validate` concluded as given and `dag-check` passed. */
+function seedBaseCi(fake: FakeGitHub, validate: string): void {
+  fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
+  fake.setRuns(MERGE_BASE, [successRun("validate", 31, undefined, validate), successRun("dag-check", 32)]);
+}
+const TEST_GLOBS = JSON.stringify({ tests: ["packages/*/src/**/*.test.ts"], carry: [] });
+
+/** What the test-only classifier reads: the merge base, the repo's fix-proof config there and at main, and each changed file's blobs. */
+function seedDiffReads(fake: FakeGitHub, files: readonly PrFile[]): void {
+  const blob = (ref: string, path: string) => fake.files.set(`${ref}:${path}`, { content: "blob", blobSha: fakeSha(`${ref}:${path}`) });
+  fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
+  for (const ref of [MERGE_BASE, "main"]) fake.files.set(`${ref}:${CONFIG_PATH}`, { content: TEST_GLOBS, blobSha: fakeSha(`${ref}:config`) });
+  for (const file of files) {
+    if (file.status !== "removed") blob(H, file.path);
+    if (file.status !== "added") blob(MERGE_BASE, file.path);
+  }
+}
 
 /** A job log as GitHub serves it: each line behind an Actions timestamp. */
 const actionsLog = (...lines: string[]) => ["Run pnpm fix-proof", ...lines, "Post job cleanup."].map((line) => `2026-10-11T12:00:00.0000000Z ${line}`).join("\n");
@@ -78,18 +116,29 @@ const execRun = (name: string, id: number, overrides: Partial<CheckRun> = {}): C
 const execRuns = (overrides: Partial<CheckRun> = {}): CheckRun[] => [execRun("fix-proof-base", 81, overrides), execRun("fix-proof-head", 82, overrides)];
 const execPending = (): CheckRun[] => execRuns({ status: "in_progress", conclusion: null });
 
-const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
+/** Each run is its own workflow run, as a fix-proof run per PR event is, so GitHub's default listing keeps them all. */
+const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, overrides.id ?? FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
 
 interface Scene {
   kind?: string;
   branch?: string;
   headRef?: string;
+  baseRef?: string;
   runs?: CheckRun[];
   log?: string;
   files?: PrFile[];
   external?: string;
   workflow?: boolean;
+  noReproProceed?: "off" | "on";
+  baseValidate?: string;
+  panel?: PanelMode;
+  /** The owner waives the head's fix-proof after the first review, which then runs again. */
+  waiveAfterFirst?: boolean;
+  /** The intent step reads its input as one recorded before TP-4058, which named no test-only proof and planned no tests member. */
+  legacyIntent?: boolean;
 }
+
+const beforeTestsMember = (prompt: string): string => JSON.stringify(Object.fromEntries(Object.entries(z.record(z.string(), z.unknown()).parse(JSON.parse(prompt))).filter(([key]) => key !== "testOnlyProof")));
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
   const fake = {
@@ -111,23 +160,30 @@ describe("sh-fix-proof in reviewPhase", () => {
 
   async function review(scene: Scene) {
     const fake = fakeGitHub();
-    fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }) });
+    fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }), ...(scene.baseRef && { baseRef: scene.baseRef }) });
     fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), ...(scene.runs ?? [])]);
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
     fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     if (scene.workflow) addWorkflowAtBase(fake);
+    if (scene.noReproProceed === "on") seedDiffReads(fake, scene.files ?? []);
+    if (scene.baseValidate !== undefined) seedBaseCi(fake, scene.baseValidate);
     let clock = 10_000;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
+    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, ...(scene.noReproProceed && { noReproProceed: scene.noReproProceed }) };
     const dispatch = fakeDispatch();
     if (scene.external) dispatch.agents.push({ name: scene.external, agentId: `agent-${scene.external}`, sessionId: `session-${scene.external}`, presence: "live", spawnedBy: null, predecessor: null });
-    const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
+    const said = (who: ReviewerAgent): ReviewerMessage => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: clock + 1, text: `Probes: empty token -> refused\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`, locator: locatorIn(who.sessionId) });
     const reader: ReviewerReader = { read: async (input) => dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map(said) };
     const verdicts: Verdict[] = [];
     const inputs: Record<string, unknown> = {};
-    const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000 }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)], bind: store.bind } });
-    const run = async (ctx: Parameters<typeof reviewPhase>[0]) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
+    const recorded = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, ...(scene.panel && { panel: scene.panel }) }).map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(scene.legacyIntent ? { ...step, prompt: beforeTestsMember(step.prompt) } : step)) } }));
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), proofWaiverMigration(32)], bind: store.bind } });
+    const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
+      verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));
+      if (!scene.waiveAfterFirst) return;
+      await waiveProof(ctx, H);
+      verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 1, headSha: H }));
+    };
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "fix-proof-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("fix-proof-test", { policy: JSON.stringify(AUTO) });
@@ -161,6 +217,103 @@ describe("sh-fix-proof in reviewPhase", () => {
 
     expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
     expect(spawns).toEqual([]);
+  });
+
+  describe("shepherd.gateReset.noReproProceed (decision 424(1))", () => {
+    const vacuous = actionsLog(resultLine(H, "vacuous"));
+    const TESTS_ONLY: PrFile[] = [{ path: "packages/x/src/a.test.ts", status: "modified" }];
+    const scene = (overrides: Scene): Scene => ({ kind: "test-only", noReproProceed: "on", runs: [fixProofRun()], log: vacuous, files: TESTS_ONLY, ...overrides });
+
+    it("ends a test-only PR as NO_REPRO when the flag is off", async () => {
+      const { verdicts, spawns } = await review(scene({ noReproProceed: "off" }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("ends a test-only PR as NO_REPRO when the flag is absent", async () => {
+      const { verdicts } = await review(scene({ noReproProceed: undefined }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    });
+
+    it.each([["vacuous"], ["no-tests"]] as const)("sends a test-only PR with a tests-only diff and a %s proof to a reviewer, marked no-repro-test-only", async (verdict) => {
+      const { verdicts, spawns, inputs } = await review(scene({ log: actionsLog(resultLine(H, verdict)) }));
+
+      expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+      expect(spawns).toHaveLength(1);
+      expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "no-repro-test-only" });
+      expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofWaivedAt");
+      expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    });
+
+    it("keeps NO_REPRO when the diff also changes source", async () => {
+      const { verdicts, spawns } = await review(scene({ files: [...TESTS_ONLY, { path: "packages/x/src/a.ts", status: "modified" }] }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("keeps NO_REPRO for a security PR even when its diff is tests alone", async () => {
+      const { verdicts, spawns } = await review(scene({ kind: "security" }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("keeps NO_REPRO when the classifier cannot read the diff", async () => {
+      const { verdicts, spawns } = await review(scene({ files: [] }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+      expect(spawns).toEqual([]);
+    });
+
+    it("keeps NO_REPRO when a declared mutation survives the tests", async () => {
+      const { verdicts } = await review(scene({ log: actionsLog(mutantsLine("not-killed")), files: TEST_ONLY_FILES }));
+
+      expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+    });
+
+    describe("a correctness registration whose diff is tests alone (TP-3261 replays)", () => {
+      const CHANGESET: PrFile = { path: ".changeset/quiet-tests.md", status: "added" };
+      const correctness = (overrides: Scene): Scene => scene({ kind: "correctness", ...overrides });
+
+      it.each([
+        ["a test timeout bump and a changeset", [{ path: "packages/x/src/view.test.ts", status: "modified" }, CHANGESET]],
+        ["a flaky bound rewritten in one test and a changeset", [{ path: "packages/y/src/token.test.ts", status: "modified" }, CHANGESET]],
+      ] as const)("sends %s on to a reviewer with no waiver, marked no-repro-test-only", async (_, files) => {
+        const { verdicts, spawns, inputs } = await review(correctness({ files: [...files] }));
+
+        expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+        expect(spawns).toHaveLength(1);
+        expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "no-repro-test-only" });
+        expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofWaivedAt");
+      });
+
+      it("reviews a test, its new mutation spec and a changeset once every mutant is killed", async () => {
+        const { verdicts, spawns } = await review(correctness({ log: actionsLog(mutantsLine("killed")), files: [...TEST_ONLY_FILES, CHANGESET] }));
+
+        expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+        expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
+      });
+
+      it("keeps NO_REPRO when the diff also changes source", async () => {
+        const { verdicts, spawns } = await review(correctness({ files: [...TESTS_ONLY, CHANGESET, { path: "packages/x/src/a.ts", status: "modified" }] }));
+
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }]);
+        expect(spawns).toEqual([]);
+      });
+
+      it("keeps NO_REPRO when its mutation spec is refused", async () => {
+        const refused = mutantsLine("killed").replace(/"mutants":\{.*\}\}$/, '"mutants":{"verdict":"error","results":[],"error":"mutants: spec refused"}}');
+
+        const { verdicts, spawns } = await review(correctness({ log: actionsLog(refused), files: [...TEST_ONLY_FILES, CHANGESET] }));
+
+        expect(refused).toContain("spec refused");
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { mutants: { verdict: "error" } } }]);
+        expect(spawns).toEqual([]);
+      });
+    });
   });
 
   it("reviews a test-only PR whose every declared mutation is killed by tests that pass at head", async () => {
@@ -242,6 +395,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(proof).toEqual({ kind: "skipped", reason: "kind feature" });
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
     expect(spawns).toHaveLength(1);
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
   });
 
   it("runs the gate for a fix/ branch registered with kind feature", async () => {
@@ -265,6 +419,8 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
     expect(spawns).toHaveLength(1);
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProof");
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
   });
 
   it("records an error proof, not missing, when the head's exec jobs ran but the judge never did", async () => {
@@ -273,6 +429,15 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(proof).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
     expect(fixProofStanding(FixProofReadSchema.parse(proof), H)).toEqual({ unverified: "unread" });
     expect(verdicts).not.toContainEqual(expect.objectContaining({ kind: "NO_REPRO" }));
+  });
+
+  it("briefs the reviewer that an unreadable fix-proof is unverified and blocks without an added failing test", async () => {
+    const { spawns, inputs } = await review({ kind: "correctness", runs: execRuns() });
+
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "unread" });
+    expect(spawns[0]?.brief).toContain(UNREAD_BRIEF);
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_RULE);
+    expect(spawns[0]?.brief).not.toContain("Do not rerun");
   });
 
   it("records an error proof when a [skip ci] head has no Actions run in a repo with the fix-proof workflow", async () => {
@@ -296,7 +461,7 @@ describe("sh-fix-proof in reviewPhase", () => {
   it("withholds a reproduced line from the reviewer brief when the PR edits the fix-proof workflow", async () => {
     const line = resultLine(H, "reproduced");
 
-    const { spawns, inputs, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(line), files: [WORKFLOW_EDIT] });
+    const { spawns, inputs, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(line), files: [SOURCE_EDIT, WORKFLOW_EDIT] });
 
     expect(proof).toEqual({ kind: "untrusted", line, verdict: "reproduced", reason: expect.stringContaining(WORKFLOW_EDIT.path) });
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProof");
@@ -304,7 +469,7 @@ describe("sh-fix-proof in reviewPhase", () => {
   });
 
   it("reviews a PR whose vacuous line is untrusted as unverified, and its MERGE keeps the grant with the standing recorded", async () => {
-    const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [WORKFLOW_EDIT] });
+    const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [SOURCE_EDIT, WORKFLOW_EDIT] });
 
     expect(proof).toMatchObject({ kind: "untrusted", verdict: "vacuous" });
     expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
@@ -312,6 +477,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "untrusted" });
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
     expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_RULE);
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: expect.stringMatching(/^untrusted \(/) });
   });
 
@@ -322,6 +488,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "error" });
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("ownerBrief");
     expect(spawns[0]?.brief).toContain(UNVERIFIED_BRIEF);
+    expect(spawns[0]?.brief).toContain(UNVERIFIED_RULE);
     expect(spawns[0]?.brief).not.toContain("Do not rerun");
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
@@ -333,6 +500,24 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(spawns).toEqual([]);
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofUnverified: "error" });
+  });
+
+  it("records the base a reproduced line judged on the MERGE as proofBase", async () => {
+    const { verdicts, inputs } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "reproduced", "main")) });
+
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT], proofBase: "main" });
+    expect(inputs[`sh-merge-evidence:${H}`]).not.toHaveProperty("proofUnverified");
+  });
+
+  it("records a stacked PR's refused proof on its MERGE as refused, with the stacked base as proofBase", async () => {
+    const stacked = fixProofRun({ pullRequests: [{ number: 1, baseRef: STACKED }] });
+
+    const { proof, inputs } = await review({ kind: "correctness", baseRef: STACKED, runs: [stacked], log: actionsLog(resultLine(H, "refused", STACKED)) });
+
+    expect(proof).toMatchObject({ kind: "result", verdict: "refused" });
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProofUnverified: "refused" });
+    expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ proofUnverified: "refused", proofBase: STACKED });
   });
 
   it("keeps the merge-on-green grant and asks no owner brief for a reproduced proof", async () => {
@@ -350,6 +535,83 @@ describe("sh-fix-proof in reviewPhase", () => {
 
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
     expect(inputs[`sh-merge-evidence:${H}`]).toMatchObject({ seatGrants: [MERGE_ON_GREEN_GRANT] });
+  });
+
+  it("reviews a workflow-only PR that CI proves, naming CI as its proof in the reviewer brief", async () => {
+    const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness", files: [CI_PIN], baseValidate: "failure" });
+
+    expect(proof).toMatchObject({ kind: "workflow-ci", proved: true });
+    expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    expect(inputs[`sh-review:${H}`]).toMatchObject({ workflowCiProof: { mergeBase: MERGE_BASE, head: H } });
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProofUnverified");
+    expect(spawns[0]?.brief).toContain(CI_PROOF_BRIEF);
+    expect(spawns[0]?.brief).not.toContain(UNVERIFIED_BRIEF);
+  });
+
+  it("ends a workflow-only PR whose base CI was green as NO_REPRO before any reviewer is spawned", async () => {
+    const { verdicts, spawns, proof } = await review({ kind: "correctness", files: [CI_PIN], baseValidate: "success" });
+
+    expect(proof).toMatchObject({ kind: "workflow-ci", proved: false });
+    expect(verdicts).toEqual([{ kind: "NO_REPRO", headSha: H, result: proof }]);
+    expect(spawns).toEqual([]);
+  });
+
+  describe("under the review panel, whose g10 plan has correctness and adversary but no tests member", () => {
+    const SECURITY_FILES: PrFile[] = [
+      { path: "src/auth.ts", status: "modified", additions: 5, deletions: 1 },
+      { path: "src/auth.test.ts", status: "modified", additions: 5, deletions: 0 },
+    ];
+    const panelScene = (line: string): Scene => ({ kind: "correctness", panel: "on", runs: [fixProofRun()], log: actionsLog(line), files: SECURITY_FILES });
+
+    it("merges a vacuous proof its killed mutants prove when both members say MERGE (tp#2145)", async () => {
+      const { verdicts, spawns } = await review(panelScene(mutantsLine("killed")));
+
+      expect(spawns).toHaveLength(2);
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    });
+
+    it("keeps an errored proof's unverified review with a planned tests member, never a NO_REPRO the fixer cannot answer (TP-4195)", async () => {
+      const { verdicts, spawns, inputs } = await review(panelScene(resultLine(H, "error")));
+
+      expect(spawns.map((spawn) => spawn.name.split("-").at(-1))).toEqual(expect.arrayContaining(["adversary", "tests"]));
+      expect(inputs[`sh-review:${H}:tests`]).toMatchObject({ fixProofUnverified: "error" });
+      expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+    });
+
+    it("briefs every member, not only correctness, that an unreadable proof is unverified", async () => {
+      const { spawns, inputs } = await review({ kind: "correctness", panel: "on", runs: execRuns(), files: SECURITY_FILES });
+
+      expect(spawns).toHaveLength(2);
+      expect(Object.entries(inputs).filter(([id]) => id.startsWith(`sh-review:${H}:`))).toEqual([[`sh-review:${H}:adversary`, expect.objectContaining({ fixProofUnverified: "unread" })]]);
+      for (const spawn of spawns) {
+        expect(spawn.brief).toContain(UNREAD_BRIEF);
+        expect(spawn.brief).toContain(UNVERIFIED_RULE);
+      }
+    });
+
+    describe("a test-only head that proceeds on a vacuous proof", () => {
+      const testOnly = (overrides: Partial<Scene> = {}): Scene => ({ kind: "test-only", noReproProceed: "on", panel: "on", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [{ path: "packages/x/src/a.test.ts", status: "modified" }], ...overrides });
+
+      it("is reviewed to a MERGE by a planned tests member with no waiver, never sent back as the proof's NO_REPRO (TP-4058)", async () => {
+        const { verdicts, spawns } = await review(testOnly());
+
+        expect(spawns.map((spawn) => spawn.name)).toContainEqual(expect.stringMatching(/-tests$/));
+        expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H }]);
+      });
+
+      it("goes back as the proof's NO_REPRO when its intent, recorded before TP-4058, planned no tests member", async () => {
+        const { verdicts, stepIds } = await review(testOnly({ legacyIntent: true }));
+
+        expect(stepIds).toContain(`sh-review-panel:${H}`);
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H, result: { head: H, verdict: "vacuous" } }]);
+      });
+
+      it("is reviewed to a MERGE once the owner waives that NO_REPRO, not sent back again", async () => {
+        const { verdicts } = await review(testOnly({ waiveAfterFirst: true, legacyIntent: true }));
+
+        expect(verdicts).toMatchObject([{ kind: "NO_REPRO", headSha: H }, { kind: "MERGE", headSha: H }]);
+      });
+    });
   });
 
   it("keeps today's grant for a feature PR outside the gate whose fix-proof errored", async () => {
@@ -377,17 +639,20 @@ describe("readFixProof", () => {
     changedFiles?: number;
     workflow?: boolean;
     port?: (port: GitHubPort) => GitHubPort;
+    noReproProceed?: "on";
+    baseRef?: string;
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
     const fake = fakeGitHub();
-    if (!options.unreadablePr) fake.addPr({ headSha: H, ...(options.headRef !== undefined && { headRef: options.headRef }) });
+    if (!options.unreadablePr) fake.addPr({ headSha: H, ...(options.headRef !== undefined && { headRef: options.headRef }), ...(options.baseRef !== undefined && { baseRef: options.baseRef }) });
     fake.setRuns(H, runs);
     fake.jobLogs.set(FIX_PROOF_JOB, actionsLog(resultLine(H, "vacuous")));
     for (const [job, log] of Object.entries(options.logs ?? {})) fake.jobLogs.set(Number(job), log);
     if (options.files !== undefined) fake.prFiles.set(1, options.files);
     if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
     if (options.workflow) addWorkflowAtBase(fake);
+    if (options.noReproProceed) seedDiffReads(fake, options.files ?? []);
     const port = (options.port ?? ((base) => base))(githubPort(fake.wire));
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
@@ -402,8 +667,21 @@ describe("readFixProof", () => {
     };
     const timeoutMs = options.timeoutMs ?? 10_000;
     const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
-    return { fake, elapsed: () => clock, read: () => readFixProof({ port, store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
+    return { fake, elapsed: () => clock, read: () => readFixProof({ port, store, ...(options.noReproProceed && { noReproProceed: options.noReproProceed }) }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
+
+  it("keeps NO_REPRO when the PR head has moved to a tests-only head off the one the proof was read at", async () => {
+    const moved = fakeSha("fix-proof-moved-head");
+    const files: PrFile[] = [{ path: "packages/x/src/a.test.ts", status: "modified" }];
+    const { fake, read } = registered("test-only", [fixProofRun()], { files, noReproProceed: "on", port: (base) => ({ ...base, getPr: async (repo, pr) => ({ ...(await base.getPr(repo, pr)), headSha: moved }) }) });
+    fake.compares.set(`main...${moved}`, { mergeBaseSha: MERGE_BASE, files: [] });
+    fake.files.set(`${moved}:${files[0]!.path}`, { content: "blob", blobSha: fakeSha("moved-blob") });
+
+    const result = await read();
+
+    expect(result).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    expect(result).not.toHaveProperty("testOnlyProceed");
+  });
 
   it("reads the result from a job log fetched through the gh adapter, whose colour codes gh refuses without --allow-escape-sequences", async () => {
     const headers = "HTTP/2.0 200 OK\r\nContent-Type: text/plain";
@@ -606,9 +884,126 @@ describe("readFixProof", () => {
 
   it("reads a PR that deletes the fix-proof workflow and leaves no run as error", async () => {
     const validate = { ...successRun("validate", 5), headSha: H };
-    const { read } = registered("correctness", [validate], { files: [{ path: ".github/workflows/fix-proof.yml", status: "removed" }] });
+    const { read } = registered("correctness", [validate], { files: [SOURCE_EDIT, { path: ".github/workflows/fix-proof.yml", status: "removed" }] });
 
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("harness: .github/workflows/fix-proof.yml") });
+  });
+
+  describe("a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259)", () => {
+    const refusedLog = { [REFUSED_JOB]: actionsLog(resultLine(H, "refused", STACKED)) };
+    const SCRIPT_EDIT: PrFile = { path: "scripts/fix-proof-run.sh", status: "modified" };
+
+    it("reads the main run's line when a run refused on the stacked base is listed on main beside it", async () => {
+      const main = resultLine(H, "vacuous", "main");
+      const { read } = registered("correctness", [fixProofRun({ id: REFUSED_JOB }), fixProofRun()], { logs: { ...refusedLog, [FIX_PROOF_JOB]: actionsLog(main) } });
+
+      expect(await read()).toEqual({ kind: "result", line: main, verdict: "vacuous" });
+    });
+
+    it("reads error at the deadline, never missing or the refusal, when the only run listed on main judged the stacked base", async () => {
+      const { read } = registered("correctness", [fixProofRun({ id: REFUSED_JOB })], { logs: refusedLog, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("judged the PR's base before the deadline") });
+    });
+
+    it("reads a stacked PR that changes the harness as untrusted for the harness, refused line and all", async () => {
+      const stacked = fixProofRun({ id: REFUSED_JOB, pullRequests: [{ number: 1, baseRef: STACKED }] });
+      const { read } = registered("correctness", [stacked], { baseRef: STACKED, logs: refusedLog, files: [SCRIPT_EDIT] });
+
+      expect(await read()).toEqual({ kind: "untrusted", line: resultLine(H, "refused", STACKED), verdict: "refused", reason: expect.stringContaining("harness: scripts/fix-proof-run.sh") });
+    });
+
+    it("reads an error line whose message is the refusal text as an error, not a refusal", async () => {
+      const line = formatResultLine({ ...parsedLine(resultLine(H, "error")), error: `fix-proof runs only against the default branch: base ${STACKED} is not main` });
+      const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(line) }, files: [SOURCE_EDIT] });
+
+      const proof = FixProofReadSchema.parse(await read());
+
+      expect(proof).toEqual({ kind: "result", line, verdict: "error" });
+      expect(fixProofStanding(proof, H)).toEqual({ unverified: "error" });
+    });
+
+    it("reads a mutation spec whose name holds the refusal text as the vacuous line it is", async () => {
+      const name = `fix-proof runs only against the default branch: base ${STACKED} is not main`;
+      const line = formatResultLine({ ...parsedLine(mutantsLine("not-killed")), mutants: { verdict: "not-killed", results: [{ spec: "packages/x/src/a.test.mutations.json", name, outcome: "survived" }] } });
+      const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(line) }, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "result", line, verdict: "vacuous" });
+    });
+
+    it("reads a job log again on the next poll when it cannot be read once", async () => {
+      let failures = 1;
+      const flaky = (base: GitHubPort): GitHubPort => ({ ...base, jobLogTail: async (...args) => (failures-- > 0 ? Promise.reject(new Error("log not ready")) : base.jobLogTail(...args)) });
+      const { read, elapsed } = registered("correctness", [fixProofRun()], { port: flaky, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+      expect(elapsed()).toBeGreaterThanOrEqual(1_000);
+    });
+
+    it("reads error at the deadline when a job log never reads", async () => {
+      const broken = (base: GitHubPort): GitHubPort => ({ ...base, jobLogTail: async () => Promise.reject(new Error("log gone")) });
+      const { read } = registered("correctness", [fixProofRun()], { port: broken, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "error", reason: expect.stringMatching(/job log of run 77 could not be read: .*at the deadline/) });
+    });
+  });
+
+  describe("a diff only under .github/workflows/ (TP-3861)", () => {
+    const headRuns = (validate: string) => [fixProofRun(), { ...successRun("validate", 41, undefined, validate), headSha: H }, { ...successRun("dag-check", 42), headSha: H }];
+
+    function workflowScene(base: string, head: string, files: PrFile[] = [CI_PIN]) {
+      const scene = registered("correctness", headRuns(head), { files });
+      seedBaseCi(scene.fake, base);
+      return scene;
+    }
+
+    it("passes on a red required check at the merge base and green required checks at the head, citing each run", async () => {
+      const proof = await workflowScene("failure", "success").read();
+
+      expect(proof).toEqual({
+        kind: "workflow-ci",
+        proved: true,
+        head: H,
+        mergeBase: MERGE_BASE,
+        base: [
+          { name: "validate", sha: MERGE_BASE, runId: 31, conclusion: "failure" },
+          { name: "dag-check", sha: MERGE_BASE, runId: 32, conclusion: "success" },
+        ],
+        atHead: [
+          { name: "validate", sha: H, runId: 41, conclusion: "success" },
+          { name: "dag-check", sha: H, runId: 42, conclusion: "success" },
+        ],
+        reason: expect.stringContaining("validate failure (run 31)"),
+      });
+      const parsed = FixProofReadSchema.parse(proof);
+      expect(fixProofVerdict(parsed, H)).toBeUndefined();
+      expect(fixProofStanding(parsed, H)).toBeUndefined();
+    });
+
+    it("counts a changeset beside the workflow edit as workflow-only", async () => {
+      const proof = await workflowScene("failure", "success", [CI_PIN, { path: ".changeset/pin-runner.md", status: "added" }]).read();
+
+      expect(proof).toMatchObject({ kind: "workflow-ci", proved: true });
+    });
+
+    it("is NO_REPRO when every required check was green at the merge base", async () => {
+      const proof = await workflowScene("success", "success").read();
+
+      expect(proof).toMatchObject({ kind: "workflow-ci", proved: false, reason: expect.stringContaining("validate success (run 31)") });
+      expect(fixProofVerdict(FixProofReadSchema.parse(proof), H)).toEqual({ kind: "NO_REPRO", headSha: H, result: proof });
+    });
+
+    it("is NO_REPRO when a required check is still red at the head", async () => {
+      const proof = await workflowScene("failure", "failure").read();
+
+      expect(fixProofVerdict(FixProofReadSchema.parse(proof), H)).toMatchObject({ kind: "NO_REPRO", result: { proved: false } });
+    });
+
+    it("leaves a mixed diff on the fix-proof run, whatever CI did", async () => {
+      const proof = await workflowScene("failure", "success", [SOURCE_EDIT, CI_PIN]).read();
+
+      expect(proof).toEqual({ kind: "untrusted", line: resultLine(H, "vacuous"), verdict: "vacuous", reason: expect.stringContaining(CI_PIN.path) });
+    });
   });
 
   it("reads a PR whose changed files cannot be read in full and leaves no run as error", async () => {
@@ -648,6 +1043,10 @@ describe("fixProofStanding", () => {
 
   it("marks a trusted error result at the head unverified as error", () => {
     expect(fixProofStanding({ kind: "result", line: resultLine(H, "error"), verdict: "error" }, H)).toEqual({ unverified: "error" });
+  });
+
+  it("marks a trusted refused result at the head unverified as refused", () => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(H, "refused", STACKED), verdict: "refused" }, H)).toEqual({ unverified: "refused" });
   });
 
   it.each([...verdicts, "error" as const])("marks an untrusted %s result unverified as untrusted", (verdict) => {

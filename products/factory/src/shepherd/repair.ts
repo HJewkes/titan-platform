@@ -3,7 +3,7 @@ import { z } from "zod";
 import { step } from "../workflows/land.js";
 import type { LandOutcome } from "../workflows/land.js";
 import { afterFixerExit, afterHeldWake } from "./flake-check.js";
-import { awaitNewHead, sentBackGate, tookWake, type GateRun, type PrTarget, type WakeRun } from "./gates.js";
+import { awaitNewHead, ciRedFailing, sentBackGate, tookWake, type GateRun, type PrTarget, type WakeRun } from "./gates.js";
 import { noticeGate, seatOrGate } from "./gate-route.js";
 import type { WakeOutcome, WakeRequest } from "./phases.js";
 import { MAX_REPAIRS, escalationReason } from "./route-table.js";
@@ -11,7 +11,6 @@ import { REPAIR_STEP } from "./wake-brief.js";
 import { isHeld } from "./held-wake.js";
 
 const RepairRecord = z.looseObject({ repair: z.number().int().positive() });
-const CiRedPayload = z.object({ failing: z.array(z.object({ name: z.string() })) });
 
 /**
  * One repair budget per run, spent by every wake kind and counted across heads. Each spend is a step record, so a
@@ -25,8 +24,8 @@ export async function spendRepair(ctx: WorkflowContext, target: PrTarget, kind: 
 }
 
 function repairDetail(kind: WakeRequest["kind"], headSha: string, payload: unknown): string {
-  const failing = kind === "ci-red" ? CiRedPayload.safeParse(payload) : undefined;
-  const checks = failing?.success && failing.data.failing.length > 0 ? `; failing checks: ${failing.data.failing.map((check) => check.name).join(", ")}` : "";
+  const failing = ciRedFailing(kind, payload);
+  const checks = failing.length > 0 ? `; failing checks: ${failing.map((check) => check.name).join(", ")}` : "";
   return `the next ${kind} wake at ${headSha} would be past the budget${checks}`;
 }
 
@@ -38,7 +37,7 @@ export function repairGate(run: GateRun, kind: WakeRequest["kind"], headSha: str
   const reason = escalationReason("repair-budget", repairDetail(kind, headSha, payload));
   return seatOrGate(
     () => noticeGate(run, "sh-sent-back", headSha, `the PR has used its repair budget: ${reason}`),
-    () => awaitNewHead(run, headSha, kind === "ci-red"),
+    () => awaitNewHead(run, headSha, kind === "ci-red", ciRedFailing(kind, payload)),
     (unsent) => {
       const prompt = `PR #${run.target.pr} in ${run.target.repo} at head ${headSha} has used its repair budget: ${reason}${unsent}. Await a new head or abandon?`;
       return sentBackGate(run, headSha, prompt, `a human abandoned the PR after the repair budget ran out at a ${kind} wake`);
@@ -52,6 +51,6 @@ export function repairGate(run: GateRun, kind: WakeRequest["kind"], headSha: str
  */
 export async function afterWake(run: WakeRun & { state: { round: number; reruns: number } }, kind: WakeRequest["kind"], headSha: string, payload: unknown, outcome: WakeOutcome, leave: (outcome?: LandOutcome) => Error): Promise<boolean> {
   if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome, leave);
-  if (isHeld(outcome)) return afterHeldWake(run, kind, headSha, outcome, leave);
+  if (isHeld(outcome)) return afterHeldWake(run, kind, headSha, payload, outcome, leave);
   return tookWake(run, headSha, outcome);
 }

@@ -105,6 +105,7 @@ export type { RelevanceOptions } from "./analysis/relevance.js";
 export { computeRelevance } from "./analysis/relevance.js";
 export type { CallPathOptions, LevelEdge, ProjectedHop } from "./analysis/call-path.js";
 export { findCallPath, projectCallPath, snapshotCallPath } from "./analysis/call-path.js";
+export * from "./analysis/protocol-edges.js";
 export {
   DEFAULT_MAX_LINE_CHARS,
   ELISION_MARKER,

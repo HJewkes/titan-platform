@@ -16,6 +16,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { RESYNC_READ_TIMEOUT_MS } from "./bounded.js";
 import { seatPolicyHead, supersedeMovedGates } from "./head-moved.js";
 import { shepherdStoreRef } from "./store.js";
+import { demotionOffForTest, withDemotionOff } from "../test-support/gate-demotions.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => {
@@ -157,6 +158,9 @@ function mergePolicyHeads(host: FactoryHost, runId: string): string[] {
 }
 
 describe("a pending approve-merge gate whose pull request head moved", () => {
+  // Its no-progress gate is the one D8's flag set false restores (TP-3734).
+  withDemotionOff("fixFirstRunaway");
+
   it("never asks the merge policy about a head whose review was FIX_FIRST", async () => {
     const { host, runId } = await gatedAtSecondHead();
 
@@ -401,6 +405,7 @@ describe("a pending shepherd-route failed-rounds approve-merge gate", () => {
   });
 
   it("counts the new head's failed rounds from zero, so the owner is asked again only after three rounds and a fallback reviewer there", async () => {
+    demotionOffForTest("neverVerdictDiagnosis");
     const { host, fake, services, runId, reviewed } = await escalatedAtGated();
     fake.pushHead(1, MOVED);
 

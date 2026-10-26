@@ -190,6 +190,30 @@ describe('sealed transcripts of retired agents', () => {
     expect(reported).toMatchObject({ scanned: 1, unchanged: 1 });
   });
 
+  it('backfills a sealed transcript whose audit facet is behind, then seals it again (TP-877)', async () => {
+    writeFileSync(transcriptOf(SESSION), line(SESSION, 'final words'), 'utf8');
+    retire(SESSION);
+    await pass();
+    const sealed = await pass();
+    graph.db.prepare('UPDATE transcript_facet SET version = 0').run();
+
+    const counted = await runRefresh({
+      graph,
+      root,
+      skipPrOutcomes: true,
+      skipWorkspace: true,
+      taskRoot: dir,
+      facetLimit: 0,
+    });
+    const backfilled = await pass();
+    const resealed = await pass();
+
+    expect(sealed).toMatchObject({ scanned: 0 });
+    expect(counted).toMatchObject({ facetsBackfilled: 0, facetBacklog: 1 });
+    expect(backfilled).toMatchObject({ scanned: 1, facetsBackfilled: 1, facetBacklog: 0 });
+    expect(resealed).toMatchObject({ scanned: 0 });
+  });
+
   it('opens a sealed session again once a respawn reuses its session id', async () => {
     writeFileSync(transcriptOf(SESSION), line(SESSION, 'before the retire'), 'utf8');
     retire(SESSION);

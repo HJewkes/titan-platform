@@ -7,9 +7,19 @@ import type { ScriptV1 } from "./script-schema.js";
 import type { StructureRow } from "./eval-store.js";
 import { flowCheck } from "./lint-flow.js";
 import { voiceCheck } from "./lint-voice.js";
+import { registerCheck } from "./lint-register.js";
+import { spokenDigitsCheck } from "./spoken-numbers.js";
 import { heteronymCheck } from "./lint-heteronyms.js";
+import { ledgerCheck } from "./lint-ledger.js";
+import { checksScopedAway, shippedRuleRegistry } from "./rules.js";
+import { spineCheck } from "./lint-spine.js";
 import { paceCheck } from "./lint-pace.js";
+import { headlineCheck } from "./lint-headline.js";
 import { visualKindCheck } from "./lint-visual-kind.js";
+import { claimsCheck } from "./lint-claims.js";
+import { coverageCheck, reflectionCheck } from "./lint-coverage.js";
+import { varietyScriptCheck } from "./variety-lints.js";
+import type { SpineV1 } from "./spine-schema.js";
 import type { ScriptTiming } from "./timing.js";
 
 /** One check's verdict before it is keyed to a config, script and registry. */
@@ -21,6 +31,8 @@ export interface L0Input {
   layout?: MapLayout;
   /** Heard durations from a words.json; without them the pace lints read planned lengths. */
   timing?: ScriptTiming;
+  /** The script's story spine; the ledger lints read its item ledger. */
+  spine?: SpineV1;
 }
 
 /** A deterministic check over a script. It reports every rule it owns, passing or not, so a pass is a row too. */
@@ -49,11 +61,17 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
   });
 };
 
-export const L0_CHECKS: readonly L0Check[] = [mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, heteronymCheck, visualKindCheck];
+export const L0_CHECKS: readonly L0Check[] = [
+  mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, ledgerCheck, spineCheck,
+  heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, headlineCheck, claimsCheck, coverageCheck, reflectionCheck,
+  varietyScriptCheck,
+];
 
-export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming): L0Result[] {
-  const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}) };
-  return checks.flatMap((check) => check(input));
+/** Every check's rows, less the rows of a rule scoped away from the script (`structures` or `except_profiles` in rules.yaml). */
+export function runL0(script: ScriptV1, layout?: MapLayout, checks: readonly L0Check[] = L0_CHECKS, timing?: ScriptTiming, spine?: SpineV1): L0Result[] {
+  const input: L0Input = { script, view: deriveEvalView(script, layout), ...(layout ? { layout } : {}), ...(timing ? { timing } : {}), ...(spine ? { spine } : {}) };
+  const outside = checksScopedAway(shippedRuleRegistry(), script);
+  return checks.flatMap((check) => check(input)).filter((result) => !outside.has(result.check_id));
 }
 
 /** L0 filters on errors only; a warning is recorded but never fails a script. */

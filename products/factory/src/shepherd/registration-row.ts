@@ -22,6 +22,9 @@ export interface RegistrationRow {
   review_request_taken_at?: string | null;
   head_sha?: string | null;
   base?: string | null;
+  registrant?: string | null;
+  registrant_fixer?: number | null;
+  last_slice?: number | null;
   created_at: string;
   updated_at: string;
 }

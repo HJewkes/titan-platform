@@ -1,4 +1,4 @@
-import type { CheckRun, GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
+import type { CheckRun, CommitStatus, GitHubPort, PullRequest, RepoSlug } from "@titan-design/github";
 
 /** The reads `ci-wait` and `sh-observe` make, so either can come from the port or from the snapshot. */
 export interface PrReads {
@@ -18,7 +18,7 @@ export interface PrSnapshot extends PrReads {
   openPrs(repo: RepoSlug): Promise<PullRequest[]>;
   /** `openPrs` with the time its list was read; a list under one tick old is answered with no GitHub call. */
   openList(repo: RepoSlug): Promise<OpenList>;
-  /** The runs the snapshot already holds for `sha`, and when they were read; never reads GitHub. */
+  /** The runs and statuses the snapshot already holds for `sha`, and when they were read; never reads GitHub. */
   cachedRuns(repo: RepoSlug, sha: string): CachedRuns | undefined;
 }
 
@@ -28,7 +28,11 @@ interface OpenList {
 }
 
 export interface CachedRuns {
+  /** The commit the runs were read for. */
+  sha: string;
   runs: CheckRun[];
+  /** Null when the status read beside the runs failed. */
+  statuses: CommitStatus[] | null;
   at: number;
   settled: boolean;
 }
@@ -63,6 +67,7 @@ interface Detail {
 
 interface Checks {
   runs: CheckRun[];
+  statuses: CommitStatus[] | null;
   /** When the runs are next due a read; `invalidate` makes it now. */
   at: number;
   /** When the runs were read, which `invalidate` leaves alone. */
@@ -98,7 +103,7 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
     openList: async (repo) => openList(port, timing, repo, stateOf(repo)),
     cachedRuns: (repo, sha) => {
       const checks = repos.get(repo.toLowerCase())?.checks.get(sha);
-      return checks && { runs: [...checks.runs], at: checks.readAt, settled: checks.settled };
+      return checks && { sha, runs: [...checks.runs], statuses: checks.statuses && [...checks.statuses], at: checks.readAt, settled: checks.settled };
     },
     invalidate: (repo) => {
       const state = repos.get(repo.toLowerCase());
@@ -175,16 +180,25 @@ function detailStale(cached: Detail, row: PullRequest, state: RepoState, timing:
   return timing.now() - cached.at >= ttl;
 }
 
-/** A head's runs are read when it is new, while a required check is still pending, and once per settled window; a read an `invalidate` overtook is not kept. */
+/** A head's runs, and its statuses beside them, are read when it is new, while a required check is still pending, and once per settled window; a read an `invalidate` overtook is not kept. */
 async function snapshotRuns(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState, sha: string, isSettled: (runs: readonly CheckRun[]) => boolean): Promise<CheckRun[]> {
   const cached = state.checks.get(sha);
   if (cached && timing.now() - cached.at < (cached.settled ? timing.settledMs : timing.pendingMs)) return [...cached.runs];
   const generation = state.generation;
-  const runs = await port.checkRuns(repo, sha);
+  const [runs, statuses] = await Promise.all([port.checkRuns(repo, sha), statusesOrNull(port, repo, sha)]);
   if (generation !== state.generation) return [...runs];
   const settled = isSettled(runs);
-  state.checks.set(sha, { runs, at: timing.now(), readAt: timing.now(), settled, version: nextVersion(cached, runs, settled) });
+  state.checks.set(sha, { runs, statuses, at: timing.now(), readAt: timing.now(), settled, version: nextVersion(cached, runs, settled) });
   return [...runs];
+}
+
+/** Statuses only feed `shepherd prs` rows, so a failed status read must not fail the runs read a ci-wait is judged on. */
+async function statusesOrNull(port: GitHubPort, repo: RepoSlug, sha: string): Promise<CommitStatus[] | null> {
+  try {
+    return await port.commitStatuses(repo, sha);
+  } catch {
+    return null;
+  }
 }
 
 /** GitHub recomputes the mergeable state when checks settle, so only a newly settled set of runs makes a detail stale. */

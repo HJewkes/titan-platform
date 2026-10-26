@@ -1,5 +1,17 @@
 # titan-console
 
+## 0.12.3
+
+### Patch Changes
+
+- ff8b628: Add the coordinator config store: an append-only revision log under `<state>/config/`, a materializer that writes the head document to titan-coordinator's config dir by temp file, fsync and rename, a shadow import of an autonomy tree that must round-trip through `renderSeatBook`, the `config.compareTree` read, and `titan-console config import` / `config compare-tree` for the owner's one-time rev 0. The compared tree is the one `TITAN_CONSOLE_AUTONOMY_DIR` names, the same tree `config.surfaces` reads.
+
+## 0.12.2
+
+### Patch Changes
+
+- fce0e08: A round's merge offer must say which head it merges. A pick-one with a "Merge #N" or "Ship" option, or a signsOff naming "#N at <sha>", needs a `merge` binding whose pr and head agree with that wording. Otherwise `rounds import` refuses it. A round already in the rounds dir still lists and takes a submit; the list marks an unbound one "unbound: no merge tap".
+
 ## 0.12.1
 
 ### Patch Changes

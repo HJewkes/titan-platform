@@ -1224,6 +1224,86 @@
   },
   {
    "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-guard.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-guard.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-guard.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-loop.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-loop.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order-steps.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order.json",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order.test.mutations.json",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order.test.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/merge-order.ts",
+   "fate": "delete",
+   "task": "D-M3-19",
+   "milestone": "M3",
+   "filing": "TP-3147"
+  },
+  {
+   "repo": "titan-platform",
    "path": "products/factory/src/shepherd/merge-settle.ts",
    "fate": "delete",
    "task": "D-M3-19",
@@ -1293,6 +1373,15 @@
    "task": "D-M2-09",
    "milestone": "M2",
    "filing": "TP-3121"
+  },
+  {
+   "repo": "titan-platform",
+   "path": "products/factory/src/shepherd/no-repro-test-only.ts",
+   "fate": "delete",
+   "task": "D-M3-05",
+   "milestone": "M3",
+   "filing": "TP-3125",
+   "reason": "TP-2732 mutation gate replaces fix-proof for test-only, latest M3 D-M3-05 (TP-3125)"
   },
   {
    "repo": "titan-platform",

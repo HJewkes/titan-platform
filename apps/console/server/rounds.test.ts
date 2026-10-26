@@ -13,7 +13,8 @@ import { resolveConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { BLIND_AB_REFUSED } from "./round-schema.js";
-import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, roundsCommands, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
+import { roundsCommands } from "./rounds-commands.js";
+import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
 import { closedPort, send } from "./test-support.js";
 
 /** Lets a test make readdir answer newest name first, so any order the reader shows is its own. */
@@ -140,6 +141,77 @@ describe("rounds.get", () => {
     expect(detail.status).toBe("sent");
     expect(detail.recommendationsWithheld).toBe(false);
     expect(detail.manifest.questions[0]).toHaveProperty("recommendation.answer", "Celsius");
+  });
+
+  it("carries a sent round's comments and round feedback, and none for an unsent one", async () => {
+    const file = path.join(dir, "kiln-schedule-r1", "feedback.json");
+    const feedback = z.looseObject({ answers: z.array(z.looseObject({})) }).parse(JSON.parse(await readFile(file, "utf8")));
+    await writeFile(file, JSON.stringify({ ...feedback, answers: [{ ...feedback.answers[0], comment: "Fahrenheit for the US shop." }], general: "Ask again next quarter." }));
+
+    const sent = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
+    const unsent = validDetail(await getRound({ dir }, "kiln-schedule-r2"));
+
+    expect(sent.notes).toEqual({
+      general: "Ask again next quarter.",
+      comments: { "unit-start": "Fahrenheit for the US shop." },
+      answers: { "unit-start": { pick: "Celsius" } },
+      addressed: [],
+    });
+    expect(unsent).not.toHaveProperty("notes");
+  });
+
+  it("carries every sent answer field and the addressed.json ticks, so a reload shows the round as sent (TP-3767)", async () => {
+    const roundDir = path.join(dir, "kiln-schedule-r1");
+    const feedback = z.looseObject({}).parse(JSON.parse(await readFile(path.join(roundDir, "feedback.json"), "utf8")));
+    const answers = [
+      { questionId: "unit-start", pick: "Celsius", recommendationSeen: true, optionNotes: [{ option: "Fahrenheit", note: "Only for export." }] },
+      { questionId: "zones", picks: ["Top", "Base"] },
+      { questionId: "ramp", value: 4 },
+      { questionId: "notes", text: "Log the cone." },
+      { questionId: "glaze", revisionRequested: true, comment: "Neither: try a matte." },
+    ];
+    await writeFile(path.join(roundDir, "feedback.json"), JSON.stringify({ ...feedback, answers }));
+    await writeFile(path.join(roundDir, "addressed.json"), JSON.stringify({ schema: "titan-console/addressed@1", rounds: [1, 2], at: "2031-03-02T10:00:00.000Z" }));
+
+    const { notes } = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
+
+    expect(notes?.answers).toEqual({
+      "unit-start": { pick: "Celsius", recommendationSeen: true, optionNotes: [{ option: "Fahrenheit", note: "Only for export." }] },
+      zones: { picks: ["Top", "Base"] },
+      ramp: { value: 4 },
+      notes: { text: "Log the cone." },
+      glaze: { revisionRequested: true },
+    });
+    expect(notes?.comments).toEqual({ glaze: "Neither: try a matte." });
+    expect(notes?.addressed).toEqual([1, 2]);
+  });
+
+  it("carries only the sent frames that hold a verdict, a comment or a pin, each pin with the width it was placed at (TP-3773, TP-3964)", async () => {
+    const feedback = z.looseObject({}).parse(JSON.parse(await readFile(path.join(dir, "kiln-schedule-r1", "feedback.json"), "utf8")));
+    const echo = { verdict: null, comment: "", annotations: [] };
+    const pin = { id: "beacon-error-1", width: 375, x: 30, y: 60, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." };
+    const variants = [
+      { key: "beacon-idle", ...echo },
+      { key: "beacon-busy", ...echo, verdict: "rejected", comment: "Busy reads as idle." },
+      { key: "beacon-muted", ...echo, comment: "   " },
+      { key: "beacon-error", ...echo, annotations: [pin] },
+    ];
+    await writeFile(path.join(dir, "beacon-states-r1", "feedback.json"), JSON.stringify({ ...feedback, unit: "beacon-states", variants }));
+
+    const { notes } = validDetail(await getRound({ dir }, "beacon-states-r1"));
+
+    expect(notes?.frames).toEqual({
+      "beacon-busy": { verdict: "rejected", comment: "Busy reads as idle.", annotations: [] },
+      "beacon-error": { verdict: null, comment: "", annotations: [{ id: "beacon-error-1", width: 375, xPct: 0.08, yPct: 0.1, target: { testId: "beacon-dot" }, note: "Too red." }] },
+    });
+  });
+
+  it("reads a malformed addressed.json as no ticks and still shows the sent answers", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r1", "addressed.json"), "{ not json");
+
+    const { notes } = validDetail(await getRound({ dir }, "kiln-schedule-r1"));
+
+    expect(notes).toMatchObject({ answers: { "unit-start": { pick: "Celsius" } }, addressed: [] });
   });
 
   it("keeps recommendations in a round that shows them", async () => {
@@ -322,6 +394,22 @@ describe("readQueueRounds", () => {
     expect(gaps).toContain("fifo-r1: round.json is not a regular file");
   });
 
+  it("reports no gap for a withdrawn round whose round.json does not parse", async () => {
+    const withdrawal = { schema: "titan-console/withdrawn@1", reason: "superseded", at: "2026-01-01T00:00:00.000Z" };
+    await writeFile(path.join(dir, "unreadable-r1", "withdrawn.json"), JSON.stringify(withdrawal));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "unreadable-r1")).toBeUndefined();
+    expect(gaps.filter((gap) => gap.startsWith("unreadable-r1"))).toEqual([]);
+  });
+
+  it("still reports a gap for an open round whose round.json does not parse", async () => {
+    const { gaps } = await readQueueRounds({ dir });
+
+    expect(gaps).toContain("unreadable-r1: round.json is not JSON");
+  });
+
   it("answers no rounds and no gaps when the rounds dir does not exist yet", async () => {
     expect(await readQueueRounds({ dir: path.join(root, "missing") })).toEqual({ rounds: [], gaps: [] });
   });
@@ -337,7 +425,7 @@ describe("rounds.get over the daemon's RPC", () => {
 
   it("returns an unsent after-answer round with no recommendation in the reply body", async () => {
     const closed = String(await closedPort());
-    const env = { TITAN_CONSOLE_STATE: path.join(root, "state"), TITAN_CONSOLE_PORT: "0", TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_ACTIVE_WORK_PORT: closed, TITAN_CONSOLE_AGENT_CHAT_PORT: closed };
+    const env = { TITAN_CONSOLE_STATE: path.join(root, "state"), TITAN_CONSOLE_PORT: "0", TITAN_CONSOLE_STORY_PORT: "0", TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_ACTIVE_WORK_PORT: closed, TITAN_CONSOLE_AGENT_CHAT_PORT: closed };
     handle = await startConsoleDaemon({ config: resolveConfig(env, root), logger: silentLogger });
     const host = `127.0.0.1:${handle.port}`;
 

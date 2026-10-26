@@ -234,12 +234,13 @@ type GitRunner = (args: readonly string[], cwd: string) => Promise<string | null
 /** The transports git may use for agent-chat and its agents; `ext::` runs a shell command (CC-1095). */
 declare const SAFE_GIT_PROTOCOLS: readonly string[];
 /**
- * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or the whole safe list when unset.
- * git reads this list over every `protocol.*.allow` config scope, so a repo's config cannot re-enable `ext`.
+ * The caller's GIT_ALLOW_PROTOCOL narrowed to the safe list, or undefined (leave it unset) when the
+ * caller set none or the legacy full list. git reads an exported list over every `protocol.*.allow`
+ * config, so exporting one for a caller who never chose it would lift their own denies (CC-1336).
  * A caller list with nothing safe in it (`ext` alone) gives '', which git reads as allowing no transport.
  */
-declare function pinGitProtocols(value: string | undefined): string;
-/** `env` with GIT_ALLOW_PROTOCOL pinned, for a child that may run git without going through `gitChildEnv`. */
+declare function pinGitProtocols(value: string | undefined): string | undefined;
+/** `env` with the transport pin, for a child that may run git without going through `gitChildEnv`. */
 declare function withPinnedGitProtocols(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 /** A git child that inherits a dispatcher's identity variables can register as the agent that spawned it. */
 declare const DEFAULT_STRIPPED_ENV_PREFIXES: readonly string[];

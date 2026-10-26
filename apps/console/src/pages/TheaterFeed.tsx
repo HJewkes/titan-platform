@@ -65,6 +65,11 @@ export function VideoBadges({ video }: { video: VideoRow }): ReactNode {
           {video.noteCount === 1 ? "1 note" : `${video.noteCount} notes`}
         </Pill>
       ) : null}
+      {video.videoNoteCount > 0 ? (
+        <Pill variant="outline" tone="neutral" size="xs" testID={`theater-video-notes-${video.id}`}>
+          {`${video.videoNoteCount} about the video`}
+        </Pill>
+      ) : null}
       {video.captions ? (
         <Pill variant="subtle" size="xs">
           CC

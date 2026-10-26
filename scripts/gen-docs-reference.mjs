@@ -5,7 +5,7 @@
  *
  * Reads `.codewatch/check.json` (the DAG) and each package.json, writes
  * `site/reference/index.md` and `site/.vitepress/reference-sidebar.json`, and fills the
- * `<!-- generated:<name> start/end -->` blocks of the guides in MARKED_PAGES. Fails when a
+ * `<!-- generated:<name> start/end -->` blocks of the pages in MARKED_PAGES. Fails when a
  * package has no hand-written page under `site/reference/`. With `--check`, which
  * `docs:build` runs, it writes nothing and fails when a committed file differs from what it
  * would write or a package has no family in `site/guides/package-families.md`.
@@ -212,17 +212,28 @@ function minerCount(entries) {
   return numberWord(miner.deps.length);
 }
 
-/** Paragraph-level blocks sit on their own lines; `miner-count` sits inside a sentence. */
+/** The publishable packages under packages/; products, apps and the externally published react-ui are not counted. */
+export function packageCount(entries) {
+  return String(entries.filter((e) => e.group === "packages" && !e.private).length);
+}
+
+/** Paragraph-level blocks sit on their own lines; `miner-count` and `package-count` sit inside a sentence. */
 function blocks(entries) {
   return {
     "arch-graph": `\n${archGraph(entries)}\n`,
     "arch-leaves": `\n${leavesProse(entries)}\n`,
     "arch-products": `\n${productsProse(entries)}\n`,
     "miner-count": minerCount(entries),
+    "package-count": packageCount(entries),
   };
 }
 
+/**
+ * Pages with committed counts. The landing page's counts are not here: `site/home-counts.data.mjs` computes them at
+ * build time, because a repo-wide test count committed as text goes stale whenever concurrent PRs add tests.
+ */
 export const MARKED_PAGES = {
+  "README.md": ["package-count"],
   "site/guides/architecture.md": ["arch-graph", "arch-leaves", "arch-products", "miner-count"],
   "site/guides/index.md": ["miner-count"],
 };

@@ -3,13 +3,17 @@ import { join } from "node:path";
 import { Command, Option } from "commander";
 import { z } from "zod";
 import type { EvalCliDeps } from "./eval-cli.js";
-import { agreedOddOnes, COLD_EVAL_ID, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
+import { LabelsSchema, type Labels } from "./eval-calibrate.js";
+import { agreedOddOnes, COLD_EVAL_ID, COLD_TERMS_EVAL_ID, COLD_TERMS_RUBRIC, coldEvalVersion, coldTerms, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
+import { readerGapScores } from "./eval-cold-gaps.js";
+import { COLD_RUBRIC_EVAL_ID, readColdRubric, rubricBeatsFromPace, runColdRubric, seriesFromScripts, type ColdRubricResult, type SeriesVideo } from "./eval-cold-rubric.js";
 import { readRubric } from "./eval-evidence.js";
-import { createJudgeHarness, JudgeConfigSchema } from "./eval-harness.js";
-import { CANARY_COLUMNS } from "./eval-judge-cli.js";
-import { paceBeats, type ScriptFormat } from "./eval-pace-cli.js";
+import { createJudgeHarness, JudgeConfigSchema, judgeLabel } from "./eval-harness.js";
+import { CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS } from "./eval-judge-cli.js";
+import { paceInput, type ScriptFormat } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, judgedRun, rulesSha, type BenchLayout, type DeterministicRun } from "./eval-store.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry } from "./rules.js";
+import { ScriptSchema } from "./script-schema.js";
 import { readTiming } from "./timing.js";
 
 const EXIT = { OK: 0, UNTRUSTED: 1, USAGE: 2 } as const;
@@ -19,7 +23,7 @@ const COLD_RUNS = 3;
 
 const RUN_KEY = ["config_id", "script_sha", "eval_id", "eval_version", "judge", "run", "chapter"] as const;
 const COLD_SCORE_COLUMNS = [...RUN_KEY, "qid", "kind", "beat", "item", "score", "void_reason"] as const;
-const COLD_CHAPTER_COLUMNS = [...RUN_KEY, "minutes", "undefined_items", "undefined_per_minute", "summary"] as const;
+const COLD_CHAPTER_COLUMNS = [...RUN_KEY, "minutes", "undefined_items", "undefined_per_minute", "undefined_terms", "undefined_terms_per_minute", "summary"] as const;
 
 interface ColdFlags {
   judge: string;
@@ -30,6 +34,8 @@ interface ColdFlags {
   bench: string;
   parent?: string;
   runs: string;
+  labels?: string;
+  series?: string[];
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
@@ -39,11 +45,13 @@ interface Prepared {
   record: Omit<DeterministicRun, "started" | "finished">;
   input: Omit<ColdInput, "run">;
   runs: number;
+  readerGaps: Labels["items"] | null;
+  series: SeriesVideo[];
 }
 
 function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const raw = readJson(file);
-  const beats = paceBeats(raw, flags.format, flags.timing ? readTiming(readJson(flags.timing)) : undefined);
+  const { beats, glossary } = paceInput(raw, flags.format, flags.timing ? readTiming(readJson(flags.timing)) : undefined);
   const registry = readFileSync(flags.rules ?? DEFAULT_RULES_PATH);
   parseRuleRegistry(registry.toString("utf8"));
   const judge = JudgeConfigSchema.parse(readJson(flags.judge));
@@ -51,8 +59,10 @@ function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const bench = benchLayout(flags.bench);
   const scriptSha = freezeScript(bench, raw, flags.parent ?? null);
   const record = { configId: flags.config, scriptSha, parentSha: flags.parent ?? null, rulesSha: rulesSha(registry), evalId: COLD_EVAL_ID };
-  const input = { scriptSha, beats, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
-  return { bench, record, input, runs };
+  const input = { scriptSha, beats, glossary, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
+  const readerGaps = flags.labels ? LabelsSchema.parse(readJson(flags.labels)).items : null;
+  const series = seriesFromScripts((flags.series ?? []).map((path) => ScriptSchema.parse(readJson(path))));
+  return { bench, record, input, runs, readerGaps, series };
 }
 
 function writeRows(p: Prepared, result: ColdResult, run: number): void {
@@ -64,37 +74,78 @@ function writeRows(p: Prepared, result: ColdResult, run: number): void {
   appendTsv(join(p.bench.evals, "cold-scores.tsv"), COLD_SCORE_COLUMNS, scores);
   appendTsv(join(p.bench.evals, "cold-chapters.tsv"), COLD_CHAPTER_COLUMNS, result.chapters.map((c) => ({ ...key(c.chapter), ...c })));
   // canaries.tsv is shared with l1 and l2, so it keeps their columns; the relay label names the chapter's canary.
-  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, result.chapters.map((c) => ({ ...key(c.chapter), ...c.canary })));
+  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, result.chapters.flatMap((c) => c.canaries.map((k) => ({ ...key(c.chapter), ...k }))));
 }
 
 function report(p: Prepared, run: number, r: ColdResult): void {
-  const perMinute = Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(c.undefined_per_minute.toFixed(2))]));
-  const failedCanaries = r.chapters.filter((c) => !c.canary.pass).map((c) => `${c.canary.canary}=${c.canary.got}`);
-  const verdict = { trusted: r.trusted, undefined_per_minute: perMinute, failed_canaries: failedCanaries, failures: r.failures, usd: r.spend.usd };
+  const perMinute = (rate: (c: ColdResult["chapters"][number]) => number) => Object.fromEntries(r.chapters.map((c) => [c.chapter, Number(rate(c).toFixed(2))]));
+  const failedCanaries = r.chapters.flatMap((c) => c.canaries).filter((k) => !k.pass).map((k) => `${k.canary}=${k.got}`);
+  const gaps = p.readerGaps ? { reader_gaps: readerGapScores(p.readerGaps, r) } : {};
+  const rates = { undefined_per_minute: perMinute((c) => c.undefined_per_minute), undefined_terms_per_minute: perMinute((c) => c.undefined_terms_per_minute) };
+  const verdict = { trusted: r.trusted, ...rates, failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
+}
+
+function writeRubric(p: Prepared, result: ColdRubricResult, run: number, started: Date, finished: Date): void {
+  const key = { config_id: p.record.configId, script_sha: p.record.scriptSha, eval_id: COLD_RUBRIC_EVAL_ID, eval_version: result.eval_version, judge: result.judge, run };
+  const rows = result.dims.map(({ dim, verdict: v }) => ({ ...key, dim, score: v.score ?? "", evidence: v.evidence, void_reason: v.void_reason ?? "" }));
+  appendTsv(join(p.bench.evals, "cold-rubric-scores.tsv"), SCRIPT_SCORE_COLUMNS, rows);
+  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, [{ ...key, ...result.canary }]);
+  appendRun(p.bench, judgedRun({ ...p.record, evalId: COLD_RUBRIC_EVAL_ID, evalVersion: result.eval_version, judge: result.judge, run, spend: result.spend, started, finished }));
+}
+
+/**
+ * J8 to J12, reported only (owner answer Q5 A): rows and a line are written, but neither a score, a missed canary nor
+ * a failed call reaches the command's exit code.
+ */
+async function reportRubric(p: Prepared, run: number, now: () => Date): Promise<void> {
+  const line = { script_sha: p.record.scriptSha, run, eval_id: COLD_RUBRIC_EVAL_ID, reported_only: true };
+  const started = now();
+  try {
+    const beats = rubricBeatsFromPace(p.input.beats);
+    const result = await runColdRubric({ subjectSha: p.record.scriptSha, beats, rubric: readColdRubric(), series: p.series, judge: p.input.judge, harness: p.input.harness, run });
+    writeRubric(p, result, run, started, now());
+    const scores = Object.fromEntries(result.dims.map((d) => [d.dim, d.verdict.score]));
+    console.log(JSON.stringify({ ...line, eval_version: result.eval_version, scores, canary: result.canary, trusted: result.trusted, usd: result.spend.usd }));
+  } catch (error) {
+    console.log(JSON.stringify({ ...line, error: error instanceof Error ? error.message : String(error) }));
+  }
+}
+
+/** The viewers' agreed undefined terms are asked beside the glossary; a failed call leaves the questions short, so it untrusts. */
+async function withViewerTerms(p: Prepared, now: () => Date): Promise<{ input: Prepared["input"]; trusted: boolean }> {
+  const started = now();
+  const named = await coldTerms({ beats: p.input.beats, rubric: readRubric(COLD_TERMS_RUBRIC), harness: p.input.harness });
+  const judge = judgeLabel(p.input.judge);
+  const evalVersion = coldEvalVersion(p.input);
+  appendRun(p.bench, judgedRun({ ...p.record, evalId: COLD_TERMS_EVAL_ID, evalVersion, judge, run: 1, spend: named.spend, started, finished: now() }));
+  console.log(JSON.stringify({ script_sha: p.record.scriptSha, viewer_terms: named.terms, named: named.named, failures: named.failures, usd: named.spend.usd }));
+  return { input: { ...p.input, viewerTerms: named.terms }, trusted: named.failures.length === 0 };
 }
 
 /** Each run is a fresh viewer; every run's rows are kept, and the command is trusted only if all of them are. */
 async function evalCold(file: string, flags: ColdFlags, deps: EvalCliDeps): Promise<boolean> {
   const p = prepare(file, flags, deps);
   const now = deps.now ?? (() => new Date());
+  const terms = await withViewerTerms(p, now);
   const results: ColdResult[] = [];
   for (let run = 1; run <= p.runs; run++) {
     const started = now();
-    const result = await runCold({ ...p.input, run });
+    const result = await runCold({ ...terms.input, run });
     const finished = now();
     writeRows(p, result, run);
     appendRun(p.bench, judgedRun({ ...p.record, evalVersion: result.eval_version, judge: result.judge, run, spend: result.spend, started, finished }));
     report(p, run, result);
+    await reportRubric(p, run, now);
     results.push(result);
   }
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, agreed_odd_ones: agreedOddOnes(results) }));
-  return results.every((r) => r.trusted);
+  return terms.trusted && results.every((r) => r.trusted);
 }
 
 export function coldCommand(deps: EvalCliDeps, onResult: (code: number) => void): Command {
   return new Command("cold")
-    .description("Stream a spike or script/v1 file to a fresh cold viewer chapter by chapter; append cold-scores, cold-chapters and canaries rows")
+    .description("Stream a spike or script/v1 file to a fresh cold viewer chapter by chapter; append cold-scores, cold-chapters and canaries rows, and the reported-only J8 to J12 rows to cold-rubric-scores")
     .argument("<script>", "script JSON file")
     .requiredOption("--judge <file>", "judge config JSON: provider (claude-print or codex), model, optional reasoning_effort, max_budget_usd, wall_time_s")
     .addOption(new Option("--format <format>", "script shape: a Python-emitted spike script.json, or strict script/v1").choices(["spike", "v1"]).default("spike"))
@@ -103,7 +154,9 @@ export function coldCommand(deps: EvalCliDeps, onResult: (code: number) => void)
     .option("--rules <file>", "rules/v1 registry, by default the shipped doctrine/rules.yaml; its sha is rules_sha on the run records")
     .option("--bench <dir>", "bench directory holding evals/ and scripts/", "bench")
     .option("--parent <sha>", "script_sha this script was derived from")
+    .option("--labels <file>", "labels/v1 file; each run's line adds its reader-gap group scores")
     .option("--runs <n>", "independent cold viewers; two of three must agree to flag an odd one out", String(COLD_RUNS))
+    .option("--series <files...>", "script/v1 files of the series' earlier videos, oldest first; the novelty row (J10) compares against the last five")
     .exitOverride()
     .action(async (file: string, flags: ColdFlags) => {
       try {

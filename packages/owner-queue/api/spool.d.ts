@@ -1,5 +1,6 @@
 import { RevisionSource } from '@titan-design/evidence';
-import { O as OwnerItem, a as OwnerAnswer, A as Audience, i as OwnerItemDeposit } from './deposit.js';
+import { O as OwnerItemDeposit } from './deposit.js';
+import { O as OwnerItem, a as OwnerAnswer, A as Audience } from './schema.js';
 import 'zod';
 
 /** One anchor that held at its pinned commit, with its first and last lines quoted back. */
@@ -62,6 +63,11 @@ declare function depositFileName(asker: string, depositId: string): string;
 /** The answer's file name: `<id>.answer.json` beside the deposit, with the item id encoded. */
 declare function answerFileName(id: string): string;
 /**
+ * The withdrawal marker's file name: `<id>.withdrawn` beside the deposit. It carries no `.json`
+ * suffix, so a reader that predates withdrawal never mistakes it for a deposit.
+ */
+declare function withdrawnFileName(id: string): string;
+/**
  * Every name this deposit may already be filed under: the current name, then the name a spool
  * written before A-Z was escaped gave it, when that differs. Readers accept both; writers only
  * ever create the current one.
@@ -91,9 +97,145 @@ declare function writeAnswer(dir: string, id: string, answer: OwnerAnswer): Prom
 /** Returns the answer to item `id`, or undefined if none is filed. Throws on a malformed answer. */
 declare function readAnswer(dir: string, id: string): Promise<OwnerAnswer | undefined>;
 
-export { DepositAnchorError, DepositCiteError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SessionEventRef, type SessionEventTextSource, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, writeAnswer, writeDeposit };
+export { DepositAnchorError, DepositCiteError, type DepositWriteResult, MAX_DEPOSIT_BYTES, type QuotedAnchor, type SessionEventRef, type SessionEventTextSource, type SpoolContents, SpoolNameCollisionError, type SpoolReject, type WriteDepositOptions, type WriteResult, answerFileName, answerFileNames, depositFileName, depositFileNames, readAnswer, readSpool, withdrawnFileName, writeAnswer, writeDeposit };
 
 // ./dist/deposit.d.ts
+import { z } from 'zod';
+import { O as OwnerItem } from './schema.js';
+
+/**
+ * What an agent may file into the owner inbox. Strict at every level, so a deposit that tries
+ * to set a system field (id, status, answer, route, authority, lint, a hidden pick) is refused
+ * rather than silently stripped.
+ */
+declare const ownerItemDepositSchema: z.ZodObject<{
+    depositId: z.ZodString;
+    asker: z.ZodString;
+    kind: z.ZodEnum<{
+        decide: "decide";
+        approve: "approve";
+        do: "do";
+        review: "review";
+        know: "know";
+    }>;
+    door: z.ZodEnum<{
+        "one-way": "one-way";
+        "two-way": "two-way";
+    }>;
+    class: z.ZodOptional<z.ZodString>;
+    irreversible: z.ZodOptional<z.ZodString>;
+    shown: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    default: z.ZodOptional<z.ZodString>;
+    onSilence: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        action: z.ZodLiteral<"wait">;
+    }, z.core.$strict>, z.ZodObject<{
+        action: z.ZodEnum<{
+            "apply-default": "apply-default";
+            expire: "expire";
+        }>;
+        afterHours: z.ZodNumber;
+    }, z.core.$strict>], "action">>;
+    summary: z.ZodString;
+    context: z.ZodString;
+    options: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        label: z.ZodString;
+        description: z.ZodOptional<z.ZodString>;
+        consequence: z.ZodOptional<z.ZodString>;
+        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    }, z.core.$strict>>>;
+    recommended: z.ZodOptional<z.ZodObject<{
+        optionId: z.ZodString;
+        by: z.ZodString;
+        confidence: z.ZodOptional<z.ZodNumber>;
+        rationale: z.ZodOptional<z.ZodString>;
+        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
+            session: z.ZodString;
+            event: z.ZodString;
+            quote: z.ZodString;
+        }, z.core.$strict>]>>;
+    }, z.core.$strict>>;
+    command: z.ZodOptional<z.ZodString>;
+    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"resolve-gate">;
+        gateId: z.ZodString;
+        headSha: z.ZodString;
+        decision: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"release-hold">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        holdClass: z.ZodEnum<{
+            g10: "g10";
+            "owner-asked": "owner-asked";
+        }>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"merge-at-head">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"close-pr">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"factory-config-set">;
+        path: z.ZodString;
+        value: z.ZodJSONSchema;
+        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"deploy-pause-clear">;
+        pausedAt: z.ZodISODateTime;
+        target: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"retire-agent">;
+        name: z.ZodString;
+        agentId: z.ZodString;
+        force: z.ZodBoolean;
+    }, z.core.$strict>], "kind">>;
+    evidenceRef: z.ZodOptional<z.ZodString>;
+    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    pins: z.ZodOptional<z.ZodObject<{
+        repo: z.ZodString;
+        head: z.ZodString;
+        base: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+    keys: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    seat: z.ZodOptional<z.ZodString>;
+    initiative: z.ZodOptional<z.ZodString>;
+    personal: z.ZodDefault<z.ZodBoolean>;
+    unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    audience: z.ZodOptional<z.ZodEnum<{
+        owner: "owner";
+        operator: "operator";
+    }>>;
+    expiresAt: z.ZodOptional<z.ZodISODateTime>;
+}, z.core.$strict>;
+type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
+/** Every deposit has an asker waiting on it, so only Know items leave the blocking lens. */
+declare const DEPOSIT_LENS: {
+    readonly decide: "blocking-agent";
+    readonly approve: "blocking-agent";
+    readonly do: "blocking-agent";
+    readonly review: "planning";
+    readonly know: "fyi";
+};
+/** The JSON pair keeps the input injective, so an asker containing "/" cannot collide with another. */
+declare function depositItemId(asker: string, depositId: string): string;
+/**
+ * Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit.
+ * An `op` adds the keys it implies, so a deposit about a PR joins that PR's item at the same head.
+ */
+declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
+
+export { DEPOSIT_LENS as D, type OwnerItemDeposit as O, depositItemId as d, fromDeposit as f, ownerItemDepositSchema as o };
+
+// ./dist/schema.d.ts
 import { z } from 'zod';
 
 declare const SOURCE_SYSTEMS: readonly ["agent-chat", "hitl", "morning", "active-work", "round", "plan", "deposit"];
@@ -212,6 +354,48 @@ declare const ownerItemSchema: z.ZodObject<{
         hidden: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strip>>;
     command: z.ZodOptional<z.ZodString>;
+    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"resolve-gate">;
+        gateId: z.ZodString;
+        headSha: z.ZodString;
+        decision: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"release-hold">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        holdClass: z.ZodEnum<{
+            g10: "g10";
+            "owner-asked": "owner-asked";
+        }>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"merge-at-head">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"close-pr">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"factory-config-set">;
+        path: z.ZodString;
+        value: z.ZodJSONSchema;
+        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"deploy-pause-clear">;
+        pausedAt: z.ZodISODateTime;
+        target: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"retire-agent">;
+        name: z.ZodString;
+        agentId: z.ZodString;
+        force: z.ZodBoolean;
+    }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     pins: z.ZodOptional<z.ZodObject<{
@@ -278,6 +462,7 @@ declare const ownerItemSchema: z.ZodObject<{
         at: z.ZodISODateTime;
         covers: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
+    repeats: z.ZodOptional<z.ZodNumber>;
     lint: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strip>;
 type SourceRef = z.infer<typeof sourceRefSchema>;
@@ -288,89 +473,4 @@ type ItemStatus = (typeof ITEM_STATUSES)[number];
 type Audience = (typeof AUDIENCES)[number];
 type OnSilence = z.infer<typeof onSilenceSchema>;
 
-/**
- * What an agent may file into the owner inbox. Strict at every level, so a deposit that tries
- * to set a system field (id, status, answer, route, authority, lint, a hidden pick) is refused
- * rather than silently stripped.
- */
-declare const ownerItemDepositSchema: z.ZodObject<{
-    depositId: z.ZodString;
-    asker: z.ZodString;
-    kind: z.ZodEnum<{
-        decide: "decide";
-        approve: "approve";
-        do: "do";
-        review: "review";
-        know: "know";
-    }>;
-    door: z.ZodEnum<{
-        "one-way": "one-way";
-        "two-way": "two-way";
-    }>;
-    class: z.ZodOptional<z.ZodString>;
-    irreversible: z.ZodOptional<z.ZodString>;
-    shown: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    default: z.ZodOptional<z.ZodString>;
-    onSilence: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
-        action: z.ZodLiteral<"wait">;
-    }, z.core.$strict>, z.ZodObject<{
-        action: z.ZodEnum<{
-            "apply-default": "apply-default";
-            expire: "expire";
-        }>;
-        afterHours: z.ZodNumber;
-    }, z.core.$strict>], "action">>;
-    summary: z.ZodString;
-    context: z.ZodString;
-    options: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        id: z.ZodString;
-        label: z.ZodString;
-        description: z.ZodOptional<z.ZodString>;
-        consequence: z.ZodOptional<z.ZodString>;
-        anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    }, z.core.$strict>>>;
-    recommended: z.ZodOptional<z.ZodObject<{
-        optionId: z.ZodString;
-        by: z.ZodString;
-        confidence: z.ZodOptional<z.ZodNumber>;
-        rationale: z.ZodOptional<z.ZodString>;
-        cite: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
-            session: z.ZodString;
-            event: z.ZodString;
-            quote: z.ZodString;
-        }, z.core.$strict>]>>;
-    }, z.core.$strict>>;
-    command: z.ZodOptional<z.ZodString>;
-    evidenceRef: z.ZodOptional<z.ZodString>;
-    anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    pins: z.ZodOptional<z.ZodObject<{
-        repo: z.ZodString;
-        head: z.ZodString;
-        base: z.ZodOptional<z.ZodString>;
-    }, z.core.$strict>>;
-    keys: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    seat: z.ZodOptional<z.ZodString>;
-    initiative: z.ZodOptional<z.ZodString>;
-    personal: z.ZodDefault<z.ZodBoolean>;
-    unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    audience: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
-        operator: "operator";
-    }>>;
-    expiresAt: z.ZodOptional<z.ZodISODateTime>;
-}, z.core.$strict>;
-type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
-/** Every deposit has an asker waiting on it, so only Know items leave the blocking lens. */
-declare const DEPOSIT_LENS: {
-    readonly decide: "blocking-agent";
-    readonly approve: "blocking-agent";
-    readonly do: "blocking-agent";
-    readonly review: "planning";
-    readonly know: "fyi";
-};
-/** The JSON pair keeps the input injective, so an asker containing "/" cannot collide with another. */
-declare function depositItemId(asker: string, depositId: string): string;
-/** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
-declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
-
-export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, type OnSilence as h, type OwnerItemDeposit as i, SOURCE_SYSTEMS as j, depositItemId as k, fromDeposit as l, locatorCiteSchema as m, ownerItemSchema as n, ownerItemDepositSchema as o, sourceRefSchema as s };
+export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, ITEM_KINDS as c, ITEM_STATUSES as d, type LocatorCite as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, SOURCE_SYSTEMS as h, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };

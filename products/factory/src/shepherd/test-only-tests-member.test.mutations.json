@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a test-only proof plans no tests member",
+      "file": "products/factory/src/shepherd/review-panel-plan.ts",
+      "find": "const planned = options.testsMember ? withTestsMember(held, options.holdMember !== undefined) : held;",
+      "replace": "const planned = held;",
+      "kills": [
+        "a test-only head on a g10-adversary hold with a vacuous proof (tp#2258) merges on a fresh tests member's MERGE, with no waiver and the G10 bar met"
+      ]
+    },
+    {
+      "name": "the review never tells the intent its proof needs a tests member",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "...proofPlanFields(proof, target.head, standing) }, Intended);",
+      "replace": "}, Intended);",
+      "kills": [
+        "a test-only head on a g10-adversary hold with a vacuous proof (tp#2258) merges on a fresh tests member's MERGE, with no waiver and the G10 bar met",
+        "a g10 head with an unproven or error fix-proof and a correctness + adversary panel (tp#2431) plans a blocking tests member when the line reads unproven and merges on its MERGE, never a no-verdict retry",
+        "a g10 head with an unproven or error fix-proof and a correctness + adversary panel (tp#2431) plans a blocking tests member when the line reads error and merges on its MERGE, never a no-verdict retry"
+      ]
+    },
+    {
+      "name": "the tests member goes ahead of the hold's adversary",
+      "file": "products/factory/src/shepherd/review-panel-plan.ts",
+      "find": "const lead = afterHold ? panel.slice(0, 1) : [];",
+      "replace": "const lead: ShapeRule[] = [];",
+      "kills": [
+        "the tests member a test-only proof plans goes right after a hold's adversary under a full panel, so the member cap keeps both and it blocks"
+      ]
+    },
+    {
+      "name": "the planned tests member is advisory",
+      "file": "products/factory/src/shepherd/review-panel-plan.ts",
+      "find": "touches: [], blocking: true, always: true };",
+      "replace": "touches: [], blocking: false, always: true };",
+      "kills": [
+        "the tests member a test-only proof plans goes right after a hold's adversary under a full panel, so the member cap keeps both and it blocks"
+      ]
+    },
+    {
+      "name": "the tests member's brief never asks whether each test fails without its change",
+      "file": "packages/review-panel/src/briefs/tests.ts",
+      "find": "return why === \"no-repro-test-only\" ? [TEST_ONLY_MEMBER] : [];",
+      "replace": "return [];",
+      "kills": [
+        "a test-only head on a g10-adversary hold with a vacuous proof (tp#2258) merges on a fresh tests member's MERGE, with no waiver and the G10 bar met"
+      ]
+    }
+  ]
+}

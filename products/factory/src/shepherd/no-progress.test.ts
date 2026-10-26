@@ -13,6 +13,7 @@ import { acceptExternalVerdict } from "./external-review.js";
 import { reviewPhase } from "./review.js";
 import type { Presence } from "./presence.js";
 import { shepherdStoreRef } from "./store.js";
+import { withDemotionOff } from "../test-support/gate-demotions.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -47,6 +48,9 @@ async function runUntilGate(answers: Answer[]): Promise<{ prompt: string; review
 }
 
 describe("the no-progress escalation", () => {
+  // These pin the owner gate D8's flag set false restores (TP-3734).
+  withDemotionOff("fixFirstRunaway");
+
   it("opens approve-merge at the second consecutive FIX_FIRST that said Closer: no", async () => {
     const gate = await runUntilGate(["no", "no"]);
 
@@ -102,6 +106,9 @@ describe("a reviewer's Closer line", () => {
 });
 
 describe("the Closer signal through the real review phase", () => {
+  // These pin the owner gate D8's flag set false restores (TP-3734).
+  withDemotionOff("fixFirstRunaway");
+
   const row = (name: string, presence: Presence = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
   const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
     ...{ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text },

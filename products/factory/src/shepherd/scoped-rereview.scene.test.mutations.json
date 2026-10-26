@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the scope is also passed to the panel members",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "const base: MemberBase = { ...target, runId: ctx.runId, ",
+      "replace": "const base: MemberBase = { ...target, ...(await scopedRereviewOf(ctx, request, intent)), runId: ctx.runId, ",
+      "kills": [
+        "a fix-round re-review under shepherd.review.scopedRereview on: the correctness brief at H2 reads the fix diff since H1 and H1's finding; the adversary member's reads neither"
+      ]
+    },
+    {
+      "name": "shadow scopes the brief as on does",
+      "file": "products/factory/src/shepherd/review-scope-round.ts",
+      "find": "rereview?.mode === \"on\" && rereview.scoped",
+      "replace": "rereview !== undefined && rereview.scoped",
+      "kills": [
+        "a fix-round re-review under shepherd.review.scopedRereview shadow: sh-review records the scope while the brief equals the unscoped one byte for byte"
+      ]
+    }
+  ]
+}

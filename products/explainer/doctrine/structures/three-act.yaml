@@ -1,0 +1,27 @@
+schema: narrative-structure/v1
+id: three-act
+version: 0.1.0
+source: "story-structure §2.1 (three-act), §4 row 3 at five minutes or longer"
+summary: "Setup, a confrontation of attempts that each break something, then the resolution."
+fit:
+  ask: "Is there one central problem worked through over time, at five minutes or longer?"
+  all: [central-problem]
+  minRuntimeS: 300
+blocks:
+  - { id: setup, goal: "The world and the problem in it.", share: 0.2 }
+  - { id: confrontation, goal: "Attempts and what each one broke.", share: 0.5 }
+  - { id: resolution, goal: "How the problem is resolved.", share: 0.2 }
+  - { id: takeaway, goal: "The one thing to take away.", share: 0.1 }
+hook: "The problem lands by 25% of runtime."
+ending: "takeaways+button"
+spine:
+  - title: Setup
+    body: |-
+      <The world before the problem, and the problem, with one fact id.>
+  - title: Attempts
+    body: |-
+      | # | Attempt | What it broke | Fact id |
+      |---|---|---|---|
+  - title: Resolution
+    body: |-
+      <What finally works, and why the attempts before it could not.>

@@ -4,6 +4,8 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import type { HookPort } from "../hook.js";
 import { handle } from "../hook.js";
+import { cpuBudgetIt } from "../test-support/cpu-budget.js";
+import { expectWorkPerChar } from "../test-support/work-count.js";
 import { extractCommands } from "./commands.js";
 import { AliasDefinitionError } from "./alias-definitions.js";
 import { ParseError, tokenize } from "./lexer.js";
@@ -177,8 +179,8 @@ describe("backquote spans in a subscript bash may join", () => {
 });
 
 /**
- * Past this a hook timeout would let the command through. It is counted in this thread's CPU time, which a loaded runner
- * does not stretch; the work ratio below is what tells linear from quadratic.
+ * The thread CPU past which a hook timeout would let the command through, which the bench checks; the work ratio below
+ * is what tells linear from quadratic.
  */
 const BUDGET_MS = 2500;
 
@@ -206,37 +208,44 @@ function countCharAt(read: () => unknown, cap: number): number {
   return calls;
 }
 
-/** Each shape's span, repeated inside one argument-position subscript. */
-const SPAN_SHAPES: Array<[string, string]> = [
-  ["$${ openers, each a bare { to bash", "$${x["],
-  ["nested ${ openers", "${x["],
-  ["closed ${ spans", "${x[0]}"],
-  ["backquote spans", "`[]`"],
-  ["nested $( openers", "$(x["],
-  ["closed $( spans", "$(f [0])"],
-  ["closed $(( spans", "$(( ${#a[@]} ))"],
+/**
+ * Each shape's span, repeated inside one argument-position subscript, and the characters the hook may read per character
+ * of a 64 KB script of it: about twice what each was measured to read. Each span costs several readings, so the linear
+ * rows range from 18 to 1 230. The $${ row read 6 947 when the glob compiler searched to the end for each unterminated
+ * `[` (TP-4051); it reads 549 now.
+ *
+ * The $${, closed ${ and closed $(( rows were measured while V8 refused to compile the script's 98 KB glob word as a
+ * RegExp at its first test ("Regular expression too large"), which ended the reading before its case-folded pass. The
+ * linear glob matcher compiles it (TP-4223), so both passes now run: 1 129, 644 and 1 103 per character.
+ */
+const SPAN_SHAPES: Array<[string, string, number]> = [
+  ["$${ openers, each a bare { to bash", "$${x[", 2_300],
+  ["nested ${ openers", "${x[", 40],
+  ["closed ${ spans", "${x[0]}", 1_300],
+  ["backquote spans", "`[]`", 65],
+  ["nested $( openers", "$(x[", 55],
+  ["closed $( spans", "$(f [0])", 2_500],
+  ["closed $(( spans", "$(( ${#a[@]} ))", 2_200],
 ];
 
 const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
 
-async function timedScriptDecision(script: string): Promise<{ decision: string | null; cpuMs: number }> {
+async function scriptDecision(script: string): Promise<string | null> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${HOME}/app/a.sh` ? script : null) };
   const scriptPort: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: `${HOME}/app`, tool_input: { command: "bash a.sh; git push origin HEAD:main" } });
-  const start = process.threadCpuUsage();
   const { stdout } = await handle(input, { PATH: "/usr/bin" }, scriptPort);
-  const { user, system } = process.threadCpuUsage(start);
-  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, cpuMs: (user + system) / 1000 };
+  return stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout;
 }
 
 describe("a subscript holding many span openers", () => {
-  it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, span) => {
+  cpuBudgetIt.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", BUDGET_MS, async (_name, span, workPerChar) => {
     const script = spanScript(span, Math.floor(64_000 / span.length));
+    let decision: string | null = null;
 
-    const { decision, cpuMs } = await timedScriptDecision(script);
+    await expectWorkPerChar(async () => (decision = await scriptDecision(script)), script.length, workPerChar);
 
     expect(decision).toBe("deny");
-    expect(cpuMs).toBeLessThan(BUDGET_MS);
   });
 
   it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {

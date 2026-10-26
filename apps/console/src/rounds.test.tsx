@@ -8,8 +8,14 @@ import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { listFrames } from "../server/round-frames.js";
 import { getRound, listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
+import { getButton } from "./pages/get-button.test-helpers.js";
+import { toSection } from "./pages/round-pager.test-helpers.js";
 
-afterEach(cleanup);
+// An unsent round keeps its draft in localStorage, so each test starts from none.
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const ROUND_IDS = ["kiln-schedule-r2", "kiln-schedule-r1", "orbit-retry-r1", "lantern-cards-r1", "legacy-r1"];
 
@@ -80,6 +86,18 @@ describe("the rounds list", () => {
     expect(screen.getAllByTestId(/^round-card-/)).toHaveLength(screen.getAllByTestId(/^round-row-/).length);
   });
 
+  it("marks a round that offers a merge with no binding as unbound, with no merge tap", async () => {
+    const listed = await listRounds(source);
+    const rounds = listed.rounds.map((round) => (round.id === "kiln-schedule-r2" && round.valid ? { ...round, unbound: true as const } : round));
+    const snapshot = await recorded();
+    await renderConsole("#/rounds", { ...snapshot, calls: { ...snapshot.calls, [snapshotKey("rounds.list", {})]: successEnvelope({ ...listed, rounds }) } });
+
+    const card = await screen.findByTestId("round-card-kiln-schedule-r2");
+
+    expect(within(card).getByText("unbound: no merge tap")).toBeTruthy();
+    expect(within(screen.getByTestId("round-card-kiln-schedule-r1")).getByText("questions")).toBeTruthy();
+  });
+
   it("keeps the four-column table for wide screens", async () => {
     await renderConsole("#/rounds");
     const row = await screen.findByTestId("round-row-kiln-schedule-r2");
@@ -114,12 +132,16 @@ describe("a question round", () => {
   it("renders each question with its options and no recommendation while unsent", async () => {
     await renderConsole("#/rounds/kiln-schedule-r2");
     await screen.findByTestId("round-question-ramp-default");
-    for (const id of ["ramp-default", "hold-clarity", "report-columns", "report-notes"]) expect(question(id)).toBeTruthy();
     expect(choice("ramp-default", "3 Ask each time")).toBeTruthy();
     expect(choice("hold-clarity", "5 5")).toBeTruthy();
+    expect(screen.queryByText(/^Recommended:/)).toBeNull();
+    expect(screen.getByText("Recommendations are hidden until you answer; reveal one first with r.")).toBeTruthy();
+
+    await toSection("report");
+
+    for (const id of ["report-columns", "report-notes"]) expect(question(id)).toBeTruthy();
     expect(choice("report-columns", "4 Hold minutes")).toBeTruthy();
     expect(screen.queryByText(/^Recommended:/)).toBeNull();
-    expect(screen.getByText("Recommendations show once the round is answered.")).toBeTruthy();
   });
 
   it("chooses an option of the first question with keys 1-9", async () => {
@@ -134,14 +156,19 @@ describe("a question round", () => {
 
   it("moves the keys to the question last answered by pointer, and toggles a pick-many", async () => {
     await renderConsole("#/rounds/kiln-schedule-r2");
-    await screen.findByTestId("round-question-report-columns");
+    await screen.findByTestId("round-question-hold-clarity");
 
+    fireEvent.click(choice("hold-clarity", "4 4"));
+    fireEvent.keyDown(window, { key: "2" });
+    await toSection("report");
     fireEvent.click(choice("report-columns", "1 Segment"));
     fireEvent.keyDown(window, { key: "3" });
     fireEvent.keyDown(window, { key: "1" });
 
     expect(isChecked(choice("report-columns", "1 Segment"))).toBe(false);
     expect(isChecked(choice("report-columns", "3 Rate per hour"))).toBe(true);
+    await toSection("ramp");
+    expect(isChecked(choice("hold-clarity", "2 2"))).toBe(true);
     expect(isChecked(choice("ramp-default", "1 Staged climb"))).toBe(false);
   });
 
@@ -158,8 +185,34 @@ describe("a question round", () => {
     await renderConsole("#/rounds/orbit-retry-r1");
     expect(await screen.findByText("Recommended: Ship (90%, fixture-agent)")).toBeTruthy();
     expect(screen.getByText("Ships example/orbit-relay#12 at 0123456")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ship" })).toBeTruthy();
-    expect(screen.queryByText(/^Changed images/)).toBeNull();
+    expect(getButton("Ship")).toBeTruthy();
+    expect(screen.queryByText(/^Main vs head/)).toBeNull();
+  });
+});
+
+describe("a contrast override", () => {
+  /** kiln-schedule-r2 as served, with `contrastOverride` set on its manifest when given. */
+  async function withOverride(contrastOverride?: { reason: string; problem: string }): Promise<Snapshot> {
+    const snapshot = await recorded();
+    const detail = await getRound(source, "kiln-schedule-r2");
+    if (!detail.valid) throw new Error(detail.reason);
+    const manifest = contrastOverride ? { ...detail.manifest, contrastOverride } : detail.manifest;
+    return { ...snapshot, calls: { ...snapshot.calls, [snapshotKey("rounds.get", { id: "kiln-schedule-r2" })]: successEnvelope({ ...detail, manifest }) } };
+  }
+
+  it("shows its reason in a banner above the round", async () => {
+    await renderConsole("#/rounds/kiln-schedule-r2", await withOverride({ reason: "The glaze swatch is a photo; its contrast is the kiln's.", problem: "2 frames under 4.5:1" }));
+
+    const banner = await screen.findByTestId("round-contrast-override");
+    expect(banner.textContent).toContain("Contrast gate overridden: The glaze swatch is a photo; its contrast is the kiln's.");
+    expect(banner.compareDocumentPosition(question("ramp-default")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows no banner on a round without one", async () => {
+    await renderConsole("#/rounds/kiln-schedule-r2", await withOverride());
+
+    await screen.findByTestId("round-question-ramp-default");
+    expect(screen.queryByTestId("round-contrast-override")).toBeNull();
   });
 });
 

@@ -134,6 +134,9 @@ function countingShepherd() {
     release: async () => {
       throw new Error("the strip never writes");
     },
+    previewOp: async () => {
+      throw new Error("the strip never previews an op");
+    },
   };
   return { shepherd, calls };
 }

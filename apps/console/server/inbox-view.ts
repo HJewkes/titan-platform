@@ -1,25 +1,32 @@
 /**
  * `inbox.list`: the owner's one inbox, read only. It takes `approvals.flow`'s merged order, joins each factory gate to its
  * live Shepherd row by run id, and gives every item the one action a tap would take, or the terminal command and why the
- * console offers none. A write action (`resolve-gate`, `owner-release`, `hold-release`) comes only from a hitl item joined
- * to a live row: a deposit is agent-written, so it never gets one. Nothing here writes; the actions land in later slices.
+ * console offers none. A write action's target comes from a system of record, never from a deposit: a hitl gate joined to a
+ * live row that is not replay-diverged, or a deposit's typed `op`. A deposit is agent-written, so its op only
+ * names the target: a gate or hold op maps onto that live row's own action, and an op on `CONSOLE_OPS` becomes `owner-op`,
+ * whose read-back `inbox.prepare` takes from the factory's preview. Nothing here writes.
  */
 import { z } from "zod";
-import type { OwnerItem } from "@titan-design/owner-queue";
+import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
+import { missedNoticeRows } from "./round-notice-gaps.js";
+import { roundNudges, type RoundNudge } from "./round-nudge.js";
+import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
 type InboxAction =
-  | { kind: "resolve-gate"; gateId: string; runId: string; stepId: string; repo: string; pr: number; headSha: string; decision: "merge" }
+  | { kind: "resolve-gate"; gateId: string; runId: string; stepId: string; repo: string; pr: number; headSha: string; decision: ConsoleDecision; alternatives?: ConsoleDecision[] }
   | { kind: "owner-release"; repo: string; pr: number; headSha: string }
   | { kind: "hold-release"; repo: string; pr: number; headSha: string; holdClass: string }
+  | { kind: "owner-op"; op: OwnerOp }
   | { kind: "answer-chat"; msgId: string }
+  | { kind: "approve-chat"; msgId: string }
   | { kind: "open-round"; roundId: string }
   | { kind: "open"; route: string }
   | { kind: "terminal"; command?: string; reason: string };
@@ -44,9 +51,10 @@ interface InboxList {
   readAt: string;
 }
 
-/** `inbox.list`'s answer: the owner queue, and the machine-derived rows that carry no action. */
+/** `inbox.list`'s answer: the owner queue, the machine-derived rows that carry no action, and the rounds waiting over six hours. */
 export interface InboxView extends InboxList {
   derived: DerivedRow[];
+  nudges: RoundNudge[];
 }
 
 export interface InboxSources extends ApprovalsSources {
@@ -56,11 +64,29 @@ export interface InboxSources extends ApprovalsSources {
   now?: () => number;
 }
 
-const MERGE_STEP = "approve-merge";
+/**
+ * The gate steps the console taps and the decisions each may give, as data the factory's `CONSOLE_STEPS` mirrors and
+ * re-checks against the gate's own schema. The first is the item's tap; the rest are second taps offered only where the
+ * gate's options list them. An sh-sent-back gate waits for the implementer's next pushed head (TP-3949), or on a fix-proof
+ * send-back waives the fix-proof at this head (TP-3626); neither merges nor abandons anything.
+ */
+const CONSOLE_DECISIONS = { "approve-merge": ["merge"], "sh-sent-back": ["await-new-head", "waive-proof"] } as const satisfies Record<string, readonly string[]>;
+type ConsoleStep = keyof typeof CONSOLE_DECISIONS;
+export type ConsoleDecision = (typeof CONSOLE_DECISIONS)[ConsoleStep][number];
+export const CONSOLE_DECISION_IDS: readonly [ConsoleDecision, ...ConsoleDecision[]] = ["merge", "await-new-head", "waive-proof"];
 /** The factory route refuses these to an owner-remote resolver (`batchRefusal`, `DEVICE_RULE`), so the console offers no tap. */
 const HARDWARE_STEP = /device|hardware/;
 const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
+/** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
+const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "close-pr", "deploy-pause-clear"]);
+/**
+ * TP-3918: a gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
+ * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
+ * tell which, so every rowless gate is held to the Morning path until TP-3918 lands.
+ */
+export const DIVERGED_HOLD = "resolve from Morning (TP-3918)";
+const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 function gateParts(gateId: string): { runId: string; stepId: string } | undefined {
@@ -80,20 +106,41 @@ const releaseCommand = (row: WatchRow, holdClass: string): string =>
     ? `titan-factory shepherd owner-release ${row.repo}#${row.pr} --head ${row.headSha}`
     : `titan-factory shepherd release ${row.repo}#${row.pr} --head ${row.headSha} --class ${holdClass}`;
 
-function gateStepAction(stepId: string, command: string | undefined): InboxAction | undefined {
+const isConsoleStep = (stepId: string): stepId is ConsoleStep => Object.hasOwn(CONSOLE_DECISIONS, stepId);
+
+/**
+ * The step's decisions the gate offers, the item's own tap first, or none when the gate lacks that one. An item with options
+ * lists exactly the gate's schema. One with none (a gate of several questions) gets the first alone and leaves the check to
+ * the factory, so a second tap such as a waiver is offered only where the gate itself lists it.
+ */
+function offeredDecisions(item: OwnerItem, stepId: ConsoleStep): ConsoleDecision[] {
+  const [first, ...rest]: readonly ConsoleDecision[] = CONSOLE_DECISIONS[stepId];
+  const { options } = item;
+  if (options === undefined) return [first];
+  const offered = (decision: ConsoleDecision) => options.some((option) => option.id === decision);
+  return offered(first) ? [first, ...rest.filter(offered)] : [];
+}
+
+function gateStepDecisions(item: OwnerItem, stepId: string): ConsoleDecision[] | InboxAction {
+  const { command } = item;
   if (HARDWARE_STEP.test(stepId)) return terminal("a device or hardware gate answers only at the device's own terminal", command);
   if (stepId === AFTER_STAGES_STEP) return terminal("an after-stages gate deploys or publishes after the merge; the factory refuses it to the console", command);
-  if (stepId !== MERGE_STEP) return terminal(`the console answers approve-merge gates; ${stepId} is answered with its command`, command);
-  return undefined;
+  if (!isConsoleStep(stepId)) return terminal(`the console answers approve-merge and sh-sent-back gates; ${stepId} is answered with its command`, command);
+  const offered = offeredDecisions(item, stepId);
+  return offered.length > 0 ? offered : terminal(`this ${stepId} gate offers no ${CONSOLE_DECISIONS[stepId][0]}; answer it with its command`, command);
 }
+
+const isDiverged = (row: WatchRow | undefined): boolean => row === undefined || REPLAY_DIVERGED.test(row.stalled?.reason ?? "");
 
 function gateAction(item: OwnerItem, gateId: string, row: WatchRow | undefined): InboxAction {
   const parts = gateParts(gateId);
   if (parts === undefined) return terminal("the gate names no run, so the console cannot read its PR back", item.command);
-  const refused = gateStepAction(parts.stepId, item.command);
-  if (refused !== undefined) return refused;
-  if (row === undefined || row.pr === null || row.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
-  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row.repo, pr: row.pr, headSha: row.headSha, decision: "merge" };
+  const decisions = gateStepDecisions(item, parts.stepId);
+  if (!Array.isArray(decisions)) return decisions;
+  if (isDiverged(row)) return terminal(DIVERGED_HOLD, item.command);
+  if (row!.pr === null || row!.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
+  const [decision, ...alternatives] = decisions;
+  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row!.repo, pr: row!.pr, headSha: row!.headSha, decision: decision!, ...(alternatives.length > 0 && { alternatives }) };
 }
 
 function holdAction(row: WatchRow, holdClass: string | undefined): InboxAction {
@@ -116,6 +163,30 @@ function hitlDerived(item: OwnerItem, gateId: string, row: WatchRow | undefined)
 const openOrTerminal = (evidence: string | undefined, item: OwnerItem, reason: string): InboxAction =>
   evidence === undefined ? terminal(reason, item.command) : { kind: "open", route: evidence };
 
+/** A hold op is only a pointer: the release, its class and its head all come from the live row, and a mismatch offers nothing. */
+function holdOpAction(item: OwnerItem, op: Extract<OwnerOp, { kind: "release-hold" }>, row: WatchRow | undefined): InboxAction {
+  if (row?.held == null) return terminal(`no live Shepherd row holds ${op.repo}#${op.pr}`, item.command);
+  const holdClass = holdClassOf(row.held.reason);
+  if (holdClass !== op.holdClass) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
+  return holdAction(row, holdClass);
+}
+
+/** A merge-at-head on a held PR shows the hold, so the page can offer a g10 hold's second tap: approve now, merge once the loop closes. */
+function mergeHold(op: OwnerOp, row: WatchRow | undefined): Pick<Derived, "hold"> {
+  if (op.kind !== "merge-at-head" || row?.held == null) return {};
+  return { hold: { class: holdClassOf(row.held.reason) ?? "unclassed", reason: row.held.reason } };
+}
+
+/** A deposit's op names a target; the action comes from the live row, or for an allowlisted kind from the factory's preview at the tap. */
+function depositDerived(item: OwnerItem, row: WatchRow | undefined): Derived {
+  const { op } = item;
+  if (op === undefined) return { action: terminal("a deposit is agent-written, so the console offers it no write; run its command", item.command) };
+  if (op.kind === "resolve-gate") return hitlDerived(item, op.gateId, row);
+  if (op.kind === "release-hold") return { action: holdOpAction(item, op, row) };
+  if (CONSOLE_OPS.has(op.kind)) return { action: { kind: "owner-op", op }, ...mergeHold(op, row) };
+  return { action: terminal(`a ${op.kind} op has no console tap yet; run its command`, item.command) };
+}
+
 /** The pure item-to-action mapping: `row` is the live Shepherd row of the item's run, when it has one. */
 export function actionFor(item: OwnerItem, row: WatchRow | undefined, evidence: string | undefined = evidenceOf(item, row)): Derived {
   const source = item.sources[0]!;
@@ -123,11 +194,11 @@ export function actionFor(item: OwnerItem, row: WatchRow | undefined, evidence: 
     case "hitl":
       return hitlDerived(item, source.ref, row);
     case "agent-chat":
-      return { action: item.kind === "approve" ? terminal("an agent's approval or permission prompt is answered at its own session; the broker never approves over HTTP", item.command) : { kind: "answer-chat", msgId: source.ref } };
+      return { action: { kind: item.kind === "approve" ? "approve-chat" : "answer-chat", msgId: source.ref } };
     case "round":
       return { action: { kind: "open-round", roundId: roundIdOf(source.ref) } };
     case "deposit":
-      return { action: terminal("a deposit is agent-written, so the console offers it no write; run its command", item.command) };
+      return depositDerived(item, row);
     default:
       return { action: openOrTerminal(evidence, item, `answered at its source, ${source.system}`) };
   }
@@ -150,11 +221,20 @@ function evidenceOf(item: OwnerItem, row: WatchRow | undefined): string | undefi
 
 const sectionOf = (item: OwnerItem): InboxSection => (item.lens.startsWith("blocking-") || item.lens === "stuck" ? "blocking" : "planning");
 
+const rowOfRun = (gateId: string, rows: ReadonlyMap<string, WatchRow>): WatchRow | undefined => {
+  const runId = gateParts(gateId)?.runId;
+  return runId === undefined ? undefined : rows.get(runId.toLowerCase());
+};
+
+const rowOfPr = (repo: string, pr: number, rows: ReadonlyMap<string, WatchRow>): WatchRow | undefined =>
+  [...rows.values()].find((row) => row.repo.toLowerCase() === repo.toLowerCase() && row.pr === pr);
+
 function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchRow | undefined {
   const source = item.sources[0]!;
-  if (source.system !== "hitl") return undefined;
-  const runId = gateParts(source.ref)?.runId;
-  return runId === undefined ? undefined : rows.get(runId.toLowerCase());
+  if (source.system === "hitl") return rowOfRun(source.ref, rows);
+  if (source.system !== "deposit" || item.op === undefined) return undefined;
+  if (item.op.kind === "resolve-gate") return rowOfRun(item.op.gateId, rows);
+  return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
 }
 
 function inboxItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>, strips: ReadonlyMap<string, GateStrip>): InboxItem {
@@ -212,21 +292,28 @@ export async function readInbox(sources: InboxSources): Promise<InboxList> {
 const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
 
 /** A Shepherd that just failed the active read already has its gap line, so the finished read is skipped, not doubled. */
-async function readDerived({ shepherd, agents, now = Date.now }: InboxSources, live: Read<WatchRow[]>): Promise<Read<DerivedRow[]>> {
-  const [finished, roster] = await Promise.all([
+async function readDerived({ shepherd, agents, rounds, now = Date.now }: InboxSources, live: Read<WatchRow[]>): Promise<Read<DerivedRow[]>> {
+  const at = now();
+  const [finished, roster, missed] = await Promise.all([
     live.gaps.length > 0 ? NOT_READ : readOrGap("shepherd finished", () => shepherd.list("finished"), []),
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
+    readOrGap("round notices", () => missedNoticeRows(rounds.dir, at), []),
   ]);
-  const at = now();
   const blocked = roster?.value === undefined ? [] : blockedAgentRows(roster.value);
-  const rows = [...stalledRunRows(live.value, at), ...failedRunRows(finished.value, live.value, at), ...blocked].sort(byDerivedOrder);
-  return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? [])] };
+  const rows = [...stalledRunRows(live.value, at), ...failedRunRows(finished.value, live.value, at), ...blocked, ...missed.value].sort(byDerivedOrder);
+  return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? []), ...missed.gaps] };
+}
+
+/** The queue read already reports an unreadable round as a gap, so a nudge read adds none of its own. */
+async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<RoundNudge[]> {
+  const read = await readQueueRounds(rounds);
+  return roundNudges(rounds.dir, read.rounds, now()).catch(() => []);
 }
 
 async function readInboxView(sources: InboxSources, strips: GateStripReader): Promise<InboxView> {
-  const { list, live } = await readOwnerQueue(sources, strips);
+  const [{ list, live }, nudges] = await Promise.all([readOwnerQueue(sources, strips), readNudges(sources)]);
   const derived = await readDerived(sources, live);
-  return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value };
+  return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
 }
 
 export function inboxViewCommands(sources: InboxSources) {
@@ -236,7 +323,7 @@ export function inboxViewCommands(sources: InboxSources) {
     "inbox.list": readCommand({
       name: "inbox.list",
       description:
-        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command and, for a gate on a live PR, its gate strip at that head; blocking first and newest first; beside them, machine-derived stall, failed-run and blocked-agent rows with their evidence and no action",
+        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command and, for a gate on a live PR, its gate strip at that head; blocking first and newest first; beside them, machine-derived stall, failed-run, blocked-agent and missed round-notice rows with their evidence and no action; and each round open over six hours, once, with its recommendations stated",
       args: z.object({}),
       result: z.custom<InboxView>(),
       run: () => readInboxView(sources, strips),

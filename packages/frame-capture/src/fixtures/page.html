@@ -33,6 +33,9 @@
       //   missing-font   like clock, but declares a face whose file does not exist
       //   throws-at-load publishes the API, empties the stage and throws while loading; later seeks do nothing
       //   drift          like clock, plus boxes and labels on fractional, rotating transforms that move with t
+      //   beats          a new beat every `?beat-s=<s>` (default 0.5); a label eases toward its target a fixed
+      //                  share per seek, so a frame depends on the frame seeked before it, and a beat lays the
+      //                  label out at its target, so a beat's first frame depends on nothing before it
       // `?duration=nan` or `?duration=null` publishes a broken duration on any page.
       const query = new URLSearchParams(location.search)
       const page = query.get('page')
@@ -50,6 +53,23 @@
         return box
       }) : []
 
+      const beatS = query.has('beat-s') ? Number(query.get('beat-s')) : 0.5
+      const label = page === 'beats' ? document.createElement('div') : undefined
+      if (label) {
+        label.style.cssText = 'position: absolute; left: 0; top: 0; font: 31px "Space Grotesk"; color: #123'
+        document.body.appendChild(label)
+      }
+      const smoothed = { beat: -1, x: 0 }
+
+      function easeLabel(t) {
+        const beat = Math.floor(t / beatS + 1e-9)
+        const target = 20 + (t - beat * beatS) * 517.3
+        if (beat !== smoothed.beat) Object.assign(smoothed, { beat, x: target })
+        else smoothed.x += (target - smoothed.x) * 0.5
+        label.textContent = `beat ${beat}`
+        label.style.transform = `translate(${smoothed.x}px, ${40 + beat * 7.3}px) rotate(${smoothed.x / 23.1}deg)`
+      }
+
       if (page === 'missing-font') {
         document.fonts.add(new FontFace('MissingFace', "url('./fonts/missing.woff2')"))
       }
@@ -62,6 +82,7 @@
         }
         stage.textContent = t.toFixed(3)
         if (page === 'drift') moveBoxes(t)
+        if (label) easeLabel(t)
       }
 
       // Fractional positions and angles put anti-aliased edges in every tile, where partial raster shows up.

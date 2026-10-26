@@ -160,6 +160,8 @@ declare const SPELLINGS: {
     readonly "bash.config.git-hooks": SpellingRow;
     readonly "bash.config.git-config-hookspath": SpellingRow;
     readonly "bash.config.claude-cli": SpellingRow;
+    readonly "bash.config.gh-api-ruleset": SpellingRow;
+    readonly "bash.config.curl-api-ruleset": SpellingRow;
     readonly "bash.config.mention": SpellingRow;
     readonly "bash.merge.gh-pr-merge": SpellingRow;
     readonly "bash.merge.gh-api-merge": SpellingRow;
@@ -179,6 +181,7 @@ declare const SPELLINGS: {
     readonly "bash.release.gh-workflow-run": SpellingRow;
     readonly "bash.release.wrangler-deploy": SpellingRow;
     readonly "bash.release.version-packages-merge": SpellingRow;
+    readonly "bash.release.git-push-tag": SpellingRow;
     readonly "bash.egress.gh-gist": SpellingRow;
     readonly "bash.egress.curl-upload": SpellingRow;
     readonly "bash.egress.wget-upload": SpellingRow;

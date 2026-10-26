@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Question } from "../../server/round-schema.js";
 import { RoundQuestion, chooseIn, choiceForKey, choicesOf, type QuestionAnswer } from "./RoundQuestion.js";
 
@@ -60,5 +60,86 @@ describe("RoundQuestion", () => {
     render(<Harness question={tenOptions} />);
     expect(screen.getByText("Shelf 10")).toBeTruthy();
     expect(screen.getByText("9 Shelf 9")).toBeTruthy();
+  });
+});
+
+const packet: Question = {
+  ...pickOne,
+  optionDetails: {
+    "Screw lid": { detail: "Seals **airtight** in two turns.", weakPoint: "The thread clogs with sugar.", after: "Order screw lids for the next batch." },
+    Cork: { detail: "Breathes, so the jam keeps longer." },
+  },
+};
+const packetMany: Question = { ...pickMany, optionDetails: { Date: { detail: "When the jar was filled." } } };
+
+/** A page that takes option notes, as the round pages do through `abAnswering`. */
+function NotingHarness({ question, onNotes }: { question: Question; onNotes?: (notes: Record<string, string>) => void }): ReactNode {
+  const [answer, setAnswer] = useState<QuestionAnswer>();
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const onNote = (option: string, text: string): void => {
+    const next = { ...notes, [option]: text };
+    setNotes(next);
+    onNotes?.(next);
+  };
+  const choose = (choice: string): void => setAnswer((current) => chooseIn(question, current, choice));
+  return <RoundQuestion question={question} position={1} answer={answer} onChoose={choose} active onActivate={() => undefined} ab={{ notes, onNote, onNeither: () => undefined }} />;
+}
+
+const card = (option: string): HTMLElement => screen.getByTestId(`option-card-${option}`);
+const controlIn = (option: string): HTMLElement => {
+  const found = card(option).querySelector<HTMLElement>('[role="radio"], [role="checkbox"]');
+  if (!found) throw new Error(`no control in the ${option} card`);
+  return found;
+};
+
+describe("a decision packet's option cards (G16)", () => {
+  it("draws each option as a card with its detail, weak point and what picking it does", () => {
+    render(<NotingHarness question={packet} />);
+
+    expect(card("Screw lid").textContent).toContain("1  Screw lid");
+    expect(within(card("Screw lid")).getByText("airtight")).toBeTruthy();
+    expect(card("Screw lid").textContent).not.toContain("**");
+    expect(card("Screw lid").textContent).toContain("WEAK POINT");
+    expect(card("Screw lid").textContent).toContain("The thread clogs with sugar.");
+    expect(card("Screw lid").textContent).toContain("IF YOU PICK THIS");
+    expect(card("Screw lid").textContent).toContain("Order screw lids for the next batch.");
+    expect(card("Cork").textContent).toContain("Breathes, so the jam keeps longer.");
+    expect(card("Cork").textContent).not.toContain("WEAK POINT");
+    expect(card("Clamp lid").textContent).toContain("3  Clamp lid");
+  });
+
+  it("picks the option when its card's control is pressed, and moves the pick between cards", () => {
+    render(<NotingHarness question={packet} />);
+
+    fireEvent.click(controlIn("Cork"));
+    expect(controlIn("Cork").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(controlIn("Clamp lid"));
+    expect(controlIn("Clamp lid").getAttribute("aria-checked")).toBe("true");
+    expect(controlIn("Cork").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("toggles a pick-many option from its card", () => {
+    render(<NotingHarness question={packetMany} />);
+
+    fireEvent.click(controlIn("Contents"));
+    fireEvent.click(controlIn("Date"));
+    expect([controlIn("Date"), controlIn("Contents")].map((each) => each.getAttribute("aria-checked"))).toEqual(["true", "true"]);
+  });
+
+  it("gives every card its own note box, kept by option", () => {
+    let notes: Record<string, string> = {};
+    render(<NotingHarness question={packet} onNotes={(next) => (notes = next)} />);
+
+    fireEvent.change(screen.getByLabelText("Note on Cork"), { target: { value: "Too loose for jam." } });
+    fireEvent.change(screen.getByLabelText("Note on Clamp lid"), { target: { value: "Heavy." } });
+    expect(notes).toEqual({ Cork: "Too loose for jam.", "Clamp lid": "Heavy." });
+  });
+
+  it("leaves a question with no option details as plain radios with no cards or note boxes", () => {
+    render(<NotingHarness question={pickOne} />);
+
+    expect(screen.queryByTestId("option-card-Cork")).toBeNull();
+    expect(screen.queryByLabelText("Note on Cork")).toBeNull();
+    expect(screen.getByText("2 Cork").closest('[role="radio"]')).toBeTruthy();
   });
 });

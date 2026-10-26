@@ -1,12 +1,15 @@
 import { execFile, type ExecFileException } from "node:child_process";
-import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
+import { z } from "zod";
+import { deployWindowPath } from "./deploy-output.js";
 import type { CommandResult } from "./service-control.js";
-import { UNAVAILABLE, type Probe } from "./deploy-watch-window.js";
+import { UNAVAILABLE, type Probe, type WatchIntent } from "./deploy-watch-window.js";
 import { nodeMorningHoldPorts } from "./morning-deploy-hold.js";
+import type { PauseClearPorts } from "./owner-ops/pause-clear.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const GIT_TIMEOUT_MS = 120_000;
@@ -122,6 +125,19 @@ export function systemDeployPorts(checkout: string): DeployPorts {
   };
 }
 
+function readIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/** Only the deploy lock and the pause files: serve's console clear needs no checkout, git or pnpm. */
+export function systemPauseClearPorts(): PauseClearPorts {
+  return { pid: process.pid, exists: existsSync, readFile: readIfPresent, remove: (path) => rmSync(path, { force: true }), createExclusive, rename, isAlive: isProcessAlive };
+}
+
 /** The origin URL of `checkout`, the canonical remote a deploy clone defaults to; undefined when it has none. */
 export async function originOf(checkout: string): Promise<string | undefined> {
   const result = await runCommand("git", ["remote", "get-url", "origin"], checkout, GIT_TIMEOUT_MS, gitChildEnv(process.env));
@@ -134,5 +150,17 @@ export function readLastDeploy(stateDir: string): DeployRecord | null {
     return parseDeployRecord(readFileSync(deployRecordPath(stateDir), "utf8")) ?? null;
   } catch {
     return null;
+  }
+}
+
+const WindowRecord = z.object({ sha: z.string(), windowEnd: z.number() });
+
+/** The open or last health watch; an absent or unreadable record reads as none. */
+export function readDeployWindow(stateDir: string): WatchIntent | undefined {
+  try {
+    const parsed = WindowRecord.safeParse(JSON.parse(readFileSync(deployWindowPath(stateDir), "utf8")));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
   }
 }

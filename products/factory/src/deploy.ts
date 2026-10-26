@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
-import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths, versionOnlyManifestChange } from "./deploy-closure.js";
-import type { DeployIncident } from "./deploy-incident.js";
+import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
+import { changedPaths, runtimeTouched, showAt } from "./deploy-range.js";
+import { announce, resolveAlarms, type NoticePorts } from "./deploy-notices.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployHeld } from "./deploy-hold-gate.js";
 import { writeDeployPause, type DeployPause } from "./deploy-pause.js";
@@ -11,7 +12,7 @@ import { buildShaOf, DEFAULT_WATCH_WINDOW, answerOf, watchServe, type Probe, typ
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
-export interface DeployPorts extends ServicePorts, LockPorts {
+export interface DeployPorts extends ServicePorts, LockPorts, NoticePorts {
   /** `/health` with a longer timeout than `health`'s, for reads that must not mistake a slow answer for none. */
   healthWithin: (port: number, timeoutMs: number) => Promise<Probe>;
   /** `git clone --branch main <remote> <dest>`, run from the parent of `dest`; only called when the checkout is absent. */
@@ -25,8 +26,6 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   removeTree: (path: string) => void;
   /** The file names in `dir`; undefined when it is missing or cannot be read. */
   listFiles: (dir: string) => string[] | undefined;
-  /** Tells the hub seat and the owner queue about a rollback that paused deploys; absent means only stderr carries it. */
-  incident?: (incident: DeployIncident) => Promise<void>;
 }
 
 export interface DeployOptions {
@@ -208,46 +207,27 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   const from = cleanSha(running);
   if (!prepareOnly && from !== undefined && (await isAncestor(ports, target, from))) return { kind: "stop", code: 0, message: `already deployed: build ${from} contains ${target}` };
   const head = (await ports.git(["rev-parse", "HEAD"])).stdout.trim();
-  if (head !== target && (await isAncestor(ports, target, head))) return refuse(await pastTarget(ports, head, target));
+  if (head !== target && (await isAncestor(ports, target, head))) return pastTarget(ports, head, target);
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
-  const changed = from === undefined ? undefined : await changedPaths(ports, from, target);
-  const go = { target, running, closure, touched: await runtimeTouched(ports, touchedPaths(changed, closure), from, target), prepareOnly };
+  const changed = from === undefined ? undefined : await changedPaths(ports.git, from, target);
+  const go = { target, running, closure, touched: await runtimeTouched(ports.git, touchedPaths(changed, closure), from, target), prepareOnly };
   const native = go.touched.length === 0 ? undefined : await nativeBuildRefusal(ports, head, target);
   return native === undefined ? { kind: "go", go } : refuse(native);
 }
 
-async function pastTarget(ports: DeployPorts, head: string, target: string): Promise<string> {
+/** Only the asked sha deploys, since the pacer checked its CI and no other sha's (TP-4279); deploy-health reads this refusal as superseded. */
+async function pastTarget(ports: DeployPorts, head: string, target: string): Promise<Plan> {
   const past = `the checkout's main is at ${head}, already past ${target}`;
-  if (await isAncestor(ports, head, ORIGIN_MAIN)) return `${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`;
-  return `${past} with commits that are not on ${ORIGIN_MAIN}; push or remove them from the checkout's main, then rerun`;
+  if (!(await isAncestor(ports, head, ORIGIN_MAIN))) return refuse(`${past} with commits that are not on ${ORIGIN_MAIN}; push or remove them from the checkout's main, then rerun`);
+  return refuse(`${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`);
 }
 
 /** setupEnv pins ignore_scripts, so a changed native addon would install uncompiled and a dist rollback could not undo it. */
 async function nativeBuildRefusal(ports: DeployPorts, head: string, target: string): Promise<string | undefined> {
-  const read = async (sha: string): Promise<string | undefined> => {
-    const shown = await ports.git(["show", `${sha}:${LOCKFILE}`]);
-    return shown.code === 0 ? shown.stdout : undefined;
-  };
-  const changes = nativeBuildChanges(await read(head), await read(target));
+  const changes = nativeBuildChanges(await showAt(ports.git, head, LOCKFILE), await showAt(ports.git, target, LOCKFILE));
   if (changes.length === 0) return undefined;
   const steps = `git merge --ff-only ${target}, pnpm install --frozen-lockfile, pnpm --filter "${FACTORY_PACKAGE}..." build, then titan-factory service restart`;
   return `${LOCKFILE} changes a package with a native build (${changes.join("; ")}), and the deployer installs with ignore_scripts, which skips that build. Deploy it by hand in the checkout: ${steps}`;
-}
-
-async function changedPaths(ports: DeployPorts, from: string, target: string): Promise<string[] | undefined> {
-  const diff = await ports.git(["diff", "--name-only", "--no-renames", from, target]);
-  return diff.code === 0 ? diff.stdout.split("\n").filter((line) => line !== "") : undefined;
-}
-
-/** A Version Packages merge bumps only package versions, which the build never reads, so those manifests are not build inputs. */
-async function runtimeTouched(ports: DeployPorts, touched: string[], from: string | undefined, target: string): Promise<string[]> {
-  if (from === undefined) return touched;
-  const read = async (sha: string, path: string): Promise<string | undefined> => {
-    const shown = await ports.git(["show", `${sha}:${path}`]);
-    return shown.code === 0 ? shown.stdout : undefined;
-  };
-  const kept = await Promise.all(touched.map(async (path) => !path.endsWith("/package.json") || !versionOnlyManifestChange(await read(from, path), await read(target, path))));
-  return touched.filter((_, index) => kept[index]);
 }
 
 async function execute(deploy: Deploy, go: Go): Promise<number> {
@@ -261,8 +241,11 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   if (built !== undefined) return rollBackBuild(deploy, go, backup, built);
   const why = await restartAndConfirm(deploy, go.target);
   if (typeof why === "object") return finish(deploy, go, "held", why.held, writeUnreadableHold(deploy.ports, deploy.options.stateDir, go.target, why.held));
-  return why === undefined ? finish(deploy, go, "deployed") : rollBackRestart(deploy, go, backup, why);
+  if (why !== undefined) return rollBackRestart(deploy, go, backup, why);
+  await resolveAlarms(deploy.ports, deploy.io);
+  return finish(deploy, go, "deployed");
 }
+
 
 /** No service runs from this checkout yet, so there is no backup to restore and no restart to confirm: build, then `service install` points the service at it. */
 async function prepare(deploy: Deploy, go: Go): Promise<number> {
@@ -328,12 +311,12 @@ async function restartAndConfirm({ ports, io, options }: Deploy, target: string)
   const sha = buildShaOf(health);
   if (health === undefined || sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
   if (sha !== target) return `/health reports build ${sha}, not ${target}`;
-  const probe = (timeoutMs: number) => ports.healthWithin(options.port, timeoutMs);
   const record = (intent: WatchIntent): void => {
     const warning = writeWindowRecord(ports, options.stateDir, intent);
     if (warning !== undefined) io.stderr(warning);
   };
-  return watchServe({ probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive, record }, { confirmed: health, atRestart }, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
+  const watch = { probe: (timeoutMs: number) => ports.healthWithin(options.port, timeoutMs), sleep: ports.sleep, now: ports.now, alive: ports.isAlive, record, report: io.stdout };
+  return watchServe(watch, { confirmed: health, atRestart }, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
 }
 
 /** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */
@@ -356,7 +339,7 @@ async function rollBackRestart(deploy: Deploy, go: Go, backup: string, why: stri
   const lost = pause(deploy, go, why, unverified === undefined ? "verified" : "failed") ?? pauseFailure;
   const told = `${why}${unverified === undefined ? "" : `; ${unverified}`}${lost === undefined ? "" : `; the deploy pause could not be written: ${lost}`}`;
   if (unverified !== undefined || lost !== undefined) deploy.io.stderr(`ALERT: the rollback of ${go.target} needs a person: ${told}\n`);
-  await announce(deploy, { kind, target: go.target, from: go.running ?? UNKNOWN, why: told, at: new Date(deploy.ports.now()).toISOString() });
+  await announce(deploy.ports, deploy.io, { kind, target: go.target, from: go.running ?? UNKNOWN, why: told, at: new Date(deploy.ports.now()).toISOString() });
   return finish(deploy, go, "rolled-back", told);
 }
 
@@ -377,14 +360,6 @@ async function restoreAndVerify(deploy: Deploy, go: Go, backup: string): Promise
   return sha === go.running ? undefined : `the restored build answered /health as ${sha ?? "nothing"}, not ${go.running}`;
 }
 
-async function announce({ ports, io }: Deploy, incident: DeployIncident): Promise<void> {
-  if (!ports.incident) return io.stderr("error: no incident notice is wired, so only this log carries the rollback\n");
-  try {
-    await ports.incident(incident);
-  } catch (error) {
-    io.stderr(`error: the incident notice failed: ${error instanceof Error ? error.message : String(error)}\n`);
-  }
-}
 
 /** After a failed build the old process has its code loaded already, so it should still answer as the running build. */
 async function stillServing({ ports, options }: Deploy, go: Go): Promise<boolean> {

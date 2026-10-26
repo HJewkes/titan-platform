@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every step reads as the correctness reviewer's",
+      "file": "products/factory/src/shepherd/review-stats.ts",
+      "find": "return member !== undefined && MEMBER_SHAPES.has(member) ? member : \"correctness\";",
+      "replace": "return \"correctness\";",
+      "kills": [
+        "review labels labels each round with its member's shape, its head's intent cause and its scope, and gives each member its own verdict"
+      ]
+    },
+    {
+      "name": "a verdict resolves the newest round of any shape",
+      "file": "products/factory/src/shepherd/review-stats.ts",
+      "find": "    const current = latestOf(rounds, shape);",
+      "replace": "    const current = rounds.at(-1);",
+      "kills": [
+        "review labels labels each round with its member's shape, its head's intent cause and its scope, and gives each member its own verdict"
+      ]
+    },
+    {
+      "name": "a convergence pass labels every later head convergence",
+      "file": "products/factory/src/shepherd/review-stats.ts",
+      "find": "converging.delete(head) ? \"convergence\"",
+      "replace": "converging.size > 0 ? \"convergence\"",
+      "kills": [
+        "review labels labels D8's convergence review at a head as convergence, and a later head by its own intent"
+      ]
+    },
+    {
+      "name": "the v2 migration keeps the watermark, so v1 rows are never read again",
+      "file": "products/factory/src/shepherd/review-stats-store.ts",
+      "find": "  DELETE FROM review_meta WHERE key = 'refreshed_through';",
+      "replace": "",
+      "kills": [
+        "review labels migrates a v1 store and fills its stored rows' labels on the next refresh without pricing them again"
+      ]
+    },
+    {
+      "name": "stored rounds are never relabelled",
+      "file": "products/factory/src/shepherd/review-stats.ts",
+      "find": "    for (const { run, round } of stored) deps.store.setLabels({ runId: run.id, round: round.round }, round);\n",
+      "replace": "",
+      "kills": [
+        "review labels migrates a v1 store and fills its stored rows' labels on the next refresh without pricing them again"
+      ]
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import { reviewerBrief, type ReviewerBriefInput } from "../reviewer-brief.js";
 import type { ReviewShape } from "../types.js";
 import { ADVERSARY_OVERLAY, holdContextLines, type AdversaryHoldContext } from "./adversary.js";
 import { PERF_OVERLAY } from "./perf.js";
-import { TESTS_OVERLAY, fixProofLines, waivedLines } from "./tests.js";
+import { TESTS_OVERLAY, fixProofLines, testOnlyMemberLines, waivedLines, workflowCiLines } from "./tests.js";
 import { VISUAL_OVERLAY } from "./visual.js";
 
 /** The shapes that carry an overlay; correctness is the base brief itself. */
@@ -47,10 +47,14 @@ export interface ShapeBriefInput extends ReviewerBriefInput {
   holdContext?: AdversaryHoldContext;
 }
 
-/** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
+/**
+ * The overlay comes first so the base brief's verdict template stays the end of the prompt. A member always reads the full
+ * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` is dropped.
+ */
 export function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string {
   const { fixProof, holdContext, ...base } = input;
-  const waived = waivedLines(input.head, input.fixProofWaivedAt).length > 0;
-  const extra = shape === "tests" && !waived ? ["", ...fixProofLines(input.head, fixProof)] : shape === "adversary" ? holdContextLines(holdContext) : [];
-  return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief(base)].join("\n");
+  const proved = waivedLines(input.head, input.fixProofWaivedAt).length > 0 || workflowCiLines(input.head, input.workflowCiProof).length > 0;
+  const testsLines = () => ["", ...fixProofLines(input.head, fixProof), ...testOnlyMemberLines(input.fixProofUnverified)];
+  const extra = shape === "tests" && !proved ? testsLines() : shape === "adversary" ? holdContextLines(holdContext) : [];
+  return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief({ ...base, scope: undefined })].join("\n");
 }

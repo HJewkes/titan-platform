@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the schema bounds the deprecated intervalMs to the backstop range again",
+      "file": "products/factory/src/reconciler/config.ts",
+      "find": "intervalMs: z.number().optional(),",
+      "replace": "intervalMs: z.number().min(300_000).max(600_000).optional(),",
+      "kills": [
+        "reconciler config (I8) loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
+      ]
+    },
+    {
+      "name": "a config that sets intervalMs is never named deprecated",
+      "file": "products/factory/src/reconciler/config.ts",
+      "find": "return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
+      "replace": "return [];",
+      "kills": [
+        "reconciler config (I8) loads a webhook config that still sets reconciler.intervalMs out of the backstop's range, and names it deprecated"
+      ]
+    },
+    {
+      "name": "every config is named deprecated, set or not",
+      "file": "products/factory/src/reconciler/config.ts",
+      "find": "return config.reconciler?.intervalMs === undefined ? [] : [DEPRECATED_INTERVAL];",
+      "replace": "return [DEPRECATED_INTERVAL];",
+      "kills": [
+        "reconciler config (I8) defaults to off, a snapshot at least every 3 ticks and no repos, with no interval of its own"
+      ]
+    }
+  ]
+}

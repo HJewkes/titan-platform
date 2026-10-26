@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
+import { BuildFooter } from "./BuildFooter.js";
 import { useRelayInvalidation } from "./data/live.js";
 import { useStaleSince } from "./data/stale.js";
 import { PAGES } from "./pages/index.js";
@@ -17,13 +18,14 @@ export function App(): ReactNode {
   return (
     <AppShell
       brand={BRAND}
-      topBar={<TopBar leading={<BrandLockup brand={BRAND} wordmark="TITAN CONSOLE" subtitle="read-only" />} />}
+      topBar={<TopBar brand={BRAND} leading={<BrandLockup brand={BRAND} wordmark="TITAN CONSOLE" subtitle="read-only" />} />}
       navItems={NAV_ITEMS}
       activeKey={route.view}
       onNavigate={navigate}
     >
       <StaleLine />
       <RoutedView route={route} />
+      <BuildFooter />
     </AppShell>
   );
 }

@@ -13,6 +13,8 @@ export interface PaceItem {
   /** Seconds from the beat's start, or null when no word timings resolve its cue. */
   atS: number | null;
   source: PaceSource;
+  /** The spoken word the item appears on, when it is cued. */
+  cue?: string;
 }
 
 /** A beat as the pace layer reads it: its heard (or planned) length and the items it puts on screen. */
@@ -36,6 +38,11 @@ export interface PaceBeat {
 // read and hold (a recipe caption, an outro title card, a target chip), not a qualifier of an item already shown
 // (an attribute) nor an animation of one (an action). stamp and line are attributes: a stamp marks the state of
 // a row already on screen, and a line highlights a line of code the CodeWalk already shows.
+// edge is an item: a build/buy table row names a new thing (a part and its verdict) for the viewer to read.
+// orphan is an attribute: it marks nodes already on screen as unreached, naming nothing new.
+// wait is an action: it animates elapsed time in a recipe (a CI pause), like run and replay.
+// edit is an action: it rewrites a line of code already shown, as insert adds one, naming no new item.
+// step-markers is an attribute: it marks the memo state of recipe steps already on screen, like stamp on a row.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -59,11 +66,14 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   gate: "item",
   bar: "item",
   gauge: "item",
+  edge: "item",
   detail: "attribute",
   left: "attribute",
   right: "attribute",
   stamp: "attribute",
   line: "attribute",
+  orphan: "attribute",
+  "step-markers": "attribute",
   run: "action",
   crash: "action",
   bump: "action",
@@ -71,6 +81,8 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   replay: "action",
   insert: "action",
   release: "action",
+  wait: "action",
+  edit: "action",
 };
 
 /** The role of a cue kind; an unknown kind throws, so a new renderer cannot go silently uncounted. */
@@ -79,6 +91,16 @@ export function cueKindRole(kind: string): PaceRole {
   if (!role) throw new Error(`unknown cue kind "${kind}": add it to CUE_KIND_ROLES`);
   return role;
 }
+
+/** The kind half of a `kind:label` cue target; a target with no colon is its own kind. */
+export const cueTargetKind = (target: string): string => {
+  const colon = target.indexOf(":");
+  return colon < 0 ? target : target.slice(0, colon);
+};
+
+/** The kinds of a beat's cue targets that CUE_KIND_ROLES lacks; a beat spec's cues name element ids, so they have none. */
+export const unknownCueKinds = (beat: Pick<ScriptBeat, "visual">): string[] =>
+  beat.visual.beat !== undefined ? [] : beat.visual.cues.map((cue) => cueTargetKind(cue.target)).filter((kind) => !Object.hasOwn(CUE_KIND_ROLES, kind));
 
 interface Cued {
   label: string;
@@ -95,6 +117,8 @@ export interface PaceSourceBeat {
   origin?: string;
   render?: string;
   mapBeside: boolean;
+  /** The beat names a beat spec, so each cue target is one of the spec's emphasis element ids, not `kind:label`. */
+  emphasisCues?: boolean;
   cues: { target: string; atCue?: string }[];
   titles: string[];
   reveals: (Cued & { id: string })[];
@@ -105,18 +129,26 @@ export interface PaceSourceBeat {
 
 type AtS = (cue: string | undefined) => number | null;
 
+const cueWord = (atCue: string | undefined): Pick<PaceItem, "cue"> => (atCue === undefined ? {} : { cue: atCue });
+
 const COUNT_KINDS = new Set(["card", "fan"]);
 
 const isCountCard = (beat: PaceSourceBeat, kind: string, label: string): boolean =>
   beat.render === "HookBeat" && COUNT_KINDS.has(kind) && /^\d/.test(label);
 
+// An emphasis cue lights an element the beat spec already put on screen, so it qualifies a shown item (an
+// attribute) whatever id the author gave the element.
+function emphasisItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
+  return beat.cues.map(({ target, atCue }) => ({ label: target, kind: "emphasis", role: "attribute", atS: atS(atCue), source: "cue", ...cueWord(atCue) }));
+}
+
 function cueItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
+  if (beat.emphasisCues) return emphasisItems(beat, atS);
   return beat.cues.flatMap(({ target, atCue }) => {
-    const colon = target.indexOf(":");
-    const kind = colon < 0 ? target : target.slice(0, colon);
-    const label = colon < 0 ? target : target.slice(colon + 1);
+    const kind = cueTargetKind(target);
+    const label = target.includes(":") ? target.slice(kind.length + 1) : target;
     const role = cueKindRole(kind);
-    return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const }];
+    return isCountCard(beat, kind, label) ? [] : [{ label, kind, role, atS: atS(atCue), source: "cue" as const, ...cueWord(atCue) }];
   });
 }
 
@@ -128,6 +160,7 @@ function beatItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
     role,
     atS: atS(atCue),
     source,
+    ...cueWord(atCue),
   });
   return [
     ...cueItems(beat, atS),
@@ -139,7 +172,8 @@ function beatItems(beat: PaceSourceBeat, atS: AtS): PaceItem[] {
   ];
 }
 
-const labelKey = (label: string): string => label.trim().toLowerCase();
+/** How the item track compares labels: case-folded and trimmed, so "Shepherd" and " shepherd" are one item. */
+export const labelKey = (label: string): string => label.trim().toLowerCase();
 
 function cueSeconds(beatId: string, timing: ScriptTiming | undefined): AtS {
   const words = timing?.get(beatId)?.words;
@@ -187,6 +221,7 @@ function v1SourceBeat(beat: ScriptBeat): PaceSourceBeat {
     plannedS: beat.plannedS,
     ...(beat.kind === undefined ? {} : { render: beat.kind }),
     mapBeside: state !== undefined,
+    ...(beat.visual.beat === undefined ? {} : { emphasisCues: true }),
     cues: beat.visual.cues,
     titles: [],
     reveals: (state?.reveal ?? []).map((r) => ({ id: r.id, label: r.id, atCue: r.atCue })),

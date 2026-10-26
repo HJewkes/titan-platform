@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "CliDeps takes an owner-presence check again",
+      "file": "products/factory/src/cli.ts",
+      "find": "  /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */\n",
+      "replace": "  presence?: OwnerPresence;\n  /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */\n",
+      "kills": [
+        "owner-identity seams no production deps type carries an owner-identity check"
+      ]
+    },
+    {
+      "name": "FactoryServerOptions takes an owner key loader again",
+      "file": "products/factory/src/serve.ts",
+      "find": "  /** The audience an owner proof must name; defaults to this machine's hostname. */\n  aud?: string;\n",
+      "replace": "  /** The audience an owner proof must name; defaults to this machine's hostname. */\n  aud?: string;\n  keyRing?: () => OwnerKeys;\n",
+      "kills": [
+        "owner-identity seams no production deps type carries an owner-identity check"
+      ]
+    },
+    {
+      "name": "serve swaps the owner key directory itself",
+      "file": "products/factory/src/serve.ts",
+      "find": "keys: loadOwnerKeys(),",
+      "replace": "keys: (setOwnerKeysEdge({}), loadOwnerKeys()),",
+      "kills": [
+        "owner-identity seams only test-support swaps the owner-presence helper or the owner key directory"
+      ]
+    }
+  ]
+}

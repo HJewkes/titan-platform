@@ -131,6 +131,30 @@ interface OpenPrRequest {
     body: string;
 }
 
+/** A branch tip, or `notModified` when it is unchanged since the read that answered `etag`; a missing branch reads as a null `sha`. */
+type RefRead = {
+    notModified: true;
+} | {
+    notModified: false;
+    sha: string | null;
+    etag: string | null;
+};
+/**
+ * Ruleset id to its `updated_at`, or `notModified` when the list is unchanged since the read that answered `etag`.
+ * `unreadable` is a private repo on the free plan, which GitHub refuses rulesets with a 403: its rulesets are unknown, never none.
+ */
+type RulesetList = {
+    notModified: true;
+} | {
+    notModified: false;
+    unreadable: true;
+} | {
+    notModified: false;
+    unreadable: false;
+    rulesets: Record<number, string>;
+    etag: string | null;
+};
+
 /** One inline review comment; a comment is resolved when its review thread is. */
 interface ReviewComment {
     id: number;
@@ -172,6 +196,11 @@ interface CommitStatus {
     context: string;
     /** `success`, `pending`, `failure` or `error`. */
     state: string;
+    /** The link `gh pr checks` prints; absent when the wire does not report it, null when the poster set none. */
+    targetUrl?: string | null;
+    description?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
 }
 /** A commit on the default branch with its full message, subject line first. */
 interface LoggedCommit {
@@ -211,6 +240,10 @@ interface CheckRun {
     status: string;
     conclusion: string | null;
     startedAt: string | null;
+    /** Null until the run completes. */
+    completedAt: string | null;
+    /** The run's `output.title`, which `gh pr checks` prints as a check's description; null when the run set none. */
+    title: string | null;
     /** The commit the run checked; a run at any other sha says nothing about this head. */
     headSha: string;
     /** The GitHub App that posted the run; a required context counts only from an allowed app. */
@@ -345,6 +378,10 @@ interface GitHubWire {
     listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
     /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
     revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+    /** `GET git/ref/heads/{branch}`, sent with `If-None-Match: etag` when `etag` is set; a 404 answers a null `sha`. */
+    revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+    /** `GET rulesets`, sent with `If-None-Match: etag` when `etag` is set; a free-plan 403 answers `unreadable`. */
+    revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
     createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
     getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
     getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
@@ -353,7 +390,8 @@ interface GitHubWire {
     reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
     /** The branch endpoint's own `protected` flag; a missing or non-boolean answer throws, so it is never inferred. */
     getBranchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-    listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+    /** `all` keeps a rerun's earlier attempts, which GitHub's default filter hides. */
+    listCheckRuns(repo: RepoSlug, sha: string, filter?: "all"): Promise<CheckRun[]>;
     /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
     createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{
         id: number;
@@ -378,6 +416,8 @@ interface GitHubWire {
     mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
     getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
     rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
+    /** `POST actions/jobs/{jobId}/rerun`, what `gh run rerun <run> --job <job>` sends. */
+    rerunJob(repo: RepoSlug, jobId: number): Promise<void>;
     /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
     listPrFiles(repo: RepoSlug, number: number): Promise<{
         files: PrFile[];
@@ -424,6 +464,10 @@ interface GitHubPort {
     listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
     /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
     revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+    /** A conditional `getHeadSha`: pass the `etag` of the last read, null for none. A 304 costs no rate-limit point. */
+    revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+    /** Each ruleset's `updated_at` by id, conditional like `revalidateOpenPrs`; `unreadable` means unknown, never none. */
+    revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
     openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{
         pr: PullRequest;
     }>>;
@@ -438,8 +482,9 @@ interface GitHubPort {
     reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
     /** The branch's `protected` flag as GitHub reports it; a failed read throws. */
     branchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-    /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
+    /** Every run on `sha` from every app under GitHub's default `filter=latest`: separate workflow runs stay, which `mergeReadiness` needs, but a rerun hides its job's earlier attempts, which `checkRunAttempts` keeps (`filter=all`) for a reader of attempt order. */
     checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+    checkRunAttempts(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
     /** The latest run for each check name on `sha`. */
     latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
     /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
@@ -474,6 +519,10 @@ interface GitHubPort {
     mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
     getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
     rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
+    /** An Actions workflow run's `status`: `queued`, `in_progress`, `completed` and the like. */
+    workflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+    /** Reruns one job (its check run id) of workflow run `runId`; a run that is not completed skips as `in-progress`, since a rerun is already under way or none is allowed yet. */
+    rerunJob(repo: RepoSlug, runId: number, jobId: number): Promise<WriteResult>;
     /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
     listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
     /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
@@ -520,6 +569,8 @@ declare class WriteRetriesExhaustedError extends Error {
     constructor(step: string, attempts: number, last: unknown);
 }
 
+/** The branches Shepherd pushes candidate merges to; only the factory may write under it. */
+declare const TRAIN_PREFIX = "shepherd-train/";
 /** What GitHub charged for one query, read from the query itself. */
 interface RateLimit {
     cost: number;
@@ -530,6 +581,13 @@ interface GhReview {
     databaseId: number;
     state: string;
     submittedAt: string | null;
+    /** Read on every query; optional so a fixture that predates the field still types. */
+    author?: {
+        login: string;
+    } | null;
+    commit?: {
+        oid: string;
+    } | null;
 }
 /** GitHub's formula: the requests needed to fill every connection at its page size, over 100, rounded, at least 1. */
 declare function graphqlPoints(requests: number): number;
@@ -538,6 +596,7 @@ declare function snapshotRequests(ranges: {
     open: boolean;
     done: boolean;
     history: boolean;
+    trains: boolean;
 }): number;
 
 /** Page caps per range: past one, the read throws rather than answer a range cut short. */
@@ -547,6 +606,7 @@ declare const BACKSTOP_CAPS: {
     readonly main: 20;
     readonly contexts: 10;
     readonly reviews: 10;
+    readonly trains: 4;
 };
 type BackstopRange = keyof typeof BACKSTOP_CAPS;
 /** Re-reads `done` this far behind its cursor, so a PR closed as the last tick read is not missed. */
@@ -579,6 +639,7 @@ type RollupContext = {
     context: string;
     state: string;
     createdAt: string;
+    creator?: string | null;
 };
 type BackstopReview = GhReview;
 interface BackstopCommit {
@@ -603,6 +664,11 @@ interface BackstopDonePr {
     closedAt: string | null;
     updatedAt: string;
 }
+/** A `shepherd-train/**` branch head; `ref` is the full branch name. */
+interface BackstopTrain {
+    ref: string;
+    oid: string;
+}
 interface BackstopSnapshot {
     open: BackstopOpenPr[];
     done: BackstopDonePr[];
@@ -611,6 +677,7 @@ interface BackstopSnapshot {
         tip: string;
         commits: BackstopCommit[];
     };
+    trains: BackstopTrain[];
     /** `cost` sums every query the read sent; `remaining` and `resetAt` are the last query's. */
     rateLimit: RateLimit & {
         queries: number;
@@ -800,6 +867,11 @@ interface OctokitClientOptions {
      * spread over the time left. Defaults to `sharedRateBudget`, the user login's; another identity passes its own.
      */
     budget?: RateBudget;
+    /**
+     * The throttle never sleeps and retries inside a call, so a `githubApiPool` in front owns every rate-limit wait; the limit
+     * still lands in `budget().cooldowns`. Off by default.
+     */
+    poolOwnsWaits?: boolean;
 }
 interface GitHubClient {
     request: Octokit["request"];
@@ -852,6 +924,8 @@ declare class LsRemoteError extends Error {
  * is an independent second source for a head. Null when the remote has no such ref; a failed read throws `LsRemoteError`.
  */
 declare function lsRemotePullHead(exec: GitExec, remoteUrl: string, n: number, options?: LsRemoteOptions): Promise<string | null>;
+/** As `lsRemotePullHead`, for `refs/heads/<branch>`: a branch tip from git's transport. */
+declare function lsRemoteBranchHead(exec: GitExec, remoteUrl: string, branch: string, options?: LsRemoteOptions): Promise<string | null>;
 
 interface GhCliOptions {
     /** Defaults to one budget per process, because GitHub counts calls per login. */
@@ -918,6 +992,13 @@ interface FakeGitHub {
     /** A `GitExec` for `lsRemotePullHead`: `refs/pull/<n>/head` is the PR's current head, absent for a PR the fake lacks. A `lsRemote` read fault rejects the exec. */
     gitExec: GitExec;
     effects: FakeEffects;
+    /**
+     * Workflow run id to the `status` `getWorkflowRunStatus` answers, and a rerun sets it `queued`. An unset run reads as
+     * the status of a job of it still open, else `completed`; set `completed` to model a job GitHub left open (tp#2215).
+     */
+    runStatuses: Map<number, string>;
+    /** Every job id a `rerunJob` post named, in order; the rerun leaves the job's check runs as they were. */
+    jobReruns: number[];
     /** Every wire call in order, as `method` names; lets a test prove what was never called. */
     calls: string[];
     /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */
@@ -975,6 +1056,10 @@ interface FakeGitHub {
     /** Errors the next calls of a read throw, one per call, before it answers. */
     readFaults: Partial<Record<FakeFaultyRead, Error[]>>;
     refs: Map<string, string>;
+    /** Ruleset id to its `updated_at`, for `revalidateRulesets`. */
+    rulesets: Map<number, string>;
+    /** When set, `revalidateRulesets` answers `unreadable`, as GitHub's free-plan 403 does for a private repo. */
+    rulesetsFreePlan?: boolean;
     /** Job id to full log text, for `getJobLog`. */
     jobLogs: Map<number, string>;
     /** Job id to its steps, for `getJobSteps`; a job with none seeded answers 404. */
@@ -1061,6 +1146,8 @@ interface SquashMessage {
     readonly subject: string;
     readonly body: string;
 }
+/** Rewrites CI skip tokens and `skip-checks: true` to a form GitHub ignores; code is included, since GitHub reads raw text. */
+declare function defangCiSkip(text: string): string;
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
@@ -1103,4 +1190,101 @@ declare const RATE_LIMIT_PHRASES: readonly RegExp[];
 declare function nextResetAt(now: number, streak: number): number;
 declare function classifyGitHubFailure(input: GitHubFailureInput): GitHubFailure;
 
-export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, BackstopTruncated, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, graphqlPoints, headCheckFindings, isPassing, isPassingConclusion, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemotePullHead, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, successRun };
+/**
+ * Parse the text of a GitHub personal access token file: a classic `ghp_` token or a
+ * fine-grained `github_pat_` token, with one optional trailing newline. Returns the token.
+ * The error text never quotes the input, so a caught error is safe to log.
+ */
+declare function parseGitHubToken(raw: string): string;
+
+/** What the pool's `probe` (a `GET /rate_limit` as the identity) resolves to; absent `status` is a network failure. */
+interface RateLimitProbeAnswer {
+    status?: number;
+    /** GitHub's JSON body: `{ resources: { core: { remaining, reset }, graphql: { ... }, ... } }`. */
+    body?: unknown;
+    networkError?: boolean;
+}
+/** `pass` lets one canary out; `rearm` keeps the pair closed to `resetAt` with its streak untouched. */
+type ProbeVerdict = {
+    kind: "pass";
+} | {
+    kind: "auth";
+} | {
+    kind: "rearm";
+    resetAt: number;
+    reason: string;
+};
+/** A failed probe says nothing about the limit, so it waits the base step and never doubles. */
+declare const PROBE_REARM_MS = 60000;
+/** Secondary limits have no bucket of their own, so a mutation trip reads core and leaves the rest to its canary. */
+declare function probedBucket(callClass: CallClass, trippedBucket: string | undefined): string;
+/** `answer` is undefined when the probe threw. */
+declare function probeVerdict(answer: RateLimitProbeAnswer | undefined, bucket: string, now: number): ProbeVerdict;
+
+declare const POOL_PRIORITY: {
+    readonly outboxAndLander: 1;
+    readonly pacer: 2;
+    readonly itemReads: 3;
+    readonly backstop: 4;
+};
+type PoolPriority = (typeof POOL_PRIORITY)[keyof typeof POOL_PRIORITY];
+/** Each mutation starts at least this long after the previous one started (GitHub's secondary-limit guidance). */
+declare const MUTATION_SPACING_MS = 1000;
+interface PoolClock {
+    /** Epoch milliseconds. */
+    now(): number;
+    sleep(ms: number): Promise<void>;
+}
+/** What `send` resolves to; the pool reads only these fields and hands the whole answer back. */
+interface PoolAnswer {
+    /** Absent for a network failure. */
+    status?: number;
+    /** Header names lower-cased. */
+    headers: Readonly<Record<string, string | undefined>>;
+    message?: string;
+    networkError?: boolean;
+}
+interface PoolPairState {
+    /** `probed`: the probe found the tripped bucket open, and the next call of the class is the one canary. */
+    state: "open" | "closed" | "probed";
+    /** Epoch milliseconds; meaningful while closed or probed. */
+    resetAt: number;
+    streak: number;
+    bucket?: string;
+    reason?: string;
+}
+/** Mutable state per (identity, call class); a product swaps in a durable store so a restart keeps a pair closed. */
+interface PoolStateStore {
+    get(identity: string, callClass: CallClass): PoolPairState | undefined;
+    set(identity: string, callClass: CallClass, state: PoolPairState): void;
+}
+interface PoolUnavailable {
+    unavailable: {
+        resetAt: number;
+        reason: string;
+        class: CallClass;
+    };
+}
+interface GithubApiPoolOptions<C, A extends PoolAnswer> {
+    identity: string;
+    send: (call: C) => Promise<A>;
+    clock: PoolClock;
+    state?: PoolStateStore;
+    /** `GET /rate_limit` as the identity; a closed pair's reopen starts with it once its `resetAt` passes. */
+    probe: () => Promise<RateLimitProbeAnswer>;
+    /** Once per reopen, when the canary returns ok; `resetAt` is the trip's. */
+    onAvailable?: (identity: string, callClass: CallClass, resetAt: number) => void;
+    /** Once per transition into auth state, never per call. */
+    onAuthFailed?: (identity: string) => void;
+}
+interface GithubApiPool<C, A extends PoolAnswer> {
+    /** Resolves to the answer, or to `PoolUnavailable` when GitHub limited the call; an unavailable call never throws. */
+    run(priority: PoolPriority, callClass: CallClass, call: C): Promise<A | PoolUnavailable>;
+    /** The token reader saw a new token: leave auth state, and grant what it held. */
+    tokenChanged(): void;
+}
+declare function memoryPoolStateStore(): PoolStateStore;
+declare function isPoolUnavailable(value: unknown): value is PoolUnavailable;
+declare function githubApiPool<C, A extends PoolAnswer>(options: GithubApiPoolOptions<C, A>): GithubApiPool<C, A>;
+
+export { type Ancestry, type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, BACKSTOP_CAPS, type BackstopCommit, type BackstopDonePr, type BackstopOpenPr, type BackstopRange, type BackstopRequest, type BackstopReview, type BackstopSnapshot, type BackstopTrain, BackstopTruncated, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CallClass, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, DONE_OVERLAP_MS, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitExec, type GitHubClient, GitHubConflictError, type GitHubFailure, type GitHubFailureInput, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type GithubApiPool, type GithubApiPoolOptions, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type JobStep, type LoggedCommit, LsRemoteError, type LsRemoteOptions, MAX_BASE_MERGES, MUTATION_SPACING_MS, type MergeBlockReason, type MergeBlocker, type MergeIntoBranchRequest, type MergeIntoBranchResult, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, POOL_PRIORITY, PROBE_REARM_MS, PR_COMMITS_CAP, PR_FILES_CAP, type PoolAnswer, type PoolClock, type PoolPairState, type PoolPriority, type PoolStateStore, type PoolUnavailable, type PrFile, type ProbeVerdict, type PullRequest, type PutFileRequest, RATE_FLOOR, RATE_LIMIT_PHRASES, type RateBudget, type RateBudgetOptions, type RateLane, type RateLimit, type RateLimitProbeAnswer, type RateWindow, type RefRead, type RepoFile, type RepoSlug, type RequiredChecks, type ResetSource, type Rest, type ReviewComment, type RollupContext, type RulesetList, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, TRAIN_PREFIX, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, classifyGitHubFailure, defangCiSkip, execGh, execGit, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubApiPool, githubPort, graphqlPoints, headCheckFindings, isPassing, isPassingConclusion, isPoolUnavailable, isRepo, isSucceeded, latestPerName, loadRequiredContexts, lsRemoteBranchHead, lsRemotePullHead, memoryPoolStateStore, mergeReadiness, nextResetAt, octokitClient, octokitRest, octokitWire, parseGitHubToken, probeVerdict, probedBucket, rateBudget, readBackstopSnapshot, sharedOctokit, sharedRateBudget, signAppJwt, snapshotRequests, successRun };

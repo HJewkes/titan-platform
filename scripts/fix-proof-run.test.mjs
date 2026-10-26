@@ -29,7 +29,7 @@ describe("fix-proof-run.sh", () => {
     Object.fromEntries(readFileSync(file, "utf8").trimEnd().split("\n").map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
 
   describe("judge", () => {
-    const judge = () => sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")]);
+    const judge = (env = {}) => sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], env);
 
     it("prints the skipped line when the merge base has bin.js but no judge.js", () => {
       writeFileSync(path.join(dist, "bin.js"), echoArgs);
@@ -52,11 +52,11 @@ describe("fix-proof-run.sh", () => {
       expect(parseResultLine(result.stdout.trim()).ok).toBe(true);
     });
 
-    it("runs the merge-base judge.js on the repo and the three report files", () => {
+    it("runs the merge-base judge.js on the repo and the three report files, naming no base to a judge that predates the flag", () => {
       writeFileSync(path.join(dist, "bin.js"), echoArgs);
       writeFileSync(path.join(dist, "judge.js"), echoArgs);
 
-      const result = judge();
+      const result = judge({ BASE_REF: "main" });
 
       const reports = path.join(tmp, "reports");
       expect(result.stdout.trim()).toBe(
@@ -75,6 +75,16 @@ describe("fix-proof-run.sh", () => {
       expect(result.stdout.trim()).toMatch(new RegExp(` --mutants-report ${path.join(tmp, "reports")}/mutants\\.report$`));
     });
 
+    it("names the PR's base to a merge-base judge that reads it, as a plain ref", () => {
+      writeFileSync(path.join(dist, "bin.js"), echoArgs);
+      writeFileSync(path.join(dist, "judge.js"), echoArgs);
+      writeFileSync(path.join(dist, "chunk-ABC.js"), 'var flags = ["base-ref"];\n');
+
+      const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { BASE_REF: "ma in" });
+
+      expect(result.stdout.trim()).toMatch(/ --base-ref ma\?in$/);
+    });
+
     describe("with a refusal from the merge-base step", () => {
       const refusal = "fix-proof runs only against the default branch: base parent is not main";
       beforeEach(() => {
@@ -82,23 +92,26 @@ describe("fix-proof-run.sh", () => {
         writeFileSync(path.join(dist, "judge.js"), `console.log('fix-proof/v1 {"verdict":"reproduces"}');\n`);
       });
 
-      it("prints one error line naming the stacked base and never runs the runner's judge.js", () => {
-        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: refusal });
+      const refused = (env) => sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: refusal, ...env });
+
+      it("prints one refused line naming the stacked base and the default branch, and never runs the runner's judge.js", () => {
+        const result = refused({ FIX_PROOF_REFUSED_BASE: "feat/parent", FIX_PROOF_REFUSED_DEFAULT: "main" });
 
         expect(result.status).toBe(0);
         expect(result.stdout).not.toContain("reproduces\"}");
         expect(result.stdout.split("\n").filter(Boolean)).toHaveLength(1);
         const parsed = parseResultLine(result.stdout.trim());
         expect(parsed.ok).toBe(true);
-        expect(parsed.result).toMatchObject({ head, mergeBase: base, verdict: "error", error: refusal });
+        expect(parsed.result).toEqual(expect.objectContaining({ head, mergeBase: base, verdict: "refused", base: "feat/parent", defaultBranch: "main" }));
+        expect(parsed.result).not.toHaveProperty("error");
       });
 
-      it("keeps the line valid JSON when the reason holds a quote or a backslash", () => {
-        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: 'base a"b\\c is not main' });
+      it("keeps the line valid when a ref holds a quote or a backslash, or is missing", () => {
+        const result = refused({ FIX_PROOF_REFUSED_BASE: 'a"b\\c', FIX_PROOF_REFUSED_DEFAULT: "" });
 
         const parsed = parseResultLine(result.stdout.trim());
         expect(parsed.ok).toBe(true);
-        expect(parsed.result.error).toBe("base abc is not main");
+        expect(parsed.result).toMatchObject({ base: "a?b?c", defaultBranch: "<none>" });
       });
 
       it("runs the runner's judge.js when the refusal output is empty", () => {
@@ -146,7 +159,7 @@ describe("fix-proof-run.sh", () => {
       const result = mergeBase(shas.parent, { BASE_REF: "parent", DEFAULT_BRANCH: "main" });
 
       expect(result.status).toBe(0);
-      expect(readOutputs(outputFile())).toEqual({ refused: "fix-proof runs only against the default branch: base parent is not main" });
+      expect(readOutputs(outputFile())).toEqual({ refused: "fix-proof runs only against the default branch: base parent is not main", refused_base: "parent", refused_default: "main" });
       expect(output()).not.toMatch(/[0-9a-f]{40}/);
     });
 
@@ -164,21 +177,22 @@ describe("fix-proof-run.sh", () => {
     ])("refuses when the payload lacks %s", (_, env) => {
       mergeBase(shas.main, env);
 
-      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
+      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused", "refused_base", "refused_default"]);
     });
 
     it("refuses a base ref that would add a line to GITHUB_OUTPUT", () => {
+      const forged = `main?sha?${"d".repeat(40)}`;
       mergeBase(shas.main, { BASE_REF: `main\nsha=${"d".repeat(40)}`, DEFAULT_BRANCH: `main\nsha=${"d".repeat(40)}` });
 
-      expect(output().trimEnd().split("\n")).toHaveLength(1);
-      expect(readOutputs(outputFile())).toEqual({ refused: `fix-proof runs only against the default branch: base main?sha?${"d".repeat(40)} is not main?sha?${"d".repeat(40)}` });
+      expect(output().trimEnd().split("\n")).toHaveLength(3);
+      expect(readOutputs(outputFile())).toEqual({ refused: `fix-proof runs only against the default branch: base ${forged} is not ${forged}`, refused_base: forged, refused_default: forged });
     });
 
     it("refuses a stacked base whose name holds a newline without letting it write a sha", () => {
       mergeBase(shas.parent, { BASE_REF: `parent\nsha=${shas.parent}`, DEFAULT_BRANCH: "main" });
 
-      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
-      expect(output().trimEnd().split("\n")).toHaveLength(1);
+      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused", "refused_base", "refused_default"]);
+      expect(output().trimEnd().split("\n")).toHaveLength(3);
     });
   });
 
@@ -398,6 +412,27 @@ esac
         expect(result.stdout.split("\n")[0]).toBe(
           `exec --side mutants --repo ${path.join(tmp, "repo")} --base ${base} --head ${head} --out ${out()} --budget-ms 780000 --sandbox-user fix-proof-sandbox`,
         );
+      });
+
+      // Stands in for a merge-base runner that refused a spec: it writes the report and mutants.refused, then exits 0.
+      const refusingBin = (side) =>
+        `const out = process.argv[process.argv.indexOf("--out") + 1];\nrequire("node:fs").mkdirSync(out, { recursive: true });\nrequire("node:fs").writeFileSync(out + "/${side}.report", "");\nrequire("node:fs").writeFileSync(out + "/mutants.refused", "x.test.mutations.json: spec.mutations must hold 1 to 5 mutations");\n`;
+
+      it("exec mutants fails the job when the runner refused a spec, after the report is written", () => {
+        withSandboxSupport();
+        writeFileSync(path.join(dist, "bin.js"), refusingBin("mutants"));
+
+        const result = execWith("mutants");
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("fix-proof: mutation spec refused: x.test.mutations.json: spec.mutations must hold 1 to 5 mutations");
+        expect(existsSync(path.join(out(), "mutants.report"))).toBe(true);
+      });
+
+      it("exec head ignores a mutants.refused file, which only the mutants side reads", () => {
+        writeFileSync(path.join(dist, "bin.js"), refusingBin("head"));
+
+        expect(execWith("head").status).toBe(0);
       });
 
       it("exec mutants writes an error marker, never an unsandboxed run, when the runner has no sandbox support", () => {
@@ -623,6 +658,9 @@ describe("fix-proof workflow", () => {
 
       expect(step.if).toBe("${{ !cancelled() }}");
       expect(step.env.FIX_PROOF_REFUSED).toBe("${{ steps.merge-base.outputs.refused }}");
+      expect(step.env.FIX_PROOF_REFUSED_BASE).toBe("${{ steps.merge-base.outputs.refused_base }}");
+      expect(step.env.FIX_PROOF_REFUSED_DEFAULT).toBe("${{ steps.merge-base.outputs.refused_default }}");
+      expect(step.env.BASE_REF).toBe("${{ github.event.pull_request.base.ref }}");
       expect(step.env.MERGE_BASE).toBe(
         "${{ steps.merge-base.outputs.refused && github.event.pull_request.base.sha || steps.merge-base.outputs.sha }}",
       );
@@ -674,7 +712,7 @@ describe("fix-proof workflow", () => {
         const { status, output } = runStep(id, { BASE_SHA: shas.main, HEAD_SHA: shas.feature, BASE_REF: "parent-branch" });
 
         expect(status).toBe(0);
-        expect(output).toBe("refused=fix-proof runs only against the default branch: base parent-branch is not main\n");
+        expect(output).toBe("refused=fix-proof runs only against the default branch: base parent-branch is not main\nrefused_base=parent-branch\nrefused_default=main\n");
       });
 
       it.each(jobs)("%s keeps an option-shaped base away from git, so it cannot pass the head off as the merge base", (id) => {

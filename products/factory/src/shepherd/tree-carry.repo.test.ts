@@ -88,6 +88,52 @@ describe("carry", { timeout: 30_000 }, () => {
     expect(await probe(h1, h3)).toMatchObject({ equal: true });
   });
 
+  it("reads the PR diff as unchanged across a merge-up over an unreviewed merge-up (TP-3725)", async () => {
+    const { h1 } = reviewedHead();
+    mergeMain();
+    branchAt("main", "main");
+    commit("c.txt", "c1\n");
+    branchAt("feature", "feature");
+    const h3 = mergeMain();
+
+    expect(await probe(h1, h3)).toMatchObject({ equal: true, firstParent: git("rev-parse", `${h3}^1`), patchEqual: true });
+  });
+
+  it("reads the PR diff as unchanged when main moved the lines above the PR's hunk", async () => {
+    const numbered = Array.from({ length: 20 }, (_, i) => `${i + 1}\n`);
+    commit("a.txt", numbered.join(""));
+    branchAt("feature", "HEAD");
+    const h1 = commit("a.txt", numbered.join("").replace("15\n", "fifteen\n"));
+    branchAt("main", "main");
+    commit("b.txt", "b1\n");
+    branchAt("feature", "feature");
+    mergeMain();
+    branchAt("main", "main");
+    commit("a.txt", `0\n${numbered.join("")}`);
+    branchAt("feature", "feature");
+    const h3 = mergeMain();
+
+    expect(await probe(h1, h3)).toMatchObject({ equal: true, patchEqual: true });
+  });
+
+  it("reads the PR diff as changed when main already landed the PR's own hunk, though the trees are equal", async () => {
+    const { h1 } = reviewedHead();
+    mergeMain();
+    branchAt("main", "main");
+    commit("a.txt", "a1\n");
+    branchAt("feature", "feature");
+    const h3 = mergeMain();
+
+    expect(await probe(h1, h3)).toMatchObject({ equal: true, patchEqual: false });
+  });
+
+  it("reads no PR diff for a merge-up straight onto the reviewed head", async () => {
+    const { h1 } = reviewedHead();
+    const h2 = mergeMain();
+
+    expect(await probe(h1, h2)).not.toHaveProperty("patchEqual");
+  });
+
   it("answers not equal when the implementer committed between the reviewed head and the update", async () => {
     const { h1 } = reviewedHead();
     commit("a.txt", "a2\n");

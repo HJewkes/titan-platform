@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the tests member of a non-source head gets no question",
+      "file": "packages/review-panel/src/briefs/tests.ts",
+      "find": "\"no-repro-test-only\": \"test-only\", \"no-repro-non-source\": \"non-source\" };",
+      "replace": "\"no-repro-test-only\": \"test-only\" };",
+      "kills": [
+        "shape briefs asks the tests member of a head proceeding as no-repro-non-source the question for what it changes"
+      ]
+    }
+  ]
+}

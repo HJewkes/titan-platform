@@ -2,7 +2,7 @@
  * `approvals.flow`: the owner's one merged queue, read only. Three legs (the factory's needs.list,
  * the console's deposit spool and its rounds dir) go through owner-queue `consolidate`. Each leg
  * catches its own failure into a gap line, so a dead source never reads as an empty queue. A withdrawn
- * round's questions skip consolidation and join the Flow's `withdrawn` list beside superseded items.
+ * round's questions and withdrawn deposits skip consolidation and join the Flow's `withdrawn` list beside superseded items.
  */
 import { z } from "zod";
 import { consolidate, type Flow, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
@@ -66,8 +66,8 @@ function withoutForeignIdentity(item: OwnerItem): OwnerItem {
 }
 
 async function spoolLeg(inbox: InboxSource): Promise<Leg> {
-  const { open, answered, gaps } = await spoolQueueItems(inbox.dir);
-  return { open: open.map(withoutForeignIdentity), answered: answered.map(withoutForeignIdentity), gaps };
+  const { open, answered, withdrawn, gaps } = await spoolQueueItems(inbox.dir);
+  return { open: open.map(withoutForeignIdentity), answered: answered.map(withoutForeignIdentity), withdrawn, gaps };
 }
 
 async function roundsLeg(rounds: RoundsSource): Promise<Leg> {

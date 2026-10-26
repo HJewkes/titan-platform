@@ -32,6 +32,8 @@ export interface LandScenario {
   workflow: WorkflowDefinition;
   /** Every outcome `land` returned, replays included; the last one is the run's. */
   outcomes: LandOutcome[];
+  /** The fake clock the routes poll on; only sleeps and updates move it. */
+  now: () => number;
 }
 
 /** One PR on a fake repo whose required checks pass on every head, and a workflow that lands it. */
@@ -53,7 +55,7 @@ export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: numbe
     steps: LAND_STEPS,
     run: async (ctx) => void outcomes.push(await land(ctx, { repo: REPO, pr: 1, ...(options.taskIds ? { taskIds: options.taskIds } : {}) }, { ...options.land, policy: options.policy ?? gateEverything })),
   });
-  return { fake, routes, workflow, outcomes };
+  return { fake, routes, workflow, outcomes, now: () => clock };
 }
 
 export function gateId(runId: string, stepId: string, iteration = 0): string {
@@ -77,7 +79,7 @@ export async function approveUntilSettled(host: FactoryHost, runId: string, fake
       answerPendingGate(host, runId, fake);
       expect(host.runtime.status(runId)?.status).toMatch(/completed|failed|recovery_required/);
     },
-    { timeout: 4_000, interval: 10 },
+    { interval: 10 },
   );
 }
 

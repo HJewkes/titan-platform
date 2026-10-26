@@ -7,10 +7,11 @@ import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
+import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
-import { actionFor, inboxItems, type InboxItem, type InboxView, type WatchRow } from "./inbox-view.js";
+import { actionFor, DIVERGED_HOLD, inboxItems, type InboxItem, type InboxView, type WatchRow } from "./inbox-view.js";
 import { closedPort, send, startFakeBroker, startFakeDaemon, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
 const REPO = "example/repo";
@@ -340,10 +341,115 @@ describe("actionFor", () => {
     expect(actionFor(repeated, row(RUN_PLAIN, 1)).action).toMatchObject({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge:2`, stepId: "approve-merge" });
   });
 
-  it("leaves an agent's approval request on its own session", () => {
+  it("taps an sh-sent-back gate offering await-new-head and abandon with await-new-head alone", () => {
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+    ];
+    const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
+
+    const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
+
+    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/sh-sent-back`, runId: RUN_PLAIN, stepId: "sh-sent-back", repo: REPO, pr: 1, headSha: HEAD, decision: "await-new-head" });
+  });
+
+  it("keeps an sh-sent-back gate whose options lack await-new-head on the terminal", () => {
+    const offered = [
+      { id: "abandon", label: "Abandon the PR" },
+      { id: "waive-proof", label: "Waive the fix-proof" },
+    ];
+    const sentBack = { ...gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z", "sh-sent-back"), options: offered };
+
+    const { action } = actionFor(sentBack, row(RUN_PLAIN, 1));
+
+    expect(action).toMatchObject({ kind: "terminal", command: `titan-factory gate resolve ${RUN_PLAIN} sh-sent-back --json '<payload>'` });
+  });
+
+  it("points an agent's approval request at its broker row, which inbox.prepare reads back", () => {
     const approval = item("chat:msg-8", { sources: [{ system: "agent-chat", ref: "msg-8" }], kind: "approve" });
 
-    expect(actionFor(approval, undefined).action.kind).toBe("terminal");
+    expect(actionFor(approval, undefined).action).toEqual({ kind: "approve-chat", msgId: "msg-8" });
+  });
+
+  it("holds a gate on a replay-diverged run to Morning while TP-3918 is open, and still taps a healthy one", () => {
+    const diverged = { ...row(RUN_PLAIN, 1), stalled: { reason: "replay diverged: step sh-await-verdict:2 changed" } };
+
+    const held = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), diverged).action;
+    const healthy = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), row(RUN_PLAIN, 1)).action;
+
+    expect(held).toEqual({ kind: "terminal", reason: DIVERGED_HOLD, command: `titan-factory gate resolve ${RUN_PLAIN} approve-merge --json '<payload>'` });
+    expect(DIVERGED_HOLD).toBe("resolve from Morning (TP-3918)");
+    expect(healthy.kind).toBe("resolve-gate");
+  });
+
+  it("holds every rowless gate to Morning, even a land run's whose prompt names its head, since the item cannot rule out a diverged run", () => {
+    const land = { ...gate(RUN_GONE, "2026-10-10T00:00:00.000Z"), context: `Merge PR #9 in ${REPO} at head ${HEAD}? CI is green. Policy land/default: owner gate` };
+
+    expect(actionFor(land, undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
+  });
+});
+
+describe("a deposit's typed op", () => {
+  const deposited = (op: OwnerItem["op"], overrides: Partial<OwnerItem> = {}): OwnerItem =>
+    item(`deposit:${op?.kind ?? "none"}`, { sources: [{ system: "deposit", ref: `${ASKER}/${op?.kind ?? "none"}` }], kind: "do", asker: ASKER, command: "titan-factory shepherd waiting", ...(op && { op }), ...overrides });
+  const mergeOp = { kind: "merge-at-head", repo: REPO, pr: 7, headSha: HEAD } as const;
+
+  it("becomes an owner-op tap when its kind is on the console's op allowlist", () => {
+    expect(actionFor(deposited(mergeOp), undefined).action).toEqual({ kind: "owner-op", op: mergeOp });
+  });
+
+  it("becomes an owner-op tap for a close-pr", () => {
+    const closeOp = { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD } as const;
+
+    expect(actionFor(deposited(closeOp), undefined).action).toEqual({ kind: "owner-op", op: closeOp });
+  });
+
+  it("stays on the terminal with no op", () => {
+    expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
+  });
+
+  it("becomes an owner-op tap for a deploy-pause-clear", () => {
+    const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) } as const;
+
+    expect(actionFor(deposited(pauseOp), undefined).action).toEqual({ kind: "owner-op", op: pauseOp });
+  });
+
+  it("stays on the terminal for a kind with no console tap yet", () => {
+    const { action } = actionFor(deposited({ kind: "factory-config-set", path: "shepherd.spawnGate.load5", value: 4 }), undefined);
+
+    expect(action.kind === "terminal" && action.reason).toBe("a factory-config-set op has no console tap yet; run its command");
+  });
+
+  it("holds a gate op with no live row to Morning, as a rowless hitl gate is", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_GONE}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
+
+    expect(actionFor(deposited(op), undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
+  });
+
+  it("maps a gate op onto the live row's resolve, at the row's head", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: "f".repeat(40), decision: "merge" } as const;
+
+    const [listed] = inboxItems([deposited(op)], [row(RUN_PLAIN, 1)]);
+
+    expect(listed!.action).toMatchObject({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, pr: 1, headSha: HEAD });
+  });
+
+  it("maps a hold op onto the live row's release only when the row is held in that class", () => {
+    const op = { kind: "release-hold", repo: REPO, pr: 2, headSha: HEAD, holdClass: "owner-asked" } as const;
+
+    const [held] = inboxItems([deposited(op)], [row(RUN_OWNER, 2, "owner-asked: wait for me")]);
+    const [other] = inboxItems([deposited(op)], [row(RUN_OWNER, 2, "g10-review: opus review at head")]);
+
+    expect(held!.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
+    expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
+  });
+
+  it("shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge", () => {
+    const [held] = inboxItems([deposited({ ...mergeOp, pr: 3 })], [row(RUN_G10, 3, "g10-adversary: authority change")]);
+    const [open] = inboxItems([deposited(mergeOp)], [row(RUN_PLAIN, 7)]);
+
+    expect(held).toMatchObject({ action: { kind: "owner-op" }, hold: { class: "g10-adversary", reason: "g10-adversary: authority change" } });
+    expect(open).not.toHaveProperty("hold");
   });
 });
 
@@ -357,16 +463,32 @@ describe("inbox ordering", () => {
     expect(items.map((each) => each.id)).toEqual([newer.id, older.id]);
   });
 
-  it("orders 3000 live-sized items within 200 ms", () => {
-    const many = Array.from({ length: 3000 }, (_, n) =>
+  const liveSized = (count: number) => {
+    const many = Array.from({ length: count }, (_, n) =>
       n % 3 === 0 ? gate(`${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`, new Date(Date.UTC(2026, 9, 1) + n * 1000).toISOString()) : item(`ask-${n}`, { lens: n % 2 === 0 ? "planning" : "blocking-agent" }),
     );
     const rows = many.filter((_, n) => n % 3 === 0).map((each, n) => row(each.sources[0]!.ref.slice(0, each.sources[0]!.ref.indexOf("/")), n + 1));
+    return { many, rows };
+  };
 
-    const started = performance.now();
-    const items = inboxItems(many, rows);
+  it("orders 3000 live-sized items", () => {
+    const { many, rows } = liveSized(3000);
 
-    expect(performance.now() - started).toBeLessThan(200);
-    expect(items).toHaveLength(3000);
+    expect(inboxItems(many, rows)).toHaveLength(3000);
+  });
+
+  it("orders live-sized items in work linear in their count", () => {
+    // Keying the rows lowercases each run id once and a gate's lookup lowercases its own; a scan of the rows per gate is quadratic.
+    const meter = callMeter([[String.prototype, "toLowerCase"]]);
+    try {
+      const { ratio } = linearWork((size) => {
+        const { many, rows } = liveSized(size);
+        return () => inboxItems(many, rows);
+      }, { from: 48, to: 3072, meter: meter.calls });
+
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      meter.restore();
+    }
   });
 });

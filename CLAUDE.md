@@ -28,7 +28,7 @@ The design system is separate: `~/projects/titan-design` publishes `@titan-desig
 export. Either wait for the release or build a product-side adapter that is deleted when
 the release lands.
 
-**Tier rule.** Packages depend only on lower tiers (0 primitives, 1 engines, 2 domain).
+**Tier rule.** Packages depend on the same or a lower tier (0 primitives, 1 engines, 2 domain), and the package graph has no cycles.
 Products never depend on another product's source. They talk over a process boundary
 (CLI, loopback HTTP, MCP).
 
@@ -57,6 +57,8 @@ All six must be green. `dag:check` is self-hosted: it runs against this repo's o
 `@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
 release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
 
+Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
+
 ## Rules that CI enforces
 
 - **Tier order.** A package imports only its own tier or lower. The `package-layers` rule in
@@ -69,6 +71,13 @@ release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch ch
   generated index and sidebar. Fill the page in; a re-stamp never overwrites it.
 - **Docs build.** The `validate` job runs `pnpm docs:build` on every pull request, with no
   path filter. A public package with no reference page fails that check before merge.
+- **Merges.** Agents never call merge; only logged paths merge (I5). The logged paths are
+  the lander, `seat-merge`, Shepherd's land loop, the version-packages write and autoresearch's
+  `autoresearch-ratchet` (ratchet branches only). A merge made
+  any other way reads as the owner's own merge. From the bot account (A21, M1a) until M3's
+  walk over main moves exists, this rule and the merge-lint warning are the **only guard on
+  R27**: no count of owner-intent moves can run before the walk (D-M3-11). `pnpm merge:lint`
+  runs the lint; its allowlist is `.github/merge-lint.json`.
 
 ## Conventions
 
@@ -106,4 +115,5 @@ on already exists on npm.
 ## Gotchas
 
 - A fresh worktree needs `pnpm install --frozen-lockfile` and then `pnpm build` before vitest can import sibling packages, because packages resolve through their built `dist/` entries.
+- `.agent-chat/generated` lists, one exact path per line, the ignored files this repo's own scripts regenerate (`site/guides/capabilities.md`, written by `docs:build`), so `agent-chat agent park` may delete them instead of refusing the tree; add a path there when a new script writes an ignored file into the tree.
 - On the docs site, an explicit `<br/>` in a mermaid node label clips the last line; write short labels, let them wrap, and view the rendered diagram before committing.

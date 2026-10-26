@@ -4,8 +4,10 @@ import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
+import type { OwnerAtHeadRow } from "../owner-at-head.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, isUnsettledGate, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
+import { headWaits } from "./freeze-wait.js";
+import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { CiPolicySchema } from "./review-schemas.js";
@@ -161,7 +163,8 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
 /**
  * The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries.
  * Every gate names why the owner is asked: the escalation at that head, else a policy that did not allow the merge. An
- * unsettled mergeability re-reads the evidence at the same head, and later decisions about that review judge the re-read.
+ * unsettled mergeability, a freeze alone or missing facts waits and re-reads the evidence at the same head (freeze-wait.ts),
+ * and later decisions about that review judge the re-read.
  */
 export function shepherdLandOptions(
   effective: () => EffectivePolicy,
@@ -190,7 +193,7 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
 }
 
 /**
@@ -277,6 +280,22 @@ function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) =
 /** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
 function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
   return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
+}
+
+/**
+ * The D21 facts the MERGE evidence at this head holds, whatever rule the gate opens under; land reads a skill change from
+ * `skillPathsAt`. An owner-gate seat never runs the merge guard, and the guard's first row wins over the rest
+ * (merge-facts.ts), so a visual-path or files-unread gate can carry a weakened CI policy too. A MERGE whose evidence is
+ * malformed read no files the owner can trust, so it reads as unread.
+ */
+function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
+  const evidence = mergeEvidenceAt(headSha, verdictFor);
+  if (evidence === undefined) return verdictFor(headSha)?.kind === "MERGE" ? ["files-unread"] : [];
+  const rows: OwnerAtHeadRow[] = [];
+  if (evidence.ciPolicy?.kind === "weakened") rows.push("ci-policy-weakened");
+  if (evidence.ciPolicy?.kind === "malformed") rows.push("ci-policy-malformed");
+  if (evidence.changedFilesUnread !== undefined) rows.push("files-unread");
+  return rows;
 }
 
 function skillNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

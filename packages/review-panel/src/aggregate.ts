@@ -1,5 +1,5 @@
 import { verifyCitation, type LineSource } from "@titan-design/evidence";
-import { parseResultLine, RESULT_PREFIX, VERDICTS } from "@titan-design/fix-proof";
+import { parseResultLine, provedByMutants, RESULT_PREFIX, VERDICTS } from "@titan-design/fix-proof";
 import type { AwaitVerdictResult } from "./accept-verdict.js";
 import { FINDINGS_SEPARATOR, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings } from "./fix-first-findings.js";
 import { DEFAULT_SONNET_FOR } from "./plan.js";
@@ -20,7 +20,7 @@ export interface AggregateInput {
   /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
   source: LineSource;
   /**
-   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, a
+   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, `refused`, a
    * line naming another head, or anything unreadable makes the tests member blocking. A bare word never satisfies G10;
    * only a line pinned to the head can.
    */
@@ -41,7 +41,7 @@ interface Seat {
 }
 
 const SHAPE_ORDER: readonly ReviewShape[] = ["correctness", "adversary", "tests", "visual", "perf"];
-const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests", "error", "unproven"]);
+const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests", "error", "unproven", "refused"]);
 const KNOWN_FIX_PROOF = new Set<string>(VERDICTS);
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 const FINDING_START = /^\s*(?:[-*+]|\d+[.)])\s/;
@@ -64,13 +64,17 @@ function fixFirstsOf(results: readonly MemberResult[], head: string): Seat["fixF
   });
 }
 
+/** A vacuous line its mutants prove is the one Shepherd lets the review run on, so it must not block here either (tp#2145). */
 function badResultLine(line: string, head: string): boolean {
   const parsed = parseResultLine(line);
-  return !parsed.ok || parsed.result.head !== head || BAD_FIX_PROOF.has(parsed.result.verdict);
+  return !parsed.ok || parsed.result.head !== head || (BAD_FIX_PROOF.has(parsed.result.verdict) && !provedByMutants(parsed.result));
 }
 
-/** A fix-proof this cannot read is treated as bad, so an unexpected form can only make the verdict stricter. */
-function badFixProof(input: AggregateInput): boolean {
+/**
+ * Whether the fix-proof makes the tests seat blocking at this head. A fix-proof this cannot read is treated as bad, so an unexpected
+ * form can only make the verdict stricter. A planner that schedules a tests member whenever this holds never meets the unplanned seat.
+ */
+export function fixProofNeedsTests(input: Pick<AggregateInput, "head" | "fixProof" | "fixProofWaivedAt">): boolean {
   if (input.fixProof === undefined || input.fixProofWaivedAt === input.head) return false;
   if (typeof input.fixProof !== "string") return true;
   const text = input.fixProof.trim();
@@ -88,7 +92,7 @@ function unpinnedProof(input: AggregateInput): boolean {
 
 function seatOf(member: PanelMember, results: readonly MemberResult[], input: AggregateInput): Seat {
   const own = results.filter((r) => r.shape === member.shape);
-  const blocking = member.blocking || (member.shape === "tests" && badFixProof(input));
+  const blocking = member.blocking || (member.shape === "tests" && fixProofNeedsTests(input));
   return { member, blocking, status: statusOf(own, input.head), fixFirsts: fixFirstsOf(own, input.head) };
 }
 
@@ -103,7 +107,7 @@ const UNPLANNED_TESTS: Seat = {
 /** The blocking set comes from the plan plus evidence that arrived after planning, so fix-proof can only make the verdict stricter. */
 function seatsOf(plan: PanelPlan, results: readonly MemberResult[], input: AggregateInput): Seat[] {
   const seats = plan.members.map((m) => seatOf(m, results, input));
-  if (badFixProof(input) && !seats.some((s) => s.member.shape === "tests")) seats.push(UNPLANNED_TESTS);
+  if (fixProofNeedsTests(input) && !seats.some((s) => s.member.shape === "tests")) seats.push(UNPLANNED_TESTS);
   return seats.sort((a, b) => SHAPE_ORDER.indexOf(a.member.shape) - SHAPE_ORDER.indexOf(b.member.shape));
 }
 
@@ -115,6 +119,9 @@ function outcomeOf(blocking: readonly Seat[]): PanelOutcome {
   if (absent.length === 0) return "MERGE";
   return absent.every((s) => s.status === "timeout") ? "timeout" : "no-verdict";
 }
+
+const onlyUnplannedTestsMissing = (blocking: readonly Seat[]): boolean =>
+  blocking.includes(UNPLANNED_TESTS) && blocking.filter((s) => s.status !== "MERGE").every((s) => s === UNPLANNED_TESTS);
 
 /** A finding starts at a blank line or a list item, so one reviewer's separate points are checked separately. */
 function splitFindings(text: string): string[] {
@@ -193,7 +200,8 @@ function satisfiesG10(plan: PanelPlan, seats: readonly Seat[], outcome: PanelOut
 /** The panel verdict for one head from its members' results. Every path it cannot classify ends short of MERGE. Pure. */
 export function aggregate(plan: PanelPlan, results: readonly MemberResult[], input: AggregateInput): PanelVerdict {
   const seats = seatsOf(plan, results, input);
-  const outcome = outcomeOf(seats.filter((s) => s.blocking));
+  const blocking = seats.filter((s) => s.blocking);
+  const outcome = outcomeOf(blocking);
   const dissent = seats.filter((s) => s.blocking && s.status === "FIX_FIRST");
   const degraded = seats.filter((s) => s.member.degraded || results.some((r) => r.shape === s.member.shape && r.degraded)).map((s) => s.member.shape);
   const closer = closerOf(dissent);
@@ -207,5 +215,6 @@ export function aggregate(plan: PanelPlan, results: readonly MemberResult[], inp
     dissent: dissent.map((s) => s.member.shape),
     degraded,
     satisfiesG10: satisfiesG10(plan, seats, outcome, degraded, input),
+    ...(outcome === "no-verdict" && onlyUnplannedTestsMissing(blocking) && { fixProofShortfall: true as const }),
   };
 }

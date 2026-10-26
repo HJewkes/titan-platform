@@ -11,7 +11,7 @@
  * releases them. The console answers no blind-ab round (`round-schema.ts`), so its rules are left out.
  */
 import type { Feedback, Manifest, Question } from "./round-schema.js";
-import { FEEDBACK_SCHEMA_ID, type SubmittedAnswer } from "./round2-adapter.js";
+import { FEEDBACK_SCHEMA_ID, type PostedVariant, type SubmittedAnswer } from "./round2-adapter.js";
 
 type Answer = Feedback["answers"][number];
 type Recommendation = NonNullable<Answer["recommendation"]>;
@@ -21,6 +21,7 @@ type Recommendable = Exclude<Question, { kind: "text" }>;
 export interface PostedRound {
   answers: SubmittedAnswer[];
   general: string;
+  variants?: PostedVariant[];
 }
 
 const takesRecommendation = (question: Question): question is Recommendable => question.kind !== "text";
@@ -83,9 +84,13 @@ function optionNotes(question: Question, posted: SubmittedAnswer): Answer["optio
   return notes.length > 0 ? notes : undefined;
 }
 
-/** In a `shown` round every recommendation was on screen, so an answer to a recommended question was not blind. */
-function seenIn(manifest: Manifest, question: Question, answer: Answer): boolean {
-  return manifest.recommendations === "shown" && takesRecommendation(question) && question.recommendation !== undefined && isAnswered(question, answer);
+/**
+ * In a `shown` round every recommendation was on screen, so an answer to a recommended question was not blind; in an
+ * after-answer round it was not blind where the page says it was given while a revealed recommendation showed.
+ */
+function seenIn(manifest: Manifest, question: Question, posted: SubmittedAnswer, answer: Answer): boolean {
+  const seen = manifest.recommendations === "shown" || posted.recommendationSeen === true;
+  return seen && takesRecommendation(question) && question.recommendation !== undefined && isAnswered(question, answer);
 }
 
 function withPacket(manifest: Manifest, question: Question, posted: SubmittedAnswer, answer: Answer): Answer {
@@ -96,7 +101,7 @@ function withPacket(manifest: Manifest, question: Question, posted: SubmittedAns
     ...(posted.comment?.trim() ? { comment: posted.comment } : {}),
     ...(notes ? { optionNotes: notes } : {}),
     ...(after !== undefined ? { after } : {}),
-    ...(seenIn(manifest, question, answer) ? { recommendationSeen: true as const } : {}),
+    ...(seenIn(manifest, question, posted, answer) ? { recommendationSeen: true as const } : {}),
   };
 }
 
@@ -134,15 +139,15 @@ function sourceOf(variant: Variant): Source {
   return variant.clip !== undefined ? { clip: variant.clip } : { image: variant.image ?? "" };
 }
 
-/** The console takes no frame verdicts, so every frame is echoed undecided. */
-function variantFeedback(manifest: Manifest, variant: Variant): Feedback["variants"][number] {
+/** The owner's verdict, comment and pins over the frame's echo; the source and related questions are always the server's. */
+function variantFeedback(manifest: Manifest, variant: Variant, posted: PostedVariant | undefined): Feedback["variants"][number] {
   const related = manifest.sections.find((section) => section.variantKeys.includes(variant.key))?.questionIds ?? [];
   return {
     key: variant.key,
     ...sourceOf(variant),
-    verdict: null,
-    comment: "",
-    annotations: [],
+    verdict: posted?.verdict ?? null,
+    comment: posted?.comment?.trim() ? posted.comment : "",
+    annotations: posted?.annotations ?? [],
     ...(related.length > 0 ? { relatedQuestionIds: related } : {}),
   };
 }
@@ -152,6 +157,7 @@ export function buildRoundFeedback(manifest: Manifest, manifestSha256: string, p
   const byId = new Map(posted.answers.map((answer) => [answer.questionId, answer]));
   const answers = manifest.questions.map((question) => toAnswer(manifest, question, byId.get(question.id))).filter((answer): answer is Answer => answer !== null);
   const unanswered = partial ? unansweredQuestionIds(manifest, answers) : [];
+  const frames = new Map((posted.variants ?? []).map((variant) => [variant.key, variant]));
   return {
     schema: FEEDBACK_SCHEMA_ID,
     unit: manifest.unit,
@@ -159,7 +165,7 @@ export function buildRoundFeedback(manifest: Manifest, manifestSha256: string, p
     manifestSha256,
     submittedAt: now.toISOString(),
     answers,
-    variants: manifest.variants.map((variant) => variantFeedback(manifest, variant)),
+    variants: manifest.variants.map((variant) => variantFeedback(manifest, variant, frames.get(variant.key))),
     general: posted.general,
     ...(unanswered.length > 0 ? { unansweredQuestionIds: unanswered } : {}),
   };
@@ -217,6 +223,13 @@ function unansweredProblems(feedback: Feedback, manifest: Manifest): string[] {
   return listed.join(",") === actual.join(",") ? [] : [`unansweredQuestionIds lists ${listed.join(", ")}; unanswered are ${actual.join(", ") || "none"}`];
 }
 
+/** A pin is addressed `<frame key>-<n>`, so its id must name the frame it sits on. */
+export const isPinOf = (key: string, id: string): boolean => id.startsWith(`${key}-`) && /^[1-9][0-9]*$/.test(id.slice(key.length + 1));
+
+function pinProblems(feedback: Feedback): string[] {
+  return feedback.variants.flatMap(({ key, annotations }) => annotations.filter((pin) => !isPinOf(key, pin.id)).map((pin) => `${key}: pin "${pin.id}" is not one of its pins`));
+}
+
 /** Feedback that parses can still disagree with its manifest; list every disagreement. */
 export function feedbackProblems(feedback: Feedback, manifest: Manifest): string[] {
   const answers = new Map(feedback.answers.map((answer) => [answer.questionId, answer]));
@@ -229,5 +242,6 @@ export function feedbackProblems(feedback: Feedback, manifest: Manifest): string
     ...feedback.answers.filter((answer) => !questionIds.has(answer.questionId)).map((answer) => `${answer.questionId}: unknown`),
     ...manifest.questions.flatMap((question) => answerProblems(question, answers.get(question.id), skipped.has(question.id))),
     ...unansweredProblems(feedback, manifest),
+    ...pinProblems(feedback),
   ];
 }

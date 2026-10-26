@@ -1,0 +1,10 @@
+schema: beat-system/v1
+id: lab-cycle
+version: 0.1.0
+source: "video-profiles plan §B.2 and §B.3 (a lab cycle with a sim)"
+summary: "A question, a model run live to answer it, the reading, and what it means."
+steps:
+  - { beats: [chapter-open, hook, claim-card], does: "The question, or the number that should not be true." }
+  - { beats: [sim], does: "The model, run live: the viewer watches the claim happen." }
+  - { beats: [replot, stat, compare], does: "The reading, on the same axes as the source.", optional: true }
+  - { beats: [verdict-chip, claim-card, takeaways], does: "What it means." }

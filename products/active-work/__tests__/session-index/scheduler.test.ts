@@ -247,11 +247,18 @@ describe('RefreshScheduler', () => {
       scheduler.trigger();
       await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
 
-      const started = Date.now();
-      const freshness = await scheduler.runNow(50);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let freshness: string | undefined;
+      try {
+        void scheduler.runNow(50).then((read) => (freshness = read));
+        await vi.advanceTimersByTimeAsync(49);
+        expect(freshness).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+      } finally {
+        vi.useRealTimers();
+      }
 
       expect(freshness).toBe('stale');
-      expect(Date.now() - started).toBeGreaterThanOrEqual(40);
       expect(run).toHaveBeenCalledTimes(1);
       finish();
       await scheduler.close();

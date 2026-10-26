@@ -45,6 +45,8 @@ interface StatsOpts {
   reviews?: boolean;
   repo?: string;
   rows?: boolean;
+  /** YYYY-MM-DD: the day fix rounds split into before and after. */
+  sinceScoped?: string;
   /** Minutes, parsed from `90m`, `6h` or `7d`. */
   since?: number;
 }
@@ -107,7 +109,7 @@ async function reviewsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpt
   try {
     const runs = ledgerRuns(db).runs(store.refreshedThrough());
     const refresh = await refreshReviewStats({ store, runs: { runs: () => runs }, retire: readRetireCosts(seatLogsDir(io.env)), transcripts: claudeTranscripts() });
-    const report = reviewReport(store.db, { from: opts.from, to: opts.to, repo: opts.repo }, now, opts.rows);
+    const report = reviewReport(store.db, { from: opts.from, to: opts.to, repo: opts.repo, ...(opts.sinceScoped && { sinceScoped: Date.parse(`${opts.sinceScoped}T00:00:00Z`) }) }, now, opts.rows);
     if (opts.json) return `${JSON.stringify({ ...report, refresh }, null, 2)}\n`;
     return `${formatReviewReport(report)}refresh: ${refresh.added} new reviews, ${refresh.repriced} repriced, ${refresh.transcriptReads} transcript reads\n`;
   } finally {
@@ -138,10 +140,10 @@ function gatesReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
 
 /** `--since` is the meter's own window, so it pairs only with `--gates` and never with the day range. */
 function usageError(opts: StatsOpts): string | undefined {
-  const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
+  const bad = [opts.from, opts.to, opts.sinceScoped].find((date) => date !== undefined && !DATE.test(date));
   if (bad !== undefined) return `expected YYYY-MM-DD, got ${JSON.stringify(bad)}`;
   if (opts.perRun && !opts.json) return "--per-run prints JSON only; add --json";
-  if ((opts.repo !== undefined || opts.rows) && !opts.reviews) return "--repo and --rows apply only to --reviews";
+  if ((opts.repo !== undefined || opts.rows || opts.sinceScoped !== undefined) && !opts.reviews) return "--repo, --rows and --since-scoped apply only to --reviews";
   if (opts.rows && !opts.json) return "--rows prints JSON only; add --json";
   if (opts.gates && opts.since === undefined) return "--gates needs --since, e.g. --since 7d";
   if (opts.since !== undefined && !opts.gates) return "--since applies only to --gates";
@@ -149,10 +151,15 @@ function usageError(opts: StatsOpts): string | undefined {
   return undefined;
 }
 
+function heldRunIds(db: ReturnType<typeof openDatabase>): string[] {
+  return db.prepare("SELECT run_id FROM shepherd_registration WHERE held = 1 AND owner_hold_reason IS NOT NULL").pluck().all().map(String);
+}
+
 /** Reads the ledger synchronously, before the caller closes it; only the cost query awaits, and it reads transcripts. */
 function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): Promise<string> {
   const runs = shepherdRuns(db);
-  const base = { runs, gates: readAllGates(db), events: eventsSince(db), now, cost: (range: { from?: string; to?: string }) => reviewCost(runs, claudeTranscripts(), range) };
+  const cost = (range: { from?: string; to?: string }) => reviewCost(runs, claudeTranscripts(), range);
+  const base = { runs, gates: readAllGates(db), events: eventsSince(db), heldRunIds: heldRunIds(db), now, cost };
   return evaluateSlo(entry, base, { from: opts.from, to: opts.to }).then((results) => (opts.json ? `${JSON.stringify({ slo: results }, null, 2)}\n` : formatSlo(results)));
 }
 
@@ -214,9 +221,10 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
     .option("--cost", "instead: reviewer dollars and tokens per merged PR, per repo and ISO week, read from the verdicts' transcripts")
-    .option("--reviews", "instead: refresh review-stats.sqlite3 beside the database, then print per-review dollars, review and queue minutes (p50, p90, mean, total) by repo, ISO week, model and verdict, and per-PR rounds, dollars and review minutes")
+    .option("--reviews", "instead: refresh review-stats.sqlite3 beside the database, then print per-review dollars, tokens, review and queue minutes (p50, p90, mean, total) by repo, ISO week, model, verdict, and shape and cause (first, fix-round, convergence, other), per-PR rounds, dollars and review minutes, and fix-round p50 and p90 dollars and tokens per shape before and after the cutoff, split scoped vs full after it")
     .option("--repo <owner/name>", "with --reviews: only this repo")
     .option("--rows", "with --reviews --json: also print every review row")
+    .option("--since-scoped <date>", "with --reviews: split fix rounds before and after this day, YYYY-MM-DD (UTC); default the first scoped round")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")

@@ -36,7 +36,19 @@ Three ship:
   scan; implement the same interface over sqlite-vec when the corpus outgrows it.
 - `graphRetriever(edges, seededBy)`: takes another retriever's top results as seeds and
   walks the edge table by hop, optionally restricted to relations or outbound direction.
-  `expandGraph` is the walk on its own.
+  `expandGraph` is the walk on its own. Pass `hubDegree` to stop it walking through busy
+  nodes, and `maxNodes` to bound its output; both are off by default.
+
+## Hub-capped walk
+
+`walkGraph({ neighbours, degree, degrees? }, seeds, { hops, hubDegree, maxNodes })` is the
+walk behind `expandGraph`, over any adjacency. A non-seed node whose degree is at least
+`hubDegree` is returned but not expanded, so one `Logger`-like node cannot flood the result
+with everything it touches. A hub that is a seed is still expanded. `hubDegree` defaults to
+`defaultHubDegree(graph.degrees())`, which is max(50, p99 degree), or 50 when the graph does
+not list its degrees. Steps come out in hop then discovery order, each with the node and
+relation it was reached through. The hub cap is adapted from graphify (Apache-2.0); see
+`NOTICE`.
 
 ## Fusion and fail-open
 

@@ -1,0 +1,54 @@
+# Article or whitepaper review (video-profiles plan §B.2): example before generality. Publishable
+# only when every figure is re-plotted from data and every quote is short, and only on an explicit
+# owner ask per video (owner Q4 B). Simulations are TypeScript only (owner Q3 A).
+schema: type-profile/v1
+type: paper-summary
+version: 0.3.1
+family: review-paper
+intent: "One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us."
+audience: { default: owner-internal, allow: [owner-internal, public-youtube] }
+inputs: { adapters: [gatherArticle], preconditions: [verbatim-quotes-checked] }
+runtime: { targetS: 300, minS: 240, maxS: 480, splitAboveS: 600 }
+structure:
+  order: heuristic
+  heuristic:
+    - { macro: scqa, ask: "Does the paper bear on a change we are deciding (should we change X)?" }
+    - { macro: mystery, ask: "Is there a number that should not be true, which a model can rebuild?" }
+    - { macro: kishotenketsu, ask: "Is the headline an elegant algorithm?" }
+  fallback: lab-report
+  macros:
+    lab-report: [example, key-idea, method, result, limits, so-for-us]
+    scqa: [example, situation, complication, answer, limits, so-for-us]
+    mystery: [anomaly, method, result, limits, so-for-us]
+    kishotenketsu: [example, key-idea, twist, result, so-for-us]
+  systems:
+    - { system: example-first, macro: lab-report }
+    - { system: example-first, macro: scqa }
+    - { system: lab-cycle, macro: mystery }
+    - { system: lab-cycle, macro: kishotenketsu }
+  blocks:
+    - { id: example, goal: "One concrete example before any generality.", seconds: [20, 50], beats: [hook, user-flow, stat] }
+    - { id: key-idea, goal: "The one key idea.", seconds: [20, 50], beats: [claim-card, info-flow] }
+    - { id: situation, goal: "Where they stand, in one number.", seconds: [15, 40], beats: [stat, claim-card] }
+    - { id: complication, goal: "Where we stand against it.", seconds: [15, 40], beats: [compare, stat] }
+    - { id: answer, goal: "The change that closes the gap, by 25% of runtime.", seconds: [20, 50], beats: [claim-card, compare] }
+    - { id: anomaly, goal: "The number that should not be true.", seconds: [15, 40], beats: [hook, stat, sim] }
+    - { id: method, goal: "How it was shown, as a diagram.", seconds: [40, 90], beats: [info-flow, schema, sequence, sim] }
+    - { id: twist, goal: "The unexpected angle.", seconds: [30, 60], beats: [sim, compare, algo-trace] }
+    - { id: result, goal: "The result with its interval and grade.", seconds: [30, 70], beats: [replot, stat, compare] }
+    - { id: limits, goal: "How far to trust it.", seconds: [15, 40], beats: [claim-card, list] }
+    - { id: so-for-us, goal: "What it changes for us, then the button.", seconds: [20, 50], beats: [takeaways, rule-diff, compare, button], require: [button] }
+cuts: []
+hook: "Open on the concrete example or the number, never on the paper's title."
+ending: takeaways+button
+styles: { allow: [paper-margin, night-drafting] }
+voice: { id: af_bella, rate: 0.95 }
+series:
+  mayRepeat: [frame-chrome, intro-outro, house-look, captions, voice]
+  mustVary: [structure, hook-kind, chapter-labels, close-kind, function-mix, component-histogram, framing-sequence, signature-layer, style-pack, stock-lines]
+audition: { k: 3, storyboardOnly: true }
+layers: { customMin: 1, templateMaxShare: 0.7, componentMaxShare: 0.3 }
+variety: { window: 5, minFramings: 3, ngram: 6, mode: warn }
+pacing: { pictureChangeMaxS: 5, staticMaxS: 3, held: [1, 2], reHookS: [60, 90] }
+coverage: [example-first, method, result-with-grade, limits, so-for-us]
+publish: { ownerAskPerVideo: true, checks: [figures-replotted-from-data, quotes-short] }

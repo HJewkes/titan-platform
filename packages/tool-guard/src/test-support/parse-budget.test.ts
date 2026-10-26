@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { cpuBudgetIt, cpuStopwatch } from "./cpu-budget.js";
 import { bashEvent, withinParseBudget } from "./parse-budget.js";
 
 const DENY = JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny" } });
 
 /** Spins this thread for at least `ms` of CPU, so the run costs CPU rather than waiting. */
 function spinCpu(ms: number): void {
-  const start = process.threadCpuUsage();
+  const elapsed = cpuStopwatch();
   for (;;) {
-    const { user, system } = process.threadCpuUsage(start);
-    if ((user + system) / 1000 >= ms) return;
+    if (elapsed() >= ms) return;
   }
 }
+
+const TEST_CPU_MS = 1_000;
 
 const slowRun = async () => {
   spinCpu(30);
@@ -18,41 +20,66 @@ const slowRun = async () => {
 };
 
 describe("withinParseBudget", () => {
-  it("reports a run that spends more CPU than the budget, naming the time", async () => {
-    const result = await withinParseBudget(slowRun, "ls", { ms: 10 });
+  cpuBudgetIt("under the bench, reports a run that spends more CPU than the budget, naming the time", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(slowRun, "ls", { ms: 10, bench: true });
 
     expect(result.cpuMs).toBeGreaterThanOrEqual(30);
     expect(result.problems).toHaveLength(1);
     expect(result.problems[0]).toMatch(/took \d+\.\d ms of CPU, budget 10 ms/);
   });
 
-  it("reports nothing for the same run under a looser budget", async () => {
-    const result = await withinParseBudget(slowRun, "ls", { ms: 1000 });
+  cpuBudgetIt("reports nothing for the same run under a looser budget", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(slowRun, "ls", { ms: 1000, bench: true });
 
     expect(result.problems).toEqual([]);
   });
 
-  it("reports a silent run as not denied when a deny is required", async () => {
+  cpuBudgetIt("leaves CPU to the bench under pnpm test, since load on the runner moves it", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(slowRun, "ls", { ms: 10, bench: false });
+
+    expect(result.problems).toEqual([]);
+  });
+
+  cpuBudgetIt("fails a run past its work cap on an assertion, even when the run catches the cap", TEST_CPU_MS, async () => {
+    const busyRun = async () => {
+      try {
+        for (let i = 0; i < 1_000_000; i++) "x".slice(0);
+      } catch {
+        // The hook catches every error and denies; the count must fail the test anyway.
+      }
+      return { stdout: DENY };
+    };
+
+    await expect(withinParseBudget(busyRun, "ls", { workPerByte: 1 })).rejects.toMatchObject({ name: "AssertionError" });
+  });
+
+  cpuBudgetIt("counts the run's work", TEST_CPU_MS, async () => {
+    const result = await withinParseBudget(async () => (["a", "b"].forEach((c) => c.slice(0)), { stdout: "" }), "ls");
+
+    expect(result.work).toBe(2);
+  });
+
+  cpuBudgetIt("reports a silent run as not denied when a deny is required", TEST_CPU_MS, async () => {
     const result = await withinParseBudget(async () => ({ stdout: "" }), "ls", { mustDeny: true });
 
     expect(result.denied).toBe(false);
     expect(result.problems).toEqual(["not denied"]);
   });
 
-  it("accepts a denying run when a deny is required", async () => {
+  cpuBudgetIt("accepts a denying run when a deny is required", TEST_CPU_MS, async () => {
     const result = await withinParseBudget(async () => ({ stdout: DENY }), "ls", { mustDeny: true });
 
     expect(result.denied).toBe(true);
     expect(result.problems).toEqual([]);
   });
 
-  it("accepts a silent run when no deny is required", async () => {
+  cpuBudgetIt("accepts a silent run when no deny is required", TEST_CPU_MS, async () => {
     const result = await withinParseBudget(async () => ({ stdout: "" }), "ls", { mustDeny: false });
 
     expect(result.problems).toEqual([]);
   });
 
-  it("hands the run a Bash event carrying the command", async () => {
+  cpuBudgetIt("hands the run a Bash event carrying the command", TEST_CPU_MS, async () => {
     let seen = "";
     await withinParseBudget(async (input) => ((seen = input), { stdout: "" }), "git status");
 

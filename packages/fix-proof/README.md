@@ -4,29 +4,37 @@ Decides whether a fix pull request's new tests prove the fix: they must fail on 
 base with the non-test changes removed and pass at head. Pure functions plan and classify;
 the `fix-proof` bin does the git and vitest work.
 
-- `planFixProof({ nameStatus, baseConfig, headConfig })`: tests to run, carried support files,
+- `planFixProof({ nameStatus, baseConfig, headConfig, headFiles })`: tests to run, carried support files,
   deleted tests and overlay removals, with globs from the base config only. It also lists
-  mutation specs (`mutations`) and every non-test path (`source`); `testOnlyOf(plan)` is true
+  mutation specs (`mutations`) and every non-test path (`source`). A spec whose one sibling test
+  is in `headFiles` (paths at head beside the specs) and not deleted plans that test, so a
+  spec-only diff still has a test for its mutants; `testOnlyOf(plan)` is true
   when `source` is empty. Paths matching the config's `runtime` globs (fixtures a package
   publishes or production code reads) stay carried but also count as `source`.
   `testOnlyReading(plan)` refuses test-only with a reason: `source`, then `deletes-tests` for any
   deleted test (a test renamed to a non-test path included), then `no-tests` for a diff that adds
   or changes no test, such as a changeset- or fixture-only diff.
-- `parseMutationSpec(text)` and `checkMutation(mutation, baseText, config)`: a strict
+- `parseMutationSpec(text)` and `checkMutation(mutation, baseText, config, at?)`: a strict
   `*.mutations.json` spec of 1 to 5 named find/replace mutations with the tests each must fail,
   and the merge-base check that each `find` occurs exactly once in a file that is not test material.
 - `classifyReports({ selected, base, head })`: per-test `reproduces`, `passes-on-base`,
   `new-api`, `fails-on-head` or `not-run`, and a verdict of `reproduced`, `unproven`,
-  `vacuous`, `no-tests` or `error`.
+  `vacuous`, `no-tests` or `error`. A test head skips or marks todo in a file that did not
+  fail is left out, unless base passed it.
 - `toResult`, `formatResultLine` and `parseResultLine`: one `fix-proof/v1 <json>` line of at
   most 4 KB, parsed strictly.
 - `classifyMutants(specs, decoded)`: each declared mutation is `killed` only when its rebuild
   succeeded, its `kills` tests passed once in the baseline, and the tests failing under it,
   each an assertion failure, are exactly its `kills`. Otherwise it is `overkill`, `survived`,
-  `unbuilt`, `load-error`, `baseline` or `error`. `encodeMutantsReport` and
+  `unbuilt`, `load-error`, `baseline` or `error`. A kill must be the test's full name (describe
+  titles, then the test title); one that names no test in a baseline that loaded makes the whole
+  verdict `error`, naming the spec, mutation and kill. `encodeMutantsReport` and
   `decodeMutantsReport` carry the mutants side's baseline and per-mutation runs to the judge.
 - `provedByMutants(result)`: true when a `vacuous` result's `mutants` verdict is `killed`, no
-  changed test file lacks a spec of its own (`mutants.uncovered` present and empty), no test was
+  changed test file lacks a spec of its own (`mutants.uncovered` present and empty; a changed
+  carried test whose runtime imports, followed through carried files, reach only carried files,
+  vitest and builtins that cannot start a process, worker or evaluated source needs none, since
+  no mutation may target a carried file), no test was
   deleted or renamed out of the tests, and every selected test ran and passed at head: the proof a test-only diff can give.
 
 - `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
@@ -44,7 +52,11 @@ the `fix-proof` bin does the git and vitest work.
   mutation alone to the merge-base text of its file, rebuilds the package that owns it, reruns the
   spec's test file, and restores and rebuilds again. With `--sandbox-user`, every build and vitest
   call after the overlay runs in the sandbox. No spec, or source in the diff, writes a skipped
-  marker. `execMutants()` is the same as a function.
+  marker, but a source diff's specs are still parsed, paired and run through `checkMutation`
+  against head. A spec refused either way, or on a source diff any failure reading one, also
+  writes its reason to `mutants.refused`, and `scripts/fix-proof-run.sh` fails the mutants job
+  on it, since the judge never reads a source diff's specs. `execMutants()` is the
+  same as a function.
 - `fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>]
   [--mutants-report <file>] --base <mergeBase> --head <sha>` derives the plan from git, decodes
   the reports under a byte cap and prints one result line, with `mutants` read from

@@ -1,0 +1,269 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "explainer-video",
+    "version": "1.0.0"
+  },
+  "id": "explainer-video-checks",
+  "version": "1.0.0",
+  "cases": [
+    "b11dd88d0ce2d26fe87375379786658fede6c95395dd720980d6807d67405a6d",
+    "b71ecccc4a3de051423667278fb4184fa436e02c52b6f9c125fb2a0c3a987d3b"
+  ],
+  "checks": [
+    {
+      "id": "script-script-schema",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "script/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=script].checkRows[name=script-schema]",
+        "gate": true
+      }
+    },
+    {
+      "id": "script-l0",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "script/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=script].checkRows[name=l0]",
+        "gate": true
+      }
+    },
+    {
+      "id": "script-pace",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "script/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=script].checkRows[name=pace]",
+        "gate": true
+      }
+    },
+    {
+      "id": "script-l0-warnings",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "script/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=script].checkRows[name=l0-warnings]",
+        "gate": false
+      }
+    },
+    {
+      "id": "script-l0-repair",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "script/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=script].checkRows[name=l0-repair]",
+        "gate": false
+      }
+    },
+    {
+      "id": "rewrite-no-new-l0-error",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "rewrite/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=rewrite].checkRows[name=no-new-l0-error]",
+        "gate": true
+      }
+    },
+    {
+      "id": "rewrite-rewrite-rows",
+      "family": "deterministic",
+      "role": "reported",
+      "scope": "rewrite/",
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=rewrite].checkRows[name=rewrite-rows]",
+        "gate": false
+      }
+    },
+    {
+      "id": "eval-l0",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "eval/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=eval].checkRows[name=l0]",
+        "gate": true
+      }
+    },
+    {
+      "id": "eval-pace",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "eval/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=eval].checkRows[name=pace]",
+        "gate": true
+      }
+    },
+    {
+      "id": "tts-cue-resolution",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "tts/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=tts].checkRows[name=cue-resolution]",
+        "gate": true
+      }
+    },
+    {
+      "id": "render-render-gate",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "render/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=render].checkRows[name=render-gate]",
+        "gate": true
+      }
+    },
+    {
+      "id": "qa-qa",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "qa/",
+      "critical": true,
+      "type": "command",
+      "params": {
+        "argv": [
+          "explainer",
+          "run",
+          "report",
+          "{runId}",
+          "--json"
+        ],
+        "verdict": "rows[stage=qa].checkRows[name=qa]",
+        "gate": true
+      }
+    },
+    {
+      "id": "cost-usd",
+      "family": "metric",
+      "role": "reported",
+      "scope": "trial",
+      "metric": "cost_usd"
+    },
+    {
+      "id": "wall-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "trial",
+      "metric": "wall_ms"
+    },
+    {
+      "id": "retries",
+      "family": "metric",
+      "role": "reported",
+      "scope": "trial",
+      "metric": "retries"
+    },
+    {
+      "id": "human-wait-ms",
+      "family": "metric",
+      "role": "reported",
+      "scope": "trial",
+      "metric": "human_wait_ms"
+    }
+  ],
+  "trials": 1
+}

@@ -3,6 +3,8 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
+import { watchListTable, type WatchList } from "./watch-list.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
@@ -11,7 +13,7 @@ import { HoldSatisfiedBySchema, type HoldSatisfaction, type HoldSatisfiedBy } fr
 import { readSlots, reclassHold, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Reclass, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
-import { writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
+import { writeRegistrant, writeRegistrationFacts, type RegistrationFacts, type RegistrationFactsInput } from "./registration-facts.js";
 import { RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 import type { KindMove } from "./register-kind.js";
@@ -32,9 +34,11 @@ export interface RegistrationInput extends RegistrationFactsInput {
   kind?: string;
   /** Names the slice of a multi-slice task this PR delivers; landing then notes the task instead of closing it. */
   slice?: string;
+  /** The agent-chat session that registered the run; only the first one is kept. */
+  registrant?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base"> & Partial<KindMove>;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base" | "lastSlice" | "registrant"> & Partial<KindMove>;
 
 export interface Registration extends RegistrationFacts {
   repo: RepoSlug;
@@ -47,6 +51,8 @@ export interface Registration extends RegistrationFacts {
   policy: EffectivePolicy;
   kind: TaskKind;
   slice: string | null;
+  /** The session that first registered the run, and whether it was the implementer then; null or absent when none was recorded. */
+  registrant?: { name: string; fixer: boolean } | null;
   held: boolean;
   holdReason: string | null;
   /** The reviewer a hold waits on, set only by `hold --reviewer`; never read out of the reason. */
@@ -70,7 +76,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -105,6 +111,7 @@ export class ShepherdStore implements HoldLookup {
       )
       .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
     writeRegistrationFacts(this.db, input.runId, input);
+    writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
     return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
@@ -146,6 +153,7 @@ export class ShepherdStore implements HoldLookup {
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
       writeRegistrationFacts(this.db, runId, meta);
+      writeRegistrant(this.db, runId, meta.registrant, meta.implementer);
     });
     write.immediate();
     return this.changed(runId, this.byRun(runId)!);
@@ -158,7 +166,7 @@ export class ShepherdStore implements HoldLookup {
     return this.changed(runId, this.byRun(runId)!);
   }
 
-  /** Points a registration, and the authors, hold events, proofs, settled parks and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
+  /** Points a registration, and the authors, hold events, proofs, settled parks, merge-base exception and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
   repoint(runId: string, newRunId: string): Registration {
     const move = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
@@ -166,6 +174,7 @@ export class ShepherdStore implements HoldLookup {
       this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
       repointParkSettled(this.db, runId, newRunId);
       repointRunRows(this.db, runId, newRunId);
+      repointMergeBaseException(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
     move();
@@ -243,10 +252,21 @@ export class ShepherdStore implements HoldLookup {
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
 
-  /** The run's hold, release and repair-stop events and its repo's freeze, thaw and path repair-stop events, oldest first. */
+  /** Planners' leave for a run's fix rounds to merge the base branch; read where a fix round's brief is built. */
+  readonly mergeBaseExceptions = (): MergeBaseExceptions => mergeBaseExceptionTable(this.db, () => this.stamp());
+
+  /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
+  readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());
+
+  /** The run's hold, release, repair-stop and gate-cancel events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
     const registration = this.byRun(runId);
     return registration ? eventsFor(this.db, runId, registration.repo) : [];
+  }
+
+  /** Records a sweep's cancel of the run's gate; the caller writes it only after the cancel took. */
+  recordGateCancel(runId: string, reason: string, at: string): void {
+    if (this.byRun(runId)) this.record(runId, "gate-cancel", reason, at, {});
   }
 
   private record(runId: string, kind: EventKind, reason: string | null, at: string, by: EventContext): void {

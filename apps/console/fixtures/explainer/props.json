@@ -1,0 +1,182 @@
+{
+  "found": true,
+  "runId": "run-synthetic-0001",
+  "videoId": "video-synthetic-0001",
+  "scriptSha": "5555555555555555555555555555555555555555555555555555555555555555",
+  "saveBack": {
+    "enabled": false,
+    "reason": "renders ignore edits until TP-2992 S3"
+  },
+  "beats": [
+    {
+      "id": "b-compare",
+      "chapter": "c1",
+      "spec": "compare",
+      "slots": "compare",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "leftTitle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48
+          },
+          "rightTitle": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48
+          },
+          "rows": {
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "alias": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "left": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "right": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "required": [
+                "id",
+                "left",
+                "right"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "leftTitle",
+          "rightTitle",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "value": {
+        "leftTitle": "Polling",
+        "rightTitle": "Push",
+        "rows": [
+          {
+            "id": "latency",
+            "left": "Seconds behind the source",
+            "right": "Near instant"
+          },
+          {
+            "id": "cost",
+            "left": "Steady load all day",
+            "right": "Load only on change"
+          }
+        ]
+      },
+      "overridden": [],
+      "locked": [
+        "latency"
+      ],
+      "startS": 0,
+      "endS": 6.4,
+      "stillS": 6.1
+    },
+    {
+      "id": "b-list",
+      "chapter": "c1",
+      "spec": "list",
+      "slots": "list",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 48
+          },
+          "rows": {
+            "minItems": 1,
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                },
+                "mark": {
+                  "type": "string",
+                  "enum": [
+                    "tick",
+                    "cross",
+                    "risk",
+                    "open",
+                    "dot"
+                  ]
+                },
+                "lane": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 12
+                }
+              },
+              "required": [
+                "id",
+                "text",
+                "mark"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "value": {
+        "title": "Before you ship",
+        "rows": [
+          {
+            "id": "tests-pass",
+            "text": "Tests pass on a clean checkout",
+            "mark": "tick"
+          },
+          {
+            "id": "docs-updated",
+            "text": "Docs name the new flag",
+            "mark": "open"
+          }
+        ]
+      },
+      "overridden": [
+        "title"
+      ],
+      "locked": [
+        "tests-pass"
+      ],
+      "startS": 6.4,
+      "endS": 12.8,
+      "stillS": 12.5
+    }
+  ]
+}

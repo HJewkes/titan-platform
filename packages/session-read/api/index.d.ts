@@ -66,7 +66,7 @@ declare function classifyInbound(record: Json): Inbound;
  * Bumped whenever a classification rule below changes, so a consumer can tell
  * rows extracted under an older rule set apart and re-index them.
  */
-declare const EXTRACT_VERSION = 8;
+declare const EXTRACT_VERSION = 9;
 /** Where the characters in one context block came from. */
 type ContextSource = "tool_result" | "human" | "channel" | "assistant_text" | "assistant_thinking" | "assistant_tool_input" | "attachment" | "skill_listing" | "system_reminder" | "compaction_summary" | "image";
 /** A recognisable act read from a single `tool_use` block. */
@@ -162,11 +162,20 @@ interface SessionPatch {
     aiTitle?: string;
     seedPrompt?: string;
 }
+/**
+ * The value an echo line states. Hosts rewrite these lines whether or not the value moved,
+ * so a store keeps the fact only when `value` differs from the last one stored under `key`.
+ */
+interface EchoState {
+    key: string;
+    value: string;
+}
 type SessionEvent = (EventBase & {
     kind: "fact";
     eventType: string;
     promptId: string | null;
     toolUseId: string | null;
+    state?: EchoState;
 }) | (EventBase & {
     kind: "span";
     field: SpanField;
@@ -275,6 +284,14 @@ interface LineContext {
     repo: string | null;
 }
 type Emit = (event: SessionEvent) => void;
+/** Which bulk event classes a reader emits. Both default on, so a reader built without a policy sees every event. */
+interface EmitPolicy {
+    /** `tool_input` and `tool_result` spans. Off skips building their text at all. */
+    readonly toolSpans: boolean;
+    /** `context_block` audit rows, from user, assistant and attachment lines alike. */
+    readonly contextBlocks: boolean;
+}
+declare const DEFAULT_EMIT_POLICY: EmitPolicy;
 /**
  * Translates one transcript JSONL line into typed events. Every rule is
  * stateless across lines except the last-seen timestamp: a record such as
@@ -291,11 +308,14 @@ declare class LineReader {
     readonly emit: Emit;
     private readonly fallbackSessionId;
     private readonly subagentId;
+    readonly policy: EmitPolicy;
     private lastTs;
-    constructor(emit: Emit, fallbackSessionId?: string | null, subagentId?: string | null, initialTs?: string);
+    constructor(emit: Emit, fallbackSessionId?: string | null, subagentId?: string | null, initialTs?: string, policy?: EmitPolicy);
     handle(line: Json, loc: LineSpan): void;
     base(ctx: LineContext): EventBase;
-    fact(ctx: LineContext, eventType: string, toolUseId?: string | null): void;
+    fact(ctx: LineContext, eventType: string, toolUseId?: string | null, state?: EchoState | null): void;
+    /** A line with no readable value carries no state, so the store keeps every such fact rather than guessing. */
+    private echo;
     span(ctx: LineContext, field: SpanField): void;
     session(ctx: LineContext, patch: SessionPatch, deltas?: {
         turn?: number;
@@ -319,7 +339,9 @@ declare class LineReader {
     private spawnedBy;
     private dispatch;
     private system;
-    private typedField;
+    private aiTitle;
+    /** No fact: the line repeats the newest prompt, which its own `user` line already recorded. */
+    private lastPrompt;
     private prLink;
     private frameLink;
     private phase;
@@ -423,6 +445,10 @@ interface ReadOptions {
     subagentId?: string | null;
     /** Session id for lines that carry none; defaults to the filename stem. */
     fallbackSessionId?: string | null;
+    /** Emit `tool_input` and `tool_result` spans. Default true. */
+    toolSpans?: boolean;
+    /** Emit `context_block` audit rows. Default true. */
+    contextBlocks?: boolean;
 }
 /** A malformed JSON line aborts the transcript so the caller can quarantine it. */
 declare class TranscriptParseError extends Error {
@@ -546,7 +572,8 @@ declare function parseReviewVerdicts(text: string): ReviewVerdictMatch[];
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
  *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
  *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
- *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone).
+ *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone)
+ *   and the label is not glued to an identifier character, as in `ci-policy-changes.ts` (see `ciPolicyLabelRest`).
  *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
  *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
  *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
@@ -591,6 +618,12 @@ type VerdictBlockResult = {
 declare function parseVerdictBlock(text: string): VerdictBlockResult;
 /** One entry per line: its trimmed text, or null when fenced, commented out or indented as code; shared so every reviewer-message parser agrees on what is visible. */
 declare function visibleLines(text: string): (string | null)[];
+/**
+ * The raw lines that made `text` refuse as `multiple_blocks` or `ci_policy_malformed`, trimmed, so a correction can quote
+ * them. A canonical line is never blamed while another line is: the prose line is the one to reword. When every
+ * labelled line is canonical, all are returned, since the reviewer then wrote the label twice.
+ */
+declare function refusedLines(text: string, refusal: VerdictBlockRefusal | "ci_policy_malformed"): string[];
 
 /**
  * Authoritative repo attribution for a filesystem path (AW-91).
@@ -1239,4 +1272,4 @@ declare function orientationEnd(brief: string, briefingChars?: number): number |
 /** The task ids a spawned session was assigned, and which rule found them. */
 declare function assignedTaskIds(input: AssignmentInput): Assignment;
 
-export { type Assignment, type AssignmentInput, type AssignmentSource, type AuditEvent, type AuditEventBase, type AuditEventKind, type AuditSignal, type BranchRow, CI_POLICY_KEYS, CLAUDE_CHECKPOINT_VERSION, CLAUDE_DECODER_ID, CLAUDE_TRANSCRIPT_FORMAT, CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CODEX_ROLLOUT_FORMAT, type CappedList, type ChannelTag, type CiPolicy, type CiPolicyKey, type ClaudeToolCallLine, type ClaudeToolLine, type ClaudeToolResultLine, ClaudeTranscriptDecoder, type CodexReadResult, CodexRolloutDecoder, CodexSourceCollisionError, type ContextSource, type DiscoverCodexSourcesOptions, type DiscoveredTranscript, EXTRACT_VERSION, type Emit, type EventBase, EventFolder, type EventOf, type ExtractOptions, type ExtractResult, type FindClaudeSessionSourceInput, type GitIntent, HASH_PREFIX_CHARS, IGNORED_PATH, INJECTED_MARKERS, type Inbound, type InboundDelivery, type InjectedMarker, type InjectedMarkerName, type LineContext, LineReader, type LineSpan, MARKER_SCAN_CHARS, MIN_ATTACHMENT_CHARS, ORIENTATION_HEADER, type QueueOperation, RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES, RELATIONS, type ReadClaudeTextOptions, type ReadCodexOptions, type ReadCodexTextOptions, type ReadOptions, type ReadRecentSessionTurnsOptions, type ReadResult, type ReadSessionEventTextOptions, type RecentObservedValue, type RecentSessionReadError, type RecentSessionTurn, type RecentSessionTurns, type RecentSessionUnknown, type RecentTurnKind, type RecentTurnProjection, type RecentTurnRepresentation, type RecentTurnRole, type RecentUnknownReason, type RecoverSessionOptions, type RecoveredCommand, type RecoveredMessage, type RecoveredMessageTarget, RecoveryFacts, type Relation, type RepoIdentity, type RepoRelativePath, type ReviewVerdictMatch, SPAN_TEXT_CAP, type SessionEvent, type SessionEventKind, type SessionEventRef, SessionIdentityError, type SessionIdentityErrorCode, type SessionPatch, type SessionRecovery, type SessionRow, type SessionSourceLookup, type SessionSummary, SessionSummaryAccumulator, type SessionTextRequest, type SessionToolSummary, SessionUsageAccumulator, type SessionUsageSummary, type ShellWord, type SignalKind, type SpanField, TASK_ID, TRANSCRIPT_MIRRORS_ENV, type TaskIntent, type ToolFamily, type ToolFamilyResult, type TranscriptDelta, TranscriptParseError, type TranscriptRoot, type Verdict, type VerdictBlockRefusal, type VerdictBlockResult, type VerdictBlockVerdict, type WakeCause, agentRef, artifactRef, assertClaudeSessionSource, assignedTaskIds, bashSignals, branchRef, classifyInbound, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, claudeTranscriptRoots, clearRepoCache, codexHome, codexSourceId, commandCwd, commandHeads, contentHash, decodeClaudeToolLines, discoverAllTranscripts, discoverCodexSources, discoverTranscripts, expandHome, extractTranscript, fileRef, findClaudeSessionSource, findInjectedMarker, foldEvents, hasMarker, legacyClaudeSessionRef, normalizedSearchText, orientationEnd, parseChannelTag, parseFileRef, parseGitIntent, parseOriginUrl, parsePrCreateTitle, parseReviewVerdicts, parseTaskId, parseTaskIntent, parseTaskIntents, parseVerdictBlock, prRef, readClaudeObservations, readClaudeText, readCodexObservations, readCodexText, readRecentSessionTurns, readRecentSessionTurnsSync, readSessionEventText, readSessionObservations, readSessionSourceText, readSessionText, readTranscriptEvents, realCommand, recoverSession, repoForCwd, repoNameFromRemoteUrl, resolveRepo, scopedConversationItemRef, searchText, sessionRef, simpleCommandHead, sourceForCause, splitCommands, splitPipelines, summarizeSession, taskRef, thinkingTokens, toAbsolutePath, toRepoRelative, toolFamily, toolUseSignals, transcriptsRoot, visibleLines };
+export { type Assignment, type AssignmentInput, type AssignmentSource, type AuditEvent, type AuditEventBase, type AuditEventKind, type AuditSignal, type BranchRow, CI_POLICY_KEYS, CLAUDE_CHECKPOINT_VERSION, CLAUDE_DECODER_ID, CLAUDE_TRANSCRIPT_FORMAT, CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CODEX_ROLLOUT_FORMAT, type CappedList, type ChannelTag, type CiPolicy, type CiPolicyKey, type ClaudeToolCallLine, type ClaudeToolLine, type ClaudeToolResultLine, ClaudeTranscriptDecoder, type CodexReadResult, CodexRolloutDecoder, CodexSourceCollisionError, type ContextSource, DEFAULT_EMIT_POLICY, type DiscoverCodexSourcesOptions, type DiscoveredTranscript, EXTRACT_VERSION, type EchoState, type Emit, type EmitPolicy, type EventBase, EventFolder, type EventOf, type ExtractOptions, type ExtractResult, type FindClaudeSessionSourceInput, type GitIntent, HASH_PREFIX_CHARS, IGNORED_PATH, INJECTED_MARKERS, type Inbound, type InboundDelivery, type InjectedMarker, type InjectedMarkerName, type LineContext, LineReader, type LineSpan, MARKER_SCAN_CHARS, MIN_ATTACHMENT_CHARS, ORIENTATION_HEADER, type QueueOperation, RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES, RELATIONS, type ReadClaudeTextOptions, type ReadCodexOptions, type ReadCodexTextOptions, type ReadOptions, type ReadRecentSessionTurnsOptions, type ReadResult, type ReadSessionEventTextOptions, type RecentObservedValue, type RecentSessionReadError, type RecentSessionTurn, type RecentSessionTurns, type RecentSessionUnknown, type RecentTurnKind, type RecentTurnProjection, type RecentTurnRepresentation, type RecentTurnRole, type RecentUnknownReason, type RecoverSessionOptions, type RecoveredCommand, type RecoveredMessage, type RecoveredMessageTarget, RecoveryFacts, type Relation, type RepoIdentity, type RepoRelativePath, type ReviewVerdictMatch, SPAN_TEXT_CAP, type SessionEvent, type SessionEventKind, type SessionEventRef, SessionIdentityError, type SessionIdentityErrorCode, type SessionPatch, type SessionRecovery, type SessionRow, type SessionSourceLookup, type SessionSummary, SessionSummaryAccumulator, type SessionTextRequest, type SessionToolSummary, SessionUsageAccumulator, type SessionUsageSummary, type ShellWord, type SignalKind, type SpanField, TASK_ID, TRANSCRIPT_MIRRORS_ENV, type TaskIntent, type ToolFamily, type ToolFamilyResult, type TranscriptDelta, TranscriptParseError, type TranscriptRoot, type Verdict, type VerdictBlockRefusal, type VerdictBlockResult, type VerdictBlockVerdict, type WakeCause, agentRef, artifactRef, assertClaudeSessionSource, assignedTaskIds, bashSignals, branchRef, classifyInbound, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, claudeTranscriptRoots, clearRepoCache, codexHome, codexSourceId, commandCwd, commandHeads, contentHash, decodeClaudeToolLines, discoverAllTranscripts, discoverCodexSources, discoverTranscripts, expandHome, extractTranscript, fileRef, findClaudeSessionSource, findInjectedMarker, foldEvents, hasMarker, legacyClaudeSessionRef, normalizedSearchText, orientationEnd, parseChannelTag, parseFileRef, parseGitIntent, parseOriginUrl, parsePrCreateTitle, parseReviewVerdicts, parseTaskId, parseTaskIntent, parseTaskIntents, parseVerdictBlock, prRef, readClaudeObservations, readClaudeText, readCodexObservations, readCodexText, readRecentSessionTurns, readRecentSessionTurnsSync, readSessionEventText, readSessionObservations, readSessionSourceText, readSessionText, readTranscriptEvents, realCommand, recoverSession, refusedLines, repoForCwd, repoNameFromRemoteUrl, resolveRepo, scopedConversationItemRef, searchText, sessionRef, simpleCommandHead, sourceForCause, splitCommands, splitPipelines, summarizeSession, taskRef, thinkingTokens, toAbsolutePath, toRepoRelative, toolFamily, toolUseSignals, transcriptsRoot, visibleLines };

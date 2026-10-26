@@ -23,10 +23,12 @@ export const RegisterArgs = z
     base: BranchArg.optional(),
     task: z.string().min(1),
     implementer: z.string().min(1),
+    registrant: z.string().min(1).optional(),
     reviewer: z.string().min(1).optional(),
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
+    lastSlice: z.boolean().optional(),
     policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })

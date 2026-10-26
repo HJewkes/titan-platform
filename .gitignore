@@ -10,5 +10,10 @@ coverage/
 .worktrees/
 site/.vitepress/cache/
 site/.vitepress/dist/
+# written by docs:build (gen-capabilities.mjs --site); CAPABILITIES.md is the committed copy
+site/guides/capabilities.md
 .turbo/
 .eslintcache
+# corpus-query CLI scratch output from local hits/ask runs
+/refs.txt
+/spec.json

@@ -5,11 +5,14 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
 import { pause } from "./write-read-back.js";
-import { merge, rerunFailed } from "./merge-writes.js";
+import { merge, rerunFailed, rerunJob } from "./merge-writes.js";
+import { deleteRef, ensureBranch } from "./ref-writes.js";
 import { closePr, closedSkip, setPrBase } from "./close-pr.js";
 import { listPrFiles } from "./pr-files.js";
+import { findPr, openPr } from "./pr-open.js";
 export { FileListTruncatedError } from "./pr-files.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
+import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { Ancestry } from "./compare.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
@@ -116,6 +119,10 @@ export interface GitHubWire {
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
   /** Sent with `If-None-Match: etag` when `etag` is set; GitHub charges a 304 no rate-limit point. */
   revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+  /** `GET git/ref/heads/{branch}`, sent with `If-None-Match: etag` when `etag` is set; a 404 answers a null `sha`. */
+  revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+  /** `GET rulesets`, sent with `If-None-Match: etag` when `etag` is set; a free-plan 403 answers `unreadable`. */
+  revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
@@ -124,7 +131,8 @@ export interface GitHubWire {
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   /** The branch endpoint's own `protected` flag; a missing or non-boolean answer throws, so it is never inferred. */
   getBranchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-  listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  /** `all` keeps a rerun's earlier attempts, which GitHub's default filter hides. */
+  listCheckRuns(repo: RepoSlug, sha: string, filter?: "all"): Promise<CheckRun[]>;
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
@@ -145,6 +153,8 @@ export interface GitHubWire {
   mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
   getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
+  /** `POST actions/jobs/{jobId}/rerun`, what `gh run rerun <run> --job <job>` sends. */
+  rerunJob(repo: RepoSlug, jobId: number): Promise<void>;
   /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
   /** The PR's commit shas, oldest first; GitHub returns at most the first 250. */
@@ -180,6 +190,10 @@ export interface GitHubPort {
   listOpenPrs(repo: RepoSlug, headPrefix?: string): Promise<PullRequest[]>;
   /** A conditional `listOpenPrs`: pass the `etag` of the last read, null for none. A poller that answers 304 costs no rate-limit point. */
   revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
+  /** A conditional `getHeadSha`: pass the `etag` of the last read, null for none. A 304 costs no rate-limit point. */
+  revalidateRef(repo: RepoSlug, branch: string, etag: string | null): Promise<RefRead>;
+  /** Each ruleset's `updated_at` by id, conditional like `revalidateOpenPrs`; `unreadable` means unknown, never none. */
+  revalidateRulesets(repo: RepoSlug, etag: string | null): Promise<RulesetList>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** The repo's default branch as GitHub reports it now; a failed read throws. */
@@ -192,8 +206,9 @@ export interface GitHubPort {
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   /** The branch's `protected` flag as GitHub reports it; a failed read throws. */
   branchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
-  /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
+  /** Every run on `sha` from every app under GitHub's default `filter=latest`: separate workflow runs stay, which `mergeReadiness` needs, but a rerun hides its job's earlier attempts, which `checkRunAttempts` keeps (`filter=all`) for a reader of attempt order. */
   checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
+  checkRunAttempts(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** The latest run for each check name on `sha`. */
   latestCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
@@ -222,6 +237,10 @@ export interface GitHubPort {
   mergeIntoBranch(repo: RepoSlug, request: MergeIntoBranchRequest): Promise<MergeIntoBranchResult>;
   getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
+  /** An Actions workflow run's `status`: `queued`, `in_progress`, `completed` and the like. */
+  workflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
+  /** Reruns one job (its check run id) of workflow run `runId`; a run that is not completed skips as `in-progress`, since a rerun is already under way or none is allowed yet. */
+  rerunJob(repo: RepoSlug, runId: number, jobId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
   /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
@@ -276,6 +295,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
     revalidateOpenPrs: async (repo, etag) => wire.revalidateOpenPrs(repoOf(repo), etag),
+    revalidateRef: async (repo, branch, etag) => wire.revalidateRef(repoOf(repo), checkRef("branch", branch), etag),
+    revalidateRulesets: async (repo, etag) => wire.revalidateRulesets(repoOf(repo), etag),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     defaultBranch: async (repo) => wire.getDefaultBranch(repoOf(repo)),
@@ -284,6 +305,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     reviewRulesBypassable: async (repo, branch) => wire.reviewRulesBypassable(repoOf(repo), checkRef("branch", branch)),
     branchProtected: async (repo, branch) => wire.getBranchProtected(repoOf(repo), checkRef("branch", branch)),
     checkRuns: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha)),
+    checkRunAttempts: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha), "all"),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     createCheckRun: async (repo, request) => wire.createCheckRun(repoOf(repo), { ...request, headSha: checkSha("headSha", request.headSha), conclusion: checkConclusion(request.conclusion) }),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
@@ -299,6 +321,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     mergeIntoBranch: async (repo, request) => wire.mergeIntoBranch(repoOf(repo), { ...request, branch: checkRef("branch", request.branch), head: checkSha("head", request.head) }),
     getSquashSource: async (repo, number) => wire.getSquashSource(repoOf(repo), pr(number)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
+    workflowRunStatus: async (repo, runId) => wire.getWorkflowRunStatus(repoOf(repo), checkPositiveInt("runId", runId)),
+    rerunJob: async (repo, runId, jobId) => rerunJob(wire, repoOf(repo), checkPositiveInt("runId", runId), checkPositiveInt("jobId", jobId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     listDefaultBranchCommits: async (repo, since) => wire.listCommits(repoOf(repo), checkTimestamp("since", since)),
@@ -317,21 +341,6 @@ function checkPutFile(request: PutFileRequest): PutFileRequest {
   return request;
 }
 
-async function ensureBranch(wire: GitHubWire, repo: RepoSlug, branch: string, baseSha: string): Promise<WriteResult<{ sha: string }>> {
-  const existing = await wire.getRef(repo, branch);
-  if (existing) return { sha: existing, done: false, skipped: "exists" };
-  await wire.createRef(repo, branch, baseSha);
-  return { sha: baseSha, done: true };
-}
-
-async function deleteRef(wire: GitHubWire, repo: RepoSlug, head: HeadRef): Promise<WriteResult> {
-  if (head.repo === null || head.repo.toLowerCase() !== repo.toLowerCase()) return { done: false, skipped: "fork-head" };
-  if (head.branch === (await wire.getDefaultBranch(repo))) return { done: false, skipped: "default-branch" };
-  if ((await wire.getRef(repo, head.branch)) === null) return { done: false, skipped: "absent" };
-  await wire.deleteRef(repo, head.branch);
-  return { done: true };
-}
-
 function tail(log: string, lines: number): string {
   const all = log.split(/\r?\n/);
   if (all.at(-1) === "") all.pop();
@@ -347,19 +356,6 @@ async function putFile(wire: GitHubWire, repo: RepoSlug, request: PutFileRequest
   }
   const written = await wire.putContent(repo, request);
   return { blobSha: written.blobSha, done: true };
-}
-
-/** An open PR wins; otherwise the newest closed one, so a crash after a merge still finds its PR. */
-async function findPr(wire: GitHubWire, repo: RepoSlug, headBranch: string): Promise<PullRequest | null> {
-  const prs = await wire.listPrs(repo, headBranch);
-  const newestFirst = [...prs].sort((a, b) => b.number - a.number);
-  return newestFirst.find((pr) => pr.state === "open") ?? newestFirst[0] ?? null;
-}
-
-async function openPr(wire: GitHubWire, repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>> {
-  const existing = await findPr(wire, repo, request.head);
-  if (existing) return { pr: existing, done: false, skipped: "exists" };
-  return { pr: await wire.createPr(repo, request), done: true };
 }
 
 async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult> {

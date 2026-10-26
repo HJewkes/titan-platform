@@ -147,6 +147,82 @@ describe("the G10 hold Shepherd places at registration", () => {
     },
   );
 
+  it("holds a replay of tp#2253's file list, which widened coordinator gate resolves, g10-adversary", async () => {
+    const r = rig([
+      file("products/factory/src/coordinator-evidence.ts", 40),
+      file("products/factory/src/coordinator-evidence-read.ts", 20),
+      file("products/factory/src/gate-resolve-evidence.test.ts", 60),
+      file("products/factory/README.md", 5),
+      file("site/guides/shepherd.md", 5),
+      file(".changeset/coordinator-sent-back-await.md", 5),
+    ]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it.each([
+    "products/factory/src/coordinator-evidence.ts",
+    "products/factory/src/coordinator-evidence-read.ts",
+    "products/factory/src/coordinator-allowances.ts",
+    "products/factory/src/host.ts",
+    "products/factory/src/gate-answer-rpc.ts",
+    "products/factory/src/gate-answer-check.ts",
+    "products/factory/src/resolve-proof.ts",
+    "products/factory/src/device-gates.ts",
+    "products/factory/src/shepherd/stale-gates.ts",
+    "packages/hitl/src/resolver-policy.ts",
+    "packages/hitl/src/base-store.ts",
+    "packages/hitl/src/sqlite-store.ts",
+    "packages/hitl/src/memory-store.ts",
+    "packages/hitl/src/types.ts",
+    "packages/workflow/src/runtime.ts",
+    "packages/queue-mirror/src/hitl.ts",
+    "packages/matrix-bus/src/fold.ts",
+    "products/factory/src/gate-notify.ts",
+    "products/factory/src/gate-notify-sweep.ts",
+    "products/factory/src/gate-batch.ts",
+    "products/factory/src/gate-batch-plan.ts",
+    "products/factory/src/presence-proof.ts",
+    "products/factory/src/console-action/outcome.ts",
+    "products/factory/src/console-action/gate.ts",
+    "products/factory/src/console-action/release.ts",
+    "products/factory/src/owner-ops/standing-answers.ts",
+    "products/factory/src/shepherd/round-ship-sweep.ts",
+    "packages/queue-mirror/src/mirror.ts",
+    "packages/queue-mirror/src/types.ts",
+    "packages/owner-queue/src/port.ts",
+    "products/factory/src/needs/hitl-source.ts",
+    "products/factory/src/workflows/land-approval.ts",
+    "packages/workflow/src/types.ts",
+  ])(
+    "holds a gate-resolve actor or evidence rule in %s g10-adversary",
+    async (path) => {
+      const r = rig([file(path, 10)]);
+
+      expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+    },
+  );
+
+  it.each([
+    "products/factory/src/shepherd/merge-facts.ts",
+    "products/factory/src/shepherd/skill-paths.ts",
+    "products/factory/src/shepherd/approval-carry.ts",
+  ])("holds the owner's skill-diff guard in %s g10-adversary as policy, though it builds no resolver", async (path) => {
+    const r = rig([file(path, 10)]);
+
+    expect(await holdOf(r)).toMatch(/^g10-adversary: (.+, )?policy touch$/);
+  });
+
+  it("leaves a test-only change to the gate-resolve actor and evidence rules unheld", async () => {
+    const r = rig([
+      file("products/factory/src/coordinator-evidence.test.ts", 30),
+      file("products/factory/src/gate-resolve-evidence.test.ts", 30),
+      file("packages/hitl/src/resolver-policy.test.ts", 30),
+    ]);
+
+    expect(await holdOf(r)).toBeUndefined();
+  });
+
   it("leaves a small plain-source PR of an unknown kind unheld", async () => {
     const r = rig([file("packages/x/src/a.ts", 50)], "unknown");
 
@@ -187,17 +263,6 @@ describe("the G10 hold Shepherd places at registration", () => {
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: changed files unread at registration (Error)");
     expect(reads).toBe(2);
-  });
-
-  it("does not re-read a file list cut short at GitHub's cap", async () => {
-    const r = rig([file("packages/x/src/a.ts", 5)]);
-    r.fake.prChangedFiles.set(1, 5000);
-    const listPrFiles = r.port.listPrFiles;
-    let reads = 0;
-    r.port = { ...r.port, listPrFiles: (repo, pr) => (reads++, listPrFiles(repo, pr)) };
-
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: changed files unread at registration (FileListTruncatedError)");
-    expect(reads).toBe(1);
   });
 
   it("stacks a g10-adversary hold over a hold the run already has, which gates again once it is released", async () => {
@@ -253,6 +318,7 @@ describe("the G10 hold Shepherd places at registration", () => {
     ["products/factory/src/shepherd/commands.ts", "products/factory/src/shepherd/cmds.ts", "policy"],
     ["products/factory/src/shepherd/g10-release.ts", "products/factory/src/shepherd/release-gate.ts", "policy"],
     ["packages/authority/src/x.ts", "packages/other/src/x.ts", "authority"],
+    ["packages/tool-guard/src/x.ts", "src/x.ts", "security"],
   ])("holds a 20-line rename of %s to %s g10-adversary by its old path", async (from, to, touch) => {
     const r = rig([renamed(from, to)]);
 

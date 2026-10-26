@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: scorecard
+summary: "Every call on one card, each pointing back to its chapter."
+role: close
+component: { name: ScorecardTable, maturity: spike }
+slots: scorecard
+speech: { band: takeaways }
+durationS: [10, 18, 35]
+preset: false
+emphasis: { targets: [rows], treatments: [highlight, pointer] }
+recipe: "Two to eight rows, one per chapter or topic, each with its call and a short reason. Rows fill as they are said."

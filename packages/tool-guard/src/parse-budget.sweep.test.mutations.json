@@ -32,6 +32,22 @@
         "the parse budget at depth 8, padded to the size cap release inside procsub denies under budget",
         "the parse budget at depth 8, padded to the size cap release inside arith-subscript denies under budget"
       ]
+    },
+    {
+      "name": "a secret match reads twenty million characters, past the parse work budget",
+      "file": "packages/tool-guard/src/families/secret.ts",
+      "find": "  const keys = actions.map((a) => JSON.stringify(a));",
+      "replace": "  if (actions.length > 0) \"x\".repeat(20_000_000).indexOf(\"y\");\n  const keys = actions.map((a) => JSON.stringify(a));",
+      "kills": [
+        "every guarded family's sentinel secret denies on its own",
+        "the parse budget at depth 8, padded to the size cap secret inside cmd-subst denies under budget",
+        "the parse budget at depth 8, padded to the size cap secret inside sh-c denies under budget",
+        "the parse budget at depth 8, padded to the size cap secret inside group denies under budget",
+        "the parse budget at depth 8, padded to the size cap secret inside if-compound denies under budget",
+        "the parse budget at depth 8, padded to the size cap secret inside xargs-sh-c denies under budget",
+        "the parse budget at depth 8, padded to the size cap secret inside procsub denies under budget",
+        "the parse budget at depth 8, padded to the size cap secret inside arith-subscript denies under budget"
+      ]
     }
   ]
 }

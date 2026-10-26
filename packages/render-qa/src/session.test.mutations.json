@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "inspectAt ignores an error the page threw on the seek",
+      "file": "packages/render-qa/src/session.ts",
+      "find": "if (error) throw new Error(`page error at ${t.toFixed(2)} s: ${error.message}`)",
+      "replace": "if (error === null) throw new Error(`page error at ${t.toFixed(2)} s`)",
+      "kills": [
+        "inspectAt a page that throws on a seek fails inspection instead of inspecting a blank frame"
+      ]
+    },
+    {
+      "name": "openQaPage reads the page's cue log even when the caller passes cues",
+      "file": "packages/render-qa/src/session.ts",
+      "find": "cues: cues ?? (await pageCues(page))",
+      "replace": "cues: await pageCues(page)",
+      "kills": [
+        "openQaPage cues cues the caller passes replace the page's own cue log"
+      ]
+    }
+  ]
+}

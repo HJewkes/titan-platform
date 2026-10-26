@@ -4,11 +4,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * The M1a guard (TP-3099 I8): the effective mode is emitted, not consumed. Only serve wiring and health may read it now;
- * the reconciler (TP-3402) and the ingress (TP-3405) join this list when they land. A recipe or service that imports
- * github-sources/ fails here.
+ * The M1a guard (TP-3099 I8): the effective mode is emitted, not consumed. Only serve wiring, health and the ingress
+ * kill switch (TP-3802), its listener on serve (TP-3830) and the reconciler's start, for its cadence (TP-3402), may read it
+ * now, with serve's bot-only reconciler start (TP-3431). A recipe or service that imports github-sources/ fails here.
  */
-const ALLOWED = ["cli.ts", "serve-health.ts", "serve.ts"];
+const ALLOWED = ["cli.ts", "ingress/answer.ts", "ingress/listen.ts", "reconciler/service.ts", "serve-health.ts", "serve-ingress.ts", "serve-reconciler.ts", "serve.ts"];
+
+/** Test support is not a service: the A17 harness builds its feed from the mode resolver. */
+const isTestSupport = (path: string): boolean => path.startsWith("test-support/");
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 const IMPORTS_SOURCES = /from\s+["'](?:\.\.?\/)+github-sources\//;
@@ -26,8 +29,14 @@ describe("github-sources importers", () => {
     const importers = sourceFiles(SRC)
       .filter((path) => IMPORTS_SOURCES.test(readFileSync(path, "utf8")))
       .map((path) => relative(SRC, path).split(sep).join("/"))
+      .filter((path) => !isTestSupport(path))
       .sort();
 
     expect(importers).toEqual(ALLOWED);
+  });
+
+  it("exempts the A17 harness but still counts a service file", () => {
+    expect(["test-support/a17/feed.ts"].every(isTestSupport)).toBe(true);
+    expect(["shepherd/x.ts", "serve.ts", "test-support.ts"].filter(isTestSupport)).toEqual([]);
   });
 });

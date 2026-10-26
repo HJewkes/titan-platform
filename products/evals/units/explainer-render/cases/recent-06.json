@@ -1,0 +1,24 @@
+{
+  "schema": "titan.case/v1",
+  "id": "recent-06",
+  "unit": {
+    "id": "explainer-render",
+    "version": "1.0.0"
+  },
+  "input": {
+    "inputs": {
+      "words": "37c73f57c9d754b8134f05c716b5408b070d6b0191425cfc71424a595b857408",
+      "audio": "3762a57c90e903cf2a1bd7a2a72cfd246c0dea136fec690433296ad065983a8c"
+    }
+  },
+  "split": "dev",
+  "tags": [
+    "recent-render"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "explainer artifact store, by sha",
+    "labelVersion": 1
+  },
+  "visibility": "private"
+}

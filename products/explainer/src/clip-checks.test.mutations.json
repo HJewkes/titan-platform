@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "only the first clipping ancestor is read, so an unpainted band is skipped",
+      "file": "products/explainer/src/clip-checks.ts",
+      "find": "const cuts = text.clips.map(",
+      "replace": "const cuts = text.clips.slice(1).map(",
+      "kills": [
+        "clippedText fails a three-line headline whose unpainted band cuts off the third line"
+      ]
+    },
+    {
+      "name": "the bottom edge of a clip is not measured",
+      "file": "products/explainer/src/clip-checks.ts",
+      "find": ", line.y + line.height - (clip.y + clip.height));",
+      "replace": ");",
+      "kills": [
+        "clippedText fails a three-line headline whose unpainted band cuts off the third line"
+      ]
+    },
+    {
+      "name": "a line touching the edge within the tolerance is failed",
+      "file": "products/explainer/src/clip-checks.ts",
+      "find": "worst.px > tolerancePx",
+      "replace": "worst.px >= tolerancePx",
+      "kills": [
+        "clippedText passes a line that touches the band's edge within the tolerance"
+      ]
+    },
+    {
+      "name": "the shallowest clip is named",
+      "file": "products/explainer/src/clip-checks.ts",
+      "find": "a && a.px >= b.px ? a : b",
+      "replace": "a && a.px <= b.px ? a : b",
+      "kills": [
+        "clippedText names the clip that cuts deepest when two ancestors clip the same line"
+      ]
+    },
+    {
+      "name": "the right edge of a clip is not measured",
+      "file": "products/explainer/src/clip-checks.ts",
+      "find": "line.x + line.width - (clip.x + clip.width), ",
+      "replace": "",
+      "kills": [
+        "clippedText fails a line cut at the band's right edge"
+      ]
+    }
+  ]
+}

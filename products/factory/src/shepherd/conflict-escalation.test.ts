@@ -37,7 +37,7 @@ function conflictingWorld() {
 }
 
 describe("a merge conflict that survives one fixer attempt", () => {
-  it("retries update-branch at the fixer's head, then opens the owner's conflict gate and wakes no second fixer", async () => {
+  it("retries update-branch at the fixer's head, wakes one fresh fixer, then opens the owner's conflict gate only because no seat notice is wired", async () => {
     const { fake, host, runId, wakes } = conflictingWorld();
 
     await gateOpened(host, gateId(runId, "approve-merge"));
@@ -47,8 +47,8 @@ describe("a merge conflict that survives one fixer attempt", () => {
     host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H2 }, OWNER);
     await host.runtime.wait(runId);
 
-    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["conflict", H1]]);
-    expect(updatedHeads).toEqual([H1, H2]);
+    expect(wakes.map((wake) => [wake.kind, wake.headSha, wake.payload])).toEqual([["conflict", H1, { mergeableState: "dirty" }], ["conflict", H2, { mergeableState: "dirty", freshFixer: true }]]);
+    expect(updatedHeads).toEqual([H1, H2, H2]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/conflict: ${ESCALATIONS.conflict}`);
     expect(fake.effects.merge).toBe(0);
   });

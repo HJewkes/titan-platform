@@ -1,0 +1,11 @@
+schema: beat-system/v1
+id: journey-of-attempts
+version: 0.1.0
+source: "video-profiles plan §B.1 and §B.4 (journey of attempts) [W41]"
+summary: "What was tried, where it broke and why, the fix, and what shows it now holds."
+steps:
+  - { beats: [attempt], does: "What was tried." }
+  - { beats: [issue-pin, sequence, info-flow], does: "Where it broke." }
+  - { beats: [history-why, history, sequence, info-flow], does: "Why it broke.", optional: true }
+  - { beats: [fix, code-walk], does: "The fix.", optional: true }
+  - { beats: [proof, stat], does: "What holds now: the proof or the number." }

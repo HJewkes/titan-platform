@@ -1,3 +1,4 @@
+import { plainText } from "@titan-design/speech-vet";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { bodyBeats, contentTerms, countRow, isChapterOpen, ruleRow, sentencesOf, sharesTerm, startShares, wordsOf } from "./lint-text.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
@@ -7,6 +8,8 @@ const ANNOUNCEMENT = /^(here is|here's|now \w+|two more|three more|zoom (in|out)
 const ANAPHORA = /^(this|that|these|those|it|its|they|their)\b/i;
 const TURN = /^(but|so|therefore)\b/i;
 const PIVOT = /\bwhat it does\b[^.?!]*\bhow\b|\bnow,? how (does|do|is)\b/i;
+/** The pivot sentences PIVOT counts, in words a repair prompt can quote. */
+export const PIVOT_FORM = '"Now, how does (do, is) ...?", or one sentence that says what it does and then how';
 const GOOD_QUESTION = /^(why|how (does|do|did|can|could|come|is|are))\b|\b(you|your)\b/i;
 const RECAP = /\b(to recap|in summary|recap|we (saw|covered|learned))\b/i;
 const CAUSAL = /\b(but|so|therefore|because|which means|otherwise)\b/gi;
@@ -17,7 +20,9 @@ export const MAX_CONNECTIVE_SHARE = 0.4;
 export const MIN_HANDOFFS = 2 / 3;
 export const MAX_LIST_ITEMS = 5;
 export const MAX_OUTRO_WORDS = 8;
+/** Q-F8's one-idea beat: its seconds band and the most new names it introduces. The script stage plans to the same bounds. */
 export const BEAT_SECONDS = [6, 20] as const;
+export const MAX_BEAT_NEW_NAMES = 2;
 export const MIN_CAUSAL_DENSITY = 0.5;
 export const MIN_PLAIN_SHARE = 0.4;
 
@@ -27,8 +32,25 @@ const isTodo = (value: unknown): value is string => typeof value === "string" &&
 const connectiveOf = (beat: ScriptBeat): string | undefined =>
   beat.connector_in ?? CONNECTIVE.exec(first(beat.spoken))?.[1]?.toLowerCase();
 
-/** Q-F1: body-to-body boundaries inside a chapter link by a connective or a shared entity. */
-function boundaryLinks(beats: readonly ScriptBeat[]): L0Result {
+interface BoundaryLinks {
+  ratio: number;
+  unlinked: string[];
+  /** The connective that opens more than its share of linked boundaries, with its count, if one does. */
+  overused?: Overuse;
+}
+
+export interface Overuse {
+  word: string;
+  count: number;
+  linked: number;
+  /** The linked beats it opens, in script order. */
+  beats: string[];
+  /** How many linked beats each connective opens. */
+  counts: ReadonlyMap<string, number>;
+}
+
+/** Q-F1's measurement: body-to-body boundaries inside a chapter link by a connective or a shared entity. */
+export function boundaryLinks(beats: readonly ScriptBeat[]): BoundaryLinks {
   const boundaries = beats.flatMap((beat, i) => {
     const prev = beats[i - 1];
     return prev && prev.chapter === beat.chapter && !isChapterOpen(prev, i - 1, beats) ? [{ prev, beat }] : [];
@@ -41,9 +63,16 @@ function boundaryLinks(beats: readonly ScriptBeat[]): L0Result {
     const word = connectiveOf(beat);
     if (word) counts.set(word, (counts.get(word) ?? 0) + 1);
   }
-  const overused = linked.length >= 3 && [...counts.values()].some((n) => n / linked.length > MAX_CONNECTIVE_SHARE);
+  const [word, count] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
+  const opened = linked.filter(({ beat }) => connectiveOf(beat) === word).map(({ beat }) => beat.id);
+  const overused = linked.length >= 3 && count / linked.length > MAX_CONNECTIVE_SHARE ? { word, count, linked: linked.length, beats: opened, counts } : undefined;
   const ratio = boundaries.length ? linked.length / boundaries.length : 1;
   const unlinked = boundaries.filter((b) => !linked.includes(b)).map(({ beat }) => beat.id);
+  return { ratio, unlinked, ...(overused ? { overused } : {}) };
+}
+
+function boundaryRow(beats: readonly ScriptBeat[]): L0Result {
+  const { ratio, unlinked, overused } = boundaryLinks(beats);
   return ruleRow("Q-F1", { value: ratio, threshold: MIN_LINKED, pass: ratio >= MIN_LINKED && !overused, beats: unlinked });
 }
 
@@ -69,19 +98,44 @@ const voices = (spoken: string, claim: string): boolean => {
   return terms.length > 0 && terms.filter((t) => said.has(t)).length / terms.length >= 0.6;
 };
 
+const percent = (share: number): string => `${Math.round(share * 100)} %`;
+
+/** Where each thesis ref must start, as a share of planned time: the open, the midpoint and the button. */
+const THESIS_SLOTS = [
+  { name: "open", fits: (at: number) => at <= 0.2, where: "by 20 %" },
+  { name: "midpoint", fits: (at: number) => at >= 0.35 && at <= 0.65, where: "between 35 % and 65 %" },
+  { name: "button", fits: (at: number) => at >= 0.8, where: "at 80 % or later" },
+] as const;
+const ACT_ONE_TWO = 0.2;
+
+function mechanismDefect({ video, beats }: ScriptV1, shares: ReadonlyMap<string, number>): string[] {
+  const actOneTwo = beats.filter((b) => (shares.get(b.id) ?? 1) < ACT_ONE_TWO);
+  if (isTodo(video.thesis_mechanism)) return ["thesis_mechanism is still a TODO"];
+  if (actOneTwo.some((b) => voices(b.spoken, video.thesis_mechanism))) return [];
+  const terms = [...contentTerms(video.thesis_mechanism)];
+  const missing = (b: ScriptBeat) => terms.filter((t) => !contentTerms(b.spoken).has(t));
+  const closest = [...actOneTwo].sort((a, b) => missing(a).length - missing(b).length)[0];
+  const near = closest ? ` (closest: ${closest.id}, which never says ${missing(closest).join(", ")})` : "";
+  return [`no beat before ${percent(ACT_ONE_TWO)} of planned time speaks 60 % of thesis_mechanism's content words${near}`];
+}
+
+/** Q-F4's defects in words: each thesis ref outside its slot, and a mechanism act 1–2 never voices. */
+export function thesisDefects(script: ScriptV1): string[] {
+  const shares = startShares(script.beats);
+  const refs = script.video.thesis_refs ?? [];
+  const misplaced = THESIS_SLOTS.flatMap(({ name, fits, where }, i) => {
+    const id = refs[i];
+    const at = id === undefined ? undefined : shares.get(id);
+    if (at !== undefined && fits(at)) return [];
+    return [`the ${name} thesis ref ${id ?? "(none)"} starts at ${at === undefined ? "no beat" : percent(at)} of planned time; it must start ${where}`];
+  });
+  return [...misplaced, ...mechanismDefect(script, shares)];
+}
+
 /** Q-F4: the thesis lands at the open, the midpoint and the button, and its mechanism is said in act 1–2. */
-function thesisPlacement({ video, beats }: ScriptV1): L0Result {
-  const shares = startShares(beats);
-  const [open, mid, button] = (video.thesis_refs ?? []).map((id) => shares.get(id) ?? -1);
-  const misplaced = [
-    open === undefined || open > 0.2,
-    mid === undefined || mid < 0.35 || mid > 0.65,
-    button === undefined || button < 0.8,
-  ].filter(Boolean).length;
-  const actOneTwo = beats.filter((b) => (shares.get(b.id) ?? 1) < 0.2);
-  const voiced = !isTodo(video.thesis_mechanism) && actOneTwo.some((b) => voices(b.spoken, video.thesis_mechanism));
-  const defects = misplaced + (voiced ? 0 : 1);
-  return ruleRow("Q-F4", { value: defects, threshold: 0, pass: defects === 0, beats: video.thesis_refs ?? [], mode: "tagged" });
+function thesisPlacement(script: ScriptV1): L0Result {
+  const defects = thesisDefects(script).length;
+  return ruleRow("Q-F4", { value: defects, threshold: 0, pass: defects === 0, beats: script.video.thesis_refs ?? [], mode: "tagged" });
 }
 
 function pivotLines(beats: readonly ScriptBeat[]): L0Result {
@@ -96,7 +150,7 @@ const weakQuestions = ({ chapters, beats }: ScriptV1): string[] =>
 
 const overloadedBeats = (beats: readonly ScriptBeat[]): string[] =>
   bodyBeats(beats)
-    .filter((b) => b.new_terms.length > 2 || b.plannedS < BEAT_SECONDS[0] || b.plannedS > BEAT_SECONDS[1])
+    .filter((b) => b.new_terms.length > MAX_BEAT_NEW_NAMES || b.plannedS < BEAT_SECONDS[0] || b.plannedS > BEAT_SECONDS[1])
     .map((b) => b.id);
 
 /** Items in a spoken list: commas, plus one for an "x and y" tail; a colon starts the list. */
@@ -108,7 +162,10 @@ function listItems(sentence: string): number {
   return segments.length + (/\S\s+(and|or)\s+\S/.test(tail) ? 1 : 0);
 }
 
-const identifiers = (text: string): number => wordsOf(text).filter((w) => IDENTIFIER.test(w.replace(/[.,;:!?]+$/, ""))).length;
+// The voice says the word of a `[w](/phonemes/)` override, and Q-V10 demands that markup, so its slashes name nothing.
+const spokenWords = (spoken: string): string[] => wordsOf(plainText(spoken));
+
+const identifiers = (text: string): number => spokenWords(text).filter((w) => IDENTIFIER.test(w.replace(/[.,;:!?]+$/, ""))).length;
 
 /** Q-F9: spoken lists stay short, and names or paths read aloud in bulk belong on a `ref` beat. */
 const longLists = (beats: readonly ScriptBeat[]): string[] =>
@@ -161,20 +218,25 @@ function learnerQuestions(beats: readonly ScriptBeat[]): L0Result {
   return ruleRow("Q-F15", { value: silent.length, threshold: 0, pass: silent.length === 0, beats: ids, severity: "warning" });
 }
 
+/** The first internal identifier the script speaks, its beat, and the share of words spoken before it. */
+export function firstIdentifier(beats: readonly ScriptBeat[]): { beat: string; word: string; share: number } | undefined {
+  const words = beats.flatMap((b) => spokenWords(b.spoken).map((word) => ({ id: b.id, word: word.replace(/[.,;:!?]+$/, "") })));
+  const at = words.findIndex(({ word }) => IDENTIFIER.test(word));
+  return at === -1 ? undefined : { beat: words[at]!.id, word: words[at]!.word, share: at / words.length };
+}
+
 /** Q-F16: the plain-language share of the script before the first internal identifier is spoken. */
 function plainOpening(beats: readonly ScriptBeat[]): L0Result {
-  const words = beats.flatMap((b) => wordsOf(b.spoken).map((word) => ({ id: b.id, word: word.replace(/[.,;:!?]+$/, "") })));
-  const at = words.findIndex(({ word }) => IDENTIFIER.test(word));
-  const share = at === -1 || words.length === 0 ? 1 : at / words.length;
-  const beat = at === -1 ? [] : [words[at]!.id];
-  return ruleRow("Q-F16", { value: share, threshold: MIN_PLAIN_SHARE, pass: share >= MIN_PLAIN_SHARE, beats: beat });
+  const first = firstIdentifier(beats);
+  const share = first?.share ?? 1;
+  return ruleRow("Q-F16", { value: share, threshold: MIN_PLAIN_SHARE, pass: share >= MIN_PLAIN_SHARE, beats: first ? [first.beat] : [] });
 }
 
 /** Q-F flow lints over the spoken track and the beat functions. */
 export const flowCheck: L0Check = ({ script }) => {
   const { beats } = script;
   return [
-    boundaryLinks(beats),
+    boundaryRow(beats),
     chapterHandoffs(beats),
     thesisPlacement(script),
     pivotLines(beats),

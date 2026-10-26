@@ -1,0 +1,45 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a roster row with no predecessor claims it took over from no one",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "...(row.predecessor !== undefined && { predecessor: row.predecessor }),",
+      "replace": "predecessor: row.predecessor ?? null,",
+      "kills": [
+        "agentChatReviewerDispatch roster reports no predecessor for a row that carries none, rather than claiming it took over from no one",
+        "agentChatReviewerDispatch roster lineage proof over the roster it reads cannot prove a reviewer independent from rows that carry no predecessor"
+      ]
+    },
+    {
+      "name": "the roster drops the predecessor agent-chat reported",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "...(row.predecessor !== undefined && { predecessor: row.predecessor }),",
+      "replace": "...{},",
+      "kills": [
+        "agentChatReviewerDispatch roster carries the predecessor of a row that names the agent it took over from",
+        "agentChatReviewerDispatch roster carries the predecessor of a row that says it took over from no one",
+        "agentChatReviewerDispatch roster lineage proof over the roster it reads proves a reviewer independent when every row says it took over from no one"
+      ]
+    },
+    {
+      "name": "the roster offers retired rows as reviewers",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "rows.filter((row) => row.retired !== true).map(rosterRow)",
+      "replace": "rows.map(rosterRow)",
+      "kills": [
+        "agentChatReviewerDispatch roster retired generations never offers a retired row as a reviewer on the roster"
+      ]
+    },
+    {
+      "name": "the lineage is the plain roster, called complete",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "lineage: () => askBroker(async () => toLineage(await lineage.rows())),",
+      "replace": "lineage: () => askBroker(async () => ({ rows: (await roster.rows()).map(lineageRow), complete: true })),",
+      "kills": [
+        "agentChatReviewerDispatch roster retired generations refuses a reviewer whose seat's retired first generation the implementer spawned",
+        "agentChatReviewerDispatch roster retired generations proves nothing, and still reads the roster, on an agent-chat that predates --include-retired"
+      ]
+    }
+  ]
+}

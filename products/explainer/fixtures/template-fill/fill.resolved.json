@@ -1,0 +1,294 @@
+{
+  "schema": "explainer.resolved/v1",
+  "profile": "repo-tour",
+  "beats": [
+    {
+      "id": "b1",
+      "chapter": "ch1",
+      "key": {
+        "function": "HOOK",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "hook",
+      "beat": "hook",
+      "component": {
+        "name": "HookBeat",
+        "maturity": "spike"
+      },
+      "band": "story",
+      "framing": "full",
+      "layer": "template",
+      "anchors": [
+        "A1:F6"
+      ]
+    },
+    {
+      "id": "b2",
+      "chapter": "ch1",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "list",
+      "component": {
+        "name": "ListBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b3",
+      "chapter": "ch1",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "list",
+      "component": {
+        "name": "ListBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b4",
+      "chapter": "ch1",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "stat",
+      "component": {
+        "name": "StatBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b5",
+      "chapter": "ch2",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "compare",
+      "component": {
+        "name": "CompareBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b6",
+      "chapter": "ch2",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "arch-map",
+      "component": {
+        "name": "MapBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b7",
+      "chapter": "ch2",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "chart",
+      "component": {
+        "name": "BarChartBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b8",
+      "chapter": "ch2",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "chart",
+      "component": {
+        "name": "BarChartBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b9",
+      "chapter": "ch2",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "map",
+        "route": "none"
+      },
+      "row": "map-state",
+      "beat": "issue-pin",
+      "component": {
+        "name": "MapCard",
+        "maturity": "shipped"
+      },
+      "band": "code",
+      "framing": "full",
+      "layer": "template",
+      "anchors": [
+        "A1:F6"
+      ]
+    },
+    {
+      "id": "b10",
+      "chapter": "ch3",
+      "key": {
+        "function": "VERDICT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "verdict",
+      "beat": "verdict-card",
+      "component": {
+        "name": "ListBeat",
+        "maturity": "spike"
+      },
+      "band": "story",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b11",
+      "chapter": "ch3",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "gantt",
+      "component": {
+        "name": "Gantt",
+        "maturity": "doc"
+      },
+      "band": "story",
+      "framing": "focus",
+      "layer": "template",
+      "anchors": [
+        "B2:E5"
+      ]
+    },
+    {
+      "id": "b12",
+      "chapter": "ch3",
+      "key": {
+        "function": "CLOSE",
+        "job": "numbers",
+        "content": "items",
+        "route": "none"
+      },
+      "row": "close",
+      "beat": "button",
+      "component": {
+        "name": "OutroBeat",
+        "maturity": "spike"
+      },
+      "band": "takeaways",
+      "framing": "stack",
+      "layer": "template",
+      "anchors": [
+        "B1:E3",
+        "B4:E6"
+      ]
+    },
+    {
+      "id": "b13",
+      "chapter": "ch3",
+      "key": {
+        "function": "WHAT",
+        "job": "numbers",
+        "content": "statement",
+        "route": "none"
+      },
+      "row": "numbers",
+      "beat": "list",
+      "component": {
+        "name": "ListBeat",
+        "maturity": "spike"
+      },
+      "band": "concept",
+      "framing": "focus",
+      "layer": "custom",
+      "anchors": [
+        "B2:E5"
+      ]
+    }
+  ],
+  "budgets": []
+}

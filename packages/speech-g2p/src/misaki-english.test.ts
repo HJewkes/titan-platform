@@ -65,6 +65,30 @@ describe("misakiEnglish", { timeout: LOAD_TIMEOUT_MS }, () => {
     expect(misakiEnglish().version).toBe(g2p.version);
   });
 
+  it("reads a caller word with its phonemes in any casing, ahead of the shipped lexicon", () => {
+    const withWords = misakiEnglish({ words: { zxqv: "zˈɪk", live: "lˈIv" } });
+
+    const tokens = withWords.tokens("Zxqv, we live here.");
+
+    expect(tokens.map((tk) => [tk.text, tk.phonemes, tk.rating])).toEqual(
+      expect.arrayContaining([
+        ["Zxqv", "zˈɪk", 5],
+        ["live", "lˈIv", 5],
+        ["here", "hˈɪɹ", 4],
+      ]),
+    );
+  });
+
+  it("keeps the base version with no words and changes it once words are given", () => {
+    const empty = misakiEnglish({ words: {} });
+    const one = misakiEnglish({ words: { zxqv: "zˈɪk" } });
+    const other = misakiEnglish({ words: { zxqv: "zˈæk" } });
+
+    expect(empty.version).toBe(g2p.version);
+    expect(one.version).toMatch(new RegExp(`^${g2p.version.replaceAll(".", "\\.").replaceAll("+", "\\+")}\\+words\\.[0-9a-f]{12}$`));
+    expect(other.version).not.toBe(one.version);
+  });
+
   it("gives tokens speech-vet accepts as PhonemeToken", () => {
     expectTypeOf(g2p.tokens("hi")).toExtend<PhonemeToken[]>();
   });

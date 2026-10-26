@@ -115,7 +115,7 @@ only the range endpoints: a leak added and then removed is still in the pushed h
   shapes, with any prefix.
 - `private-term`: one per line of the term list. `#` comments and blank lines are skipped.
   A plain term matches case-insensitively on word boundaries; a `re:` line is a regex
-  compiled with `iu`. A term that matches the empty string is rejected. A finding carries `termIndex`, the term's line in the file.
+  compiled with `iu`. A term that matches the empty string is rejected. A line may start with a `[category]` tag (`^[a-z][a-z0-9-]*$`) followed by the term, such as `[owner-email] re:...`; a malformed tag fails the load. To match a term that begins with `[`, write it as `re:\[...`. A finding carries `termIndex`, the term's line in the file, and `category` when the line is tagged; the report prints `[category]` in place of `#<line>`.
 - `credential-token`: a credential shape, and the finding's `kind` names which: `github`
   (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `anthropic` (`sk-ant-`),
   `aws-access-key` (`AKIA`/`ASIA` plus 16), `slack` (`xox[abprs]-`) and `private-key` (a PEM
@@ -130,8 +130,10 @@ only the range endpoints: a leak added and then removed is still in the pushed h
 `.egress-allow` holds `<glob> <rule-id> <reason>` lines. The reason must name a task id
 such as `TP-405`, and the glob must name at least one literal path segment.
 Braces expand (`docs/{a,b}.md`), and every alternative must name a literal segment. A glob
-that expands past 256 alternatives is malformed. A backslash is not an escape; it matches a
-literal backslash.
+that expands past 256 alternatives, is longer than 1024 characters or has more than 32 brace
+groups is malformed. Matching takes time linear in the path, so no run of `*`, `**/` or
+`*a` in a glob can stall the scan. A backslash is not an escape; it matches a literal
+backslash.
 `private-term` and `credential-token` are never allowable. `parseAllow` throws `AllowFileError`
 on any malformed line; a caller must fail the scan on it, never fall back to an empty list.
 

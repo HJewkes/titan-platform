@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { classifyReports, type ClassifyInput } from "./classify.js";
+import { provedByMutants, toResult } from "./result-line.js";
 
 const ROOT = "/work/repo";
 
 interface FakeTest {
   name: string;
-  status: "passed" | "failed" | "skipped";
+  status: "passed" | "failed" | "skipped" | "todo" | "pending";
   failure?: string;
 }
 
@@ -176,5 +177,53 @@ describe("classifyReports", () => {
 
   it("gives error for an unsafe selected path", () => {
     expect(classifyReports(input(["../a.test.ts"], report(), report())).verdict).toBe("error");
+  });
+
+  it("reports an error, not a vacuous run, when a base hook failure skipped every test in a file", () => {
+    const hookFailed = fileResult("a.test.ts", [{ name: "opens", status: "skipped" }, { name: "closes", status: "skipped" }], "failed");
+    const result = classifyReports(input(["a.test.ts"], report(hookFailed), report(fileResult("a.test.ts", [passing("opens"), passing("closes")]))));
+
+    expect(result.verdict).toBe("error");
+    expect(result.error).toMatch(/base: .*hook/);
+    expect(result.files).toEqual([{ file: "a.test.ts", base: "hook-error", head: "ran" }]);
+  });
+
+  it("still calls a file with deliberately skipped tests vacuous", () => {
+    const skipped = fileResult("a.test.ts", [{ name: "later", status: "skipped" }]);
+    const result = classifyReports(input(["a.test.ts"], report(skipped), report(fileResult("a.test.ts", [passing("later")]))));
+
+    expect(result.verdict).toBe("vacuous");
+  });
+});
+
+describe("mutant proof over tests head declines to run", () => {
+  const FILE = "src/guard.test.ts";
+  const skipped = (name: string): FakeTest => ({ name, status: "skipped" });
+  const todo = (name: string): FakeTest => ({ name, status: "todo" });
+  const pending = (name: string): FakeTest => ({ name, status: "pending" });
+
+  function proved(base: FakeTest[], head: FakeTest[], headStatus = "passed") {
+    const classification = classifyReports(input([FILE], report(fileResult(FILE, base)), report(fileResult(FILE, head, headStatus))));
+    const plan = { tests: [FILE], carried: [], deletedTests: [], overlayRemovals: [], mutations: [], source: [], config: { tests: ["**/*.test.ts"], carry: [], runtime: [] }, configEdited: false };
+    const result = toResult({ head: "a".repeat(40), mergeBase: "b".repeat(40), plan, classification });
+    const mutants = { verdict: "killed" as const, results: [{ spec: "src/guard.test.mutations.json", name: "drop the bound", outcome: "killed" as const }], uncovered: [] };
+    return { counts: result.counts, proved: provedByMutants({ ...result, mutants }) };
+  }
+
+  it("proves a test-only diff whose head skips and todos tests on purpose once its mutants are killed", () => {
+    const outcome = proved([passing("guards"), skipped("runs under zsh")], [passing("guards"), skipped("runs under zsh"), skipped("resolves a case variant"), todo("globoff")]);
+
+    expect(outcome.counts).toMatchObject({ "passes-on-base": 1, "not-run": 0 });
+    expect(outcome.proved).toBe(true);
+  });
+
+  it.each([
+    ["a test passes at head but is missing at base", [passing("guards")], [passing("guards"), passing("new case")], "passed"],
+    ["base reports a test as neither run nor skipped", [passing("guards"), pending("queued")], [passing("guards"), passing("queued")], "passed"],
+    ["a test fails at head", [passing("guards"), passing("bound")], [passing("guards"), failing("bound")], "failed"],
+    ["head skips a test base passed", [passing("guards"), passing("bound")], [passing("guards"), skipped("bound")], "passed"],
+    ["head skips a test inside a failed file", [passing("guards")], [passing("guards"), skipped("after hook")], "failed"],
+  ])("does not prove killed mutants when %s", (_label, base, head, headStatus) => {
+    expect(proved(base, head, headStatus).proved).toBe(false);
   });
 });

@@ -4,7 +4,8 @@ import { isUsageLimit } from "@titan-design/review-panel";
 import type { Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type StepResult, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
-import type { CostSource, ReviewRow, ReviewRunRow, ReviewStatsStore } from "./review-stats-store.js";
+import { autoPassStepId } from "./auto-pass.js";
+import type { CostSource, ReviewRow, ReviewRunRow, ReviewStatsStore, RoundLabels } from "./review-stats-store.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { priceRound, type RoundCost, type SessionRead, type TranscriptPort } from "./stats-cost.js";
 import { mergedAt, outsideAt, payloadOf, stepName } from "./stats.js";
@@ -77,7 +78,7 @@ export function readRetireCosts(logsDir: string): Map<string, RetireCost> {
 }
 
 /** A review round as the ledger records it, before it is priced. `final` rounds can no longer change. */
-interface Round {
+interface Round extends RoundLabels {
   round: number;
   head: string | null;
   reviewer: string | null;
@@ -100,8 +101,45 @@ const num = (value: unknown): number | null => (typeof value === "number" ? valu
 const Node = z.record(z.string(), z.unknown());
 const at = (value: unknown, ...keys: string[]): unknown => keys.reduce<unknown>((node, key) => Node.safeParse(node).data?.[key], value);
 
+/** Panel members other than correctness: their steps carry the shape after the head. */
+const MEMBER_SHAPES = new Set(["adversary", "tests", "visual", "perf"]);
+/** A ledger key is `<step id>:<iteration>`. */
+const ITERATION = /:\d+$/;
+const CONVERGENCE_PASS = autoPassStepId("D8/convergence-review", "");
+
+/** A member's step id is `<name>:<head>:<shape>[:corrected]`; every other step belongs to the correctness reviewer. */
+function shapeOf(key: string): string {
+  const member = key.replace(ITERATION, "").split(":")[2];
+  return member !== undefined && MEMBER_SHAPES.has(member) ? member : "correctness";
+}
+
+/** Why each head was last asked for review: its intent's recorded cause, or `convergence` when D8's pass at that head came first. */
+function causeReader(): { note(key: string, result: Record<string, unknown>): void; of(head: string | null): string | null } {
+  const byHead = new Map<string, string>();
+  const converging = new Set<string>();
+  return {
+    note(key, result) {
+      const id = key.replace(ITERATION, "");
+      if (id.startsWith(CONVERGENCE_PASS)) converging.add(id.slice(CONVERGENCE_PASS.length));
+      const head = text(result.head);
+      if (stepName(key) !== "sh-review-intent" || result.kind !== "intent" || head === null) return;
+      byHead.set(head, converging.delete(head) ? "convergence" : (text(at(result.cause, "cause")) ?? "unknown"));
+    },
+    of: (head) => (head === null ? null : (byHead.get(head) ?? null)),
+  };
+}
+
+/** A shadow round's brief was the whole PR's, so it counts as full however the probe answered. */
+const scopedOf = (result: Record<string, unknown>): boolean | null => (typeof result.scoped === "boolean" ? result.scoped && result.scopeShadow !== true : null);
+
+/** `sh-scope-check:<head>` is the reviewer's own FIX_FIRST; its `:corrected` check reads the reply. */
+const isFirstScopeCheck = (key: string): boolean => {
+  const [name, , suffix] = key.replace(ITERATION, "").split(":");
+  return name === "sh-scope-check" && suffix === undefined;
+};
+
 /** A started reviewer's `sh-review` opens a round, and so does an external intent, which starts nobody. */
-function opened(name: string, result: Record<string, unknown>, index: number, runStart: number): Round | undefined {
+function opened(name: string, result: Record<string, unknown>, index: number, runStart: number): Omit<Round, keyof RoundLabels> | undefined {
   const dispatched = name === "sh-review" && result.kind === "dispatched";
   if (!dispatched && !(name === "sh-review-intent" && result.kind === "intent" && result.mode === "external")) return undefined;
   const requestedAt = num(result.at) ?? runStart;
@@ -109,6 +147,12 @@ function opened(name: string, result: Record<string, unknown>, index: number, ru
     round: index, head: text(result.head), reviewer: text(result.reviewer), sessionId: text(result.sessionId), path: null, requestedAt,
     startedAt: dispatched ? num(result.startedAt) : null, verdictAt: null, verdict: null, verdictModel: null, limitOnly: true, final: false,
   };
+}
+
+/** The newest round of `shape`: a panel dispatches every member before any verdict, so each verdict resolves its own member's round. */
+function latestOf(rounds: readonly Round[], shape: string): Round | undefined {
+  for (let index = rounds.length - 1; index >= 0; index--) if (rounds[index]!.shape === shape) return rounds[index];
+  return undefined;
 }
 
 /** The last resolving step wins, as a `:corrected` reply or a late verdict replaces the on-time read. */
@@ -122,23 +166,26 @@ function resolve(round: Round, step: StepResult, result: Record<string, unknown>
 }
 
 /**
- * Steps are stored in the order they were recorded, so a resolving step belongs to the latest round opened before it.
- * A round is final once it has a verdict, a later round opens, or the run ends; `round` is its ordinal in the run.
+ * Steps are stored in the order they were recorded, so a resolving step belongs to the latest round of its shape opened before it.
+ * A round is final once it has a verdict, a later round of its shape opens, or the run ends; `round` is its ordinal in the run.
  */
 function roundsOf(run: WorkflowRun): Round[] {
   const rounds: Round[] = [];
+  const causes = causeReader();
   const runStart = Date.parse(run.startedAt);
   for (const [key, step] of Object.entries(run.stepResults)) {
     const result = payloadOf(step);
-    const name = stepName(key);
-    const next = opened(name, result, rounds.length, runStart);
+    const shape = shapeOf(key);
+    causes.note(key, result);
+    const next = opened(stepName(key), result, rounds.length, runStart);
     if (next) {
-      const previous = rounds.at(-1);
+      const previous = latestOf(rounds, shape);
       if (previous) previous.final = true;
-      rounds.push(next);
+      rounds.push({ ...next, shape, cause: causes.of(next.head), scoped: scopedOf(result), scopeUntagged: null, scopeRepeated: null });
     }
-    const current = rounds.at(-1);
-    if (current && RESOLVING.has(name)) resolve(current, step, result);
+    const current = latestOf(rounds, shape);
+    if (current && RESOLVING.has(stepName(key))) resolve(current, step, result);
+    if (current && isFirstScopeCheck(key)) Object.assign(current, { scopeUntagged: num(result.untagged), scopeRepeated: num(result.repeated) });
   }
   if (FINISHED.includes(run.status)) for (const round of rounds) round.final = true;
   return rounds.filter((round) => !(round.limitOnly && round.verdictAt !== null));
@@ -167,12 +214,16 @@ interface Pending {
   round: Round;
 }
 
-/** Final rounds not yet stored; unfinished rounds wait for a later refresh, so a stored row never changes under a reader. */
-function pendingRounds(runs: readonly WorkflowRun[], store: ReviewStatsStore): Pending[] {
-  return runs.flatMap((run) => {
+/**
+ * Final rounds not yet stored, which are priced, and final rounds already stored, whose labels alone are written again so a
+ * row stored before v2 gains them. Unfinished rounds wait for a later refresh, so a stored row's cost never changes under a reader.
+ */
+function finalRounds(runs: readonly WorkflowRun[], store: ReviewStatsStore): { pending: Pending[]; stored: Pending[] } {
+  const all = runs.flatMap((run) => {
     const stored = store.storedRounds(run.id);
-    return roundsOf(run).filter((round) => round.final && !stored.has(round.round)).map((round) => ({ run, round }));
+    return roundsOf(run).filter((round) => round.final).map((round) => ({ run, round, stored: stored.has(round.round) }));
   });
+  return { pending: all.filter((item) => !item.stored), stored: all.filter((item) => item.stored) };
 }
 
 type Priced = Pick<ReviewRow, "tokens" | "usd" | "costSource" | "model">;
@@ -215,7 +266,8 @@ function reviewRow({ run, round }: Pending, cost: Priced): ReviewRow {
     runId: run.id, round: round.round, repo: (run.params.repo ?? "").toLowerCase(), pr: runRow(run).pr, headSha: round.head, reviewer: round.reviewer,
     sessionId: round.sessionId, requestedAt: round.requestedAt, startedAt: round.startedAt, verdictAt: round.verdictAt,
     queueMs: round.startedAt === null ? null : round.startedAt - round.requestedAt, reviewMs: round.verdictAt === null ? null : round.verdictAt - begun,
-    verdict: round.verdict, ...cost, model: cost.model ?? round.verdictModel,
+    verdict: round.verdict, ...cost, model: cost.model ?? round.verdictModel, cause: round.cause, shape: round.shape, scoped: round.scoped,
+    scopeUntagged: round.scopeUntagged, scopeRepeated: round.scopeRepeated,
   };
 }
 
@@ -241,7 +293,7 @@ const latestCompletion = (runs: readonly WorkflowRun[], since: string | undefine
 export async function refreshReviewStats(deps: ReviewStatsDeps): Promise<RefreshResult> {
   const since = deps.store.refreshedThrough();
   const runs = deps.runs.runs(since);
-  const pending = pendingRounds(runs, deps.store);
+  const { pending, stored } = finalRounds(runs, deps.store);
   const { price, reads } = pricer(deps, pending);
   const rows: ReviewRow[] = [];
   for (const item of pending) rows.push(reviewRow(item, await price(item.round)));
@@ -249,6 +301,7 @@ export async function refreshReviewStats(deps: ReviewStatsDeps): Promise<Refresh
   deps.store.transaction(() => {
     for (const run of runs) deps.store.upsertRun(runRow(run));
     for (const row of rows) deps.store.upsertReview(row);
+    for (const { run, round } of stored) deps.store.setLabels({ runId: run.id, round: round.round }, round);
     repriced = repriceFromRetire(deps);
     const through = latestCompletion(runs, since);
     if (through !== undefined) deps.store.setRefreshedThrough(through);

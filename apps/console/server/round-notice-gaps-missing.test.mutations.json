@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a missing rounds dir throws instead of reading as no rounds",
+      "file": "apps/console/server/round-notice-gaps.ts",
+      "find": "    if (isMissing(error)) return [];\n",
+      "replace": "",
+      "kills": [
+        "missed round-notice rows before any round is filed reads no rows from a rounds dir that does not exist"
+      ]
+    }
+  ]
+}

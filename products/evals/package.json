@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/evals",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,6 +35,7 @@
   "private": true,
   "dependencies": {
     "@titan-design/agent": "workspace:^",
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",

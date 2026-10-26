@@ -8,14 +8,17 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { LandedPr } from "../workflows/land-landed.js";
 import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
-import { judgeMain, mainRulesReader, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
+import { judgeMain, mainRulesReader, onlyCancels, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { MainCiReads } from "./main-watch.js";
-import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
+import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
+import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
+import { greenContainingReader, heldRed } from "./stale-red.js";
 import { MAIN_CI_ROUTES, type MainCiRead, type MainCiRoute } from "./route-table.js";
 import { STACK_LAND_STEPS, restackLanded, stackLandRoutes } from "./stack-land.js";
+import { unlessThawed } from "./thawed-main-gates.js";
 
 export const SH_MAIN_CI_TIMEOUT_MS = 60 * 60_000;
 export const SH_MAIN_CI_POLL_MS = 30_000;
@@ -31,11 +34,7 @@ export const POST_MERGE_STEPS: readonly StepDeclaration[] = [
   ...STACK_LAND_STEPS,
   { id: "sh-main-ci", kind: "dispatch" },
   { id: REDEPLOY_STEP, kind: "dispatch" },
-  { id: "sh-unfreeze", kind: "dispatch" },
-  { id: "sh-freeze", kind: "dispatch" },
-  { id: "sh-file-fix-task", kind: "dispatch" },
-  { id: "sh-spawn-fixer", kind: "dispatch" },
-  { id: "sh-thaw", kind: "dispatch" },
+  ...MAIN_RED_STEPS,
   { id: "main-red", kind: "assisted" },
   { id: "main-ci-timeout", kind: "assisted" },
   { id: "main-red-again", kind: "assisted" },
@@ -59,6 +58,8 @@ export const MainCiResult = z.looseObject({
   readSha: z.string().optional(),
   /** Set when a red, cancelled or missing read at the merge sha was acknowledged on this green main commit containing it. */
   acknowledgedSha: z.string().optional(),
+  /** Set when a red that stood its wait was held for the run at this later main commit containing it (TP-4273). */
+  awaitedSha: z.string().optional(),
   after: AfterStagesSchema,
   detail: z.string(),
   /** Set when a job outside the base branch's required contexts was red: recorded here, and never a freeze. */
@@ -87,9 +88,9 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false, demotions: GateDemotions = GATE_DEMOTIONS): Promise<MainCi> {
   await restackLanded(ctx, target);
   const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
-  const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
+  const red = { repo: target.repo, pr: target.pr, mergeSha: result.verdict === "red" ? (result.readSha ?? target.mergeSha) : target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
-    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha });
+    await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, ...(result.readSha !== undefined && { greenSha: result.readSha }) });
     await onMainGreen(ctx, red);
   }
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail, demotions);
@@ -113,7 +114,7 @@ function fixOf(frozen: z.infer<typeof FreezeResult>): string {
   return pr !== null ? `fix PR #${pr}` : `fixer ${frozen.fixer}`;
 }
 
-/** A fixer is spawned at most once per episode, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
+/** A fixer is spawned at most once per episode, alongside Shepherd's one rerun, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
 async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string, demotions: GateDemotions): Promise<void> {
   const where = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is red: ${detail}.`;
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
@@ -124,7 +125,8 @@ async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, de
   const filed = await step(ctx, "sh-file-fix-task", episode, FixTaskResult);
   if (filed.thawed) return;
   if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
-  const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer, episode: frozen.episode }, FixerResult);
+  const [rerun, spawned] = await rerunAlongsideFixer(ctx, { ...episode, task: filed.task }, fixer);
+  if (rerun.thawed) return;
   if (spawned.fixer === null && (spawned.fixPr ?? null) === null && !spawned.thawed) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 
@@ -138,10 +140,11 @@ async function onMainGreen(ctx: WorkflowContext, red: RedInput): Promise<void> {
   await askFrozen(ctx, "main-frozen", { ...red, episode: result.episode }, prompt);
 }
 
-/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer. */
+/** Every outcome that leaves the repo frozen with no live way out ends here, with the owner's release on offer until it thaws. */
 async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-frozen", red: EpisodeInput, prompt: string): Promise<void> {
   const { schema, brief } = frozenDecision({ repo: red.repo, mergeSha: red.mergeSha, situation: prompt });
-  const answer = schema.parse((await ctx.assisted(gate, prompt, { schema, brief })).data);
+  const answer = unlessThawed(gate, await ctx.assisted(gate, prompt, { schema, brief, recordCancel: true }), schema);
+  if (answer === undefined) return;
   if (answer.mergeSha !== red.mergeSha) throw new Error(`${gate} answer names a different merge sha than ${red.mergeSha}`);
   if (answer.decision === "unfreeze") await step(ctx, "sh-thaw", red, z.looseObject({ thawed: z.boolean() }));
 }
@@ -172,6 +175,7 @@ export function postMergeRoutes(deps: ShepherdDeps, mainRed?: MainRedWiring): St
   return [
     codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(mainReads, input, timing, signal)),
     ...mainRedRoutes(deps, mainRed),
+    codeRoute(MAIN_RERUN_STEP, deps.now, (input: RerunInput, signal) => rerunRedMain(deps, mainRed, input, signal)),
     ...stackLandRoutes(deps),
     codeRoute("sh-cleanup", deps.now, (input: CleanupInput, signal) => runCleanup(deps, input, signal)),
   ];
@@ -186,7 +190,7 @@ export interface Timing {
 
 type Read = { verdict: "green"; detail: string; warning?: string } | { verdict: "red"; detail: string } | { verdict: "pending"; detail: string; queued?: true } | { verdict: "newer"; sha: string; detail: string };
 
-type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha" | "warning">;
+type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha" | "awaitedSha" | "warning">;
 
 interface Watch {
   sha: string;
@@ -194,6 +198,8 @@ interface Watch {
   queued: boolean;
   /** The first red read; it stands only once a fresh wait passes with no green main commit containing the merge. */
   red?: Settled;
+  /** The later main commit containing the red whose run the red is held for. */
+  awaiting?: string;
 }
 
 /**
@@ -201,7 +207,8 @@ interface Watch {
  * missing read keeps polling, and a main commit containing the merge sha that is green on every required context
  * acknowledges it; a red stands once a fresh SH_MAIN_CI_TIMEOUT_MS wait passes without one. At the limit it reads the
  * newest main push containing the merge sha once, and while a run is still queued or in progress it waits again, at most
- * SH_MAIN_CI_RECHECKS times. A read error or the final limit is `none`, never green.
+ * SH_MAIN_CI_RECHECKS times. A red whose wait passed while the base tip containing it still runs waits on that run
+ * within the same re-checks (TP-4273). A read error or the final limit is `none`, never green.
  */
 export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: Timing, signal: AbortSignal): Promise<MainCi> {
   const base = { mergeSha: input.mergeSha, after: input.after };
@@ -215,18 +222,32 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
   for (;;) {
     const wasRed = watch.red !== undefined;
     const settled = await pollOnce(main, watch, acknowledge, rules).catch((error: unknown) => failedPoll(watch, error));
-    if (settled !== undefined) return { ...base, ...settled };
+    if (settled !== undefined) return { ...base, ...awaited(watch), ...settled };
     if (!wasRed && watch.red !== undefined) clock = deadline(timing);
+    if (watch.red !== undefined && (clock.expired() || watch.awaiting !== undefined)) {
+      const read = await heldRed(main, watch.red, watch.awaiting, await rules(), timing.now());
+      if (read.verdict !== "awaiting") return { ...base, ...awaited(watch), ...read };
+      watch.awaiting = read.awaitedSha;
+      if (clock.expired() && rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, ...awaited(watch), ...watch.red };
+    }
     if (clock.expired()) {
-      if (watch.red !== undefined) return { ...base, ...watch.red };
-      const newest = await newestSettled(main, watch.sha, await rules()).catch(() => undefined);
-      if (newest !== undefined) return { ...base, readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
-      if (!watch.queued || rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, verdict: "none", detail: `no completed main run containing ${input.mergeSha} within ${((rechecks + 1) * timing.timeoutMs) / 60_000} min: ${watch.last}` };
+      const unsettled = watch.awaiting === undefined ? await unsettledAtLimit(main, watch, await rules(), rechecks, timing.timeoutMs) : undefined;
+      if (unsettled !== undefined) return { ...base, ...unsettled };
       rechecks += 1;
       clock = deadline(timing);
     }
     await clock.sleep(timing.pollMs, signal);
   }
+}
+
+const awaited = (watch: Watch): Pick<Settled, "awaitedSha"> => (watch.awaiting === undefined ? {} : { awaitedSha: watch.awaiting });
+
+/** At a limit with no red: the newest settled push containing the merge, `none` once nothing is queued or no re-check is left, else undefined to wait again. */
+async function unsettledAtLimit(main: MainRead, watch: Watch, rules: MainRules | undefined, rechecks: number, timeoutMs: number): Promise<Settled | undefined> {
+  const newest = await newestSettled(main, watch.sha, rules).catch(() => undefined);
+  if (newest !== undefined) return { readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
+  if (watch.queued && rechecks < SH_MAIN_CI_RECHECKS) return undefined;
+  return { verdict: "none", detail: `no completed main run containing ${main.mergeSha} within ${((rechecks + 1) * timeoutMs) / 60_000} min: ${watch.last}` };
 }
 
 /** One run's view of main: the repo, the merge it follows, and the merged PR's base branch, if a PR names one. */
@@ -275,33 +296,6 @@ function failedPoll(watch: Watch, error: unknown): undefined {
   watch.last = failureOf(error);
   watch.queued = false;
   return undefined;
-}
-
-/**
- * Reads the base branch's required contexts and app pins once they are readable, then answers the base tip when it is or
- * contains the merge sha and judgeMain finds nothing on it. No PR, unreadable or empty rules, or a tip that does not
- * contain the merge answers undefined, so nothing is acknowledged on a guess.
- */
-function greenContainingReader(main: MainRead): () => Promise<string | undefined> {
-  let rules: { base: string; rules: MainRules } | undefined;
-  return async () => {
-    if (main.base === undefined) return undefined;
-    rules ??= await baseMainRules(main.port, main.repo, await main.base());
-    if (rules === undefined) return undefined;
-    const tip = await main.port.getHeadSha(main.repo, rules.base);
-    if (tip === null || !(await contains(main.port, main.repo, tip, main.mergeSha))) return undefined;
-    return judgeMain(tip, await main.port.checkRuns(main.repo, tip), rules.rules).findings.length === 0 ? tip : undefined;
-  };
-}
-
-async function baseMainRules(port: GitHubPort, repo: RepoSlug, baseRef: string): Promise<{ base: string; rules: MainRules } | undefined> {
-  const { rules } = await readMainRules(port, repo, baseRef);
-  return rules === undefined ? undefined : { base: baseRef, rules };
-}
-
-/** True when `tip` is `sha`, or compare reads `sha` as the merge base, so `tip` is ahead of it. */
-async function contains(port: GitHubPort, repo: RepoSlug, tip: string, sha: string): Promise<boolean> {
-  return tip === sha || (await port.compareFiles(repo, sha, tip)).mergeBaseSha === sha;
 }
 
 /** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
@@ -385,7 +379,7 @@ function evaluate(mergeSha: string, runs: readonly CheckRun[], rules: MainRules 
   if (counted === 0) return { verdict: "pending", absent: true, detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
   const names = failed.map((run) => run.name).join(", ");
-  if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { verdict: "cancelled", detail: `cancelled: ${names}` };
+  if (onlyCancels(failed)) return { verdict: "cancelled", detail: `cancelled: ${names}` };
   if (failed.length > 0) return { verdict: "red", detail: `failed: ${names}` };
   if (findings.length > 0) return { verdict: "pending", queued: true, detail: `still running: ${findings.map((finding) => (finding.kind === "missing" ? finding.name : finding.run.name)).join(", ")}` };
   const warning = warningOf(warnings);

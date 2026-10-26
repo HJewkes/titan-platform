@@ -26,6 +26,8 @@ export interface WordToken {
   refs: VarRef[];
   /** Where in `value` an unquoted `~` opens a tilde prefix the shell expands; trusted only while `value` is still `text`. */
   tildes?: { text: string; at: number[] };
+  /** On a spliced word, the `[start, end)` ranges of `value` read outside every quote and escape; trusted only while `value` is still `text`. */
+  bare?: { text: string; spans: Array<[number, number]> };
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
   /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */
@@ -36,6 +38,8 @@ export interface WordToken {
   hidden?: true;
   /** A `{name}` before a redirect: zsh reads it as the redirect's descriptor and dash as a word; bash only when glued. */
   namedFd?: "glued" | "spaced";
+  /** Set only on the operand standing for a `<( )` at a command's operand position: the substitution's token lists. */
+  procsub?: Token[][];
 }
 
 export interface OpToken {
@@ -49,6 +53,8 @@ export interface OpToken {
 export interface SubsToken {
   type: "subs";
   subs: Token[][];
+  /** Set when a `<` or `>` just before it awaits its target (`bash < <(...)`): the substitution is that redirect's file, not an operand. */
+  awaited?: true;
 }
 
 /** `target` is the word after the operator; for a heredoc it is the delimiter and `body` is the text. */
@@ -114,6 +120,8 @@ export interface LexState {
   depth: number;
   tokens: Token[];
   word: WordToken | null;
+  /** The `[start, end)` ranges of the pending word's `value` read inside quotes or after an escape. */
+  quotes: Array<[number, number]>;
   heredocs: Array<{ token: RedirectToken; stripTabs: boolean }>;
   /** A `$( )` or `<( )` closed on this line with a heredoc still open. */
   leftOpen: boolean;

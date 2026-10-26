@@ -4,10 +4,11 @@ import { readVitestReport, type FileRun, type TestRun } from "./report.js";
 export const TEST_CLASSES = ["reproduces", "passes-on-base", "new-api", "fails-on-head", "not-run"] as const;
 export type TestClass = (typeof TEST_CLASSES)[number];
 
-export const VERDICTS = ["reproduced", "unproven", "vacuous", "no-tests", "error"] as const;
+/** `refused` is never classified: fix-proof-run.sh prints it for a base that is not the default branch, and it ran nothing. */
+export const VERDICTS = ["reproduced", "unproven", "vacuous", "no-tests", "error", "refused"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
-export type FileState = "ran" | "load-error" | "not-collected";
+export type FileState = "ran" | "load-error" | "hook-error" | "not-collected";
 
 export interface ReportRun {
   /** Absolute directory the report's file paths are relative to. */
@@ -60,13 +61,25 @@ function classifyTest(key: string, head: TestRun, baseFile: FileRun | undefined)
   if (head.status !== "passed" || baseFile === undefined) return "not-run";
   if (baseFile.loadError) return "new-api";
   const base = baseFile.tests.get(key);
-  if (base === undefined || base.status === "other") return "not-run";
-  if (base.status === "passed") return "passes-on-base";
+  if (base?.status === "passed") return "passes-on-base";
+  if (base?.status !== "failed") return "not-run";
   return base.failures.some(isNewApiFailure) ? "new-api" : "reproduces";
+}
+
+// A test head declines to run claims nothing, so it is left out, unless base passed it: that skip removes a check.
+function declinedAtHead(key: string, head: TestRun, baseFile: FileRun | undefined): boolean {
+  return head.status === "skipped" && baseFile?.tests.get(key)?.status !== "passed";
+}
+
+function headOutcomes(file: string, head: FileRun | undefined, baseFile: FileRun | undefined): TestOutcome[] {
+  return [...(head?.tests ?? new Map<string, TestRun>())]
+    .filter(([key, test]) => !declinedAtHead(key, test, baseFile))
+    .map(([key, test]) => ({ file, name: test.name, class: classifyTest(key, test, baseFile) }));
 }
 
 function fileState(file: FileRun | undefined): FileState {
   if (file === undefined) return "not-collected";
+  if (file.hookError) return "hook-error";
   return file.loadError ? "load-error" : "ran";
 }
 
@@ -82,19 +95,16 @@ function verdictOf(tests: TestOutcome[]): Verdict {
 
 function outcomes(selected: string[], base: Map<string, FileRun>, head: Map<string, FileRun>): Classification {
   const files = selected.map((file) => ({ file, base: fileState(base.get(file)), head: fileState(head.get(file)) }));
-  const tests = selected.flatMap((file) =>
-    [...(head.get(file)?.tests ?? new Map<string, TestRun>())].map(([key, test]) => ({
-      file,
-      name: test.name,
-      class: classifyTest(key, test, base.get(file)),
-    })),
-  );
+  const tests = selected.flatMap((file) => headOutcomes(file, head.get(file), base.get(file)));
   const missingOn = (side: "base" | "head") => files.every((file) => file[side] === "not-collected");
   if (missingOn("head")) return { verdict: "error", tests, files, error: "no selected file in the head report" };
   if (files.some((file) => file.head !== "ran")) {
     return { verdict: "error", tests, files, error: "a selected file is missing or failed to load in the head report" };
   }
   if (missingOn("base")) return { verdict: "error", tests, files, error: "no selected file in the base report" };
+  if (files.some((file) => file.base === "hook-error")) {
+    return { verdict: "error", tests, files, error: "base: a hook failed and skipped every test in a selected file (missing browser or setup?)" };
+  }
   return { verdict: verdictOf(tests), tests, files };
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANCHOR_SPEC_PATTERN } from "./anchor-grid.js";
 import { cueResolverFromWords } from "./cues.js";
 import { EDGE_SOURCES, MapStateSchema, VisualSchema, type MapState } from "./map-state.js";
 
@@ -28,11 +29,20 @@ export const BEAT_FUNCTIONS = [
   "CLOSE",
 ] as const;
 export const BEAT_MODES = ["explain", "demo", "ref"] as const;
+export const CONNECTORS = ["but", "therefore", "so", "and"] as const;
 export const CHIP_KINDS = ["verified", "computed", "docs-claim", "our-framing", "illustrative", "inferred"] as const;
 export const CLOSE_TYPES = ["lesson", "try-it", "callback", "refrain", "audience-rec"] as const;
 /** Off-map cue actions; a map beat's per-cue changes are `map_state` ops instead. */
 export const OFF_MAP_ACTIONS = ["V6", "V9", "V10", "V11", "V12"] as const;
 export const MAX_CODE_LINES = 10;
+/** A beat's visual is a registry template fill or a custom layer built for this video (profiles plan A.2). */
+export const VISUAL_LAYERS = ["template", "custom"] as const;
+/** How a beat's visual occupies the frame; the variety lints read the sequence of framings. */
+export const FRAMINGS = ["full", "focus", "split", "stack", "grid", "inset"] as const;
+
+const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-case name");
+// A cell of the 6×6 anchor grid (A1 top left), or a `B2:E5` range, so a layer over a block names one rectangle.
+const AnchorSpec = z.string().regex(ANCHOR_SPEC_PATTERN, "expected an anchor cell from A1 to F6, or a range such as B2:E5");
 
 const Audience = z
   .object({
@@ -61,7 +71,8 @@ const VideoSchema = z
       .optional(),
     running_example: authored(RunningExample),
     quality_goals: z.array(z.object({ id: Id, goal: Text, scenario: Text }).strict()).max(5).optional(),
-    invariants: z.array(Text).max(2).optional(),
+    // The two-invariant cap is an L0 warning, not a parse error, so a spike script with more still loads.
+    invariants: z.array(Text).optional(),
     simplifications: z.array(Text),
     scope: Text.optional(),
     non_scope: z.array(Text).default([]),
@@ -96,19 +107,38 @@ const CodeRef = z
     path: ["lines"],
   });
 
+// A spike script's map_state names the map it draws on and may split a beat into old and new sides.
+const MapSide = MapStateSchema.omit({ level: true });
+const ScriptMapState = MapStateSchema.extend({ map: Id.optional(), old: MapSide.optional(), new: MapSide.optional() });
+const SpikeMapNodes = z.looseObject({ nodes: z.array(z.looseObject({ id: Id, label: Text })) });
+
 const ScriptVisualSchema = z
   .object({
     assertion: Text,
     job: authored(VisualSchema.shape.job),
     layout_source: VisualSchema.shape.layout_source.optional(),
     edge_sources: z.array(z.enum(EDGE_SOURCES)).default([]),
-    map_state: MapStateSchema.optional(),
+    map_state: ScriptMapState.optional(),
+    render: Text.optional(),
+    layer: z.enum(VISUAL_LAYERS).optional(),
+    framing: z.enum(FRAMINGS).optional(),
+    anchors: z.array(AnchorSpec).min(1).optional(),
+    scene: Text.optional(),
+    // A beat-spec name: the emphasis gate reads the spec's target lists before template fill writes the slots.
+    beat: Kebab.optional(),
+    // `target` is an element id the beat's emphasis mapping resolves; atCue to untilCue is the spoken span it covers.
     cues: z
-      .array(z.object({ action: z.enum(OFF_MAP_ACTIONS), target: Id, atCue: Cue, hold_s: z.number().positive().optional() }).strict())
+      .array(
+        z.object({ action: z.enum(OFF_MAP_ACTIONS), target: Id, atCue: Cue, untilCue: Cue.optional(), hold_s: z.number().positive().optional() }).strict(),
+      )
       .default([]),
     chips: z.array(z.object({ kind: z.enum(CHIP_KINDS), text: Text, fact_id: Id.optional() }).strict()).default([]),
     labels: z.array(Text).default([]),
     code: CodeRef.optional(),
+    // Owner overrides on a template beat: top-level slot fields, each replacing the generated value whole.
+    slots: z.record(z.string(), z.unknown()).optional(),
+    // Tuning constants a page kind reads; carried untouched until kinds declare a tune schema.
+    tune: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])).optional(),
   })
   .strict();
 
@@ -120,10 +150,12 @@ const ScriptBeatSchema = z
     mode: z.enum(BEAT_MODES),
     // A render hint; when it names a visual-router type, the visual:gap-kind lint warns on a gap.
     kind: Text.optional(),
+    band: Text.optional(),
+    origin: Text.optional(),
     plannedS: z.number().positive(),
     heldS: z.number().positive().optional(),
     spoken: Text,
-    connector_in: z.enum(["but", "therefore", "so", "and"]).optional(),
+    connector_in: z.enum(CONNECTORS).optional(),
     why: Why.optional(),
     user_value: z.object({ text: Text, fact_ids: z.array(Id).default([]) }).strict().optional(),
     fact_ids: z.array(Id),
@@ -152,7 +184,7 @@ export function beatCues(visual: Pick<ScriptBeat["visual"], "map_state" | "cues"
     ...(s?.cards ?? []).flatMap((c) => (c.untilCue ? [c.atCue, c.untilCue] : [c.atCue])),
     ...(s?.annotations ?? []).map((a) => a.atCue),
     ...(s?.pins ?? []).map((p) => p.atCue),
-    ...visual.cues.map((c) => c.atCue),
+    ...visual.cues.flatMap((c) => (c.untilCue ? [c.atCue, c.untilCue] : [c.atCue])),
   ];
 }
 
@@ -200,18 +232,31 @@ const ScriptShape = z
     schema: z.literal("script/v1"),
     id: Id,
     profile: Text,
+    // A structure registry name; `parseScript` rejects one the registry lacks. A legacy script names none.
+    structure: Kebab.optional(),
+    // A hypothesis the pilots measure, not a rule: no check requires it (profiles plan, owner override 2).
+    signature_layer: z.object({ kind: Text, source: z.array(Id).min(1) }).strict().optional(),
     parent_sha: Id.optional(),
     facts_pack: Text,
     repo_map_sha: Id.optional(),
     video: VideoSchema,
     chapters: z.array(ChapterSchema).min(1),
     beats: z.array(ScriptBeatSchema).min(1),
+    maps: z.record(Id, SpikeMapNodes).optional(),
+    map: SpikeMapNodes.optional(),
+    shared_nodes: z.array(Id).optional(),
     companion: z.object({ codemap: Text, reading_list: Text, full_scorecard: Text }).partial().strict().optional(),
   })
   .strict();
 
 /** `script/v1`: one two-track script, a narration track and a visual track per beat. */
 export const ScriptSchema = ScriptShape.superRefine(checkReferences);
+
+// Owner-only fields: a drafting model never sees them, and a reply naming them loses them as unknown keys.
+const DraftBeatSchema = ScriptBeatSchema.extend({ visual: ScriptVisualSchema.omit({ slots: true, tune: true }) });
+
+/** `script/v1` as the script-drafting model is shown it and its reply is parsed: without the owner's slot overrides. */
+export const DraftScriptSchema = ScriptShape.extend({ beats: z.array(DraftBeatSchema).min(1) }).superRefine(checkReferences);
 
 export type ScriptV1 = z.infer<typeof ScriptSchema>;
 export type ScriptChapter = ScriptV1["chapters"][number];

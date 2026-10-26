@@ -63,9 +63,62 @@ export function readDeployPause(ports: PauseReadPorts, stateDir: string): PauseS
   return ports.exists(path) ? { paused: true, pause: parseWith(DeployPauseSchema, ports.readFile(path)) } : { paused: false };
 }
 
+/** The `deployPaused` key of `/health`: the failure pause `service pause` reads, so a seat need not run that verb. */
+interface DeployPausedHealth {
+  /** Null when the file exists but could not be read; the deployer still holds on its existence. */
+  paused: boolean | null;
+  since: string | null;
+  reason: string | null;
+  lastRollback: { target: string; from: string; status: DeployPause["rollback"] } | null;
+}
+
+const NOT_PAUSED: DeployPausedHealth = { paused: false, since: null, reason: null, lastRollback: null };
+
+/** Never throws: `/health` must answer whatever state the pause file is in. */
+export function deployPausedHealth(ports: PauseReadPorts, stateDir: string): DeployPausedHealth {
+  let state: PauseState;
+  try {
+    state = readDeployPause(ports, stateDir);
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    return { ...NOT_PAUSED, paused: null, reason: `${DEPLOY_PAUSE} could not be read: ${why}` };
+  }
+  if (!state.paused) return NOT_PAUSED;
+  const { pause } = state;
+  if (pause === undefined) return { ...NOT_PAUSED, paused: true, reason: `${DEPLOY_PAUSE} exists but does not parse` };
+  return { paused: true, since: pause.pausedAt, reason: pause.why, lastRollback: { target: pause.target, from: pause.from, status: pause.rollback } };
+}
+
 export function readManualHold(ports: PauseReadPorts, stateDir: string): ManualState {
   const path = deployHoldPath(stateDir);
   return ports.exists(path) ? { set: true, hold: parseWith(ManualHoldSchema, ports.readFile(path)) } : { set: false };
+}
+
+/** The `deployHeld` key of `/health`: the manual hold, which blocks a deploy as the failure pause does. */
+interface DeployHeldHealth {
+  /** Null when the file exists but could not be read; the deployer still holds on its existence. */
+  held: boolean | null;
+  since: string | null;
+  reason: string | null;
+  /** The Morning item that set the hold, or null for a hold set with `service pause --set`. */
+  source: string | null;
+}
+
+const NOT_HELD: DeployHeldHealth = { held: false, since: null, reason: null, source: null };
+
+/** Never throws, and reads through `readManualHold`, so `/health` and the deployer cannot disagree on the hold. */
+export function deployHeldHealth(ports: PauseReadPorts, stateDir: string): DeployHeldHealth {
+  let state: ManualState;
+  try {
+    state = readManualHold(ports, stateDir);
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    return { ...NOT_HELD, held: null, reason: `${DEPLOY_HOLD} could not be read: ${why}` };
+  }
+  if (!state.set) return NOT_HELD;
+  const { hold } = state;
+  if (hold === undefined) return { ...NOT_HELD, held: true, reason: `${DEPLOY_HOLD} exists but does not parse` };
+  return { held: true, since: hold.heldAt, reason: hold.reason, source: hold.source ?? null };
 }
 
 /** Both holds; existence of either file alone holds every deploy. */

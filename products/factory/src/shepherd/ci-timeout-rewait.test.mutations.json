@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a timed-out ci-wait reads as a plain ci entry",
+      "file": "products/factory/src/shepherd/view.ts",
+      "find": "  if (ci?.success && ci.data.timedOut) return ciTimeoutEntry(result, ci.data.headSha, ci.data.timedOut);",
+      "replace": "  if (ci?.success && ci.data.timedOut && false) return ciTimeoutEntry(result, ci.data.headSha, ci.data.timedOut);",
+      "kills": [
+        "a Shepherd run whose ci-wait times out while GitHub has not settled the PR waits again and reaches review once the PR settles, with no re-register, and the timeline shows the re-wait",
+        "a Shepherd run whose ci-wait times out while GitHub has not settled the PR fails naming the attempt count, never reaching review, once every attempt times out"
+      ]
+    },
+    {
+      "name": "the last attempt still says waiting again",
+      "file": "products/factory/src/shepherd/ci-timeout-entry.ts",
+      "find": "    const next = attempt < CI_WAIT_ATTEMPTS ? \"waiting again\" : \"attempts spent, the run fails\";",
+      "replace": "    const next = attempt <= CI_WAIT_ATTEMPTS ? \"waiting again\" : \"attempts spent, the run fails\";",
+      "kills": [
+        "a Shepherd run whose ci-wait times out while GitHub has not settled the PR fails naming the attempt count, never reaching review, once every attempt times out"
+      ]
+    },
+    {
+      "name": "the shepherd run fails at the first timed-out window",
+      "file": "products/factory/src/workflows/land-budget.ts",
+      "find": "  if (++count.timeouts >= CI_WAIT_ATTEMPTS) throw",
+      "replace": "  if (++count.timeouts >= 1) throw",
+      "kills": [
+        "a Shepherd run whose ci-wait times out while GitHub has not settled the PR waits again and reaches review once the PR settles, with no re-register, and the timeline shows the re-wait"
+      ]
+    }
+  ]
+}

@@ -6,7 +6,8 @@ import path from "node:path";
 import { silentLogger } from "./logger.js";
 import { startDaemon, type DaemonHandle } from "./daemon.js";
 import { buildHttpApp } from "./http.js";
-import { mountStaticApp, requestSegments, type StaticAppOptions } from "./static-app.js";
+import { requestSegments } from "./contained-file.js";
+import { mountStaticApp, type StaticAppOptions } from "./static-app.js";
 import { createTestContext, createTestRegistry } from "./test-fixtures.js";
 
 let dir: string;

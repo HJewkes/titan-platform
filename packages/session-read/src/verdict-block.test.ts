@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVerdictBlock, visibleLines } from "./verdict-block.js";
+import { parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const block = (verdict = "MERGE", pr = "octo/demo#12", head = SHA) =>
@@ -242,11 +242,12 @@ ${block()}`)).toBe("multiple_blocks");
     });
   });
 
+  // Native-RegExp backtracking shows in no count, so the time limit is asserted only under `TITAN_BENCH=1` (TP-4264).
   it("parses a long single-line message in linear time", () => {
     const started = Date.now();
-    refused(`Verdict:${" ".repeat(200_000)}x`);
-    refused("a".repeat(500_000));
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(refused(`Verdict:${" ".repeat(200_000)}x`)).toBe("bad_verdict");
+    expect(refused("a".repeat(500_000))).toBe("no_block");
+    if (process.env.TITAN_BENCH === "1") expect(Date.now() - started).toBeLessThan(1000);
   });
 });
 
@@ -414,6 +415,41 @@ describe("the optional CI-policy line", () => {
     expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(merge);
   });
 
+  // Synthetic equivalents of live review lines (tp#1544, tp#2443, tp#2456, tp#2474, tp#2487 r1/r2/r4/r5) that name a
+  // ci-policy module: the label glued to an identifier character is a code name, not the reviewer's CI-policy line.
+  it.each([
+    ["tp#1544", "- `ci-policy-gate.test.ts:91` only checks the rule wording, which did not change."],
+    ["tp#2487 r1", "- **`ci-policy-changes`.** The tab becomes two spaces before the ANSI strip now."],
+    ["tp#2487 r2", "- **ci-policy-changes.**"],
+    ["tp#2487 r4", "- **`ci-policy-changes.ts`:** tabs now become two spaces before escape sequences."],
+    ["tp#2487 r5", "**ci-policy-changes:** the output is the same as before, except that tag characters go."],
+    ["tp#2443 test file", "`ci-policy-changes.test.ts` checks the card text."],
+    ["tp#2443 camel case", "- `ciPolicyChanges` is set only by the gate."],
+    ["tp#2456 read module", "- **`ci-policy-read.ts`:** reads the base branch tip."],
+    ["tp#2456 plain bullet", "- `ci-policy-changes.ts` is pure."],
+    ["tp#2474", "- `ciPolicyAt` (`gate-brief.ts:90`) checks the head."],
+  ])("reads unchanged when a %s line names a ci-policy identifier above the block", (_name, line) => {
+    const text = `Review.\n\n${line}\n\n${withLine("MERGE", "CI-policy: unchanged")}`;
+    expect(parseVerdictBlock(text)).toEqual({ ...merge, lineOffset: 4, ciPolicy: { kind: "unchanged" } });
+  });
+
+  it.each([
+    ["a hyphen-glued weakened", "CI-policy-weakened: secrets"],
+    ["a camel-case weakened", "ciPolicyWeakened secrets"],
+    ["an underscore-glued weakened", "ci_policy_weakened secrets"],
+    ["a dot-glued weakened", "`ci-policy.weakened` secrets"],
+  ])("still reads weakened for %s glued to the label", (_name, tail) => {
+    expect(parseVerdictBlock(withLine("MERGE", "CI-policy: unchanged", tail))).toEqual(weakened("secrets"));
+  });
+
+  it.each([
+    ["a bold prose heading", "**CI policy:** nothing under .github/ changed."],
+    ["a dotted bold heading", "**CI-policy.** Nothing under .github/ changed."],
+    ["a label before a separate word", "- **ci-policy card:** compared old and new cleaning."],
+  ])("still reads malformed for %s", (_name, tail) => {
+    expect(parseVerdictBlock(withLine("MERGE", "CI-policy: unchanged", tail))).toEqual(malformed);
+  });
+
   it("reads as malformed when the line sits before the Verdict line", () => {
     expect(parseVerdictBlock(`CI-policy: unchanged\n${block("MERGE")}`)).toEqual({ ...malformed, lineOffset: 1 });
   });
@@ -428,5 +464,42 @@ describe("the optional CI-policy line", () => {
     expect(parseVerdictBlock(withLine("WAIT", "CI-policy: unchanged"))).toEqual({
       ok: false, reason: "wait", repo: "octo/demo", pr: 12, head: SHA, lineOffset: 0,
     });
+  });
+});
+
+describe("refusedLines", () => {
+  const trailer = `${block()}\nCI-policy: unchanged`;
+
+  it("reads a prose CI policy heading as malformed, quotes it, and reads MERGE once it is removed", () => {
+    const heading = "**CI policy:** nothing under `.github/` changed in this PR.";
+    const message = `Looked at it.\n\n${heading}\n\n${trailer}`;
+
+    expect(parseVerdictBlock(message)).toMatchObject({ ok: true, ciPolicy: { kind: "malformed" } });
+    expect(refusedLines(message, "ci_policy_malformed")).toEqual([heading]);
+    expect(parseVerdictBlock(`Looked at it.\n\n${trailer}`)).toMatchObject({ ok: true, verdict: "MERGE", ciPolicy: { kind: "unchanged" } });
+  });
+
+  it("quotes a Verdict sentence in the body as the second block, and reads MERGE once it is removed", () => {
+    const sentence = "Verdict: merge. The PR is docs-only and touches no code.";
+    const message = `${sentence}\n\n${trailer}`;
+
+    expect(refused(message)).toBe("multiple_blocks");
+    expect(refusedLines(message, "multiple_blocks")).toEqual([sentence]);
+    expect(refused(trailer)).toBe("accepted");
+  });
+
+  it("quotes the prose heading but not a line naming a ci-policy identifier", () => {
+    const heading = "**CI policy:** nothing under `.github/` changed in this PR.";
+    const message = `- \`ci-policy-changes.ts\` is pure.\n\n${heading}\n\n${trailer}`;
+
+    expect(refusedLines(message, "ci_policy_malformed")).toEqual([heading]);
+  });
+
+  it("quotes every Verdict line when all of them are canonical", () => {
+    expect(refusedLines(`${block()}\n${block("FIX_FIRST")}`, "multiple_blocks")).toEqual(["Verdict: MERGE", "Verdict: FIX_FIRST"]);
+  });
+
+  it("quotes nothing for another refusal", () => {
+    expect(refusedLines(block(), "bad_head")).toEqual([]);
   });
 });

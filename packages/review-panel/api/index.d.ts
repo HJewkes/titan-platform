@@ -72,6 +72,8 @@ interface PanelVerdict {
     degraded: readonly ReviewShape[];
     /** The class is `g10` and the opus correctness member and the adversary both said MERGE at this head, none degraded. */
     satisfiesG10: boolean;
+    /** Every planned blocking member said MERGE and only the tests member a bad fix-proof requires was never planned; no fresh reviewer fills it. */
+    fixProofShortfall?: true;
 }
 
 /** The pull request head a reviewer is asked about. */
@@ -231,6 +233,8 @@ interface ShapeRule {
     blocking: boolean;
     /** The host requires the shape whatever the files touch, as a hold that asks for an adversary does. */
     always?: boolean;
+    /** The member keeps its premium profile beside the capped seat and takes none of it, as a hold's adversary does; headroom still lowers it. */
+    uncapped?: boolean;
 }
 /** Whether opus may be spawned now; the caller asks its spawn gate. */
 interface Headroom {
@@ -245,19 +249,22 @@ interface PanelPolicy {
     panel?: readonly ShapeRule[];
     /** Brief id per shape; a shape left out uses its own name. */
     briefIds?: Partial<Record<ReviewShape, string>>;
-    /** Each opus profile and the sonnet profile it falls back to; a profile not listed is sonnet. */
+    /** Each premium (opus- or fable-priced) profile and the sonnet profile it falls back to; a profile not listed is sonnet. */
     sonnetFor?: Record<string, string>;
-    /** Points one member costs per round, by model; an estimate, never a cap. */
+    /** Points one member costs per round, by price class (`opus` is every premium profile); an estimate, never a cap. */
     points?: {
         opus: number;
         sonnet: number;
     };
+    /** Whether a profile is installed; when given, a premium profile lowered to one that is not throws `UninstalledProfileError`. */
+    installed?: (profile: string) => boolean;
 }
 declare const DEFAULT_CLASS_ROLES: ClassRoles;
 /** Sonnet everywhere: the one opus seat per head is the g10 correctness member's. */
 declare const DEFAULT_SHAPE_ROLES: Record<ExtraShape, ClassRoles>;
 /** The plan's class table. `tests` stays advisory here; a bad fix-proof result makes it block at aggregation, and missing when unplanned. */
 declare const DEFAULT_PANEL_TABLE: readonly ShapeRule[];
+/** Fable is priced above opus, so it takes the premium seat too (TP-3907). */
 declare const DEFAULT_SONNET_FOR: Record<string, string>;
 /** Placeholder weights until the scorecard reports measured spend per member. */
 declare const DEFAULT_MEMBER_POINTS: {
@@ -266,11 +273,32 @@ declare const DEFAULT_MEMBER_POINTS: {
 };
 /** No panel table: correctness alone, exactly as TP-1428 routes the single reviewer today. */
 declare const DEFAULT_PANEL_POLICY: PanelPolicy;
-/** The panel for one head: at most 3 members and 1 opus member. Spend is estimated, never capped. Pure. */
+/** A premium member would be lowered to a profile that is not installed, so its dispatch could only be refused. */
+declare class UninstalledProfileError extends Error {
+    readonly shape: ReviewShape;
+    readonly from: string;
+    readonly profile: string;
+    constructor(shape: ReviewShape, from: string, profile: string);
+}
+/** The panel for one head: at most 3 members and 1 premium member beside any uncapped one. Spend is estimated, never capped. Pure. */
 declare function planPanel(cls: PrClass, policy: PanelPolicy, headroom: Headroom): PanelPlan;
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-type FixProofUnverified = "error" | "untrusted" | "unread";
+type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
+/** What a head proceeding to review on a NO_REPRO changes: tests alone, or no source at all (TP-4275). */
+type NoReproProceed = "test-only" | "non-source";
+/** The one reading of which unverified standings proceed to review on a NO_REPRO, and on what; every other reason, or none, is undefined. */
+declare function noReproProceedOf(why: FixProofUnverified | undefined): NoReproProceed | undefined;
+/** The commits a workflow-only diff's CI proof read: a required check failed at `mergeBase` and every one passed at `head`. */
+interface WorkflowCiProof {
+    mergeBase: string;
+    head: string;
+}
+/** The field a brief input carries it in. */
+interface WorkflowCiInput {
+    /** Set by Shepherd when CI proved a workflow-only diff at this head; the brief then names CI as its proof. */
+    workflowCiProof?: WorkflowCiProof;
+}
 
 /** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. `gh api` is denied in reviewer sessions, so the read is `gh pr view`, which reports the PR's current head rather than this one. */
 declare const CI_REVIEWER_TEST_RULE: string;
@@ -284,13 +312,51 @@ interface CiCheckRow {
 /** The most check-run rows a brief lists; a head with more is cut, never spilled into prose. */
 declare const MAX_CI_CHECK_ROWS = 40;
 
+/** One earlier FIX_FIRST of this run: the head it was given at, the class its reviewer named, and its findings. */
+interface EarlierFinding {
+    head: string;
+    defectClass?: string;
+    text: string;
+}
+/** The line the fixer's structural brief finds the reviewer's defect-class section by. */
+declare const DEFECT_CLASS_HEADING = "Defect class:";
+declare const EARLIER_FINDINGS_START = "EARLIER-FINDINGS";
+declare const EARLIER_FINDINGS_END = "END-EARLIER-FINDINGS";
+/** The line a re-review's fixed/not-fixed checklist over the earlier findings starts with. */
+declare const EARLIER_FINDINGS_HEADING = "Earlier findings:";
+
+/** The tag a scoped re-review's new item outside the fix ranges must start with to be allowed (TP-3735). */
+declare const IMPORTANT_TAG = "Important:";
+/** The line that names such an item's class. */
+declare const CLASS_TAG = "Class:";
+/** More paths than this is no longer a fix round's diff, so the review goes full. */
+declare const MAX_SCOPE_PATHS = 40;
+/** Changed lines at the head, `start` to `end` inclusive; `end` below `start` is a pure deletion after line `start`. */
+interface ScopeHunk {
+    path: string;
+    start: number;
+    end: number;
+}
+/** A fix round's own change: the head reviewed last, and what changed since it with main's merged changes left out. */
+interface ReviewScope {
+    sinceHead: string;
+    paths: readonly string[];
+    hunks: readonly ScopeHunk[];
+    /** True when main was merged in since `sinceHead`, so `git diff sinceHead head` also shows main's edits. */
+    mergedBase: boolean;
+}
+/** Any doubt means a full review: a scope that fails here, or has no open finding to check, leaves the brief unscoped. */
+declare function usableScope(scope: ReviewScope | undefined, openFindings: number): scope is ReviewScope;
+
 type RepoSlug = string;
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
 declare const OWNER_BRIEF_START = "OWNER-BRIEF";
 declare const OWNER_BRIEF_END = "END-OWNER-BRIEF";
+/** A scoped fix-round FIX_FIRST that broke the unchanged-line or no-repeat rule (TP-3735); Shepherd's scope check finds these, not the parser. */
+type ScopeRefusal = "scope_untagged" | "repeated_finding";
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing";
+type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing" | ScopeRefusal;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
@@ -298,7 +364,7 @@ declare const MAX_REVIEWER_QUESTIONS = 8;
 declare const CI_POLICY_RULE: string;
 
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
-interface ReviewerBriefInput {
+interface ReviewerBriefInput extends WorkflowCiInput {
     repo: RepoSlug;
     pr: number;
     head: string;
@@ -322,6 +388,10 @@ interface ReviewerBriefInput {
     fixProofWaivedAt?: string;
     /** The run's earlier FIX_FIRST findings, oldest first; reviewer text, so it is rendered as data with every verdict-block line removed. */
     earlierFindings?: readonly EarlierFinding[];
+    /** A fix round's own diff; with earlier findings it scopes the brief to that diff, and a scope that fails a check is ignored (TP-3735). */
+    scope?: ReviewScope;
+    /** True when this is a runaway's one convergence review: its FIX_FIRST goes to the planner, never to another fix round. */
+    convergence?: boolean;
     /** Picks the owner recorded for this PR; only grammar-valid ones reach the prompt, so body text cannot. */
     ownerPicks?: readonly OwnerPick[];
     /** The absolute checkout git runs against with `-C`; set when the reviewer starts in its run dir rather than in the checkout. */
@@ -332,21 +402,11 @@ interface OwnerPick {
     id: string;
     choice: string;
 }
-/** One earlier FIX_FIRST of this run: the head it was given at, the class its reviewer named, and its findings. */
-interface EarlierFinding {
-    head: string;
-    defectClass?: string;
-    text: string;
-}
-/** The line the fixer's structural brief finds the reviewer's defect-class section by. */
-declare const DEFECT_CLASS_HEADING = "Defect class:";
 declare const MAX_OWNER_PICKS = 4;
 /** Only picks a short plain grammar accepts are kept, since a caller may have read them from a PR body. */
 declare function validOwnerPicks(picks: readonly OwnerPick[]): OwnerPick[];
-declare const EARLIER_FINDINGS_START = "EARLIER-FINDINGS";
-declare const EARLIER_FINDINGS_END = "END-EARLIER-FINDINGS";
-/** The line a re-review's fixed/not-fixed checklist over the earlier findings starts with. */
-declare const EARLIER_FINDINGS_HEADING = "Earlier findings:";
+/** The section a convergence review sorts the open findings in. */
+declare const CONVERGENCE_HEADING = "Convergence:";
 /** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
 declare const FOLLOW_UPS_RULE: string;
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
@@ -362,6 +422,8 @@ interface CorrectionPromptInput {
     refusal: MalformedRefusal;
     /** True when this run's verdict will reach the owner, as for the review brief. */
     ownerBrief?: boolean;
+    /** The lines of the reviewer's last message that made the refusal; shown to it so it knows which to reword. */
+    quotes?: readonly string[];
 }
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 declare function correctionPrompt(input: CorrectionPromptInput): string;
@@ -423,6 +485,7 @@ declare const MALFORMED_REFUSALS: Record<MalformedRefusal, true>;
 declare const MalformedSchema: z.ZodObject<{
     refusal: z.ZodString & z.ZodType<MalformedRefusal, string, z.core.$ZodTypeInternals<MalformedRefusal, string>>;
     writtenAt: z.ZodNumber;
+    quotes: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strip>;
 /** The record `acceptVerdict` leaves on a `none` whose final message was malformed; `writtenAt` is that message's time. */
 type Malformed = z.infer<typeof MalformedSchema>;
@@ -556,7 +619,7 @@ interface AggregateInput {
     /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
     source: LineSource;
     /**
-     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, a
+     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, `unproven`, `refused`, a
      * line naming another head, or anything unreadable makes the tests member blocking. A bare word never satisfies G10;
      * only a line pinned to the head can.
      */
@@ -566,6 +629,11 @@ interface AggregateInput {
     /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
     sonnetFor?: Record<string, string>;
 }
+/**
+ * Whether the fix-proof makes the tests seat blocking at this head. A fix-proof this cannot read is treated as bad, so an unexpected
+ * form can only make the verdict stricter. A planner that schedules a tests member whenever this holds never meets the unplanned seat.
+ */
+declare function fixProofNeedsTests(input: Pick<AggregateInput, "head" | "fixProof" | "fixProofWaivedAt">): boolean;
 /** The panel verdict for one head from its members' results. Every path it cannot classify ends short of MERGE. Pure. */
 declare function aggregate(plan: PanelPlan, results: readonly MemberResult[], input: AggregateInput): PanelVerdict;
 
@@ -600,7 +668,10 @@ interface ShapeBriefInput extends ReviewerBriefInput {
     /** Why the PR is held for an adversary; only the adversary brief reads it. */
     holdContext?: AdversaryHoldContext;
 }
-/** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
+/**
+ * The overlay comes first so the base brief's verdict template stays the end of the prompt. A member always reads the full
+ * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` is dropped.
+ */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
 interface ReviewRequest {
@@ -642,4 +713,4 @@ declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 
  */
 declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
 
-export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CI_CHECK_ROWS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, validOwnerPicks };
+export { type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CLASS_TAG, CONVERGENCE_HEADING, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FixProofUnverified, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, IMPORTANT_TAG, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CI_CHECK_ROWS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, MAX_SCOPE_PATHS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, type NoReproProceed, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewScope, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ScopeHunk, type ScopeRefusal, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, UninstalledProfileError, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, fixProofNeedsTests, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, noReproProceedOf, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, usableScope, validOwnerPicks };

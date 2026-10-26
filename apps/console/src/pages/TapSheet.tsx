@@ -15,11 +15,13 @@ type Prepared<R extends TapReady> = R | { status: "no-action"; reason: string };
 interface Acted {
   outcome: { status: string };
   message: string;
+  /** The run's state read again after the tap landed, when the target has one. */
+  next?: { state: string; detail: string };
 }
 
 type Sheet<R> = { status: "reading" } | { status: "refused"; reason: string } | { status: "ready"; prepared: R } | { status: "acting"; prepared: R } | { status: "acted"; prepared: R; acted: Acted } | { status: "failed"; prepared?: R; error: string };
 
-const LANDED = new Set(["resolved", "released", "already"]);
+const LANDED = new Set(["resolved", "released", "accepted", "approved", "pr-closed", "pause-cleared", "already"]);
 
 const isRecord = (data: unknown): data is Record<string, unknown> => typeof data === "object" && data !== null;
 const isPrepared = <R extends TapReady>(data: unknown): data is Prepared<R> => isRecord(data) && (data.status === "ready" || data.status === "no-action");
@@ -41,8 +43,19 @@ export interface TapCommands {
   invalidates: Parameters<ReturnType<typeof useInvalidate>>[0];
 }
 
+/**
+ * A confirming tap the read-back offers in place of the one Confirm, such as Allow and Deny on a permission prompt. Its args
+ * go to the act only, since the prepare reads back the same target whichever choice follows.
+ */
+export interface TapConfirmChoice {
+  id: string;
+  label: string;
+  color: "success" | "error";
+  args: Record<string, unknown>;
+}
+
 /** The two calls a tap makes: the prepare as the sheet opens, the act only on Confirm. */
-function useTap<R extends TapReady>({ prepare, act, args, invalidates }: TapCommands): { sheet: Sheet<R>; confirm: () => Promise<void> } {
+function useTap<R extends TapReady>({ prepare, act, args, invalidates }: TapCommands): { sheet: Sheet<R>; confirm: (choice?: Record<string, unknown>) => Promise<void> } {
   const source = useAnswerSource();
   const invalidate = useInvalidate();
   const [sheet, setSheet] = useState<Sheet<R>>({ status: "reading" });
@@ -56,11 +69,11 @@ function useTap<R extends TapReady>({ prepare, act, args, invalidates }: TapComm
       live = false;
     };
   }, [source, prepare, argsKey]);
-  const confirm = useCallback(async () => {
+  const confirm = useCallback(async (choice: Record<string, unknown> = {}) => {
     if (source === null || sheet.status !== "ready") return;
     const { prepared } = sheet;
     setSheet({ status: "acting", prepared });
-    const envelope = await source.call(act, { ...JSON.parse(argsKey), confirm: prepared.confirm });
+    const envelope = await source.call(act, { ...JSON.parse(argsKey), ...choice, confirm: prepared.confirm });
     if (!envelope.ok) return setSheet({ status: "failed", prepared, error: envelope.error });
     const acted = envelope.data;
     if (!isActed(acted)) return setSheet({ status: "failed", prepared, error: UNEXPECTED });
@@ -78,15 +91,18 @@ interface TapSheetProps<R extends TapReady> {
   /** The terminal command shown when the console cannot take the tap, so the owner still has a way through. */
   command: string | undefined;
   renderReadBack: (prepared: R) => ReactNode;
+  /** The confirming taps a read-back offers; none, or no function, keeps the one Confirm. */
+  choicesOf?: (prepared: R) => readonly TapConfirmChoice[];
   /** The prefix of every test id on the sheet. */
   testID: string;
   onClose: () => void;
 }
 
 /** The confirm sheet: the read-back of what the tap does, then Confirm as the second tap. Cancel sends nothing. */
-export function TapSheet<R extends TapReady>({ commands, verb, reading, command, renderReadBack, testID, onClose }: TapSheetProps<R>): ReactNode {
+export function TapSheet<R extends TapReady>({ commands, verb, reading, command, renderReadBack, choicesOf, testID, onClose }: TapSheetProps<R>): ReactNode {
   const { sheet, confirm } = useTap<R>(commands);
   const done = sheet.status === "acted" || sheet.status === "failed" || sheet.status === "refused";
+  const choices = sheet.status === "ready" ? (choicesOf?.(sheet.prepared) ?? []) : [];
   return (
     <Drawer isOpen onClose={onClose} placement="bottom" size="xl" title={`${verb}?`} testID={testID}>
       <DrawerBody>
@@ -98,14 +114,27 @@ export function TapSheet<R extends TapReady>({ commands, verb, reading, command,
         <Button variant="outline" onPress={onClose} testID={`${testID}-cancel`}>
           <ButtonText>{done ? "Close" : "Cancel"}</ButtonText>
         </Button>
-        {done ? null : (
-          <Button color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
+        {done ? null : choices.length > 0 ? (
+          <ChoiceButtons choices={choices} confirm={confirm} testID={testID} />
+        ) : (
+          // Pressable applies a changed isDisabled in a passive effect, so a press as the read-back paints would hit the
+          // stale disabled config and drop. Remounting on each status builds the responder with the live config instead.
+          <Button key={sheet.status} color="success" isDisabled={sheet.status !== "ready"} onPress={() => void confirm()} testID={`${testID}-ok`}>
             <ButtonText>Confirm</ButtonText>
           </Button>
         )}
       </DrawerFooter>
     </Drawer>
   );
+}
+
+/** Choices mount only once the read-back is ready, so each press responder is built with the live config. */
+function ChoiceButtons({ choices, confirm, testID }: { choices: readonly TapConfirmChoice[]; confirm: (choice: Record<string, unknown>) => Promise<void>; testID: string }): ReactNode {
+  return choices.map((choice) => (
+    <Button key={choice.id} color={choice.color} onPress={() => void confirm(choice.args)} testID={`${testID}-${choice.id}`}>
+      <ButtonText>{choice.label}</ButtonText>
+    </Button>
+  ));
 }
 
 type SheetBodyProps<R extends TapReady> = Pick<TapSheetProps<R>, "reading" | "command" | "renderReadBack" | "testID"> & { sheet: Sheet<R> };
@@ -118,6 +147,7 @@ function SheetBody<R extends TapReady>({ sheet, reading, command, renderReadBack
     <>
       {sheet.status === "acting" ? <Spinner size="sm" label="Sending" /> : null}
       {sheet.status === "acted" ? <Alert status={LANDED.has(sheet.acted.outcome.status) ? "success" : "warning"} message={sheet.acted.message} testID={`${testID}-outcome`} /> : null}
+      {sheet.status === "acted" && sheet.acted.next !== undefined ? <Typography variant="body2" testID={`${testID}-next`}>{`Now: ${sheet.acted.next.detail}`}</Typography> : null}
       {sheet.status === "failed" ? <TerminalFallback message={`Not done: ${sheet.error}`} command={command} testID={testID} /> : null}
       {sheet.prepared === undefined ? null : renderReadBack(sheet.prepared)}
     </>

@@ -1,0 +1,57 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a running build that contains the ask answers it during its health watch",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "const why = inWatch(input);",
+      "replace": "const why = undefined;",
+      "kills": [
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask survives a rollback inside the watch and is never re-asked as origin/main, whose CI nobody read (TP-4279)",
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask is cleared once a later deploy lands a build that contains it and passes its watch",
+        "the deploy pacer and the health watch of the deploy that contains the ask a deployer that died in its watch holds the ask only until the grace after the window ends",
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask whose containing deploy passes its watch is cleared once deploy.json records it",
+        "the deploy pacer and the health watch of the deploy that contains the ask an ask is kept while the window for the running build is still open, even with its deploy recorded"
+      ]
+    },
+    {
+      "name": "a green fallback the service already holds is deployed again",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "if (!answered && input.runningHoldsGreen !== true) return undefined;",
+      "replace": "if (!answered) return undefined;",
+      "kills": [
+        "the deploy pacer and the ask's own main CI run (TP-4279) never deploys an ask whose run is in progress after a failed parent while the service holds the last green, and deploys it once its run succeeds"
+      ]
+    },
+    {
+      "name": "a deployer that died mid-watch holds the ask forever",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "now < deployWindow.windowEnd + DEPLOY_WATCH_GRACE_MS ?",
+      "replace": "true ?",
+      "kills": [
+        "the deploy pacer and the health watch of the deploy that contains the ask a deployer that died in its watch holds the ask only until the grace after the window ends"
+      ]
+    },
+    {
+      "name": "every sweep logs its wait",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "if (wait !== undefined && (wait.sha !== last?.sha || wait.key !== last.key)) {",
+      "replace": "if (wait !== undefined) {",
+      "kills": [
+        "the pacer's wait line (TP-2427) a quiet-window wait is logged once across repeated sweeps",
+        "the pacer's wait line (TP-2427) a change to a busy-run wait logs again, and a busy count that moves does not",
+        "the pacer's wait line (TP-2427) a new sha in the quiet window logs again",
+        "the pacer's wait line (TP-2427) a paused wait logs no until-time, and a wait that ends forgets it"
+      ]
+    },
+    {
+      "name": "a busy count that moves reads as a new reason",
+      "file": "products/factory/src/shepherd/deploy-pacer.ts",
+      "find": "key: decision.key ?? decision.why",
+      "replace": "key: decision.why",
+      "kills": [
+        "the pacer's wait line (TP-2427) a change to a busy-run wait logs again, and a busy count that moves does not"
+      ]
+    }
+  ]
+}

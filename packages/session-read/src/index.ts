@@ -1,6 +1,6 @@
-export type { EventBase, EventOf, LineSpan, SessionEvent, SessionEventKind, SessionPatch, SpanField } from "./events.js";
-export type { Emit, LineContext } from "./line-reader.js";
-export { LineReader } from "./line-reader.js";
+export type { EchoState, EventBase, EventOf, LineSpan, SessionEvent, SessionEventKind, SessionPatch, SpanField } from "./events.js";
+export type { Emit, EmitPolicy, LineContext } from "./line-reader.js";
+export { DEFAULT_EMIT_POLICY, LineReader } from "./line-reader.js";
 export type { BranchRow, SessionRow, TranscriptDelta } from "./fold.js";
 export { EventFolder, foldEvents } from "./fold.js";
 export type { ExtractOptions, ExtractResult, ReadOptions, ReadResult } from "./read.js";
@@ -10,7 +10,7 @@ export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, parseFileRef, prR
 export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
 export { parseReviewVerdicts } from "./review-verdict.js";
 export type { CiPolicy, CiPolicyKey, VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
-export { CI_POLICY_KEYS, parseVerdictBlock, visibleLines } from "./verdict-block.js";
+export { CI_POLICY_KEYS, parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";

@@ -52,6 +52,7 @@ result to `options.env`. It never mutates its argument and never reads
 | `CLAUDE_CODE_OAUTH_TOKEN` | keep | the subscription credential |
 | `CLAUDE_CODE_USE_BEDROCK` / `_VERTEX` / `_FOUNDRY` | keep | a deliberate provider choice |
 | `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | keep | a deliberate opt-out |
+| `CLAUDE_CODE_REMOTE` | keep | the only switch that stops the CLI's subagent warmup in a headless `claude -p` run |
 | `CLAUDE_CODE_MAX_RETRIES` | keep, default `3` | the built-in default of 10 turns an outage into a long silent hang |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | strip unless `allowApiKeyBilling` | either one silently outranks the OAuth token and bills the API account |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (both cases) | strip | leak from the parent shell and re-route the child's API traffic |
@@ -220,7 +221,7 @@ probe `exec resume --help`: required flags come from the invoked subcommand,
 while sandbox values come from `exec --help`, because both commands set
 `sandbox_mode` through `--config`. Required capabilities follow the arguments
 the adapter builds. Both help probes share the setup deadline. Missing or unrecognized
-capabilities fail before starting a model; help is surface evidence, not sandbox or
+capabilities fail as `harness_mismatch` before starting a model; help is surface evidence, not sandbox or
 policy enforcement proof. `MIN_CODEX_EXEC_VERSION` names the floor; deprecated
 `SUPPORTED_CODEX_EXEC_VERSION` remains an alias for compatibility, not an exact pin.
 
@@ -274,6 +275,34 @@ negative or non-finite rate, a bad date, or a duplicate `(model, effectiveFrom)`
 `priceCodexUsage(measurements, prices, atMs)` applies the same rule to any
 measurements.
 
+## Codex app-server client
+
+`startCodexAppServer({ cwd, env, executablePath?, args? })` spawns `codex app-server`
+(stdio JSON-RPC), runs the `initialize` handshake, and returns a client with
+`threadStart`, `threadResume`, `turnStart` and `turnSteer`. Use it to keep one Codex
+thread alive and feed it input: `turnSteer` adds input to the active turn at its next
+sampling point without interrupting a running tool, and `turnStart` wakes an idle thread.
+
+```ts
+const server = await startCodexAppServer({ cwd, env });
+const { threadId } = await server.threadStart({ cwd });
+const { turnId } = await server.turnStart({ threadId, input: [{ type: "text", text: "go" }] });
+try {
+  await server.turnSteer({ threadId, expectedTurnId: turnId, input: [{ type: "text", text: "more" }] });
+} catch (error) {
+  if (!(error instanceof CodexSteerPreconditionError)) throw error;
+  await server.turnStart({ threadId, input: [{ type: "text", text: "more" }] });
+}
+```
+
+A steer that finds no active turn, or a different one, rejects with
+`CodexSteerPreconditionError`; any other JSON-RPC error is a `CodexAppServerRpcError`.
+`onEvent` reports `turn_started`, `turn_completed`, `thread_status` (`idle`, `active`
+and the rest), every other notification as `notification`, and `exit`. When the child
+exits, pending and later calls reject with `CodexAppServerExitedError`. The client
+declines server requests such as approvals with a JSON-RPC error. Choose an approval
+policy at `threadStart` that never asks.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message
@@ -300,6 +329,8 @@ reads and cache creation; those subset counters must not be added again.
 The adapter does not translate SDK `maxTurns` into a generic model-request or
 agent-iteration limit, or treat the SDK budget estimate as an exact monetary cap.
 Generic optional limits remain unsupported until their semantics are verified.
+A run that reaches the native `maxTurns` still reports `limit_exceeded` with unit
+`agent_iterations`, the closest shared unit, so callers see a definite limit failure.
 No process reattachment, visible terminal, or semantic-interrupt capability is
 claimed by this wrapper. Legacy `runAgent` callers retain their existing API.
 
@@ -328,6 +359,13 @@ native terminal acknowledgment after a deadline or abort, the ledger records
 `cancellation_unknown`. Lease-renewal, stale-owner, and local persistence failures
 settle completion promptly even when the adapter ignores abort; they cannot write a
 terminal result through a newer owner's fence. Durable results must be JSON-safe.
+
+Only a `runtime_error` failure is treated as ambiguous transport loss and parks the
+record in `recovery_required`. A Claude run that reaches its native `maxTurns`
+fails as `limit_exceeded` (unit `agent_iterations`), and a Codex CLI refused by
+the version or capability check fails as `harness_mismatch` before spawn, as does
+a version or help probe that throws (for example ENOENT). Both persist as terminal
+`failed`.
 
 
 ### Shared pricing implementation

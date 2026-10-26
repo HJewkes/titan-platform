@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the collapse keeps the oldest repeat, not the newest",
+      "file": "packages/owner-queue/src/repeats.ts",
+      "find": "Date.parse(item.openedAt) >= Date.parse(than.openedAt)",
+      "replace": "Date.parse(item.openedAt) <= Date.parse(than.openedAt)",
+      "kills": [
+        "collapseRepeats keeps only the newest open alarm from one source, with the count of every repeat"
+      ]
+    }
+  ]
+}

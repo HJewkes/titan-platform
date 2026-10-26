@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "owner-release admits a statement signed for another head",
+      "file": "products/factory/src/owner-release-presence.ts",
+      "find": "  if (item.headSha !== held.head) return `it was signed for head ${item.headSha}`;\n",
+      "replace": "",
+      "kills": ["ownerRelease checks an owner-release presence proof against the ledger an owner statement signed for another head is refused"]
+    },
+    {
+      "name": "owner-release admits a statement signed for another owner-asked hold",
+      "file": "products/factory/src/owner-release-presence.ts",
+      "find": "  if (item.holdDigest !== holdDigest(held.ownerHold.reason) || item.holdSince !== held.ownerHold.at) return \"it was signed for another owner-asked hold\";\n",
+      "replace": "",
+      "kills": ["ownerRelease checks an owner-release presence proof against the ledger an owner statement signed for an earlier owner-asked hold is refused once another is placed"]
+    },
+    {
+      "name": "owner-release admits a statement for an earlier hold of the same text",
+      "file": "products/factory/src/owner-release-presence.ts",
+      "find": " || item.holdSince !== held.ownerHold.at) return",
+      "replace": ") return",
+      "kills": ["ownerRelease checks an owner-release presence proof against the ledger an owner statement signed for an earlier owner-asked hold is refused once the same text is placed again"]
+    },
+    {
+      "name": "owner-release admits a statement no owner key signed",
+      "file": "products/factory/src/owner-release-presence.ts",
+      "find": "  if (!verified.ok) return `the hold-release statement was refused: ${verified.refusal}`;\n",
+      "replace": "  if (!verified.ok) return undefined;\n",
+      "kills": ["ownerRelease checks an owner-release presence proof against the ledger a record an agent signed with its own key is refused"]
+    },
+    {
+      "name": "owner-release admits a confirmEvent that names no ledger record",
+      "file": "products/factory/src/owner-release-presence.ts",
+      "find": "  if (record === undefined) return `presence proof ${JSON.stringify(event)} names no owner-signed record`;\n",
+      "replace": "  if (record === undefined) return undefined;\n",
+      "kills": ["ownerRelease checks an owner-release presence proof against the ledger a bare UUID is refused and the hold stays"]
+    }
+  ]
+}

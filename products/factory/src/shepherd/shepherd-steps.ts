@@ -10,6 +10,8 @@ import { POST_MERGE_STEPS } from "./post-merge.js";
 import { OBSERVE_STEPS } from "./observe.js";
 import { OUTCOME_STEPS } from "./outcome.js";
 import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
+import { CONFLICT_BASE_STEPS } from "./conflict-base.js";
+import { MERGE_ORDER_STEPS } from "./merge-order-steps.js";
 import { FREEZE_HOLD_STEPS } from "./freeze-hold.js";
 import { G10_RELEASE_STEPS } from "./g10-release.js";
 import { G10_REHOLD_STEPS } from "./g10-rehold.js";
@@ -21,6 +23,7 @@ import { VISUAL_PACKET_STEPS } from "./visual-packet-trigger.js";
 import { OWNER_SEND_BACK_STEPS } from "./owner-send-back.js";
 import { VISUAL_ACCEPT_STEPS } from "./visual-accept.js";
 import { AUTO_PASS_STEPS } from "./auto-pass.js";
+import { DIAGNOSIS_STEPS } from "./no-verdict-diagnosis.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -41,6 +44,8 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...OBSERVE_STEPS,
   ...OUTCOME_STEPS,
   ...CONFLICT_CHECK_STEPS,
+  ...CONFLICT_BASE_STEPS,
+  ...MERGE_ORDER_STEPS,
   ...FREEZE_HOLD_STEPS,
   ...G10_RELEASE_STEPS,
   ...G10_REHOLD_STEPS,
@@ -52,4 +57,5 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...OWNER_SEND_BACK_STEPS,
   ...VISUAL_ACCEPT_STEPS,
   ...AUTO_PASS_STEPS,
+  ...DIAGNOSIS_STEPS,
 ];

@@ -3,7 +3,10 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { ASK_LABEL_PATTERN } from "@titan-design/agent-dispatch";
 import { z } from "zod";
+import { ArConfigSchema } from "./autoresearch/config.js";
+import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
+import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -49,6 +52,10 @@ export const ReviewConfigSchema = z.strictObject({
   adversaryProfile: profileName.optional(),
   /** The Claude config directory that adversary member runs under, for account diversity; absent means `configDir`. */
   adversaryConfigDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  /** A fix round's re-review: `shadow` records its fix diff on the sh-review step, `on` also scopes the correctness brief to it. Absent means `off`. */
+  scopedRereview: z.enum(["off", "shadow", "on"]).optional(),
+  /** A scoped fix round's FIX_FIRST: `shadow` counts its out-of-range and repeated items, `on` also asks for one correction. Absent means `off`. */
+  scopeCheck: z.enum(["off", "shadow", "on"]).optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
@@ -197,6 +204,8 @@ export const FactoryConfigSchema = z.object({
   digest: DigestConfigSchema.optional(),
   service: ServiceConfigSchema.optional(),
   github: GithubConfigSchema.optional(),
+  reconciler: ReconcilerConfigSchema.optional(),
+  autoresearch: ArConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -211,14 +220,39 @@ export const FactoryConfigSchema = z.object({
       reviewCheck: ReviewCheckConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
+      /**
+       * Where serve's main CI watch sends a red-main event, ahead of the run's seat, the branch-prefix seat and `hubSeat`: the
+       * repo's entry (keys match in any case), else `fallback`. Red events only; merge policy and seat identity never read it.
+       */
+      redSeat: z
+        .strictObject({ repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), z.string().min(1)).optional(), fallback: z.string().min(1).optional() })
+        .optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
+      /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
+      seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
       /**
        * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
-       * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual.
+       * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
+       * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
+       * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275).
        */
-      gateReset: z.strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional() }).optional(),
+      gateReset: z
+        .strictObject({
+          twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
+          heldRepair: z.enum(["off", "on"]).optional(),
+          noReproProceed: z.enum(["off", "on"]).optional(),
+          nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
+        })
+        .optional(),
+      /**
+       * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
+       * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
+       * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
+       */
+      taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
@@ -235,6 +269,8 @@ export const FactoryConfigSchema = z.object({
       visualSetCarry: z.enum(["off", "shadow", "on"]).optional(),
       /** The profile that packager spawns under; absent means `review-packager`. */
       visualPacketProfile: profileName.optional(),
+      /** The profile of the planner failed review rounds with no adversary verdict spawn (TP-3796); absent means `bd-planner`. */
+      diagnosisProfile: profileName.optional(),
       /** The `titan-review` binary that packager's brief names; absent means `$HOME/.local/bin/titan-review`. */
       titanReviewBin: absolutePath.optional(),
       /**
@@ -262,6 +298,7 @@ export const FactoryConfigSchema = z.object({
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.redSeat || s.agentChatBin, { message: "redSeat needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.gateNotify || s.agentChatBin, { message: "gateNotify needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
@@ -287,11 +324,11 @@ export function defaultDbPath(env: NodeJS.ProcessEnv): string {
   return join(factoryStateDir(env), "factory.sqlite3");
 }
 
-function parseJson(path: string): unknown {
+function parseJson(path: string, text: string): unknown {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(text);
   } catch (error) {
-    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 
@@ -299,10 +336,20 @@ export function loadConfig(path: string): FactoryConfig {
   return readConfig(path) ?? {};
 }
 
+/** The deprecation lines serve logs at start for keys the config file at `env`'s path still sets. */
+export function configDeprecations(env: NodeJS.ProcessEnv): string[] {
+  return reconcilerDeprecations(loadConfig(configPath(env)));
+}
+
 /** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
 export function readConfig(path: string): FactoryConfig | undefined {
   if (!existsSync(path)) return undefined;
-  const raw = parseJson(path);
+  return parseConfig(path, readFileSync(path, "utf8"));
+}
+
+/** Parses and validates config file text; `path` only names the file in an error. */
+export function parseConfig(path: string, text: string): FactoryConfig {
+  const raw = parseJson(path, text);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);
   const parsed = FactoryConfigSchema.safeParse(raw);

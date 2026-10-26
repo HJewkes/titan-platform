@@ -38,3 +38,9 @@ A `labels/v1` set frozen from the first `explainer eval pace --format spike` run
 lengths (TP-3527): Q-E7 fails on `c5-1-contract` and `c6-10-rule`, and Q-E8, Q-E9 and Q-E10 flag nothing.
 These are the checks' own flags, not judged labels, and no owner review names a beat of this video, so
 `owner_named` is empty. Calibration (TP-2986) may add judged labels; record the change here when it does.
+
+## `spine.md`
+
+A hand-written story spine (script-method template, `spine/v1`) for this script. Its §8 keeps the script's real
+chapter order, so ch2 (the architecture map) comes before ch3 (the first journey chapter) and Q-E15 fails on
+ch2. Its invariants are seated, so Q-E18 passes. Do not reorder §8 to make a test pass.

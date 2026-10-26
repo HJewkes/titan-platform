@@ -6,14 +6,19 @@ import type { ChildMessage, Dispatch, ParentMessage } from "./serve-child.js";
 
 /**
  * A serve child forked by `forkServeChild`. Node strips the source's types, and this hook points the
- * source's `.js` specifiers at their `.ts` files, so the child runs the same code vitest tests.
+ * source's `.js` specifiers at their `.ts` files, so the child runs the same code vitest tests. The child
+ * runs outside vitest's setup file, so the hook also swaps the bot token path module for one with no path:
+ * the child never resolves the passwd home or reads the real token, and its serve reads the bot as absent.
  */
+const NO_BOT_TOKEN_PATH = "data:text/javascript,export const BOT_TOKEN_PATH = undefined;";
+
 registerHooks({
   resolve: (specifier, context, nextResolve) => nextResolve(sourceSibling(specifier, context.parentURL), context),
 });
 
 function sourceSibling(specifier: string, parentURL: string | undefined): string {
   const fromSource = parentURL?.startsWith("file:") === true && parentURL.endsWith(".ts");
+  if (fromSource && specifier.endsWith("/bot-token-path.js")) return NO_BOT_TOKEN_PATH;
   return fromSource && specifier.startsWith(".") && specifier.endsWith(".js") ? `${specifier.slice(0, -3)}.ts` : specifier;
 }
 
@@ -33,6 +38,7 @@ if (process.argv[3] === CHORE_FLAG) {
 const { silentLogger } = await import("@titan-design/daemon");
 const { defineWorkflow } = await import("../definition.js");
 const { startFactoryServer } = await import("../serve.js");
+const { setOwnerKeysEdge } = await import("../owner-keys.js");
 const { systemChorePorts } = await import("../workflows/post-merge-chore.js");
 
 const blocking = defineWorkflow({
@@ -82,6 +88,9 @@ async function blockUntilReleased(input: Parameters<StepRoute["runner"]["run"]>[
   return { ok: true, output: "released" };
 }
 
+// A key directory the child never installs, so its serve refuses owner proofs and never reads the machine's real keys.
+setOwnerKeysEdge({ dir: `${paths.stateDir}/owner-keys` });
+
 const server = await startFactoryServer({
   dbPath: paths.dbPath,
   stateDir: paths.stateDir,
@@ -94,7 +103,6 @@ const server = await startFactoryServer({
   logger: silentLogger,
   github: { status: () => "ok", refresh: async () => undefined },
   build: { sha: "test", behindMain: { status: () => 0, refresh: async () => undefined } },
-  ownerKeys: () => ({ ok: false, refusal: "serve child has no owner keys" }),
   onEvent: (event) => send({ kind: "event", event }),
 });
 

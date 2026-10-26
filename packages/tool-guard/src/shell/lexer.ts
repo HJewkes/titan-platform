@@ -10,7 +10,7 @@ import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { readAnsiInArith } from "./arith-ansi.js";
-import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, noteTilde, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
+import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, noteQuotedFrom, noteTilde, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
 export { scanSubstitutions } from "./substitutions.js";
@@ -30,7 +30,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, arithOpen: -1, wholeEnd: -1, compoundDepth: -1, caseWords: false, regex: newRegexScan(), trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, quotes: [], heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, looseSubscriptEnd: -1, arithOutsideLoose: true, arithEnd: -1, arithOpen: -1, wholeEnd: -1, compoundDepth: -1, caseWords: false, regex: newRegexScan(), trials };
 }
 
 function lex(s: LexState): void {
@@ -198,6 +198,7 @@ function readDouble(s: LexState): void {
 
 function readQuoted(s: LexState, close: string): void {
   const w = markQuoted(ensureWord(s));
+  const from = w.value.length;
   s.i++;
   while (s.src[s.i] !== close) {
     if (s.i >= s.src.length) throw new ParseError(`unterminated ${close}`);
@@ -210,6 +211,7 @@ function readQuoted(s: LexState, close: string): void {
     else if (c === "`") readBacktick(s);
     else appendChar(s, c);
   }
+  noteQuotedFrom(s, from);
   s.i++;
 }
 
@@ -326,7 +328,10 @@ function readRedirect(s: LexState): void {
   s.i = ahead.ends[op.length - 1] ?? s.src.length;
   const paren = pastJoins(s.src, s.i);
   if ((op === "<" || op === ">") && s.src[paren] === "(") {
-    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
+    // A pending `<` or `>` takes the substitution as its file, so the next word is the command's again (`bash 2> >(cat) ./x.sh`).
+    const awaited = s.redirect !== null;
+    s.redirect = null;
+    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)], ...(awaited ? { awaited: true as const } : {}) });
     return;
   }
   refuseRedirect(s, op);

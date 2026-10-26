@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "held parses a copy of its schema instead of the ref its spec names",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "held: defineBeat(BEAT_SLOTS.held, HeldBeat",
+      "replace": "held: defineBeat(BEAT_SLOTS.held.partial(), HeldBeat",
+      "kills": [
+        "each registered spec type parses with the slots schema its spec's ref names"
+      ]
+    },
+    {
+      "name": "held draws on the whole page instead of in the stage box",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "HeldBeat, { stage: true })",
+      "replace": "HeldBeat, { stage: false })",
+      "kills": [
+        "hook and catalogue draw on the whole page and every spec kind past them in the stage box"
+      ]
+    },
+    {
+      "name": "resolveBeat reads an inherited property as a beat kind",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "Object.hasOwn(BEATS, kind) ? BEATS[kind] : undefined",
+      "replace": "BEATS[kind]",
+      "kills": [
+        "an inherited property name is not a beat kind"
+      ]
+    },
+    {
+      "name": "a reveal may land after its beat ends",
+      "file": "products/explainer/src/composition/timeline.ts",
+      "find": "every((r) => r.atS <= b.durationS + 1e-9)",
+      "replace": "every((r) => r.atS >= 0)",
+      "kills": [
+        "a reveal past its beat's end is rejected"
+      ]
+    },
+    {
+      "name": "a chapter may be numbered past its count",
+      "file": "products/explainer/src/composition/timeline.ts",
+      "find": "refine((c) => c.n <= c.of,",
+      "replace": "refine((c) => c.n > 0,",
+      "kills": [
+        "a chapter numbered past its count is rejected"
+      ]
+    }
+  ]
+}

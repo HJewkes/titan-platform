@@ -13,6 +13,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and requires `asker` and `depositId`. `fromDeposit(deposit, now)` parses one and returns the
   open item it files, with source `deposit:<asker>/<depositId>` and a lens taken from
   `DEPOSIT_LENS[kind]`. A repeated `depositId` from one asker yields the same item id.
+- `op` (`ownerOpSchema`, optional on an item and a deposit) is the typed target of an owner
+  action, a strict union by `kind`: `resolve-gate`, `release-hold` (`HOLD_CLASSES`),
+  `merge-at-head`, `close-pr`, `factory-config-set`, `deploy-pause-clear` and `retire-agent`.
+  It names a target and grants nothing: whoever acts re-reads the live state. `fromDeposit`
+  appends the keys `opKeys(op)` implies, `pr:<repo>#<n>@<head>` for a PR op, so the deposit
+  merges with that PR's item at the same head. No op yields a `gate:` key.
 - `audience` (`AUDIENCES`: `owner` or `operator`) is optional on an item and a deposit; absent
   means owner. It only selects a reader and grants no authority. `forAudience(items, audience)`
   keeps the matching items in input order and `audienceOf(item)` reads the default.
@@ -37,6 +43,15 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
   Readers still accept a deposit filed under its name from before A-Z was escaped.
+- `@titan-design/owner-queue/withdraw`: `withdrawDeposit(dir, id, { reason, as, actor })` marks
+  a seat's own deposit withdrawn with `<id>.withdrawn` beside it, never an answer file. `id` is
+  the full `deposit:<32 hex>` or a hex prefix of at least 8 that starts one deposit;
+  `restoreDeposit` undoes it, and `withdrawMatching` withdraws every open deposit of one asker
+  with given keys. Each withdraw and restore appends to `withdrawals.jsonl`, recording the asker
+  (`by`) and the `actor` who ran it. A refusal throws
+  `WithdrawRefusedError` (`unknown` or `refused`).
+- `collapseRepeats(items)` folds open items one asker filed with the same `alarm:<source>` key
+  (`alarmKey`) into the newest, with `repeats` set to the count.
 - Code anchors: an item and each option may carry `anchors` (`head/<path>#L10-L20`,
   `base/…`, `diff/…#L84-R90`) resolved against the item's `pins { repo, head, base? }`
   (40-hex commits). The deposit schema refuses anchors with no pins or bad grammar.
@@ -63,6 +78,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   canonical PR merge key.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.
+- `promptLine(text, { lineBreak })` is the one cleaner for author- or agent-written text bound
+  for an owner prompt, terminal or decisions file: it drops ANSI escape sequences, C0 and C1
+  controls and every format character (bidi overrides, embeddings, marks and isolates,
+  zero-width and tag characters), turns a tab into a space and each line break (CR, LF, CRLF,
+  NEL, U+2028, U+2029) into `lineBreak`, a space by default. Split on `PROMPT_LINE_BREAK` first
+  to keep the text's own lines.
 - `recheck(open, answered)` re-checks open items against answers already given and returns
   `{ open, dropped, flags }`, sorted so input order never changes it. An item is dropped as
   `gone-elsewhere`, with a `cite` of the newest settling answer, when an answer sharing its

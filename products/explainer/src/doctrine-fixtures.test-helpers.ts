@@ -12,6 +12,9 @@ export const VOCABULARY = {
   beats: ["hook", "code-walk"],
   types: ["repo-tour", "repo-argument"],
   audiences: ["public-youtube"],
+  structures: ["scqa-c4", "scqa", "mystery", "three-act", "abt"],
+  beatSystems: ["walk-first", "hook-close"],
+  signals: ["deciding", "anomaly", "problem"],
 };
 
 const EVIDENCE_TSV = ["id\tclaim\tgrade", "E01\tWords with pictures\tA", "E02\tA practitioner habit\tC", "E03\tTwo halves\tC (bounds) / D (bands)", "E04\tNo grade yet\t—"].join("\n");

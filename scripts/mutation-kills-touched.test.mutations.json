@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a helper's change never reaches the tests that call it",
+      "file": "scripts/mutation-kills-touched.mjs",
+      "find": "const reached = (test) => holdsLine(test, lines) || [...touched].some((helper) => names(test, helper));",
+      "replace": "const reached = (test) => holdsLine(test, lines);",
+      "kills": [
+        "touchedTests follows a changed helper through the helpers that call it to the tests that call those"
+      ]
+    },
+    {
+      "name": "an .each title is matched only literally",
+      "file": "scripts/mutation-kills-touched.mjs",
+      "find": "  if (!isPattern(name)) return false;",
+      "replace": "  return false;",
+      "kills": [
+        "missedChange with .each passes a sidecar whose kill is one expanded row of a touched .each title"
+      ]
+    },
+    {
+      "name": "any kill counts, touched or not",
+      "file": "scripts/mutation-kills-touched.mjs",
+      "find": "return kills.some((kill) => [...touched].some((name) => matchesName(name, kill))) ? null",
+      "replace": "return kills.length > 0 ? null",
+      "kills": [
+        "missedChange flags a sidecar that only kills a test the diff left alone (the rounds.test.tsx case on #2219)"
+      ]
+    }
+  ]
+}

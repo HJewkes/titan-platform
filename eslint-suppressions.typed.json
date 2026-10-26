@@ -69,11 +69,6 @@
       "count": 4
     }
   },
-  "apps/console/server/events-relay.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "apps/console/server/events-relay.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
@@ -1077,7 +1072,7 @@
   },
   "packages/daemon/src/daemon.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "packages/daemon/src/file-watch.test.ts": {
@@ -1648,11 +1643,6 @@
       "count": 1
     }
   },
-  "packages/registry/src/mcp.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "packages/registry/src/zod-introspect.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -1743,7 +1733,7 @@
   },
   "packages/session-analytics/src/blocked-flow-denials.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
+      "count": 2
     }
   },
   "packages/session-analytics/src/blocked-flow-idle.ts": {
@@ -2481,6 +2471,11 @@
     }
   },
   "packages/workflow/src/authorize.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "packages/workflow/src/code-step.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -3958,11 +3953,6 @@
       "count": 1
     }
   },
-  "products/factory/src/workflows.ts": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    }
-  },
   "products/factory/src/workflows/await-head.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -4002,11 +3992,6 @@
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
-  "products/factory/src/workflows/land-routes.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }

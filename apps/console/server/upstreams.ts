@@ -3,8 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
+import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
+import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
@@ -12,6 +14,9 @@ import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
+import { storybookLiveReader } from "./round-live.js";
+import { seatNotifier } from "./round-notice-transport.js";
+import { subscriptionsDirOf } from "./round-subscriptions.js";
 import { shepherdReader } from "./shepherd.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
@@ -121,6 +126,7 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
     actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
     client: factoryOwnerAction(config.factoryPort),
     answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    verdicter: brokerVerdicter({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
   };
 }
 
@@ -136,7 +142,11 @@ function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
     inbox: { dir: config.inboxDir },
-    rounds: { dir: config.roundsDir, lineage: shipLineageReader() },
+    rounds: {
+      dir: config.roundsDir,
+      lineage: shipLineageReader(),
+      ...(config.storybooksDir !== undefined && { live: storybookLiveReader(config.storybooksDir) }),
+    },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
     videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
@@ -153,6 +163,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     ...localDirSourcesOf(config),
     shepherd,
+    autoresearch: autoresearchReader(config.factoryPort),
     coordinatorRoots: config.coordinatorRoots,
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
@@ -162,8 +173,13 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       roundsDir: config.roundsDir,
       shepherd,
       answer: factoryGateAnswer(config.factoryPort),
+      ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
+      subscriptionsDir: subscriptionsDirOf(config.stateDir),
       logger,
     }),
+    ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
+    ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
+    ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
   };
 }

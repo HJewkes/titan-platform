@@ -1,5 +1,7 @@
 import type { L0Check, L0Input, L0Result } from "./eval-l0.js";
+import { loadStructures } from "./profile-load.js";
 import type { ScriptBeat, ScriptChapter, ScriptV1 } from "./script-schema.js";
+import type { NarrativeStructure } from "./structure-schema.js";
 
 /** The share of planned time by which the stake must be voiced. */
 export const STAKE_BY_SHARE = 0.15;
@@ -14,6 +16,8 @@ const WHY_QUESTION = /^\s*(?:why|how come)\b/i;
 const ABSENCE = /\b(?:never|always|every|nothing|no longer|cannot|can't|only)\b/i;
 const CHAPTER_COUNT = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:\s+\w+)?\s+chapters?\b/i;
 const SHA = /^[0-9a-f]{7,40}$/;
+// The planner guide asks for contractions ("you'll"), so the promise's "you" may carry one before its verb.
+const YOU_VERB = /\byou(?:['’]ll)?\s+\w+/i;
 
 const isTodo = (value: unknown): value is string => typeof value === "string" && value.startsWith("TODO:");
 const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -50,12 +54,23 @@ function startTimes(script: ScriptV1): Map<string, number> {
   );
 }
 
+let structures: ReadonlyMap<string, NarrativeStructure> | undefined;
+
+/** The functions whose beats may voice the stake: the script's structure declares them, and STAKE alone otherwise. */
+/** The beat functions that may voice the stake for Q-W1: the structure's `stakeFunctions`, else STAKE. */
+export function stakeFunctions(structure: string | undefined): readonly ScriptBeat["function"][] {
+  if (structure === undefined) return ["STAKE"];
+  structures ??= loadStructures();
+  return structures.get(structure)?.stakeFunctions ?? ["STAKE"];
+}
+
 function stakeVoiced(script: ScriptV1): L0Result {
   const stake = script.video.stake;
   if (isTodo(stake)) return verdict("Q-W1", "tagged", [], 1);
   const total = script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
   const starts = startTimes(script);
-  const early = script.beats.filter((beat) => beat.function === "STAKE" && (starts.get(beat.id) ?? 0) < total * STAKE_BY_SHARE);
+  const carriers = stakeFunctions(script.structure);
+  const early = script.beats.filter((beat) => carriers.includes(beat.function) && (starts.get(beat.id) ?? 0) < total * STAKE_BY_SHARE);
   const voiced = early.some((beat) => {
     const spoken = norm(beat.spoken);
     return (/\byou\b/.test(spoken) || spoken.includes(norm(stake.who))) && NUMBER.test(spoken);
@@ -96,7 +111,7 @@ function userValuePerChapter(script: ScriptV1): L0Result {
 
 function promiseShape(script: ScriptV1): L0Result {
   const promise = script.video.promise;
-  const scriptFailure = isTodo(promise) || !/\byou\b\s+\w+/i.test(promise) || /\btour of\b/i.test(promise) || CHAPTER_COUNT.test(promise);
+  const scriptFailure = isTodo(promise) || !YOU_VERB.test(promise) || /\btour of\b/i.test(promise) || CHAPTER_COUNT.test(promise);
   const beats = script.beats.filter((beat) => beat.function === "PROMISE" && (/\btour of\b/i.test(beat.spoken) || CHAPTER_COUNT.test(beat.spoken)));
   return verdict("Q-W5", "tagged", beats.map((beat) => beat.id), scriptFailure ? 1 : 0);
 }
@@ -109,6 +124,14 @@ function invariantPerHow(script: ScriptV1): L0Result {
     return beats.some(speaksOne) ? [] : [beats.find((beat) => beat.function === "HOW")?.id ?? chapter.id];
   });
   return verdict("Q-W6", "heuristic", missing);
+}
+
+/** The most invariants a script may declare; the parser no longer caps them, so a spike script still loads. */
+export const MAX_INVARIANTS = 2;
+
+function invariantCap(script: ScriptV1): L0Result {
+  const count = script.video.invariants?.length ?? 0;
+  return { check_id: "Q-W6:invariant-cap", mode: "tagged", severity: "warning", value: count, threshold: MAX_INVARIANTS, pass: count <= MAX_INVARIANTS, detail_beats: [] };
 }
 
 /** L0 half of Q-W8: a fence exists and is drawn as a design. Whether each deep dive has one is the judge's half. */
@@ -193,4 +216,4 @@ const SCRIPT_RULES = [
 ];
 
 /** The why, value and thread rules (Q-W*, Q-F3, Q-F12, Q-F13), one row each. */
-export const whyCheck: L0Check = (input) => [...SCRIPT_RULES.map((rule) => rule(input.script)), demoSteps(input)];
+export const whyCheck: L0Check = (input) => [...SCRIPT_RULES.map((rule) => rule(input.script)), invariantCap(input.script), demoSteps(input)];

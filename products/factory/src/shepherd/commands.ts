@@ -22,14 +22,18 @@ import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { repairStopCommand } from "./repair-stop-command.js";
+import { mergeBaseCommand } from "./merge-base-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
+import { thawCommand } from "./thaw-command.js";
+import { fixPrCommand } from "./fix-pr-command.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
+import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
@@ -73,7 +77,8 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
-  const meta = { task: args.task, implementer: args.implementer, reviewer: args.reviewer, policy, kind: args.kind, slice: sliceAfter(existing, args), headSha: args.head, base: args.base };
+  const { task, implementer, registrant, reviewer, kind, head: headSha, base } = args;
+  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
@@ -236,7 +241,7 @@ type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed or stopped not-mergeable or on a conflict with its PR still open",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable, on a conflict or abandoned, with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: registerWithHold,
@@ -370,10 +375,14 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.release": releaseCommand,
   "shepherd.repair-stop": repairStopCommand,
   "shepherd.freeze": repoFreezeCommand,
+  "shepherd.thaw": thawCommand,
+  "shepherd.fix-pr": fixPrCommand,
+  "shepherd.merge-base": mergeBaseCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
   "shepherd.prs": prsCommand,
+  "shepherd.watch": watchCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

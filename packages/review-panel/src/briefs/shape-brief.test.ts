@@ -23,6 +23,22 @@ function fixProof(overrides: Partial<FixProofResult> = {}): string {
 }
 
 describe("shape briefs", () => {
+  it.each([
+    ["no-repro-test-only", "This head changes only tests"],
+    ["no-repro-non-source", "for each workflow edit, say whether it weakens, skips or renames a check"],
+  ] as const)("asks the tests member of a head proceeding as %s the question for what it changes", (why, question) => {
+    const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ verdict: "vacuous" }), fixProofUnverified: why });
+
+    expect(brief).toContain(question);
+  });
+
+  it("asks the tests member no proceed question for an unverified proof that does not proceed on a NO_REPRO", () => {
+    const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ verdict: "error" }), fixProofUnverified: "error" });
+
+    expect(brief).not.toContain("so nothing can fail on the base");
+    expect(brief).not.toContain("This head changes only tests");
+  });
+
   it("gives every overlay shape a stable id and a sha256 content hash", () => {
     const ids = OVERLAY_SHAPES.map((shape) => SHAPE_BRIEFS[shape].id);
 
@@ -158,6 +174,13 @@ describe("the tests brief and fix-proof", () => {
     expect(waived.split("fix-proof waived by owner")).toHaveLength(2);
     expect(waived).not.toContain("verdict for this head: vacuous");
     expect(stale).toBe(shapeBrief("tests", vacuous));
+  });
+
+  it("the tests member reads a workflow-only diff's CI proof in place of the missing-result reading", () => {
+    const brief = shapeBrief("tests", { ...target, workflowCiProof: { mergeBase: "b".repeat(40), head } });
+
+    expect(brief).toContain("Shepherd's fix-proof for this head is CI");
+    expect(brief).not.toContain("No fix-proof/v1 result was given for this head");
   });
 
   it("leaves the other shapes' briefs unchanged by a fix-proof result", () => {

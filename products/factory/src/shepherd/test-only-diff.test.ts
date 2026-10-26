@@ -1,7 +1,7 @@
 import { CONFIG_PATH } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, PR_FILES_CAP, type GitHubPort, type PrFile } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { MAX_PROBED_PATHS, testOnlyDiff } from "./test-only-diff.js";
+import { MAX_PROBED_PATHS, sourceFreeDiff, testOnlyDiff } from "./test-only-diff.js";
 
 const REPO = "o/r";
 const REPO_CONFIG = JSON.stringify({
@@ -70,7 +70,7 @@ describe("testOnlyDiff", () => {
   it("reads Z7's tests-and-changeset diff as test-only", async () => {
     const port = scene([modified(".changeset/tp-2677-restart-contract.md"), modified("products/factory/src/restart-contract.test.ts")]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
   });
 
   it("reads Z8's diff, with test-support files, as test-only", async () => {
@@ -81,43 +81,74 @@ describe("testOnlyDiff", () => {
       { path: "products/factory/src/test-support/serve-child.ts", status: "added" },
     ]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
   });
 
   it("reads a test with its mutation spec as test-only", async () => {
     const port = scene([modified("packages/x/src/a.test.ts"), { path: "packages/x/src/a.mutations.json", status: "added" }]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
+  });
+
+  describe("a PR that changes only a mutation spec", () => {
+    const SPEC = "apps/console/src/frame.test.mutations.json";
+    const SIBLING = "apps/console/src/frame.test.tsx";
+
+    it("reads the spec beside a test at head as test-only", async () => {
+      const fake = sceneFake([modified(SPEC)]);
+      seedBlob(fake, HEAD, SIBLING);
+
+      expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD)).toEqual({ kind: "test-only" });
+    });
+
+    it("flags the spec when no test sits beside it at head", async () => {
+      expect(await testOnlyDiff(scene([modified(SPEC)]), REPO, 1, HEAD)).toEqual({ kind: "flagged", reason: "the PR adds or changes no test", paths: [] });
+    });
+
+    it("flags the spec when its sibling's read fails", async () => {
+      const fake = sceneFake([modified(SPEC)]);
+      seedBlob(fake, HEAD, SIBLING);
+
+      const diff = await testOnlyDiff(gitlinkAt(githubPort(fake.wire), SIBLING, HEAD), REPO, 1, HEAD);
+
+      expect(diff).toMatchObject({ kind: "flagged", reason: "the PR adds or changes no test" });
+    });
+
+    it("refuses to probe the siblings of more specs than the path cap allows", async () => {
+      const specs = Array.from({ length: MAX_PROBED_PATHS }, (_, n) => modified(`packages/x/src/t${n}.test.mutations.json`));
+
+      expect(await testOnlyDiff(scene(specs), REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("sibling probes") });
+    });
   });
 
   it("names the source path when a test PR also changes source", async () => {
     const port = scene([modified("packages/x/src/a.test.ts"), modified("packages/x/src/x.ts")]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
   });
 
   it("counts a source file renamed into a test as a source change", async () => {
     const port = scene([{ path: "packages/x/src/x.test.ts", previousPath: "packages/x/src/x.ts", status: "renamed" }]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
   });
 
   it("counts a harness path as source even when a carry glob matches it", async () => {
     const port = scene([modified("packages/x/src/a.test.ts"), modified(".github/actions/fixtures/setup.json"), modified(".github/workflows/fix-proof.yml")]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: [".github/actions/fixtures/setup.json", ".github/workflows/fix-proof.yml"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: [".github/actions/fixtures/setup.json", ".github/workflows/fix-proof.yml"] });
   });
 
   it("classifies with the default branch's merge-base globs, not the defaults", async () => {
     const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: JSON.stringify({ tests: ["apps/**/*.test.ts"] }) });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/a.test.ts"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: ["packages/x/src/a.test.ts"] });
   });
 
   it("never reads a stacked PR's parent branch config that loosens the globs", async () => {
     const port = scene(testAndSource, { baseRef: "parent", parentConfig: LOOSE_CONFIG });
 
-    const diff = await testOnlyDiff(port, REPO, 1);
+    const diff = await testOnlyDiff(port, REPO, 1, HEAD);
 
     expect(diff).toMatchObject({ kind: "unread", reason: expect.stringMatching(/"parent".*"main"/) });
   });
@@ -125,64 +156,64 @@ describe("testOnlyDiff", () => {
   it("does not let a wider tip config widen the merge-base config", async () => {
     const port = scene(testAndSource, { tipConfig: LOOSE_CONFIG });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
   });
 
   it("does not let a fork point's wider config widen the tip's", async () => {
     const port = scene(testAndSource, { baseConfig: LOOSE_CONFIG, tipConfig: REPO_CONFIG });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: ["packages/x/src/x.ts"] });
   });
 
   it("does not let a fork point that predates the config fall back to the wider defaults", async () => {
     const port = scene(DEFAULTS_ONLY_TESTS.map(modified), { baseConfig: null, tipConfig: REPO_CONFIG });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: [...DEFAULTS_ONLY_TESTS].sort() });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: [...DEFAULTS_ONLY_TESTS].sort() });
   });
 
   it("uses the built-in globs when neither the merge base nor the tip has a config", async () => {
     const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: null });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
   });
 
   it("fails closed when the tip config cannot be read", async () => {
     const healthy = scene([modified("packages/x/src/a.test.ts")]);
     const port: GitHubPort = { ...healthy, getFile: (repo, path, ref) => (ref === "main" ? Promise.reject(new Error("HTTP 502")) : healthy.getFile(repo, path, ref)) };
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining(`${CONFIG_PATH} could not be read`) });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining(`${CONFIG_PATH} could not be read`) });
   });
 
   it("fails closed when the default branch cannot be read", async () => {
     const fake = sceneFake([modified("packages/x/src/a.test.ts")]);
     fake.readFaults.getDefaultBranch = [new Error("HTTP 502")];
 
-    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("could not be read at the default branch's merge base") });
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("could not be read at the default branch's merge base") });
   });
 
   it("fails closed when the compare fails", async () => {
     const port: GitHubPort = { ...scene([modified("packages/x/src/a.test.ts")]), compareFiles: () => Promise.reject(new Error("HTTP 404")) };
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("could not be read at the default branch's merge base") });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("could not be read at the default branch's merge base") });
   });
 
   it("fails closed when the merge base is not a commit sha", async () => {
     const fake = sceneFake([modified("packages/x/src/a.test.ts")], { baseConfig: null, tipConfig: REPO_CONFIG });
     fake.compares.set(`main...${HEAD}`, { mergeBaseSha: "main", files: [] });
 
-    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("not a commit sha") });
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("not a commit sha") });
   });
 
   it("flags a changeset-only PR", async () => {
     const port = scene([{ path: ".changeset/x.md", status: "added" }]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "flagged", reason: "the PR adds or changes no test", paths: [] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "flagged", reason: "the PR adds or changes no test", paths: [] });
   });
 
   it("flags a PR that deletes a test and names it", async () => {
     const port = scene([{ path: "products/factory/src/a.test.ts", status: "added" }, removed("products/factory/src/b.test.ts")]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({
       kind: "flagged",
       reason: "the PR deletes tests products/factory/src/b.test.ts",
       paths: ["products/factory/src/b.test.ts"],
@@ -192,19 +223,19 @@ describe("testOnlyDiff", () => {
   it("flags a diff that has no test under one of the two configs", async () => {
     const port = scene([modified("packages/x/src/a.test.ts")], { tipConfig: JSON.stringify({ ...JSON.parse(REPO_CONFIG), tests: ["apps/**/*.test.ts"], carry: ["**/*.test.ts"] }) });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "flagged", reason: "the PR adds or changes no test" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "flagged", reason: "the PR adds or changes no test" });
   });
 
   it("reads a published fixture as source under a runtime glob", async () => {
     const port = scene([modified("packages/x/src/a.test.ts"), modified("packages/agent-protocol/fixtures/round.json")], { baseConfig: RUNTIME_CONFIG });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "source", paths: ["packages/agent-protocol/fixtures/round.json"] });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "source", paths: ["packages/agent-protocol/fixtures/round.json"] });
   });
 
   it("reads a gitlink under a carry path as unread", async () => {
     const files = [modified("packages/x/src/a.test.ts"), modified("packages/x/src/fixtures/vendor")];
 
-    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/vendor", HEAD), REPO, 1);
+    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/vendor", HEAD), REPO, 1, HEAD);
 
     expect(diff).toEqual({ kind: "unread", reason: `"packages/x/src/fixtures/vendor" at ${HEAD} is not a regular file GitHub returns inline: a gitlink, a large file or a read error` });
   });
@@ -212,7 +243,7 @@ describe("testOnlyDiff", () => {
   it("reads a removed gitlink as unread", async () => {
     const files = [modified("packages/x/src/a.test.ts"), removed("packages/x/src/fixtures/vendor")];
 
-    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/vendor", MERGE_BASE), REPO, 1);
+    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/vendor", MERGE_BASE), REPO, 1, HEAD);
 
     expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining(`"packages/x/src/fixtures/vendor" at ${MERGE_BASE}`) });
   });
@@ -220,7 +251,7 @@ describe("testOnlyDiff", () => {
   it("reads a rename's old gitlink as unread", async () => {
     const files: PrFile[] = [modified("packages/x/src/a.test.ts"), { path: "packages/x/src/fixtures/new", previousPath: "packages/x/src/fixtures/old", status: "renamed" }];
 
-    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/old", MERGE_BASE), REPO, 1);
+    const diff = await testOnlyDiff(gitlinkAt(scene(files), "packages/x/src/fixtures/old", MERGE_BASE), REPO, 1, HEAD);
 
     expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining(`"packages/x/src/fixtures/old" at ${MERGE_BASE}`) });
   });
@@ -228,20 +259,20 @@ describe("testOnlyDiff", () => {
   it("reads a removed carry file from the merge base, where it still exists", async () => {
     const port = scene([modified("packages/x/src/a.test.ts"), removed("packages/x/src/fixtures/old.json")]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toEqual({ kind: "test-only" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
   });
 
   it("reads a listed path with no blob at the head as unread", async () => {
     const fake = sceneFake([modified("packages/x/src/a.test.ts"), modified("packages/x/src/fixtures/a.json")]);
     fake.files.delete(`${HEAD}:packages/x/src/fixtures/a.json`);
 
-    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining('"packages/x/src/fixtures/a.json"') });
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining('"packages/x/src/fixtures/a.json"') });
   });
 
   it("refuses to probe past the path cap and makes no contents call for it", async () => {
     const fake = sceneFake(Array.from({ length: MAX_PROBED_PATHS + 1 }, (_, n) => modified(`packages/x/src/t${n}.test.ts`)));
 
-    const diff = await testOnlyDiff(githubPort(fake.wire), REPO, 1);
+    const diff = await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD);
 
     expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining(`over the ${MAX_PROBED_PATHS}`) });
     expect(fake.calls.filter((call) => call === "getContent")).toHaveLength(2);
@@ -250,7 +281,13 @@ describe("testOnlyDiff", () => {
   it("probes a diff at the path cap", async () => {
     const files = Array.from({ length: MAX_PROBED_PATHS }, (_, n) => modified(`packages/x/src/t${n}.test.ts`));
 
-    expect(await testOnlyDiff(scene(files), REPO, 1)).toEqual({ kind: "test-only" });
+    expect(await testOnlyDiff(scene(files), REPO, 1, HEAD)).toEqual({ kind: "test-only" });
+  });
+
+  it("reads a PR whose head is not the expected head as unread", async () => {
+    const port = scene([modified("packages/x/src/a.test.ts")]);
+
+    expect(await testOnlyDiff(port, REPO, 1, fakeSha("older-head"))).toMatchObject({ kind: "unread", reason: expect.stringContaining("under judgement") });
   });
 
   it("fails closed when the PR's head is not a commit sha", async () => {
@@ -259,13 +296,13 @@ describe("testOnlyDiff", () => {
     fake.compares.set("main...feature", { mergeBaseSha: MERGE_BASE, files: [] });
     seedBlob(fake, "feature", "packages/x/src/a.test.ts");
 
-    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1)).toMatchObject({ kind: "unread", reason: "the PR's head is not a commit sha" });
+    expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, "feature")).toMatchObject({ kind: "unread", reason: "the PR's head is not a commit sha" });
   });
 
   it("fails closed on a list at GitHub's file cap", async () => {
     const files = Array.from({ length: PR_FILES_CAP }, (_, n) => modified(`packages/x/src/t${n}.test.ts`));
 
-    const diff = await testOnlyDiff(scene(files), REPO, 1);
+    const diff = await testOnlyDiff(scene(files), REPO, 1, HEAD);
 
     expect(diff).toMatchObject({ kind: "unread", reason: expect.stringContaining("file list cap") });
   });
@@ -273,25 +310,25 @@ describe("testOnlyDiff", () => {
   it("fails closed when GitHub lists fewer files than the PR reports", async () => {
     const port = scene([modified("packages/x/src/a.test.ts")], { changedFiles: 2 });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "unread" });
   });
 
   it("fails closed when the base config cannot be read", async () => {
     const port: GitHubPort = { ...scene([modified("packages/x/src/a.test.ts")]), getFile: () => Promise.reject(new Error("HTTP 502")) };
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining(`${CONFIG_PATH} could not be read`) });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining(`${CONFIG_PATH} could not be read`) });
   });
 
   it("fails closed when the base config does not parse", async () => {
     const port = scene([modified("packages/x/src/a.test.ts")], { baseConfig: JSON.stringify({ tests: ["**/*.test.ts"], extra: true }) });
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread", reason: expect.stringContaining("unknown config key") });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("unknown config key") });
   });
 
   it("fails closed on a path that would split the name-status line", async () => {
     const port = scene([modified("packages/x/src/a.test.ts\nA\tpackages/x/src/b.test.ts")]);
 
-    expect(await testOnlyDiff(port, REPO, 1)).toMatchObject({ kind: "unread" });
+    expect(await testOnlyDiff(port, REPO, 1, HEAD)).toMatchObject({ kind: "unread" });
   });
 
   it.each([
@@ -299,10 +336,32 @@ describe("testOnlyDiff", () => {
     ["a rename without its old path", [{ path: "packages/x/src/a.test.ts", status: "renamed" }]],
     ["an empty file list", []],
   ])("fails closed on %s", async (_name, files: PrFile[]) => {
-    expect(await testOnlyDiff(scene(files), REPO, 1)).toMatchObject({ kind: "unread" });
+    expect(await testOnlyDiff(scene(files), REPO, 1, HEAD)).toMatchObject({ kind: "unread" });
   });
 
   it("fails closed when the registration names no PR", async () => {
-    expect(await testOnlyDiff(scene([]), REPO, null)).toMatchObject({ kind: "unread" });
+    expect(await testOnlyDiff(scene([]), REPO, null, HEAD)).toMatchObject({ kind: "unread" });
+  });
+});
+
+describe("sourceFreeDiff (TP-4275)", () => {
+  const added = (path: string): PrFile => ({ path, status: "added" });
+  const TESTS_AND_SUPPORT = [added("packages/x/src/__tests__/parse.test.ts"), removed("packages/x/src/parse.test.ts"), added("packages/x/src/test-support/cases.ts"), added(".changeset/convert.md")];
+
+  it("reads tests, a deleted test, test support and a changeset as free of source", async () => {
+    expect(await sourceFreeDiff(scene(TESTS_AND_SUPPORT, { baseConfig: RUNTIME_CONFIG }), REPO, 1, HEAD)).toBe(true);
+  });
+
+  it.each([".changeset/config.json", "packages/x/src/docs/render.ts", "packages/x/src/a.test.helpers.ts", "apps/console/fixtures/rounds/a.md", "site/guides/parse.md", ".github/workflows/ci.yml"])(
+    "reads a diff with %s, which the fix-proof plan sorts as source, as not free of source",
+    async (path) => {
+      expect(await sourceFreeDiff(scene([...TESTS_AND_SUPPORT, modified(path)], { baseConfig: RUNTIME_CONFIG }), REPO, 1, HEAD)).toBe(false);
+    },
+  );
+
+  it("fails closed when a carried path's blob is not read inline", async () => {
+    const port = gitlinkAt(scene(TESTS_AND_SUPPORT, { baseConfig: RUNTIME_CONFIG }), "packages/x/src/test-support/cases.ts", HEAD);
+
+    expect(await sourceFreeDiff(port, REPO, 1, HEAD)).toBe(false);
   });
 });

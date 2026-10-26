@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the cap rounds up",
+      "file": "products/explainer/src/resolve-budget.ts",
+      "find": "cap: Math.floor(seconds * wordsPerS + 1e-9)",
+      "replace": "cap: Math.ceil(seconds * wordsPerS)",
+      "kills": [
+        "word budget rounds a fractional cap down: a 5 s code slot holds 11 words, not 12"
+      ]
+    },
+    {
+      "name": "one word over the cap passes",
+      "file": "products/explainer/src/resolve-budget.ts",
+      "find": "budget.words > budget.cap)",
+      "replace": "budget.words > budget.cap + 1)",
+      "kills": [
+        "word budget passes a beat at exactly its cap and fails one word over"
+      ]
+    },
+    {
+      "name": "every beat type gets the story rate",
+      "file": "products/explainer/src/resolve-budget.ts",
+      "find": "bands[band].wordsPerS)",
+      "replace": "bands.story.wordsPerS)",
+      "kills": [
+        "word budget caps each beat type at its own band rate: 25 words in 10 s fit a concept beat but not a code beat"
+      ]
+    },
+    {
+      "name": "a block takes its slowest beat type's rate",
+      "file": "products/explainer/src/resolve-budget.ts",
+      "find": "Math.max(...rates)",
+      "replace": "Math.min(...rates)",
+      "kills": [
+        "word budget caps a profile block at its longest airtime, at the fastest rate its beat types allow"
+      ]
+    },
+    {
+      "name": "a block is capped at its shortest airtime",
+      "file": "products/explainer/src/resolve-budget.ts",
+      "find": "block.seconds[1], rate)",
+      "replace": "block.seconds[0], rate)",
+      "kills": [
+        "word budget caps a profile block at its longest airtime, at the fastest rate its beat types allow"
+      ]
+    }
+  ]
+}

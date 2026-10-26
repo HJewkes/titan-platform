@@ -34,3 +34,13 @@ export function sandboxCommand(
     ],
   };
 }
+
+/**
+ * The sandboxed run's whole environment. HOME is the tree, so a browser cache must be named explicitly, and only the
+ * runner's own value is forwarded: the sandbox user cannot read the runner's home, so a guessed default would not help.
+ */
+export function sandboxEnv(tree: string, parent: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const env: Record<string, string> = { PATH: parent.PATH ?? "/usr/local/bin:/usr/bin:/bin", HOME: tree, CI: "1" };
+  if (parent.PLAYWRIGHT_BROWSERS_PATH !== undefined) env.PLAYWRIGHT_BROWSERS_PATH = parent.PLAYWRIGHT_BROWSERS_PATH;
+  return env;
+}

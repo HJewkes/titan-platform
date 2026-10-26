@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the visual accept gate pattern loses its anchors",
+      "file": "apps/console/server/listeners.ts",
+      "find": "const VISUAL_ACCEPT = /(^|\\/)sh-visual-accept(:\\d+)?$/;",
+      "replace": "const VISUAL_ACCEPT = /sh-visual-accept/;",
+      "kills": [
+        "the gate-answer listener after rounds.submit gate id anchoring records gone without a post for gate sh-visual-accept-offer:0",
+        "the gate-answer listener after rounds.submit gate id anchoring records gone without a post for gate xsh-visual-accept"
+      ]
+    },
+    {
+      "name": "the approve-merge gate pattern loses its anchors",
+      "file": "apps/console/server/listeners.ts",
+      "find": "const APPROVE_MERGE = /(^|\\/)approve-merge(:\\d+)?$/;",
+      "replace": "const APPROVE_MERGE = /approve-merge/;",
+      "kills": [
+        "the gate-answer listener after rounds.submit gate id anchoring records gone without a post for gate run-1/approve-merge-x",
+        "the gate-answer listener after rounds.submit gate id anchoring records gone without a post for gate run-1/xapprove-merge"
+      ]
+    }
+  ]
+}

@@ -175,6 +175,16 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 - Range requests are not honoured: every file comes back whole, with no `Accept-Ranges`,
   so byte-range use such as large source maps or media is out of scope.
 
+## A content origin
+
+`contentOrigin: { port, mountRoutes }` opens a read-only origin on its own port for content
+the daemon must not trust: product routes only, `GET` and `HEAD` only, no `/rpc`, `/events`,
+`/health`, `/mcp` or `/auth/*`. With `remote` it also binds the remote address behind the
+same TLS pair, Host check and auth gate, so the main listener's session cookie works there.
+`handle.contentPort` reports the bound port. `containedFile(root, pathname)` resolves a URL
+path under a root chosen per request with `mountStaticApp`'s traversal rules, for
+`fileResponse` to serve. Details: `site/reference/daemon.md`.
+
 ## The seams
 
 - `createContext(surface)` builds the per-request context. The daemon never knows what a
@@ -189,8 +199,8 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 
 Exported on their own because they are the reusable pieces:
 
-- `watchTree(root, onChange, { debounceMs, onError })` — recursive watcher that debounces
-  bursts into one callback. On macOS and Windows it holds one native recursive `fs.watch`
+- `watchTree(root, onChange, { debounceMs, onError, ignore })` — recursive watcher that debounces
+  bursts into one callback. Directories listed in `ignore` are neither watched nor reported. On macOS and Windows it holds one native recursive `fs.watch`
   handle on `root`; elsewhere (Linux), where `recursive` is version-dependent, it walks
   the tree and holds one handle per directory. `isWatching(dir)` is true for any existing
   path under a recursive root even though it has no handle of its own. `whenWatching(dir)`

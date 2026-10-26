@@ -21,7 +21,7 @@ describe("why, value and thread lints", () => {
   it("reports one row per rule, so a pass is recorded too", () => {
     const ids = rows(goodScript()).map((row) => row.check_id);
 
-    expect(ids).toEqual(["Q-W1", "Q-W2", "Q-W3", "Q-W4", "Q-W5", "Q-W6", "Q-W8", "Q-W9", "Q-W10", "Q-F3", "Q-F12", "Q-F13"]);
+    expect(ids).toEqual(["Q-W1", "Q-W2", "Q-W3", "Q-W4", "Q-W5", "Q-W6", "Q-W8", "Q-W9", "Q-W10", "Q-F3", "Q-F12", "Q-W6:invariant-cap", "Q-F13"]);
   });
 
   it("finds that only one of five body chapters in a pass-A-like script leads with why", () => {
@@ -56,6 +56,31 @@ describe("why, value and thread lints", () => {
     expect(rowFor(late, "Q-W1")).toMatchObject({ pass: false, detail_beats: [], value: 1 });
   });
 
+  describe("a structure that declares its stake-carrying functions", () => {
+    /** The stake beat moved last, so only an opening VERDICT beat can voice the stake early. */
+    const verdictFirst = (structure: string, spoken: string): ScriptV1 => {
+      const good = goodScript();
+      const late = { ...good, structure, beats: [...good.beats.filter((b) => b.id !== "b2"), ...good.beats.filter((b) => b.id === "b2")] };
+      return withBeat(late, "b1", { function: "VERDICT", spoken });
+    };
+    const voiced = "You lose a day for every wrong label, three hundred a week.";
+
+    // Mutation: reading STAKE alone, whatever the structure declares, fails this.
+    it("passes scqa's opening verdict beat when it voices the stake by 15 percent", () => {
+      expect(rowFor(verdictFirst("scqa", voiced), "Q-W1")).toMatchObject({ pass: true });
+    });
+
+    it("still fails scqa's verdict beat when it voices the stake with no number or artifact", () => {
+      const row = rowFor(verdictFirst("scqa", "You lose time on every wrong label."), "Q-W1");
+
+      expect(row).toMatchObject({ pass: false, detail_beats: ["b1"] });
+    });
+
+    it("keeps design-journey's Q-W1 on STAKE beats only", () => {
+      expect(rowFor(verdictFirst("design-journey", voiced), "Q-W1")).toMatchObject({ pass: false, detail_beats: [], value: 1 });
+    });
+  });
+
   it("fails a stake beat with no number", () => {
     const script = withBeat(goodScript(), "b2", { spoken: "You lose time on every wrong label." });
 
@@ -85,10 +110,29 @@ describe("why, value and thread lints", () => {
     expect(rowFor(script, "Q-W5")?.pass).toBe(false);
   });
 
+  it.each([["You'll be able to catch a bad label before it prints."], ["By the end you’ll spot a bad label before it prints."]])(
+    "passes a promise whose you carries a contraction: %s",
+    (promise) => {
+      const good = goodScript();
+      const script = { ...good, video: { ...good.video, promise } };
+
+      expect(rowFor(script, "Q-W5")?.pass).toBe(true);
+    },
+  );
+
   it("fails a HOW chapter that speaks no invariant or absence", () => {
     const script = withBeat(goodScript(), "b6", { spoken: "The desk server reads parcel P-7 from the ledger." });
 
     expect(rowFor(script, "Q-W6")?.detail_beats).toEqual(["b6"]);
+  });
+
+  // Mutation: raising MAX_INVARIANTS (or dropping the row) lets three invariants pass.
+  it("warns, never fails, on more than two declared invariants", () => {
+    const good = goodScript();
+    const script = { ...good, video: { ...good.video, invariants: ["One holds.", "Two holds.", "Three holds."] } };
+
+    expect(rowFor(script, "Q-W6:invariant-cap")).toMatchObject({ severity: "warning", pass: false, value: 3, threshold: 2 });
+    expect(rowFor(good, "Q-W6:invariant-cap")?.pass).toBe(true);
   });
 
   it("fails a fence that is not drawn as a design", () => {

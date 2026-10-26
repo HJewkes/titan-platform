@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "compare reveals numbered per pair",
+      "file": "products/explainer/src/template-fill/derive-pairs.ts",
+      "find": "return { target: `rows-${i + 1}`, part: side",
+      "replace": "return { target: `rows-${k}`, part: side",
+      "kills": [
+        "template fill: compare beats lands each side of a row on its own label's cue word"
+      ]
+    },
+    {
+      "name": "compare row ids numbered per pair",
+      "file": "products/explainer/src/template-fill/derive-pairs.ts",
+      "find": "row[side === \"left\" ? \"id\" : \"alias\"] = `rows-${i + 1}`;",
+      "replace": "row[side === \"left\" ? \"id\" : \"alias\"] = `rows-${k}`;",
+      "kills": [
+        "template fill: compare beats pairs the k-th before with the k-th after under Before and After, each side named by its label's number"
+      ]
+    },
+    {
+      "name": "emphasis targets ignore an element's alias",
+      "file": "products/explainer/src/beat-load.ts",
+      "find": "return [id, alias].filter(",
+      "replace": "return [id].filter(",
+      "kills": [
+        "template fill: compare beats gives a cue on any label's number exactly one element to light"
+      ]
+    }
+  ]
+}

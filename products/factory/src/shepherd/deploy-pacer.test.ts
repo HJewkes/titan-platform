@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { DeployRecord } from "../deploy.js";
+import type { WatchIntent } from "../deploy-watch-window.js";
 import {
   DEPLOY_MAX_WAIT_MS,
   DEPLOY_NOW_LABEL,
   DEPLOY_QUIET_MS,
   DEPLOY_STALE_SPAWN_MS,
   DEPLOY_WANTED,
+  DEPLOY_WATCH_GRACE_MS,
   noteWanted,
   paceDecision,
   pacerStatus,
   pacerTick,
   readWanted,
+  withWaiting,
   writeWanted,
+  type DeploySpawn,
   type DeployWanted,
+  type GreenRead,
+  type PacerMemo,
   type WantedStore,
 } from "./deploy-pacer.js";
 
@@ -36,13 +42,23 @@ function memoryStore(): WantedStore & { files: Map<string, string> } {
 }
 
 /** A pacer over an in-memory state dir and a settable clock, recording every spawn as `[minute, sha]`. */
-function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean; express?: (sha: string) => boolean } = {}) {
+function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean; express?: (sha: string) => boolean; green?: (sha: string) => GreenRead } = {}) {
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
-  const world = { now: 0, busy: options.busy ?? 0, paused: false, runningSha: RUNNING, lastDeploy: options.lastDeploy };
+  const waits: PacerMemo = {};
+  const world = {
+    now: 0,
+    busy: options.busy ?? 0,
+    paused: false,
+    runningSha: RUNNING,
+    lastDeploy: options.lastDeploy,
+    deployWindow: undefined as WatchIntent | undefined,
+    green: options.green ?? ((sha: string): GreenRead => ({ sha })),
+  };
   const merge = (sha: string) => writeWanted(STATE, store, noteWanted(readWanted(STATE, store), sha, world.now));
-  const tick = (spawn = (sha: string) => (spawns.push([world.now / MIN, sha]), { pid: 1 })) =>
+  const record: DeploySpawn = (sha) => (spawns.push([world.now / MIN, sha]), { pid: 1 });
+  const tick = (spawn: DeploySpawn = record) =>
     pacerTick({
       stateDir: STATE,
       store,
@@ -50,11 +66,14 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       runningSha: () => world.runningSha,
       ...(options.runningHolds && { runningHolds: options.runningHolds }),
       ...(options.express && { express: options.express }),
+      green: (sha) => world.green(sha),
       lastDeploy: () => world.lastDeploy,
+      deployWindow: () => world.deployWindow,
       busy: () => world.busy,
       paused: () => world.paused,
       spawn,
       log: (line) => void logs.push(line),
+      waits,
     });
   const ticksUntil = (minute: number) => {
     while (world.now < minute * MIN) {
@@ -62,7 +81,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds
       tick();
     }
   };
-  return { store, spawns, logs, world, merge, tick, ticksUntil, wanted: () => readWanted(STATE, store) };
+  return { store, spawns, logs, waits, world, merge, tick, ticksUntil, wanted: () => readWanted(STATE, store) };
 }
 
 const wantedAt = (sha: string, firstMin: number, lastMin: number, extra: Partial<DeployWanted> = {}): DeployWanted => ({
@@ -72,12 +91,28 @@ const wantedAt = (sha: string, firstMin: number, lastMin: number, extra: Partial
   ...extra,
 });
 
-const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?: number; lastDeploy?: DeployRecord; runningSha?: string; paused?: boolean; express?: boolean } = {}) =>
+interface DecideExtra {
+  busy?: number;
+  lastDeploy?: DeployRecord;
+  deployWindow?: WatchIntent;
+  runningSha?: string;
+  runningHoldsWanted?: boolean;
+  paused?: boolean;
+  express?: boolean;
+  green?: GreenRead;
+  runningHoldsGreen?: boolean;
+}
+
+const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: DecideExtra = {}) =>
   paceDecision({
     wanted,
+    green: extra.green ?? { sha: wanted?.sha ?? "" },
+    runningHoldsGreen: extra.runningHoldsGreen ?? false,
     now: nowMin * MIN,
     runningSha: extra.runningSha ?? RUNNING,
+    runningHoldsWanted: extra.runningHoldsWanted ?? false,
     lastDeploy: extra.lastDeploy,
+    deployWindow: extra.deployWindow,
     busy: extra.busy ?? 0,
     paused: extra.paused ?? false,
     express: extra.express ?? false,
@@ -117,7 +152,7 @@ describe("deploy pacer", () => {
     const held = decide(wanted, 30, { busy: 2 });
     const capped = decide(wanted, 90, { busy: 2 });
 
-    expect(held).toEqual({ kind: "wait", why: "2 busy run(s)", until: 90 * MIN });
+    expect(held).toEqual({ kind: "wait", why: "2 busy run(s)", until: 90 * MIN, key: "busy runs" });
     expect(capped).toEqual({ kind: "spawn", sha: "a" });
   });
 
@@ -186,6 +221,34 @@ describe("deploy pacer", () => {
     const next = noteWanted(spawned, "b", 20 * MIN);
 
     expect(next).toEqual(wantedAt("b", 20, 20));
+  });
+
+  it("the next green merge replaces an ask whose deployer was refused and recorded nothing, and deploys after its own quiet window (TP-4085)", () => {
+    const p = pacer();
+    p.merge("a");
+    p.ticksUntil(30);
+
+    p.merge("b");
+    p.ticksUntil(60);
+
+    expect(p.wanted()).toMatchObject({ sha: "b", firstAt: new Date(30 * MIN).toISOString(), spawnedSha: "b" });
+    expect(p.spawns).toEqual([[15, "a"], [45, "b"]]);
+  });
+
+  it("an older sha the queued one contains keeps the queued record, spawn mark and all", () => {
+    const spawned = wantedAt("b", 0, 5, { spawnedSha: "b", spawnedAt: new Date(15 * MIN).toISOString() });
+
+    expect(noteWanted(spawned, "a", 20 * MIN, "b")).toBe(spawned);
+  });
+
+  it("a containing sha that is no longer the queued one does not keep it", () => {
+    const queued = wantedAt("c", 0, 0);
+
+    expect(noteWanted(queued, "a", 5 * MIN, "b")).toEqual(wantedAt("a", 0, 5));
+  });
+
+  it("with no record, a containing sha still queues the incoming one", () => {
+    expect(noteWanted(undefined, "a", 5 * MIN, "b")).toEqual(wantedAt("a", 5, 5));
   });
 
   it("steady merges while a spawned deploy is unserved spawn once per cap, not once per merge", () => {
@@ -291,6 +354,143 @@ describe("deploy pacer", () => {
   });
 });
 
+/** The deployer spawned at minute 15 restarts serve on "b", which contains the asked "a", and opens a watch window to minute 18. */
+function deployInWatch() {
+  const contains = new Set<string>();
+  const p = pacer({ runningHolds: (sha) => contains.has(sha), lastDeploy: { outcome: "deployed", target: RUNNING, from: "sha-older", at: new Date(-MIN).toISOString() } });
+  p.merge("a");
+  p.ticksUntil(15);
+  p.world.runningSha = "b";
+  contains.add("a");
+  p.world.deployWindow = { sha: "b", windowEnd: 18 * MIN };
+  return { p, contains };
+}
+
+/** At minute 17.5 the watch of "b" fails: serve is back on the old build, deploy.json records b rolled back, and deploys are paused. */
+function rolledBackInWatch() {
+  const world = deployInWatch();
+  world.p.ticksUntil(17);
+  world.p.world.runningSha = RUNNING;
+  world.contains.clear();
+  world.p.world.lastDeploy = { outcome: "rolled-back", target: "b", from: RUNNING, at: new Date(17.5 * MIN).toISOString() };
+  world.p.world.paused = true;
+  return world;
+}
+
+describe("the deploy pacer and the health watch of the deploy that contains the ask", () => {
+  it("an ask survives a rollback inside the watch and is never re-asked as origin/main, whose CI nobody read (TP-4279)", () => {
+    const { p } = rolledBackInWatch();
+    p.ticksUntil(30);
+    p.world.paused = false;
+
+    const unpaused = p.tick();
+
+    expect(p.spawns).toEqual([[15, "a"]]);
+    expect(unpaused).toEqual({ kind: "wait", why: "deployer already started for a", until: 15 * MIN + DEPLOY_STALE_SPAWN_MS });
+  });
+
+  it("an ask is cleared once a later deploy lands a build that contains it and passes its watch", () => {
+    const { p, contains } = rolledBackInWatch();
+    p.ticksUntil(30);
+    p.world.paused = false;
+    p.ticksUntil(31);
+
+    p.world.now = 40 * MIN;
+    p.world.runningSha = "c";
+    contains.add("a");
+    p.world.deployWindow = { sha: "c", windowEnd: 39 * MIN };
+    p.world.lastDeploy = { outcome: "deployed", target: "c", from: RUNNING, at: new Date(39 * MIN).toISOString() };
+
+    expect(p.tick()).toEqual({ kind: "clear", why: "the service runs c, which contains a" });
+  });
+
+  it("a deployer that died in its watch holds the ask only until the grace after the window ends", () => {
+    const window = { sha: "b", windowEnd: 18 * MIN };
+    const extra = { runningSha: "b", runningHoldsWanted: true, deployWindow: window };
+    const graceEnds = (18 * MIN + DEPLOY_WATCH_GRACE_MS) / MIN;
+
+    const inGrace = decide(wantedAt("a", 0, 0), graceEnds - 1, extra);
+    const past = decide(wantedAt("a", 0, 0), graceEnds, extra);
+
+    expect(inGrace.kind).toBe("wait");
+    expect(past).toEqual({ kind: "clear", why: "the service runs b, which contains a" });
+  });
+
+  it("an ask whose containing deploy passes its watch is cleared once deploy.json records it", () => {
+    const { p } = deployInWatch();
+    p.ticksUntil(17);
+    const inWatch = p.wanted();
+
+    p.world.now = 18 * MIN;
+    p.world.lastDeploy = { outcome: "deployed", target: "b", from: RUNNING, at: new Date(18 * MIN).toISOString() };
+    const settled = p.tick();
+
+    expect(inWatch?.sha).toBe("a");
+    expect(settled).toEqual({ kind: "clear", why: "the service runs b, which contains a" });
+    expect(p.wanted()).toBeUndefined();
+  });
+
+  it("an ask is kept while the window for the running build is still open, even with its deploy recorded", () => {
+    const window = { sha: "a", windowEnd: 18 * MIN };
+    const record = { outcome: "deployed" as const, target: "a", from: RUNNING, at: new Date(17 * MIN).toISOString() };
+
+    const open = decide(wantedAt("a", 0, 0), 17, { runningSha: "a", lastDeploy: record, deployWindow: window });
+    const closed = decide(wantedAt("a", 0, 0), 18, { runningSha: "a", lastDeploy: record, deployWindow: window });
+
+    expect(open.kind).toBe("wait");
+    expect(closed).toEqual({ kind: "clear", why: "the service runs a" });
+  });
+
+  it("a running build that deploy.json records as rolled back does not answer the ask", () => {
+    const record = { outcome: "rolled-back" as const, target: "b", from: RUNNING, at: new Date(17 * MIN).toISOString() };
+
+    expect(decide(wantedAt("a", 0, 0), 20, { runningSha: "b", runningHoldsWanted: true, lastDeploy: record })).toEqual({ kind: "spawn", sha: "a" });
+  });
+});
+
+describe("the deploy pacer and the ask's own main CI run (TP-4279)", () => {
+  const ownRun = (status: string) => `the own CI run of tip is ${status}`;
+  const fallbackTo = (green: string, status: string) => (sha: string): GreenRead => (sha === "tip" ? { sha: green, why: ownRun(status) } : { sha });
+
+  it("never deploys an ask whose run is in progress after a failed parent while the service holds the last green, and deploys it once its run succeeds", () => {
+    const run = { status: "in_progress" };
+    const p = pacer({ runningHolds: (sha) => sha === "green", green: (sha) => (run.status === "success" ? { sha } : fallbackTo("green", run.status)(sha)) });
+    p.merge("tip");
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 30);
+    const whileRunning = [...p.spawns];
+
+    run.status = "success";
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 31);
+
+    expect(whileRunning).toEqual([]);
+    expect(p.logs).toContain(`deploy pacer: waiting for tip: ${ownRun("in_progress")}; the service already holds green, the newest green sha`);
+    expect(p.spawns).toEqual([[DEPLOY_MAX_WAIT_MS / MIN + 31, "tip"]]);
+  });
+
+  it("deploys the newest green sha in place of an ask whose run was cancelled, and does not ask again once deploy.json records it", () => {
+    const p = pacer({ green: fallbackTo("green", "cancelled") });
+    p.merge("tip");
+    p.ticksUntil(15);
+    p.world.lastDeploy = { outcome: "deployed", target: "green", from: RUNNING, at: new Date(16 * MIN).toISOString() };
+
+    p.ticksUntil(15 + 2 * (DEPLOY_STALE_SPAWN_MS / MIN));
+
+    expect(p.spawns).toEqual([[15, "green"]]);
+    expect(p.logs).toContain(`deploy pacer: deployer pid 1 deploys green, the newest green sha, for tip (${ownRun("cancelled")})`);
+    expect(p.wanted()).toMatchObject({ sha: "tip", spawnedSha: "green" });
+  });
+
+  it("holds the ask with no end, past the cap, when main CI cannot be read", () => {
+    const p = pacer({ green: () => ({ why: "main's ci.yml runs could not be read" }) });
+    p.merge("tip");
+
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 30);
+
+    expect(p.spawns).toEqual([]);
+    expect(p.waits.wait).toEqual({ sha: "tip", why: "no green sha to deploy: main's ci.yml runs could not be read", key: "no green sha to deploy: main's ci.yml runs could not be read" });
+  });
+});
+
 describe(`the ${DEPLOY_NOW_LABEL} express lane`, () => {
   it("a labelled merge inside the quiet window spawns on the next tick and logs why", () => {
     const p = pacer({ express: (sha) => sha === "a" });
@@ -319,7 +519,7 @@ describe(`the ${DEPLOY_NOW_LABEL} express lane`, () => {
     const held = decide(wanted, 1, { busy: 1, express: true });
     const drained = decide(wanted, 2, { busy: 0, express: true });
 
-    expect(held).toEqual({ kind: "wait", why: "1 busy run(s)", until: DEPLOY_MAX_WAIT_MS });
+    expect(held).toEqual({ kind: "wait", why: "1 busy run(s)", until: DEPLOY_MAX_WAIT_MS, key: "busy runs" });
     expect(drained).toEqual({ kind: "spawn", sha: "a", express: true });
   });
 
@@ -335,6 +535,73 @@ describe(`the ${DEPLOY_NOW_LABEL} express lane`, () => {
 
   it("past the quiet window a labelled spawn is an ordinary one", () => {
     expect(decide(wantedAt("a", 0, 0), 20, { express: true })).toEqual({ kind: "spawn", sha: "a" });
+  });
+});
+
+describe("the pacer's wait line (TP-2427)", () => {
+  const at = (minute: number): string => new Date(minute * MIN).toISOString();
+  const waiting = (sha: string, why: string, untilMin?: number): string => `deploy pacer: waiting for ${sha}: ${why}${untilMin === undefined ? "" : ` until ${at(untilMin)}`}`;
+
+  it("a quiet-window wait is logged once across repeated sweeps", () => {
+    const p = pacer();
+    p.merge("a");
+
+    p.ticksUntil(10);
+
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15)]);
+  });
+
+  it("a change to a busy-run wait logs again, and a busy count that moves does not", () => {
+    const p = pacer({ busy: 1 });
+    p.merge("a");
+
+    p.ticksUntil(20);
+    p.world.busy = 2;
+    p.ticksUntil(30);
+
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15), waiting("a", "1 busy run(s)", 90)]);
+    expect(p.spawns).toEqual([]);
+    expect(p.waits.wait).toMatchObject({ sha: "a", why: "2 busy run(s)", until: at(90) });
+  });
+
+  it("idle logs nothing and keeps no wait", () => {
+    const p = pacer();
+
+    p.ticksUntil(5);
+
+    expect(p.logs).toEqual([]);
+    expect(p.waits.wait).toBeUndefined();
+  });
+
+  it("a new sha in the quiet window logs again", () => {
+    const p = pacer();
+    p.merge("a");
+    p.ticksUntil(2);
+
+    p.merge("b");
+    p.ticksUntil(4);
+
+    expect(p.logs).toEqual([waiting("a", "inside the quiet window", 15), waiting("b", "inside the quiet window", 17)]);
+  });
+
+  it("a paused wait logs no until-time, and a wait that ends forgets it", () => {
+    const p = pacer();
+    p.world.paused = true;
+    p.merge("a");
+    p.ticksUntil(3);
+
+    p.world.runningSha = "a";
+    p.ticksUntil(4);
+
+    expect(p.logs).toEqual([waiting("a", "deploys are paused; titan-factory service pause --clear lifts it"), "deploy pacer: cleared a: the service runs a"]);
+    expect(p.waits.wait).toBeUndefined();
+  });
+
+  it("withWaiting attaches the wait only for the same sha, without its change key", () => {
+    const status = pacerStatus(wantedAt("a", 0, 5));
+
+    expect(withWaiting(status, { sha: "b", why: "x", key: "x" })).toEqual(status);
+    expect(withWaiting(status, { sha: "a", why: "1 busy run(s)", until: at(90), key: "busy runs" })).toEqual({ ...status, waiting: { why: "1 busy run(s)", until: at(90) } });
   });
 });
 

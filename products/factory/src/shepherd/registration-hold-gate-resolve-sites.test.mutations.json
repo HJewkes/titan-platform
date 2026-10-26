@@ -1,0 +1,39 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the gate-resolve check unit is emptied",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "[\"gate-resolve-sites.test.ts\", \"gate-resolve-sites.test.mutations.json\", \"gate-resolve-*.test-helpers.ts\"].map",
+      "replace": "([] as string[]).map",
+      "kills": [
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only gate-resolve-sites.test.ts g10-adversary",
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only its mutation sidecar g10-adversary"
+      ]
+    },
+    {
+      "name": "the closure helpers leave the gate-resolve check unit",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": ", \"gate-resolve-*.test-helpers.ts\"]",
+      "replace": "]",
+      "kills": ["the gate-resolve check unit in Shepherd's class rules names the check, its sidecar and every test helper the check imports"]
+    },
+    {
+      "name": "the gate-resolve check ignores a rename's old path",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "inGateResolveCheck(path) || (previousPath !== undefined && inGateResolveCheck(previousPath))",
+      "replace": "inGateResolveCheck(path)",
+      "kills": ["the G10 hold Shepherd places at registration on the gate-resolve closure check holds a rename of gate-resolve-sites.test.ts out of the check g10-adversary by its old path"]
+    },
+    {
+      "name": "the gate-resolve check matches path case exactly",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "matchesGateResolveCheck(path.toLowerCase())",
+      "replace": "matchesGateResolveCheck(path)",
+      "kills": [
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a change to only a closure helper named in another case g10-adversary",
+        "the G10 hold Shepherd places at registration on the gate-resolve closure check holds a rename that changes only the case of a closure helper g10-adversary"
+      ]
+    }
+  ]
+}

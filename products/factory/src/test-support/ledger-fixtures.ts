@@ -155,9 +155,10 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
     id: 13,
     gate: "approve-merge",
     story: "three FIX_FIRSTs, update, MERGE, two tree-equal updates",
-    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true, goesBehind: true }, { treeEqual: true }],
-    // The third FIX_FIRST stops the run for a planner redesign or split (TP-2394), so the recorded merge is no longer reached.
-    today: { outcome: "gated", gates: ["fix-first-runaway"], reviewers: 3, fixers: 0 },
+    heads: [{ reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST"] }, { reviews: ["FIX_FIRST", "FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true, goesBehind: true }, { treeEqual: true }],
+    // The third FIX_FIRST stops the fix rounds (TP-2394); its convergence review (TP-3734 D8) says FIX_FIRST too, and with
+    // no seat to tell about the planner route the owner gate opens, so the recorded merge is no longer reached.
+    today: { outcome: "gated", gates: ["fix-first-runaway"], reviewers: 4, fixers: 0 },
   },
   {
     id: 14,

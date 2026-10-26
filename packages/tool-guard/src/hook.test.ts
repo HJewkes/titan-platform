@@ -1,13 +1,15 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { linearRegExpSteps } from "@titan-design/fix-proof/linear-regexp";
 import { afterEach, describe, expect, it } from "vitest";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
 import { handle, MAX_COMMAND_BYTES, namesGuarded } from "./hook.js";
-import type { HookPort } from "./hook.js";
+import type { HookPort, HookResult } from "./hook.js";
 import { UnreadableScriptError } from "./shell/unsure-readings.js";
+import { countWork, expectLinearWork } from "./test-support/work-count.js";
 import type { ClassifyContext } from "./types.js";
 
 const HOME = "/home/you";
@@ -31,6 +33,8 @@ function fakeFs(links: Record<string, string> = {}): ReadFs {
 
 /** The owner bypass this variable once turned on is retired: an agent can set it for any process it starts. */
 const RETIRED_BYPASS = { TITAN_TOOL_GUARD_BYPASS: "1" };
+/** Refusing an oversize command unread reads 274 characters of it; classifying it would read all 40 000. */
+const UNREAD_WORK = 1_000;
 
 function port(overrides: Partial<HookPort> = {}): HookPort {
   return { context: nodeContext(HOME, fakeFs()), now: () => ts, loadDecide: async () => decide, ...overrides };
@@ -232,11 +236,11 @@ describe("handle: failure policy", () => {
 
   it("denies a credential read padded past the size cap without classifying it", async () => {
     const padded = `${"x ".repeat(20_000)}; cat ~/.npmrc`;
-    const start = performance.now();
+    let result: HookResult = { stdout: "", log: [] };
 
-    const result = await handle(bash(padded), {}, port());
+    const work = await countWork(async () => (result = await handle(bash(padded), {}, port())));
 
-    expect(performance.now() - start).toBeLessThan(500);
+    expect(work).toBeLessThan(UNREAD_WORK);
     expect(decisionOf(result.stdout)).toBe("deny");
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
   });
@@ -346,6 +350,15 @@ describe("handle: what passes", () => {
   });
 });
 
+describe("handle: a push rerouted by the command's own config", () => {
+  it("denies a feature-branch push that -c remote.origin.push maps onto main", async () => {
+    const result = await handle(bash("git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin feat"), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "MRG-WK", "merge", "bash.merge.git-push-protected"]);
+  });
+});
+
 describe("namesGuarded", () => {
   it("finds guarded paths, basenames and keywords in any case", () => {
     expect(namesGuarded("cat ~/.NPMRC")).toBe(true);
@@ -436,41 +449,34 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
   const fill = (unit: string, bytes: number) => unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
   const PATHS = "/a /b /c /d /e /f /g /h ";
   const MAIN = "git push origin HEAD:main";
-  /** Linear growth costs SCALE x the small case, quadratic SCALE^2 x; the bound sits between with headroom for load. */
+  /** Linear growth costs SCALE x the small case's work, quadratic SCALE^2 x; work counts, unlike time, no load moves. */
   const SCALE = 8;
-  const MAX_RATIO = 20;
   // Sizes stay under MAX_SCRIPT_BYTES: past it the hook denies unread, which costs nothing and proves nothing.
 
-  /** Runs `command` from a checkout on feat/x that holds `files`, read through the real filesystem. */
-  async function inRepo(command: string, files: Record<string, string>) {
+  /** Writes `files` into a checkout on feat/x and returns a run of `command` from it, read through the real filesystem. */
+  function inCheckout(command: string, files: Record<string, string>) {
     const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "tool-guard-home-")));
     dirs.push(home);
     const repo = path.join(home, "app");
     fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
     fs.writeFileSync(path.join(repo, ".git/HEAD"), "ref: refs/heads/feat/x\n");
     for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(repo, name), text);
-    return handle(bash(command, { cwd: repo }), {}, port({ context: { ...nodeContext(home), foldCase: true } }));
+    return () => handle(bash(command, { cwd: repo }), {}, port({ context: { ...nodeContext(home), foldCase: true } }));
   }
+
+  const inRepo = (command: string, files: Record<string, string>) => inCheckout(command, files)();
 
   type Case = { command: string; files: Record<string, string> };
 
-  /** Best of two wall-clock times for `build(size)`, asserting every run denies. */
-  async function bestMs(build: (size: number) => Case, size: number) {
-    const times: number[] = [];
-    for (let run = 0; run < 2; run++) {
-      const { command, files } = build(size);
-      const start = performance.now();
-      const result = await inRepo(command, files);
-      times.push(performance.now() - start);
-      expect(decisionOf(result.stdout)).toBe("deny");
-    }
-    return Math.min(...times);
-  }
-
+  /** Counts the work of `build` at `size` and SCALE times it, each in a fresh checkout, and asserts both deny. */
   async function expectNearLinear(build: (size: number) => Case, size: number) {
-    const small = await bestMs(build, size);
-    const large = await bestMs(build, size * SCALE);
-    expect(large).toBeLessThan(Math.max(small, 5) * MAX_RATIO);
+    const decisions: Array<string | null> = [];
+    await expectLinearWork((n) => {
+      const { command, files } = build(n);
+      const run = inCheckout(command, files);
+      return async () => decisions.push(decisionOf((await run()).stdout));
+    }, size * SCALE);
+    expect(decisions).toEqual(["deny", "deny"]);
   }
 
   it.each([
@@ -539,11 +545,22 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
   });
 
+  /**
+   * The guarded-path globs run as a LinearRegExp NFA, whose steps countWork cannot see. The row below reads four 34 KiB
+   * scripts in about 0.75 steps a byte; without matchGuarded's memo it took 2 800 a byte and passed its timeout on a
+   * loaded runner (TP-4255). A step cap fails that on an assertion instead (TP-4262).
+   */
+  const GLOB_STEPS_PER_BYTE = 2;
+
   it("refuses scripts past the line's budget, names the script to split off, and each half then passes", async () => {
     const files = { "a1.sh": fill("echo hi\n", 34 * 1024), "a2.sh": fill("echo hi\n", 34 * 1024) };
 
+    const before = linearRegExpSteps();
     const refused = await inRepo("bash a1.sh; bash a2.sh", files);
+    // Checked before the halves, so a regression fails after one run instead of three.
+    expect(linearRegExpSteps() - before, "LinearRegExp steps").toBeLessThan(GLOB_STEPS_PER_BYTE * 2 * 34 * 1024);
     const halves = [await inRepo("bash a1.sh", files), await inRepo("bash a2.sh", files)];
+    expect(linearRegExpSteps() - before, "LinearRegExp steps").toBeLessThan(GLOB_STEPS_PER_BYTE * 4 * 34 * 1024);
 
     expect(decisionOf(refused.stdout)).toBe("deny");
     expect(refused.stdout).toMatch(/64 KiB.*reach 68 KiB at a2\.sh.*run a2\.sh in its own command/);

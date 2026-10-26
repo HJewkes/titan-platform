@@ -1,4 +1,4 @@
-import type { AgentRow } from "@titan-design/agent-dispatch";
+import { receivesMessages, type AgentRow } from "@titan-design/agent-dispatch";
 import { isSeat } from "./wake-brief.js";
 
 /** The run's registered implementer and the successors the store's lineage records, earliest first. */
@@ -26,6 +26,12 @@ export function latestRow(name: string, roster: readonly AgentRow[]): AgentRow |
   return roster.filter((row) => row.name === name).reduce<AgentRow | undefined>((best, row) => (best === undefined || row.generation >= best.generation ? row : best), undefined);
 }
 
+/** Whether a message to `name` reaches a session: only its latest row counts, under agent-dispatch's one liveness rule. */
+export function holdsLiveSession(name: string, roster: readonly AgentRow[]): boolean {
+  const row = latestRow(name, roster);
+  return row !== undefined && receivesMessages(row);
+}
+
 /** The earliest spawner in the lineage that is a session; a successor's own spawner is the human, which names no seat. */
 export function lineageSeat(lineage: Lineage, roster: readonly AgentRow[]): string | undefined {
   return chain(lineage, roster)
@@ -46,14 +52,22 @@ export function successorName(lineage: Lineage, roster: readonly AgentRow[]): st
   return `${lineage.implementer}-s${highest + 1}`;
 }
 
-/** A name the roster no longer shows live, or never shows, is not working; a failed read says nothing and reads as live. */
-export function exitedOn(agents: { roster(): Promise<readonly AgentRow[]> } | undefined): ((name: string, signal: AbortSignal) => Promise<boolean>) | undefined {
+type ExitedCheck = (name: string, signal: AbortSignal) => Promise<boolean>;
+
+/**
+ * A name the roster no longer shows live, or never shows, is not working; a failed read says nothing and reads as live.
+ * `onExit` sees the exited row before the wait ends, so what the session ended on is read once it can no longer change.
+ */
+export function exitedOn(agents: { roster(): Promise<readonly AgentRow[]> } | undefined, onExit?: (row: AgentRow) => Promise<void>): ExitedCheck | undefined {
   if (agents === undefined) return undefined;
   return async (name) => {
     const rows = await agents.roster().catch((error: unknown): undefined => {
       console.error(`shepherd: ${name} is read as live, the roster could not be read: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     });
-    return rows !== undefined && latestRow(name, rows)?.presence === "exited";
+    const row = rows && latestRow(name, rows);
+    if (row?.presence !== "exited") return false;
+    await onExit?.(row);
+    return true;
   };
 }

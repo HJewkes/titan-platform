@@ -1,6 +1,6 @@
 import type { L0Check, L0Input, L0Result } from "./eval-l0.js";
 import { countRow, maskEntities, repoEntities, ruleRow, sentencesOf, wordsOf } from "./lint-text.js";
-import type { ScriptBeat } from "./script-schema.js";
+import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
 
 // Lexicons are heuristics a judge backs up (L1 J1). Paraphrases evade them on purpose: the held-out
 // synonym list lives with the judge, never here, so a writer cannot be tuned against it.
@@ -16,15 +16,19 @@ const INTERNAL_ID = /\b[A-Z]+-[A-Z0-9]+-\d+\b/;
 const VERDICT = /\b(adopt|adapt|verdicts?|scorecard)\b|\b(do not|don't|not to) (copy|vendor|adopt)\b|\bavoid (it|that|this)\b/i;
 const CHAPTER_NUMBER = /\bchapter (\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
 const SIGNPOST = /^(chapter \w+\.$|here is|here's|zoom (in|out)|once more|now \w+\.$|follow the|next,|first,)/i;
-const FIRST_PLURAL = /\b(we|our|us)\b/i;
-const BANNED = [/\blet['’]s\b/i, /\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
+// Q-V6 allows "we" for the narrator and viewer together; only the makers' "we" is off the project.
+const MAKERS_WE = /\bwe (think|believe|built|wrote|chose|decided|made|designed|shipped|like|wanted|started|launched)\b|\b(our|us) (team|company|engineers|developers|authors|users|customers|product|roadmap)\b|\bour (own )?(code|repo|project)\b/i;
+const NARRATOR_WE = /\b(let us|let['’]s|we (can|could|will)|we['’]ll)\b/gi;
+const BANNED = [/\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
 const POINTING = /\b(on|at) the (left|right|top|bottom)\b|\bas you can see\b|\blook at\b|\bnotice the\b|\bthis (box|arrow|line|node|panel)\b|\b(up|down|over) (here|there)\b/i;
 const POINTING_CUES = new Set(["V6", "V9"]);
 export const MAX_SENTENCE_WORDS = 25;
+/** Owner decision 517: a sentence of 26 to this many words passes Q-V9 only when speech-vet says it speaks clean. */
+export const MAX_VETTED_SENTENCE_WORDS = 32;
 export const MIN_PROJECT_SHARE = 0.8;
 
 const isProcess = (sentence: string, entities: readonly string[]): boolean => {
-  const masked = maskEntities(sentence, entities);
+  const masked = maskEntities(sentence.replace(NARRATOR_WE, ""), entities);
   return PROCESS.some((pattern) => pattern.test(masked));
 };
 
@@ -56,7 +60,7 @@ function misplacedVerdicts(beats: readonly ScriptBeat[]): string[] {
 function projectShare(beats: readonly ScriptBeat[], entities: readonly string[]): L0Result {
   const spoken = sentences(beats.filter((beat) => beat.function !== "VERDICT"));
   const other = spoken.filter(
-    ({ text }) => SIGNPOST.test(text) || VERDICT.test(text) || FIRST_PLURAL.test(text) || isProcess(text, entities),
+    ({ text }) => SIGNPOST.test(text) || VERDICT.test(text) || MAKERS_WE.test(text) || isProcess(text, entities),
   );
   const share = spoken.length ? (spoken.length - other.length) / spoken.length : 1;
   const beatsWithOther = other.map((s) => s.beat.id);
@@ -73,11 +77,37 @@ function spokenSignposts({ script }: L0Input): string[] {
   return [...script.beats.filter((beat) => CHAPTER_NUMBER.test(beat.spoken)).map((beat) => beat.id), ...chapterLabels];
 }
 
+/** Whether speech-vet found a sentence clean to speak: no breath or pace failure. Absent means vet did not run. */
+export type SpeechVerdict = (sentence: string) => boolean;
+
+export interface VoiceOptions {
+  speechClean?: SpeechVerdict;
+}
+
+/** Whether Q-V9 consults speech-vet for this sentence: over the plain cap, within the vetted one. */
+export function needsSpeechVet(text: string, vettedCeiling: number = MAX_VETTED_SENTENCE_WORDS): boolean {
+  const words = wordsOf(text).length;
+  return words > MAX_SENTENCE_WORDS && words <= vettedCeiling;
+}
+
+/** The sentences of a script's spoken lines that Q-V9 would consult speech-vet on, each once. */
+export const vettableSentences = (beats: readonly ScriptBeat[]): string[] =>
+  [...new Set(sentences(beats).map(({ text }) => text).filter((text) => needsSpeechVet(text)))];
+
+export function overlongSentence(
+  text: string,
+  speechClean: SpeechVerdict | undefined,
+  vettedCeiling: number = MAX_VETTED_SENTENCE_WORDS,
+): boolean {
+  if (wordsOf(text).length <= MAX_SENTENCE_WORDS) return false;
+  return !needsSpeechVet(text, vettedCeiling) || !speechClean?.(text);
+}
+
 /**
  * Q-V voice lints. Process words are matched after blanking repo entities, so "the review server" is
  * a part, not our review. `entities` adds names the script does not carry, such as a review's repo names.
  */
-export function voiceCheckWith(entities: readonly string[] = []): L0Check {
+export function voiceCheckWith(entities: readonly string[] = [], { speechClean }: VoiceOptions = {}): L0Check {
   return (input) => {
     const { script, layout } = input;
     const known = repoEntities(script, layout, entities);
@@ -90,9 +120,25 @@ export function voiceCheckWith(entities: readonly string[] = []): L0Check {
       projectShare(script.beats, known),
       sentenceRule("Q-V7", all.filter(({ text }) => BANNED.some((pattern) => pattern.test(text)))),
       countRow("Q-V8", unanchoredPointing(script.beats)),
-      sentenceRule("Q-V9", all.filter(({ text }) => wordsOf(text).length > MAX_SENTENCE_WORDS)),
+      sentenceRule("Q-V9", all.filter(({ text }) => overlongSentence(text, speechClean))),
     ];
   };
 }
 
 export const voiceCheck: L0Check = voiceCheckWith();
+
+const SENTENCE_RULES: Readonly<Record<string, (text: string, entities: readonly string[]) => boolean>> = {
+  "Q-V1": (text, entities) => isProcess(text, entities),
+  "Q-V3": (text) => VERDICT.test(text),
+  "Q-V5": (text, entities) => SIGNPOST.test(text) || VERDICT.test(text) || MAKERS_WE.test(text) || isProcess(text, entities),
+  "Q-V7": (text) => BANNED.some((pattern) => pattern.test(text)),
+  "Q-V9": (text) => wordsOf(text).length > MAX_SENTENCE_WORDS,
+};
+
+/** The spoken sentences of `beats` that a sentence-level voice rule matches, so a repair hint can quote them. */
+export function offendingSentences(check_id: string, script: ScriptV1, beats: readonly ScriptBeat[]): { beat: string; text: string }[] {
+  const rule = SENTENCE_RULES[check_id];
+  if (!rule) return [];
+  const known = repoEntities(script);
+  return sentences(beats).filter(({ text }) => rule(text, known)).map(({ beat, text }) => ({ beat: beat.id, text }));
+}

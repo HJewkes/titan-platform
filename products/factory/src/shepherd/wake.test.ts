@@ -10,6 +10,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -28,6 +29,8 @@ import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeSte
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
+import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -70,7 +73,7 @@ function fakeAgents(rows: AgentRow[]) {
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), mergeBaseExceptionMigration(42)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -87,6 +90,8 @@ interface Scene {
   home?: string;
   pr?: Partial<PullRequest>;
   agentChatConfigDir?: string;
+  successorAccounts?: readonly string[];
+  accountLimits?: AccountLimitStoreRef;
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
   /** Whether the woken agent's transcript shows a turn since the ask; unset, every wake starts one at once. */
   turnSince?: (agents: ReturnType<typeof fakeAgents>) => boolean;
@@ -106,7 +111,7 @@ function wakeStep(scene: Scene = {}) {
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.advisory && { advisory: scene.advisory }), ...(scene.exitNotice && { exitNotice: scene.exitNotice }) };
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.successorAccounts && { successorAccounts: () => scene.successorAccounts! }), ...(scene.accountLimits && { accountLimits: scene.accountLimits }), ...(scene.advisory && { advisory: scene.advisory }), ...(scene.exitNotice && { exitNotice: scene.exitNotice }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
@@ -129,6 +134,15 @@ describe("sh-wake-implementer: who is woken", () => {
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
+  });
+
+  it("spawns a successor for a fresh-fixer conflict wake though the implementer is warm, so the agent whose attempt failed does not repeat it", async () => {
+    const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+
+    const { result } = await run("conflict", { mergeableState: "dirty", freshFixer: true });
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["spawn", "impl-a-s1"]]);
   });
 
   it("spawns a successor in the repo's main checkout, told to check out the PR branch at its head", async () => {
@@ -155,26 +169,73 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked).toEqual([]);
   });
 
-  it("spawns a successor under the configured Claude config directory", async () => {
-    const argvFile = join(SCRATCH, "spawn-argv");
-    const bin = join(SCRATCH, "agent-chat");
+  let spawns = 0;
+  /** The argv of the one successor spawn a fake `agent-chat` saw, run through the real dispatch. */
+  async function spawnArgv(scene: Scene): Promise<string[]> {
+    const argvFile = join(SCRATCH, `spawn-argv-${++spawns}`);
+    const bin = join(SCRATCH, `agent-chat-${spawns}`);
     const rows = JSON.stringify([row("impl-a")]);
     writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '%s' '${rows}'\n`);
     chmodSync(bin, 0o755);
-    // agent-dispatch refuses a spawn unless $HOME/.agent-chat/profiles/<profile>.json is headless.
-    mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
-    writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
-    vi.stubEnv("HOME", SCRATCH);
-    vi.stubEnv("AGENT_CHAT_HOME", join(SCRATCH, ".agent-chat"));
+    isolateAgentChatHome(SCRATCH, ["bd-implementer"]);
     try {
-      const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
-
+      const { run } = wakeStep({ ...scene, noAgents: true, agentChatBin: bin, warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
       await run("review", fixFirst("fix the parser"));
-
-      expect(readFileSync(argvFile, "utf8").split("\0")).toContain("/srv/claude-second");
+      return readFileSync(argvFile, "utf8").split("\0");
     } finally {
       vi.unstubAllEnvs();
     }
+  }
+
+  const FIRST = "/home/user/.claude-profiles/first";
+  const SECOND = "/home/user/.claude-profiles/second";
+  const THIRD = "/home/user/.claude-profiles/third";
+
+  function limitsWith(...exhausted: string[]): AccountLimitStoreRef {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [accountLimitMigration(1)]);
+    const ref = accountLimitStoreRef(() => T0);
+    ref.bind(db);
+    for (const account of exhausted) ref.get().markExhausted(account, T0 + 60 * MINUTE, "usage limit reached");
+    return ref;
+  }
+
+  it("spawns a successor under the configured Claude config directory", async () => {
+    expect(await spawnArgv({ agentChatConfigDir: "/srv/claude-second" })).toContain("/srv/claude-second");
+  });
+
+  it("spawns a fix-round successor under the next account in the rotation when the first is exhausted", async () => {
+    const argv = await spawnArgv({ successorAccounts: [FIRST, SECOND, THIRD], accountLimits: limitsWith(FIRST), agentChatConfigDir: FIRST });
+
+    expect(argv).toContain(SECOND);
+    expect(argv).not.toContain(FIRST);
+  });
+
+  it("spawns a successor under the first account of the rotation while it has headroom", async () => {
+    const argv = await spawnArgv({ successorAccounts: [FIRST, SECOND], accountLimits: limitsWith(THIRD) });
+
+    expect(argv).toContain(FIRST);
+    expect(argv).not.toContain(SECOND);
+  });
+
+  it("skips agent-chat's exhausted default account, and spawns under no config directory while it has headroom", async () => {
+    const moved = await spawnArgv({ successorAccounts: ["default", SECOND], accountLimits: limitsWith("default") });
+    const stayed = await spawnArgv({ successorAccounts: ["default", SECOND], accountLimits: limitsWith() });
+
+    expect(moved).toContain(SECOND);
+    expect(stayed).not.toContain(SECOND);
+    expect(stayed).not.toContain("default");
+  });
+
+  it.each([
+    ["every account is exhausted", () => limitsWith(FIRST, SECOND)],
+    ["the account limits cannot be read", () => undefined],
+  ])("spawns a successor under the first account when %s, since a successor never holds", async (_case, limits) => {
+    const accountLimits = limits();
+    const argv = await spawnArgv({ successorAccounts: [FIRST, SECOND], ...(accountLimits && { accountLimits }) });
+
+    expect(argv).toContain(FIRST);
+    expect(argv).not.toContain(SECOND);
   });
 
   it("resumes a parked implementer on FIX_FIRST though its tree is gone, since resuming re-creates it at the same path", async () => {
@@ -242,6 +303,26 @@ describe("sh-wake-implementer: who is woken", () => {
     const { result } = await scene.run("review", fixFirst("fix it"));
 
     expect(result).toEqual({ kind: "unhandled", reason: "the checkout path for octo/demo is not absolute: repos/demo, so a successor has no checkout to start in" });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
+  it("starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)", async () => {
+    const scene = wakeStep({ rows: [] });
+
+    const { result } = await scene.run("review", fixFirst("fix the parser"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
+    expect(scene.agents.asked).toMatchObject([{ verb: "spawn", name: "impl-a-s1", cwd: MAIN_CHECKOUT }]);
+    expect(scene.agents.asked[0]!.message).toContain("taking over octo/demo#1 from impl-a");
+    expect(scene.store.get().authorsOf("run-1")).toMatchObject([{ name: "impl-a-s1", role: "successor", predecessor: "impl-a" }]);
+  });
+
+  it("still returns unhandled for a lineage gone from the roster when no checkout of the repo is bound (TP-4045)", async () => {
+    const scene = wakeStep({ rows: [], checkoutFor: () => undefined });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "no checkout path is configured for octo/demo, so a successor has no checkout to start in" });
     expect(scene.agents.asked).toEqual([]);
   });
 
@@ -1113,7 +1194,7 @@ describe("the fix-proof bounce cap", () => {
     hosts.splice(0).forEach((host) => host.close());
     dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
   });
-  const capReason = `${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
+  const capReason = `fix-proof did not reproduce: ${MAX_FIX_PROOF_WAKES} fix-proof wakes on ${REPO}#1 have not produced a test that reproduces the bug, so the owner decides`;
   const HOLD = "sh-test-hold";
   /** Stands in for the review steps a real run records before any fix-proof wake, so a replay reads a record there. */
   const REVIEWED = "sh-test-reviewed";

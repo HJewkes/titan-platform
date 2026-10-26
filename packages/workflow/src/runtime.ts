@@ -7,18 +7,12 @@ import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
-import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
+import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
+import { completedTiming } from "./step-timing.js";
 import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
-import {
-  WorkflowCancelledError,
-  WorkflowNotOwnedError,
-  WorkflowRecoveryRequiredError,
-  type ActiveStep,
-  type WorkflowFn,
-  type WorkflowRun,
-} from "./types.js";
+import { WorkflowCancelledError, WorkflowNotOwnedError, WorkflowRecoveryRequiredError, type ActiveStep, type WorkflowFn, type WorkflowRun } from "./types.js";
 
 interface Live {
   ctx: RunContext;
@@ -51,12 +45,12 @@ export class WorkflowRuntime {
       runner: options.runner,
       render: options.render ?? mustacheRenderer,
       parseSignal: options.parseSignal ?? defaultParseSignal,
-      emit: (event) => options.onEvent?.(event),
+      emit: (event) => options.onEvent?.({ ...event, at: this.isoNow() }),
       maxRetries: options.maxRetries ?? 1,
       gatePollMs: options.gatePollMs ?? 250,
       maxStepDataBytes: options.maxStepDataBytes ?? DEFAULT_MAX_STEP_DATA_BYTES,
       executionId: options.executionId ?? randomUUID,
-      authority: options.authority,
+      authority: options.authority, capabilities: vaultOf(options.capabilities),
     };
   }
 
@@ -193,7 +187,7 @@ export class WorkflowRuntime {
     if (error instanceof WorkflowRecoveryRequiredError || run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError) return this.finish(run, "cancelled", abortReason.reason);
     if (error instanceof WorkflowCancelledError) return this.finish(run, "cancelled", error.reason);
-    this.finish(run, "failed", messageOf(error));
+    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities));
   }
 
   shutdown(): void {
@@ -283,7 +277,7 @@ export class WorkflowRuntime {
       const step = run.activeSteps[stepId];
       if (!step) return false;
       const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
-      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), output };
+      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output };
       delete run.activeSteps[stepId];
       this.save(run);
       return true;

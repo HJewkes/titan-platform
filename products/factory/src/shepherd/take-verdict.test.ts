@@ -14,7 +14,7 @@ describe("taking a verdict without the round's fix-proof standing", () => {
       takeVerdict(ctx, target, awaiting, reviewer, "default");
 
     expect(typeof omitted).toBe("function");
-    expect(takeVerdict.length).toBe(6);
+    expect(takeVerdict.length).toBe(7);
   });
 
   it("cannot read an awaited verdict, since an empty standing reads as verified", () => {

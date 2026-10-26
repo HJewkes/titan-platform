@@ -78,8 +78,11 @@ export const ESCALATIONS = {
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
 
+/** How the failed-round list names a round whose one correction came to no verdict; its outcome reads `timeout` (TP-3237). */
+export const MALFORMED_ROUND = "malformed";
+
 /** Round outcomes that say nothing about the head: the reviewer never answered, so a standing MERGE still speaks for it (TP-3697). */
-export const INFRA_FAILURES: ReadonlySet<string> = new Set<ReviewOutcome>(["no-verdict", "timeout", "throttled"]);
+export const INFRA_FAILURES: ReadonlySet<string> = new Set<string>([...(["no-verdict", "timeout", "throttled"] satisfies ReviewOutcome[]), MALFORMED_ROUND]);
 
 /** How a failed-rounds gate names the outcome of its last round. */
 export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
@@ -97,6 +100,10 @@ export interface Escalated {
   words?: string;
   /** Set on a failed-rounds escalation whose every counted round failed on infrastructure: throttled, timed out, or no verdict. */
   infraOnly?: true;
+  /** Set beside `infraOnly` when no counted round had an adversary that returned a verdict (TP-3796). */
+  neverVerdict?: true;
+  /** Set when a no-verdict round repeated the last one's panel outcome and missing seats at the same head, with no member failing to start or timing out (TP-3910). */
+  repeatedNoVerdict?: true;
   /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
   carriedFrom?: string;
 }

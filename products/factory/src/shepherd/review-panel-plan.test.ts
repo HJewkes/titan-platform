@@ -8,6 +8,7 @@ import { holdSlotsMigration, registrationFactsMigration } from "./store-migratio
 import { spawnFacts } from "./spawn-facts.js";
 import { holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { DEFAULT_ADVERSARY_PROFILE, classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type PanelFacts } from "./review-panel-plan.js";
+import { plannedPanel } from "./review-panel-step.js";
 
 const HEAD = "c".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
@@ -99,6 +100,16 @@ describe("panelFacts", () => {
     expect(intentPlan(read, panelPolicyFor()).class).toBe("g10");
   });
 
+  it("plans the adversary for a rename out of tool-guard, which the panel classes by its old path", async () => {
+    const renamed: PrFile = { path: "src/x.ts", previousPath: "packages/tool-guard/src/x.ts", status: "renamed", additions: 5, deletions: 5 };
+    const read = await panelFacts(depsWith({ kind: "correctness" }, [renamed, source("src/x.test.ts", 1)]), target, "run-1");
+
+    const planned = intentPlan(read, panelPolicyFor());
+
+    expect(planned.touches).toContain("security");
+    expect(shapes(planned)).toContain("adversary:reviewer");
+  });
+
   it("marks the size unread when GitHub truncates the file list, which the port refuses to read", async () => {
     const read = await panelFacts(depsWith({ kind: "correctness" }, "truncated"), target, "run-1");
 
@@ -178,6 +189,32 @@ describe("intentPlan", () => {
 
       expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:fable-reviewer", "tests:reviewer"]);
     });
+
+    it("keeps an opus hold member beside an opus correctness member instead of lowering it to a profile that is not installed (TP-3907)", () => {
+      const planned = intentPlan(large, panelPolicyFor(), undefined, undefined, { holdMember: { profile: "bd-reviewer" }, fullPanel: false });
+
+      expect(shapes(planned)).toEqual(["correctness:bd-reviewer", "adversary:bd-reviewer"]);
+      expect(planned.plan.members[1]).toMatchObject({ blocking: true, degraded: false });
+    });
+
+    it("prices a fable hold member at premium points beside an opus correctness member (TP-3907)", () => {
+      const planned = intentPlan(large, { ...panelPolicyFor(), points: { opus: 5, sonnet: 2 } }, undefined, undefined, { holdMember, fullPanel: false });
+
+      expect(planned.plan.spendEstimate).toBe(5 + 5);
+    });
+  });
+});
+
+describe("plannedPanel's installed-profile check (TP-3907)", () => {
+  const input = { ...target, runId: "run-1", reviewer: "rv-demo-7", mode: "spawn" };
+  const panelPolicy = { ...panelPolicyFor(), shapeRoles: { adversary: { g10: "bd-reviewer", standard: "bd-reviewer" } } };
+
+  it("refuses the plan when the cap would lower a member to a profile that is not installed", async () => {
+    const deps = depsWith({ kind: "security" }, [source("src/auth.ts", 20), source("src/auth.test.ts", 10)]);
+
+    const planned = plannedPanel(deps, { panel: "on", panelPolicy, profileInstalled: (profile) => profile !== "reviewer" }, input, []);
+
+    await expect(planned).rejects.toThrow("the adversary member's profile 'bd-reviewer' would be lowered to 'reviewer', which is not installed");
   });
 });
 

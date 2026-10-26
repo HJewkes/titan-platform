@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Classification } from "./classify.js";
 import type { FixProofPlan } from "./plan.js";
-import { formatResultLine, parseResultLine, provedByMutants, RESULT_LINE_MAX_BYTES, toResult, type FixProofResult } from "./result-line.js";
+import { formatResultLine, parseResultLine, provedByMutants, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, toResult, type FixProofResult } from "./result-line.js";
 
 const HEAD = "a".repeat(40);
 const BASE = "b".repeat(40);
@@ -176,6 +176,39 @@ describe("formatResultLine and parseResultLine", () => {
     ["a reproduced verdict with no reproducing test", (line: string) => line.replace('"reproduces":1', '"reproduces":0')],
   ])("refuses %s", (_label, mutate) => {
     expect(parseResultLine(mutate(formatResultLine(result()))).ok).toBe(false);
+  });
+});
+
+describe("the base a line judged, and a refused line", () => {
+  const ZERO = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
+  const refused = (): FixProofResult => ({ head: HEAD, mergeBase: BASE, verdict: "refused", counts: { ...ZERO }, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, base: "feat/parent", defaultBranch: "main" });
+
+  it("round-trips a refused line naming its base and the default branch", () => {
+    const line = formatResultLine(refused());
+
+    expect(parseResultLine(line)).toEqual({ ok: true, result: refused() });
+  });
+
+  it("round-trips the base on a judged line", () => {
+    const judged = { ...result(), base: "main" };
+
+    expect(parseResultLine(formatResultLine(judged))).toEqual({ ok: true, result: judged });
+  });
+
+  it.each([
+    ["no base", { base: undefined }, "a refused line must name its base and the default branch"],
+    ["no default branch", { defaultBranch: undefined }, "a refused line must name its base and the default branch"],
+    ["a base with a space", { base: "feat/a b" }, "base must be a branch name as fix-proof-run.sh shows one"],
+    ["an empty base", { base: "" }, "base must be a branch name as fix-proof-run.sh shows one"],
+    ["a count", { counts: { ...ZERO, "not-run": 1 } }, "a refused line must have no count and no test"],
+  ])("refuses a refused line with %s", (_label, change, error) => {
+    const line = RESULT_PREFIX + JSON.stringify({ ...refused(), ...change });
+
+    expect(parseResultLine(line)).toEqual({ ok: false, error });
+  });
+
+  it("refuses a default branch on a line that is not refused", () => {
+    expect(() => formatResultLine({ ...result(), base: "main", defaultBranch: "main" })).toThrow("defaultBranch is set only on a refused line");
   });
 });
 

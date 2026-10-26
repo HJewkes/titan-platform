@@ -25,6 +25,9 @@ const FULL_PATHS = new Set([
   "eslint.config.js",
   "eslint.typed.config.js",
   "scripts/vitest-tmpdir.mjs",
+  "scripts/vitest-wait-budget.mjs",
+  "scripts/wait-budget.mjs",
+  "products/factory/src/test-support/vitest-setup.ts",
   "scripts/test-affected.mjs",
   "scripts/test-scope.mjs",
 ]);
@@ -155,7 +158,8 @@ export function scopeForEvent(env, readChanged, loadWorkspace) {
 export function vitestArgs(scope) {
   const args = ["run", "--passWithNoTests"];
   if (scope.mode !== "scoped") return args;
-  return [...args, "--project", "threads", "--project", "repo", "--project", "forks", ...scope.dirs];
+  const projects = ["threads", "repo", "forks", "active-work", "active-work-forks"];
+  return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 
 function describeScope(scope) {

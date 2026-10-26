@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: replot
+summary: "A figure from a source, re-plotted from its data."
+role: evidence
+component: { name: LineChart, maturity: doc }
+slots: replot
+speech: { band: concept }
+durationS: [8, 14, 25]
+preset: false
+emphasis: { targets: [series], treatments: [highlight, trace] }
+recipe: "Re-plot the figure from the source's data, never a screenshot of it. Label both axes and cite the source. Our own number goes on the same axes when we have one."

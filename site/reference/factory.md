@@ -110,6 +110,12 @@ be read exits 2 and names its path. A bad flag, config or seat book also exits 2
 charter 8 adds a hold class, add it to `HOLD_CLASSES` in `shepherd/hold-reason.ts` too, or
 holds of that class are listed as untyped.
 
+## GitHub event sources
+
+The top-level `github` block in the config file (`sources`, `ingress`, `pollingIntervalMs`, `backstopIntervalMs`) chooses
+polling or webhook intake. Polling is the default and a permanent, supported configuration. The keys, bounds, effective-mode
+table and what `health.sources` reports are in [GitHub event sources](/guides/factory#github-event-sources).
+
 ## Scorecard
 
 `scorecard` prints the factory scorecard, one row per metric, from ledgers only. It ports
@@ -144,6 +150,31 @@ SCORECARD Register to merge: median 45.0 min (n=2) | source Shepherd ledger | ba
 - **Not measured.** Every source opens read-only. A row whose source is absent or empty prints
   `not measured`, never 0. A missing or invalid spec exits 2 and names the problem.
 
+## Context audit
+
+`context-audit` reads the local Claude Code transcripts under
+`~/.claude-profiles/<profile>/projects/<project>/*.jsonl` (or `--root`) modified in the last
+`--days` (default 7). It reads them in place and writes nothing.
+
+```sh
+titan-factory context-audit --days 7
+titan-factory context-audit --assert-rule "Rule marker A." implementer,reviewer
+```
+
+- **Spend by role.** Per role class: sessions, calls, mean turn-1 context, cache write, cache
+  read, output and API-equivalent USD from the shared price table. Each message id counts once.
+  Role classes follow the agent name and project directory: `rv-*` reviewer, `*-adversary`
+  adversary, a `.worktrees` cwd implementer, an active-work cwd planner (`*-plan`), coordinator
+  (`*coord`, `*operator`) or `workspace-other`, and `other` for the rest.
+- **Inventory.** Per profile directory and role: the newest `prompt_snapshot`'s system blocks
+  and tool schema sizes, and the instructions files that session loaded.
+- **Carried chars.** Per role: tool-result and attachment chars by kind (Bash by program and
+  subcommand), weighted by the later calls that re-read them.
+- **`--assert-rule <marker> <roles>`.** Prints one PASS or FAIL line per profile and role and
+  exits 1 unless every listed role (comma-separated) has a snapshot in the window whose system
+  prompt contains the marker. Only the system prompt counts, not instructions files, so a rule
+  still held only in a CLAUDE.md fails.
+
 ## What it deliberately does not do
 
 It does not create relay items, and it requests no agent except the Shepherd reviewer,
@@ -165,9 +196,9 @@ owner decides every merge. See
   same way.
 - Declare every step id with one kind. `seed(x)` and `assisted(x)` share a memo key, so the
   host rejects a workflow that reuses an id across kinds.
-- Pass `factoryRoutes` (or `factoryRoutesFor`) to the host as the same array. Its `database`
-  tenant carries the shepherd migration and store binding; a copied array drops it, and every
-  merge then fails closed because the hold cannot read the store.
+- Pass `factoryRoutes()` (or `factoryRoutesFor(deps)`) to the host as the same routes.
+  Its `database` tenant carries the shepherd migration and store binding; a copied route list drops it, and
+  every merge then fails closed because the hold cannot read the store.
 
 ## Where it came from
 

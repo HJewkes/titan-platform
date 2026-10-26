@@ -21,6 +21,7 @@ effect is already in place, so a step that repeats after a crash repeats no effe
 | `pushEmptyCommit` | the branch's ref: absent or moved past the expected head skips | the ref moves only as a fast-forward |
 | `merge` | the PR: merged returns the stored merge SHA; a moved head skips | `sha` = the approved head |
 | `rerunFailed` | the Actions run; not completed skips | none |
+| `rerunJob` | the Actions run that owns the job; not completed skips | none |
 | `upsertComment` | the PR's comments; one containing the marker skips | none |
 
 `githubPort` validates every argument before any wire call, because each one becomes part of a
@@ -62,13 +63,15 @@ with the same ETag cache, 304 rules and next-page guard. The client, `octokitCli
 `sharedOctokit()` for one per process, behaves like this:
 - It reads its token from `gh auth token`, holds it in memory only, and re-reads it once on a 401.
 - `@octokit/plugin-throttling` waits out `retry-after` and `x-ratelimit-reset` and spaces writes.
-  A GET is retried once when the wait is a minute or less. A write is never retried.
+  A GET is retried once when the wait is a minute or less. A write is never retried. With
+  `poolOwnsWaits: true` (off by default) the throttle never waits or retries; the limit still
+  shows in `budget().cooldowns`, and a `githubApiPool` in front owns every wait.
 - `@octokit/plugin-retry` retries 5xx answers on GET and HEAD only, so a write that may have
   landed is never sent twice.
 - Errors carry the status and a redacted message, with no body and no token.
-- It has the same rate-floor guard as `restCaller`, and its GraphQL deadline only:
+- It has the same rate-floor guard and deadlines as `restCaller`:
   - Every call first acquires `sharedRateBudget`, or the client's `budget`, so below `RATE_FLOOR` remaining, calls spread over the time left.
-  - A GraphQL call fails after `GRAPHQL_TIMEOUT_MS` (30 s). `restCaller` also kills a core REST call's `gh` and fails it after `CORE_TIMEOUT_MS` (60 s); a timed-out read is not retried. The Octokit core lane has no deadline yet.
+  - A REST call fails after `CORE_TIMEOUT_MS` (60 s) and a GraphQL call after `GRAPHQL_TIMEOUT_MS` (30 s); a timed-out call is not retried. The deadline spans the call's retries and throttle waits.
 
 `client.budget()` reports the last `x-ratelimit-*` window per lane (`rest`, `graphql`), and the
 cooldowns the throttle is still waiting out. `createCheckRun` posts as the App on its own
@@ -115,7 +118,11 @@ inline) or an address inside a URL or ssh remote. GitHub's own squash text is re
 in a commit whose subject ends `(#<n>)`, the one place GitHub writes it: there a `---------`
 line followed only by trailers is dropped and a `* <subject>` header standing alone loses its
 star, so an author's lists and rules pass through everywhere else. An empty PR body omits
-`## Summary`, and an empty title leaves the subject as `(#<pr>)`. The same input always gives
+`## Summary`, and an empty title leaves the subject as `(#<pr>)`. CI skip tokens (`[skip ci]`,
+`[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, any case or inner spacing) become
+`(skip ci)` and so on, and `skip-checks: true` becomes `skip-checks= true`, everywhere, code
+included, because GitHub reads the raw message and would skip main CI; `defangCiSkip(text)`
+is the same rewrite on its own. The same input always gives
 byte-identical output, and formatting its own output again (as title and body) changes
 nothing: only the exact Changes and Refs tail it would write is cut from the PR body, so an
 author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads the same
@@ -187,7 +194,39 @@ prior `streak` and `now` (epoch ms; it reads no clock). It returns `ok`, `auth` 
 429; a 403 with `retry-after`, remaining 0 or limit text; a 422 naming a limit; a 5xx or network
 failure on a read). `resetAt` is `retry-after`, else `x-ratelimit-reset`, else `now` + 60 s
 doubling per streak step to 15 min (`nextResetAt`); a header beyond 61 min is clamped and flagged
-in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. Nothing calls it yet.
+in `reason`. `RATE_LIMIT_PHRASES` is the one list of body phrases. `githubApiPool` calls it.
+
+`githubApiPool({ identity, send, clock, probe, state?, onAvailable?, onAuthFailed? })` gates every call one GitHub identity makes.
+`pool.run(priority, callClass, call)` queues `call`, hands it to `send` when granted, and resolves
+to `send`'s answer or to `{ unavailable: { resetAt, reason, class } }`; an unavailable call never
+throws (a throw from `send` itself is passed on). Grants go by `POOL_PRIORITY` (1 outbox and
+lander, 2 pacer, 3 item reads, 4 backstop), first come first served within one. Mutations are a
+single-flight lane: none overlap, and each starts at least `MUTATION_SPACING_MS` (1000) after the
+last one started; reads are not serialised. An `unavailable` answer closes its (identity, call
+class) pair until `resetAt` and adds one to that pair's streak; while it is closed the pair
+grants nothing and the identity's other classes grant only priority 1. A success resets only its
+own pair's streak; `unknown` and `error` answers pass through and change nothing. Calls already in
+flight when their pair trips count as the same trip. State lives in a `PoolStateStore`, by
+default `memoryPoolStateStore()`, one per pool; a product passes a durable one. `clock` supplies
+`now()` and `sleep(ms)`.
+
+Reopening a closed pair: once its `resetAt` passes, the pool calls `probe` (a `GET /rate_limit`
+as the identity; it does not count against a limit). The pair stays closed unless the tripped
+bucket (`core` or `graphql`, or the answer's `x-ratelimit-resource`; a mutation trip always reads
+`core`) has `remaining > 0`. A bucket still at 0 keeps the pair closed to that bucket's own reset;
+a probe that fails, throws, or answers 5xx re-arms in `PROBE_REARM_MS` (60 s) without adding to
+the streak. A passing probe marks the pair `probed`, and exactly one queued call of that class,
+the highest-priority one, goes out as the canary (with nothing queued, the next call is the
+canary). The pair opens, and `onAvailable(identity, class, resetAt)` fires once, only when the
+canary returns ok; an `unavailable` canary closes the pair again with the streak doubled, and an
+`error` or `unknown` canary leaves it `probed` for the next call. Calls sent before the trip
+never reopen the pair.
+
+A 401 (after the client's one token re-read) puts the whole identity in auth state: every class
+grants nothing, priority 1 included, and `onAuthFailed(identity)` fires once per transition,
+never per call. No probe runs in auth state, because `GET /rate_limit` under a rejected token
+answers 401 too, so the probe cannot succeed. Only `pool.tokenChanged()` (the token reader saw a
+new token) or a restart clears it; auth state is held in memory, not in the `PoolStateStore`.
 
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 

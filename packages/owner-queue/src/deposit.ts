@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { addAnchorIssues } from "./deposit-anchors.js";
+import { opKeys } from "./op.js";
 import { ownerItemSchema, type ITEM_KINDS, type LENSES, type OwnerItem } from "./schema.js";
 
 const item = ownerItemSchema.shape;
@@ -27,6 +28,7 @@ export const ownerItemDepositSchema = z.strictObject({
   options: z.array(z.strictObject(option.shape)).min(2).max(8).optional(),
   recommended: z.strictObject(recommendation.omit({ hidden: true }).shape).optional(),
   command: item.command,
+  op: item.op,
   evidenceRef: item.evidenceRef,
   anchors: item.anchors,
   pins: item.pins,
@@ -56,11 +58,16 @@ export function depositItemId(asker: string, depositId: string): string {
   return `deposit:${digest.slice(0, 32)}`;
 }
 
-/** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
+/**
+ * Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit.
+ * An `op` adds the keys it implies, so a deposit about a PR joins that PR's item at the same head.
+ */
 export function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem {
   const { depositId, ...fields } = ownerItemDepositSchema.parse(deposit);
+  const implied = fields.op === undefined ? [] : opKeys(fields.op).filter((key) => !fields.keys.includes(key));
   return {
     ...fields,
+    keys: [...fields.keys, ...implied],
     id: depositItemId(fields.asker, depositId),
     sources: [{ system: "deposit", ref: `${fields.asker}/${depositId}` }],
     lens: DEPOSIT_LENS[fields.kind],

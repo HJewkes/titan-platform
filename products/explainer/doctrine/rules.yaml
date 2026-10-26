@@ -10,6 +10,11 @@
 # `pending` with the slice that owns it. `partial` lists check ids that already cover part
 # of a pending rule.
 #
+# An implemented `l0` may set `scope: chapter` when its check measures each chapter's own beats
+# and its verdict on a chapter does not depend on the chapters after it; a long script drafted one
+# chapter per call repairs those per chapter. Every other rule is `video` (the default) and runs
+# once on the joined script.
+#
 # `aliases` are the phase-1 ids (X, R, K, TC, SA, S) this rule absorbed; each resolves to one
 # rule. An id merged into more than one rule is an alias of its main home and `related` on
 # the others, alongside ids from other sources.
@@ -22,7 +27,7 @@ rules:
     related: ["CT R1", P14]
     rubric_dims: [B5, J1]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V1"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V1"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V2
     rule: "Provenance and internal ids appear only in chips"
@@ -30,21 +35,21 @@ rules:
     aliases: [S3]
     related: [SA1, R18]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V2"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V2"], scope: chapter }
   - id: Q-V3
     rule: "Verdict text only in VERDICT beats, after the chapter's HOW"
     fields: [beats.function, beats.spoken]
     aliases: [X14, SA2]
     related: ["ED-impl 3", S2]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V3"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V3"], scope: chapter }
   - id: Q-V4
     rule: 'No spoken "Chapter N"; labels and signposts name the move'
     fields: [beats.spoken, chapters.label]
     aliases: [K2, TC11, R15, S13b]
     related: [SA5]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V4"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V4"], scope: chapter }
   - id: Q-V5
     rule: "Project-subject share at least 80 % outside VERDICT beats"
     fields: [beats.spoken, beats.function]
@@ -60,29 +65,52 @@ rules:
     owner_support: none
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-V7
-    rule: 'Banned register: let''s, simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
+    rule: 'Banned register: simply, easy, please note, in this video, you''ll learn, sentences opening "there is/are"'
     fields: [beats.spoken]
     related: ["DF 1.9", "CT R1", K13]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V7"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V7"], scope: chapter }
   - id: Q-V8
     rule: "Pointing phrases only on V6/V9 cues; no dense-slide rescue"
     fields: [beats.spoken, beats.visual.cues]
     aliases: [TC6]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V8"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V8"], scope: chapter }
   - id: Q-V9
-    rule: "Sentences at most 25 words (a TTS guardrail, never a target)"
+    rule: "Sentences at most 25 words; 26 to 32 pass only when speech-vet reports the sentence clean to speak (a TTS guardrail, never a target)"
     fields: [beats.spoken]
     aliases: [K13]
     related: ["EL 5"]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V9"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V9"], scope: chapter }
   - id: Q-V10
     rule: "Every heteronym in spoken carries a reading declaration [w](=reading) or an override [w](/phonemes/), so a tagger change cannot flip it unheard"
     fields: [beats.spoken]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-V10"] }
+    l0: { severity: error, status: implemented, checks: ["Q-V10"], scope: chapter }
+  - id: Q-V11
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s", and at most one number mention in a beat'
+    fields: [beats.spoken]
+    related: [Q-V5, Q-V7, Q-V9]
+    owner_support: none
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning."
+    l0:
+      severity: warning
+      status: implemented
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:numbers-per-beat"]
+
+  - id: Q-V12
+    rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
+    fields: [beats.spoken]
+    related: [Q-V11]
+    owner_support: none
+    l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
+  - id: Q-V13
+    rule: "A beat headline wraps to at most two lines at the width of the headline band, so the band never clips it"
+    fields: [beats.visual.assertion]
+    owner_support: none
+    note: "The band is sized for two lines (TP-4105); the width estimate lives in src/lint-headline.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-V13"], scope: chapter }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -99,7 +127,7 @@ rules:
     related: [S4]
     rubric_dims: [B2]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W2"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W2"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W3
     rule: "Why before how in each chapter; each HOW opens on its local problem"
@@ -108,14 +136,14 @@ rules:
     related: [R9]
     rubric_dims: [J2]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W3"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W3"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W4
     rule: "At least one user-value sentence per body chapter, on the causing beat, citing a value fact"
     fields: [beats.user_value]
     aliases: [S5, X10, TC12]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W4"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W4"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W5
     rule: 'Promise has "you" and a capability verb; no "tour of", no chapter count'
@@ -128,7 +156,7 @@ rules:
     fields: [video.invariants, beats.spoken]
     aliases: [X11, R6, K6]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W6"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W6"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W7
     rule: "Each HOW chapter states one cost or trade-off"
@@ -142,7 +170,7 @@ rules:
     aliases: [X4, TC9]
     related: [P2, P6]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W8"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W8"], structures: [design-journey] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W9
     rule: "design_history entries cite an existing commit sha"
@@ -156,7 +184,7 @@ rules:
     fields: [video.quality_goals, beats.spoken]
     aliases: [R7, K8]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-W10"] }
+    l0: { severity: error, status: implemented, checks: ["Q-W10"], scope: chapter }
   - id: Q-W11
     rule: "A surprise in a hook has a non-empty against"
     fields: [beats.function, beats.fact_ids, facts_pack]
@@ -185,20 +213,20 @@ rules:
     aliases: [X5, TC10, S15]
     related: ["CT R3"]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F3"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F3"], structures: [design-journey] }
   - id: Q-F4
     rule: "Thesis on 3 beats (open, midpoint, button); thesis_mechanism voiced once in acts 1-2"
     fields: [video.thesis_refs, video.thesis_mechanism, beats.spoken]
     aliases: [SA6, X3]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F4"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F4"], structures: [design-journey] }
   - id: Q-F5
     rule: "Exactly one WHAT to HOW pivot line"
     fields: [beats.function, beats.spoken]
     aliases: [X8]
     related: [P7]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F5"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F5"], structures: [design-journey] }
   - id: Q-F6
     rule: "The beat after a chapter open states the chapter's answer"
     fields: [chapters.answer_line, beats.spoken]
@@ -217,13 +245,13 @@ rules:
     fields: [beats.function, beats.mode, beats.new_terms, beats.plannedS]
     aliases: [S6, R1, R10]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F8"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F8"], scope: chapter }
   - id: Q-F9
     rule: "Spoken lists at most 5 items; 3 or more enumerated names or paths become a ref (visual or companion)"
     fields: [beats.spoken, beats.mode, companion]
     aliases: [SA10, R4, K5]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F9"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F9"], scope: chapter }
   - id: Q-F10
     rule: "No SIGN/VERDICT beat inside a WHAT to HOW chain"
     fields: [beats.function]
@@ -242,13 +270,14 @@ rules:
     fields: [video.simplifications, beats.function, beats.spoken]
     aliases: [X13, TC13, R12]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F12"] }
+    # The daily briefing reports a day, so it has no model simplifications to voice; other types keep the gate whatever structure they pick.
+    l0: { severity: error, status: implemented, checks: ["Q-F12"], except_profiles: [daily-overview] }
   - id: Q-F13
     rule: "demo beats: one path, at most 8 steps, a visible result per step"
     fields: [beats.mode, beats.visual.cues]
     aliases: [R3]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-F13"] }
+    l0: { severity: error, status: implemented, checks: ["Q-F13"], scope: chapter }
   - id: Q-F14
     rule: "Causal density at least 0.5 per body beat"
     fields: [beats.spoken, beats.connector_in]
@@ -366,7 +395,7 @@ rules:
     related: [J6, "EL FActScore"]
     rubric_dims: [J6]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-E1"] }
+    l0: { severity: error, status: implemented, checks: ["Q-E1"], scope: chapter }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-E2
     rule: "The running example is real when a journey test exists"
@@ -386,7 +415,7 @@ rules:
     fields: [beats.new_terms, video.glossary]
     related: ["arc42 12", G14]
     owner_support: none
-    l0: { severity: error, status: implemented, checks: ["Q-E4"] }
+    l0: { severity: error, status: implemented, checks: ["Q-E4"], scope: chapter }
   - id: Q-E5
     rule: "Every viewer_needs item is closed; nothing taught from viewer_knows"
     fields: [video.audience, beats.closes_need]
@@ -397,16 +426,17 @@ rules:
     rule: "Naive-reader pass: undefined names and open whys per minute (fresh context)"
     fields: [beats.spoken]
     aliases: [K12]
+    related: ["FB 2"]
     owner_support: none
     note: "`explainer eval cold` measures it: undefined items per chapter minute, from a viewer streamed one chapter at a time."
     judge: { layer: L1, status: cited, rubric: rubrics/l1-cold.md }
   - id: Q-E7
     rule: "At most 4 new on-screen items a beat (cue targets, map reveals, pins, cards and new_terms)"
     fields: [beats.visual, beats.new_terms]
-    related: [Q-F8, "SM M1"]
+    related: [Q-F8, "SM M1", "FB 3"]
     owner_support: for
     note: "Owner feedback named two overloaded beats. Q-F8 still counts spoken names; this counts what is on screen too."
-    l0: { severity: error, status: implemented, checks: ["Q-E7"] }
+    l0: { severity: error, status: implemented, checks: ["Q-E7"], scope: chapter }
   - id: Q-E8
     rule: "A beat with 4 or more new items gives each at least 2.0 s heard, or 4 spoken words when untimed; a PROMISE with at most 3 items plus a count is exempt"
     fields: [beats.visual, beats.spoken, beats.plannedS, beats.function]
@@ -417,10 +447,10 @@ rules:
   - id: Q-E9
     rule: "At least 15 s from the end of a dense beat (fails Q-E7 or Q-E8) to the start of the next dense beat"
     fields: [beats.visual, beats.plannedS]
-    related: ["SM M4"]
-    owner_support: none
-    note: "A warning until a timed human check confirms the 15 s gap."
-    l0: { severity: warning, status: implemented, checks: ["Q-E9"] }
+    related: ["SM M4", "FB 5"]
+    owner_support: for
+    note: "An error since TP-3788: calibration measured no false positive on the v4 spike and the pilot."
+    l0: { severity: error, status: implemented, checks: ["Q-E9"] }
   - id: Q-E10
     rule: "At most 20 new on-screen items a chapter minute"
     fields: [beats.visual, beats.chapter, beats.plannedS]
@@ -428,3 +458,89 @@ rules:
     owner_support: none
     note: "A warning: a call list or roadmap chapter may run fast on purpose."
     l0: { severity: warning, status: implemented, checks: ["Q-E10"] }
+  - id: Q-E11
+    rule: "A beat that states an invariant has a map on screen and states at most one"
+    fields: [beats.spoken, beats.visual, video.invariants]
+    related: ["SM M5", "FB 6"]
+    owner_support: for
+    note: "Owner feedback rule 6: an invariant is seated in the architecture. A beat states one by an inv: cue or a video.invariants phrase in its spoken text."
+    l0: { severity: error, status: implemented, checks: ["Q-E11"], scope: chapter }
+  - id: Q-E12
+    rule: "A StatBeat finding has a map beside it, on its own beat or the beat before or after"
+    fields: [beats.visual]
+    related: ["SM M5"]
+    owner_support: none
+    note: "Routes to the L1 seat judge (TP-2982); never gates."
+    l0: { severity: warning, status: implemented, checks: ["Q-E12"] }
+  - id: Q-E13
+    rule: "A reused beat (origin v2) fails no beat-level pace check (Q-E7, Q-E8, Q-E9, Q-E11)"
+    fields: [beats.visual, beats.plannedS]
+    related: [Q-E7, Q-E8, Q-E9, Q-E11, "SM M9"]
+    owner_support: for
+    note: "Owner feedback rule 8: reuse is checked, not assumed. Names the beats to re-voice and their heard seconds; a v1 script has no origin, so it passes vacuously. Never downgrades the rows it reads."
+    l0: { severity: warning, status: implemented, checks: ["Q-E13"] }
+  - id: Q-E14
+    rule: "A beat that names three or more new items glosses them (prefilter for the L1 item judge)"
+    fields: [beats.spoken, beats.visual]
+    related: [Q-E6, "SM M3", "FB 2"]
+    owner_support: none
+    note: "Prefilter only, about half false positives (SM:277); never gates."
+    l0: { severity: warning, status: implemented, checks: ["Q-E14"] }
+  - id: Q-E15
+    rule: "The journey comes before the architecture: no chapter shows the architecture before the first chapter that follows one task's journey, and each journey step states why it is needed"
+    fields: [chapters.question, beats.chapter, beats.visual]
+    related: ["FB 1"]
+    rubric_dims: [J3]
+    owner_support: for
+    note: "Owner feedback rule 1. Needs the spine (spine/v1): the check runs only when a spine is supplied, and only for a design-journey script or a legacy one that names no structure (owner-FB1.2). The L1 J3 anchor carries the judge half."
+    l0: { severity: error, status: implemented, checks: ["Q-E15"], structures: [design-journey] }
+    judge: { layer: L1, status: cited, rubric: rubrics/l1-script.md }
+  - id: Q-E16
+    rule: "A list holds one kind of item: every item in a list or card set has the same declared kind"
+    fields: [beats.visual, beats.spoken]
+    related: ["FB 4", "SM M6"]
+    owner_support: for
+    note: "Owner feedback rule 4. A list beat's cue entries must share one kind declared in the spine ledger; the L1 odd-one-out judge checks the declared kinds are honest."
+    l0: { severity: error, status: implemented, checks: ["Q-E16"], scope: chapter }
+  - id: Q-E17
+    rule: "Every named item is in the spine ledger and defined before its first use"
+    fields: [profile, beats.new_terms, beats.spoken, beats.visual]
+    related: [Q-E6, Q-E14, "FB 2"]
+    owner_support: for
+    note: "Owner feedback rule 2, the ledger half. Defined before first use compares script positions. A profile planned against a spine fails without one. Q-E14 routes the likely gaps and Q-E6 measures them with a cold viewer."
+    l0: { severity: error, status: implemented, checks: ["Q-E17"] }
+  - id: Q-E18
+    rule: "Each invariant is seated: it names the architecture row that keeps it, or the fact that shows how it breaks today"
+    fields: [video.invariants, beats.visual]
+    related: [Q-E11, "FB 6"]
+    owner_support: for
+    note: "Owner feedback rule 6, the spine half. Q-E11 checks the map on screen; this checks the spine seat, and runs only when a spine is supplied."
+    l0: { severity: error, status: implemented, checks: ["Q-E18"] }
+  - id: Q-E19
+    rule: "Every item a beat puts on screen for the first time is declared in that beat's new_terms"
+    fields: [beats.new_terms, beats.visual]
+    related: [Q-E4, Q-F8, Q-W2]
+    owner_support: none
+    note: "Makes the vacuity visible: Q-E4, Q-F8 and Q-W2 read new_terms, which defaults to empty, so an undeclared script passes them. Warning only; a script/v1 check."
+    l0: { severity: warning, status: implemented, checks: ["Q-E19"] }
+  - id: Q-E20
+    rule: "Every pull request or task a beat names, and every count it says or shows, matches the gathered facts"
+    fields: [beats.spoken, beats.visual.assertion, beats.visual.labels, beats.visual.chips, beats.fact_ids, beats.why]
+    related: [Q-E1]
+    owner_support: for
+    note: "A count passes when a cited fact holds the number or when that many cited facts carry its noun and state. Ordinals, durations, years and indexes are not claims (NOT_A_CLAIM). Without gathered facts the row is a passing warning that says it did not run; the checker lives in src/lint-claims.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-E20"], scope: chapter }
+  - id: Q-E21
+    rule: "Every merged pull request in the window is named or counted under its lane"
+    fields: [beats.fact_ids, beats.chapter, beats.spoken, beats.visual.labels]
+    related: [Q-E20]
+    owner_support: for
+    note: "Reads a daily gather's coverage.json. A lane passes when every one of its merged PRs is cited, or when a beat of the lanes chapter cites the lane's rollup fact and says or shows its merged total; Q-E20 checks that the total is right. Every PR of a named thread must be cited somewhere. Not chapter-scoped: a named PR may be cited in the ships chapter. Without a manifest (any other profile) the row is a passing warning that says it did not run; the checker lives in src/lint-coverage.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-E21"] }
+  - id: Q-E22
+    rule: "Every reflection beat cites the slowdown fact it answers, or the priority fact it names"
+    fields: [beats.fact_ids, beats.chapter]
+    related: [Q-E21]
+    owner_support: for
+    note: "Each proposal in the daily's reflection chapter cites a slow/ fact, and a priority beat a next/ fact, so the proposals filed into the self-improvement loop carry their evidence. Runs only when the facts hold a slow/ fact and the script has a reflection chapter; otherwise a passing warning. The checker lives in src/lint-coverage.ts."
+    l0: { severity: error, status: implemented, checks: ["Q-E22"], scope: chapter }

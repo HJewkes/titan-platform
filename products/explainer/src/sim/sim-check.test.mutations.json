@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a sim claim may carry its own value and tolerance",
+      "file": "products/explainer/src/beat-slots.ts",
+      "find": "claim: z.object({ fact: z.string().min(1), statistic: z.string().min(1), at: z.number() }).strict().optional(),",
+      "replace": "claim: z.object({ fact: z.string().min(1), statistic: z.string().min(1), at: z.number() }).passthrough().optional(),",
+      "kills": [
+        "the sim slot refuses a claim that carries its own claimed value",
+        "the sim slot refuses a claim that carries its own tolerance"
+      ]
+    }
+  ]
+}

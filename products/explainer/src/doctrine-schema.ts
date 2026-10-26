@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Scope (VT §4.1): U universal, U* universal with a profile-supplied value, B beat or render, T type. */
+/** Scope (VT §4.1): U universal, U* universal with a profile-supplied value, B beat or render, T type, audience or structure. */
 export const DOCTRINE_LAYERS = ["U", "U*", "B", "T"] as const;
 
 /** Enforcement (VT §5.1 a–f): where a rule is applied. */
@@ -11,7 +11,7 @@ export const PROMPT_ENFORCEMENTS = ["planner", "packet", "base"] as const satisf
 
 export const DOCTRINE_STAGES = ["gather", "select", "plan", "script", "build", "render", "qa", "publish"] as const;
 
-/** The seven craft doctrines; each has one `doctrine/craft/<doc>.yaml`. */
+/** The craft doctrines; each has one `doctrine/craft/<doc>.yaml`. */
 export const DOCTRINE_SOURCES = [
   "direction",
   "story-structure",
@@ -20,6 +20,8 @@ export const DOCTRINE_SOURCES = [
   "visual-information-design",
   "explainer-motion-craft",
   "skills-and-taste",
+  "owner-feedback",
+  "script-register",
 ] as const;
 
 export const DOCTRINE_GRADES = ["A", "B", "C", "D"] as const;
@@ -34,7 +36,13 @@ const Kebab = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-cas
 const Names = z.array(Kebab).min(1);
 
 const ScopeSchema = z
-  .object({ layer: z.enum(DOCTRINE_LAYERS), beats: Names.optional(), types: Names.optional(), audiences: Names.optional() })
+  .object({
+    layer: z.enum(DOCTRINE_LAYERS),
+    beats: Names.optional(),
+    types: Names.optional(),
+    audiences: Names.optional(),
+    structures: Names.optional(),
+  })
   .strict();
 
 const CheckSchema = z
@@ -66,9 +74,9 @@ export const DoctrineRuleSchema = z
 
 export type DoctrineRule = z.infer<typeof DoctrineRuleSchema>;
 
-/** The allowed scope values: beat types, video types and audiences. */
+/** The allowed scope values (beat types, video types, audiences and structures), the beat systems, and the material signals fit predicates read. */
 export const DoctrineVocabularySchema = z
-  .object({ schema: z.literal("doctrine-vocabulary/v1"), beats: Names, types: Names, audiences: Names })
+  .object({ schema: z.literal("doctrine-vocabulary/v1"), beats: Names, types: Names, audiences: Names, structures: Names, beatSystems: Names, signals: Names })
   .strict();
 
 export type DoctrineVocabulary = z.infer<typeof DoctrineVocabularySchema>;

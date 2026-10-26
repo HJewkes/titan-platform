@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: promise
+summary: "What the video will show, as the chapters ahead."
+role: open
+component: { name: StepRailBeat, maturity: spike }
+slots: promise
+speech: { band: story }
+durationS: [4, 7, 12]
+preset: false
+emphasis: { targets: [chapters], treatments: [highlight] }
+recipe: "Name the chapters the viewer is about to get, in order, in one line each. Light each chapter as the narration names it. Promise only what later beats deliver."

@@ -4,7 +4,7 @@ import { throttling } from "@octokit/plugin-throttling";
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { execGh } from "./exec.js";
 import { redact } from "./redact.js";
-import { GRAPHQL_TIMEOUT_MS } from "./rest.js";
+import { CORE_TIMEOUT_MS, GRAPHQL_TIMEOUT_MS } from "./rest.js";
 
 export type RateLane = "rest" | "graphql";
 
@@ -45,6 +45,11 @@ export interface OctokitClientOptions {
    * spread over the time left. Defaults to `sharedRateBudget`, the user login's; another identity passes its own.
    */
   budget?: RateBudget;
+  /**
+   * The throttle never sleeps and retries inside a call, so a `githubApiPool` in front owns every rate-limit wait; the limit
+   * still lands in `budget().cooldowns`. Off by default.
+   */
+  poolOwnsWaits?: boolean;
 }
 
 export interface GitHubClient {
@@ -71,7 +76,7 @@ const ThrottledOctokit = Octokit.plugin(throttling, retry);
 
 export function octokitClient(options: OctokitClientOptions = {}): GitHubClient {
   const now = options.now ?? Date.now;
-  const state = budgetState(now);
+  const state = budgetState(now, options.poolOwnsWaits ?? false);
   const octokit = new ThrottledOctokit({
     request: options.fetch ? { fetch: options.fetch } : {},
     throttle: {
@@ -96,13 +101,16 @@ export function octokitClient(options: OctokitClientOptions = {}): GitHubClient 
   return { request: octokit.request, budget: state.read };
 }
 
-/** Outermost hook, with `restCaller`'s two guards: the rate floor before every call, and a hung GraphQL call failing at 30 s. */
+/**
+ * Outermost hook, with `restCaller`'s two guards: the rate floor before every call, and a hung call failing at its lane's
+ * deadline (core 60 s, GraphQL 30 s), as `restCaller`'s exec timeout does. Being outermost, the deadline spans retries too.
+ */
 function guard(octokit: InstanceType<typeof ThrottledOctokit>, budget: RateBudget): void {
   octokit.hook.wrap("request", async (request, options) => {
-    const lane = laneOf(options.url);
-    await budget.acquire(lane === "graphql" ? "graphql" : "core");
-    if (lane !== "graphql") return request(options);
-    return withDeadline(`${options.method} graphql`, GRAPHQL_TIMEOUT_MS, (signal) => {
+    const graphql = laneOf(options.url) === "graphql";
+    await budget.acquire(graphql ? "graphql" : "core");
+    const what = `${options.method} ${graphql ? "graphql" : options.url}`;
+    return withDeadline(what, graphql ? GRAPHQL_TIMEOUT_MS : CORE_TIMEOUT_MS, (signal) => {
       options.request = { ...options.request, signal };
       return request(options);
     });
@@ -144,14 +152,14 @@ interface ThrottledRequest {
   url: string;
 }
 
-function budgetState(now: () => number) {
+function budgetState(now: () => number, poolOwnsWaits: boolean) {
   const lanes: Partial<Record<RateLane, RateWindow>> = {};
   let cooldowns: Cooldown[] = [];
   return {
     limited(kind: Cooldown["class"], request: ThrottledRequest, retryAfterS: number, retryCount: number): boolean {
       const lane = laneOf(request.url);
       cooldowns = [...cooldowns.filter((cooldown) => cooldown.lane !== lane), { lane, class: kind, until: now() + retryAfterS * 1000 }];
-      return retryCount === 0 && isRead(request.method) && retryAfterS <= MAX_READ_WAIT_S;
+      return !poolOwnsWaits && retryCount === 0 && isRead(request.method) && retryAfterS <= MAX_READ_WAIT_S;
     },
     observe(headers: Readonly<Record<string, string | number | undefined>>): void {
       const lane = headers["x-ratelimit-resource"] === "core" ? "rest" : headers["x-ratelimit-resource"] === "graphql" ? "graphql" : undefined;

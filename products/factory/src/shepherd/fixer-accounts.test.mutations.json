@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a red main's fixer spawn ignores the successor rotation's pick",
+      "file": "products/factory/src/shepherd/main-red.ts",
+      "find": "await fixers.spawn(name, brief, checkout.dir, successorConfigDir(deps));",
+      "replace": "await fixers.spawn(name, brief, checkout.dir);",
+      "kills": [
+        "a red main's fixer spawn spawns under the next account in the successor rotation when the first is exhausted",
+        "a red main's fixer spawn spawns under the fixer config directory when no rotation is wired"
+      ]
+    },
+    {
+      "name": "the agent-chat adapter spawns under its own config dir, not the spawn's",
+      "file": "products/factory/src/shepherd/agents.ts",
+      "find": "...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }",
+      "replace": "...SHEPHERD_LAUNCH, ...(options.configDir !== undefined && { configDir: options.configDir }) }",
+      "kills": [
+        "a red main's fixer spawn spawns under the next account in the successor rotation when the first is exhausted",
+        "a red main's fixer spawn spawns under the fixer config directory when no rotation is wired"
+      ]
+    },
+    {
+      "name": "the wake's exit check reads no fixer's usage limit",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "exitedOn(agentsFor(deps, wiring), noteFixerLimit(deps))",
+      "replace": "exitedOn(agentsFor(deps, wiring))",
+      "kills": [
+        "a woken fixer that exits on its account's usage limit marks the account it ran under exhausted until the notice's reset, so the next successor spawns elsewhere",
+        "a woken fixer that exits on its account's usage limit marks agent-chat's default account when the row names none"
+      ]
+    },
+    {
+      "name": "an exited row is never shown to the exit hook",
+      "file": "products/factory/src/shepherd/wake-roster.ts",
+      "find": "    await onExit?.(row);\n",
+      "replace": "",
+      "kills": [
+        "a woken fixer that exits on its account's usage limit marks the account it ran under exhausted until the notice's reset, so the next successor spawns elsewhere",
+        "a woken fixer that exits on its account's usage limit marks agent-chat's default account when the row names none"
+      ]
+    },
+    {
+      "name": "an exited fixer marks its account whatever its session ended on",
+      "file": "products/factory/src/shepherd/fixer-limit.ts",
+      "find": "if (limit && deps.accountLimits) markLimit(deps.accountLimits.get(), { account: row.account ?? DEFAULT_ACCOUNT, ...limit }",
+      "replace": "if (deps.accountLimits) markLimit(deps.accountLimits.get(), { account: row.account ?? DEFAULT_ACCOUNT, notice: \"limit\", ...limit }",
+      "kills": [
+        "a woken fixer that exits on its account's usage limit marks nothing when the session ended on the fixer's own words, even ones that quote the limit"
+      ]
+    }
+  ]
+}

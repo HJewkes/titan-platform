@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "silence padded to whole seconds",
+      "file": "products/explainer/src/render/silent-mix.ts",
+      "find": "Math.round(durationS * SILENT_SAMPLE_RATE)",
+      "replace": "Math.ceil(durationS) * SILENT_SAMPLE_RATE",
+      "kills": [
+        "silent mix lasts the timeline's length to the sample"
+      ]
+    }
+  ]
+}

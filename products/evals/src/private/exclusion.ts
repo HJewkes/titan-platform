@@ -2,9 +2,9 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Layer 1: cases come only from these repos (bare names; `owner/` is ignored). */
-const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work"] as const;
-/** Layer 1: a task is joined only from these initiatives. */
-const ENGINEERING_INITIATIVES = ["titan-platform", "codewatch", "relay", "claude-channels"] as const;
+const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work", "titan-design"] as const;
+/** Layer 1: a task is joined only from these initiatives. titan-design is a public repo with a public TD-* namespace. */
+const ENGINEERING_INITIATIVES = ["titan-platform", "codewatch", "relay", "claude-channels", "titan-design"] as const;
 /** Task-id prefix to its engineering initiative; a prefix not listed is never joined. */
 const ENGINEERING_TASK_PREFIXES: Readonly<Record<string, string>> = {
   TP: "titan-platform",
@@ -12,6 +12,7 @@ const ENGINEERING_TASK_PREFIXES: Readonly<Record<string, string>> = {
   C: "codewatch",
   R: "relay",
   CC: "claude-channels",
+  TD: "titan-design",
 };
 
 /** Layer 2: every initiative outside the allowlist, and the task-id prefixes its task files use. */

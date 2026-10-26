@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fix-proof config leaves the owner-action set",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": ", \".github/fix-proof.json\"]",
+      "replace": "]",
+      "kills": ["the G10 hold Shepherd places at registration on the fix-proof gate's config holds a change to only .github/fix-proof.json g10-adversary"]
+    }
+  ]
+}

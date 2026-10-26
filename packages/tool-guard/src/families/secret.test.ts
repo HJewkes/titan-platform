@@ -35,6 +35,43 @@ describe("the ui.token acceptance row", () => {
   });
 });
 
+describe("titan-factory token files", () => {
+  const tokens = [
+    "~/.config/titan-factory/secrets/github-bot.token",
+    "/var/lib/serve-user/.config/titan-factory/github-bot.token",
+  ];
+  const expectSecret = (actions: ClassifiedAction[], spelling?: string) =>
+    expect(actions).toEqual([
+      expect.objectContaining({
+        action: "secret-read",
+        subject: { pattern: "any:titan-factory/token" },
+        ...(spelling && { spelling }),
+      }),
+    ]);
+  const verbSpelling = (path: string, spelling: string) => (path.startsWith("~") ? spelling : undefined);
+
+  it("classifies a Read of either token path as secret-read", () => {
+    for (const path of tokens) expectSecret(tool("Read", path.replace("~", HOME)), "read.secret");
+  });
+
+  it("classifies a cat of either token path as secret-read", () => {
+    for (const path of tokens) expectSecret(bash(`cat ${path}`), verbSpelling(path, "bash.secret.cat"));
+  });
+
+  it("classifies a cp of either token path as secret-read", () => {
+    for (const path of tokens) expectSecret(bash(`cp ${path} /tmp/x`), verbSpelling(path, "bash.secret.cp-mv"));
+  });
+
+  it("classifies a base64 of either token path as secret-read", () => {
+    for (const path of tokens) expectSecret(bash(`base64 ${path}`), verbSpelling(path, "bash.secret.encode"));
+  });
+
+  it("leaves a non-token file under titan-factory alone", () => {
+    expect(tool("Read", "/home/you/.config/titan-factory/config.json")).toEqual([]);
+    expect(bash("cat ~/.config/titan-factory/config.json")).toEqual([]);
+  });
+});
+
 describe("Read and Grep", () => {
   it("read.secret: a Read of a secret path", () => {
     expect(tool("Read", "/home/you/.npmrc")).toEqual([
@@ -215,19 +252,19 @@ describe("unknowns are treated conservatively", () => {
     expect(bash("cat .env .env.local").map((a) => a.subject.pattern)).toEqual(["any:.env", "any:.env.*"]);
   });
 
-  it("treats a readLink or readScript failure as no link and no script", () => {
-    const throwing: ClassifyContext = {
-      home: HOME,
-      readLink: () => {
-        throw new Error("EACCES");
-      },
-      readHead: () => null,
-      readScript: () => {
-        throw new Error("EACCES");
-      },
+  describe("a readLink or readScript that throws reaches the caller, not a reading of no link or no script", () => {
+    const failing = new Error("EACCES");
+    const fail = () => {
+      throw failing;
     };
 
-    expect(bash("cat /tmp/x && bash /tmp/s.sh", throwing)).toEqual([]);
+    it("readLink", () => {
+      expect(() => bash("cat /tmp/x", { home: HOME, readLink: fail, readHead: () => null, readScript: () => null })).toThrow(failing);
+    });
+
+    it("readScript", () => {
+      expect(() => bash("bash /tmp/s.sh", { home: HOME, readLink: () => null, readHead: () => null, readScript: fail })).toThrow(failing);
+    });
   });
 
   it("follows a script it runs, and refuses one more level down", () => {

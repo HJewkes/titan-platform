@@ -5,13 +5,16 @@ import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
-import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import type { ShepherdEvent } from "./events.js";
+import { TIMELINE_EVENT_KINDS, ciTimeoutEntry, numberedTimeouts } from "./ci-timeout-entry.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
+import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { NONE_KINDS, liveLastNone } from "./none-reason.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
@@ -29,6 +32,17 @@ const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
 export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+
+const RiskTierSchema = z.object({ tier: z.enum(["low", "medium", "high"]), reasons: z.array(z.string()) });
+const RiskTierRecord = z.looseObject({ result: z.looseObject({ record: z.looseObject({ riskTier: RiskTierSchema }) }) });
+
+/** The tier the newest merge evidence at `head` recorded; evidence from before the field, or at another head, gives none. */
+function riskTierAt(steps: readonly StepResult[], head: string | null): { riskTier?: z.infer<typeof RiskTierSchema> } {
+  if (head === null) return {};
+  const evidence = steps.filter((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${head}`).at(-1);
+  const parsed = RiskTierRecord.safeParse(evidence?.data);
+  return parsed.success ? { riskTier: parsed.data.result.record.riskTier } : {};
+}
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const WatchRowSchema = z.object({
@@ -61,6 +75,8 @@ export const WatchRowSchema = z.object({
   lastNone: z.object({ kind: z.enum(NONE_KINDS), text: z.string() }).nullable().optional(),
   repoFrozen: z.object({ repo: z.string(), reason: z.string(), actor: z.string(), since: z.string() }).optional(),
   autoPassed: AutoPassedSchema.optional(),
+  /** The risk tier the newest merge evidence at the row's head recorded (TP-3734 r1, shadow); absent before any evidence there. */
+  riskTier: RiskTierSchema.optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -107,7 +123,7 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("event"),
-    event: z.enum(EVENT_KINDS),
+    event: z.enum(TIMELINE_EVENT_KINDS),
     reason: z.string().nullable(),
     actor: z.string().nullable(),
     at: z.string(),
@@ -169,6 +185,10 @@ function admissionWait({ repo, pr }: Registration): string | undefined {
   const position = spawnQueuePosition(repo, pr);
   return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
 }
+
+/** sh-cleanup can wait an hour per part on agents to exit, long after main CI was read, so it must not read as a main CI wait. */
+const cleanupWait = (run: WorkflowRun, phase: Phase): string | undefined =>
+  phase === "post-merge" && run.currentStep !== null && stepIdMatches("sh-cleanup", run.currentStep) ? "cleaning up after the merge: head branch, task and agents" : undefined;
 
 const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
 
@@ -258,7 +278,7 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const headSha = ciWaitHead(run.currentStep, registration.repo, registration.pr) ?? steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
   const phase = runPhase(run, steps);
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
@@ -273,7 +293,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? cleanupWait(run, phase) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: asStalled(stallReason(run, steps, phase, since, now, { registration, headSha, holding })),
@@ -283,7 +303,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
-    lastNone: liveLastNone(run, steps), ...autoPassField(steps),
+    lastNone: liveLastNone(run, steps), ...autoPassField(steps), ...riskTierAt(steps, headSha),
   };
 }
 
@@ -296,12 +316,13 @@ export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], 
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
   const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
-  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  return numberedTimeouts([...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry));
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
   const payload = (result.data as { result?: unknown } | undefined)?.result;
   const ci = stepPhase(result.stepId) === "ci" ? CiSnapshotResult.safeParse(payload) : undefined;
+  if (ci?.success && ci.data.timedOut) return ciTimeoutEntry(result, ci.data.headSha, ci.data.timedOut);
   if (ci?.success) return { kind: "ci", stepId: result.stepId, headSha: ci.data.headSha, conclusion: ci.data.verdict, runUrl: null };
   const recorded = recordedEntry(result.stepId, payload);
   if (recorded !== undefined) return recorded;

@@ -91,6 +91,8 @@ through a symlinked parent, is refused just before the append.
 - It does not follow commands built at run time (`$(...)`, `eval "$x"`), and reads a script run
   by path one level deep.
 - An HTTP client that sends a write method to a URL whose host, or whose `api.github.com` path, is known only at run time reads as a merge.
+- A gh command whose group or verb is only known at run time (`gh $X`, `gh pr $X`), whose last command word gh may run as a config alias or an extension (`gh m 1`), or whose `GH_CONFIG_DIR`, `XDG_CONFIG_HOME` or `HOME` prefix points gh at another config, reads as a merge, a release and a gist upload at once, and as a switch to an unknown branch (TP-2703). Behind a dynamic command word only a run-time word counts (`"$G" pr $X 5`), so `"$EDITOR" file` passes.
+- A GitHub REST write (any method but GET or HEAD) to a ruleset route (`repos/<o>/<r>/rulesets`, `repositories/<id>/rulesets`, `orgs/<o>/rulesets`, `enterprises/<e>/rulesets`) or to `branches/<b>/protection` on any branch, through gh api, curl, wget or httpie, reads as `authority-config`. A gh endpoint known only at run time (TP-2707 d), a filled `{owner}/{repo}` slot whose fill reroutes the path (TP-2755 b) and GraphQL ruleset mutations (TP-2831) are not read here.
 - A curl, wget or httpie config file is checked only within one command line: an rc file planted by an earlier Bash call (`echo method=PUT > ~/.wgetrc`, then `wget <merge URL>` in the next call) is not seen (TP-2861 tracks the path-layer guard). A download that names its file from the URL (`curl -O`/`-J`, a bare `wget "$U"`) is not read as an rc write either. An archive extract (tar, bsdtar or cpio extract, unzip, pax -r, 7z x/e, ar x, jar x) counts as an rc write in any directory, because its member paths may be absolute. Other unpackers and interpreters are not read.
 - A line that defines a shell alias is refused whole, with its own reason: `alias y=git`, `alias -g`, `enable -a`,
   a store into zsh's `aliases`, `galiases` or `saliases` (or bash's `BASH_ALIASES`) by assignment, `typeset -A`,
@@ -109,6 +111,15 @@ through a symlinked parent, is refused just before the append.
   `hash NAME=path` (see the rebinding bullet).
 - A line that rebinds a command name is refused whole, with its own reason: zsh `hash y=/usr/bin/git`, bash `hash -p`, and a store into `commands`, `BASH_CMDS`, `functions`, `dis_functions` or `nameddirs` (`commands[y]=…`, `commands+=(…)`, `set -A commands …`, `zstyle -e … 'commands[y]=…'`), because the guard classifies by command name and would read `y push` as an unknown program (TP-2706). Listing, looking up or resetting the hash table (`hash`, `hash git`, `hash -r`) passes. A store builtin whose stored-into name is only known at run time (`export $(cmd)`, `declare "$F"`, `read -- "$n"`, `zpty -r z "$n"`, `zgetattr f a "$n"`) is refused too, since that name may be `commands[y]`; `name-slots.ts` and `hooked-params.ts` read these builtins from one table, `WRITER_SPECS`. Not seen: a command word only known at run time that is `hash` then (`"$(printf ha%s sh)" y=/x`), fully dynamic `eval` text, `autoload` from an `fpath` file and `zmodload` tricks, and a rebinding written into `~/.zshrc` for a later session.
 - A builtin with a store option (`print`, `printf`, `set`, `read`, `compgen`, `mapfile`, `wait`, `zparseopts`, `strftime`, `zstat`, zsh `stat`, `compadd`: every `WRITER_SPECS` builtin with a name option or a store flag, with no exemptions) that meets a run-time word where it still reads options (`print $x`, `set "$x"`, `print *`) is refused the same way, quoted or not, because that word may be `-v commands[y]`. Write `--` before the run-time words to pass: `print -- $x`, `wait -- $pid`. zsh's `zparseopts`, `zformat`, `zstyle`, `zstat` and `stat` skip one leading `--` and read options after it, so `stat -- "$f"` is refused too; write `stat ./"$f"`, since `stat $o commands s` with `o=-LH` stores into `commands` once zsh/stat is loaded. A run-time word in a name slot (`read -- "$n"`, `declare "$x"`, zsh `read -n "$n"`, `zstyle -s :a k "$n"`) may be any name, so it is refused after `--` too; write the name itself (TP-3320).
+- A git push that moves a tag reads as `release` (`bash.release.git-push-tag`), as a tag move is a charter hard
+  stop: `--tags`, `--follow-tags`, `git -c push.followTags[=<true>]`, a refspec whose destination is `refs/tags/…`,
+  `tags/…`, a `v<digit>` name (`v1`, `v2.3.0`) or a changesets tag (`@scope/pkg@1.2.0`, `pkg@1.2.0`), and
+  `tag <name>`. A branch named in one of those shapes reads as a tag too. A push long option given as a prefix is
+  read as git reads it, against `git push`'s own option list: `--ta` is `--tags`, `--fol` is `--follow-tags`, `--al`
+  is `--all`, `--mir` is `--mirror`. An ambiguous prefix such as `--t` (`--tags` or `--thin`) makes git refuse the
+  push, and reads as a push to an unknown branch (TP-4173). Not seen: a tag of any other name
+  (`git push origin r2` cannot be told from a branch without the repository), a tag named only at run time, and
+  `push.followTags` from a config file or `--config-env`.
 - It does not classify `titan-factory` verbs.
 
 ## merge-lint
@@ -191,6 +202,10 @@ instructions in the excluded human docs.
   the worker. The 3.5 s deadline leaves 1.5 s of the 5 s `timeout` in the printed settings entry
   for node start-up, the deny and the log append. The worker adds about 50 ms to every call.
   A crash of the bin's main thread still lets the call run.
+- A test that asserts thread CPU or a time ratio is written with `cpuBudgetIt`, which sets its
+  wall timeout from its CPU budget. Load on CI stretches wall time far more than CPU, so a fixed
+  timeout fails such a test before its assertion can (TP-3877). The rule and the reasoning are
+  in `packages/tool-guard/src/test-support/README.md`.
 
 ## Where it came from
 

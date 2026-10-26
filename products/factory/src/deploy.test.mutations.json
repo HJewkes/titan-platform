@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an ask the checkout is already past exits 0 instead of being refused",
+      "file": "products/factory/src/deploy.ts",
+      "find": "return refuse(`${past}; deploy that commit instead with titan-factory service deploy --expect ${head}`);",
+      "replace": "return { kind: \"stop\", code: 0, message: past };",
+      "kills": [
+        "titan-factory service deploy refuses as superseded, building nothing, when a rollback left the checkout's main past the asked sha (TP-4279)",
+        "titan-factory service deploy after a deploy rolls back and the pause is cleared, an older asked sha is refused and the next asked sha deploys (TP-4083, TP-4279)"
+      ]
+    },
+    {
+      "name": "a rolled-back deploy withdraws the deploy alarms",
+      "file": "products/factory/src/deploy.ts",
+      "find": "if (why !== undefined) return rollBackRestart(deploy, go, backup, why);",
+      "replace": "if (why !== undefined) return resolveAlarms(deploy.ports, deploy.io).then(() => rollBackRestart(deploy, go, backup, why));",
+      "kills": [
+        "service deploy rollback pause leaves the deploy alarms open when the restarted build rolls back"
+      ]
+    }
+  ]
+}

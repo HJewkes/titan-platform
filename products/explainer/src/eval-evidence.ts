@@ -9,6 +9,15 @@ const RUBRIC_DIR = new URL("../rubrics/", import.meta.url);
 
 export const readRubric = (file: string): string => readFileSync(new URL(file, RUBRIC_DIR), "utf8");
 
+/** Where the reported rows start in `l1-script.md`; judge A's call reads only the text before it. */
+export const REPORTED_HEADING = "## Reported rows";
+
+/** Judge A's rows and the reported rows, split at `REPORTED_HEADING`; a rubric without the heading has no reported rows. */
+export function scriptRubricParts(rubric: string): { core: string; reported: string } {
+  const at = rubric.indexOf(REPORTED_HEADING);
+  return at < 0 ? { core: rubric, reported: "" } : { core: rubric.slice(0, at).trimEnd() + "\n", reported: rubric.slice(at) };
+}
+
 /**
  * Names what an eval measured: the rubric bytes, the judge's identity and the fixed inputs
  * (canaries, questions, answer keys) it ran with. Any of them changing starts a new

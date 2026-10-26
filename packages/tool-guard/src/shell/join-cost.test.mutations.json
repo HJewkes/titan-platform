@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "each subscript scan of a source starts afresh",
+      "file": "packages/tool-guard/src/shell/subscript.ts",
+      "find": "  const known = SCANS.get(src);\n  if (known) return known;\n",
+      "replace": "",
+      "kills": [
+        "a script of many subscripts the hook denies a push after assignments each followed by a join, within the budget",
+        "a script of many subscripts the hook denies a push after commands each with a joined subscript, within the budget",
+        "a script of many subscripts the hook denies a push after assignments with no joins, within the budget",
+        "a script of many subscripts the hook denies a push after commands each with an unclosed subscript, within the budget",
+        "tokenizing a 64 KB script reads assignments each followed by a join with work linear in its size",
+        "tokenizing a 64 KB script reads commands each with a joined subscript with work linear in its size",
+        "tokenizing a 64 KB script reads assignments with no joins with work linear in its size",
+        "tokenizing a 64 KB script reads commands each with an unclosed subscript with work linear in its size",
+        "tokenizing a 64 KB script reads one long name before many brackets with work linear in its size"
+      ]
+    },
+    {
+      "name": "each bracket is matched by a fresh scan",
+      "file": "packages/tool-guard/src/shell/subscript.ts",
+      "find": "  const known = scan.brackets.get(open);\n  if (known !== undefined) return known;\n",
+      "replace": "",
+      "kills": [
+        "a script of many subscripts the hook denies a push after commands each with an unclosed subscript, within the budget",
+        "tokenizing a 64 KB script reads commands each with an unclosed subscript with work linear in its size"
+      ]
+    }
+  ]
+}

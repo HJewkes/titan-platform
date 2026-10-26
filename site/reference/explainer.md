@@ -49,8 +49,8 @@ Verified against 0.0.0.
 ## What it deliberately does not do
 
 - It does not know which video types or beat types exist. `video_type` and a beat's `type`
-  are open kebab-case strings; a doctrine registry (type profiles such as `repo-tour` and
-  `repo-argument`, beat specs) will validate them in a later slice.
+  are open kebab-case strings. The type profiles exist (`loadProfiles`), but the schema does not
+  check `video_type` against them yet, and beat specs will validate beat types in a later slice.
 - It reads and writes no files and makes no model or network calls.
 - It does not verify citations. The route step does that before it resolves a source.
 
@@ -136,6 +136,16 @@ and the next map beat resumes it.
   `thesis_refs` name beats.
 - Required authored fields accept a `TODO:` placeholder, so a draft parses and the lints
   report every gap at once.
+- The profile fields are optional, so a legacy script still parses. A beat's visual may give its
+  `layer` (`template` or `custom`), its `framing` (`FRAMINGS`), the 6×6 grid cells it uses
+  (`anchors`, `A1` to `F6`) and a `scene`. A cue's `target` is an element id the beat's emphasis
+  mapping resolves, and `untilCue` ends the spoken span it covers.
+- `structure` records the structure registry name the script was planned under, and
+  `parseScript(raw, structures?)` throws `UnknownStructureError` for a name the registry lacks.
+  `explainer eval l0` and `explainer run` parse through it, and the script stage records
+  `design-journey`, the structure its spine template comes from.
+- `signature_layer` (`kind` and its source fact ids) is a hypothesis the pilots measure. It is
+  optional, and no check requires it.
 - `deriveEvalView(script, layout?)` returns the view judges and lints read: `nodes_shown`,
   `edges_shown`, `you_are_here` (the camera station, else the focus) and `state_changes`
   ordered by where their cue is spoken. It is derived, never authored.
@@ -169,8 +179,8 @@ separate registry from the Q-rules in `doctrine/rules.yaml`, and its ids never s
 Each rule sits on two axes:
 
 - **Scope:** layer `U` (every type and beat), `U*` (universal, with a value a type profile
-  supplies through `param`), `B` (named `beats`) or `T` (named `types` or `audiences`). The allowed
-  names are in `doctrine/vocabulary.yaml`.
+  supplies through `param`), `B` (named `beats`) or `T` (named `types`, `audiences` or
+  `structures`). The allowed names are in `doctrine/vocabulary.yaml`.
 - **Enforcement:** `token`, `component`, `lint`, `gate`, `planner`, `packet`, `base` or `human`,
   plus the pipeline `stages` that load it (`gather` through `publish`). A `lint` or `gate` rule
   has a `check`; a `token` rule names titan-design `tokens`, never their values.
@@ -187,10 +197,10 @@ all live. Such a rule must not list `planner`, `packet` or `base`, because what 
 never goes into a prompt. A rule whose check is not live yet keeps its prompt enforcement as the
 fallback. Tracked by TP-2745.
 
-**Stage slices.** `sliceForStage(registry, loadRuleRegistry(), { stage, type?, audience?, beats? })`
+**Stage slices.** `sliceForStage(registry, loadRuleRegistry(), { stage, type?, audience?, structure?, beats? })`
 returns the rules one pipeline stage loads, each list sorted by id. A `T` rule matches when its
-`types` include `type` or its `audiences` include `audience`; a `B` rule matches the requested
-`beats`.
+`types` include `type`, its `audiences` include `audience` or its `structures` include
+`structure`; a `B` rule matches the requested `beats`.
 
 | Stage | What it returns |
 | --- | --- |
@@ -208,3 +218,116 @@ list the stage in `stages` are considered. No code-enforced rule lands in `promp
 its `live` flag lags. `findPromptLeaks(text, registry, qRules)` checks finished prompt text: it
 returns each code-enforced doctrine rule, and each Q-rule whose L0 is implemented, that the text
 names by id, alias or exact rule text. Token names are not leaks.
+
+## Type profiles
+
+`doctrine/types/<type>.yaml` holds one `type-profile/v1` per video type: `repo-tour` (the
+`explain-repo` default, `EXPLAIN_REPO_DEFAULT_TYPE`), `repo-argument`, `pr-overview`,
+`paper-summary` and `daily-overview`. `doctrine/audiences/<id>.yaml` holds the `owner-internal`
+and `public-youtube` packs. A profile states its family, intent, audiences, inputs, runtime band,
+structure, cuts, hook and ending, series fields, audition size, layer shares, variety and pacing
+values, coverage and publish checks. It has no spend cap, since cost is tracked rather than
+capped, and no signature-layer requirement.
+
+- `loadProfiles(dir?)` reads those directories, `doctrine/structures/` and
+  `doctrine/beat-systems/`, and throws on a shape error, naming the file.
+  `profileFor(set, type)` throws `UnknownProfileError` for a type with no profile.
+- `checkProfiles(set, vocabulary)` returns coded `ProfileIssue`s:
+  - names missing from the vocabulary, or audiences with no pack;
+  - a default audience outside `allow`;
+  - dangling macro or block refs, or a macro with no registered structure;
+  - a runtime band out of order;
+  - a series field in both `mayRepeat` and `mustVary`;
+  - a `mustVary` missing a `SERIES_BASE` field;
+  - a fixed order that varies its structure or chapter labels, or a heuristic order that does
+    not vary its structure;
+  - a publishable audience with no per-video owner ask, or a paper profile without the
+    `PAPER_PUBLISH_CHECKS`;
+  - a bound beat system with no file (`unknown-beat-system`), bound to a macro the profile never
+    plays or a block outside it, or whose required step lands in no block after the step before
+    it (`beat-system-order`).
+- `chapterOrder(profile, { signals, runtimeS? }, structures)` gives one video's block order. A
+  `fixed` structure ignores the material. A `heuristic` one takes the first row whose registered
+  structure `fits` the material, as story-structure §4 asks its questions, and otherwise the
+  fallback (`fallback: true`).
+- `guideForType(type)` renders a type's planner guide: the profile, each structure it may pick
+  with its spine sections and the rules scoped to that structure, then the `plan` slice for the
+  type and its default audience, then each bound beat system with its steps, then a beat index of every beat its blocks allow (role, duration
+  range and purpose, from the beat specs). `explainer guide types` writes every guide to
+  `doctrine/guides/planner/<type>.md`, and `explainer guide plan --type <type>` prints one.
+  A test fails when a checked-in guide differs from its profile. Tracked by TP-2746.
+
+## Narrative structures
+
+`doctrine/structures/<id>.yaml` holds one `narrative-structure/v1` per structure a profile may
+pick: `design-journey`, `scqa`, `scqa-c4`, `mystery`, `three-act`, `abt`, `kishotenketsu`,
+`countdown`, `attempt-journey`, `review-saga`, `before-after`, `lab-report`, `timeline`,
+`board-walk`, `bluf` and `goal-walk` (the daily's fixed order: goals, lanes, ships, side quests,
+stats, reflection). Each states its source, a fit predicate over the material map's signals
+(`all`, `any`, `none`, and optional runtime bounds, with the question it encodes), blocks with
+airtime shares, a hook, an ending and its own spine sections. The agent picks the structure for
+each video and the runner-up goes in the render notes; there is no owner pick.
+
+- `loadStructures(dir?)` reads the registry; `structureFor(structures, id)` throws
+  `UnknownStructureError` for an unregistered id.
+- `fits(structure, { signals, runtimeS })` evaluates the fit predicate.
+- `checkStructures(structures, vocabulary)` returns coded `StructureIssue`s: a structure missing
+  from the vocabulary or a vocabulary structure with no file, a fit signal missing from the
+  vocabulary's `signals`, block shares that do not sum to 1, a runtime minimum above its maximum,
+  and a block listed twice.
+- `renderSpine(structure)` renders the structure's spine as a fillable template. `design-journey`
+  is the owner's journey (owner-FB1, now scoped to it): its spine is the `spine/v1` template, and
+  `explainer guide plan` prints it. Tracked by TP-4006.
+
+## Beat specs
+
+`doctrine/beats/<type>.yaml` holds one `beat-spec/v1` per vocabulary beat, including the review
+and briefing beats `verdict-card`, `change-group`, `diff-map`, `finding-card`, `proof`,
+`frame-flow`, `replot`, `sim`, `rule-diff`, `kanban-flow`, `gantt`, `forecast`, `history-why`,
+`attempt` and `companion-link`. A spec gives the beat's purpose and role, its component and that
+component's maturity, a slot schema ref, the speech band, a `[min, default, max]` duration, the
+packet recipe (200 words or fewer), whether it is a no-model preset, and its emphasis contract.
+
+- `BEAT_SLOTS` holds the zod slot schema each spec's `slots` names.
+- The emphasis contract lists the slot lists whose item ids a script cue may target and the
+  treatments (`pointer`, `highlight`, `trace`, `scale`, `colour`, `camera`) the template may use.
+  There is no default treatment and no separate pointer layer.
+- `loadBeatSpecs(dir?)` reads the registry and throws on a shape error, naming the file.
+  `beatSpecFor(specs, type)` throws `UnknownBeatError` for a beat with no spec.
+- `parseBeatSlots(specs, type, slots)` validates one beat's slots. It throws `BeatSlotError` for a
+  slot the schema rejects or for an emphasis element id used twice. `emphasisTargets(spec, slots)`
+  lists the ids a cue may name, and `cueElement(spec, slots, target)` throws `BeatSlotError`
+  unless the target names exactly one of them.
+- `checkBeatSpecs(specs, vocabulary)` returns coded `BeatIssue`s:
+  - a spec missing from the vocabulary, or a vocabulary beat with no spec;
+  - a slots ref with no schema;
+  - a duration out of order;
+  - a recipe over 200 words;
+  - an emphasis target that is not a list of elements with ids.
+
+Tracked by TP-2867.
+
+## Beat systems
+
+`doctrine/beat-systems/<id>.yaml` holds one `beat-system/v1` per beat system: `bluf`, `cl-order`,
+`example-first`, `martini-glass`, `journey-of-attempts`, `chapter-question`, `countdown-rung`,
+`lab-cycle` and `board-walk`. A beat system is an ordered beat pattern that plays inside a
+structure's blocks; it is not a structure. The structure owns the macro shape (blocks, shares,
+fit, spine). The system owns the beat order within those blocks. So `cl-order` serves
+`before-after`, `scqa` and `review-saga`, and `journey-of-attempts` plays over the whole
+`attempt-journey` macro in a PR video but only inside the daily's `segments` block. Each step
+lists the vocabulary beats that may play it and what it does, and may be optional.
+
+A profile binds systems under `structure.systems` as `{ system, macro, blocks? }`, and the
+audition picks among the systems a macro lists. Xu's opening styles and Wei's climax patterns
+are not systems: they are known only from abstracts.
+
+- `loadBeatSystems(dir?)` reads the registry against that dir's `vocabulary.yaml` (`beatSystems`).
+  It throws `BeatSystemError` for a system the vocabulary does not name, a vocabulary system with
+  no file, or a step beat outside the vocabulary. `beatSystemFor(systems, id)` throws
+  `UnknownBeatSystemError` for an unregistered id.
+- `placeBeatSystem(system, blocks)` lands each step in the earliest block at or after the step
+  before it that allows one of its beats. It returns the placed steps and the required steps it
+  could not land; an optional step that cannot land is dropped.
+
+Tracked by TP-4007.

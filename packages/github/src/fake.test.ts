@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FakeHttpError, fakeGitHub, fakeSha } from "./fake.js";
+import { FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
 import { GitHubConflictError, githubPort } from "./port.js";
 
 const REPO = "octo/demo";
@@ -190,6 +190,28 @@ describe("check-then-act port over the fake", () => {
     expect([first, again]).toEqual([{ done: true }, { done: false, skipped: "in-progress" }]);
     expect(fake.effects.rerunFailedJobs).toBe(1);
   });
+
+  it("reads a run with a job still open as that job's status", async () => {
+    const fake = fakeGitHub();
+    fake.setRuns(H1, [{ ...successRun("validate", 42), status: "in_progress", conclusion: null, workflowRunId: 55 }, successRun("lint", 43)]);
+    const port = githubPort(fake.wire);
+
+    expect([await port.workflowRunStatus(REPO, 55), await port.workflowRunStatus(REPO, 1043)]).toEqual(["in_progress", "completed"]);
+  });
+
+  it("rerunJob reruns one job of a completed run once, and skips while that run is queued again", async () => {
+    const fake = fakeGitHub();
+    fake.setRuns(H1, [{ ...successRun("validate", 42), status: "in_progress", conclusion: null, workflowRunId: 55 }]);
+    fake.runStatuses.set(55, "completed");
+    const port = githubPort(fake.wire);
+
+    const first = await port.rerunJob(REPO, 55, 42);
+    const again = await port.rerunJob(REPO, 55, 42);
+
+    expect([first, again]).toEqual([{ done: true }, { done: false, skipped: "in-progress" }]);
+    expect(fake.jobReruns).toEqual([42]);
+    expect(await port.workflowRunStatus(REPO, 55)).toBe("queued");
+  });
 });
 
 describe("review comments over the fake", () => {
@@ -225,6 +247,47 @@ describe("conditional open-PR list over the fake", () => {
     expect(unchanged).toEqual({ notModified: true });
     expect(moved).toMatchObject({ notModified: false, prs: [{ headSha: H2 }] });
     expect(fake.calls.filter((call) => call === "revalidateOpenPrs")).toHaveLength(3);
+    expect(fake.notModified).toBe(1);
+  });
+});
+
+describe("conditional ref and rulesets reads over the fake", () => {
+  it("answers 304 for an unchanged branch tip, a new ETag once it moves, and a null tip for a missing branch", async () => {
+    const fake = fakeGitHub();
+    const port = githubPort(fake.wire);
+
+    const first = await port.revalidateRef(REPO, "main", null);
+    const etag = first.notModified ? null : first.etag;
+    const unchanged = await port.revalidateRef(REPO, "main", etag);
+    fake.refs.set("main", ADVANCED);
+    const moved = await port.revalidateRef(REPO, "main", etag);
+    const missing = await port.revalidateRef(REPO, "gone", etag);
+
+    expect(first).toMatchObject({ notModified: false, sha: BASE });
+    expect(unchanged).toEqual({ notModified: true });
+    expect(moved).toMatchObject({ notModified: false, sha: ADVANCED });
+    expect(missing).toEqual({ notModified: false, sha: null, etag: null });
+    expect(fake.notModified).toBe(1);
+  });
+
+  it("answers rulesets by id until one is updated, then a new list; a free-plan repo answers unreadable", async () => {
+    const fake = fakeGitHub();
+    fake.rulesets.set(11, "2026-10-01T00:00:00Z");
+    const port = githubPort(fake.wire);
+
+    const first = await port.revalidateRulesets(REPO, null);
+    const etag = first.notModified || first.unreadable ? null : first.etag;
+    const unchanged = await port.revalidateRulesets(REPO, etag);
+    fake.rulesets.set(11, "2026-10-05T00:00:00Z");
+    const updated = await port.revalidateRulesets(REPO, etag);
+    fake.rulesetsFreePlan = true;
+    const freePlan = await port.revalidateRulesets(REPO, etag);
+
+    expect(first).toMatchObject({ notModified: false, unreadable: false, rulesets: { 11: "2026-10-01T00:00:00Z" } });
+    expect(unchanged).toEqual({ notModified: true });
+    expect(updated).toMatchObject({ rulesets: { 11: "2026-10-05T00:00:00Z" } });
+    expect(freePlan).toEqual({ notModified: false, unreadable: true });
+    expect(fake.calls.filter((call) => call === "revalidateRulesets")).toHaveLength(4);
     expect(fake.notModified).toBe(1);
   });
 });

@@ -19,16 +19,21 @@ This package is the pure core of that gate. It adds three primitives:
 - `planFixProof` turns `git diff -M --name-status <mergeBase> <head>` and the merge base's
   `.github/fix-proof.json` into the tests to run, the support files to carry, the tests the PR
   deletes, and the old paths to remove from the overlay. It also lists the PR's mutation specs
-  (`mutations`) and every path that is not test material (`source`); `testOnlyOf(plan)` is
-  true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
+  (`mutations`) and every path that is not test material (`source`). Given `headFiles`, the
+  paths at head beside those specs, it also plans each spec's one sibling test unless the PR
+  deletes it, so a diff that changes only a spec runs the test its mutants are judged on.
+  `testOnlyOf(plan)` is true when `source` is empty. Paths matching the config's `runtime` globs stay carried but
   also count as `source`. `testOnlyReading(plan)` names why a diff is not test-only: `source`,
   `deletes-tests` or `no-tests`.
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
-  log line of at most 4 KB, for a CI job to print and Shepherd to read.
+  log line of at most 4 KB, for a CI job to print and Shepherd to read. A line may name the
+  `base` branch it judged. `fix-proof-run.sh` prints a `refused` line, with `base`,
+  `defaultBranch` and no count or test, for a PR whose base is not the default branch.
 - `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
-  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head. Shepherd's gate and the reviewer brief read
+  its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
+  skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
   a test-only diff's proof with it.
 
 ## When to reach for it
@@ -94,7 +99,10 @@ purpose; the sandbox removes the survivors, not the test code's own reach.
 [Test-only diffs and mutation specs](#test-only-diffs-and-mutation-specs)).
 
 1. A diff with no spec, or with any path in `plan.source`, writes a skipped marker and runs
-   nothing. A spec that does not parse or fails `checkMutation` writes an error marker.
+   nothing. A spec that does not parse or fails `checkMutation` writes an error marker. On a
+   source diff each spec is still parsed, paired and run through `checkMutation` against head.
+   A refused spec, or on a source diff any failure reading one, also writes `mutants.refused`,
+   and `scripts/fix-proof-run.sh` fails the mutants job on it.
 2. Like the base side, it adds a merge-base worktree, installs and builds it, and only then
    overlays the head's tests and carried files.
 3. It runs the specs' test files once as the baseline.
@@ -199,7 +207,14 @@ Duplicate names pair up by occurrence.
 | `passes-on-base` | passed | passed |
 | `new-api` | suite load error, or a failure naming a missing symbol | passed |
 | `fails-on-head` | anything | failed |
-| `not-run` | skipped or absent | passed, or head skipped it |
+| `not-run` | skipped or absent | passed, or head skipped a test base passed |
+
+A test head declines to run (`skip`, `skipIf`, `todo`) is left out of the classification and
+the counts, unless base passed it. It ran nowhere and claims nothing, so it neither reproduces
+nor blocks a mutant proof. Skipping a test base passed removes a check, so that test stays
+`not-run`. vitest also reports tests a throwing hook skipped as `skipped`, so a skip inside a
+file vitest marks failed is never read as deliberate and stays `not-run` too. A line from a
+runner before this rule counts every head skip as `not-run`, which only refuses a proof.
 
 A missing symbol is a failure containing `is not a function`, `is not a constructor`,
 `Cannot find module`, `does not provide an export` or `Failed to load url`. vitest does not
@@ -246,7 +261,8 @@ base-vs-head by construction. For such a PR the gate asks for mutations instead 
 - **`parseMutationSpec(text)`** is strict. It refuses unknown keys, more than 5 mutations or
   none, a duplicate or over-80-character `name`, a `find` or `replace` over 400 characters, a
   `find` equal to its `replace`, an unnormalized `file`, and an empty or duplicate `kills` list.
-- **`checkMutation(mutation, baseText, config)`** checks one mutation against the merge base.
+- **`checkMutation(mutation, baseText, config, at?)`** checks one mutation against the merge base,
+  or against the commit `at` names in its errors (the mutants side passes `"head"` on a source diff).
   Its `file` must exist there (`baseText` null means it does not) and must not be a test, a
   carried file, a spec, a changeset or a harness path. Its `find` must occur exactly once,
   counting overlapping matches.
@@ -281,7 +297,19 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
     because vitest reports those as a plain `Error`.
 - **Coverage.** A killed spec proves only the test file beside it. The judge lists every
   changed test file (`plan.tests`) that no spec in the diff sits beside as
-  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. A line from a judge
+  `mutants.uncovered`, and any entry there makes the verdict `not-killed`. One kind of changed
+  test is left out: a test matching the config's `carry` globs (such as one under
+  `test-support/`) whose runtime imports, followed through every carried file they reach,
+  load only carried files, vitest and an allow-list of builtins that cannot start a process, a
+  worker or evaluated source (`fs`, `path`, `url`, `assert` and the like). `checkMutation`
+  refuses a carried file as a target, so a spec could reach such a test only through a file it
+  reads. A carried test needs a spec if anywhere in that closure it loads non-carried source,
+  another package, `child_process`, `worker_threads`, `vm` or any unlisted builtin, a relative
+  import the judge cannot resolve at head, or runs code outside the import graph (a computed
+  `import()`, `eval`, `new Function`, `vi.importActual`). Type-only imports are ignored, as the
+  test never loads them. The rule assumes a carried test reads files through `fs` only to judge
+  tests or carried files; one that asserts on the text of non-carried source would be exempt
+  although a spec could cover it. A line from a judge
   before this check has no `uncovered` list, and `provedByMutants` reads it as unproved. A
   diff that deletes a test or renames one out of the tests is not test-only
   (`testOnlyReading`), so the judge attaches no `mutants` to it at all.
@@ -293,6 +321,21 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
 
 Carried files count as test material on path alone. A fix placed in a carried file that
 production code imports would pass as test-only.
+
+## Linear globs
+
+`compileGlobs` matches in time linear in the path. For a package with its own glob dialect,
+`LinearRegExp` (also `@titan-design/fix-proof/linear-regexp`, which imports nothing) is a RegExp
+whose `test` simulates its source as an NFA: build the regex source as before and construct a
+`LinearRegExp` in place of `new RegExp`. It accepts literals, escapes, `.`, classes, groups, `|`,
+`*`, `+`, `?`, `^` and `$` under the `i` and `s` flags, and throws a SyntaxError on anything else
+(lookaround, backreferences, `{n,m}`, `\b`) and on the `g` and `y` flags. `exec` reports the whole
+input as the match, which is what an anchored glob matches. review-panel, autoresearch, code-graph,
+tool-guard, factory and the console build their globs this way (TP-4223).
+
+`linearRegExpSteps()` is the running count of NFA steps every `LinearRegExp` has simulated in the
+process. Pass it as test-kit `linearWork`'s `meter` to assert a matcher's work grows linearly
+without timing it; a matcher that falls back to a native RegExp counts no steps and fails (TP-4262).
 
 ## What it deliberately does not do
 
