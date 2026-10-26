@@ -49,6 +49,7 @@
     "@titan-design/hitl": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
     "@titan-design/pm": "workspace:^",
+    "@titan-design/render-qa": "workspace:^",
     "@titan-design/react-ui": "^0.23.1",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/speech-g2p": "workspace:^",

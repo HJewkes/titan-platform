@@ -228,6 +228,7 @@ graph TD
   explainer --> hitl
   explainer --> ownerQueue
   explainer --> pm
+  explainer --> renderQa
   explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt

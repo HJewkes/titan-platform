@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BridgeFileSchema, readBridgeFile, type BridgeExec } from "./bridge.js";
 import { resumeVideo, runVideo } from "./host.js";
 import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
 let fx: Fixture | undefined;
 afterEach(() => fx?.cleanup());
@@ -94,7 +95,7 @@ describe("--theater", () => {
   it("keeps the given folder when a run that failed before export is resumed", async () => {
     fx = fixture();
     const scratch = path.join(fx.dataDir, "..", "scratch-theater");
-    const failed = await runVideo({ spine: fx.spine, facts: fx.facts, theater: scratch }, fakeHost(fx, fakeScriptModel(), fakeBridge({ qaFails: true })));
+    const failed = await runVideo({ spine: fx.spine, facts: fx.facts, theater: scratch }, fakeHost(fx, fakeScriptModel(), fakeBridge(), { qaEngine: fakeQa(heldOverlap()) }));
 
     const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), fakeBridge()));
 
@@ -116,5 +117,19 @@ describe("a host bridge after the sheets port", () => {
     const read = () => readBridgeFile(fx!.dataDir);
 
     expect(read).toThrow(/still has a "sheets" block, but sheets runs in TypeScript now.*delete it/);
+  });
+});
+
+describe("a host bridge after the qa port", () => {
+  it("refuses a host file that still bridges qa, naming the block to delete and where the spike gate still runs", () => {
+    fx = fixture();
+    const file = path.join(fx.dataDir, "bridge.json");
+    const bridge = BridgeFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+    const stale = { ...bridge, stages: { ...bridge.stages, qa: { inputs: { page: "out/page" }, outputs: {}, commands: [{ argv: ["node", "examples/qa.ts", "demo"] }] } } };
+    writeFileSync(file, JSON.stringify(stale));
+
+    const read = () => readBridgeFile(fx!.dataDir);
+
+    expect(read).toThrow(/still has a "qa" block, but qa runs in TypeScript now \(render-qa\); delete it; examples\/qa.ts stays only inside the bridged render's own render.ts gate/);
   });
 });

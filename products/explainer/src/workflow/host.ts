@@ -22,6 +22,7 @@ import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
 import type { MediaExec } from "./sheets-stage.js";
+import type { QaEngine } from "../qa/qa-engine.js";
 import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
 import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
 import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
@@ -57,6 +58,8 @@ export interface RunHost {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
   media?: MediaExec;
+  /** The qa stage's browser and ffprobe; real Chromium by default, tests pass a fake. */
+  qaEngine?: QaEngine;
   /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
   beatWorker?: BeatWorker | null;
   /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
@@ -214,7 +217,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...runners,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
-    ...(host.media ? { media: host.media } : {}),
+    ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}),
   });
   const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
