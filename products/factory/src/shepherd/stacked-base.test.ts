@@ -223,6 +223,47 @@ describe("a stacked PR whose fix-proof was refused on the parent branch, retarge
     for (const read of reads) expect(read.data).toMatchObject({ result: { bound: false } });
   });
 
+  /** Retargets the refused PR to main once `lines` are judged there, and waits for the owner gate a line that does not stand opens. */
+  const gatedOnMain = async (lines: string[], files?: { path: string; status: "modified" }[]): Promise<World> => {
+    const w = refused();
+    if (files !== undefined) w.fake.prFiles.set(1, files);
+    lines.forEach((line, i) => judged(w, MAIN_JOB + i, line));
+    await waitingForRetarget(w);
+    w.fake.pr(1).baseRef = "main";
+    await gateOpened(w.host, gateId(w.runId, "approve-merge"));
+    return w;
+  };
+  const promptOf = (w: World) => w.host.gates.get(gateId(w.runId, "approve-merge"))?.prompt;
+
+  it("asks the owner instead of merging when the line against main is vacuous", async () => {
+    const w = await gatedOnMain([proofLine("vacuous")]);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(promptOf(w)).toContain("its verdict is vacuous, which reproduces nothing");
+    for (const read of reboundReads(w)) expect(read.data).toMatchObject({ result: { bound: false, line: proofLine("vacuous") } });
+  });
+
+  it("asks the owner instead of merging when the line against main is an error other than the refusal", async () => {
+    const w = await gatedOnMain([proofLine("error", "the judge crashed")]);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(promptOf(w)).toContain("its verdict is error: the judge crashed");
+  });
+
+  it("asks the owner instead of merging when the PR changes the fix-proof harness", async () => {
+    const w = await gatedOnMain([proofLine("reproduced")], [{ path: "scripts/fix-proof-run.sh", status: "modified" }]);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(promptOf(w)).toContain("the PR changes the fix-proof harness: scripts/fix-proof-run.sh");
+  });
+
+  it("asks the owner instead of merging when two runs against main printed a line at the head", async () => {
+    const w = await gatedOnMain([proofLine("reproduced"), proofLine("reproduced")]);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(promptOf(w)).toContain("2 fix-proof runs at this head printed a line for PR #1 on main, not exactly one");
+  });
+
   it("reads nothing again and merges on a seat that merges into the parent branch the proof was refused on", async () => {
     const w = refused({ ...AUTO, featureBase: true });
     const served = w.fake.onGetPr;

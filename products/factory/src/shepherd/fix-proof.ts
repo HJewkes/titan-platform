@@ -201,7 +201,7 @@ async function harnessTouch(port: GitHubPort, repo: RepoSlug, pr: number | null)
 }
 
 /** Why a line from `run` cannot be trusted, or undefined when the run succeeded on a harness the PR left alone. */
-async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
+export async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
   if (run.conclusion !== "success") return `the ${FIX_PROOF_CHECK} run concluded ${run.conclusion ?? "nothing"}, not success`;
   return harnessTouch(port, repo, pr);
 }

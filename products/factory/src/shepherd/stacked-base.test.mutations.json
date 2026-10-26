@@ -14,8 +14,8 @@
     {
       "name": "the re-read takes the refused line itself as bound",
       "file": "products/factory/src/shepherd/rebound-proof.ts",
-      "find": "if (line !== undefined && !isRefusal(line)) return line;",
-      "replace": "if (line !== undefined) return line;",
+      "find": "if (line !== undefined && !isRefusal(line)) candidates.push({ run, line });",
+      "replace": "if (line !== undefined) candidates.push({ run, line });",
       "kills": [
         "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing into main on the panel's MERGE until a main-bound fix-proof line at the head is read",
         "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when only the refused line stands at the head"
@@ -31,12 +31,15 @@
       ]
     },
     {
-      "name": "an allow into main on an unread proof is never gated",
+      "name": "the re-read takes any line against main as bound, whatever it says",
       "file": "products/factory/src/shepherd/rebound-proof.ts",
-      "find": "if (decision.outcome !== \"allow\" || into === undefined) return decision;",
-      "replace": "if (decision.outcome !== \"allow\" || into === undefined || into !== undefined) return decision;",
+      "find": "if (why === undefined) return { bound: true, line };",
+      "replace": "return { bound: true, line };",
       "kills": [
-        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when only the refused line stands at the head"
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the line against main is vacuous",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the line against main is an error other than the refusal",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the PR changes the fix-proof harness",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when two runs against main printed a line at the head"
       ]
     },
     {
