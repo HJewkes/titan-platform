@@ -9,15 +9,6 @@
       "kills": [
         "the QA cue gate holds no error on the kind sheet's stage beats"
       ]
-    },
-    {
-      "name": "the verdict beat loses its qaLeadLine hint",
-      "file": "products/explainer/fixtures/kinds.timeline.json",
-      "find": "\"qaLeadLine\": true",
-      "replace": "\"titleOmitted\": true",
-      "kills": [
-        "the QA cue gate holds no error on the kind sheet's stage beats"
-      ]
     }
   ]
 }

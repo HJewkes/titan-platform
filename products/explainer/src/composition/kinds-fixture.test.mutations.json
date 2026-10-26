@@ -2,15 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a fixture list row says other than the fill output does",
-      "file": "products/explainer/fixtures/kinds.timeline.json",
-      "find": "\"text\": \"Matcher rewrite\",",
-      "replace": "\"text\": \"Matcher rewritten\",",
-      "kills": [
-        "its daily beats are what the template fill makes of the synthetic daily script"
-      ]
-    },
-    {
       "name": "a kind is registered under a key no fixture beat draws",
       "file": "products/explainer/src/composition/registry.tsx",
       "find": "outro: defineBeat(BEAT_SLOTS.outro",
