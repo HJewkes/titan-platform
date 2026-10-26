@@ -8,10 +8,10 @@ import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
-import { nonSourceDiff } from "./non-source-diff.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
+import { sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
 const FIX_PROOF_STEP = "sh-fix-proof";
@@ -315,11 +315,14 @@ async function gatedRead(deps: Pick<ShepherdDeps, "port" | "noReproProceed">, in
 /**
  * TP-4275: under `nonSourceNoRepro: record-fact`, a NO_REPRO on a diff with no source path is recorded on the run and the review
  * goes ahead, so no sh-sent-back gate opens; the merge grant is unchanged. Security keeps its gate, as on the test-only path.
+ * Source is what the proof paths already read: a workflow-ci read exists only for a diff `workflowCiProof` read as workflows alone,
+ * and a result line proceeds only on a diff the fix-proof plan reads with no source path under the trusted configs.
  */
 async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoRepro">, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
-  if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security") return false;
-  if (read.kind === "result" && (read.testOnlyProceed === true || !mayProceedLine(read.line))) return false;
-  return fixProofVerdict(read, input.head) !== undefined && (await nonSourceDiff(deps.port, input.repo, gate.pr, input.head));
+  if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security" || fixProofVerdict(read, input.head) === undefined) return false;
+  if (read.kind === "workflow-ci") return true;
+  if (read.kind !== "result" || read.testOnlyProceed === true || !mayProceedLine(read.line)) return false;
+  return sourceFreeDiff(deps.port, input.repo, gate.pr, input.head);
 }
 
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>

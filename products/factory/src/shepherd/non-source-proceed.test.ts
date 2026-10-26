@@ -1,11 +1,10 @@
-import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { CONFIG_PATH, formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { FIX_PROOF_CHECK, readFixProof } from "./fix-proof.js";
-import { isNonSourcePath } from "./non-source-diff.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { proofStandingAt } from "./proof-waiver.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
@@ -24,12 +23,35 @@ function vacuousLine(mutants?: FixProofResult["mutants"]): string {
 }
 
 type Flag = "keep-owner" | "record-fact" | undefined;
+type Fake = ReturnType<typeof fakeGitHub>;
+
+/** The repo's own fix-proof globs, runtime trees included, as the trusted config at the merge base and main's tip. */
+const REPO_CONFIG = JSON.stringify({
+  tests: ["{packages,products,apps}/*/src/**/*.test.{ts,tsx}"],
+  carry: ["**/fixtures/**", "**/test-support/**", "**/*.test-helpers.ts"],
+  runtime: ["apps/console/fixtures/**", ".github/**"],
+});
+
+function seedBlob(fake: Fake, ref: string, path: string): void {
+  fake.files.set(`${ref}:${path}`, { content: "blob", blobSha: fakeSha(`${ref}:${path}`) });
+}
+
+/** The config, and each listed path's blob where GitHub holds it; `gitlinks` read as no inline blob. */
+function seedDiffReads(fake: Fake, files: readonly PrFile[], gitlinks: readonly string[]): void {
+  for (const ref of [MERGE_BASE, "main"]) fake.files.set(`${ref}:${CONFIG_PATH}`, { content: REPO_CONFIG, blobSha: fakeSha(REPO_CONFIG) });
+  for (const file of files.filter((listed) => !gitlinks.includes(listed.path))) {
+    if (file.status !== "removed") seedBlob(fake, H, file.path);
+    if (file.status === "modified" || file.status === "removed") seedBlob(fake, MERGE_BASE, file.path);
+    if (file.previousPath !== undefined) seedBlob(fake, MERGE_BASE, file.previousPath);
+  }
+}
 
 /** A registered correctness run whose fix-proof is vacuous at H; a workflow-only diff reads CI instead, green at both commits. */
-async function standingOf(files: PrFile[], flag: Flag, kind = "correctness", line = vacuousLine()) {
+async function standingOf(files: PrFile[], flag: Flag, kind = "correctness", line = vacuousLine(), gitlinks: readonly string[] = []) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H });
   fake.prFiles.set(1, files);
+  seedDiffReads(fake, files, gitlinks);
   const proofRun = { ...successRun(FIX_PROOF_CHECK, JOB), pullRequests: [{ number: 1, baseRef: "main" }] };
   fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), proofRun]);
   fake.jobLogs.set(JOB, `2026-10-11T12:00:00.0000000Z ${line}`);
@@ -47,11 +69,11 @@ async function standingOf(files: PrFile[], flag: Flag, kind = "correctness", lin
 }
 
 const TEST_CONVERSION: PrFile[] = [
-  { path: "packages/x/src/__tests__/parse.ts", status: "added" },
+  { path: "packages/x/src/__tests__/parse.test.ts", status: "added" },
   { path: "packages/x/src/parse.test.ts", status: "removed" },
-  { path: "packages/x/src/parse.test.mutations.json", status: "added" },
+  { path: "packages/x/src/__tests__/parse.test.mutations.json", status: "added" },
+  { path: "packages/x/src/test-support/parse-cases.ts", status: "added" },
   { path: ".changeset/convert-parse-tests.md", status: "added" },
-  { path: "packages/x/docs/parse.md", status: "modified" },
 ];
 const WORKFLOW_ONLY: PrFile[] = [
   { path: ".github/workflows/ci.yml", status: "modified" },
@@ -83,7 +105,7 @@ describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
   });
 
   it("keeps NO_REPRO under record-fact when a rename moves a source path out of the diff", async () => {
-    const files: PrFile[] = [{ path: "packages/x/docs/parse.md", previousPath: "packages/x/src/parse.ts", status: "renamed" }];
+    const files: PrFile[] = [{ path: "packages/x/src/parse.test.ts", previousPath: "packages/x/src/parse.ts", status: "renamed" }];
 
     expect(await standingOf(files, "record-fact")).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
@@ -101,14 +123,28 @@ describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
   it("keeps NO_REPRO for a security run under record-fact", async () => {
     expect(await standingOf(TEST_CONVERSION, "record-fact", "security")).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
-});
 
-describe("isNonSourcePath", () => {
-  it.each(["a/b.test.ts", "a/__tests__/c.ts", "a/b.test.mutations.json", ".github/workflows/x.yml", ".changeset/y.md", "site/docs/guide.html", "README.md"])("reads %s as non-source", (path) => {
-    expect(isNonSourcePath(path)).toBe(true);
+  it.each([
+    ["a changeset tool config", ".changeset/config.json"],
+    ["source under a docs directory", "packages/x/src/docs/render.ts"],
+    ["a helper outside the test and carry globs", "packages/x/src/a.test.helpers.ts"],
+    ["a fixture in a runtime tree", "apps/console/fixtures/rounds/a.md"],
+    ["a docs page", "site/guides/parse.md"],
+  ])("keeps NO_REPRO under record-fact when the diff adds %s, which the fix-proof plan reads as source", async (_, path) => {
+    const files: PrFile[] = [...TEST_CONVERSION, { path, status: "modified" }];
+
+    expect(await standingOf(files, "record-fact")).toMatchObject({ ended: { kind: "NO_REPRO" } });
   });
 
-  it.each(["src/a.ts", ".github/actions/x/action.yml", "scripts/fix-proof-run.sh", "src/testing.ts", "src/test.helpers/a.ts", "docsite/a.ts"])("reads %s as source", (path) => {
-    expect(isNonSourcePath(path)).toBe(false);
+  it("keeps NO_REPRO under record-fact when a carried path is not a regular file GitHub returns inline", async () => {
+    const line = vacuousLine();
+
+    expect(await standingOf(TEST_CONVERSION, "record-fact", "correctness", line, ["packages/x/src/test-support/parse-cases.ts"])).toMatchObject({ ended: { kind: "NO_REPRO" } });
+  });
+
+  it("records a diff that only deletes a test as a fact under record-fact, for the reviewer to judge", async () => {
+    const files: PrFile[] = [{ path: "packages/x/src/parse.test.ts", status: "removed" }];
+
+    expect(await standingOf(files, "record-fact")).toEqual(NON_SOURCE);
   });
 });

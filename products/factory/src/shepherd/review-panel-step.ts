@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, fixProofNeedsTests, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
+import { DEFECT_CLASS_HEADING, FINDINGS_SEPARATOR, OVERLAY_SHAPES, aggregate, fixProofNeedsTests, noReproProceedOf, type AggregateInput, type AwaitVerdictInput, type MemberResult, type OverlayShape, type PanelPlan, type PanelPolicy, type PanelVerdict, type ReviewTarget, type ReviewerAgent, type WorkflowCiProof } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -109,14 +109,14 @@ export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, {
 }
 
 /**
- * `testOnlyProof` marks a test-only head proceeding on its vacuous proof, and `badFixProof` any other fix-proof line that makes the
- * tests seat blocking, such as `unproven` or `error` (TP-4195); either way the panel plans a tests member to answer it.
+ * `testOnlyProof` marks a head proceeding on its NO_REPRO, test-only or non-source (TP-4275), and `badFixProof` any other fix-proof
+ * line that makes the tests seat blocking, such as `unproven` or `error` (TP-4195); either way the panel plans a tests member to answer it.
  */
 export const PROOF_PLAN_FIELDS = { testOnlyProof: z.literal(true).optional(), badFixProof: z.literal(true).optional() };
 
 /** The intent's proof fields from the predicate aggregate blocks the tests seat on, so the seat it blocks is always planned. */
 export function proofPlanFields(proof: z.infer<typeof FixProofReadSchema>, head: string, standing: ProofStanding): { testOnlyProof?: true; badFixProof?: true } {
-  if (standing.unverified === "no-repro-test-only") return { testOnlyProof: true };
+  if (noReproProceedOf(standing.unverified) !== undefined) return { testOnlyProof: true };
   const fixProof = proof.kind === "result" ? proof.line : undefined;
   return fixProofNeedsTests({ head, fixProof, fixProofWaivedAt: standing.waivedAt }) ? { badFixProof: true } : {};
 }

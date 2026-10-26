@@ -169,15 +169,22 @@ surviving mutation or a refused spec ends the round as `NO_REPRO`.
 
 `shepherd.gateReset.nonSourceNoRepro` widens that past tests (TP-4275). It is `keep-owner` when
 absent: a `NO_REPRO` opens the owner's `sh-sent-back` gate, as above. With `record-fact`, a
-`NO_REPRO` on a pull request whose every changed path, a rename's old path included, is
-non-source goes to review marked `no-repro-non-source`, and no `sh-sent-back` gate opens. Non-source
-means `*.test.*` (mutation sidecars included), `__tests__/`, `.github/workflows/`, `.changeset/`,
-a `docs/` directory or `*.md`. That covers a workflow-only diff's unproved CI read too. The mark is
-recorded on the head's proof standing and its merge evidence. The merge grant is unchanged, so a
+`NO_REPRO` on a pull request that changes no source goes to review marked `no-repro-non-source`,
+and no `sh-sent-back` gate opens. Shepherd does not keep its own list of source paths; it reads the
+diff the way the proof did. A fix-proof line proceeds only when the fix-proof plan, under
+`.github/fix-proof.json` at both the merge base and main's tip, sorts no path as source: tests,
+carried files, mutation specs and `.changeset/*.md` alone, with harness and `runtime` paths read as
+source and every blob read inline. Docs, `.changeset/config.json` and any path outside those globs
+are source. A diff that only deletes a test, or plans no test, also changes no source, so it goes to
+review, and the reviewer is asked whether each deleted test covered anything still live. A
+workflow-only diff proceeds on its unproved CI read, which exists only for a diff that
+`workflowCiProof` read as workflows, changesets and generated paths alone. The mark is recorded on the
+head's proof standing and its merge evidence, and the review panel plans a tests member that judges
+each changed test, each deleted test and each workflow edit. The merge grant is unchanged, so a
 held or owner-gated run still goes to the owner. The mutants rule above still holds: a line that
-carries `mutants` stays `NO_REPRO`. A `security` run, any source path, a file list
-that cannot be read in full, and a head that moved keep the `NO_REPRO`. It is a live editable row,
-so a `factory-config-set` owner op flips it with no restart, as for `heldRepair`. A third value,
+carries `mutants` stays `NO_REPRO`. A `security` run, any source path, a diff that cannot be read in
+full, and a head that moved keep the `NO_REPRO`. It is a live editable row, so a
+`factory-config-set` owner op flips it with no restart, as for `heldRepair`. A third value,
 `seat-waives`, would let the owning seat answer the waivable gate. It is not built yet, so the config
 refuses it.
 

@@ -30,6 +30,15 @@
       "kills": [
         "correctionPrompt names both tags in the unchanged-line sentence"
       ]
+    },
+    {
+      "name": "a non-source head gets the generic unverified rule",
+      "file": "packages/review-panel/src/briefs/tests.ts",
+      "find": "proceeds === undefined ? UNVERIFIED_RULE : PROCEED_RULE[proceeds]",
+      "replace": "proceeds === \"test-only\" ? PROCEED_RULE[proceeds] : UNVERIFIED_RULE",
+      "kills": [
+        "reviewerBrief a non-source head sent on without a base-failing test is told to judge its tests, deletions and workflow edits, not to show one fail on the base"
+      ]
     }
   ]
 }
