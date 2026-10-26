@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the daemon's yield point never waits on in-flight related requests",
+      "file": "products/active-work/src/server/session-index-watch.ts",
+      "find": "  const idle = readerGate.idle(IDLE_CAP_MS);\n",
+      "replace": "  const idle = Promise.resolve();\n",
+      "kills": [
+        "context.related during a daemon refresh pass related answers while a refresh pass is running"
+      ]
+    }
+  ]
+}

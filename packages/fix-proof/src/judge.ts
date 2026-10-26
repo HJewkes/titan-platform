@@ -29,6 +29,8 @@ export interface JudgeOptions {
   base: string;
   head: string;
   reports: JudgeReports;
+  /** The PR's base branch, as fix-proof-run.sh shows a ref; the line names it so a reader binds it to the base it judged. */
+  baseRef?: string;
   budgetMs?: number;
   exec?: Exec;
 }
@@ -110,9 +112,10 @@ function failOnSpec(result: FixProofResult, mutants: MutantsResult): void {
   result.error = `mutation spec: ${mutants.error ?? ""}`;
 }
 
-async function verdict(ctx: Context, plan: FixProofPlan, shas: Shas, reports: JudgeReports): Promise<string> {
+async function verdict(ctx: Context, plan: FixProofPlan, shas: Shas, reports: JudgeReports, baseRef: string | undefined): Promise<string> {
   const classification = classifyDecoded(plan, reports);
   const result = toResult({ head: shas.head, mergeBase: shas.base, plan, classification });
+  if (baseRef !== undefined) result.base = baseRef;
   if (plan.mutations.length === 0) return formatResultLine(result);
   // Mutants stand in for base-vs-head proof only on a diff of test material alone; with source in it they prove nothing,
   // and a deleted test, or one renamed out of the tests, has no file left at head for a spec to sit beside.
@@ -131,7 +134,7 @@ async function verdict(ctx: Context, plan: FixProofPlan, shas: Shas, reports: Ju
 export function judge(options: JudgeOptions): Promise<string> {
   return withContext(
     { ...options, budgetMs: options.budgetMs ?? DEFAULT_JUDGE_BUDGET_MS },
-    async (ctx, shas) => verdict(ctx, await planDiff(ctx, shas), shas, options.reports),
+    async (ctx, shas) => verdict(ctx, await planDiff(ctx, shas), shas, options.reports, options.baseRef),
     errorLine,
   );
 }

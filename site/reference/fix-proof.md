@@ -28,7 +28,9 @@ This package is the pure core of that gate. It adds three primitives:
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
-  log line of at most 4 KB, for a CI job to print and Shepherd to read.
+  log line of at most 4 KB, for a CI job to print and Shepherd to read. A line may name the
+  `base` branch it judged. `fix-proof-run.sh` prints a `refused` line, with `base`,
+  `defaultBranch` and no count or test, for a PR whose base is not the default branch.
 - `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
   its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
   skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
@@ -330,6 +332,10 @@ whose `test` simulates its source as an NFA: build the regex source as before an
 (lookaround, backreferences, `{n,m}`, `\b`) and on the `g` and `y` flags. `exec` reports the whole
 input as the match, which is what an anchored glob matches. review-panel, autoresearch, code-graph,
 tool-guard, factory and the console build their globs this way (TP-4223).
+
+`linearRegExpSteps()` is the running count of NFA steps every `LinearRegExp` has simulated in the
+process. Pass it as test-kit `linearWork`'s `meter` to assert a matcher's work grows linearly
+without timing it; a matcher that falls back to a native RegExp counts no steps and fails (TP-4262).
 
 ## What it deliberately does not do
 

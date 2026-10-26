@@ -512,6 +512,10 @@ importers:
       '@titan-design/fix-proof':
         specifier: workspace:^
         version: link:../fix-proof
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/embed:
     dependencies:
@@ -553,6 +557,10 @@ importers:
       '@octokit/plugin-throttling':
         specifier: ^11.0.5
         version: 11.0.5(@octokit/core@7.0.8)
+    devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
 
   packages/graph-layout:
     dependencies:
@@ -719,6 +727,16 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.5.4
+
+  packages/render-qa:
+    dependencies:
+      '@titan-design/frame-capture':
+        specifier: workspace:^
+        version: link:../frame-capture
+    devDependencies:
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
 
   packages/retrieval:
     dependencies:
@@ -1221,6 +1239,9 @@ importers:
       '@titan-design/agent':
         specifier: workspace:^
         version: link:../../packages/agent
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../../packages/agent-dispatch
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../../packages/agent-protocol
@@ -1257,6 +1278,9 @@ importers:
       '@titan-design/react-ui':
         specifier: ^0.23.1
         version: 0.23.1(tcpsdurwh2bjt32gdxfhihdeqe)
+      '@titan-design/render-qa':
+        specifier: workspace:^
+        version: link:../../packages/render-qa
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -1296,6 +1320,9 @@ importers:
       react-native-web:
         specifier: ^0.21.0
         version: 0.21.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      vite:
+        specifier: ^8.0.3
+        version: 8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -1324,9 +1351,6 @@ importers:
       tailwindcss:
         specifier: ^3.4.17
         version: 3.4.19(tsx@4.23.13)(yaml@2.9.1)
-      vite:
-        specifier: ^8.0.3
-        version: 8.3.0(@types/node@25.9.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
 
   products/factory:
     dependencies:

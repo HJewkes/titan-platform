@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { fakeBridge, fakeBriefModels, fakeHost, fixture } from "../../workflow/run-fakes.test-helpers.js";
+import { fakeRender, fakeBriefModels, fakeHost, fixture } from "../../workflow/run-fakes.test-helpers.js";
 import { runPrCli, type PrCliDeps } from "./pr-cli.js";
 import { fakeEdges, fakeGh, gate, PR, REPO, VIEW } from "./pr-fakes.test-helpers.js";
 
@@ -22,7 +22,7 @@ async function scratch(): Promise<string> {
 function briefHost(): NonNullable<PrCliDeps["host"]> {
   const fx = fixture();
   temps.push(path.dirname(fx.dataDir));
-  return { ...fakeHost(fx, fakeBriefModels(), fakeBridge()), gather: { readAt: async () => "" } };
+  return { ...fakeHost(fx, fakeBriefModels(), fakeRender()), gather: { readAt: async () => "" } };
 }
 
 function cli(deps: PrCliDeps = {}) {

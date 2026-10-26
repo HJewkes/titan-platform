@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { gatherFailOpen } from "./fail-open.js";
+import { describe, expect, it, vi } from "vitest";
+import { gatherFailOpen, type GatheredLists } from "./fail-open.js";
 import type { Retriever } from "./types.js";
 
 const good: Retriever = { name: "good", retrieve: async () => [{ id: "a", rank: 1 }] };
@@ -29,12 +29,20 @@ describe("gatherFailOpen", () => {
   });
 
   it("times out a stalled retriever without blocking the others", async () => {
-    const started = Date.now();
-    const { lists, degraded, timingsMs } = await gatherFailOpen([good, slow], "q", { limit: 5, timeoutMs: 30 });
-    expect(Date.now() - started).toBeLessThan(150);
-    expect(lists.map((l) => l.name)).toEqual(["good"]);
-    expect(degraded[0]).toMatchObject({ retriever: "slow", reason: "timeout" });
-    expect(timingsMs.slow).toBeGreaterThanOrEqual(25);
+    vi.useFakeTimers();
+    try {
+      const deaf: Retriever = { name: "slow", retrieve: () => new Promise(() => {}) };
+      let gathered: GatheredLists | undefined;
+      void gatherFailOpen([good, deaf], "q", { limit: 5, timeoutMs: 30 }).then((result) => (gathered = result));
+
+      await vi.advanceTimersByTimeAsync(30);
+
+      expect(gathered?.lists.map((l) => l.name)).toEqual(["good"]);
+      expect(gathered?.degraded[0]).toMatchObject({ retriever: "slow", reason: "timeout" });
+      expect(gathered?.timingsMs.slow).toBe(30);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports an external abort as an error, not a timeout", async () => {

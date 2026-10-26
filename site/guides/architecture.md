@@ -73,6 +73,7 @@ graph TD
     ownerQueue["owner-queue"]
     pm["pm"]
     queueMirror["queue-mirror"]
+    renderQa["render-qa"]
     reviewPanel["review-panel"]
     reviewWorkflow["review-workflow"]
     sessionAnalytics["session-analytics"]
@@ -142,6 +143,7 @@ graph TD
   reactApp --> rpcClient
   reactApp --> rpcProtocol
   registry --> rpcProtocol
+  renderQa --> frameCapture
   retrieval --> embed
   retrieval --> storeSqlite
   reviewBurden --> fixProof
@@ -214,6 +216,7 @@ graph TD
   evals --> storeSqlite
   evals --> workflow
   explainer --> agent
+  explainer --> agentDispatch
   explainer --> agentProtocol
   explainer --> appPaths
   explainer --> codeGraph
@@ -225,6 +228,7 @@ graph TD
   explainer --> hitl
   explainer --> ownerQueue
   explainer --> pm
+  explainer --> renderQa
   explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt

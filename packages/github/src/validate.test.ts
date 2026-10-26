@@ -65,7 +65,7 @@ describe("port input validation", () => {
     await port.getHeadSha("my-org/repo.name_2", "factory/doc-12-abcd1234");
     await port.latestCheckRuns(REPO, SHA);
 
-    expect(calls.map((args) => args[4])).toEqual(["repos/my-org/repo.name_2/git/ref/heads/factory/doc-12-abcd1234", `repos/octo/demo/commits/${SHA}/check-runs`]);
+    expect(calls.map((args) => args[2]?.split("?")[0])).toEqual(["repos/my-org/repo.name_2/git/ref/heads/factory/doc-12-abcd1234", `repos/octo/demo/commits/${SHA}/check-runs`]);
   });
 
   it("lets an ordinary file path through to gh", async () => {
@@ -73,6 +73,6 @@ describe("port input validation", () => {
 
     await port.getFile(REPO, "docs/guide-1/read_me.md", "main").catch(() => undefined);
 
-    expect(calls.map((args) => args[4])).toEqual(["repos/octo/demo/contents/docs/guide-1/read_me.md"]);
+    expect(calls.map((args) => args[2]?.split("?")[0])).toEqual(["repos/octo/demo/contents/docs/guide-1/read_me.md"]);
   });
 });

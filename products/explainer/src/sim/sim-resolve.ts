@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { BEAT_SLOTS } from "../beat-slots.js";
-import { withSlotOverrides } from "../slot-overrides.js";
 import type { ScriptBeat } from "../script-schema.js";
 import { freezeSim } from "./freeze.js";
 import { SIM_MODELS, type SimModel } from "./model.js";
@@ -37,10 +36,13 @@ export const SimTracesSchema = z.object({
 });
 export type SimTraces = z.infer<typeof SimTracesSchema>;
 
-/** What the sim pass reads of a run: the sim beats, the template fill's slots, the gathered facts and the registry. */
+/** A sim beat's slots as the template fill drew them, owner overrides on, or why the fill could not draw it as a sim. */
+export type SimSlotsFill = { slots: Readonly<Record<string, unknown>> } | { problem: string };
+
+/** What the sim pass reads of a run: the sim beats, each one's filled slots, the gathered facts and the registry. */
 export interface SimPassInput {
   beats: readonly Pick<ScriptBeat, "id" | "spoken" | "visual">[];
-  slots: Readonly<Record<string, unknown>> | undefined;
+  filled: ReadonlyMap<string, SimSlotsFill>;
   facts: string | undefined;
   registry: SimRegistry;
   /** Stores one frozen trace's canonical JSON and returns its sha. */
@@ -49,8 +51,16 @@ export interface SimPassInput {
 
 export interface SimPass {
   traces: SimTraces;
-  /** Sim beats with no sim slots yet: nothing to sweep. */
-  unslotted: string[];
+}
+
+/** The first param or swept value outside the doctrine's [min, max], named with its bound, or undefined when all lie within. */
+function outOfBounds(spec: SimModelSpec, params: Readonly<Record<string, number>>, sweep: { param: string; values: readonly number[] }): string | undefined {
+  const checked = [...Object.entries(params).map(([name, value]) => ({ name, value, kind: "param" })), ...sweep.values.map((value) => ({ name: sweep.param, value, kind: "swept value" }))];
+  for (const { name, value, kind } of checked) {
+    const bounds = Object.hasOwn(spec.params, name) ? spec.params[name] : undefined;
+    if (bounds && !(value >= bounds.min && value <= bounds.max)) return `${kind} ${name} = ${value} lies outside the doctrine bounds [${bounds.min}, ${bounds.max}]`;
+  }
+  return undefined;
 }
 
 function sweepBeat(beat: SimBeat, facts: ReadonlyMap<string, number>, input: SimPassInput): { verdict: SimVerdict; sha?: string } {
@@ -58,8 +68,12 @@ function sweepBeat(beat: SimBeat, facts: ReadonlyMap<string, number>, input: Sim
   const model = Object.hasOwn(input.registry.models, id) ? input.registry.models[id] : undefined;
   const spec = input.registry.specs.get(id);
   if (!model || !spec) return { verdict: simFailure(beat.id, "E-SIM-NO-RUN", `sim model ${id} is not in both SIM_MODELS and doctrine/sims`) };
+  const axis = { param: sweep.param, values: sweepValues(sweep) };
+  const merged = { ...defaultsOf(spec), ...params };
+  const refusal = outOfBounds(spec, merged, axis);
+  if (refusal) return { verdict: simFailure(beat.id, "E-SIM-NO-RUN", `sim ${id} did not run: ${refusal}`) };
   try {
-    const swept = sweepSim(model, { ...defaultsOf(spec), ...params }, { param: sweep.param, values: sweepValues(sweep) }, seed);
+    const swept = sweepSim(model, merged, axis, seed);
     const frozen = freezeSim(swept, simDoctrineSha(spec));
     return { verdict: simCheck(frozen.trace, beat, facts, spec), sha: input.putTrace(frozen.json) };
   } catch (error) {
@@ -67,20 +81,24 @@ function sweepBeat(beat: SimBeat, facts: ReadonlyMap<string, number>, input: Sim
   }
 }
 
-/**
- * Sweeps, freezes and checks each sim beat. Its slots are the template fill's with the owner's overrides laid over
- * them; a beat with no parseable sim slots yet is listed, not swept.
- */
+/** The beat's sim slots, or the failure that cuts it: a sim beat with no slots to sweep fails closed. */
+function simSlotsOf(id: string, found: SimSlotsFill | undefined): SimBeat["slots"] | SimVerdict {
+  if (found === undefined || "problem" in found) return simFailure(id, "E-SIM-NO-SLOTS", `beat ${id} has no sim slots to sweep: ${found?.problem ?? "the template fill drew none"}`);
+  const parsed = BEAT_SLOTS.sim.safeParse(found.slots);
+  return parsed.success ? parsed.data : simFailure(id, "E-SIM-NO-SLOTS", `beat ${id} has no sim slots to sweep: ${parsed.error.issues[0]?.message ?? "they do not parse"}`);
+}
+
+/** Sweeps, freezes and checks each sim beat on its filled slots; a beat with none fails, so resolve cuts it. */
 export function runSimPass(input: SimPassInput): SimPass {
   const facts = numberFacts(input.facts);
-  const out: SimPass = { traces: { schema: "explainer.sim-traces/v1", traces: {}, verdicts: [] }, unslotted: [] };
-  for (const { id, spoken, visual } of input.beats) {
-    const slots = BEAT_SLOTS.sim.safeParse(withSlotOverrides(visual, input.slots?.[id]));
-    if (!slots.success) {
-      out.unslotted.push(id);
+  const out: SimPass = { traces: { schema: "explainer.sim-traces/v1", traces: {}, verdicts: [] } };
+  for (const { id, spoken } of input.beats) {
+    const slots = simSlotsOf(id, input.filled.get(id));
+    if ("pass" in slots) {
+      out.traces.verdicts.push(slots);
       continue;
     }
-    const { verdict, sha } = sweepBeat({ id, spoken, slots: slots.data }, facts, input);
+    const { verdict, sha } = sweepBeat({ id, spoken, slots }, facts, input);
     out.traces.verdicts.push(verdict);
     if (sha !== undefined) out.traces.traces[id] = sha;
   }

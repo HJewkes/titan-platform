@@ -1,4 +1,8 @@
+// global.css also self-hosts Space Grotesk and Nunito Sans (OFL), the faces the stage CSS names, so no font ships here.
 import "@titan-design/react-ui/theme/global.css";
+import "./beats/stage/beats.css";
+import "./beats/stage/examples.css";
+import "./beats/stage/explainer.css";
 import { seekClock } from "@titan-design/react-ui/motion";
 import { createRoot } from "react-dom/client";
 import { Composition } from "./Composition.js";

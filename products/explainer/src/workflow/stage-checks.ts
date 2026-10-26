@@ -10,14 +10,18 @@ import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { spellScript } from "../rewrite-pass.js";
-import { keptBeats, readEmphasisInput, ResolvedSchema, simCheckVerdict, simCutOrphanVerdict, slotOverridesVerdict, wordBudgetVerdict } from "../resolve-stage.js";
+import { keptBeats, readEmphasisInput, ResolvedSchema, simCheckVerdict, simCutOrphanVerdict, slotOverridesVerdict, templateFillVerdict, wordBudgetVerdict } from "../resolve-stage.js";
 import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { labelConventionsVerdict } from "../label-conventions.js";
 import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
+import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
+import { directionVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
+import { assertDurationAgreement } from "../render/duration-check.js";
+import { RenderManifestSchema } from "../render/render-manifest.js";
 import { doctrineG2p } from "./voice-g2p.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { addUsage, NO_USAGE, type CachedStage, type Check, type StageUsage } from "./records.js";
@@ -85,6 +89,20 @@ function rewriteTargetRows(input: CheckInput): Verdict {
   return { pass: red.length === 0, detail: `${red.length} of ${report.after.length} target rows red${red.length ? `: ${red.join(", ")}` : ""}` };
 }
 
+/**
+ * The render manifest's page and mix lengths agree. renderVideo refuses a disagreeing render before it writes a
+ * manifest; this re-asserts it over whatever manifest the stage stored, so no other path past it goes unchecked.
+ */
+function durationAgreement(input: CheckInput): Verdict {
+  const { pageDurationS, durationS } = RenderManifestSchema.parse(JSON.parse(text(input, "render-manifest")));
+  try {
+    assertDurationAgreement(pageDurationS, durationS);
+    return { pass: true, detail: `page and mix both ${durationS} s` };
+  } catch (error) {
+    return { pass: false, detail: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 const shownList = (items: readonly string[]): string => items.slice(0, 5).join(", ") + (items.length > 5 ? ` and ${items.length - 5} more` : "");
 
 /** Every emphasis target the draft's beat specs declare has a cue to land on, so the render never holds a static frame. */
@@ -141,8 +159,8 @@ function cueResolution(input: CheckInput): Verdict {
 
 /**
  * Each in-process stage's §5.1 deterministic checks, run as the `checks:<stage>` step after its body. The eval stage
- * gates inside its body, before the reported-only judge spends; a bridged stage's other §5.1 checks are the
- * `check` commands of its `bridge.json` block until its TypeScript port lands.
+ * gates inside its body, before the reported-only judge spends; render reports its two-run check from its body,
+ * which is the step that rendered twice.
  */
 export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   gather: [],
@@ -164,15 +182,38 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   ],
   eval: [],
   resolve: [
-    { name: "emphasis-target", gate: true, reads: ["script", "resolved", "slots"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
+    { name: "variety-top-component", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:top-component") },
+    { name: "variety-component-run", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:component-run") },
+    { name: "variety-template-share", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:template-share") },
+    { name: "variety-framing-run", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:framing-run") },
+    { name: "variety-min-framings", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:min-framings") },
+    { name: "variety-cast-in-motion", gate: false, reads: ["resolved"], run: resolvedVarietyVerdict("variety:cast-in-motion") },
+    { name: "emphasis-target", gate: true, reads: ["script", "resolved"], run: (input) => emphasisGateVerdict(readEmphasisInput(input)) },
     { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
     { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
+    { name: "template-fill", gate: true, reads: ["script", "resolved"], run: templateFillVerdict },
     { name: "sim-check", gate: false, reads: ["sim-traces"], run: simCheckVerdict },
     { name: "sim-cut-orphan", gate: true, reads: ["script", "resolved"], run: simCutOrphanVerdict },
   ],
   tts: [{ name: "cue-resolution", gate: true, reads: ["script", "words"], run: cueResolution }],
-  render: [],
-  qa: [],
+  render: [{ name: "duration-agreement", gate: true, reads: ["render-manifest"], run: durationAgreement }],
+  qa: [
+    { name: "held-errors", gate: true, reads: ["qa"], run: heldErrorsVerdict },
+    { name: "mp4-duration", gate: true, reads: ["qa"], run: mp4DurationVerdict },
+    { name: "motion-happened", gate: true, reads: ["qa"], run: measuredVerdict("motion-happened") },
+    { name: "clipped-text", gate: true, reads: ["qa"], run: measuredVerdict("clipped-text") },
+    { name: "content-fill", gate: true, reads: ["qa"], run: measuredVerdict("content-fill") },
+    { name: "stage-empty", gate: false, reads: ["qa"], run: measuredVerdict("stage-empty") },
+    { name: "picture-change", gate: true, reads: ["qa"], run: timingVerdict("picture-change") },
+    { name: "picture-change-warn", gate: false, reads: ["qa"], run: timingWarnVerdict("picture-change") },
+    { name: "static-window", gate: true, reads: ["qa"], run: timingVerdict("static-window") },
+    { name: "cue-onset", gate: true, reads: ["qa"], run: timingVerdict("cue-onset") },
+    { name: "reading-hold", gate: true, reads: ["qa"], run: timingVerdict("reading-hold") },
+    { name: "direction-gates", gate: false, reads: ["qa"], run: directionVerdict },
+    { name: "black-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("black", "black stretch") },
+    { name: "silence-2s", gate: false, reads: ["qa"], run: mediaScanVerdict("silence", "silence of 2 s or more") },
+    { name: "frozen-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("freeze", "frozen stretch") },
+  ],
   sheets: [],
 };
 

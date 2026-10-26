@@ -14,8 +14,8 @@
     {
       "name": "the emphasis gate reads the generated slots without overrides",
       "file": "products/explainer/src/resolve-stage.ts",
-      "find": "withSlotOverrides(visuals.get(id) ?? {}, value)",
-      "replace": "value",
+      "find": "filled.beats.map((beat) => [beat.id, beat.slots])",
+      "replace": "filled.beats.map((beat) => [beat.id, beat.generated])",
       "kills": [
         "owner slot overrides on script/v1 a valid override wins over the generated slot value and keeps the fields it leaves alone"
       ]

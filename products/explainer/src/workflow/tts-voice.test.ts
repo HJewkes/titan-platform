@@ -44,13 +44,13 @@ describe("tts stage spec", () => {
 });
 
 describe("bridge host file after the tts port", () => {
-  it("refuses a host file that still bridges tts, saying what to move", () => {
+  it("refuses a host file that still bridges tts, saying what to drop", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "explainer-bridge-"));
     const stale = { schema: "explainer-bridge/v1", workdir: dir, theater: { dir, stem: "demo", files: {} }, stages: { tts: { outputs: {}, commands: [{ argv: ["t"] }] } } };
     writeFileSync(path.join(dir, "bridge.json"), JSON.stringify(stale));
 
     try {
-      expect(() => readBridgeFile(dir)).toThrow(/still has a "tts" block.*start of "render"/);
+      expect(() => readBridgeFile(dir)).toThrow(/still has a "tts" block.*delete it, and drop any sample builder/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

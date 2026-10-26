@@ -344,16 +344,16 @@ const SCOPED_LAST_MAIN_REQUESTS = `
   WHERE r.is_sidechain = 0 AND r.session_id IN (SELECT value FROM json_each(@ids)) AND ${FIRST_COPY}
   ${LAST_MAIN_REQUESTS_ORDER}`;
 
-type LastMainRequest = { sessionId: string; lastRequestAt: string };
+export type LastMainRequest = { sessionId: string; lastRequestAt: string };
 
-function lastMainRequests(db: Db, ids: readonly string[] | undefined): LastMainRequest[] {
+export function lastMainRequests(db: Db, ids: readonly string[] | undefined): LastMainRequest[] {
   if (!ids) return db.prepare(ALL_LAST_MAIN_REQUESTS).all() as LastMainRequest[];
   return db.prepare(SCOPED_LAST_MAIN_REQUESTS).all({ ids: JSON.stringify(ids) }) as LastMainRequest[];
 }
 
 const EPISODE_ENDS = `SELECT session_id AS sessionId, heuristic, MAX(ended_at) AS endedAt FROM "${EPISODE_TABLE}" GROUP BY session_id, heuristic`;
 
-function episodeEnds(db: Db): Map<string, number> {
+export function episodeEnds(db: Db): Map<string, number> {
   const rows = db.prepare(EPISODE_ENDS).all() as { sessionId: string; heuristic: Heuristic; endedAt: string }[];
   return new Map(rows.map((row) => [endKey(row.sessionId, row.heuristic), Date.parse(row.endedAt)]));
 }
@@ -367,13 +367,15 @@ const endKey = (sessionId: string, heuristic: Heuristic): string => `${sessionId
  * compare parsed, because a worker episode can end on an inbound whose ISO form differs from the request's.
  */
 export function staleEpisodeSessions(db: Db, ids?: readonly string[]): string[] {
-  const rows = lastMainRequests(db, ids);
+  return staleRows(db, lastMainRequests(db, ids), episodeEnds(db)).map((row) => row.sessionId);
+}
+
+export function staleRows(db: Db, rows: LastMainRequest[], ends: Map<string, number>): LastMainRequest[] {
   const lastRequest = new Map(rows.map((row) => [row.sessionId, Date.parse(row.lastRequestAt)]));
-  const ends = episodeEnds(db);
   const isStale = ({ sessionId, heuristic }: SegmentedSession): boolean => {
     const endedAt = ends.get(endKey(sessionId, heuristic));
     return endedAt === undefined || lastRequest.get(sessionId)! > endedAt;
   };
   const stale = new Set(segmentedSessions(db, [...lastRequest.keys()]).filter(isStale).map((session) => session.sessionId));
-  return rows.map((row) => row.sessionId).filter((id) => stale.has(id));
+  return rows.filter((row) => stale.has(row.sessionId));
 }

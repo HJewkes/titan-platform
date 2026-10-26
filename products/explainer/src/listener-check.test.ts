@@ -9,7 +9,7 @@ import { sha256 } from "./workflow/artifacts.js";
 import { runVideo } from "./workflow/host.js";
 import { runRunCli } from "./workflow/run-cli.js";
 import { runPaths } from "./workflow/run-dir.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./workflow/run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./workflow/run-fakes.test-helpers.js";
 import { failedGates, runJudgedChecks, type CheckInput } from "./workflow/stage-checks.js";
 
 const oneEach = () => fakeListener((sentences) => ({ ...quiet(), questions: [...sentences.keys()].map((id) => ask(id, `What about ${id}?`)) }));
@@ -67,7 +67,7 @@ describe("the listener-questions check in a run", () => {
 
   const listening = (listener: ReturnType<typeof fakeListener>) => {
     fx = fixture();
-    const host = fakeHost(fx, fakeScriptModel(undefined, { usd: 0.05 }), fakeBridge());
+    const host = fakeHost(fx, fakeScriptModel(undefined, { usd: 0.05 }), fakeRender());
     const base = host.harnessFor!(sonnet);
     const harness: JudgeHarness = (call) => (call.prompt.startsWith(LISTENER_PROMPT) ? listener.harness(call) : base(call));
     return { ...host, harnessFor: () => harness };

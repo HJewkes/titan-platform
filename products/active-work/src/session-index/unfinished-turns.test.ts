@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discoverTranscripts } from '@titan-design/session-read';
 import { openGraph, type WorkspaceGraph } from './graph.js';
 import { runRefresh } from './refresh.js';
-import { rollupUnfinishedTurns, rollupYielding } from './unfinished-turns.js';
+import { rollupUnfinishedTurns } from './unfinished-turns.js';
 
 const SESSIONS = ['sess-a', 'sess-b', 'sess-c'];
 
@@ -50,30 +50,6 @@ const unfinishedTurns = (): unknown =>
   graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get();
 
 describe('sliced rollup', () => {
-  it('an abort at a yield point still rolls up the sessions after it', async () => {
-    await unfinishedSessions();
-    const abort = new Error('shutting down');
-
-    await expect(
-      rollupYielding(graph, SESSIONS, () => Promise.reject(abort)),
-    ).rejects.toBe(abort);
-
-    expect(unfinishedTurns()).toEqual({ n: 0 });
-  });
-
-  it('yields once per session', async () => {
-    await unfinishedSessions();
-    let yields = 0;
-
-    const updated = await rollupYielding(graph, [...SESSIONS, 'sess-a'], async () => {
-      yields += 1;
-    });
-
-    expect(updated).toBe(SESSIONS.length);
-    expect(yields).toBe(SESSIONS.length);
-    expect(unfinishedTurns()).toEqual({ n: 0 });
-  });
-
   it('gathers unfinished turns a page at a time, yielding after each page', async () => {
     await unfinishedSessions();
     let yields = 0;

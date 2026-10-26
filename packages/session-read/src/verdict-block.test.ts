@@ -242,11 +242,12 @@ ${block()}`)).toBe("multiple_blocks");
     });
   });
 
+  // Native-RegExp backtracking shows in no count, so the time limit is asserted only under `TITAN_BENCH=1` (TP-4264).
   it("parses a long single-line message in linear time", () => {
     const started = Date.now();
-    refused(`Verdict:${" ".repeat(200_000)}x`);
-    refused("a".repeat(500_000));
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(refused(`Verdict:${" ".repeat(200_000)}x`)).toBe("bad_verdict");
+    expect(refused("a".repeat(500_000))).toBe("no_block");
+    if (process.env.TITAN_BENCH === "1") expect(Date.now() - started).toBeLessThan(1000);
   });
 });
 

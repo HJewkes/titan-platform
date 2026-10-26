@@ -219,7 +219,13 @@ describe("running a stage's checks", () => {
       audition: [],
       script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate", "unknown-words:gate", "word-budget:gate", "runtime:gate", "beat-length:gate", "label-conventions:reported"],
       rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
-      eval: [], resolve: ["emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "sim-check:reported", "sim-cut-orphan:gate"], tts: ["cue-resolution:gate"], render: [], qa: [], sheets: [],
+      eval: [], resolve: [
+        "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
+        "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "template-fill:gate",
+        "sim-check:reported", "sim-cut-orphan:gate",
+      ], tts: ["cue-resolution:gate"], render: ["duration-agreement:gate"], qa: ["held-errors:gate", "mp4-duration:gate", "motion-happened:gate", "clipped-text:gate", "content-fill:gate", "stage-empty:reported",
+        "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate", "direction-gates:reported",
+        "black-frames:reported", "silence-2s:reported", "frozen-frames:reported"], sheets: [],
     });
   });
 });
@@ -235,5 +241,45 @@ describe("eval stage gates", () => {
     await expect(run).rejects.toBeInstanceOf(StageFailure);
     await expect(run).rejects.toMatchObject({ checks: [{ name: "l0", gate: true, pass: false }, { name: "pace", gate: true, pass: true }] });
     expect(judged).toBe(0);
+  });
+});
+
+/** A synthetic resolved artifact: one beat per component name, all in the full framing on the template layer unless varied. */
+const resolvedArtifact = (components: readonly string[], varied: boolean, profile = "repo-tour"): string =>
+  json({
+    schema: "explainer.resolved/v1",
+    profile,
+    beats: components.map((name, i) => ({
+      id: `b${String(i + 1).padStart(2, "0")}`, chapter: "ch1", key: { function: "HOOK", job: "map", content: "items", route: "none" }, row: "r1",
+      beat: "list-beat", component: { name, maturity: "shipped" }, band: "concept",
+      framing: varied ? ["full", "focus", "split", "stack"][i % 4] : "full", layer: varied && i % 2 === 0 ? "custom" : "template", anchors: [],
+    })),
+    budgets: [],
+  });
+
+describe("resolve stage variety checks", () => {
+  const VARIETY = ["variety-top-component", "variety-component-run", "variety-template-share", "variety-framing-run", "variety-min-framings", "variety-cast-in-motion"];
+  const variety = (run: ReturnType<typeof runStageChecks>) => run.checks.filter((check) => VARIETY.includes(check.name));
+
+  it("passes every variety row on a varied resolve", () => {
+    const run = runStageChecks("resolve", input({ resolved: resolvedArtifact(["ListBeat", "StatBeat", "CompareBeat", "CodeBeat", "MapBeat", "ListBeat", "StatBeat"], true) }));
+
+    expect(variety(run).map((check) => [check.name, check.pass])).toEqual(VARIETY.map((name) => [name, true]));
+  });
+
+  it("reports a repetitive resolve, naming its beats, and fails no gate", () => {
+    const run = runStageChecks("resolve", input({ resolved: resolvedArtifact(["ListBeat", "ListBeat", "ListBeat", "StatBeat"], false) }));
+
+    expect(verdict(run, "variety-top-component")).toMatchObject({ gate: false, pass: false, detail: expect.stringContaining("ListBeat on 3 of 4 beats (75 %, at most 30 %): b01, b02, b03") });
+    expect(verdict(run, "variety-component-run")).toMatchObject({ gate: false, pass: false, detail: "3 beats in a row share component ListBeat: b01, b02, b03" });
+    expect(verdict(run, "variety-min-framings")).toMatchObject({ gate: false, pass: false });
+    expect(failedGates(run.checks)).toEqual([]);
+  });
+
+  it("reads the resolved profile's limits, and an unknown profile is reported, not gated", () => {
+    const run = runStageChecks("resolve", input({ resolved: resolvedArtifact(["ListBeat", "StatBeat"], true, "no-such-profile") }));
+
+    expect(verdict(run, "variety-top-component")).toMatchObject({ gate: false, pass: false, detail: expect.stringContaining("unknown profile no-such-profile") });
+    expect(failedGates(run.checks)).toEqual([]);
   });
 });

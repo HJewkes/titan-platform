@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "videos.edit is registered as a read",
+      "file": "apps/console/server/video-props.ts",
+      "find": "\"videos.edit\": ownerWriteCommand({",
+      "replace": "\"videos.edit\": readCommand({",
+      "kills": [
+        "the props commands' classes serve the reads as reads and the save as the one owner-write"
+      ]
+    },
+    {
+      "name": "the save drops the note it was turned from",
+      "file": "apps/console/server/video-props.ts",
+      "find": "return saveEdit(explainerBin, { ...slotEdit(base, await renderSha256(file), now()), ...(fromNote === undefined ? {} : { fromNote }) });",
+      "replace": "return saveEdit(explainerBin, slotEdit(base, await renderSha256(file), now()));",
+      "kills": [
+        "videos.edit saves edits to two beats as one `edit apply --start` over the current render, citing the note"
+      ]
+    },
+    {
+      "name": "a cited note is not checked against the video",
+      "file": "apps/console/server/video-props.ts",
+      "find": "await assertNoteOn(file, fromNote);",
+      "replace": "void assertNoteOn;",
+      "kills": [
+        "videos.edit refuses a note that is not on this video without running explainer"
+      ]
+    },
+    {
+      "name": "the save stores the edit without starting its run",
+      "file": "apps/console/server/video-props.ts",
+      "find": "[\"edit\", \"apply\", \"-\", \"--start\", \"--json\"]",
+      "replace": "[\"edit\", \"apply\", \"-\", \"--json\"]",
+      "kills": [
+        "videos.edit saves edits to two beats as one `edit apply --start` over the current render, citing the note"
+      ]
+    }
+  ]
+}

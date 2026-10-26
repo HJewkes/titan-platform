@@ -13,6 +13,7 @@ const VERDICT_READING: Record<Verdict, string> = {
   vacuous: "No added test fails on the base, so none proves the change. That is blocking unless you show why no test can fail there.",
   "no-tests": "The change adds or edits no test. That is blocking unless you show why no test can fail on the base.",
   error: "fix-proof could not finish, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
+  refused: "fix-proof ran nothing, since the PR's base is not the default branch, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
 };
 
 const MUTANTS_READING =
@@ -24,11 +25,12 @@ function verdictLine(result: FixProofResult): string {
 }
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-export type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
+export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only";
 
 /** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
 const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
   error: "Shepherd marks this head's fix-proof unverified: the run ended in an error, which a head can cause on purpose.",
+  refused: "Shepherd marks this head's fix-proof unverified: the run refused a base that is not the default branch, so it tested nothing.",
   untrusted: "Shepherd marks this head's fix-proof unverified: its run did not come from a trusted, successful fix-proof job, so its result is not evidence.",
   unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
   "no-repro-test-only": "Shepherd marks this head's fix-proof unverified: the PR changes only tests, so its proof found no test that fails on the base, and the review goes ahead.",

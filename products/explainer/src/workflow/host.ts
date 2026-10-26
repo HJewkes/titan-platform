@@ -4,7 +4,7 @@ import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-de
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
-import type { BeatWorker } from "../build/beat-worker.js";
+import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { beatWorkerFor } from "../build/claude-print-worker.js";
 import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
@@ -12,7 +12,7 @@ import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
 import { linkEditRun } from "./edit-ledger.js";
 import { editOf, editPins } from "./edit-run.js";
-import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
+import { runBridgeFile, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
 import { checkPins, findBase, inputArtifacts, neededInputs, reusedFromBase, startsFresh } from "./host-plan.js";
 import { stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
@@ -22,11 +22,21 @@ import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
 import type { MediaExec } from "./sheets-stage.js";
+import type { QaEngine } from "../qa/qa-engine.js";
+import type { RenderEngine } from "../render/render-stage.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
 import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
 import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
+
+// Repairs only when the host passes a repairer: the installed beat-builder profile predates TP-2608's TSX variant.
+function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
+  const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : {};
+  const worker = beatWorkerFor(host.beatWorker);
+  return { ...(worker ? { worker } : {}), ...repairer };
+}
 
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
@@ -40,8 +50,8 @@ export interface RunHost {
   evalChecks?: readonly L0Check[];
   /** Runs the reported `listener-questions` check on the script stage, on the run's judge; off by default since it spends. */
   listener?: { threshold?: number };
-  /** Runs a bridged command; tests pass a fake. */
-  exec?: BridgeExec;
+  /** The render stage's page build and capture; the composition page and Chromium by default, tests pass a fake. */
+  renderEngine?: RenderEngine;
   /** The tts stage's engine; speech-tts Kokoro by default, tests pass a fake. */
   ttsEngine?: () => Promise<TtsEngine>;
   /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
@@ -50,8 +60,14 @@ export interface RunHost {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
   media?: MediaExec;
+  /** The qa stage's browser and ffprobe; real Chromium by default, tests pass a fake. */
+  qaEngine?: QaEngine;
+  /** The qa stage's timing thresholds in place of the type profile's; tests of the run's plumbing pass lax ones. */
+  qaTiming?: TimingProfile;
   /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
   beatWorker?: BeatWorker | null;
+  /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
+  layerRepairer?: LayerRepairer;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -200,18 +216,17 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
-  const worker = beatWorkerFor(host.beatWorker);
+  const runners = layerRunners(host);
   const children = childRoutes({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(worker ? { worker } : {}),
+    dataDir: host.dataDir, store, now, ...listenerJudge(host, plan), ...runners,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
-    ...(host.media ? { media: host.media } : {}),
+    ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.qaTiming ? { qaTiming: host.qaTiming } : {}),
+    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
   });
-  const builder = worker ? { builder: worker.builder } : {};
+  const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
-  const stage = {
-    dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host),
-  };
+  const stage = { dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host) };
   const routes = plan ? [...children, stageRoute({ ...stage, plan })] : children;
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), childStepIds(stage));

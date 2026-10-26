@@ -27,12 +27,20 @@ describe("render manifest", () => {
     expect(write).toThrow();
   });
 
-  it("refuses a manifest that claims a QA gate ran", () => {
+  it("refuses a manifest that claims a QA gate passed with no qa record", () => {
     const passed = { ...MANIFEST, qaGate: "passed" };
 
     const parse = () => RenderManifestSchema.parse(passed);
 
-    expect(parse).toThrow();
+    expect(parse).toThrow("qa is recorded exactly when qaGate is passed");
+  });
+
+  it("refuses a qa record on a render whose gate was skipped", () => {
+    const skipped = { ...MANIFEST, qaGate: "skipped", qa: { heldErrors: 0, gateProfile: SHA } };
+
+    const parse = () => RenderManifestSchema.parse(skipped);
+
+    expect(parse).toThrow("qa is recorded exactly when qaGate is passed");
   });
 
   it("collects this machine's host without its hostname, user or home directory", { timeout: 60_000 }, async () => {

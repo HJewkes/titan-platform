@@ -1,6 +1,6 @@
 # Planner guide: daily-overview
 
-<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.5.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.5.1) by `explainer guide types`. Do not edit. -->
 
 What the factory got done against its goals: each lane and what it moved, the ships that mattered most, the side quests, the stats, then what slows us down and what to change.
 

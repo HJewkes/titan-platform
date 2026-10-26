@@ -1,4 +1,4 @@
-export { LinearRegExp } from './linear-regexp.js';
+export { LinearRegExp, linearRegExpSteps } from './linear-regexp.js';
 
 /** Where a target repo keeps its fix-proof config; read at the merge base, never at head. */
 declare const CONFIG_PATH = ".github/fix-proof.json";
@@ -265,7 +265,8 @@ declare function classifyMutants(specs: readonly SpecUnderTest[], decoded: Decod
 
 declare const TEST_CLASSES: readonly ["reproduces", "passes-on-base", "new-api", "fails-on-head", "not-run"];
 type TestClass = (typeof TEST_CLASSES)[number];
-declare const VERDICTS: readonly ["reproduced", "unproven", "vacuous", "no-tests", "error"];
+/** `refused` is never classified: fix-proof-run.sh prints it for a base that is not the default branch, and it ran nothing. */
+declare const VERDICTS: readonly ["reproduced", "unproven", "vacuous", "no-tests", "error", "refused"];
 type Verdict = (typeof VERDICTS)[number];
 type FileState = "ran" | "load-error" | "hook-error" | "not-collected";
 interface ReportRun {
@@ -320,6 +321,10 @@ interface FixProofResult {
      * beside an `error` verdict for a source diff whose spec has a kill naming no test at head.
      */
     mutants?: MutantsResult;
+    /** The base branch the line judged, as fix-proof-run.sh shows a ref; a judge that predates it prints none. */
+    base?: string;
+    /** Only on a `refused` line: the default branch fix-proof runs against, which `base` is not. */
+    defaultBranch?: string;
 }
 type ParsedResultLine = {
     ok: true;
@@ -454,6 +459,8 @@ interface JudgeOptions {
     base: string;
     head: string;
     reports: JudgeReports;
+    /** The PR's base branch, as fix-proof-run.sh shows a ref; the line names it so a reader binds it to the base it judged. */
+    baseRef?: string;
     budgetMs?: number;
     exec?: Exec;
 }

@@ -31,7 +31,7 @@
     {
       "name": "a stale manifest survives a failed render",
       "file": "products/explainer/src/render/render-video.ts",
-      "find": "  await rm(paths.manifest, { force: true });\n",
+      "find": "rm(paths.manifest, { force: true }), ",
       "replace": "",
       "kills": [
         "renderVideo removes a manifest left by an earlier render when this one fails"

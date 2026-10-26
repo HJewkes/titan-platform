@@ -1,24 +1,27 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { PerformanceObserver, type PerformanceEntry } from 'node:perf_hooks';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { discoverTranscripts, type DiscoveredTranscript } from '@titan-design/session-read';
 import { openGraph, type WorkspaceGraph } from './graph.js';
+import { rowsWrittenCounter } from './pass-metrics.js';
 import { runRefresh } from './refresh.js';
 
 /**
- * A pass over 500 dirty transcripts. Run as one synchronous transaction, the
- * rollup held the loop about 2.5 s on this fixture; sliced, the longest chunk
- * is 80 to 250 ms. The 1 s bound is the plan's: well above the sliced chunk,
- * and 2.5x below the unsliced one for a fast machine.
+ * A pass over many dirty transcripts must hand the loop back between bounded
+ * steps (TP-4172, TP-4175). The chunk between two yields is measured in rows
+ * written, which a loaded runner cannot stretch the way it stretched the CPU
+ * and wall-clock readings this file used to take (TP-4199, TP-4264). Sliced,
+ * the longest chunk is one transcript's share of the pass, about 1/70 of its
+ * rows; a pass that rolls every session up in one transaction holds most of
+ * them in a single chunk.
  */
 
-const TRANSCRIPTS = 500;
-const EXCHANGES = 250;
-const STALL_BOUND_MS = 1_000;
-const SLOW_FIXTURE = { timeout: 600_000 };
+const TRANSCRIPTS = 60;
+const EXCHANGES = 50;
+/** No chunk may write more rows than this many transcripts' share of the pass. */
+const MAX_CHUNK_TRANSCRIPTS = 4;
 
 let corpus: string;
 let transcripts: DiscoveredTranscript[];
@@ -69,10 +72,6 @@ afterAll(() => {
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-pass-stall-'));
   graph = openGraph(path.join(dir, 'graph.sqlite3'));
-  // Each WAL autocheckpoint fsyncs twice inside a commit on this thread. A
-  // contended CI disk made that 2 to 3 s, so the bound measured the runner's
-  // disk instead of the pass's own synchronous chunks (TP-4200).
-  graph.db.pragma('synchronous = OFF');
   vi.stubEnv('AGENT_CHAT_HOME', path.join(dir, 'agent-chat'));
 });
 
@@ -82,79 +81,51 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/**
- * The longest synchronous chunk `fn` holds the loop for, in this thread's CPU
- * time. The daemon logs wall-clock loop delay (`measureLoopStall`), but on a
- * loaded CI runner that also counts time the OS keeps the thread off the CPU:
- * chunks of about 250 ms read as 2.6 to 3.3 s stalls there (TP-4199). A timer
- * fires between chunks, so the CPU time spent between two firings is at most
- * one chunk plus the sub-millisecond work around it.
- *
- * GC pauses in each interval are subtracted. A threads-pool worker's heap
- * still holds garbage from the files it ran before this one, so a major GC
- * there costs the heap's size, not the pass's. On CI a resume pass read 1348 ms
- * where it reads under 30 ms with no GC locally.
- */
-async function measureLongestChunk<T>(fn: () => Promise<T>): Promise<{ result: T; maxChunkMs: number }> {
-  const intervals: CpuInterval[] = [];
-  const gcs: PerformanceEntry[] = [];
-  const observer = new PerformanceObserver((list) => gcs.push(...list.getEntries()));
-  observer.observe({ entryTypes: ['gc'] });
-  let since = process.threadCpuUsage();
-  let sinceAt = performance.now();
+/** Rows the pass writes between two of its yields, and before the first and after the last. */
+async function measureChunks<T>(
+  pass: (yieldPoint: () => Promise<void>) => Promise<T>,
+): Promise<{ result: T; chunks: number[] }> {
+  const rowsWritten = rowsWrittenCounter(graph.db);
+  const chunks: number[] = [];
+  let since = 0;
   const sample = (): void => {
-    const spent = process.threadCpuUsage(since);
-    const now = performance.now();
-    intervals.push({ start: sinceAt, end: now, cpuMs: (spent.user + spent.system) / 1_000 });
-    since = process.threadCpuUsage();
-    sinceAt = now;
+    const now = rowsWritten();
+    chunks.push(now - since);
+    since = now;
   };
-  const timer = setInterval(sample, 1);
-  try {
-    const result = await fn();
+  const result = await pass(async () => {
     sample();
-    // Node queues a GC's entry on the loop after the pause, so let the last ones land.
     await new Promise((resolve) => setImmediate(resolve));
-    gcs.push(...observer.takeRecords());
-    const chunks = intervals.map((interval) => interval.cpuMs - gcMsWithin(gcs, interval));
-    return { result, maxChunkMs: Math.round(Math.max(0, ...chunks)) };
-  } finally {
-    clearInterval(timer);
-    observer.disconnect();
-  }
+  });
+  sample();
+  return { result, chunks };
 }
 
-interface CpuInterval {
-  start: number;
-  end: number;
-  cpuMs: number;
+function expectSliced(chunks: readonly number[]): void {
+  const passRows = chunks.reduce((sum, rows) => sum + rows, 0);
+  expect(passRows).toBeGreaterThan(TRANSCRIPTS * EXCHANGES);
+  expect(Math.max(...chunks)).toBeLessThanOrEqual((passRows * MAX_CHUNK_TRANSCRIPTS) / TRANSCRIPTS);
 }
 
-function gcMsWithin(gcs: readonly PerformanceEntry[], { start, end }: CpuInterval): number {
-  let ms = 0;
-  for (const gc of gcs) ms += Math.max(0, Math.min(end, gc.startTime + gc.duration) - Math.max(start, gc.startTime));
-  return ms;
+function deltaPass(yieldPoint?: () => Promise<void>) {
+  return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, skipWorkspace: true, yieldPoint });
 }
 
-function deltaPass() {
-  return runRefresh({ graph, mode: 'delta', transcripts, taskRoot: dir, skipWorkspace: true });
-}
-
-describe('session index pass over 500 dirty transcripts', () => {
-  it('a delta pass never stalls the event loop for a second', SLOW_FIXTURE, async () => {
-    const { result, maxChunkMs } = await measureLongestChunk(deltaPass);
+describe('session index pass over 60 dirty transcripts', () => {
+  it('a delta pass yields between transcripts and between sessions it rolls up', async () => {
+    const { result, chunks } = await measureChunks(deltaPass);
 
     expect(result.indexed).toBe(TRANSCRIPTS);
     expect(result.turnsRolledUp).toBe(TRANSCRIPTS * EXCHANGES);
-    expect(maxChunkMs).toBeLessThanOrEqual(STALL_BOUND_MS);
+    expectSliced(chunks);
   });
 
-  it('a pass resuming unfinished turns never stalls the event loop for a second', SLOW_FIXTURE, async () => {
+  it('a pass resuming unfinished turns yields between sessions it rolls up', async () => {
     await deltaPass();
     // What a pass killed between its scan and its rollup leaves behind (TP-875).
     graph.db.prepare('UPDATE turn SET ended_at = NULL').run();
 
-    const { result, maxChunkMs } = await measureLongestChunk(() =>
+    const { result, chunks } = await measureChunks((yieldPoint) =>
       runRefresh({
         graph,
         root: corpus,
@@ -162,11 +133,22 @@ describe('session index pass over 500 dirty transcripts', () => {
         skipWorkspace: true,
         skipPrOutcomes: true,
         episodeSweep: false,
+        yieldPoint,
       }),
     );
 
     expect(result.turnsRolledUp).toBe(TRANSCRIPTS * EXCHANGES);
     expect(graph.db.prepare('SELECT COUNT(*) AS n FROM turn WHERE ended_at IS NULL').get()).toEqual({ n: 0 });
-    expect(maxChunkMs).toBeLessThanOrEqual(STALL_BOUND_MS);
+    expectSliced(chunks);
+  });
+
+  it('a --full rebuild with an episode sweep yields between transcripts and sessions', async () => {
+    const { result, chunks } = await measureChunks((yieldPoint) =>
+      runRefresh({ graph, transcripts, full: true, taskRoot: dir, skipWorkspace: true, skipPrOutcomes: true, yieldPoint }),
+    );
+
+    expect(result.indexed).toBe(TRANSCRIPTS);
+    expect(result.turnsRolledUp).toBe(TRANSCRIPTS * EXCHANGES);
+    expectSliced(chunks);
   });
 });

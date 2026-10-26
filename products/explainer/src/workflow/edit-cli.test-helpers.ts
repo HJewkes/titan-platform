@@ -3,7 +3,7 @@ import path from "node:path";
 import { runEditCli, type DetachedSpawn, type EditCliDeps } from "./edit-cli.js";
 import { runVideo, type RunOutcome } from "./host.js";
 import type { RunReport } from "./report.js";
-import { fakeBridge, fakeHost, fakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 
@@ -18,12 +18,12 @@ interface Base {
 /** A finished base run, an edit file drafted over it, and `explainer edit` on the fixture's data dir; `fx` is read per call. */
 export function editHarness(fx: () => Fixture) {
   async function baseRun(extra: Parameters<typeof fakeHost>[3] = {}, model = fakeScriptModel()): Promise<Base> {
-    const result = await runVideo({ spine: fx().spine, facts: fx().facts }, fakeHost(fx(), model, fakeBridge(), extra));
+    const result = await runVideo({ spine: fx().spine, facts: fx().facts }, fakeHost(fx(), model, fakeRender(), extra));
     return { result, scriptSha: out(result.report, "rewrite").script!, mp4Sha: out(result.report, "render").mp4! };
   }
 
   function editFile(base: Base, beats: Record<string, unknown>, name = "edit.json"): string {
-    const file = path.join(fx().workdir, name);
+    const file = path.join(path.join(fx().dataDir, ".."), name);
     const edit = { schema: "explainer.slot-edit/v1", base: { runId: base.result.runId, scriptSha: base.scriptSha, mp4Sha: base.mp4Sha }, beats, createdAt: "2026-10-24T00:00:00Z" };
     writeFileSync(file, JSON.stringify(edit));
     return file;

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the listener sets no request timeout, so a stalled body holds its socket",
+      "file": "products/factory/src/ingress/listen.ts",
+      "find": "  return { requestTimeout: timeoutMs, headersTimeout: timeoutMs,",
+      "replace": "  return { headersTimeout: timeoutMs,",
+      "kills": [
+        "ingress listener timeouts cuts a sender that stalls halfway through its body within the request timeout and writes nothing"
+      ]
+    },
+    {
+      "name": "the connection sweep runs at node's 30 s default",
+      "file": "products/factory/src/ingress/listen.ts",
+      "find": ", connectionsCheckingInterval: Math.max(50, Math.floor(timeoutMs / 8)) };",
+      "replace": " };",
+      "kills": [
+        "ingress listener timeouts cuts a sender that stalls halfway through its body within the request timeout and writes nothing"
+      ]
+    }
+  ]
+}

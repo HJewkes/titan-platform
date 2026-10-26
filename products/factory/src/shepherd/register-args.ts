@@ -28,6 +28,7 @@ export const RegisterArgs = z
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
+    lastSlice: z.boolean().optional(),
     policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })

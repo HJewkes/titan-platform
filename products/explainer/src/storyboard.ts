@@ -6,6 +6,9 @@ const kebab = z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, "expected keba
 
 const BEAT_ID = /^beat-(\d+)$/;
 
+// A cue is one spoken word, or its nth occurrence as `word#n`: the form the cue resolver splits.
+const CUE_WORD = /^[^#\s]+(#[1-9]\d*)?$/;
+
 /** The number a `beat-NN` id names, so `beat-03` and `beat-3` are the same beat and `beat-30` is not. */
 export function beatNumber(id: string): number | undefined {
   const match = BEAT_ID.exec(id);
@@ -22,6 +25,7 @@ const BeatSchema = z
     duration_s: z.number().positive(),
     // Seconds from the beat start. A format change adds an optional field, never a version bump alone.
     stops: z.array(z.number().nonnegative()).optional(),
+    cues: z.array(z.string().regex(CUE_WORD, "expected word or word#n")).optional(),
     spoken: z.string().min(1),
     display: z.string().min(1).optional(),
     slots: z.record(z.string(), z.unknown()).default({}),

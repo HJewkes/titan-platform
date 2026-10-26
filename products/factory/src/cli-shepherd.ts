@@ -1,6 +1,7 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
+import { refusedInProcess } from "./cli-agent-env.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
@@ -32,7 +33,8 @@ interface ShepherdOpts extends TimelineView, StatusFilter {
   deploy?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
+type SliceOpts = { slice?: string | false; lastSlice?: true };
+type RegisterOpts = ShepherdOpts & SliceOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
@@ -70,6 +72,7 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .option("--kind <kind>", "correctness, security, feature, refactor, test-only (the PR changes only tests) or unknown")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
     .option("--no-slice", "clear a slice kept from an earlier registration")
+    .option("--last-slice", "this PR is its task's last slice, as a 'Last slice: yes' body line says; under taskClose last-slice-only its merge closes the task")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
@@ -177,13 +180,13 @@ const PR_VERBS = [
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, head, base, reviewer, kind, slice } = opts;
+  const { branch, head, base, reviewer, kind, slice, lastSlice } = opts;
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
   const registrant = io.env.AGENT_CHAT_NAME || undefined;
-  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
@@ -202,10 +205,16 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
+  if (writesPort(name, args) && refusedInProcess(verbs, probe, opts.port, name.replace("shepherd.", "shepherd "))) return;
   const envelope = await localEnvelope(verbs, name, args);
   if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
+
+/** The commands whose in-process fallback writes, the ones the brief names; repair-stop writes only when its action is not `list`. */
+const PORT_WRITES: ReadonlySet<ShepherdCommandName> = new Set(["shepherd.merge", "shepherd.review", "shepherd.release", "shepherd.hold", "shepherd.resync", "shepherd.repair-stop"]);
+
+const writesPort = (name: ShepherdCommandName, args: object): boolean => PORT_WRITES.has(name) && !("action" in args && args.action === "list");
 
 /** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
 async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {

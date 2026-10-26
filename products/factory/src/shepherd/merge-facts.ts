@@ -76,6 +76,8 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   ciPolicy?: CiPolicy;
   /** The head's unverified fix-proof standing and read reason; recorded, never gated on (decision 303). */
   proofUnverified?: string;
+  /** The base branch the head's fix-proof line says it judged, when the line names one. */
+  proofBase?: string;
 }
 
 export interface EvidenceCheckRun {
@@ -105,6 +107,7 @@ export interface EvidenceRecord {
   /** On a weakened line, every changed line of the changed `.github/` files, shown or counted, for the D21 card. */
   ciPolicyChanges?: CiPolicyFileChange[];
   proofUnverified?: string;
+  proofBase?: string;
   /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
   riskTier?: RiskTier;
 }
@@ -342,6 +345,12 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   return { pr, merge, runs, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
+/** The head's fix-proof standing and judged base, absent keys left out so a record spreads them as they are. */
+const proofFields = (input: MergeEvidenceInput): Pick<EvidenceRecord, "proofUnverified" | "proofBase"> => ({
+  ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
+  ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
+});
+
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
   const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines, ciPolicyChanges: changes } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
@@ -367,7 +376,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     ...(merge.carry && { carry: merge.carry }),
     ...ciPolicy,
     ...(changes && { ciPolicyChanges: changes }),
-    ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
+    ...proofFields(input),
     riskTier: riskTier(risk),
   };
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));

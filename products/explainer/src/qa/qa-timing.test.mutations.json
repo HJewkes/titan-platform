@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "qa registers no static-window check",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"static-window\", gate: true, reads: [\"qa\"], run: timingVerdict(\"static-window\") },\n",
+      "replace": "",
+      "kills": [
+        "qa stage timing gates fails the stage on a 3.1 s still picture with no text to read and counts it",
+        "qa stage timing gates passes every timing gate on a 4 s beat that keeps moving"
+      ]
+    },
+    {
+      "name": "picture-change is reported, not a gate",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"picture-change\", gate: true,",
+      "replace": "{ name: \"picture-change\", gate: false,",
+      "kills": [
+        "qa stage timing gates fails the stage on a 9 s beat with no cue-driven change and reports the gap"
+      ]
+    },
+    {
+      "name": "qa.json pass ignores the timing gates",
+      "file": "products/explainer/src/qa/qa-report.ts",
+      "find": " || base.timing.gates.some((gate) => TIMING_GATES.includes(gate.id) && !gate.pass)",
+      "replace": "",
+      "kills": [
+        "qa stage timing gates fails the stage on a 9 s beat with no cue-driven change and reports the gap",
+        "qa stage timing gates fails the stage on a 3.1 s still picture with no text to read and counts it"
+      ]
+    },
+    {
+      "name": "qa spec ignores the run's type profile pacing",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "timingProfile(settings.profile ? profileFor(loadProfiles(), settings.profile) : undefined)",
+      "replace": "timingProfile()",
+      "kills": [
+        "qa stage spec timing carries the run's type pacing and runtime band, with the defaults for the pacing fields the type leaves out"
+      ]
+    }
+  ]
+}

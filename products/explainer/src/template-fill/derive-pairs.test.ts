@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { emphasisTargets } from "../beat-load.js";
+import { shippedSpecs } from "../resolve-fixtures.test-helpers.js";
 import { fillSolo } from "./fill-fixtures.test-helpers.js";
 
 const SPOKEN = "Before one queue, after two lanes; before hand checks, after ledger checks.";
@@ -6,7 +8,7 @@ const cue = (target: string, atCue: string) => ({ action: "V6", target, atCue })
 const compare = { beat: "compare", labels: ["before: One queue", "after: Two lanes", "before: Hand checks", "after: Ledger checks"] };
 
 describe("template fill: compare beats", () => {
-  it("pairs the k-th before with the k-th after under Before and After", () => {
+  it("pairs the k-th before with the k-th after under Before and After, each side named by its label's number", () => {
     // Arrange / Act
     const found = fillSolo(compare, SPOKEN);
 
@@ -15,8 +17,8 @@ describe("template fill: compare beats", () => {
       leftTitle: "Before",
       rightTitle: "After",
       rows: [
-        { id: "rows-1", left: "One queue", right: "Two lanes" },
-        { id: "rows-2", left: "Hand checks", right: "Ledger checks" },
+        { id: "rows-1", alias: "rows-2", left: "One queue", right: "Two lanes" },
+        { id: "rows-3", alias: "rows-4", left: "Hand checks", right: "Ledger checks" },
       ],
     });
   });
@@ -31,10 +33,21 @@ describe("template fill: compare beats", () => {
     // Assert
     expect(found.reveals).toEqual([
       { target: "rows-1", part: "left", atCue: "Before" },
-      { target: "rows-1", part: "right", atCue: "two" },
-      { target: "rows-2", part: "left", atCue: "hand" },
-      { target: "rows-2", part: "right", atCue: "ledger" },
+      { target: "rows-2", part: "right", atCue: "two" },
+      { target: "rows-3", part: "left", atCue: "hand" },
+      { target: "rows-4", part: "right", atCue: "ledger" },
     ]);
+  });
+
+  it("gives a cue on any label's number exactly one element to light", () => {
+    // Arrange
+    const found = fillSolo(compare, SPOKEN);
+
+    // Act
+    const targets = emphasisTargets(shippedSpecs.get("compare")!, found.slots);
+
+    // Assert
+    expect(targets.sort()).toEqual(["rows-1", "rows-2", "rows-3", "rows-4"]);
   });
 
   it("falls back to a list when every label is on one side", () => {

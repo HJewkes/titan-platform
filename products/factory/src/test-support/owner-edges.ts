@@ -14,7 +14,7 @@ const DIR = 0o040755;
 
 const helperStat: StatPort = (path) => ({ "/": { uid: 0, mode: DIR }, "/synthetic": { uid: 0, mode: DIR }, [HELPER]: { uid: 0, mode: FILE } })[path];
 
-/** Swaps confirmOwner's OS edge for the rest of the current test. */
+/** Swaps the owner-presence helper's OS edge for the rest of the current test. */
 export function useOwnerPresenceEdge(edge: ConfirmOptions): void {
   onTestFinished(setOwnerPresenceEdge(edge));
 }

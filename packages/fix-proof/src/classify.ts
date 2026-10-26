@@ -4,7 +4,8 @@ import { readVitestReport, type FileRun, type TestRun } from "./report.js";
 export const TEST_CLASSES = ["reproduces", "passes-on-base", "new-api", "fails-on-head", "not-run"] as const;
 export type TestClass = (typeof TEST_CLASSES)[number];
 
-export const VERDICTS = ["reproduced", "unproven", "vacuous", "no-tests", "error"] as const;
+/** `refused` is never classified: fix-proof-run.sh prints it for a base that is not the default branch, and it ran nothing. */
+export const VERDICTS = ["reproduced", "unproven", "vacuous", "no-tests", "error", "refused"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export type FileState = "ran" | "load-error" | "hook-error" | "not-collected";

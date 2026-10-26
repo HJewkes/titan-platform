@@ -5,7 +5,7 @@ import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { singleSeat } from "./held-repair.js";
 import { MAIN_WATCH_DB, MainWatchLedger, type WatchedSha } from "./main-watch-ledger.js";
-import { judgeMain, readMainRules, type MainRules } from "./main-verdict.js";
+import { judgeMain, onlyCancels, readMainRules, type MainRules } from "./main-verdict.js";
 import { resolveEffectivePolicy } from "./policy.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
 import type { ShepherdStore } from "./store.js";
@@ -212,7 +212,7 @@ function verdictAt(sha: string, runs: readonly CheckRun[], rules: MainRules | un
   const { findings, counted } = judgeMain(sha, runs, rules);
   if (counted === 0) return { kind: "pending" };
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
-  if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { kind: "cancelled" };
+  if (onlyCancels(failed)) return { kind: "cancelled" };
   if (failed.length > 0) return { kind: "red", failing: [...new Set(failed.map((run) => run.name))] };
   return { kind: findings.length > 0 ? "pending" : "green" };
 }

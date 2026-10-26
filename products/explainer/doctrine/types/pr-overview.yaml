@@ -2,7 +2,7 @@
 # and automatically only as the decision-brief cut for a PR waiting at the visual gate (owner Q6).
 schema: type-profile/v1
 type: pr-overview
-version: 0.4.0
+version: 0.4.1
 family: review-pr
 intent: "Explain one change: why it exists, what it changes grouped by purpose, what proves it, what it risks, and what the viewer should do."
 audience: { default: owner-internal, allow: [owner-internal] }

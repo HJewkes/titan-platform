@@ -1,6 +1,6 @@
 # Planner guide: paper-summary
 
-<!-- Generated from doctrine/types/paper-summary.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/paper-summary.yaml (profile 0.3.1) by `explainer guide types`. Do not edit. -->
 
 One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us.
 

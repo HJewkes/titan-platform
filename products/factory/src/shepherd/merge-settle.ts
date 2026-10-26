@@ -21,6 +21,7 @@ function rereadInput(runId: string, evidence: MergeEvidence, visualPaths: string
     ...(evidence.ciPolicy && { ciPolicy: evidence.ciPolicy }),
     ...(evidence.grantWithheld && { grantWithheld: evidence.grantWithheld }),
     ...(record.proofUnverified !== undefined && { proofUnverified: record.proofUnverified }),
+    ...(record.proofBase !== undefined && { proofBase: record.proofBase }),
   };
 }
 

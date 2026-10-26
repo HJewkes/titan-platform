@@ -32,8 +32,8 @@ const FACTS = [
 
 interface StageOptions {
   sims?: SimRegistry;
-  /** Where each sim beat's slots come from: the `slots` pin, or the script's own `visual.slots` override. */
-  via?: "pin" | "visual";
+  /** Where each sim beat's slots come from: the `slots` pin, the script's own `visual.slots` with no pin, or nowhere. */
+  via?: "pin" | "visual" | "none";
   /** Fields laid over every sim beat's visual, such as emphasis cues. */
   patch?: Record<string, unknown>;
 }
@@ -42,8 +42,8 @@ interface StageOptions {
 export function stage(claims: Record<string, string>, { sims = registry(), via = "pin", patch = {} }: StageOptions = {}) {
   const overrides = (fact: string) => (via === "visual" ? { slots: simSlots(fact) } : {});
   const extra = Object.fromEntries(Object.entries(claims).map(([id, fact]) => [id, { visual: visual({ beat: "sim", ...overrides(fact), ...patch }) }]));
-  const slots = via === "pin" ? Object.fromEntries(Object.entries(claims).map(([id, fact]) => [id, simSlots(fact)])) : {};
-  const texts = { script: json(choppy(extra)), slots: json(slots), facts: FACTS };
+  const pin = via === "pin" ? { slots: json(Object.fromEntries(Object.entries(claims).map(([id, fact]) => [id, simSlots(fact)]))) } : {};
+  const texts = { script: json(choppy(extra)), ...pin, facts: FACTS };
   const bySha = new Map(Object.values(texts).map((text) => [sha256(text), text]));
   const store = { readText: (sha: string) => bySha.get(sha)!, putText: (text: string) => (bySha.set(sha256(text), text), sha256(text)) };
   const inputs = Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, sha256(text)]));

@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "shepherd merge dropped from the refused set",
+      "file": "products/factory/src/cli-shepherd.ts",
+      "find": "new Set([\"shepherd.merge\", ",
+      "replace": "new Set([",
+      "kills": [
+        "shepherd merge exits UNAVAILABLE and makes no GitHub call"
+      ]
+    },
+    {
+      "name": "land skips the agent-env refusal",
+      "file": "products/factory/src/cli-land.ts",
+      "find": "if (refusedInProcess(verbs, probe, opts.port, \"land\")) return;",
+      "replace": "",
+      "kills": [
+        "land exits UNAVAILABLE and makes no GitHub call"
+      ]
+    },
+    {
+      "name": "resume skips the agent-env refusal",
+      "file": "products/factory/src/cli-host-verbs.ts",
+      "find": "if (await refusedWithoutServe(verbs, opts.port, \"resume\")) return;",
+      "replace": "",
+      "kills": [
+        "resume exits UNAVAILABLE and makes no GitHub call"
+      ]
+    }
+  ]
+}

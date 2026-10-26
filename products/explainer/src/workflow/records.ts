@@ -5,11 +5,6 @@ import { z } from "zod";
 export const STAGES = ["gather", "audition", "script", "rewrite", "eval", "resolve", "tts", "render", "qa", "sheets", "export"] as const;
 export type StageName = (typeof STAGES)[number];
 
-/** Stages that run today's template commands through the host's bridge file until their TypeScript ports land. */
-export const BRIDGE_STAGES = ["render", "qa"] as const;
-export type BridgeStage = (typeof BRIDGE_STAGES)[number];
-export const isBridgeStage = (stage: StageName): stage is BridgeStage => (BRIDGE_STAGES as readonly string[]).includes(stage);
-
 /** Every stage but `export` runs as its own `explainer.<stage>` child workflow behind the stage cache; export only links files. */
 export const CACHED_STAGES = ["gather", "audition", "script", "rewrite", "eval", "resolve", "tts", "render", "qa", "sheets"] as const;
 export type CachedStage = (typeof CACHED_STAGES)[number];
@@ -49,6 +44,7 @@ export type Check = z.infer<typeof CheckSchema>;
  */
 export const StageRecordSchema = z.object({
   stage: z.enum(STAGES),
+  /** True only on a record made while the stage ran through the host's bridge file; every stage is in-process since TP-2992 S3. */
   bridged: z.boolean(),
   /** The run whose outputs this stage reused instead of running; it then cost nothing here. */
   reusedFrom: z.string().optional(),
