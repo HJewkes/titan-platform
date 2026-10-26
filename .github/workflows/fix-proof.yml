@@ -6,14 +6,19 @@ name: fix-proof
 # and test one side and pass encoded reports on as job outputs. fix-proof, the check run Shepherd reads, runs only code built from the
 # merge base: it decodes those reports and prints the one result line. A head process cannot write into another job's
 # VM, outputs or log.
+#
+# `edited` is for a base change alone: GitHub retargets a stacked PR onto main with the same head, so without it the
+# head's only run is the refusal on its old base (TP-4259). Every job skips any other edit, and that edit takes a
+# concurrency group of its own, so a title edit cancels no run in progress.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
 
 concurrency:
-  group: fix-proof-${{ github.ref }}
+  group: ${{ github.event.action == 'edited' && !github.event.changes.base && format('fix-proof-edit-{0}', github.run_id) || format('fix-proof-{0}', github.ref) }}
   cancel-in-progress: true
 
 # onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
@@ -27,7 +32,7 @@ jobs:
   fix-proof-base:
     # The Version Packages PR only bumps versions and changelogs, so it has no fix to prove. Every job skips, the judge
     # included, so no judge prints an error verdict from reports that never came. A fork's branch of that name still runs.
-    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -101,7 +106,7 @@ jobs:
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit base "$RUNNER_TEMP/fix-proof-out"
 
   fix-proof-head:
-    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -164,7 +169,7 @@ jobs:
   # applies each mutation a *.mutations.json spec declares to the merge base, with the head's tests overlaid, and the
   # judge requires those tests to fail under it. Laid out and sandboxed like fix-proof-base, since head tests run here.
   fix-proof-mutants:
-    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -240,7 +245,7 @@ jobs:
   # comes from the merge-base tree in runner/; the head checkout in src/ is only read by git, never built or run.
   fix-proof:
     needs: [fix-proof-base, fix-proof-head, fix-proof-mutants]
-    if: ${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}
+    if: ${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base) }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

@@ -46,7 +46,7 @@ export function proofUnverifiedOf(standing: GrantStanding): string | undefined {
  * Free text the fix-proof read recorded, made inert inside a gate reason: resync and why-asked split a reason on "; " and read
  * `MRG-AU-<row> unmet:` parts, so a read reason holding either would forge an unmet row.
  */
-function inert(text: string): string {
+export function inert(text: string): string {
   return text.replace(/[;\r\n]+/g, ",").replace(/MRG-AU-/gi, "MRG-AU ");
 }
 

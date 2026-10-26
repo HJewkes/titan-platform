@@ -542,6 +542,43 @@ describe("fix-proof workflow", () => {
     expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
   });
 
+  describe("on a pull_request edit (TP-4259)", () => {
+    /** Evaluates the workflow's own expression for one event; the expressions here use only these operators and functions. */
+    const evaluate = (expression, event) => {
+      const js = expression.replace(/^\$\{\{|\}\}$/g, "").replace(/([!=])=/g, "$1==");
+      const format = (template, ...args) => args.reduce((out, arg, i) => out.replace(`{${i}}`, String(arg)), template);
+      const github = { event, head_ref: "feat/x", repository: "acme/gizmos", ref: "refs/pull/7/merge", run_id: 99 };
+      return new Function("github", "format", "cancelled", `return (${js});`)(github, format, () => false);
+    };
+    const pr = { head: { repo: { full_name: "acme/gizmos" } } };
+    const event = (action, changes) => ({ action, pull_request: pr, ...(changes && { changes }) });
+    const runs = (e) => Object.entries(workflow.jobs).filter(([, job]) => Boolean(evaluate(job.if, e))).map(([id]) => id).sort();
+    const ALL = ["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"];
+
+    it("listens for edits, so a same-head retarget starts a run", () => {
+      expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "edited"]);
+    });
+
+    it("runs every job on a base change, in the PR's own concurrency group", () => {
+      const retarget = event("edited", { base: { ref: { from: "feat/parent" } } });
+
+      expect(runs(retarget)).toEqual(ALL);
+      expect(evaluate(workflow.concurrency.group, retarget)).toBe("fix-proof-refs/pull/7/merge");
+    });
+
+    it("skips every job on any other edit, in a group of its own so it cancels no run in progress", () => {
+      const retitle = event("edited", { title: { from: "old" } });
+
+      expect(runs(retitle)).toEqual([]);
+      expect(evaluate(workflow.concurrency.group, retitle)).toBe("fix-proof-edit-99");
+    });
+
+    it("runs every job on a push, as before", () => {
+      expect(runs(event("synchronize"))).toEqual(ALL);
+      expect(evaluate(workflow.concurrency.group, event("synchronize"))).toBe("fix-proof-refs/pull/7/merge");
+    });
+  });
+
   it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
     const caches = (job) => job.steps.some((step) => Object.keys(step.with ?? {}).some((key) => /cache/.test(key)) || /cache/.test(step.uses ?? ""));
 
@@ -571,7 +608,7 @@ describe("fix-proof workflow", () => {
 
   it("the judge job has no cache and installs only from the runner tree", () => {
     expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
-    expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}");
+    expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base) }}");
     expect(judge.steps.some((step) => step.with !== undefined && "cache" in step.with)).toBe(false);
     expect(judge.steps.every((step) => step["working-directory"] === undefined || step["working-directory"] === "runner")).toBe(true);
     const setup = judge.steps.filter((step) => /^(pnpm\/action-setup|actions\/setup-node)@/.test(step.uses ?? ""));

@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the decided-base guard checks only allows, so a mechanical MRG-AU gate skips it",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "if (decision.outcome === \"deny\" || base === undefined || headSha === undefined) return decision;",
+      "replace": "if (decision.outcome !== \"allow\" || base === undefined || headSha === undefined) return decision;",
+      "kills": [
+        "merge evidence read on another base than the one being decided turns a mechanical MRG-AU gate into a merge-guard gate when the fix-proof judged the parent branch, so no coordinator resolves it into a merge",
+        "merge evidence read on another base than the one being decided turns a mechanical MRG-AU gate into a merge-guard gate when the merge facts were read on the parent branch, so no coordinator resolves it into a merge"
+      ]
+    },
+    {
+      "name": "every off-base gate becomes no-facts, erasing its own rule",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "  if (decision.outcome === \"gate\" && !isAutoMergeRule(decision.rule)) return { ...decision, reason: `${offBase}; ${decision.reason}` };\n",
+      "replace": "",
+      "kills": [
+        "merge evidence read on another base than the one being decided keeps a visual-path gate's own rule on an off-base proof, naming the proof first",
+        "merge evidence read on another base than the one being decided keeps a files-unread gate's own rule on an off-base proof, naming the proof first"
+      ]
+    },
+    {
+      "name": "a record that names no proof base fires the guard as if bound elsewhere",
+      "file": "products/factory/src/shepherd/proof-base.ts",
+      "find": "    return proofBase === undefined || proofBase === base ? undefined : `base ${proofBase}`;",
+      "replace": "    return proofBase === base ? undefined : `base ${proofBase ?? \"none\"}`;",
+      "kills": [
+        "merge evidence read on another base than the one being decided allows on main a MERGE whose record names no proof base: it was bound to none, so decision 303 governs it"
+      ]
+    },
+    {
+      "name": "an allow is never gated on a fix-proof bound to another base",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": ": proof.unproven(headSha, base);",
+      "replace": ": undefined;",
+      "kills": [
+        "merge evidence read on another base than the one being decided gates an allow on main whose MERGE record was bound to the parent branch, as no-facts"
+      ]
+    }
+  ]
+}

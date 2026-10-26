@@ -82,6 +82,8 @@ export interface LandOptions extends ApproveMergeFacts {
   featureBase?: () => boolean;
   /** The base the merge evidence at this head was read on; one that differs from the live base is re-read before the decision. */
   evidenceBase?: (headSha: string) => string | undefined;
+  /** Takes any read the decision on `base` still lacks at this head, such as a fix-proof judged on another base; called before each decision. */
+  readOn?: (ctx: WorkflowContext, headSha: string, base: string) => Promise<void>;
 }
 
 export type LandOutcome =
@@ -292,14 +294,17 @@ async function decisionBase(ctx: WorkflowContext, input: LandInput, ci: CiSnapsh
 }
 
 /**
- * Settle waits and retargets re-read the evidence, and so does evidence read on another base. That last trigger is newer
- * than some records: one that goes straight on to `merge-policy` was decided without it, so a replay skips it.
+ * Settle waits and retargets re-read the evidence, and so does evidence read on another base; then any read the decision on
+ * this base still lacks is taken. The last two are newer than some records: one that goes straight on to `merge-policy` was
+ * decided without them, so a replay skips them.
  */
 async function refreshEvidence(ctx: WorkflowContext, headSha: string, base: string, state: LandState, options: LandOptions): Promise<void> {
   const evidenceBase = options.evidenceBase?.(headSha);
   const next = ctx.historyNext();
-  const elsewhere = evidenceBase !== undefined && evidenceBase !== base && (next === undefined || !next.startsWith("merge-policy"));
+  const decidedWithout = next !== undefined && next.startsWith("merge-policy");
+  const elsewhere = evidenceBase !== undefined && evidenceBase !== base && !decidedWithout;
   if (state.hold.settle?.headSha === headSha || state.retargeted === headSha || elsewhere) await options.unsettled?.refresh(ctx, headSha);
+  if (!decidedWithout) await options.readOn?.(ctx, headSha, base);
   state.retargeted = undefined;
 }
 

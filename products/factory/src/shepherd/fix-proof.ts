@@ -1,5 +1,5 @@
 import { RESULT_PREFIX, parseResultLine, provedByMutants, type FixProofResult } from "@titan-design/fix-proof";
-import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -7,6 +7,7 @@ import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
+import { FIX_PROOF_CHECK, harnessTouch } from "./fix-proof-harness.js";
 import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
@@ -14,9 +15,10 @@ import { FIX_PROOF_KINDS } from "./task-kind.js";
 import { sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
+export { FIX_PROOF_CHECK };
+
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
-export const FIX_PROOF_CHECK = "fix-proof";
 /** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
 const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
 /**
@@ -33,50 +35,54 @@ const LOG_TAIL_LINES = 200;
 const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
-/**
- * On `pull_request` the PR merge ref supplies the workflow file and the run script, so a PR touching any of these
- * chose the code that printed its own result line.
- */
-const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/actions/", ".github/fix-proof.json", "scripts/fix-proof-run.sh"];
 /** Read at the PR's base ref, so a PR cannot delete its way out of the gate. */
 const FIX_PROOF_WORKFLOW = ".github/workflows/fix-proof.yml";
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
+/** `boundBase` is the base the read looked for, stamped where the binding is made; trust plays no part in it (TP-4259). */
+type Bound = { boundBase?: string };
 /** `nonSourceProceed` marks a NO_REPRO on a diff with no source path that `nonSourceNoRepro: record-fact` sends on to review. */
 type FixProofRead = (
-  | ({ kind: "result"; testOnlyProceed?: true } & Parsed)
-  | ({ kind: "untrusted"; reason: string } & Parsed)
-  | { kind: "skipped" | "missing" | "error"; reason: string }
+  | ({ kind: "result"; testOnlyProceed?: true } & Parsed & Bound)
+  | ({ kind: "untrusted"; reason: string } & Parsed & Bound)
+  | ({ kind: "skipped" | "missing" | "error"; reason: string } & Bound)
   | WorkflowCiRead
 ) & { nonSourceProceed?: true };
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("result"), line: z.string(), verdict: z.string(), testOnlyProceed: z.literal(true).optional(), nonSourceProceed: z.literal(true).optional() }),
-  z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string() }),
-  z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string() }),
+  z.looseObject({
+    kind: z.literal("result"), line: z.string(), verdict: z.string(), boundBase: z.string().optional(),
+    testOnlyProceed: z.literal(true).optional(), nonSourceProceed: z.literal(true).optional(),
+  }),
+  z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string(), boundBase: z.string().optional() }),
+  z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string(), boundBase: z.string().optional() }),
   WorkflowCiReadSchema,
 ]);
 
-const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1) });
+/** `base` binds the read to that base instead of the PR's live one: the base a merge is being decided on (TP-4259). */
+const FixProofInputSchema = z.object({ repo: z.string().min(1), head: z.string().regex(/^[0-9a-f]{40}$/), runId: z.string().min(1), base: z.string().min(1).optional() });
 type FixProofInput = z.infer<typeof FixProofInputSchema>;
 
 type PollTiming = Omit<DeadlineTiming, "timeoutMs"> & { timeoutMs?: number; pollMs?: number; noActionsGraceMs?: number };
 
-type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string };
+type Gate = { open: true; pr: number | null; kind: string } | { open: false; reason: string } | { unreadable: string };
 
-/** A store that cannot be read gives no kind, so the gate stays shut and the review proceeds with the reason recorded. */
+/**
+ * A gate that could not be read is not a gate that does not apply: a store, registration or head branch that cannot be read
+ * is `unreadable`, which the read reports as an error, so no caller that clears on a clean standing passes it (TP-4259).
+ */
 async function gateOf(port: GitHubPort, store: ShepherdStoreRef, runId: string): Promise<Gate> {
   let registration: Registration | undefined;
   try {
     registration = store.get().byRun(runId);
   } catch (error) {
-    return { open: false, reason: `the registered kind is unreadable: ${failureOf(error)}` };
+    return { unreadable: `the registered kind is unreadable: ${failureOf(error)}` };
   }
-  if (registration === undefined) return { open: false, reason: "no registration for this run" };
+  if (registration === undefined) return { unreadable: "no registration for this run" };
   if (FIX_PROOF_KINDS.has(registration.kind)) return { open: true, pr: registration.pr, kind: registration.kind };
   const branch = await headBranchOf(port, registration);
-  if (typeof branch !== "string") return { open: false, reason: branch.unreadable };
+  if (typeof branch !== "string") return branch;
   // A branch only ever tightens the kind: a fix/ branch runs the gate whatever kind was registered.
   if (branch.startsWith(FIX_BRANCH_PREFIX)) return { open: true, pr: registration.pr, kind: registration.kind };
   return { open: false, reason: `kind ${registration.kind}` };
@@ -93,8 +99,12 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
   }
 }
 
-/** Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. */
-const isFixProofRun = (head: string) => (run: CheckRun) => run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head;
+/**
+ * Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. So is a skipped
+ * one: an edit that changes no base runs the workflow only to skip every job, and its judge printed no line.
+ */
+const isFixProofRun = (head: string) => (run: CheckRun) =>
+  run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head && run.conclusion !== "skipped";
 
 const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
   runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
@@ -102,8 +112,9 @@ const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
 /** The PR and base branch the registration names; a run is bound to it only if GitHub ties the run to that very pair. */
 type Binding = { pr: number; baseRef: string } | { unbound: string };
 
-async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<Binding> {
+async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null, base: string | undefined): Promise<Binding> {
   if (pr === null) return { unbound: "the registration names no PR, so no run can be bound to it" };
+  if (base !== undefined) return { pr, baseRef: base };
   try {
     return { pr, baseRef: (await port.getPr(repo, pr)).baseRef };
   } catch (error) {
@@ -127,12 +138,14 @@ async function seen(port: GitHubPort, repo: RepoSlug, head: string, run: CheckRu
 
 /**
  * GitHub lists a run's PR on the PR's live base, so after a retarget a run that judged the old base reads as bound to the new one.
- * A line naming the base it judged binds only to that base; a line from a judge that predates the field binds as GitHub lists it.
+ * A run binds only through a line that names the base it judged, and only to that base. A line from a judge that predates the
+ * field, or a completed run with no line, judged no base it can name, so it never binds and the read stalls into an error
+ * (TP-4259). A run still going has no line yet, so it is waited for.
  */
 const judgedOn = (binding: Binding) => (candidate: Seen) => {
   const parsed = candidate.line === undefined ? undefined : parseResultLine(candidate.line);
   const base = parsed?.ok ? parsed.result.base : undefined;
-  return base === undefined || ("baseRef" in binding && base === binding.baseRef);
+  return "baseRef" in binding && (candidate.run.status !== "completed" || base === binding.baseRef);
 };
 
 const newestSeen = (candidates: readonly Seen[]): Seen | undefined => candidates.find((candidate) => candidate.run === newestOf(candidates.map(({ run }) => run)));
@@ -221,23 +234,6 @@ export function lastResultLine(log: string, head: string): string | undefined {
   return naming.at(-1);
 }
 
-const inHarness = (path: string): boolean => FIX_PROOF_HARNESS.some((prefix) => path.startsWith(prefix));
-const harnessPathOf = (files: readonly PrFile[]): string | undefined => files.flatMap((file) => [file.path, file.previousPath ?? file.path]).find(inHarness);
-
-/** Why the PR may have chosen its own harness, or undefined when its changed files are read in full and leave the harness alone. */
-async function harnessTouch(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<string | undefined> {
-  if (pr === null) return "the registration names no PR, so its changed files are unknown";
-  let files: PrFile[];
-  try {
-    files = await port.listPrFiles(repo, pr);
-  } catch (error) {
-    return `the PR's changed files could not be read: ${failureOf(error)}`;
-  }
-  if (files.length >= PR_FILES_CAP) return `the PR changes ${files.length} files, at GitHub's ${PR_FILES_CAP}-file list cap`;
-  const touched = harnessPathOf(files);
-  return touched && `the PR changes the ${FIX_PROOF_CHECK} harness: ${touched}`;
-}
-
 /** Why a line from `run` cannot be trusted, or undefined when the run succeeded on a harness the PR left alone. */
 async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
   if (run.conclusion !== "success") return `the ${FIX_PROOF_CHECK} run concluded ${run.conclusion ?? "nothing"}, not success`;
@@ -270,8 +266,7 @@ async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, 
   return atBase === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, but ${atBase}` };
 }
 
-async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const binding = await bindingOf(port, input.repo, pr);
+async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
   if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
   if ("missing" in polled) return missingRead(port, input.repo, pr, binding, polled.missing);
@@ -292,22 +287,28 @@ async function readResult(port: GitHubPort, input: FixProofInput, pr: number | n
 export async function readFixProof(deps: Pick<ShepherdDeps, "port" | "store" | "noReproProceed" | "nonSourceNoRepro">, raw: unknown, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const input = FixProofInputSchema.parse(raw);
   const gate = await gateOf(deps.port, deps.store, input.runId);
+  if ("unreadable" in gate) return { kind: "error", reason: gate.unreadable };
   if (!gate.open) return { kind: "skipped", reason: gate.reason };
+  const binding = await bindingOf(deps.port, input.repo, gate.pr, input.base);
   try {
-    const read = await gatedRead(deps, input, gate, timing, signal);
-    return (await nonSourceProceeds(deps, input, gate, read)) ? { ...read, nonSourceProceed: true } : read;
+    const read = await gatedRead(deps, input, gate, binding, timing, signal);
+    return boundTo((await nonSourceProceeds(deps, input, gate, read)) ? { ...read, nonSourceProceed: true } : read, binding);
   } catch (error) {
     signal.throwIfAborted();
-    return { kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };
+    return boundTo({ kind: "error", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` }, binding);
   }
 }
 
-type OpenGate = Extract<Gate, { open: true }>;
+/** Every read taken under a binding names the base it looked for; a workflow-ci read names its own `baseRef`. */
+const boundTo = (read: FixProofRead, binding: Binding): FixProofRead => ("baseRef" in binding && read.kind !== "workflow-ci" ? { ...read, boundBase: binding.baseRef } : read);
 
-async function gatedRead(deps: Pick<ShepherdDeps, "port" | "noReproProceed">, input: FixProofInput, gate: OpenGate, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head);
+type OpenGate = Extract<Gate, { open: true }>;
+type GatedDeps = Pick<ShepherdDeps, "port" | "noReproProceed">;
+
+async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
+  const ci = await workflowCiProof(deps.port, input.repo, gate.pr, input.head, "baseRef" in binding ? binding.baseRef : input.base);
   if (ci !== undefined) return ci;
-  const read = await readResult(deps.port, input, gate.pr, timing, signal);
+  const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
   const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
   return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
 }
@@ -328,13 +329,16 @@ async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoR
 export const fixProofRoute = (deps: ShepherdDeps): StepRoute =>
   codeRoute(FIX_PROOF_STEP, deps.now, (input: unknown, signal, clock) => readFixProof(deps, input, { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs, startedAt: clock.firstStartedAtMs }, signal));
 
+export const fixProofStepId = (head: string, base?: string): string => `${FIX_PROOF_STEP}:${head}${base === undefined ? "" : `@${base}`}`;
+
 /**
  * The head's fix-proof read, taken once more when it failed (TP-2660 b), so a transient read error is not the head's standing.
  * Only the round's first read is retried, and a replay whose record took another step after that read keeps the one read.
+ * A `base` reads the proof on that base, under a step of its own.
  */
-export async function readFixProofAt(ctx: WorkflowContext, target: { repo: string; head: string }): Promise<z.infer<typeof FixProofReadSchema>> {
-  const stepId = `${FIX_PROOF_STEP}:${target.head}`;
-  const input = { repo: target.repo, head: target.head, runId: ctx.runId };
+export async function readFixProofAt(ctx: WorkflowContext, target: { repo: string; head: string; base?: string }): Promise<z.infer<typeof FixProofReadSchema>> {
+  const stepId = fixProofStepId(target.head, target.base);
+  const input = { repo: target.repo, head: target.head, runId: ctx.runId, ...(target.base !== undefined && { base: target.base }) };
   const first = await step(ctx, stepId, input, FixProofReadSchema);
   const next = ctx.historyNext();
   const rereads = first.kind === "error" && ctx.iteration(stepId) <= 1 && (next === undefined || next === stepId);
@@ -384,12 +388,6 @@ export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head:
   return unverified === undefined ? undefined : { unverified };
 }
 
-/** The base branch the read's line says it judged, which its MERGE records; a line from an older judge names none. */
-export function proofBaseOf(read: z.infer<typeof FixProofReadSchema>, head: string): string | undefined {
-  if ((read.kind !== "result" && read.kind !== "untrusted") || typeof read.line !== "string") return undefined;
-  const parsed = parseResultLine(read.line);
-  return parsed.ok && parsed.result.head === head ? parsed.result.base : undefined;
-}
 
 /** A workflow-only diff that CI proved names its two commits to the reviewer; any other read adds nothing. */
 export const workflowCiFieldOf = (proof: z.infer<typeof FixProofReadSchema>): { workflowCiProof?: { mergeBase: string; head: string } } =>

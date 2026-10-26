@@ -27,6 +27,7 @@ const TEST_ONLY_QUESTION = "say whether the test would fail without that change"
 const proofLine = (verdict: "vacuous" | "unproven" | "error", newApi = 0) => formatResultLine({
   head: H,
   mergeBase: MERGE_BASE,
+  base: "main",
   verdict,
   counts: { reproduces: 0, "passes-on-base": verdict === "vacuous" ? 1 : 0, "new-api": newApi, "fails-on-head": 0, "not-run": 0 },
   notCollected: [],

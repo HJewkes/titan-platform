@@ -19,7 +19,7 @@ const unwaived = partialFake<WorkflowContext>({ iteration: () => 0 });
 
 function vacuousLine(mutants?: FixProofResult["mutants"]): string {
   const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head: H, mergeBase: MERGE_BASE, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
+  return formatResultLine({ head: H, mergeBase: MERGE_BASE, base: "main", verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
 }
 
 type Flag = "keep-owner" | "record-fact" | undefined;
@@ -79,7 +79,7 @@ const WORKFLOW_ONLY: PrFile[] = [
   { path: ".github/workflows/ci.yml", status: "modified" },
   { path: ".changeset/pin-runner.md", status: "added" },
 ];
-const NON_SOURCE = { standing: { unverified: "no-repro-non-source" } };
+const NON_SOURCE = { standing: { unverified: "no-repro-non-source", proofBase: "main" } };
 
 describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
   it.each([
