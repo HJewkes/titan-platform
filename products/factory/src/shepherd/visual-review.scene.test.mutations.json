@@ -7,7 +7,7 @@
       "find": ", ...(visualBaselines && { visualBaselines }) };",
       "replace": " };",
       "kills": [
-        "a glob-matched PR on a seat with visual baselines merges with no approve-merge gate when it changes no baseline and the visual check is green"
+        "a glob-matched PR on a seat with visual baselines records the clearance in the evidence comment, so it matches the merge"
       ]
     },
     {

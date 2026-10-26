@@ -96,6 +96,15 @@ describe("a glob-matched PR on a seat with visual baselines", () => {
     expect(scene.approveMerges()).toEqual([]);
   });
 
+  it("records the clearance in the evidence comment, so it matches the merge", async () => {
+    const scene = visualRun([{ path: COMPONENT, status: "modified" }]);
+
+    await vi.waitFor(() => expect(scene.fake.effects.merge).toBe(1), { timeout: 20_000 });
+
+    const bodies = (scene.fake.comments.get(PR) ?? []).map((comment) => comment.body).join("\n");
+    expect(bodies).toContain(`visual files ${COMPONENT} changed no baseline and visual passed at ${HEAD}`);
+  });
+
   it("opens one visual-path gate naming the baseline when the head also changes a baseline PNG", async () => {
     const scene = visualRun([{ path: COMPONENT, status: "modified" }, { path: BASELINE, status: "modified" }]);
 
