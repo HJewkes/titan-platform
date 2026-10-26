@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "taskClose row accepts on",
+      "file": "packages/coordinator/src/editable-fields.ts",
+      "find": "\"shepherd.taskClose\", z.enum([\"keep\", \"last-slice-only\"])",
+      "replace": "\"shepherd.taskClose\", z.enum([\"keep\", \"last-slice-only\", \"on\"])",
+      "kills": [
+        "factory rows takes taskClose as keep or last-slice-only only"
+      ]
+    }
+  ]
+}
