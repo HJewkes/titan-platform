@@ -1,0 +1,48 @@
+name: Bench
+
+# Wall-clock budgets only hold on an idle machine, so pnpm test skips them (TP-4047, TP-4264). This runs them daily
+# on their own runner, one worker at a time, so a red budget still shows. Not a required check.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Packages resolve their siblings through dist.
+      - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      # tool-guard's corpus tests run real bash and zsh.
+      - name: Install zsh
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
+      # The TITAN_BENCH files are found at run time, so a newly gated file joins without editing this workflow.
+      - name: Run the wall-clock budgets
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          TITAN_BENCH: 1
+          TOOL_GUARD_BENCH: 1
+        run: |
+          mapfile -t files < <(git grep -l TITAN_BENCH -- '*.test.ts' '*.test.mjs')
+          if [ "${#files[@]}" -eq 0 ]; then echo "::error::no test file reads TITAN_BENCH"; exit 1; fi
+          printf '%s\n' "${files[@]}"
+          pnpm vitest run packages/tool-guard "${files[@]}" --maxWorkers=1
