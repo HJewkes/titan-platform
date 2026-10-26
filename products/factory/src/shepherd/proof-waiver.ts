@@ -80,8 +80,9 @@ export async function proofStandingAt(ctx: WorkflowContext, head: string, proof:
   const noRepro = fixProofVerdict(proof, head);
   const unverified = fixProofStanding(proof, head);
   const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
+  const nonSourceProceed = noRepro !== undefined && unverified?.unverified === "no-repro-non-source";
   const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
-  if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
+  if (noRepro && !testOnlyProceed && !nonSourceProceed && !waived) return { ended: noRepro };
   const proofBase = proofBaseOf(proof, head);
   const standing: ProofStanding = waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
   return { standing: { ...standing, ...(proofBase !== undefined && { proofBase }) } };

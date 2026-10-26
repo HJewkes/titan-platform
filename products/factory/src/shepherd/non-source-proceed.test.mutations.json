@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the key is ignored, so every non-source NO_REPRO proceeds",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (deps.nonSourceNoRepro !== \"record-fact\" || gate.kind === \"security\") return false;",
+      "replace": "if (gate.kind === \"security\") return false;",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) ends a test-only conversion as NO_REPRO, for the owner's sent-back gate, when the key is absent",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) ends a test-only conversion as NO_REPRO, for the owner's sent-back gate, when the key is keep-owner"
+      ]
+    },
+    {
+      "name": "a security run proceeds on a non-source diff",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (deps.nonSourceNoRepro !== \"record-fact\" || gate.kind === \"security\") return false;",
+      "replace": "if (deps.nonSourceNoRepro !== \"record-fact\") return false;",
+      "kills": ["shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO for a security run under record-fact"]
+    },
+    {
+      "name": "the proof standing ignores the non-source mark",
+      "file": "products/factory/src/shepherd/proof-waiver.ts",
+      "find": "if (noRepro && !testOnlyProceed && !nonSourceProceed && !waived)",
+      "replace": "if (noRepro && !testOnlyProceed && !waived)",
+      "kills": [
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a test-only conversion's NO_REPRO as a fact and lets review proceed under record-fact",
+        "shepherd.gateReset.nonSourceNoRepro (TP-4275) records a workflow-only diff's unproved CI read as a fact under record-fact"
+      ]
+    },
+    {
+      "name": "a rename's old source path is not read",
+      "file": "products/factory/src/shepherd/non-source-diff.ts",
+      "find": "files.flatMap((file) => [file.path, file.previousPath ?? file.path])",
+      "replace": "files.flatMap((file) => [file.path])",
+      "kills": ["shepherd.gateReset.nonSourceNoRepro (TP-4275) keeps NO_REPRO under record-fact when a rename moves a source path out of the diff"]
+    },
+    {
+      "name": "a docs directory reads as source",
+      "file": "products/factory/src/shepherd/non-source-diff.ts",
+      "find": "/(^|\\/)docs\\//, ",
+      "replace": "",
+      "kills": ["isNonSourcePath reads site/docs/guide.html as non-source"]
+    }
+  ]
+}

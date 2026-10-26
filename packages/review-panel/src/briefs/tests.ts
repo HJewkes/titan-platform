@@ -25,7 +25,7 @@ function verdictLine(result: FixProofResult): string {
 }
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only";
+export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
 
 /** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
 const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
@@ -34,6 +34,8 @@ const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
   untrusted: "Shepherd marks this head's fix-proof unverified: its run did not come from a trusted, successful fix-proof job, so its result is not evidence.",
   unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
   "no-repro-test-only": "Shepherd marks this head's fix-proof unverified: the PR changes only tests, so its proof found no test that fails on the base, and the review goes ahead.",
+  "no-repro-non-source":
+    "Shepherd marks this head's fix-proof unverified: the PR changes only tests, workflows, changesets or docs, so its proof reproduced nothing, and the review goes ahead.",
 };
 
 const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here merges on green with the unverified standing recorded.";

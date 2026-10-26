@@ -152,6 +152,8 @@ export interface ShepherdDeps {
   heldRepair?: "off" | "on";
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
+  /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */
+  nonSourceNoRepro?: "keep-owner" | "record-fact";
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */

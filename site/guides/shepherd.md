@@ -167,6 +167,19 @@ source still needs `REPRO`, and so does a diff the classifier cannot read in ful
 run keeps its gate. A line that carries `mutants` still passes only through `provedByMutants`, so a
 surviving mutation or a refused spec ends the round as `NO_REPRO`.
 
+`shepherd.gateReset.nonSourceNoRepro` widens that past tests (TP-4275). It is `keep-owner` when
+absent: a `NO_REPRO` opens the owner's `sh-sent-back` gate, as above. With `record-fact`, a
+`NO_REPRO` on a pull request whose every changed path, a rename's old path included, is
+non-source goes to review marked `no-repro-non-source`, and no `sh-sent-back` gate opens. Non-source
+means `*.test.*` (mutation sidecars included), `__tests__/`, `.github/workflows/`, `.changeset/`,
+a `docs/` directory or `*.md`. That covers a workflow-only diff's unproved CI read too. The mark is
+recorded on the head's proof standing and its merge evidence. The merge grant is unchanged, so a
+held or owner-gated run still goes to the owner. A `security` run, any source path, a file list
+that cannot be read in full, and a head that moved keep the `NO_REPRO`. It is a live editable row,
+so a `factory-config-set` owner op flips it with no restart, as for `heldRepair`. A third value,
+`seat-waives`, would let the owning seat answer the waivable gate. It is not built yet, so the config
+refuses it.
+
 ## Phases
 
 ```mermaid
