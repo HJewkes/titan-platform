@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCleanup, type TaskClose } from "./cleanup.js";
 import { activeWorkTasks } from "./cleanup-ports.js";
 import { shepherdEventMigration } from "./events.js";
@@ -18,11 +19,13 @@ interface AwTask {
   done_at: string | null;
 }
 
+const EditArgs = z.object({ field: z.enum(["notes", "status"]).optional(), value: z.string().optional() });
+
 /** Answers active-work's loopback rpc from one task; `task.done` is the store write that stamps `done_at`. */
 function activeWork(task: AwTask): typeof fetch {
   return async (url, init) => {
     const command = String(url).split("/rpc/")[1];
-    const args = JSON.parse(String(init?.body)) as { field?: "notes" | "status"; value?: string };
+    const args = EditArgs.parse(JSON.parse(String(init?.body)));
     if (command === "task.edit" && args.field) task[args.field] = args.value ?? "";
     if (command === "task.done") Object.assign(task, { status: "done", done_at: new Date(0).toISOString().slice(0, 10) });
     const data = command === "task.list" ? { tasks: [task] } : command === "source.list" ? { sources: [] } : {};
