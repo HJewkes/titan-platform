@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the rewrite guard no longer refuses an added closer",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "    ...closerRejections(before.spoken, after),\n",
+      "replace": "",
+      "kills": [
+        "guardBeat closer-added rejects a rewrite that ends on a new short summing-up line"
+      ]
+    },
+    {
+      "name": "a short last line the original said counts as an added closer",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": " || inherited || endsOnShortest(before)) return [];",
+      "replace": " || endsOnShortest(before)) return [];",
+      "kills": [
+        "guardBeat closer-added accepts a rewrite that ends on a short line the original already said"
+      ]
+    },
+    {
+      "name": "a beat that already ended on its shortest line gains no closer pass",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": " || inherited || endsOnShortest(before)) return [];",
+      "replace": " || inherited) return [];",
+      "kills": [
+        "guardBeat closer-added accepts a new short last line when the original already ended on its shortest"
+      ]
+    },
+    {
+      "name": "the vague stand-ins drop a number of, various and hundreds",
+      "file": "products/explainer/src/rewrite-guard.ts",
+      "find": "|a number of|various|a range of|dozens|hundreds|thousands|millions",
+      "replace": "",
+      "kills": [
+        "guardBeat number-vague rejects a number of standing in for a number moved to a label",
+        "guardBeat number-vague rejects hundreds standing in for a number moved to a label",
+        "guardBeat number-vague rejects various standing in for a number moved to a label"
+      ]
+    }
+  ]
+}

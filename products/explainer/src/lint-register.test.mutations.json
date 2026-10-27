@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the phrases row counts no phrase",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "phrases: (s) => (1000 * phraseSpans(s.text).length)",
+      "replace": "phrases: (s) => (0 * phraseSpans(s.text).length)",
+      "kills": [
+        "Q-V11 register rows warns on one over-represented phrase in a 157-word script and passes the same script without it"
+      ]
+    },
+    {
+      "name": "a tie for the shortest sentence counts as ending on it",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "lengths.slice(0, -1).every((n) => n > last)",
+      "replace": "lengths.slice(0, -1).every((n) => n >= last)",
+      "kills": [
+        "endsOnShortest is true only when the last of two or more sentences is shorter than every other"
+      ]
+    }
+  ]
+}

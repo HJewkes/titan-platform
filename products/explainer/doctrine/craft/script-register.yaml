@@ -9,3 +9,10 @@ rules:
     scope: { layer: U }
     enforcement: [planner]
     stages: [script]
+  - id: register-AV3
+    source: { doc: script-register, ref: AV3 }
+    text: "Each beat names a concrete thing, such as the file, the person, the command or the example. When a number moves to the screen, keep the line that concrete and never say \"some\" or \"many\" in its place."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]

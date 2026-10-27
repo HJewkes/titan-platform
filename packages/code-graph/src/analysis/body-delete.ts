@@ -13,7 +13,9 @@ import {
 import { symbolId } from "../extractors/symbol-id.js";
 
 export const MAX_BODY_DELETES = 10;
-const EARLY_RETURN = " return undefined as never;";
+// The guard is always true at run time but typed `boolean`, so TS keeps the rest of the body reachable and keeps
+// narrowing there; a bare return leaves it unreachable, narrowing drops, and the dts build fails with TS18048.
+const EARLY_RETURN = " if (true as boolean) return undefined as never;";
 const NAME_PREFIX = "body-delete:";
 
 export interface BodyDeleteTarget {
