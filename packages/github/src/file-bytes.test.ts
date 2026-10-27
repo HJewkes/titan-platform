@@ -13,14 +13,14 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
 function stubRest(gets: Record<string, unknown>, texts: Record<string, unknown> = {}): { api: Rest; reads: string[] } {
   const reads: string[] = [];
   const unscripted = (path: string) => new Error(`unscripted read: ${path}`);
-  const get = async <T>(path: string): Promise<T> => {
+  const get = async (path: string): Promise<unknown> => {
     reads.push(path);
     if (!(path in gets)) throw unscripted(path);
-    return gets[path] as T;
+    return gets[path];
   };
   const api = {
     get,
-    getOrNull: async <T>(path: string) => (path in gets ? get<T>(path) : (reads.push(path), null)),
+    getOrNull: async (path: string) => (path in gets ? get(path) : (reads.push(path), null)),
     text: async (path: string) => {
       reads.push(path);
       if (!(path in texts)) throw unscripted(path);
