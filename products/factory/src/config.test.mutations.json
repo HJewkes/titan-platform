@@ -7,6 +7,13 @@
       "find": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\"]).optional(),",
       "replace": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\", \"seat-waives\"]).optional(),",
       "kills": ["loadConfig reads the non-source NO_REPRO key, and rejects seat-waives until its resolver path exists"]
+    },
+    {
+      "name": "a misspelt visual threshold key is stripped instead of refused",
+      "file": "products/factory/src/config.ts",
+      "find": "const VisualThresholdSchema = z.strictObject({",
+      "replace": "const VisualThresholdSchema = z.object({",
+      "kills": ["loadConfig keeps each repo's visual threshold, and refuses a misspelt key, a share above 1 or a repo that is not owner/name"]
     }
   ]
 }

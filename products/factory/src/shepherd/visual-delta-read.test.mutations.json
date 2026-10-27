@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the base render is read at the head instead of the merge base",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "readBlob(m, pair.basePath, m.mergeBase)",
+      "replace": "readBlob(m, pair.basePath, m.head)",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow records a changed snapshot's share of the content box, read from the merge base and the head"]
+    },
+    {
+      "name": "the snapshot cap counts only measured pairs, not added or removed shots",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "if (total > cap)",
+      "replace": "if (pairs.length > cap)",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow lists added and removed snapshots unmeasured by share, and measures none past maxSnapshots"]
+    },
+    {
+      "name": "token paths count a test file under the token directory",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "tokens: visualMatches(paths, threshold.tokenPaths),",
+      "replace": "tokens: paths.filter(caseFoldedMatcher(threshold.tokenPaths)),",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow matches the public API, token and harness paths, a token test aside"]
+    },
+    {
+      "name": "a configured maxBytes is ignored for the default blob cap",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "bytes.byteLength > m.maxBytes ?",
+      "replace": "bytes.byteLength > DEFAULT_MAX_BYTES ?",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow records a blob that is not a PNG, or over maxBytes, as unmeasured"]
+    },
+    {
+      "name": "visualThreshold mode off still measures the visual delta",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (threshold === undefined || threshold.mode === \"off\") return undefined;",
+      "replace": "if (threshold === undefined) return undefined;",
+      "kills": ["the merge evidence under shepherd.visualThreshold shadow reads no blob and records nothing when the repo's mode is off"]
+    }
+  ]
+}
