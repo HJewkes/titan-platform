@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a file exactly at the limit is not yet overdue",
+      "file": "scripts/vitest-file-watchdog.mjs",
+      "find": "now - at >= limitMs",
+      "replace": "now - at > limitMs",
+      "kills": [
+        "the file watchdog checks on its own timer from init until the run ends"
+      ]
+    },
+    {
+      "name": "an ended file stays tracked",
+      "file": "scripts/vitest-file-watchdog.mjs",
+      "find": "this.started.delete(fileOf(testModule));",
+      "replace": "",
+      "kills": [
+        "the file watchdog names a file still running at the limit and fails the run"
+      ]
+    },
+    {
+      "name": "an overdue file never fails the run",
+      "file": "scripts/vitest-file-watchdog.mjs",
+      "find": "this.exit(1);",
+      "replace": "",
+      "kills": [
+        "the file watchdog names a file still running at the limit and fails the run",
+        "the file watchdog checks on its own timer from init until the run ends"
+      ]
+    },
+    {
+      "name": "the check timer outlives the run",
+      "file": "scripts/vitest-file-watchdog.mjs",
+      "find": "clearInterval(this.timer);",
+      "replace": "",
+      "kills": [
+        "the file watchdog checks on its own timer from init until the run ends"
+      ]
+    },
+    {
+      "name": "a check with nothing overdue still fails the run",
+      "file": "scripts/vitest-file-watchdog.mjs",
+      "find": "if (overdue.length === 0) return;",
+      "replace": "",
+      "kills": [
+        "the file watchdog stays quiet while every running file is under the limit"
+      ]
+    }
+  ]
+}
