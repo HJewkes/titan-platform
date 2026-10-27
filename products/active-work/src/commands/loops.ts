@@ -11,7 +11,7 @@ import {
 } from '../sessions/open-loops.js';
 import { findMergedPrLoops } from '../sessions/loop-pr-state.js';
 import { resolveLedgerPaths } from '../sessions/ledger-file.js';
-import { LoopSourceSchema, readLedgerLoops } from '../sessions/loop-board.js';
+import { LoopSourceSchema, readLedgerLoops, sessionSourceOf } from '../sessions/loop-board.js';
 import type { LedgerLoop } from '../schemas/loop-ledger.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import type { Task } from '../schemas/task.js';
@@ -84,7 +84,7 @@ function toOpenEntry(loop: OpenLoop, fired: LoopTrigger[]): OpenEntry {
     session_file: loop.sessionFile,
     opened_at: loop.openedAt,
     age_days: loop.ageDays,
-    source: 'session',
+    source: sessionSourceOf(loop),
   };
 }
 
