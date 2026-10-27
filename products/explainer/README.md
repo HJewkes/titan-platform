@@ -247,7 +247,7 @@ Exit 0 when every run finished and the done-when holds, 1 otherwise, 2 on usage.
 | `script` | in-process: one `claude -p` call from the spine, the facts and the `guide plan --stage script` text, parsed with `ScriptSchema`; a reply whose only schema faults are keys the schema does not allow, or out-of-enum values on an optional field or an item of an optional list (a chip's `kind`), loses those keys (reported as `script-unknown-keys`) and values (one stage note each, naming the path, the bad value and the allowed ones), any other fault gets one retry naming the schema issues, an out-of-enum value with the values the schema allows, then up to two repair calls name the failing error-severity L0 rows, with what Q-F1, Q-F3, Q-F4, Q-F5, Q-F16 and Q-V10 found (a repair is kept only when it fails fewer). A long spine (more than `CHUNK_OVER_CHAPTERS` chapters or `CHUNK_OVER_BEATS` ledger beats) is drafted one chapter per call instead (below) | spine, facts → draft, and for gathered review facts companion and chapter-links (below) |
 | `rewrite` | in-process `rewriteScript`; its usage is the rewrite report's own sum over calls | draft → script, rewrite-report |
 | `eval` | in-process L0 (with the spine lints) and pace as gates, then the reported-only cold-viewer rubric | script, spine → l0 |
-| `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides and template-fill gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
+| `resolve` | in-process: the resolver tables, code citations and word budgets, then the template fill, with the emphasis-target, word-budget, slot-overrides, template-fill and chart-integrity gates (below), then one custom-layer build per `layer: "custom"` beat (below) | script (+ code, slots, layout when pinned, chapter-links when the script stage wrote them, facts, a pinned custom-layers tree) → resolved, generated-slots, custom-layers |
 | `tts` | in-process: speech-tts Kokoro per beat, realigned and trued (below) | script → words, audio, voice |
 | `render` | in-process, no model call: the template fill to a storyboard, `compileTimeline`, the composition page and `renderVideo` behind the pre-capture QA gate (below) | script, resolved, words, audio (+ code, slots, generated-slots when a run has them) → mp4, vtt, render-manifest, timeline, page |
 | `qa` | in-process, no model call: render-qa's gate at the cue moments and the 2 Hz sweep over the served page tree in Chromium, the gate profile's verdict, the DOM probe, and ffprobe and ffmpeg for the MP4's length and frame change (below) | mp4, timeline, words, script, resolved, page (+ visual, code, slots when a run has them) → qa, qa-crops, framediff and qa-probe past 64 kB |
@@ -425,8 +425,11 @@ with thresholds from the run's type profile `pacing` (optional `pictureChangeFai
 `readingMinS` 1.5 default when a type leaves them out): `picture-change` (the longest gap between a beat's cut and the
 cues whose frames move; warns above `pictureChangeMaxS`, fails above `pictureChangeFailS`), `static-window` (a still
 picture over `staticMaxS` outside a held beat or a reading hold), `cue-onset` (each cue within `cueOnsetS` of its STT
-word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). The
-spike's G1, G7, G8, G9, G10, G12 and G13 are reported; the module doc says why the others are not ported. `timing`
+word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). TP-4325
+gates three on-screen word checks too: the spike's G9 (a headline at most 10 words, a label at most 3), G10 (no
+display text repeats 5 or more narration words in a row) and `words-per-frame` (at most 20 prose words on screen together
+at any sampled moment of a prose beat; `code-walk`, `docs-vs-code` and `fix` beats are not counted). The spike's G1, G7, G8, G12 and G13 are reported; the
+module doc says why the others are not ported. `timing`
 also carries `static_window_count` and `picture_change_gap_max`, ar target 3's metric (TP-4033).
 The body never fails on a finding: its gates read `qa.json`, so a held error fails
 the stage with the spike's one-line summary (`qa FAIL: 3 held errors (text-overlap 2, off-frame 1), …`) and the run
@@ -470,7 +473,7 @@ same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render` | `duration-agreement`: the manifest's page and mix lengths agree within 1e-6 s (renderVideo refuses first; this re-asserts it over the stored manifest) | `two-run`: two renders at the same worker count gave the same MP4 bytes, when the variant sets `twoRun` |
-| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates |
+| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes; `headline-label-words` (G9), `narration-shared-run` (G10): that `timing` gate passes; `words-per-frame`: at most 20 words on screen at any sampled moment of a beat that is not a code beat | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates not gated above |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), the QA timing gates (TP-2669), and the variety lints
@@ -898,6 +901,11 @@ new stage key.
   filled slots with the owner's overrides laid on; a refused fill fails it. `word-budget` fails on any beat or
   block over its cap. `slot-overrides` refuses an owner override the chosen beat spec would not accept (below).
   `template-fill` fails when `fillScript` refuses a beat, naming it; a fallback passes and is listed in the detail.
+  `chart-integrity` (`chart-integrity.ts`, TP-4332) reads each filled `chart` and `replot` beat's optional `baseline`,
+  `axisBreak`, `scale` and `legend` slots: it fails bars on a baseline above zero or with a broken axis (CH-11, CH-13),
+  a `sequential` colour scale whose CIELAB L* is not strictly monotonic or a `diverging` one not light at one interior
+  peak (CH-22), and a legend on up to `DIRECT_LABEL_MAX` (6) series, which direct labels fit (CH-20). The page kinds
+  draw none of the four slots yet, so the gate holds what a script or pin may ask for.
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
   that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
   untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they

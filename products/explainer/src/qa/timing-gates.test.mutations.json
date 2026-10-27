@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "words-per-frame cap moves from 20 to 21",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "const FRAME_WORDS = 20;",
+      "replace": "const FRAME_WORDS = 21;",
+      "kills": [
+        "words-per-frame fails 21 prose words on screen together across texts"
+      ]
+    },
+    {
+      "name": "words-per-frame counts code-walk beats as prose",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "probed.filter((moment) => !code.has(moment.beat)).map(",
+      "replace": "probed.map(",
+      "kills": [
+        "words-per-frame leaves a code-walk beat's highlighted lines out of the count"
+      ]
+    }
+  ]
+}

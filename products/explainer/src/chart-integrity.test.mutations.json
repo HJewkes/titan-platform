@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "resolve runs no chart-integrity gate",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"chart-integrity\", gate: true, reads: [\"script\", \"resolved\"], run: chartIntegrityVerdict },\n",
+      "replace": "",
+      "kills": [
+        "resolve gates on chart integrity fails the chart-integrity gate on a truncated bar chart a slots pin sets",
+        "resolve gates on chart integrity passes a zero-based bar chart with an ordered ramp"
+      ]
+    },
+    {
+      "name": "the chart slots carry no axis or colour frame",
+      "file": "products/explainer/src/beat-slots.ts",
+      "find": "series: z.array(Point).min(1).max(12), ...ChartFrame })",
+      "replace": "series: z.array(Point).min(1).max(12) })",
+      "kills": [
+        "resolve gates on chart integrity fails the chart-integrity gate on a truncated bar chart a slots pin sets",
+        "resolve gates on chart integrity passes a zero-based bar chart with an ordered ramp"
+      ]
+    }
+  ]
+}

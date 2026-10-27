@@ -40,6 +40,15 @@ const ListRow = z.object({ id: Id, text: Line, mark: z.enum(["tick", "cross", "r
 // Cues number compare labels one by one, so a row is named by its left label's id and its right label's alias.
 const CompareRow = z.object({ id: Id, alias: Id.optional(), left: Line, right: Line }).strict();
 
+// How a chart's axis and colour are drawn; the chart-integrity gate refuses the forms that mislead (CH-11, CH-13, CH-20, CH-22).
+const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "expected a #rrggbb colour");
+const ChartFrame = {
+  baseline: z.number().optional(),
+  axisBreak: z.boolean().optional(),
+  scale: z.object({ kind: z.enum(["sequential", "diverging"]), colours: z.array(Hex).min(2).max(11) }).strict().optional(),
+  legend: z.boolean().optional(),
+};
+
 const items = (min: number, max: number) => z.array(Item).min(min).max(max);
 const graph = { nodes: z.array(Node).min(2).max(12), edges: z.array(Edge).max(16) };
 
@@ -77,7 +86,9 @@ export const BEAT_SLOTS = {
   scorecard: z.object({ rows: z.array(z.object({ id: Id, label: Label, call: Label, reason: Line.optional() }).strict()).min(2).max(8) }).strict(),
   "reading-list": z.object({ items: z.array(z.object({ id: Id, path: z.string().min(1), why: Line }).strict()).min(1).max(6) }).strict(),
   "fact-flash": z.object({ facts: items(1, 4) }).strict(),
-  chart: z.object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12) }).strict(),
+  chart: z
+    .object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12), ...ChartFrame })
+    .strict(),
   list: z.object({ title: Label.optional(), rows: z.array(ListRow).min(1).max(5) }).strict(),
   "verdict-card": z.object({ verdict: Line, call: Label, reasons: items(1, 3) }).strict(),
   "change-group": z.object({ groups: z.array(z.object({ id: Id, title: Label, why: Line, files: z.array(z.string().min(1)).min(1), pin: Id.optional() }).strict()).min(2).max(4) }).strict(),
@@ -92,6 +103,7 @@ export const BEAT_SLOTS = {
       y: Label,
       source: Source,
       series: z.array(z.object({ id: Id, label: Label, points: z.array(z.object({ x: z.number(), y: z.number() }).strict()).min(1) }).strict()).min(1).max(6),
+      ...ChartFrame,
     })
     .strict(),
   sim: z
