@@ -4,7 +4,7 @@ import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
 /** pixelmatch's own default. Looser than the visual check's 0.02 on purpose: CI catches any drift, this asks if it matters. */
-const DEFAULT_PIXEL_TOLERANCE = 0.1;
+export const DEFAULT_PIXEL_TOLERANCE = 0.1;
 
 interface SnapshotShareOptions {
   /** pixelmatch's per-pixel threshold, 0..1. */

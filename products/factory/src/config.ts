@@ -117,6 +117,28 @@ export const FlakyChecksSchema = z.strictObject({
   waitSeconds: z.number().int().min(0).max(900),
 });
 
+const MI = 1024 * 1024;
+
+/**
+ * One repo's visual-diff threshold (TP-4320). Absent, or `off`, records nothing; `shadow` records the delta on the merge
+ * evidence, and nothing decides on it. `maxChangedShare` defaults to 0.01 of the content box and `pixelTolerance` to 0.1.
+ * The caps bound the measuring work per evidence step, so each has a ceiling config cannot raise: `maxSnapshots` pairs,
+ * `maxBytes` per blob, `maxPixels` per decoded image and `maxTotalPixels` decoded over the step.
+ */
+const VisualThresholdSchema = z.strictObject({
+  mode: z.enum(["off", "shadow"]),
+  maxChangedShare: z.number().min(0).max(1).optional(),
+  pixelTolerance: z.number().min(0).max(1).optional(),
+  snapshotPaths: z.array(z.string().min(1)),
+  apiPaths: z.array(z.string().min(1)),
+  tokenPaths: z.array(z.string().min(1)),
+  harnessPaths: z.array(z.string().min(1)),
+  maxSnapshots: z.number().int().positive().max(200).optional(),
+  maxBytes: z.number().int().positive().max(20 * MI).optional(),
+  maxPixels: z.number().int().positive().max(32 * MI).optional(),
+  maxTotalPixels: z.number().int().positive().max(256 * MI).optional(),
+});
+
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
 export const SpawnGateConfigSchema = z.strictObject({
   load5: z.number().positive().optional(),
@@ -262,6 +284,8 @@ export const FactoryConfigSchema = z.object({
       consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */
+      visualThreshold: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), VisualThresholdSchema).optional(),
       /**
        * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
        * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
