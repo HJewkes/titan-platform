@@ -371,7 +371,6 @@ interface GitHubWire {
     deleteRef(repo: RepoSlug, branch: string): Promise<void>;
     getDefaultBranch(repo: RepoSlug): Promise<string>;
     getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
-    /** Over `maxBytes` by the contents entry's size throws `BlobTooLargeError` before any blob read. */
     getContentBytes(repo: RepoSlug, path: string, ref: string, maxBytes?: number): Promise<Uint8Array | null>;
     putContent(repo: RepoSlug, request: PutFileRequest): Promise<{
         blobSha: string;
@@ -458,10 +457,7 @@ interface GitHubPort {
     /** Refuses (skips) the default branch and a head that lives in another repo. */
     deleteRef(repo: RepoSlug, head: HeadRef): Promise<WriteResult>;
     getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
-    /**
-     * `getFile` for binary content such as a PNG: the bytes undecoded, read through `git/blobs` past the 1 MB inline limit.
-     * With `maxBytes`, a file GitHub reports as larger throws `BlobTooLargeError` before its blob is downloaded.
-     */
+    /** `getFile` for binary content such as a PNG, through `git/blobs` past 1 MB; over `maxBytes` by reported size throws `BlobTooLargeError` before that read. */
     fileBytes(repo: RepoSlug, path: string, ref: string, opts?: {
         maxBytes?: number;
     }): Promise<Uint8Array | null>;
