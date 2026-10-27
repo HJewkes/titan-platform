@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { fakeGitHub } from "./fake.js";
 import { wireOver } from "./gh-cli.js";
@@ -13,21 +14,22 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
 function stubRest(gets: Record<string, unknown>, texts: Record<string, unknown> = {}): { api: Rest; reads: string[] } {
   const reads: string[] = [];
   const unscripted = (path: string) => new Error(`unscripted read: ${path}`);
-  const get = async (path: string): Promise<unknown> => {
+  async function get<T>(path: string): Promise<T> {
     reads.push(path);
     if (!(path in gets)) throw unscripted(path);
-    return gets[path];
-  };
-  const api = {
-    get,
-    getOrNull: async (path: string) => (path in gets ? get(path) : (reads.push(path), null)),
-    text: async (path: string) => {
-      reads.push(path);
-      if (!(path in texts)) throw unscripted(path);
-      return JSON.stringify(texts[path]);
-    },
-  } as unknown as Rest;
-  return { api, reads };
+    return gets[path] as T;
+  }
+  async function getOrNull<T>(path: string): Promise<T | null> {
+    if (path in gets) return get<T>(path);
+    reads.push(path);
+    return null;
+  }
+  async function text(path: string): Promise<string> {
+    reads.push(path);
+    if (!(path in texts)) throw unscripted(path);
+    return JSON.stringify(texts[path]);
+  }
+  return { api: partialFake<Rest>({ get, getOrNull, text }), reads };
 }
 
 const portOver = (api: Rest) => githubPort(wireOver(api, async () => ({ id: 1 })));
