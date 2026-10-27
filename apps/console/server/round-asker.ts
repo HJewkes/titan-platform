@@ -8,8 +8,8 @@
  * A TP-3729 `notified.json` still counts for the seat it names.
  *
  * The notice is fixed text built from the round id, the feedback path and whether the answer carries free text. The
- * transport (`round-notice-transport.ts`) delivers it from the human seat, so nothing the filing seat wrote (prompts,
- * option labels) is ever relayed under that provenance.
+ * transport (`round-notice-transport.ts`) delivers it from the human seat, labelled `wake_source=console`, so nothing
+ * the filing seat wrote (prompts, option labels) is ever relayed as if the owner sent it.
  */
 import path from "node:path";
 import { z } from "zod";
