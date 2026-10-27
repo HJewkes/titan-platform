@@ -4,9 +4,9 @@ import { z } from "zod";
  * The caption track against the narration (content standards XT-32, XT-33, RA-1, RA-11..13; WCAG 1.2.2 Level A):
  * the VTT parses and has cues, its words are words.json's, and each cue keeps the line, reading-rate and onset limits.
  */
-export const CAPTION_LIMITS = { lineChars: 42, lines: 2, cps: 20, onsetS: 0.3 } as const;
+const CAPTION_LIMITS = { lineChars: 42, lines: 2, cps: 20, onsetS: 0.3 } as const;
 
-export const CAPTION_RULES = ["complete", "words", "lines", "cps", "onset"] as const;
+const CAPTION_RULES = ["complete", "words", "lines", "cps", "onset"] as const;
 export type CaptionRule = (typeof CAPTION_RULES)[number];
 
 export const CaptionReportSchema = z.object({
@@ -14,7 +14,7 @@ export const CaptionReportSchema = z.object({
   words: z.number().int().nonnegative(),
   findings: z.array(z.object({ rule: z.enum(CAPTION_RULES), cue: z.number().int().nullable(), message: z.string() })),
 });
-export type CaptionReport = z.infer<typeof CaptionReportSchema>;
+type CaptionReport = z.infer<typeof CaptionReportSchema>;
 type CaptionFinding = CaptionReport["findings"][number];
 
 interface Cue {
@@ -107,7 +107,8 @@ function onsetFindings(cues: readonly Cue[], spoken: readonly Token[]): CaptionF
     next += count;
     if (count === 0 || first === undefined) continue;
     const offS = cue.startS - first.startS;
-    if (Math.abs(offS) > CAPTION_LIMITS.onsetS) out.push({ rule: "onset", cue: cue.index, message: `cue ${cue.index} starts ${offS.toFixed(2)} s from its first word (at most ±${CAPTION_LIMITS.onsetS})` });
+    const message = `cue ${cue.index} starts ${offS.toFixed(2)} s from its first word (at most ±${CAPTION_LIMITS.onsetS})`;
+    if (Math.abs(offS) > CAPTION_LIMITS.onsetS) out.push({ rule: "onset", cue: cue.index, message });
   }
   return out;
 }
