@@ -33,8 +33,8 @@ export function draftBudgets(draft: Draft): BudgetRow[] {
   return scriptBudgets(voiced, resolvedBands(voiced, specs), specs).rows;
 }
 
-/** The planned seconds a beat's words need at its slot's rate. */
-const secondsFor = (row: BudgetRow): number => Math.ceil(row.words / row.wordsPerS);
+/** The planned seconds a beat's words need at its slot's rate; the epsilon matches the cap's, so 56 words at 2.8 need 20 s. */
+const secondsFor = (row: BudgetRow): number => Math.ceil(row.words / row.wordsPerS - 1e-9);
 
 const overText = (row: BudgetRow): string =>
   `${row.scope === "block" ? "block " : ""}${row.id} ${row.words}/${row.cap} words (${row.seconds} s at ${row.wordsPerS} w/s; ${row.words} words need ${secondsFor(row)} s)`;
@@ -97,6 +97,53 @@ export function draftBeatLengths(draft: Draft): { pass: boolean; detail: string 
 export function planFaults(draft: Draft): string[] {
   const runtime = draftRuntime(draft);
   return [...wordBudgetFaults(draft), ...beatLengthFaults(draft).map((fault) => `beat length: ${fault}`), ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`])];
+}
+
+/** The most seconds a re-time adds to one beat: at concept's 2.8 w/s that covers 5 words over, and each measured overage needed 1 s. */
+const RETIME_MAX_S = 2;
+
+interface Retimed<D extends Draft> {
+  draft: D;
+  /** Each re-timed beat and its seconds, as `reflection-1 18→19 s`; empty when the draft is returned as it came. */
+  moves: string[];
+}
+
+const blockMaxS = (profile: TypeProfile, chapter: string): number | undefined =>
+  profile.structure.blocks.find((block) => block.id === chapter)?.seconds[1];
+
+/** The draft with one over-budget beat raised to the seconds its words need, or undefined when a bound refuses it. */
+function raised<D extends Draft>(draft: D, row: BudgetRow, profile: TypeProfile): D | undefined {
+  const beat = draft.beats.find((candidate) => candidate.id === row.id);
+  const need = secondsFor(row);
+  if (!beat || need - beat.plannedS > RETIME_MAX_S || need > MAX_BEAT_S) return undefined;
+  const next = { ...draft, beats: draft.beats.map((candidate) => (candidate === beat ? { ...beat, plannedS: need } : candidate)) };
+  const blockS = blockMaxS(profile, beat.chapter);
+  if (blockS !== undefined && chapterSeconds(next, beat.chapter) > blockS) return undefined;
+  return plannedTotal(next) <= profile.runtime.maxS ? next : undefined;
+}
+
+const strictSubset = (after: readonly string[], before: readonly string[]): boolean =>
+  after.length < before.length && after.every((fault) => before.includes(fault));
+
+/**
+ * The $0 word-budget repair: each beat a few words over its cap gets the seconds its words need, within
+ * `RETIME_MAX_S`, Q-F8's longest beat, its block's longest airtime and the profile's longest runtime. A block row is
+ * never re-timed, since its cap does not move with plannedS. The result is kept only when it fails a strict subset of
+ * the `faults` it failed before; anything larger still fails, for the plan retry or the gate. A chapter part passes
+ * its own reader's faults, since the whole draft's runtime fault names a total the part cannot reach.
+ */
+export function retimeOverBudget<D extends Draft>(draft: D, faults: (draft: D) => string[] = planFaults): Retimed<D> {
+  const profile = profileFor(loadProfiles(), draft.profile);
+  const rows = overBudget(draftBudgets(draft)).filter((row) => row.scope === "beat");
+  let next = draft;
+  const moves: string[] = [];
+  for (const row of rows) {
+    const candidate = raised(next, row, profile);
+    if (!candidate) continue;
+    moves.push(`${row.id} ${row.seconds}→${secondsFor(row)} s`);
+    next = candidate;
+  }
+  return moves.length > 0 && strictSubset(faults(next), faults(draft)) ? { draft: next, moves } : { draft, moves: [] };
 }
 
 /**

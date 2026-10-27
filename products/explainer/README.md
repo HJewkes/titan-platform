@@ -312,6 +312,15 @@ and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `u
 run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
 dollars and prompt-cache tokens read and written, and the path stops itself at the run's spend cap between calls.
 
+**Word-budget re-time (TP-4288).** A beat a few words over its cap gets the seconds its words need, at no cost
+(`retimeOverBudget`, `script-budget.ts`): at most `RETIME_MAX_S` (2 s) more, never past the 20 s beat band, its
+block's longest airtime or the profile's longest runtime. A block over its cap is never re-timed, and the re-timed
+draft is kept only when it fails a strict subset of the plan faults it failed before. It runs on each draft reply
+before the plan retry counts faults, so a draft that only needs seconds makes no retry, and once more after the last
+repair round (the single call's, or the chunked path's whole-video round), which keeps any reply that fails fewer L0
+rows whatever its word count. Each move is a stage note and the reported check `word-budget-retime`, as
+`reflection-1 18→19 s`. Anything larger still fails the `word-budget` gate.
+
 **The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
 script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`
 (`explainer.chapter-links/v1`: the doc's name and sha, and per chapter its section, `href` and the anchor of each fact
@@ -435,7 +444,7 @@ skipped with a note.
 
 | Stage | Gate | Reported |
 |---|---|---|
-| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `word-budget-retime` (the beats re-timed to fit their words); `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
 | `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite); `word-budget` (a beat or block of the rewritten script over the cap resolve holds it to; a round reverts a beat whose rewrite takes it over, as `word-budget`) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
 
 **Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
