@@ -1,11 +1,12 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { sha256 } from "../workflow/artifacts.js";
-import { runOneStage, runVideo } from "../workflow/host.js";
+import { ArtifactStore, sha256 } from "../workflow/artifacts.js";
+import { openState, runOneStage, runVideo } from "../workflow/host.js";
 import { fakeHost, fakeRender, fakeScriptModel, fixture, type Fixture } from "../workflow/run-fakes.test-helpers.js";
 import { runStageChecks } from "../workflow/stage-checks.js";
+import { SYNTHETIC_ANCHORS, SYNTHETIC_LAYER, writeSyntheticTree } from "./custom-layer-fixture.test-helpers.js";
 import type { FakeRenderOptions } from "./render-fakes.test-helpers.js";
 import { FAKE_HOST } from "./render-fixtures.test-helpers.js";
 import { RenderManifestSchema, type RenderManifest } from "./render-manifest.js";
@@ -40,6 +41,51 @@ async function renderStage(params: Record<string, unknown> = {}, options: FakeRe
   const record = await runOneStage({ stage: "render", inputs, variant }, fakeHost(fx, fakeScriptModel(), render));
   return { inputs, record, render, manifest: RenderManifestSchema.parse(JSON.parse(artifact(record.outputs["render-manifest"]!))) };
 }
+
+const ResolvedRowsSchema = z.looseObject({ beats: z.array(z.looseObject({ id: z.string(), layer: z.string() })) });
+const CustomBeatSchema = z.object({ beats: z.array(z.looseObject({ id: z.string(), layer: z.string().optional(), module: z.string().optional(), anchors: z.array(z.string()).optional() })) });
+
+/** The voiced inputs with the first resolved beat turned custom, and a custom-layers tree holding `modules` for it. */
+async function customInputs(modules?: Record<string, string>): Promise<Record<string, string>> {
+  const inputs = await voiced();
+  const resolved = ResolvedRowsSchema.parse(JSON.parse(artifact(inputs.resolved!)));
+  const first = resolved.beats[0]!;
+  const from = { runId: "input", stage: "input" };
+  const db = openState(fx.dataDir);
+  try {
+    const store = new ArtifactStore(fx.dataDir, db);
+    const custom = { ...resolved, beats: [{ ...first, layer: "custom" }, ...resolved.beats.slice(1)] };
+    const tree = writeSyntheticTree(mkdtempSync(path.join(fx.dataDir, "tree-")), first.id, modules);
+    return { ...inputs, resolved: store.putText(JSON.stringify(custom), "resolved", from), "custom-layers": store.putTree(tree, "custom-layers", from) };
+  } finally {
+    db.close();
+  }
+}
+
+describe("the render stage's custom layers", () => {
+  // Mutation: render's inputs leave out custom-layers, or render-stage never bundles the tree into the page.
+  it("bundles a custom beat's layer into the served page and names it from the timeline beat", async () => {
+    fx = fixture();
+    const inputs = await customInputs();
+
+    const record = await runOneStage({ stage: "render", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    const beat = CustomBeatSchema.parse(JSON.parse(artifact(record.outputs.timeline!))).beats[0]!;
+    expect(beat).toMatchObject({ id: "beat-01", layer: "custom", module: "./custom-layers/beat-01.js", anchors: SYNTHETIC_ANCHORS });
+    const bundled = treeFile(record.outputs.page!, "custom-layers/beat-01.js");
+    expect(bundled).toContain("Parcels waiting");
+    expect(bundled).not.toMatch(/from\s*["']react["']/);
+  });
+
+  it("rejects naming the module when the tree lacks the file its index names", async () => {
+    fx = fixture();
+    const inputs = await customInputs({ "other.tsx": SYNTHETIC_LAYER });
+
+    const render = runOneStage({ stage: "render", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    await expect(render).rejects.toThrow(/custom layer for beat "[^"]+": module "[^"]+\.tsx" is missing from the custom-layers tree/);
+  });
+});
 
 describe("the render stage", () => {
   it("draws the board under beat-NN ids, and renames the voiced words.json beats to match", async () => {

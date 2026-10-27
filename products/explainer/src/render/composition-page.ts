@@ -65,7 +65,7 @@ export async function cachedPage(source: PageSource, cacheRoot: string, build: P
 const PACKAGE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const PAGE_SOURCE: PageSource = {
   root: path.join(PACKAGE_ROOT, "src", "composition"),
-  extra: [path.join(PACKAGE_ROOT, "src", "beat-slots.ts"), path.join(PACKAGE_ROOT, "package.json")],
+  extra: [path.join(PACKAGE_ROOT, "src", "beat-slots.ts"), path.join(PACKAGE_ROOT, "src", "anchor-grid.ts"), path.join(PACKAGE_ROOT, "package.json")],
 };
 
 async function viteBuild(outDir: string): Promise<void> {

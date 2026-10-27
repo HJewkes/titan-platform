@@ -14,6 +14,9 @@ interface QaBeat {
   startS: number;
   durationS: number;
   cues: QaCue[];
+  /** Set when a custom layer draws the beat, with the anchor cells it declares. */
+  layer?: "custom";
+  anchors?: string[];
 }
 
 /** What the qa stage seeks through: every beat that plays, in play order, with its cues. */
@@ -23,8 +26,8 @@ export interface QaTimeline {
 
 /** The render's `timeline` artifact; its `cues` are already beat-local seconds. */
 export function timelineFromArtifact(json: unknown): QaTimeline {
-  const beats = parseTimeline(json).beats.map(({ id, kind, startS, durationS, cues }) => ({
-    id, kind, startS, durationS, cues: Object.entries(cues ?? {}).map(([name, atS]) => ({ name, atS })),
+  const beats = parseTimeline(json).beats.map(({ id, kind, startS, durationS, cues, layer, anchors }) => ({
+    id, kind, startS, durationS, cues: Object.entries(cues ?? {}).map(([name, atS]) => ({ name, atS })), ...(layer ? { layer } : {}), ...(anchors ? { anchors } : {}),
   }));
   return { beats };
 }
