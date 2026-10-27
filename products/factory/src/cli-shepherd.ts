@@ -51,6 +51,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerRepairStopVerbs(verb, verbs);
   registerMergeBaseVerbs(verb, verbs);
   registerRepoFreezeVerbs(verb, verbs);
+  registerOrderVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
@@ -145,6 +146,21 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
     .option("--episode <n>", "the red-main episode the mark is for; refused when it is not the open one", parsePositiveInt)
     .action((repo: string, pr: string, opts: ShepherdOpts & { episode?: number }) =>
       runShepherd(verbs, "shepherd.fix-pr", () => ({ repo, pr: parsePositiveInt(pr), episode: opts.episode, actor: callerOf(verbs.io.env) }), opts));
+}
+
+/** A conflicted PR's merge-order reservation, read, and ended by hand only as break-glass. */
+function registerOrderVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("order [repo] [ref]", "every merge-order reservation, or only owner/repo's; `order clear owner/repo#N --reason <text>` ends one by hand, logged with the caller")
+    .option("--reason <text>", "with clear: why the reservation is ended by hand")
+    .action((what: string | undefined, ref: string | undefined, opts: ShepherdOpts & { reason?: string }) =>
+      runShepherd(verbs, "shepherd.order", () => orderArgs(what, ref, opts.reason, verbs), opts));
+}
+
+/** `order clear <ref>` is the break-glass write; any other first word is the repo to list. */
+function orderArgs(what: string | undefined, ref: string | undefined, reason: string | undefined, verbs: Verbs): object {
+  if (what !== "clear") return what === undefined ? { action: "list" } : { action: "list", repo: what };
+  if (ref === undefined) throw new Error("order clear needs owner/repo#N");
+  return { action: "clear", ...parsePrRef(ref), reason, actor: callerOf(verbs.io.env) };
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {

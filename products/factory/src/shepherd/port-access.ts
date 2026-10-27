@@ -19,6 +19,7 @@ export const SHEPHERD_PORT_ACCESS = {
   "shepherd.repair-stop": "list-or-write",
   "shepherd.freeze": "read",
   "shepherd.thaw": "read",
+  "shepherd.order": "list-or-write",
   "shepherd.fix-pr": "read",
   "shepherd.merge-base": "read",
   "shepherd.merge": "write",

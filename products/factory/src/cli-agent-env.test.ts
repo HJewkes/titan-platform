@@ -8,6 +8,8 @@ import type { GitHubWire } from "@titan-design/github";
 import { githubPort } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { openFactoryHost } from "./host.js";
+import { MergeOrder } from "./shepherd/merge-order.js";
 import { H1, REPO } from "./test-support/land.js";
 import { BRANCH, shepherdFixture } from "./test-support/shepherd.js";
 
@@ -49,6 +51,21 @@ async function cli(argv: string[], deps: CliDeps, env: NodeJS.ProcessEnv): Promi
 
 const AGENT = { AGENT_CHAT_NAME: "demo-impl", AGENT_CHAT_AGENT_ID: "id-1" };
 const SHA = "a".repeat(40);
+
+/** Opens the CLI's database directly, migrated as the CLI's own host migrates it, so a test can seed and read back reservations. */
+function withOrder<T>(dbPath: string, use: (order: MergeOrder) => T): T {
+  const host = openFactoryHost({ dbPath, workflows: [], routes: shepherdFixture().routes });
+  try {
+    return use(new MergeOrder(host.db));
+  } finally {
+    host.close();
+  }
+}
+
+const reserveDemo = (dbPath: string): void =>
+  withOrder(dbPath, (order) => order.reserve({ repo: REPO, runId: "run-1", pr: 1, headSha: H1, baseSha: SHA, paths: ["docs/shared.md"], ahead: [], since: new Date().toISOString(), reason: "conflict" }));
+
+const reservedPrs = (dbPath: string): number[] => withOrder(dbPath, (order) => order.list(REPO).map((reservation) => reservation.pr));
 
 describe("write verbs in an agent env with no serve answering", () => {
   const writes: Array<[string, (port: string) => string[]]> = [
@@ -106,6 +123,27 @@ describe("write verbs in an agent env with no serve answering", () => {
     const result = await cli(["--db", dbPath, "shepherd", "repair-stops", "--port", String(await deadPort())], deps, AGENT);
 
     expect(result.code).toBe(EXIT.OK);
+  });
+
+  it("order clear exits UNAVAILABLE and leaves the reservation in place", async () => {
+    const { deps, dbPath } = countingSetup();
+    reserveDemo(dbPath);
+
+    const result = await cli(["--db", dbPath, "shepherd", "order", "clear", `${REPO}#1`, "--reason", "demo", "--port", String(await deadPort())], deps, AGENT);
+
+    expect(result.code).toBe(EXIT.UNAVAILABLE);
+    expect(result.err).toContain("would write in-process, which an agent env refuses");
+    expect(reservedPrs(dbPath)).toEqual([1]);
+  });
+
+  it("order, a read, still falls back to the database here", async () => {
+    const { deps, dbPath } = countingSetup();
+    reserveDemo(dbPath);
+
+    const result = await cli(["--db", dbPath, "shepherd", "order", "--port", String(await deadPort())], deps, AGENT);
+
+    expect(result.code).toBe(EXIT.OK);
+    expect(result.out).toContain(`${REPO}#1`);
   });
 
   it("status, a read, still falls back to the database here", async () => {
