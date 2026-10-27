@@ -5,8 +5,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
-import { successEnvelope } from "@titan-design/registry";
-import { SNAPSHOT_FORMAT, snapshotKey } from "@titan-design/rpc-client";
+import { errorEnvelope, successEnvelope } from "@titan-design/registry";
+import { SNAPSHOT_FORMAT, snapshotKey, type DataSource } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS } from "../server/round-fixtures.js";
 import { listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
@@ -15,6 +15,7 @@ const SUPERSEDED = "kiln-schedule-r2";
 const CLOSED = "lantern-cards-r1";
 const ANSWERED_THEN_WITHDRAWN = "kiln-schedule-r1";
 const REPLACEMENT = "orbit-retry-r1";
+const LATE = "beacon-states-r1";
 
 let root: string;
 let dir: string;
@@ -50,7 +51,23 @@ async function renderRounds(): Promise<void> {
   await screen.findByText("Open rounds");
 }
 
-const rowIdsIn = (status: string): (string | null)[] =>
+/** A daemon stand-in that reads the rounds dir on every `rounds.list` call, so a later withdrawal shows on the next fetch. */
+const liveRounds: DataSource = {
+  call: async (name) => (name === "rounds.list" ? successEnvelope(await listRounds({ dir })) : errorEnvelope(`${name} is not served here`, 69)),
+  subscribe: () => ({ close: () => undefined }),
+};
+
+async function renderLiveRounds(): Promise<void> {
+  window.location.hash = "#/rounds";
+  render(
+    <RpcProvider source={liveRounds}>
+      <App />
+    </RpcProvider>,
+  );
+  await screen.findByText("Open rounds");
+}
+
+const rowIdsIn =(status: string): (string | null)[] =>
   within(screen.getByTestId(`rounds-${status}`)).queryAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
 
 describe("withdrawn rounds on the rounds list", () => {
@@ -78,5 +95,16 @@ describe("withdrawn rounds on the rounds list", () => {
     expect(rowIdsIn("open")).not.toContain(`round-row-${ANSWERED_THEN_WITHDRAWN}`);
     expect(rowIdsIn("sent")).toContain(`round-row-${ANSWERED_THEN_WITHDRAWN}`);
     expect(screen.queryByTestId(`round-withdrawn-${ANSWERED_THEN_WITHDRAWN}`)).toBeNull();
+  });
+
+  it("moves a round withdrawn after the page loaded out of Open once the owner returns to the tab, with no reload", async () => {
+    await renderLiveRounds();
+    await waitFor(() => expect(rowIdsIn("open")).toContain(`round-row-${LATE}`));
+
+    await withdraw(LATE, "closed");
+    fireEvent.focus(window);
+
+    await waitFor(() => expect(rowIdsIn("withdrawn")).toContain(`round-row-${LATE}`));
+    expect(rowIdsIn("open")).not.toContain(`round-row-${LATE}`);
   });
 });
