@@ -122,7 +122,7 @@ export const FlakyChecksSchema = z.strictObject({
  * the merge evidence; `on` is reserved for deciding on it. `maxChangedShare` defaults to 0.01 of the content box,
  * `pixelTolerance` to 0.1, `maxSnapshots` to 80 and `maxBytes` to 5 MiB per blob.
  */
-const VisualThresholdSchema =z.strictObject({
+const VisualThresholdSchema = z.strictObject({
   mode: z.enum(["off", "shadow", "on"]),
   maxChangedShare: z.number().min(0).max(1).optional(),
   pixelTolerance: z.number().min(0).max(1).optional(),
