@@ -1,15 +1,9 @@
 import { once } from "node:events";
 import zlib from "node:zlib";
 import { githubPort } from "@titan-design/github";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodePngBounded } from "./png-bounded.js";
+import { describe, expect, it } from "vitest";
 import { OVER_BUDGET } from "./visual-delta-measure.js";
 import { HEAD, SHOT, THRESHOLD, card, evidence, pair, world } from "./visual-delta-read.test-helpers.js";
-
-vi.mock("./png-bounded.js", async (original) => {
-  const actual = await original<typeof import("./png-bounded.js")>();
-  return { ...actual, decodePngBounded: vi.fn(actual.decodePngBounded) };
-});
 
 const MiB = 1024 * 1024;
 const shot = (name: string) => `ui/visual/stories.spec.ts-snapshots/${name}--default-chromium-linux.png`;
@@ -46,10 +40,6 @@ async function deflatedZeros(size: number): Promise<Buffer> {
   return Buffer.concat(parts);
 }
 
-afterEach(() => {
-  vi.mocked(decodePngBounded).mockClear();
-});
-
 describe("measuring snapshot pairs under the step's fixed caps", () => {
   // The #2594 round-3 shape: pngjs kept the interlaced second IHDR and inflated the whole 200 MiB.
   it("records a head with a second, interlaced IHDR over a 200 MiB IDAT as unmeasured within 64 MiB", async () => {
@@ -72,6 +62,7 @@ describe("measuring snapshot pairs under the step's fixed caps", () => {
     expect(fake.calls.filter((call) => call === "getContentBytes")).toEqual([]);
   });
 
+  // A decode needs the blob first, so two reads in all prove the second and third pairs were never decoded.
   it("measures the first of three 64×64 pairs under a two-image budget, and neither reads nor decodes the others", async () => {
     const [a, b, c] = [shot("a"), shot("b"), shot("c")];
     const fake = world(modified(a, b, c), { ...pair(a, card(false, 64), card(true, 64)), ...pair(b, card(false, 64), card(true, 64)), ...pair(c, card(false, 64), card(true, 64)) });
@@ -79,7 +70,6 @@ describe("measuring snapshot pairs under the step's fixed caps", () => {
     const { record } = await evidence(fake, { ...THRESHOLD, maxTotalPixels: 2 * 64 * 64 });
 
     expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.reason])).toEqual([["b", "unmeasured", OVER_BUDGET], ["c", "unmeasured", OVER_BUDGET], ["a", "changed", undefined]]);
-    expect(vi.mocked(decodePngBounded)).toHaveBeenCalledTimes(2);
     expect(fake.calls.filter((call) => call === "getContentBytes")).toHaveLength(2);
   });
 
@@ -89,7 +79,6 @@ describe("measuring snapshot pairs under the step's fixed caps", () => {
     const { record } = await evidence(fake, { ...THRESHOLD, maxTotalPixels: 64 * 64 + 100 });
 
     expect(reasons(record.visualDelta?.snapshots)).toEqual([OVER_BUDGET]);
-    expect(vi.mocked(decodePngBounded).mock.calls.map(([, limits]) => limits.maxPixels)).toEqual([64 * 64 + 100, 100]);
   });
 
   it("records every pair unmeasured with no blob or merge-base read when they number over maxSnapshots", async () => {

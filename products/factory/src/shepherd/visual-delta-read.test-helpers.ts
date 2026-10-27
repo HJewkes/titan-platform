@@ -56,4 +56,5 @@ export const pair = (path: string, base: Uint8Array, head: Uint8Array) => ({ [`$
 
 export const changedShot = (): FakeGitHub => world([{ path: SHOT, status: "modified" }], pair(SHOT, card(), card(true)));
 
-export const evidence = (fake: FakeGitHub, threshold?: VisualThreshold, port: GitHubPort = githubPort(fake.wire)) => mergeEvidence(port, input, noFreezeStoreUntilTp523, { kind: "feature" }, undefined, { threshold });
+export const evidence = (fake: FakeGitHub, threshold?: VisualThreshold, port: GitHubPort = githubPort(fake.wire)) =>
+  mergeEvidence(port, input, noFreezeStoreUntilTp523, { kind: "feature" }, undefined, { threshold });

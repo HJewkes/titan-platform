@@ -298,7 +298,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
     deleteRef: async (repo, head) => deleteRef(wire, repoOf(repo), { branch: checkRef("branch", head.branch), repo: head.repo }),
     getFile: async (repo, path, ref) => wire.getContent(repoOf(repo), checkPath(path), checkRef("ref", ref)),
-    fileBytes: async (repo, path, ref, opts = {}) => wire.getContentBytes(repoOf(repo), checkPath(path), checkRef("ref", ref), opts.maxBytes === undefined ? undefined : checkPositiveInt("maxBytes", opts.maxBytes)),
+    fileBytes: async (repo, path, ref, opts = {}) =>
+      wire.getContentBytes(repoOf(repo), checkPath(path), checkRef("ref", ref), opts.maxBytes === undefined ? undefined : checkPositiveInt("maxBytes", opts.maxBytes)),
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
