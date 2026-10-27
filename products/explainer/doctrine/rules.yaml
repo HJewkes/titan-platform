@@ -89,7 +89,7 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"], scope: chapter }
   - id: Q-V11
-    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons, "let''s" and the over-represented phrases of doctrine/voice-phrases.json, and at most one number mention in a beat'
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails (and "never X", "no X"), semicolons, "let''s" and the over-represented phrases of doctrine/voice-phrases.json, and at most one number mention in a beat'
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
