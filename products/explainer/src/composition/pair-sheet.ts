@@ -12,7 +12,7 @@ import type { Timeline } from "./timeline.js";
  */
 
 /** Plan risk R5: where the template fill differs from the bridge's sample builder by design, so a reviewer judges a change, not a bug. */
-export const KNOWN_DIFFERENCES: Readonly<Record<string, string>> = {
+const KNOWN_DIFFERENCES: Readonly<Record<string, string>> = {
   "claim-card": "R5: the fill keeps only the claim; the bridge listed every label",
   hook: "R5: the fill keeps the cards; the bridge dropped them",
   compare: "R5: unequal sides fall back to a list; the bridge drew ragged columns",
@@ -25,16 +25,16 @@ const PAIR_COLUMNS = 2;
 const QUIET = ["-hide_banner", "-loglevel", "error", "-y"];
 
 /** SSIM of two stills, from 0 to 1. */
-export type SsimExec = (left: string, right: string) => Promise<number>;
+type SsimExec = (left: string, right: string) => Promise<number>;
 
-export interface PairCell extends SheetCell {
+interface PairCell extends SheetCell {
   /** The spec type, with its variant (`chart-bar`). */
   kind: string;
   /** The R5 note for a kind the fill draws differently on purpose. */
   known?: string;
 }
 
-export interface SheetPair extends PairCell {
+interface SheetPair extends PairCell {
   /** `pairs/pair-NN-<beat>.png`, relative to the output directory: bridged left, in-process right. */
   file: string;
   ssim: number;
@@ -55,7 +55,7 @@ export function pairCells(timeline: Timeline): PairCell[] {
 }
 
 /** The stills compared without their label strips, which would read as matching pixels. */
-export function ssimArgs(left: string, right: string): string[] {
+function ssimArgs(left: string, right: string): string[] {
   const crop = `crop=iw:ih-${LABEL_STRIP_PX}:0:0`;
   return ["-i", left, "-i", right, "-lavfi", `[0:v]${crop}[a];[1:v]${crop}[b];[a][b]ssim=stats_file=-`, "-f", "null", "-"];
 }
@@ -82,12 +82,12 @@ async function tilePairs(pairs: readonly SheetPair[], outDir: string, ffmpeg: Ff
   return "sheet.png";
 }
 
-export interface PairSheetDeps {
+interface PairSheetDeps {
   ffmpeg: FfmpegExec;
   ssim: SsimExec;
 }
 
-export const defaultPairSheetDeps: PairSheetDeps = {
+const defaultPairSheetDeps: PairSheetDeps = {
   ffmpeg: async (args) => void (await runFfmpeg(args)),
   ssim: async (left, right) => parseSsim(await runFfmpeg(ssimArgs(left, right))),
 };

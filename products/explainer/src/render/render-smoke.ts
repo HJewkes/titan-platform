@@ -24,7 +24,7 @@ const OPTIONAL = ["generated-slots", "slots", "code"] as const;
 
 const GateReportSchema = z.object({ errors: z.array(z.object({ kind: z.string(), beat: z.string(), reason: z.string() })) });
 
-export interface HeldRow {
+interface HeldRow {
   kind: string;
   beat: string;
   reason: string;
@@ -60,7 +60,7 @@ export function runArtifacts(run: WorkflowRun): Record<string, string> {
 }
 
 /** The render inputs of a stored run; a run short of one the render needs is refused by name. */
-export function smokeInputs(runId: string, artifacts: Readonly<Record<string, string>>): Record<string, string> {
+function smokeInputs(runId: string, artifacts: Readonly<Record<string, string>>): Record<string, string> {
   const missing = REQUIRED.filter((name) => artifacts[name] === undefined);
   if (missing.length > 0) throw new Error(`run ${runId} has no ${missing.map((name) => `"${name}"`).join(", ")} artifact, so it never reached tts; the smoke renders a voiced run`);
   const names = [...REQUIRED, ...OPTIONAL].filter((name) => artifacts[name] !== undefined);
