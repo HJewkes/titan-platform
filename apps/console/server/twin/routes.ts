@@ -13,6 +13,8 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "tasks", hash: "#/tasks" },
   { name: "task-detail", hash: "#/tasks/OR-12" },
   { name: "loops", hash: "#/loops" },
+  { name: "tree-dag", hash: "#/tree" },
+  { name: "tree-lanes", hash: "#/tree?layout=lanes" },
   { name: "sessions", hash: "#/sessions" },
   { name: "session-detail", hash: "#/sessions/relay-retry" },
   { name: "agents", hash: "#/agents" },
