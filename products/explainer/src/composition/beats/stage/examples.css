@@ -174,3 +174,16 @@
 .ex-bar-cap { position: absolute; top: -8px; bottom: -8px; width: 6px; margin-left: -3px; border-radius: 3px; background: var(--color-text-primary); }
 .ex-bar-value { white-space: nowrap; font-family: var(--font-family-heading); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ex-bars-note { margin: 28px 0 0; font-size: var(--beat-label); color: var(--color-text-secondary); text-align: center; }
+.ex-axis-origin { display: flex; align-items: center; gap: 12px; font-size: var(--beat-caption); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+/* Under the bars, at the start of the tracks (label column 340px + gap 28px), where the scale begins. */
+.ex-bars ~ .ex-axis-origin { margin: 10px 0 0 368px; }
+/* A line's origin sits in a left gutter, level with the axis line, like a y-axis tick. */
+.beat-graph-plot[data-origin], .beat-graph-labels[data-origin] { padding-left: 132px; }
+.beat-graph-plot > .ex-axis-origin { position: absolute; left: 0; bottom: -18px; width: 112px; justify-content: flex-end; }
+.ex-axis-break { flex-shrink: 0; width: 36px; height: 22px; background: repeating-linear-gradient(-60deg, transparent 0 6px, var(--color-text-primary) 6px 10px); }
+/* A legend only comes with seven or more series, so its bars pack tighter to leave the legend room. */
+.ex-bars:has(~ .ex-chart-legend) { gap: 8px; }
+.ex-bars:has(~ .ex-chart-legend) .ex-bar-row { height: 56px; }
+.ex-chart-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 36px; margin: 0; padding: 0; list-style: none; font-size: var(--beat-label); }
+.ex-chart-legend-entry { display: flex; align-items: center; gap: 12px; }
+.ex-chart-legend-swatch { width: 24px; height: 24px; border-radius: 6px; background: var(--color-text-secondary); }

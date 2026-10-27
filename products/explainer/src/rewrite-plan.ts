@@ -1,5 +1,5 @@
 import type { L0Result } from "./eval-l0.js";
-import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, spokenText, triadSpans } from "./lint-register.js";
+import { MAX_SPOKEN_NUMBERS_PER_BEAT, REGISTER_BANDS, numberSpans, phraseSpans, spokenText, triadSpans } from "./lint-register.js";
 import { MAX_VETTED_SENTENCE_WORDS } from "./lint-voice.js";
 import type { BeatRejectionRule } from "./rewrite-guard.js";
 import type { ScriptBeat } from "./script-schema.js";
@@ -28,6 +28,8 @@ export interface BeatDirective {
   numbers?: string[];
   /** The lists of three the beat speaks, in order. */
   triads?: string[];
+  /** The over-represented phrases the beat speaks, in order; only on a beat the plan directs for another reason. */
+  phrases?: string[];
   /** Planned sentence lengths in words, shortest first. */
   shape?: number[];
   /** Why the previous round refused this beat's rewrite, each rule once; the prompt says it in plain words. */
@@ -189,10 +191,17 @@ function refusedFor(beat: string, refused: PlanOptions["refused"]): Pick<BeatDir
   return rules.length > 0 ? { refused: [...new Set(rules)] } : {};
 }
 
+/** Phrases ride on a beat the plan already directs: the phrases row is eval-only, so it never directs a beat on its own. */
+function phrasesFor(beat: PlanBeat, rows: readonly L0Result[]): Pick<BeatDirective, "phrases"> {
+  const phrases = failing(rows, "register:phrases") ? phraseSpans(beatText(beat)).map((span) => span.text) : [];
+  return phrases.length > 0 ? { phrases } : {};
+}
+
 /**
  * Per-beat directives for the failing target rows. Round 1 plans numbers, triads and sentence shape; round 2 is
  * called on round 1's text with fresh rows and plans the numbers and triads still there, plus a shape for each
- * beat still under the mean floor while a shape row fails. A directed beat the previous round refused carries why.
+ * beat still under the mean floor while a shape row fails. A directed beat carries the over-represented phrases it
+ * speaks while the phrases row fails, and why the previous round refused it.
  */
 export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: readonly L0Result[], options: PlanOptions = {}): RegisterEditPlan {
   const { round = 1, cap = MAX_VETTED_SENTENCE_WORDS, refused } = options;
@@ -201,7 +210,8 @@ export function planRegisterEdits(script: { beats: readonly PlanBeat[] }, rows: 
   const directives = script.beats.flatMap((beat, i): BeatDirective[] => {
     const planned = shape?.shapes[i];
     const directive = { ...spanDirectives(beat, rows), ...(planned ? { shape: planned } : {}) };
-    return Object.keys(directive).length > 0 ? [{ beat: beat.id, chapter: beat.chapter, ...directive, ...refusedFor(beat.id, refused) }] : [];
+    if (Object.keys(directive).length === 0) return [];
+    return [{ beat: beat.id, chapter: beat.chapter, ...directive, ...phrasesFor(beat, rows), ...refusedFor(beat.id, refused) }];
   });
   return { round, directives, ...(shape ? { projected: shape.projected } : {}) };
 }

@@ -36,6 +36,10 @@ export interface OpenLoop {
   targetRef?: string;
   /** ISO timestamp after which the loop's trigger is met, when the opener set one. */
   due?: string;
+  /** Set when `loop open --origin` filed the loop at a handoff, teleport or wrap. */
+  origin?: 'handoff' | 'teleport' | 'wrap';
+  /** The owning seat, from `loop open --seat`. */
+  seat?: string;
   /** Session filename without `.md` — the identity half of `ref`. */
   sessionFile: string;
   /** Frontmatter `session_id`, kept for display; not unique. */
@@ -393,6 +397,8 @@ function toOpenLoop(entry: LoopEntry, now: Date): OpenLoop {
     text: entry.step.text,
     ...(entry.step.ref !== undefined ? { targetRef: entry.step.ref } : {}),
     ...(entry.step.due !== undefined ? { due: entry.step.due } : {}),
+    ...(entry.step.origin !== undefined ? { origin: entry.step.origin } : {}),
+    ...(entry.step.seat !== undefined ? { seat: entry.step.seat } : {}),
     kind: entry.step.kind,
     sessionFile: entry.session.sessionFile,
     sessionId: entry.session.sessionId,

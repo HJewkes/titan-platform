@@ -2,13 +2,14 @@ import type { L0Result } from "./eval-l0.js";
 import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lint-claims.js";
 import type { CoverageManifest } from "./lint-coverage.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
-import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
+import { ASSERTION_MAX_WORDS, assertionDefects, HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
+import { spokenDigitsHint, spokenTokenHint } from "./lint-spoken-tokens.js";
 import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
 import type { SpineV1 } from "./spine-schema.js";
-import { listed, percent, type Hint } from "./repair-hint.js";
+import { listed, namedBeats, percent, type Hint } from "./repair-hint.js";
 import { COVERAGE_HINTS } from "./repair-hints-coverage.js";
 import { FLOW_HINTS } from "./repair-hints-flow.js";
 import { VOICE_HINTS } from "./repair-hints-voice.js";
@@ -66,6 +67,11 @@ function headlineHint(script: ScriptV1): string {
   return `headlines past the band: ${named.join("; ")}. The band shows ${HEADLINE_MAX_LINES} lines of about ${HEADLINE_CHARS_PER_LINE} characters; shorten each to fit`;
 }
 
+function assertionHint(script: ScriptV1, row: L0Result): string {
+  const named = namedBeats(script, row).map((beat) => `${beat.id} "${beat.visual.assertion}" (${assertionDefects(beat).join(", ")})`);
+  return `headlines that do not assert: ${named.join("; ")}. Write each as one claim with a subject and a verb in at most ${ASSERTION_MAX_WORDS} words, such as "The desk refuses unknown parcels" rather than "Parcel refusal", and write it before the narration`;
+}
+
 // With the facts at hand each claim is named with the fact that came closest; without them, each failing beat's claims.
 function claimsHint(script: ScriptV1, row: L0Result, facts?: readonly GatheredFact[]): string {
   const failing = new Set(row.detail_beats);
@@ -87,7 +93,10 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F5": (_script, row) => `the check counts sentences shaped as ${PIVOT_FORM}; this draft has ${row.value} (${listed(row.detail_beats)}) and needs exactly one, where WHAT turns to HOW`,
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
+  "Q-V12": spokenDigitsHint,
   "Q-V13": headlineHint,
+  "Q-V14": spokenTokenHint,
+  "Q-D7": assertionHint,
   "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,
 };

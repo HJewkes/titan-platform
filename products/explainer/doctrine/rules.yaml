@@ -89,28 +89,36 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"], scope: chapter }
   - id: Q-V11
-    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails, semicolons and "let''s", and at most one number mention in a beat'
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails (and "never X", "no X"), semicolons, "let''s" and the over-represented phrases of doctrine/voice-phrases.json, and at most one number mention in a beat'
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
-    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning."
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists."
     l0:
       severity: warning
       status: implemented
-      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:numbers-per-beat"]
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:phrases", "register:numbers-per-beat", "register:shortest-last"]
 
   - id: Q-V12
     rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
     fields: [beats.spoken]
-    related: [Q-V11]
+    related: [Q-V11, Q-V14]
     owner_support: none
-    l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
+    note: "An error since TP-4327: every digit is a guess the voice makes out loud (PL-26)."
+    l0: { severity: error, status: implemented, checks: ["Q-V12"], scope: chapter }
   - id: Q-V13
     rule: "A beat headline wraps to at most two lines at the width of the headline band, so the band never clips it"
     fields: [beats.visual.assertion]
     owner_support: none
     note: "The band is sized for two lines (TP-4105); the width estimate lives in src/lint-headline.ts."
     l0: { severity: error, status: implemented, checks: ["Q-V13"], scope: chapter }
+  - id: Q-V14
+    rule: "Spoken lines carry no print device (parentheses, slashes, e.g., i.e., etc., &, %, unit symbols), and every file path, code token and acronym in them has a spoken alias: a lexicon entry or a [word](/phonemes/) override"
+    fields: [beats.spoken]
+    related: [Q-V10, Q-V12]
+    owner_support: none
+    note: "TP-4327 (PL-32, PL-21, XT-13, XT-15). The token patterns live in src/lint-spoken-tokens.ts; a [word](=reading) declaration names a reading, not an alias, so it does not count."
+    l0: { severity: error, status: implemented, checks: ["Q-V14"], scope: chapter }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'
@@ -343,8 +351,10 @@ rules:
     rule: "The assertion is authored before the narration; subject and verb, at most 10 words, no topic label"
     fields: [beats.visual.assertion, beats.authored]
     aliases: [R14, S7, K14]
+    related: [Q-V13]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ5 }
+    note: "TP-4328 (ST-11, PR-24, RW-14). The verb half reads speech-g2p's part-of-speech tags: a finite verb after the first word. The authored-first half reads beats.authored only when a beat carries it."
+    l0: { severity: error, status: implemented, checks: ["Q-D7"], scope: chapter }
   - id: Q-D8
     rule: "The architecture act opens on a generic model with at most 5 slots; the close references it"
     fields: [video.generic_model, beats.function, beats.spoken]

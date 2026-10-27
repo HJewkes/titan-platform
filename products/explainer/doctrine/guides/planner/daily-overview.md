@@ -94,3 +94,4 @@ The board as it stands, the moves replayed column by column, then the decisions 
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.
