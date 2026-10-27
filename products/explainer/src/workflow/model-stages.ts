@@ -11,6 +11,7 @@ import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript, spellScript } from "../rewrite-pass.js";
 import { parseScript } from "../script-load.js";
+import { fillRows } from "../script-fill.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { unknownWordsRow, type Tokens } from "../unknown-words.js";
@@ -90,7 +91,7 @@ export const MAX_REPAIR_ROUNDS = 2;
  * kept only when it parses and fails fewer rows, so a round never makes the script worse.
  */
 async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, lint: Lint): Promise<Repair | undefined> {
-  const failing = (script: ScriptV1) => failingErrors(lint.rows(script));
+  const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];
   if (failing(draft.script).length === 0) return undefined;
   const rules = loadRuleRegistry();
   const repaired = await repairRounds(call, draft, {

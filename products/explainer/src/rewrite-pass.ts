@@ -8,6 +8,7 @@ import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type Refusa
 import { renderRewritePrompt } from "./rewrite-prompt.js";
 import { overBudget } from "./resolve-budget.js";
 import { draftBudgets } from "./script-budget.js";
+import { draftFillRefusals, TEMPLATE_FILL_ID } from "./script-fill.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 
@@ -232,6 +233,15 @@ function gainedBudget(script: ScriptV1, after: readonly ScriptBeat[], rewritten:
   });
 }
 
+const refusedBeats = (script: ScriptV1): Set<string> => new Set(draftFillRefusals(script).map((fault) => fault.beat));
+
+/** The rewritten beats whose appended labels make resolve's template fill refuse them, as the script stage would. */
+function gainedFill(script: ScriptV1, after: readonly ScriptBeat[], rewritten: readonly string[]): RevertedBeat[] {
+  const was = refusedBeats(script);
+  const now = refusedBeats({ ...script, beats: [...after] });
+  return rewritten.flatMap((beat) => (now.has(beat) && !was.has(beat) ? [{ beat, rows: [TEMPLATE_FILL_ID] }] : []));
+}
+
 /** One entry per beat, its rows from every source in order. */
 function joinReverts(...sources: readonly RevertedBeat[][]): RevertedBeat[] {
   const rows = new Map<string, string[]>();
@@ -239,10 +249,10 @@ function joinReverts(...sources: readonly RevertedBeat[][]): RevertedBeat[] {
   return [...rows].map(([beat, beatRows]) => ({ beat, rows: beatRows }));
 }
 
-/** The rewritten beats a round puts back: each that gained an error row or took a word budget over its cap. */
+/** The rewritten beats a round puts back: each that gained an error row, took a word budget over its cap or broke the fill. */
 function revertedBeats(script: ScriptV1, rows: readonly L0Result[], merged: Merged, checks: readonly L0Check[]): RevertedBeat[] {
   const errors = gainedErrors(rows, runL0({ ...script, beats: merged.beats }, undefined, checks), merged.rewritten);
-  return joinReverts(errors, gainedBudget(script, merged.beats, merged.rewritten));
+  return joinReverts(errors, gainedBudget(script, merged.beats, merged.rewritten), gainedFill(script, merged.beats, merged.rewritten));
 }
 
 interface RoundOutcome {

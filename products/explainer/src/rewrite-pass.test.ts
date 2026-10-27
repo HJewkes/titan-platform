@@ -125,6 +125,26 @@ describe("rewriteScript guard and revert", () => {
     expect(spokenOf(out, "k2")).toContain("at the counter");
   });
 
+  // Synthetic counter rows; the list slot schema holds five, so a sixth appended label leaves no row for it.
+  it("reverts a beat whose appended label gives its 5-row list a sixth row the template fill refuses", async () => {
+    // Arrange
+    const rows = ["desk · Parcels in", "desk · Parcels out", "desk · Holds", "desk · Returns", "desk · Couriers"];
+    const draft = choppy();
+    const script = { ...draft, beats: draft.beats.map((beat) => (beat.id === "k3" ? { ...beat, visual: { ...beat.visual, beat: "list", labels: rows } } : beat)) };
+    const addsRow: Rewriter = (id, prompt) => {
+      const reply = compliant(id, prompt)!;
+      return id === "k3" ? { ...reply, labels_added: ["desk · Night shift"] } : reply;
+    };
+
+    // Act
+    const { script: out, report } = await rewrite(script, fakeRewriter(addsRow), { rounds: 1 });
+
+    // Assert
+    expect(report.rounds[0]!.reverted).toEqual([{ beat: "k3", rows: ["template-fill"] }]);
+    expect(labelsOf(out, "k3")).toEqual(rows);
+    expect(spokenOf(out, "k2")).toContain("at the counter");
+  });
+
   it("keeps a rewrite that grows a beat within its word cap", async () => {
     const script = choppy({ k3: { plannedS: 10 } });
 
