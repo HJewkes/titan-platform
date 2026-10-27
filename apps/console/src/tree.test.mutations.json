@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a not-started node with an unfinished dependency is never locked",
+      "file": "apps/console/src/pages/tree-graph.ts",
+      "find": "return node.dependsOn.some((dep) => byId.get(dep)?.state !== \"done\") ? \"locked\" : node.state;",
+      "replace": "return node.state;",
+      "kills": [
+        "tree page marks a not-started node with an unfinished dependency as locked"
+      ]
+    },
+    {
+      "name": "the churn mark is dropped from a high-churn node",
+      "file": "apps/console/src/pages/tree-graph.ts",
+      "find": "const mark = node.churn.highChurnNoProgress ? \"⚠ \" : \"\";",
+      "replace": "const mark = \"\";",
+      "kills": [
+        "tree page flags a high-churn node with no done-when progress"
+      ]
+    },
+    {
+      "name": "the layout query is ignored",
+      "file": "apps/console/src/pages/tree-graph.ts",
+      "find": "return new URLSearchParams(query ?? \"\").get(\"layout\") === \"lanes\" ? \"lanes\" : \"dag\";",
+      "replace": "return \"dag\";",
+      "kills": [
+        "tree page opens in the swimlane layout from a layout=lanes deep link",
+        "tree page switches layout through the query string so the link keeps it"
+      ]
+    },
+    {
+      "name": "dependency edges run from the node to its prerequisite",
+      "file": "apps/console/src/pages/tree-graph.ts",
+      "find": "({ source: dep, target: node.id, kind: \"unlocks\" })",
+      "replace": "({ source: node.id, target: dep, kind: \"unlocks\" })",
+      "kills": [
+        "tree page draws each dependency edge from the prerequisite to the node that needs it"
+      ]
+    }
+  ]
+}

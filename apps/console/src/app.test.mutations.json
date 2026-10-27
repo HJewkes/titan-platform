@@ -4,8 +4,8 @@
     {
       "name": "the Loops view is left off the rail",
       "file": "apps/console/src/router.ts",
-      "find": "\"initiatives\", \"tasks\", \"loops\", \"sessions\",",
-      "replace": "\"initiatives\", \"tasks\", \"sessions\",",
+      "find": "\"initiatives\", \"tasks\", \"loops\", \"tree\",",
+      "replace": "\"initiatives\", \"tasks\", \"tree\",",
       "kills": [
         "the shell shows the rail and marks the current one"
       ]
