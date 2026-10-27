@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { FixProofConfig } from "./config.js";
 import { git, messageOf, planDiffOnly, RunError, withContext, withSpecSiblings, type Context, type Shas } from "./context.js";
 import type { SpecUnderTest } from "./mutant-classify.js";
-import type { Mutation } from "./mutation.js";
+import type { HeadMutation, Mutation } from "./mutation.js";
 import { normalizeRelative } from "./paths.js";
 import { testOnlyOf } from "./plan.js";
 import { addTree, overlay, prepare, runInTree, testReport, withSandbox, type ExecSideOptions } from "./side.js";
@@ -20,12 +20,12 @@ const MUTANTS_REFUSED = "mutants.refused";
 
 export type ExecMutantsOptions = Omit<ExecSideOptions, "side">;
 
-interface Rebuild {
+export interface Rebuild {
   script: string;
   args: string[];
 }
 
-interface MutantTree {
+export interface MutantTree {
   ctx: Context;
   base: string;
   tree: string;
@@ -35,7 +35,7 @@ interface MutantTree {
   sandboxUser: string | undefined;
 }
 
-async function owningPackage(ctx: Context, base: string, file: string): Promise<string | null> {
+export async function owningPackage(ctx: Context, base: string, file: string): Promise<string | null> {
   const segments = file.split("/").slice(0, -1);
   for (let depth = segments.length; depth > 0; depth -= 1) {
     const dir = segments.slice(0, depth).join("/");
@@ -46,14 +46,14 @@ async function owningPackage(ctx: Context, base: string, file: string): Promise<
 
 // Packages resolve through dist/, so a mutation is only seen once its own package is rebuilt; a pnpm workspace rebuilds
 // just that package, anything else falls back to the full build.
-async function rebuildOf(mt: MutantTree, file: string): Promise<Rebuild> {
+export async function rebuildOf(mt: MutantTree, file: string): Promise<Rebuild> {
   const owner = mt.pnpm ? await owningPackage(mt.ctx, mt.base, file) : null;
   if (owner === null) return { script: mt.config.build ?? toolchainOf(mt.tree).build, args: [] };
   return { script: "pnpm --filter", args: [`./${owner}`, "run", "--if-present", "build"] };
 }
 
 // No sandboxed process outlives its call, so the tree cannot change between this check and the write it guards.
-function writeInTree(tree: string, file: string, text: string): void {
+export function writeInTree(tree: string, file: string, text: string): void {
   const relative = normalizeRelative(file);
   if (relative === null) throw new RunError(`mutants: unsafe mutation path ${file}`);
   const target = path.join(tree, relative);
@@ -67,12 +67,12 @@ function writeInTree(tree: string, file: string, text: string): void {
   }
 }
 
-function mutated(baseText: string, mutation: Mutation): string {
+export function mutated(baseText: string, mutation: HeadMutation): string {
   const at = baseText.indexOf(mutation.find);
   return baseText.slice(0, at) + mutation.replace + baseText.slice(at + mutation.find.length);
 }
 
-async function built(mt: MutantTree, rebuild: Rebuild): Promise<boolean> {
+export async function built(mt: MutantTree, rebuild: Rebuild): Promise<boolean> {
   return (await runInTree(mt.ctx, mt.tree, rebuild.script, rebuild.args, mt.sandboxUser)).status === 0;
 }
 
