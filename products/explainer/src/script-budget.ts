@@ -9,6 +9,7 @@ import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
 import { overBudget, scriptBudgets, type BudgetRow } from "./resolve-budget.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { loadSpeechBands } from "./speech-bands.js";
+import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { shippedVisualRouter } from "./visual-router.js";
 
 type Draft = Pick<ScriptV1, "beats" | "profile">;
@@ -22,10 +23,14 @@ function resolvedBands(draft: Draft, specs: ReadonlyMap<string, BeatSpec>): Pick
   });
 }
 
-/** The word budgets resolve will hold the draft to, from the same function resolve calls. */
+/**
+ * The word budgets resolve will hold the draft to, from the same function resolve calls. Counted on the voiced draft:
+ * rewrite spells every number before resolve reads the script, and "$2.55" is one token but several spoken words.
+ */
 export function draftBudgets(draft: Draft): BudgetRow[] {
   const specs = loadBeatSpecs();
-  return scriptBudgets(draft, resolvedBands(draft, specs), specs).rows;
+  const voiced = { ...draft, beats: draft.beats.map(spellSpokenNumbers) };
+  return scriptBudgets(voiced, resolvedBands(voiced, specs), specs).rows;
 }
 
 /** The planned seconds a beat's words need at its slot's rate. */
@@ -104,7 +109,7 @@ export const planHint = (faults: readonly string[]): string =>
   `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise plannedS until each beat's words fit under its cap and the beats sum to the profile's target runtime, but keep every beat other than the close within ${MIN_BEAT_S}-${MAX_BEAT_S} s: split a longer beat into continuation beats in the same chapter, one idea each. Then write each beat's spoken text close to its new cap, so no slot is left silent.`;
 
 const capLine = ({ chapter, spec }: LeadBeat, wordsPerS: number): string =>
-  `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down`;
+  `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down, counting each number as the words the voice reads`;
 
 /**
  * Each lead's share of the target. A fixed profile's chapters are its macro's blocks in order, so they take the
