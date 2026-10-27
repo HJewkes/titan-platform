@@ -94,11 +94,13 @@ describe("caption check", () => {
     expect(report.findings).toEqual([{ rule: "cps", cue: 1, message: "cue 1: 24.0 characters/s (at most 20)" }]);
   });
 
-  it("fails onset on a cue 0.5 s after its first word and passes one 0.2 s before it", () => {
+  it("fails onset on a cue 0.5 s either side of its first word and passes one 0.2 s before it", () => {
     const late = captionReport(vtt(SENTENCE_ONE, ["00:00:05.000", "00:00:07.000", SENTENCE_TWO[2]]), WORDS);
-    const early = captionReport(vtt(SENTENCE_ONE, ["00:00:04.300", "00:00:07.000", SENTENCE_TWO[2]]), WORDS);
+    const early = captionReport(vtt(SENTENCE_ONE, ["00:00:04.000", "00:00:07.000", SENTENCE_TWO[2]]), WORDS);
+    const near = captionReport(vtt(SENTENCE_ONE, ["00:00:04.300", "00:00:07.000", SENTENCE_TWO[2]]), WORDS);
 
     expect(late.findings).toEqual([{ rule: "onset", cue: 2, message: "cue 2 starts 0.50 s from its first word (at most ±0.3)" }]);
-    expect(early.findings).toEqual([]);
+    expect(early.findings).toEqual([{ rule: "onset", cue: 2, message: "cue 2 starts -0.50 s from its first word (at most ±0.3)" }]);
+    expect(near.findings).toEqual([]);
   });
 });
