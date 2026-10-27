@@ -86,7 +86,9 @@ export const BEAT_SLOTS = {
   scorecard: z.object({ rows: z.array(z.object({ id: Id, label: Label, call: Label, reason: Line.optional() }).strict()).min(2).max(8) }).strict(),
   "reading-list": z.object({ items: z.array(z.object({ id: Id, path: z.string().min(1), why: Line }).strict()).min(1).max(6) }).strict(),
   "fact-flash": z.object({ facts: items(1, 4) }).strict(),
-  chart: z.object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12), ...ChartFrame }).strict(),
+  chart: z
+    .object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12), ...ChartFrame })
+    .strict(),
   list: z.object({ title: Label.optional(), rows: z.array(ListRow).min(1).max(5) }).strict(),
   "verdict-card": z.object({ verdict: Line, call: Label, reasons: items(1, 3) }).strict(),
   "change-group": z.object({ groups: z.array(z.object({ id: Id, title: Label, why: Line, files: z.array(z.string().min(1)).min(1), pin: Id.optional() }).strict()).min(2).max(4) }).strict(),

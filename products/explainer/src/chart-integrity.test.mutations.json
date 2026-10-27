@@ -14,8 +14,8 @@
     {
       "name": "the chart slots carry no axis or colour frame",
       "file": "products/explainer/src/beat-slots.ts",
-      "find": "series: z.array(Point).min(1).max(12), ...ChartFrame }).strict(),",
-      "replace": "series: z.array(Point).min(1).max(12) }).strict(),",
+      "find": "series: z.array(Point).min(1).max(12), ...ChartFrame })",
+      "replace": "series: z.array(Point).min(1).max(12) })",
       "kills": [
         "resolve gates on chart integrity fails the chart-integrity gate on a truncated bar chart a slots pin sets",
         "resolve gates on chart integrity passes a zero-based bar chart with an ordered ramp"

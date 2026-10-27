@@ -1,3 +1,4 @@
+import { BEAT_SLOTS } from "./beat-slots.js";
 import { FillError, type FilledBeat } from "./template-fill/fill.js";
 import { fillAtResolve } from "./resolve-stage.js";
 import type { CheckInput } from "./workflow/stage-checks.js";
@@ -21,9 +22,12 @@ interface ChartFrame {
 const seriesCount = (ref: string, frame: ChartFrame): number => (ref === "replot" ? frame.series.length : 1);
 
 /** Up to this many series, each one's label fits at its end, so a legend only adds a colour lookup. */
-export const DIRECT_LABEL_MAX = 6;
+const DIRECT_LABEL_MAX = 6;
 
 const CHART_REFS = new Set(["chart", "replot"]);
+
+/** A filled beat's slots, already accepted by its schema, read again as the chart frame they carry. */
+const frameOf = (ref: string, slots: unknown): ChartFrame => (ref === "replot" ? BEAT_SLOTS.replot : BEAT_SLOTS.chart).parse(slots);
 
 const linear = (channel: number): number => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
 
@@ -65,8 +69,8 @@ export function chartFrameProblems(ref: string, frame: ChartFrame): string[] {
 }
 
 /** Every problem over the filled chart and replot beats, each named by its beat id. */
-export function chartIntegrityProblems(beats: readonly Pick<FilledBeat, "id" | "ref" | "slots">[]): string[] {
-  return beats.filter((beat) => CHART_REFS.has(beat.ref)).flatMap((beat) => chartFrameProblems(beat.ref, beat.slots as unknown as ChartFrame).map((problem) => `${beat.id}: ${problem}`));
+function chartIntegrityProblems(beats: readonly Pick<FilledBeat, "id" | "ref" | "slots">[]): string[] {
+  return beats.filter((beat) => CHART_REFS.has(beat.ref)).flatMap((beat) => chartFrameProblems(beat.ref, frameOf(beat.ref, beat.slots)).map((problem) => `${beat.id}: ${problem}`));
 }
 
 /** The `chart-integrity` gate over the fill the resolve body ran; a refused fill fails it beside the template-fill gate. */
