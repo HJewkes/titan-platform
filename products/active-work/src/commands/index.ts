@@ -43,8 +43,11 @@ import taskReorder from './task-reorder.js';
 import taskShow from './task-show.js';
 
 // Sessions
+import loopBoard from './loop-board.js';
+import loopImport from './loop-import.js';
 import loopOpen from './loop-open.js';
 import loopResolve from './loop-resolve.js';
+import loopTier from './loop-tier.js';
 import loops from './loops.js';
 import facetAdd from './facet-add.js';
 import facetList from './facet-list.js';
@@ -163,6 +166,9 @@ const ALL_COMMANDS: AnyCommand[] = [
   loops,
   loopOpen,
   loopResolve,
+  loopBoard,
+  loopImport,
+  loopTier,
   preflight,
   resume,
   wrap,

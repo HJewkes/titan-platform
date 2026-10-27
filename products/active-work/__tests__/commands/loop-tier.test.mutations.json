@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "tier writes only the named row",
+      "file": "products/active-work/src/sessions/ledger-file.ts",
+      "find": "    writeTier(doc, row, input.tier, rank, set);\n",
+      "replace": "    for (const each of rows.items) writeTier(doc, each as YAMLMap, input.tier, rank, set);\n",
+      "kills": [
+        "loop tier moves one loop to A and leaves every other row byte-identical",
+        "loop tier places a loop ahead of the one named by --before without renumbering it"
+      ]
+    }
+  ]
+}

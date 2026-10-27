@@ -31,6 +31,10 @@ part is `.` or `..`. A branch or ref follows git's ref-name rules and has no `?`
 relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value throws
 `GitHubInputError` naming the field, and `gh` never runs.
 
+`getFile` decodes a file as UTF-8 text. `fileBytes` returns its bytes undecoded, for binary
+content such as a PNG snapshot. A file past the contents API's 1 MB inline limit is read through
+`git/blobs/{sha}`, and a decoded length that differs from the size GitHub reported throws.
+
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run; a run with no start is ordered by id
