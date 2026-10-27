@@ -68,8 +68,10 @@ export const roundSummary = z.discriminatedUnion("valid", [
     /** Present when a pick-one offers a merge with no binding: it is answerable, but its answer taps no merge. */
     unbound: z.literal(true).optional(),
     recommendations: z.enum(["after-answer", "shown"]),
+    /** A withdrawn round's reason from its withdrawn.json, e.g. `superseded-by:<id>`; absent on an open or sent round. */
+    withdrawnReason: z.string().optional(),
   }),
-  invalidRound,
+  invalidRound.extend({ withdrawnReason: z.string().optional() }),
 ]);
 
 export const roundDetail = z.discriminatedUnion("valid", [
@@ -259,7 +261,16 @@ async function lineageOf(source: RoundsSource, parsed: Parsed): Promise<ShipLine
   return source.lineage ? source.lineage(binding) : UNWIRED_LINEAGE;
 }
 
-const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
+/** The list names why a withdrawn round left the queue, so the page can show it beside the round. */
+async function listedRound(dir: string, id: string): Promise<RoundSummary> {
+  const round = await loadRound(dir, id);
+  const summary = summaryOf(round);
+  if (round.status !== "withdrawn") return summary;
+  const withdrawal = await readWithdrawal(path.join(dir, id));
+  return withdrawal === null ? summary : { ...summary, withdrawnReason: withdrawal.reason };
+}
+
+const newestFirst =(a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
 
 /**
  * A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it.
@@ -271,8 +282,8 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
     throw failure("the rounds dir could not be read", EXIT.UNAVAILABLE);
   });
   const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
-  const loaded = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => loadRound(dir, id)));
-  return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
+  const rounds = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => listedRound(dir, id)));
+  return { rounds: rounds.sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
 export async function getRound(source: RoundsSource, id: string, { remote = false }: { remote?: boolean } = {}): Promise<RoundDetail> {
