@@ -22,6 +22,7 @@ import {
 } from '../schemas/loop-ledger.js';
 import { deriveOpenLoopsFrom, loadSessionsFromDir, type OpenLoop } from './open-loops.js';
 import { readOptionalFile, type LedgerPaths } from './ledger-file.js';
+import { readSeatEvents, type SeatEvent } from '../session-index/seat-events.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -92,6 +93,8 @@ export interface BoardInput {
   ledger: { path: string; mtime: string | null; rows: unknown[] } | null;
   tree: { goals: unknown; nodes: unknown[] } | null;
   sessions: SessionLoopSet[];
+  /** Handoff and teleport events from the session index, by the seat that made them. */
+  seatEvents?: SeatEvent[];
   now: Date;
 }
 
@@ -162,6 +165,11 @@ function sessionTasks(loop: OpenLoop, taskDone: Map<string, boolean>): BoardLoop
   return { ids: [loop.targetRef], open: done ? 0 : 1, done: done ? 1 : 0 };
 }
 
+/** A loop filed at a handoff or teleport says so; every other session loop reads `session`. */
+export function sessionSourceOf(loop: OpenLoop): BoardLoop['source'] {
+  return loop.origin === 'handoff' || loop.origin === 'teleport' ? loop.origin : 'session';
+}
+
 function sessionLoop(loop: OpenLoop, set: SessionLoopSet): BoardLoop {
   return {
     id: loop.ref,
@@ -171,7 +179,7 @@ function sessionLoop(loop: OpenLoop, set: SessionLoopSet): BoardLoop {
     tier: null,
     tierRank: null,
     tierSetBy: null,
-    ownerSeat: null,
+    ownerSeat: seatOf(loop.seat),
     doneWhen: null,
     lastMotion: { date: loop.openedAt, ref: loop.ref },
     daysSinceMotion: loop.ageDays,
@@ -180,7 +188,7 @@ function sessionLoop(loop: OpenLoop, set: SessionLoopSet): BoardLoop {
     prsOpen: [],
     blockers: { ownerGated: [], other: [] },
     treeNode: null,
-    source: 'session',
+    source: sessionSourceOf(loop),
     sessionRef: loop.ref,
   };
 }
@@ -232,13 +240,34 @@ function buildTree(tree: BoardInput['tree'], loops: BoardLoop[], warnings: strin
   return { goals: goalsOf(tree.goals, warnings), nodes };
 }
 
+function newestBySeat(events: SeatEvent[]): Map<string, { ms: number; event: SeatEvent }> {
+  const newest = new Map<string, { ms: number; event: SeatEvent }>();
+  for (const event of events) {
+    const ms = new Date(event.ts).getTime();
+    const seen = newest.get(event.seat);
+    if (!Number.isNaN(ms) && (seen === undefined || ms > seen.ms)) newest.set(event.seat, { ms, event });
+  }
+  return newest;
+}
+
+/** A seat that handed off or teleported since the loop last moved has carried it forward. */
+function withSeatMotion(loop: BoardLoop, newest: ReturnType<typeof newestBySeat>, now: Date): BoardLoop {
+  const latest = loop.ownerSeat === null ? undefined : newest.get(loop.ownerSeat);
+  if (latest === undefined) return loop;
+  const motionMs = loop.lastMotion === null ? Number.NaN : new Date(loop.lastMotion.date).getTime();
+  if (!Number.isNaN(motionMs) && !(latest.ms > motionMs)) return loop;
+  const { kind, sessionId, ts } = latest.event;
+  return { ...loop, lastMotion: { date: ts, ref: `${kind}:${sessionId}` }, daysSinceMotion: daysSince(ts, now) };
+}
+
 export function buildBoard(input: BoardInput): LoopBoard {
   const warnings: string[] = [];
   const rows = input.ledger === null ? [] : parseLedgerRows(input.ledger.rows, warnings);
+  const newest = newestBySeat(input.seatEvents ?? []);
   const loops = [
     ...rows.map((row) => ledgerLoop(row, input.now)),
     ...unclaimedSessionLoops(input.sessions, rows),
-  ];
+  ].map((loop) => withSeatMotion(loop, newest, input.now));
   return {
     ledger: input.ledger === null ? null : { path: input.ledger.path, mtime: input.ledger.mtime },
     loops,
@@ -308,6 +337,7 @@ export async function loadBoard(activeRoot: string, paths: LedgerPaths, now: Dat
     loadTree(paths, warnings),
     Promise.all(slugs.map((slug) => loadSessionSet(activeRoot, slug, now))),
   ]);
-  const board = buildBoard({ ledger, tree, sessions, now });
+  const seatEvents = readSeatEvents(path.join(activeRoot, '.miner', 'graph.sqlite3'), warnings);
+  const board = buildBoard({ ledger, tree, sessions, seatEvents, now });
   return { ...board, warnings: [...warnings, ...board.warnings] };
 }

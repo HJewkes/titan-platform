@@ -171,3 +171,45 @@ describe("G10 shared words", () => {
     expect(gate?.pass).toBe(pass);
   });
 });
+
+const gateOf = (over: Partial<TimingInput>, id: string) => timingReport(input(over)).gates.find((g) => g.id === id);
+
+describe("G9 headline and label words", () => {
+  it.each([
+    ["fails", "h1", "", "One two three four five six seven eight nine ten eleven", false],
+    ["passes", "h1", "", "One two three four five six seven eight nine ten", true],
+    ["fails", "span", "label", "four words on chip", false],
+    ["passes", "span", "label", "three word chip", true],
+  ])("%s a %s.%s holding %j", (_verdict, tag, cls, value, pass) => {
+    const probed: ProbedMoment[] = [{ beat: "b1", t: 1, texts: [{ ...text(value), tag, cls }], boxes: [] }];
+
+    const gate = gateOf({ probed }, "G9");
+
+    expect(gate?.pass).toBe(pass);
+  });
+});
+
+describe("words-per-frame", () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+
+  it.each([
+    ["fails", 21, false],
+    ["passes", 20, true],
+  ])("%s %i prose words on screen together across texts", (_verdict, n, pass) => {
+    const probed = [moment(1, [many(10), many(n - 10)])];
+
+    const gate = gateOf({ probed }, "words-per-frame");
+
+    expect(gate).toMatchObject({ value: n, pass, beats: pass ? [] : ["b1"] });
+  });
+
+  it("leaves a code-walk beat's highlighted lines out of the count", () => {
+    const timeline = { beats: [{ ...beat("b1", 0, 4), kind: "code-walk" }] };
+    const codeLine = { ...text(many(40)), tag: "span", cls: "tok-kw", element: "span.tok-kw" };
+    const probed: ProbedMoment[] = [{ beat: "b1", t: 1, texts: [codeLine], boxes: [] }];
+
+    const gate = gateOf({ timeline, probed }, "words-per-frame");
+
+    expect(gate).toMatchObject({ value: null, pass: true });
+  });
+});

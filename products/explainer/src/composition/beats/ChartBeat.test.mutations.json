@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "line columns rise from zero whatever the baseline",
+      "file": "products/explainer/src/composition/beats/GraphBeat.tsx",
+      "find": "return axisShare(value, axis.floor, axis.max) * GRAPH_PLOT_PX",
+      "replace": "return axisShare(value, 0, axis.max) * GRAPH_PLOT_PX",
+      "kills": ["a chart drawn from its frame slots a line chart's columns rise from its baseline, which the axis names"]
+    },
+    {
+      "name": "bars grow from zero whatever the baseline",
+      "file": "products/explainer/src/composition/beats/BarChartBeat.tsx",
+      "find": "return axisShare(value, axis.floor, axis.max) * progressAt",
+      "replace": "return axisShare(value, 0, axis.max) * progressAt",
+      "kills": ["a chart drawn from its frame slots bars on a negative baseline grow from that baseline, not from zero"]
+    },
+    {
+      "name": "bars drop their scale colour",
+      "file": "products/explainer/src/composition/beats/BarChartBeat.tsx",
+      "find": ", ...(row.colour === undefined ? {} : { background: row.colour }) }}",
+      "replace": " }}",
+      "kills": ["a chart drawn from its frame slots a sequential scale colours each bar by its value, low to high"]
+    },
+    {
+      "name": "a diverging scale centres on zero, not the baseline",
+      "file": "products/explainer/src/composition/beats/ChartBeat.tsx",
+      "find": "slots.series.map((point) => point.value), slots.baseline ?? 0)",
+      "replace": "slots.series.map((point) => point.value), 0)",
+      "kills": ["a chart drawn from its frame slots a diverging scale centres its middle colour on the baseline"]
+    },
+    {
+      "name": "the chart draws no legend",
+      "file": "products/explainer/src/composition/beats/ChartBeat.tsx",
+      "find": "      {slots.legend && <ChartLegend entries={legend} />}\n",
+      "replace": "",
+      "kills": ["a chart drawn from its frame slots a legend names every series beside its colour"]
+    }
+  ]
+}

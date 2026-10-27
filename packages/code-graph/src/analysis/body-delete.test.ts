@@ -59,7 +59,7 @@ describe("planBodyDeletes", () => {
       name: `body-delete:${FILE}#f`,
       file: FILE,
       find: "export function f(a: number) {",
-      replace: "export function f(a: number) { return undefined as never;",
+      replace: "export function f(a: number) { if (true as boolean) return undefined as never;",
     });
     expect(checkAtHead(target!.mutation, text)).toEqual({ ok: true });
   });
@@ -269,13 +269,45 @@ describe("planBodyDeletes", () => {
     const mutated = result.targets.reduce((acc, target) => apply(acc, target.mutation), text);
 
     expect(result.targets.map((t) => t.symbol)).toEqual(["load", "later", "log", "Counter.next"]);
-    const project = new Project({
-      useInMemoryFileSystem: true,
-      compilerOptions: { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, lib: ["lib.es2022.d.ts", "lib.dom.d.ts"] },
-    });
-    project.createSourceFile(`/${FILE}`, mutated);
-    const errors = project.getPreEmitDiagnostics().map((d) => d.getMessageText());
-    expect(errors).toEqual([]);
-    expect(mutated.match(/return undefined as never;/g)).toHaveLength(4);
+    expect(compileErrors(mutated)).toEqual([]);
+    expect(mutated.match(/if \(true as boolean\) return undefined as never;/g)).toHaveLength(4);
+  });
+
+  it("keeps narrowing after the early return, so a body that narrows a possibly-undefined value still type-checks", () => {
+    const text = [
+      "export function lookup(table: Map<string, { size: number }>, key: string): number {",
+      "  const row = table.get(key);",
+      "  if (row === undefined) throw new Error(key);",
+      "  return row.size;",
+      "}",
+      "export function pick(xs?: string[]): number {",
+      "  if (!xs) return 0;",
+      "  return xs.length;",
+      "}",
+    ].join("\n");
+    expect(compileErrors(text)).toEqual([]);
+
+    const result = plan(text, [1, 6]);
+    const mutated = result.targets.reduce((acc, target) => apply(acc, target.mutation), text);
+
+    expect(result.targets.map((t) => t.symbol)).toEqual(["lookup", "pick"]);
+    for (const target of result.targets) expect(checkAtHead(target.mutation, text)).toEqual({ ok: true });
+    expect(compileErrors(mutated)).toEqual([]);
   });
 });
+
+/** Strict, declaration-emitting type check, as tsup's dts build runs it. */
+function compileErrors(text: string): string[] {
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    compilerOptions: {
+      strict: true,
+      declaration: true,
+      emitDeclarationOnly: true,
+      target: ts.ScriptTarget.ES2022,
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
+    },
+  });
+  project.createSourceFile(`/${FILE}`, text);
+  return project.getPreEmitDiagnostics().map((d) => ts.flattenDiagnosticMessageText(d.compilerObject.messageText, "\n"));
+}

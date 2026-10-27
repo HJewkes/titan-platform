@@ -425,8 +425,11 @@ with thresholds from the run's type profile `pacing` (optional `pictureChangeFai
 `readingMinS` 1.5 default when a type leaves them out): `picture-change` (the longest gap between a beat's cut and the
 cues whose frames move; warns above `pictureChangeMaxS`, fails above `pictureChangeFailS`), `static-window` (a still
 picture over `staticMaxS` outside a held beat or a reading hold), `cue-onset` (each cue within `cueOnsetS` of its STT
-word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). The
-spike's G1, G7, G8, G9, G10, G12 and G13 are reported; the module doc says why the others are not ported. `timing`
+word) and `reading-hold` (text the narration does not speak stays max(`readingMinS`, chars / `readingCps`)). TP-4325
+gates three on-screen word checks too: the spike's G9 (a headline at most 10 words, a label at most 3), G10 (no
+display text repeats 5 or more narration words in a row) and `words-per-frame` (at most 20 prose words on screen together
+at any sampled moment of a prose beat; `code-walk`, `docs-vs-code` and `fix` beats are not counted). The spike's G1, G7, G8, G12 and G13 are reported; the
+module doc says why the others are not ported. `timing`
 also carries `static_window_count` and `picture_change_gap_max`, ar target 3's metric (TP-4033).
 The body never fails on a finding: its gates read `qa.json`, so a held error fails
 the stage with the spike's one-line summary (`qa FAIL: 3 held errors (text-overlap 2, off-frame 1), …`) and the run
@@ -470,7 +473,7 @@ same exercise on a script file.
 | `eval` | `l0`, `pace` on the final script, checked in the body before the rubric spends | the cold-viewer rubric J8 to J12, as a note and an artifact |
 | `tts` | `cue-resolution`: every cue word of the script is a word `words` says was voiced, and a script of no cues fails when a beat names a beat spec with emphasis targets | — |
 | `render` | `duration-agreement`: the manifest's page and mix lengths agree within 1e-6 s (renderVideo refuses first; this re-asserts it over the stored manifest) | `two-run`: two renders at the same worker count gave the same MP4 bytes, when the variant sets `twoRun` |
-| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates |
+| `qa` | `held-errors`: no finding held under the gate profile, with the per-kind summary; `mp4-duration`: the MP4 plays as long as the QA timeline, within one frame; `motion-happened`, `clipped-text`, `content-fill`: no `measured` finding of that code; `picture-change`, `static-window`, `cue-onset`, `reading-hold`: that `timing` gate passes; `headline-label-words` (G9), `narration-shared-run` (G10): that `timing` gate passes; `words-per-frame`: at most 20 words on screen at any sampled moment of a beat that is not a code beat | `stage-empty`: no stage left empty past 3 s; `picture-change-warn`: no gap past `pictureChangeMaxS`; `direction-gates`: the ported G-gates not gated above |
 
 The §5.1 checks not listed are not built yet: S5c fact selection (TP-2634), cue drift (`unknownWords: "fail"` is enforced by the tts stage itself),
 speech-vet and a rate-band check over `voice.json` (TP-3004), the QA timing gates (TP-2669), and the variety lints
@@ -901,8 +904,13 @@ new stage key.
   `chart-integrity` (`chart-integrity.ts`, TP-4332) reads each filled `chart` and `replot` beat's optional `baseline`,
   `axisBreak`, `scale` and `legend` slots: it fails bars on a baseline above zero or with a broken axis (CH-11, CH-13),
   a `sequential` colour scale whose CIELAB L* is not strictly monotonic or a `diverging` one not light at one interior
-  peak (CH-22), and a legend on up to `DIRECT_LABEL_MAX` (6) series, which direct labels fit (CH-20). The page kinds
-  draw none of the four slots yet, so the gate holds what a script or pin may ask for.
+  peak (CH-22), and a legend on up to `DIRECT_LABEL_MAX` (6) series, which direct labels fit (CH-20). The `chart`
+  page kind draws all four (`beats/chart-frame.tsx`, TP-4337): its axis starts at `baseline` and names it when it is
+  not zero, `axisBreak` draws a break mark at the origin, `scale` colours each point by value (a diverging scale
+  centred on the baseline) and `legend` keys each series to its colour. `replot` has no page kind yet.
+  A line chart of more than 7 points closes its column gap and gives its plot 320 px, since its labels wrap to two
+  lines; a legend takes another 120 px from the plot. So a line chart of up to 12 points fits its stage box, with or
+  without a legend (TP-4338).
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
   that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
   untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they

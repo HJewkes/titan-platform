@@ -55,6 +55,18 @@ describe("guardBeat", () => {
       expect(rules(before, after)).toContain("number-vague");
     });
 
+    it.each([
+      ["a number of", "The desk server flags the scans. A number of them were real. The ledger keeps them."],
+      ["hundreds", "The desk server flags the scans. Hundreds were real. The ledger keeps them."],
+      ["various", "The desk server flags the scans. Various ones were real. The ledger keeps them."],
+    ])("rejects %s standing in for a number moved to a label", (_, spoken) => {
+      const after = { spoken, labelsAdded: ["about 60 real"] };
+
+      const rejected = rules(beatWith({}, REAL), after);
+
+      expect(rejected).toContain("number-vague");
+    });
+
     it("accepts the clause cut with the number in a label", () => {
       const after = { spoken: "The desk server flags the scans. The ledger keeps them.", labelsAdded: ["about 60 real"] };
       expect(rules(beatWith({}, REAL), after)).not.toContain("number-vague");
@@ -69,6 +81,38 @@ describe("guardBeat", () => {
       const before = beatWith({}, "The desk server flags some scans. About 60 were real. The ledger keeps them.");
       const after = { spoken: "The desk server flags some scans. The ledger keeps them.", labelsAdded: ["about 60 real"] };
       expect(rules(before, after)).not.toContain("number-vague");
+    });
+  });
+
+  describe("closer-added", () => {
+    const LONG_LAST = "The desk server checks each scan. Then it writes every checked row to the ledger before the courier asks.";
+
+    it("rejects a rewrite that ends on a new short summing-up line", () => {
+      const after = { spoken: `${LONG_LAST} That is the whole point.`, labelsAdded: [] };
+
+      const rejected = rules(beatWith({}, LONG_LAST), after);
+
+      expect(rejected).toContain("closer-added");
+    });
+
+    it("accepts a rewrite that ends on a short line the original already said", () => {
+      const before = beatWith({}, "Nothing is lost. The desk server checks each scan and writes every checked row to the ledger.");
+      const after = { spoken: "The desk server checks each scan and writes every checked row to the ledger. Nothing is lost.", labelsAdded: [] };
+
+      expect(rules(before, after)).not.toContain("closer-added");
+    });
+
+    it("accepts a new short last line when the original already ended on its shortest", () => {
+      const before = beatWith({}, "The desk server checks each scan and writes the rows to the ledger. Then it prints.");
+      const after = { spoken: "The desk server checks each scan and writes the rows to the ledger. It then prints.", labelsAdded: [] };
+
+      expect(rules(before, after)).not.toContain("closer-added");
+    });
+
+    it("accepts a rewrite whose new last line is not its shortest", () => {
+      const after = { spoken: "It checks. The desk server writes every checked row to the ledger before the courier asks.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, LONG_LAST), after)).not.toContain("closer-added");
     });
   });
 

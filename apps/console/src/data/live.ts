@@ -38,6 +38,25 @@ export function useRelayInvalidation(coalesceMs: number = RELAY_COALESCE_MS): vo
   }, [status, invalidate]);
 }
 
+/** The CLI withdraws rounds from another process, which no relayed stream reports, so the list refetches whenever the owner returns to the tab. */
+const RETURN_INVALIDATES = ["rounds.list"] as const satisfies readonly CommandName<ConsoleCommands>[];
+
+/** Mounted once by the shell: window focus, or the tab turning visible, refetches the reads only a return can catch up. */
+export function useReturnInvalidation(): void {
+  const invalidate = useInvalidate();
+  useEffect(() => {
+    const refetch = (): void => {
+      if (document.visibilityState !== "hidden") invalidate(RETURN_INVALIDATES);
+    };
+    window.addEventListener("focus", refetch);
+    document.addEventListener("visibilitychange", refetch);
+    return () => {
+      window.removeEventListener("focus", refetch);
+      document.removeEventListener("visibilitychange", refetch);
+    };
+  }, [invalidate]);
+}
+
 /** One pending timer per source at most; cleared on unmount. */
 function useCoalescedInvalidate(coalesceMs: number): (source: RelaySource) => void {
   const invalidate = useInvalidate();

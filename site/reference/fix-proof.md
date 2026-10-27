@@ -335,7 +335,7 @@ import { execHeadMutants, type HeadMutation } from "@titan-design/fix-proof";
 const mutations: HeadMutation[] = [
   { name: "body-delete:add", file: "packages/a/src/lib.ts",
     find: "export function add(a: number, b: number): number {",
-    replace: "export function add(a: number, b: number): number { return undefined as never;" },
+    replace: "export function add(a: number, b: number): number { if (true as boolean) return undefined as never;" },
 ];
 const report = await execHeadMutants({ repo: ".", head: "HEAD", mutations });
 // report.runs[0].outcome === "caught" when a test asserts on add's result
