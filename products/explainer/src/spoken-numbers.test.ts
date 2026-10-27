@@ -107,7 +107,7 @@ describe("Q-V12 spoken digits", () => {
   };
 
   it("lists a beat that holds a digit", () => {
-    expect(rowFor("The desk keeps 3 scans.")).toMatchObject([{ check_id: "Q-V12", severity: "warning", pass: false, detail_beats: ["c2-1-stations"] }]);
+    expect(rowFor("The desk keeps 3 scans.")).toMatchObject([{ check_id: "Q-V12", severity: "error", pass: false, detail_beats: ["c2-1-stations"] }]);
   });
 
   it("passes a spelled beat and one whose only digits sit in markup", () => {

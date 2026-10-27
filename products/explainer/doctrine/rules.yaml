@@ -102,15 +102,23 @@ rules:
   - id: Q-V12
     rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
     fields: [beats.spoken]
-    related: [Q-V11]
+    related: [Q-V11, Q-V14]
     owner_support: none
-    l0: { severity: warning, status: implemented, checks: ["Q-V12"] }
+    note: "An error since TP-4327: every digit is a guess the voice makes out loud (PL-26)."
+    l0: { severity: error, status: implemented, checks: ["Q-V12"], scope: chapter }
   - id: Q-V13
     rule: "A beat headline wraps to at most two lines at the width of the headline band, so the band never clips it"
     fields: [beats.visual.assertion]
     owner_support: none
     note: "The band is sized for two lines (TP-4105); the width estimate lives in src/lint-headline.ts."
     l0: { severity: error, status: implemented, checks: ["Q-V13"], scope: chapter }
+  - id: Q-V14
+    rule: "Spoken lines carry no print device (parentheses, slashes, e.g., i.e., etc., &, %, unit symbols), and every file path, code token and acronym in them has a spoken alias: a lexicon entry or a [word](/phonemes/) override"
+    fields: [beats.spoken]
+    related: [Q-V10, Q-V12]
+    owner_support: none
+    note: "TP-4327 (PL-32, PL-21, XT-13, XT-15). The token patterns live in src/lint-spoken-tokens.ts; a [word](=reading) declaration names a reading, not an alias, so it does not count."
+    l0: { severity: error, status: implemented, checks: ["Q-V14"], scope: chapter }
 
   - id: Q-W1
     rule: 'Stake voiced before 15 %, by a named role or "you", with a number or artifact'

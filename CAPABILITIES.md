@@ -1438,6 +1438,7 @@ You are building a step of the explainer video pipeline and need its file contra
 `buildPacket` builds one beat builder's packet (throws on a code beat with no excerpt and on a packet over its byte cap), and
 `attributeFindings` maps gate findings to the beat each names by beat number.
 `claimsCheckWith(facts)` (Q-E20) checks each pull request, task and count a script names against the gathered facts.
+`spokenTokenCheckWith(lexicon)` (Q-V14) fails a spoken line with a print device, or a path, code token, unit or acronym that no lexicon entry or phoneme override voices.
 Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,

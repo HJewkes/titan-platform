@@ -4,6 +4,7 @@ import type { CoverageManifest } from "./lint-coverage.js";
 import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
 import { HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
+import { spokenDigitsHint, spokenTokenHint } from "./lint-spoken-tokens.js";
 import { ledgerHint } from "./lint-ledger.js";
 import { THREAD_SHARE } from "./lint-why.js";
 import { CONNECTORS, type ScriptV1 } from "./script-schema.js";
@@ -87,7 +88,9 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-F5": (_script, row) => `the check counts sentences shaped as ${PIVOT_FORM}; this draft has ${row.value} (${listed(row.detail_beats)}) and needs exactly one, where WHAT turns to HOW`,
   "Q-F16": plainOpeningHint,
   "Q-V10": heteronymHint,
+  "Q-V12": spokenDigitsHint,
   "Q-V13": headlineHint,
+  "Q-V14": spokenTokenHint,
   "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,
 };
