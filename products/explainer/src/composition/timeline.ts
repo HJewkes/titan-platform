@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANCHOR_SPEC_PATTERN } from "../anchor-grid.js";
 
 /** When one slot element lands, in seconds from the beat's start: its cue word, resolved by compileTimeline. */
 const RevealSchema = z.object({ target: z.string().min(1), part: z.enum(["left", "right"]).optional(), atS: z.number().min(0) });
@@ -31,10 +32,16 @@ const TimelineBeatSchema = z
     hints: HintsSchema.optional(),
     headline: z.string().min(1).optional(),
     chapter: ChapterSchema.optional(),
+    /** A custom layer draws this beat from `module`, an ESM URL relative to the page, instead of its kind's view. */
+    layer: z.literal("custom").optional(),
+    module: z.string().min(1).optional(),
+    /** The anchor cells the custom layer declares it occupies, for the occupancy table. */
+    anchors: z.array(z.string().regex(ANCHOR_SPEC_PATTERN)).optional(),
   })
   .refine((b) => (b.reveals ?? []).every((r) => r.atS <= b.durationS + 1e-9), {
     message: "every reveal must land within its beat's durationS",
-  });
+  })
+  .refine((b) => (b.layer === "custom") === (b.module !== undefined), { message: "a custom-layer beat names its module, and only such a beat does" });
 
 const TimelineSchema = z
   .object({

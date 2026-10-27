@@ -20,7 +20,8 @@ interface RenderBoard {
   extras: Map<string, PageExtras>;
   /** Script beat id to storyboard id, for words.json and the voiced wavs. */
   ids: Map<string, string>;
-  notes: string[];
+  /** The custom-layer beats render draws, script id to storyboard id. */
+  custom: Map<string, string>;
 }
 
 const PinSchema = z.record(z.string(), z.unknown());
@@ -38,8 +39,8 @@ function required(input: BoardInput, name: string): unknown {
 
 /**
  * The storyboard render draws: the template fill over the beats resolve kept, as resolve gated it (cited code, the
- * owner's `slots` pin, else the `generated-slots` layer resolve stored). A custom-layer beat is drawn from its
- * template spec, with a note, until TP-2607 C4 renders custom layers; a refused beat throws the fill's error.
+ * owner's `slots` pin, else the `generated-slots` layer resolve stored). A custom-layer beat is filled from its
+ * template spec too, which it is drawn from when the run has no built layer for it; a refused beat throws the fill's error.
  */
 export function renderBoard(input: BoardInput): RenderBoard {
   const script = ScriptSchema.parse(required(input, "script"));
@@ -52,7 +53,6 @@ export function renderBoard(input: BoardInput): RenderBoard {
     specs: loadBeatSpecs(), ...(code === undefined ? {} : { code: codeSource(code) }), ...(pin === undefined ? {} : { pinned: PinSchema.parse(JSON.parse(pin)) }),
   });
   const ids = storyboardIds(script, resolved);
-  const custom = resolved.beats.filter((row) => row.layer === "custom" && ids.has(row.id)).map((row) => row.id);
-  const notes = custom.length === 0 ? [] : [`custom layers drawn from their template spec until TP-2607 C4: ${custom.join(", ")}`];
-  return { ...boardFromFill(script, filled, ids), ids, notes };
+  const custom = new Map(resolved.beats.filter((row) => row.layer === "custom" && ids.has(row.id)).map((row) => [row.id, ids.get(row.id)!]));
+  return { ...boardFromFill(script, filled, ids), ids, custom };
 }
