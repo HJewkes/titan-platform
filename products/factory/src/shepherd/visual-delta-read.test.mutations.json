@@ -6,35 +6,81 @@
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
       "find": "readBlob(m, pair.basePath, m.mergeBase)",
       "replace": "readBlob(m, pair.basePath, m.head)",
-      "kills": ["the merge evidence under shepherd.visualThreshold shadow records a changed snapshot's share of the content box, read from the merge base and the head"]
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow records a changed snapshot's share of the content box, read from the merge base and the head"
+      ]
     },
     {
       "name": "the snapshot cap counts only measured pairs, not added or removed shots",
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
       "find": "if (total > cap)",
       "replace": "if (pairs.length > cap)",
-      "kills": ["the merge evidence under shepherd.visualThreshold shadow lists added and removed snapshots unmeasured by share, and measures none past maxSnapshots"]
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow lists added and removed snapshots unmeasured by share, and measures none past maxSnapshots"
+      ]
     },
     {
       "name": "token paths count a test file under the token directory",
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
       "find": "tokens: visualMatches(paths, threshold.tokenPaths),",
       "replace": "tokens: paths.filter(caseFoldedMatcher(threshold.tokenPaths)),",
-      "kills": ["the merge evidence under shepherd.visualThreshold shadow matches the public API, token and harness paths, a token test aside"]
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow matches the public API, token and harness paths, a token test aside"
+      ]
     },
     {
       "name": "a configured maxBytes is ignored for the default blob cap",
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
       "find": "bytes.byteLength > m.maxBytes ?",
       "replace": "bytes.byteLength > DEFAULT_MAX_BYTES ?",
-      "kills": ["the merge evidence under shepherd.visualThreshold shadow records a blob that is not a PNG, or over maxBytes, as unmeasured"]
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow records a blob that is not a PNG, or over maxBytes, as unmeasured"
+      ]
     },
     {
       "name": "visualThreshold mode off still measures the visual delta",
       "file": "products/factory/src/shepherd/merge-facts.ts",
       "find": "if (threshold === undefined || threshold.mode === \"off\") return undefined;",
       "replace": "if (threshold === undefined) return undefined;",
-      "kills": ["the merge evidence under shepherd.visualThreshold shadow reads no blob and records nothing when the repo's mode is off"]
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow reads no blob and records nothing when the repo's mode is off"
+      ]
+    },
+    {
+      "name": "a PNG declaring more than maxPixels is decoded",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "if (pixels > m.maxPixels) return",
+      "replace": "if (pixels > Infinity) return",
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced"
+      ]
+    },
+    {
+      "name": "a configured maxPixels is ignored for the default pixel cap",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "maxPixels: threshold.maxPixels ?? DEFAULT_MAX_PIXELS,",
+      "replace": "maxPixels: DEFAULT_MAX_PIXELS,",
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced"
+      ]
+    },
+    {
+      "name": "an interlaced PNG is inflated with no limit",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "return header[28] === 0 ? undefined :",
+      "replace": "return true ? undefined :",
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced"
+      ]
+    },
+    {
+      "name": "a file renamed into the snapshot paths is measured against a base path it never had",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "if (file.status === \"added\" || (file.previousPath !== undefined && from === undefined))",
+      "replace": "if (file.status === \"added\")",
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow measures a renamed snapshot against its old path at the merge base, and reads one renamed away as removed and one renamed in as added"
+      ]
     }
   ]
 }

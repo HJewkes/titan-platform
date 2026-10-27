@@ -79,8 +79,23 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
 
     const [text, big] = [await evidence(githubPort(notPng.wire), THRESHOLD), await evidence(githubPort(changedShot().wire), { ...THRESHOLD, maxBytes: 10 })];
 
-    expect(text.record.visualDelta?.snapshots[0]).toMatchObject({ status: "unmeasured", reason: "not a PNG" });
+    expect(text.record.visualDelta?.snapshots[0]).toMatchObject({ status: "unmeasured", reason: `not a PNG at ${HEAD}` });
     expect(big.record.visualDelta?.snapshots[0]).toMatchObject({ status: "unmeasured", reason: `over 10 bytes at ${MERGE_BASE}` });
+  });
+
+  it("refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced", async () => {
+    const huge = card(true);
+    new DataView(huge.buffer, huge.byteOffset).setUint32(16, 20_000);
+    new DataView(huge.buffer, huge.byteOffset).setUint32(20, 20_000);
+    const interlaced = card(true);
+    interlaced[28] = 1;
+    const shot = (head: Uint8Array) => githubPort(world([{ path: SHOT, status: "modified" }], { [`${MERGE_BASE}:${SHOT}`]: card(), [`${HEAD}:${SHOT}`]: head }).wire);
+
+    const reasons = [await evidence(shot(huge), THRESHOLD), await evidence(shot(interlaced), THRESHOLD), await evidence(shot(card(true)), { ...THRESHOLD, maxPixels: 9_999 })].map(
+      ({ record }) => record.visualDelta?.snapshots[0]?.reason,
+    );
+
+    expect(reasons).toEqual([`over ${16 * 1024 * 1024} pixels at ${HEAD}`, `interlaced at ${HEAD}`, `over 9999 pixels at ${MERGE_BASE}`]);
   });
 
   it("lists added and removed snapshots unmeasured by share, and measures none past maxSnapshots", async () => {
@@ -92,13 +107,18 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
     expect(capped.record.visualDelta?.snapshots[0]?.reason).toBe("3 changed snapshots are over the cap of 2");
   });
 
-  it("measures a renamed snapshot against its old path at the merge base, and reads one renamed away as removed", async () => {
+  it("measures a renamed snapshot against its old path at the merge base, and reads one renamed away as removed and one renamed in as added", async () => {
     const OLD = "ui/visual/stories.spec.ts-snapshots/card--plain-chromium-linux.png";
-    const files = [{ path: SHOT, previousPath: OLD, status: "renamed" }, { path: "ui/docs/b.png", previousPath: "ui/visual/s.spec.ts-snapshots/b--x-chromium-linux.png", status: "renamed" }];
+    const IN = "ui/visual/s.spec.ts-snapshots/c--y-chromium-linux.png";
+    const files = [
+      { path: SHOT, previousPath: OLD, status: "renamed" },
+      { path: "ui/docs/b.png", previousPath: "ui/visual/s.spec.ts-snapshots/b--x-chromium-linux.png", status: "renamed" },
+      { path: IN, previousPath: "ui/docs/c.png", status: "renamed" },
+    ];
 
     const { record } = await evidence(githubPort(world(files, { [`${MERGE_BASE}:${OLD}`]: card(), [`${HEAD}:${SHOT}`]: card(true) }).wire), THRESHOLD);
 
-    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.share])).toEqual([["b", "removed", undefined], ["card", "changed", 0.01]]);
+    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.share])).toEqual([["b", "removed", undefined], ["card", "changed", 0.01], ["c", "added", undefined]]);
   });
 
   it("keeps the evidence comment under 60,000 characters when a PR regenerates hundreds of snapshots, counting what it leaves out", async () => {

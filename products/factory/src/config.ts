@@ -120,7 +120,8 @@ export const FlakyChecksSchema = z.strictObject({
 /**
  * One repo's visual-diff threshold (TP-4320). Absent, or `off`, measures nothing; `shadow` measures and records the delta on
  * the merge evidence; `on` is reserved for deciding on it. `maxChangedShare` defaults to 0.01 of the content box,
- * `pixelTolerance` to 0.1, `maxSnapshots` to 80 and `maxBytes` to 5 MiB per blob.
+ * `pixelTolerance` to 0.1, `maxSnapshots` to 80, `maxBytes` to 5 MiB per blob and `maxPixels` to 16 Mi per declared
+ * PNG size.
  */
 const VisualThresholdSchema = z.strictObject({
   mode: z.enum(["off", "shadow", "on"]),
@@ -132,6 +133,7 @@ const VisualThresholdSchema = z.strictObject({
   harnessPaths: z.array(z.string().min(1)),
   maxSnapshots: z.number().int().positive().optional(),
   maxBytes: z.number().int().positive().optional(),
+  maxPixels: z.number().int().positive().optional(),
 });
 
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */

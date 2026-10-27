@@ -16,11 +16,13 @@ export interface VisualThreshold {
   harnessPaths: string[];
   maxSnapshots?: number;
   maxBytes?: number;
+  maxPixels?: number;
 }
 
 const DEFAULT_MAX_CHANGED_SHARE = 0.01;
 const DEFAULT_MAX_SNAPSHOTS = 80;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+const DEFAULT_MAX_PIXELS = 16 * 1024 * 1024;
 
 type SnapshotStatus = "changed" | "added" | "removed" | "unmeasured";
 
@@ -74,7 +76,7 @@ interface Sorted {
 
 const delta = (path: string, status: SnapshotStatus, more: Partial<SnapshotDelta> = {}): SnapshotDelta => ({ path, component: componentOf(path), status, ...more });
 
-/** A snapshot renamed out of the snapshot paths no longer has a head render, so it reads as removed. */
+/** A snapshot renamed out of the snapshot paths no longer has a head render, so it reads as removed; one renamed in has no base render, so it reads as added. */
 function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => boolean): Sorted {
   const sorted: Sorted = { listed: [], pairs: [] };
   for (const file of files) {
@@ -83,7 +85,7 @@ function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => b
       if (from !== undefined) sorted.listed.push(delta(from, "removed"));
       continue;
     }
-    if (file.status === "added") sorted.listed.push(delta(file.path, "added"));
+    if (file.status === "added" || (file.previousPath !== undefined && from === undefined)) sorted.listed.push(delta(file.path, "added"));
     else if (file.status === "removed") sorted.listed.push(delta(file.path, "removed"));
     else sorted.pairs.push({ path: file.path, basePath: from ?? file.path });
   }
@@ -97,13 +99,33 @@ interface Measure {
   mergeBase: string;
   pixelTolerance: number;
   maxBytes: number;
+  maxPixels: number;
+}
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const IHDR_END = 29;
+
+/**
+ * Why a blob is refused before decoding, or undefined when its decode is bounded. The blob comes from the PR, and pngjs
+ * sizes its work by the header, not the bytes: a non-interlaced PNG allocates from the declared width × height, and an
+ * interlaced one inflates with no limit at all. So the header is read first, and only a non-interlaced PNG within
+ * `maxPixels` is decoded.
+ */
+function refusal(bytes: Uint8Array, m: Measure, ref: string): string | undefined {
+  if (bytes.byteLength > m.maxBytes) return `over ${m.maxBytes} bytes at ${ref}`;
+  const header = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const isPng = header.length >= IHDR_END && PNG_SIGNATURE.every((byte, i) => header[i] === byte) && header.toString("latin1", 12, 16) === "IHDR";
+  if (!isPng) return `not a PNG at ${ref}`;
+  const pixels = header.readUInt32BE(16) * header.readUInt32BE(20);
+  if (pixels > m.maxPixels) return `over ${m.maxPixels} pixels at ${ref}`;
+  return header[28] === 0 ? undefined : `interlaced at ${ref}`;
 }
 
 async function readBlob(m: Measure, path: string, ref: string): Promise<Uint8Array | string> {
   try {
     const bytes = await m.port.fileBytes(m.repo, path, ref);
     if (bytes === null) return `absent at ${ref}`;
-    return bytes.byteLength > m.maxBytes ? `over ${m.maxBytes} bytes at ${ref}` : bytes;
+    return refusal(bytes, m, ref) ?? bytes;
   } catch (error) {
     return `unreadable at ${ref}: ${statusOf(error)}`;
   }
@@ -117,7 +139,7 @@ async function measure(m: Measure, pair: Pair): Promise<SnapshotDelta> {
   try {
     return delta(pair.path, "changed", { share: snapshotShare(base, head, { pixelTolerance: m.pixelTolerance }) });
   } catch {
-    return delta(pair.path, "unmeasured", { reason: "not a PNG" });
+    return delta(pair.path, "unmeasured", { reason: "not a decodable PNG" });
   }
 }
 
@@ -142,7 +164,11 @@ async function measurePairs(port: GitHubPort, target: VisualDeltaTarget, pairs: 
   if (total > cap) return { mergeBase: null, measured: skipAll(`${total} changed snapshots are over the cap of ${cap}`) };
   const base = await mergeBaseOf(port, target);
   if ("unread" in base) return { mergeBase: null, measured: skipAll(base.unread) };
-  const limits = { pixelTolerance: threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE, maxBytes: threshold.maxBytes ?? DEFAULT_MAX_BYTES };
+  const limits = {
+    pixelTolerance: threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE,
+    maxBytes: threshold.maxBytes ?? DEFAULT_MAX_BYTES,
+    maxPixels: threshold.maxPixels ?? DEFAULT_MAX_PIXELS,
+  };
   const m: Measure = { port, repo: target.repo, head: target.head, mergeBase: base.sha, ...limits };
   const measured: SnapshotDelta[] = [];
   for (const pair of pairs) measured.push(await measure(m, pair));
