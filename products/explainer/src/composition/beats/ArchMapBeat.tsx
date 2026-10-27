@@ -75,14 +75,33 @@ function ArchMapFrame({ headline, nodes }: { headline: string; nodes: readonly M
   );
 }
 
+const hop = (from: string, to: string) => `${from} -> ${to}`;
+
+/** Why the slots are not the one-way path this view draws, or null when they are. */
+function notAPath(slots: MapSlots): string | null {
+  const count = slots.nodes.length;
+  if (count < PATH_NODES.min || count > PATH_NODES.max) return `draws ${PATH_NODES.min} to ${PATH_NODES.max} nodes, not ${count}`;
+  if (slots.focus !== undefined) return `draws no focus, but the map focuses ${slots.focus}`;
+  const path = slots.nodes.slice(1).map((node, i) => hop(slots.nodes[i]!.id, node.id));
+  const given = slots.edges.map((edge) => hop(edge.from, edge.to));
+  const missing = path.filter((edge) => !given.includes(edge));
+  const extra = given.filter((edge) => !path.includes(edge));
+  if (missing.length > 0 || extra.length > 0 || given.length !== path.length) {
+    return `draws only the path ${path.join(", ")}; the map's edges are [${given.join(", ")}]`;
+  }
+  const labelled = slots.edges.find((edge) => edge.label !== undefined);
+  return labelled ? `draws no edge labels, but ${labelled.id} is labelled` : null;
+}
+
 /**
  * arch-map: a left-to-right path of 2 to 5 numbered slots, each node filled as it is named, edges drawn once both
- * ends exist, then a token that walks the path with a 0.8 s dwell per node. A node count outside that range fails
- * the page, since the box holds five and the fill derives no path past it.
+ * ends exist, then a token that walks the path with a 0.8 s dwell per node. Any other map (a node count outside
+ * that range, edges that are not exactly node n to node n+1, a focus, an edge label) fails the page by name: the
+ * fill's map_state route copies the script map's own edges, which this view would otherwise draw as a path.
  */
 export function ArchMapKindBeat({ slots, reveal }: BeatViewProps<MapSlots>) {
-  const count = slots.nodes.length;
-  if (count < PATH_NODES.min || count > PATH_NODES.max) throw new Error(`arch-map draws ${PATH_NODES.min} to ${PATH_NODES.max} nodes, not ${count}`);
+  const refusal = notAPath(slots);
+  if (refusal) throw new Error(`arch-map ${refusal}`);
   const nodes = slots.nodes.map((node) => ({ id: node.id, label: node.label, atS: reveal(node.id) ?? 0 }));
   return <ArchMapFrame headline={slots.title ?? ""} nodes={nodes} />;
 }

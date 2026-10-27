@@ -13,7 +13,7 @@ type Figure = z.infer<(typeof BEAT_SLOTS)["stat"]>["figures"][number];
 
 const COUNT_START_S = 0.2;
 const COUNT_SPRING = { stiffness: 120, damping: 18 } as const;
-/** A figure with no cue of its own lands this long after the one before it. */
+/** A figure with no cue of its own lands at its index times this, counted from the beat's start. */
 const CARD_EACH_S = 0.25;
 
 /** The value shown `local` seconds after the card lands: a spring from 0 that overshoots slightly and settles. */

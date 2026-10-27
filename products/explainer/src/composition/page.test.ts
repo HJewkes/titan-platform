@@ -157,6 +157,18 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     }
   });
 
+  // Mutation: skip the edge check; the map_state map with no edges then draws Ledger -> Scanner and the page opens.
+  test("an arch-map whose edges are not the node path is refused, so no link is drawn that the map lacks", async () => {
+    const browser = await launch();
+    try {
+      const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
+
+      await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test("a provisional timeline is stamped DRAFT and a spoken one is not", async () => {
     const browser = await launch();
     try {

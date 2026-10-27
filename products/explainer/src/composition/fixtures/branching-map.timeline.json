@@ -1,0 +1,18 @@
+{
+  "durationS": 2,
+  "beats": [
+    {
+      "id": "state",
+      "kind": "arch-map",
+      "startS": 0,
+      "durationS": 2,
+      "slots": {
+        "nodes": [
+          { "id": "nodes-1", "label": "Ledger" },
+          { "id": "nodes-2", "label": "Scanner" }
+        ],
+        "edges": []
+      }
+    }
+  ]
+}
