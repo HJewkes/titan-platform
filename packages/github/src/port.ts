@@ -15,7 +15,7 @@ import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { RefRead, RulesetList } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { Ancestry } from "./compare.js";
-import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
+import { checkConclusion, checkMarker, checkMaxBytes, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
 import type { CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 export type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
@@ -114,7 +114,7 @@ export interface GitHubWire {
   deleteRef(repo: RepoSlug, branch: string): Promise<void>;
   getDefaultBranch(repo: RepoSlug): Promise<string>;
   getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
-  getContentBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
+  getContentBytes(repo: RepoSlug, path: string, ref: string, maxBytes?: number): Promise<Uint8Array | null>;
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
@@ -185,8 +185,8 @@ export interface GitHubPort {
   /** Refuses (skips) the default branch and a head that lives in another repo. */
   deleteRef(repo: RepoSlug, head: HeadRef): Promise<WriteResult>;
   getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
-  /** `getFile` for binary content such as a PNG: the bytes undecoded, read through `git/blobs` past the 1 MB inline limit. */
-  fileBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
+  /** `getFile` for binary content such as a PNG, through `git/blobs` past 1 MB; over `maxBytes` by reported size throws `BlobTooLargeError` before that read. */
+  fileBytes(repo: RepoSlug, path: string, ref: string, opts?: { maxBytes?: number }): Promise<Uint8Array | null>;
   putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>>;
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
   /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
@@ -294,7 +294,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
     deleteRef: async (repo, head) => deleteRef(wire, repoOf(repo), { branch: checkRef("branch", head.branch), repo: head.repo }),
     getFile: async (repo, path, ref) => wire.getContent(repoOf(repo), checkPath(path), checkRef("ref", ref)),
-    fileBytes: async (repo, path, ref) => wire.getContentBytes(repoOf(repo), checkPath(path), checkRef("ref", ref)),
+    fileBytes: async (repo, path, ref, opts = {}) => wire.getContentBytes(repoOf(repo), checkPath(path), checkRef("ref", ref), checkMaxBytes(opts.maxBytes)),
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),
