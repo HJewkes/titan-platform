@@ -7,8 +7,7 @@ import { compositionPage } from "../render/composition-page.js";
 import { writeParitySheet } from "./parity-sheet.js";
 import { parseTimeline } from "./timeline.js";
 
-// Bundled to dist/sheet/page-sheet.mjs by the page:sheet script: two levels under the package root, as this source is,
-// and as render/composition-page.ts expects of the module it is bundled into.
+// Bundled to dist/sheet/page-sheet.mjs by the page:sheet script: two levels under the package root, as this source is.
 const PACKAGE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const KINDS = path.join(PACKAGE_ROOT, "fixtures", "kinds.timeline.json");
 
