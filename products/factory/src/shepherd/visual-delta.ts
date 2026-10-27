@@ -4,14 +4,14 @@ import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
 /** pixelmatch's own default. Looser than the visual check's 0.02 on purpose: CI catches any drift, this asks if it matters. */
-export const DEFAULT_PIXEL_TOLERANCE = 0.1;
+const DEFAULT_PIXEL_TOLERANCE = 0.1;
 
-export interface SnapshotShareOptions {
+interface SnapshotShareOptions {
   /** pixelmatch's per-pixel threshold, 0..1. */
   readonly pixelTolerance?: number;
 }
 
-export interface ContentBox {
+interface ContentBox {
   readonly x: number;
   readonly y: number;
   readonly width: number;
