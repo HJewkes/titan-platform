@@ -42,9 +42,14 @@ export function sheetKind(beat: TimelineBeat): string {
   return typeof variant === "string" ? `${beat.kind}-${variant}` : beat.kind;
 }
 
-function cellsOf(beat: TimelineBeat): KindCell[] {
+/** Seconds from the beat's start to its settled frame: its end less 0.1 s, before the fade for a kind that fades out. */
+export function settledS(beat: TimelineBeat): number {
   const fade = Object.hasOwn(FADES_OUT_S, beat.kind) ? FADES_OUT_S[beat.kind]! : 0;
-  const settled = beat.durationS - fade - SETTLED_BEFORE_END_S;
+  return beat.durationS - fade - SETTLED_BEFORE_END_S;
+}
+
+function cellsOf(beat: TimelineBeat): KindCell[] {
+  const settled = settledS(beat);
   const firstReveal = Math.min(...(beat.reveals ?? []).map((r) => r.atS), Infinity);
   const first = Math.min((Number.isFinite(firstReveal) ? firstReveal : 0) + FIRST_AFTER_S, settled);
   return [
