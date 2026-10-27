@@ -232,7 +232,7 @@ describe("running a stage's checks", () => {
       eval: [], resolve: [
         "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
         "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "template-fill:gate",
-        "sim-check:reported", "sim-cut-orphan:gate",
+        "chart-integrity:gate", "sim-check:reported", "sim-cut-orphan:gate",
       ], tts: ["cue-resolution:gate"], render: ["duration-agreement:gate"], qa: ["held-errors:gate", "mp4-duration:gate", "motion-happened:gate", "clipped-text:gate", "content-fill:gate", "stage-empty:reported",
         "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate", "direction-gates:reported",
         "black-frames:reported", "silence-2s:reported", "frozen-frames:reported"], sheets: [],
