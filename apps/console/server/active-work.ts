@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
+import { loopBoard, loopTierAnswer } from "./loop-board.js";
 
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
 
@@ -110,10 +111,19 @@ const READS = {
   "context.graph": z.object({ references: z.array(reference) }),
   /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
   "deliverable.list": z.array(deliverable),
+  /** The platform-wide open-loops board; a daemon older than active-work 0.23 has no such command. */
+  "loop.board": loopBoard,
+};
+
+/** The active-work writes the console may call, kept apart so `READS` stays write-free. Only owner-write commands call them. */
+const WRITES = {
+  "loop.tier": loopTierAnswer,
 };
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
+export type WriteName = keyof typeof WRITES;
+export type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
 export type WireDeliverable = z.infer<typeof deliverable>;
@@ -122,6 +132,8 @@ export type WireInventoryInitiative = z.infer<typeof inventoryInitiative>;
 export interface ActiveWork {
   /** Rejects with an error that carries a sysexits `code` when the daemon is down, refuses, or answers another shape. */
   read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+  /** Rejects as `read` does. Absent on a read-only source, such as a test's; a write through it is then unavailable. */
+  write?<K extends WriteName>(command: K, args: Record<string, unknown>): Promise<WriteResult<K>>;
 }
 
 const READ_TIMEOUT_MS = 10_000;
@@ -141,13 +153,15 @@ export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_
     origin: `http://127.0.0.1:${port}`,
     fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
   });
+  const call = async (command: string, args: Record<string, unknown>, schema: z.ZodType): Promise<unknown> => {
+    const envelope = await source.call(command, args);
+    if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
+    const parsed = schema.safeParse(envelope.data);
+    if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
+    return parsed.data;
+  };
   return {
-    async read(command, args = {}) {
-      const envelope = await source.call(command, args);
-      if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
-      const parsed = READS[command].safeParse(envelope.data);
-      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
-      return parsed.data as ReadResult<typeof command>;
-    },
+    read: async (command, args = {}) => (await call(command, args, READS[command])) as ReadResult<typeof command>,
+    write: async (command, args) => (await call(command, args, WRITES[command])) as WriteResult<typeof command>,
   };
 }

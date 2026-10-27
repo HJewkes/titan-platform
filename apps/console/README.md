@@ -148,6 +148,8 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, `stageGuessed` when no evidence was found, and `parent`, `dep` and `deliverables` read with `@titan-design/pm`'s `readEdges` (the field, else the edge tags) |
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, the sessions whose `session_origin.task_ids` name it, its `children`, and each deliverable id joined to its `deliverable.list` record (`null` when unknown; `deliverablesDegraded` when the registry is unread). An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/work.loops` | `{ fetchedAt, board, unavailable, tierWritesOff }`: active-work's `loop.board` (the contract is `server/loop-board.ts`), every open loop with its advisory tier and rank, status, seat, motion, emphasis, tasks, PRs and blockers, plus the tech tree. A daemon with no `loop.board` (older than active-work 0.23) answers `board: null` with `unavailable: "active-work ≥ 0.23 needed"`, never an empty board; any other failure is an error envelope. `tierWritesOff` is the owner guard's refusal for this caller, or null when it may re-tier |
+| `POST /rpc/work.loop-tier` | `{ id, tier, before? }` in, `tier` one of `S`, `A`, `B`, `C`, `parked` or `unsorted`; `{ id, tier, tierRank }` out. An `owner-write` that calls active-work's `loop.tier`, the console's one active-work write, kept in `WRITES` apart from `READS` |
 | `POST /rpc/work.notes` | Notes and top-level sources across every initiative, newest change first, each with its `note:<slug>/<file>` or `source:<slug>/<path>` ref |
 | `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
@@ -1005,8 +1007,10 @@ replay of a released confirm is answered `already` from its outcome file, withou
 `/rpc/<command>` on loopback with a ten second timeout, and it can call only the reads in its
 `READS` table: `list`, `task.list`, `inventory`, `session.list`, `loops` (offline, so a page
 view never makes active-work call GitHub), `note.list`, `note.read`, `source.list`, `source.read`,
-`search`, `artifact.list`, `artifact.status`, `context.graph` and `deliverable.list`
-(active-work 0.23 on, read only for a task that names a deliverable). Each
+`search`, `artifact.list`, `artifact.status`, `context.graph`, `deliverable.list`
+(active-work 0.23 on, read only for a task that names a deliverable) and `loop.board`
+(active-work 0.23 on). Its one write, `loop.tier`, sits in a separate `WRITES` table and is
+called only by the owner-write `work.loop-tier`. Each
 answer is parsed against the part of the shape the console uses. The browser never calls
 active-work, and no absolute file path is sent to it.
 
@@ -1045,6 +1049,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
+| `#/loops` | Loops | Open loops in rows by advisory tier (Unsorted tray, S, A, B, C, Parked), each tier in tier-rank order. A card shows the loop's status, days since motion (stale from 7 days), owner emphasis, initiative, seat, task and PR chips, done-when and owner-gated blockers, and filters narrow by initiative and status. With owner writes allowed a card moves by drag (native HTML5 drag and drop, dropped ahead of the card it lands on) or by its Move to menu, the phone and keyboard path; the move shows at once, `work.loop-tier` saves it and the board is read again, and a refusal moves the card back and shows the reason. Otherwise every control is read-only and the page names the guard's reason. On a daemon without `loop.board` it says active-work ≥ 0.23 is needed | TP-4314 |
 | `#/sessions`, `#/sessions/<id>` | Sessions | Sessions list, and one session with its conversation first | TP-862 |
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
 | `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |

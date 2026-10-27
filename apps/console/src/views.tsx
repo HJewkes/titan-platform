@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ActivityIcon, AlertTriangleIcon, AwardIcon, BotIcon, BrainIcon, EqualIcon, HeadphonesIcon, HistoryIcon, KanbanIcon, LayersIcon, ScaleIcon, StarIcon, TargetIcon, type SideNavItem } from "@titan-design/react-ui";
+import { ActivityIcon, AlertTriangleIcon, AwardIcon, BotIcon, BrainIcon, EqualIcon, HeadphonesIcon, HistoryIcon, KanbanIcon, LayersIcon, RepeatIcon, ScaleIcon, StarIcon, TargetIcon, type SideNavItem } from "@titan-design/react-ui";
 import { VIEW_KEYS, type ViewKey } from "./router.js";
 
 export interface ViewSpec {
@@ -20,6 +20,7 @@ const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   inbox: { label: "Inbox", title: "Inbox", icon: <AlertTriangleIcon size={ICON_SIZE} /> },
   initiatives: { label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} /> },
   tasks: { label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} /> },
+  loops: { label: "Loops", title: "Open loops", icon: <RepeatIcon size={ICON_SIZE} /> },
   sessions: { label: "Sessions", title: "Sessions", icon: <HistoryIcon size={ICON_SIZE} /> },
   agents: { label: "Agents", title: "Agents", icon: <BotIcon size={ICON_SIZE} /> },
   knowledge: { label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} /> },

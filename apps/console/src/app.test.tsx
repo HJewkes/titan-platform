@@ -41,7 +41,7 @@ function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
 describe("the shell", () => {
   it("shows the rail and marks the current one", () => {
     renderConsole("#/sessions", healthy());
-    expect(railItems().map((item) => item.getAttribute("aria-label"))).toEqual(["Home", "Inbox", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds", "Reviews", "Theater", "Shepherd", "Research", "Config"]);
+    expect(railItems().map((item) => item.getAttribute("aria-label"))).toEqual(["Home", "Inbox", "Work", "Tasks", "Loops", "Sessions", "Agents", "Notes", "Rounds", "Reviews", "Theater", "Shepherd", "Research", "Config"]);
     expect(railItems().filter((item) => item.getAttribute("aria-current") === "page").map((item) => item.getAttribute("aria-label"))).toEqual(["Sessions"]);
   });
 

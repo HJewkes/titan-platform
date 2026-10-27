@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a loop with no tier is not mapped to the Unsorted tray",
+      "file": "apps/console/src/pages/loop-tiers.ts",
+      "find": "export const tierKeyOf = (tier: LoopTier): TierKey => (tier === null ? \"unsorted\" : tier);",
+      "replace": "export const tierKeyOf = (tier: LoopTier): TierKey => tier as TierKey;",
+      "kills": [
+        "loops page puts a loop with no tier in the Unsorted tray"
+      ]
+    },
+    {
+      "name": "cards inside a tier ignore tier rank",
+      "file": "apps/console/src/pages/loop-tiers.ts",
+      "find": "return (a.tierRank ?? Number.POSITIVE_INFINITY) - (b.tierRank ?? Number.POSITIVE_INFINITY) || a.title.localeCompare(b.title);",
+      "replace": "return a.title.localeCompare(b.title);",
+      "kills": [
+        "loops page orders cards inside a tier by tier rank"
+      ]
+    },
+    {
+      "name": "a refused move is not rolled back",
+      "file": "apps/console/src/pages/LoopsPage.tsx",
+      "find": "      setPending((held) => ({ ...held, moves: held.moves.filter((queued) => queued !== next) }));\n",
+      "replace": "",
+      "kills": [
+        "loops page moves a card back when the console refuses the tier write"
+      ]
+    }
+  ]
+}
