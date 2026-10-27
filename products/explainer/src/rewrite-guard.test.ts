@@ -55,6 +55,18 @@ describe("guardBeat", () => {
       expect(rules(before, after)).toContain("number-vague");
     });
 
+    it.each([
+      ["a number of", "The desk server flags the scans. A number of them were real. The ledger keeps them."],
+      ["hundreds", "The desk server flags the scans. Hundreds were real. The ledger keeps them."],
+      ["various", "The desk server flags the scans. Various ones were real. The ledger keeps them."],
+    ])("rejects %s standing in for a number moved to a label", (_, spoken) => {
+      const after = { spoken, labelsAdded: ["about 60 real"] };
+
+      const rejected = rules(beatWith({}, REAL), after);
+
+      expect(rejected).toContain("number-vague");
+    });
+
     it("accepts the clause cut with the number in a label", () => {
       const after = { spoken: "The desk server flags the scans. The ledger keeps them.", labelsAdded: ["about 60 real"] };
       expect(rules(beatWith({}, REAL), after)).not.toContain("number-vague");

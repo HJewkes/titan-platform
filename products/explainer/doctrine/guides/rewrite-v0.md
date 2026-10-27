@@ -12,6 +12,8 @@ and only their spoken line.
 - Keep each number you leave on the spoken line exactly as the original writes it.
 - When a number leaves the spoken line, do not put a vague word in its place; keep the number as the original says
   it, or cut the clause and let the label carry it.
+- Keep every clause as concrete as the original: name the thing, the file, the person or the example it names. Never
+  trade a named thing for "things", "stuff", "various parts" or "a number of" anything.
 - Do not add facts, "imagine", recaps, colons or semicolons. Do not drop a fact: whatever the original says stays
   on the spoken line or goes to the labels.
 - When a number leaves the spoken line, put it in `labels_added` with the noun it counts, as the original words it:

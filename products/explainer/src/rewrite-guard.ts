@@ -123,7 +123,8 @@ function withoutCarried(before: string, after: BeatRewrite): string {
   });
 }
 
-const VAGUE_QUANTIFIER = /(?<![\p{L}\p{N}'’-])(?:some|many|several|a few|a lot|lots|plenty|a handful|a bunch|a pile|numerous|countless)(?![\p{L}\p{N}'’-])/giu;
+const VAGUE_QUANTIFIER =
+  /(?<![\p{L}\p{N}'’-])(?:some|many|several|a few|a lot|lots|plenty|a handful|a bunch|a pile|numerous|countless|a number of|various|a range of|dozens|hundreds|thousands|millions)(?![\p{L}\p{N}'’-])/giu;
 
 const vagueIn = (spoken: string): string[] => (spoken.match(VAGUE_QUANTIFIER) ?? []).map(norm);
 
