@@ -77,6 +77,22 @@ export function attributeCoverage(
   return out;
 }
 
+/** Start lines of functions Istanbul saw run at least once, by repo path; files it does not map are absent. */
+export function coveredFunctionStarts(
+  coverage: IstanbulCoverage,
+  fileIdOf: (absPath: string) => string | null,
+): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  for (const [absPath, fc] of Object.entries(coverage)) {
+    const fileId = isFileCoverage(fc) ? fileIdOf(absPath) : null;
+    if (!fileId) continue;
+    const starts = out.get(fileId) ?? new Set<number>();
+    for (const [k, fn] of Object.entries(fc.fnMap)) if ((fc.f[k] ?? 0) > 0) starts.add(fn.loc.start.line);
+    if (starts.size > 0) out.set(fileId, starts);
+  }
+  return out;
+}
+
 function symbolCoverage(fc: IstanbulFileCoverage, fnIds: readonly string[], symbols: readonly SymbolSpan[]): GraphMetric[] {
   const perSymbol = new Map<string, { hit: number; total: number }>();
   for (const k of fnIds) {
