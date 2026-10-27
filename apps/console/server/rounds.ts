@@ -20,14 +20,14 @@ import { isLoopbackUrl } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { FeedbackSchema, ROUND_ID, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
-import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
+import { readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
-import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
+import { readPriorFeedback } from "./prior-feedback.js";
 import { readFollowUps } from "./round-follow-ups.js";
-import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, roundNotes, type RoundNotes } from "./round-notes.js";
-import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
+import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, type RoundNotes } from "./round-notes.js";
+import { UNWIRED_LINEAGE, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 import type { LiveReader } from "./round-live.js";
-import { roundLive } from "./storybook-build.js";
+import type { RoundDetail, RoundStatus, RoundSummary } from "./round-summary.js";
 
 export interface RoundsSource {
   dir: string;
@@ -49,66 +49,8 @@ const MAX_WITHDRAWN_BYTES = 4096;
 const MAX_REASON_ISSUES = 5;
 export const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
-const roundStatus = z.enum(["open", "sent", "withdrawn"]);
-type RoundStatus = z.infer<typeof roundStatus>;
-
-const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().nullable() };
-
-const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
-
-export const roundSummary = z.discriminatedUnion("valid", [
-  z.object({
-    ...roundHead,
-    valid: z.literal(true),
-    unit: z.string(),
-    round: z.number(),
-    questions: z.number(),
-    design: z.boolean(),
-    ship: z.boolean(),
-    /** Present when a pick-one offers a merge with no binding: it is answerable, but its answer taps no merge. */
-    unbound: z.literal(true).optional(),
-    recommendations: z.enum(["after-answer", "shown"]),
-    /** A withdrawn round's reason from its withdrawn.json, e.g. `superseded-by:<id>`; absent on an open or sent round. */
-    withdrawnReason: z.string().optional(),
-  }),
-  invalidRound.extend({ withdrawnReason: z.string().optional() }),
-]);
-
-export const roundDetail = z.discriminatedUnion("valid", [
-  z.object({
-    ...roundHead,
-    valid: z.literal(true),
-    /** A round with frames and no merge-bound question is a design round, answered in the harness. */
-    design: z.boolean(),
-    /** A round with a merge-bound pick-one: the console shows its frames and answers it with Ship or Send back. */
-    ship: z.boolean(),
-    /** The sha256 of the round.json shown, which `rounds.submit` binds an answer to. */
-    manifestSha256: z.string(),
-    /** True while an after-answer round is unsent: every question's recommendation is stripped. */
-    recommendationsWithheld: z.boolean(),
-    /** While withheld, the questions that have a recommendation `rounds.reveal` can hand back; empty otherwise. */
-    revealable: z.array(z.string()),
-    /** Null unless the manifest's Storybook host is loopback. */
-    storybookUrl: z.string().nullable(),
-    manifest: z.custom<Manifest>(),
-    answer: gateAnswer.optional(),
-    /** A Ship round's proven head against its PR base now; absent on any other round. */
-    lineage: shipLineage.optional(),
-    /** A sent round's free text from its feedback.json; absent while unsent or when that file does not parse. */
-    notes: roundNotes.optional(),
-    /** An open or sent Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
-    priorFeedback: priorFeedbackList.optional(),
-    /** A sent Ship round's side questions filed as follow-ups (TP-3346); absent when there are none. */
-    followUps: z.array(z.string()).optional(),
-    /** A round that carries a Storybook build: each story variant's url on the story origin, or why it shows its PNG (TP-3793). */
-    live: roundLive.optional(),
-  }),
-  invalidRound,
-]);
-
+export { roundDetail, roundSummary, type RoundDetail, type RoundSummary } from "./round-summary.js";
 export type { RoundNotes, SentAnswer } from "./round-notes.js";
-export type RoundSummary = z.infer<typeof roundSummary>;
-export type RoundDetail = z.infer<typeof roundDetail>;
 
 type Parsed = { ok: true; manifest: Manifest; sha256: string } | { ok: false; reason: string };
 
