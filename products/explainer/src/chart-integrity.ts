@@ -33,8 +33,8 @@ const linear = (channel: number): number => (channel <= 0.04045 ? channel / 12.9
 
 /** CIELAB L* of an sRGB `#rrggbb` colour, D65 white. */
 export function lightness(hex: string): number {
-  const [r, g, b] = [1, 3, 5].map((at) => linear(Number.parseInt(hex.slice(at, at + 2), 16) / 255)) as [number, number, number];
-  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const channel = (at: number): number => linear(Number.parseInt(hex.slice(at, at + 2), 16) / 255);
+  const y = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
   const f = y > (6 / 29) ** 3 ? Math.cbrt(y) : y / (3 * (6 / 29) ** 2) + 4 / 29;
   return 116 * f - 16;
 }
