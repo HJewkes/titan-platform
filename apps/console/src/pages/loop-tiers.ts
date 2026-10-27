@@ -28,10 +28,8 @@ function byRank(a: BoardLoop, b: BoardLoop): number {
 
 /** Each tier's loops in rank order, every tier present even when empty. */
 export function groupByTier(loops: readonly BoardLoop[]): Record<TierKey, BoardLoop[]> {
-  const groups = Object.fromEntries(TIER_ROWS.map((row) => [row.key, [] as BoardLoop[]])) as Record<TierKey, BoardLoop[]>;
-  for (const loop of loops) groups[tierKeyOf(loop.tier)]?.push(loop);
-  for (const row of TIER_ROWS) groups[row.key].sort(byRank);
-  return groups;
+  const inTier = (key: TierKey): BoardLoop[] => loops.filter((loop) => tierKeyOf(loop.tier) === key).sort(byRank);
+  return { unsorted: inTier("unsorted"), S: inTier("S"), A: inTier("A"), B: inTier("B"), C: inTier("C"), parked: inTier("parked") };
 }
 
 export interface Move {

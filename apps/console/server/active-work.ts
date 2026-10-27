@@ -153,15 +153,21 @@ export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_
     origin: `http://127.0.0.1:${port}`,
     fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
   });
-  const call = async (command: string, args: Record<string, unknown>, schema: z.ZodType): Promise<unknown> => {
+  const dataOf = async (command: string, args: Record<string, unknown>): Promise<unknown> => {
     const envelope = await source.call(command, args);
     if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
-    const parsed = schema.safeParse(envelope.data);
-    if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
-    return parsed.data;
+    return envelope.data;
   };
   return {
-    read: async (command, args = {}) => (await call(command, args, READS[command])) as ReadResult<typeof command>,
-    write: async (command, args) => (await call(command, args, WRITES[command])) as WriteResult<typeof command>,
+    async read(command, args = {}) {
+      const parsed = READS[command].safeParse(await dataOf(command, args));
+      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
+      return parsed.data as ReadResult<typeof command>;
+    },
+    async write(command, args) {
+      const parsed = WRITES[command].safeParse(await dataOf(command, args));
+      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
+      return parsed.data;
+    },
   };
 }
