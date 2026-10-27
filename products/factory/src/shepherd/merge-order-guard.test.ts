@@ -80,6 +80,31 @@ describe("the merge-order guard", () => {
     expect([...waits.entries()]).toEqual([]);
   });
 
+  it("lets a peer through while a person holds the reserving run, and holds it again once the hold lifts (TP-4133)", async () => {
+    const r = rig();
+    r.store.register({ repo: REPO, pr: 2301, runId: "run-x", task: "demo/X", implementer: "impl-x", policy: AUTO_POLICY });
+    r.store.hold("run-x", "g10-adversary: policy touch");
+
+    const whileHeld = await reasonFor(r);
+    r.store.release("run-x");
+
+    expect(whileHeld).toBeUndefined();
+    expect(await reasonFor(r)).toBe(`merge order: waiting behind #2301 (${SHARED})`);
+  });
+
+  it("logs one order-wait event per wait, not one per poll, so the timeline shows what the merge waits on", async () => {
+    const r = rig();
+    const guard = mergeOrderGuard({ order: () => r.order, registrations: () => r.store, rules: ON, now: () => r.clock.now });
+    const read = () => guard.reason(r.port, REPO, 2310, "main", HEADS[2310], "topic-2310");
+
+    await read();
+    await read();
+
+    expect(r.store.eventsOf("run-y").map(({ kind, pr, reason, headSha }) => ({ kind, pr, reason, headSha }))).toEqual([
+      { kind: "order-wait", pr: 2310, reason: `merge order: waiting behind #2301 (${SHARED})`, headSha: HEADS[2310] },
+    ]);
+  });
+
   it("lets a PR with no reserved path through", async () => {
     expect(await reasonFor(rig([file("src/y.ts")]))).toBeUndefined();
   });

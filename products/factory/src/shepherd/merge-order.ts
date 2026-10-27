@@ -6,6 +6,7 @@ import { z } from "zod";
 import { appendEvent } from "./events.js";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
+import type { Registration } from "./store.js";
 
 /**
  * A conflicted PR's reservation of the paths it changes, so an overlapping PR waits at its merge until the conflicted
@@ -113,6 +114,28 @@ export class MergeOrder {
   driving(): WorkflowRun[] {
     return this.runs.listByStatus(["running"]);
   }
+
+  /** Logs the wait a merge step's guard just started reading, so `shepherd timeline` shows what the merge waits on. */
+  noteWait(runId: string, wait: OrderWait, at: string, headSha: string | undefined): void {
+    appendEvent(this.db, { runId, repo: wait.repo, pr: wait.pr, kind: "order-wait", reason: wait.reason, at, headSha });
+  }
+}
+
+/** The registration facts that say a person holds a run. */
+export interface RunHolds {
+  byRun(runId: string): Pick<Registration, "held" | "holdSatisfied" | "ownerHold"> | undefined;
+}
+
+/** An owner hold, or a hold no reviewer has satisfied; a satisfied hold lets the run merge at that head, so it still drives. */
+const registrationHeld = (registration: ReturnType<RunHolds["byRun"]>): boolean => registration?.held === true && (registration.ownerHold !== null || registration.holdSatisfied === null);
+
+/**
+ * Driving, and not held by its registration. A held reserver waits on a person, so its reservation stops ordering peers
+ * while the hold lasts instead of until its TTL (TP-4133). Only the registration is read, never the merge guard, which
+ * reads this predicate.
+ */
+export function orderDriving(order: MergeOrder, holds: RunHolds): (runId: string) => boolean {
+  return (runId) => order.isDriving(runId) && !registrationHeld(holds.byRun(runId));
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge fails closed. */
@@ -194,7 +217,7 @@ export function blockers(self: OrderSelf, reservations: readonly Reservation[], 
 }
 
 /** The merge-order wait a run's merge step read last; kept in serve's memory, for `shepherd status` and `shepherd order`. */
-interface OrderWait {
+export interface OrderWait {
   repo: string;
   pr: number;
   behind: number;
