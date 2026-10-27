@@ -1,7 +1,8 @@
 // The pure measure behind the visual-diff threshold (TP-4320): how much of a snapshot's rendered content changed
-// between the merge base and the head. Reading the blobs and judging the share against a threshold live elsewhere.
+// between the merge base and the head. Reading and decoding the blobs (png-bounded.ts) and judging the share against a
+// threshold live elsewhere.
 import pixelmatch from "pixelmatch";
-import { PNG } from "pngjs";
+import type { Decoded } from "./png-bounded.js";
 
 /** pixelmatch's own default. Looser than the visual check's 0.02 on purpose: CI catches any drift, this asks if it matters. */
 const DEFAULT_PIXEL_TOLERANCE = 0.1;
@@ -25,14 +26,14 @@ interface Bounds {
   maxY: number;
 }
 
-function differsFromCorner(image: PNG, offset: number): boolean {
+function differsFromCorner(image: Decoded, offset: number): boolean {
   for (let channel = 0; channel < 4; channel += 1) {
-    if (image.data[offset + channel] !== image.data[channel]) return true;
+    if (image.rgba[offset + channel] !== image.rgba[channel]) return true;
   }
   return false;
 }
 
-function growToContent(image: PNG, bounds: Bounds): void {
+function growToContent(image: Decoded, bounds: Bounds): void {
   for (let y = 0; y < image.height; y += 1) {
     for (let x = 0; x < image.width; x += 1) {
       if (!differsFromCorner(image, (y * image.width + x) * 4)) continue;
@@ -48,7 +49,7 @@ function growToContent(image: PNG, bounds: Bounds): void {
  * The bounding box, over every image, of pixels that differ from that image's top-left corner colour; null when no
  * image has any. A viewport-sized story shot would otherwise dilute a real change in a small component into noise.
  */
-export function contentBox(images: readonly PNG[]): ContentBox | null {
+export function contentBox(images: readonly Decoded[]): ContentBox | null {
   const bounds: Bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   for (const image of images) growToContent(image, bounds);
   if (bounds.maxX < bounds.minX) return null;
@@ -57,13 +58,11 @@ export function contentBox(images: readonly PNG[]): ContentBox | null {
 
 /**
  * The share of the content box whose pixels changed from `base` to `head`, in 0..1. Different dimensions count as a
- * full change. Antialiased pixels are not counted. Throws when either buffer is not a PNG.
+ * full change. Antialiased pixels are not counted. Its cost is linear in pixels, which the decoder has already capped.
  */
-export function snapshotShare(base: Uint8Array, head: Uint8Array, opts: SnapshotShareOptions = {}): number {
-  const before = PNG.sync.read(Buffer.from(base));
-  const after = PNG.sync.read(Buffer.from(head));
+export function snapshotShare(before: Decoded, after: Decoded, opts: SnapshotShareOptions = {}): number {
   if (before.width !== after.width || before.height !== after.height) return 1;
-  const changed = pixelmatch(before.data, after.data, null, before.width, before.height, {
+  const changed = pixelmatch(before.rgba, after.rgba, null, before.width, before.height, {
     threshold: opts.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE,
     includeAA: false,
   });
