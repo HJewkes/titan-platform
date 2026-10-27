@@ -1,52 +1,35 @@
-import { FakeHttpError, githubPort, type GitHubPort } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { evidenceComment } from "./evidence-comment.js";
-import { MergeEvidenceSchema } from "./review-schemas.js";
-import { HEAD, MERGE_BASE, SHOT, THRESHOLD, card, changedShot, evidence, world } from "./visual-delta-read.test-helpers.js";
+import { MergeEvidenceSchema, VisualDeltaSchema } from "./review-schemas.js";
+import { SHOT, THRESHOLD, changedShot, evidence, world } from "./visual-delta-read.test-helpers.js";
 
 describe("the merge evidence under shepherd.visualThreshold shadow", () => {
-  it("records a changed snapshot's share of the content box, read from the merge base and the head", async () => {
-    const { record } = await evidence(githubPort(changedShot().wire), THRESHOLD);
+  it("records a changed snapshot as not measured yet, reading no blob and no merge base", async () => {
+    const fake = changedShot();
 
-    expect(record.visualDelta?.mergeBase).toBe(MERGE_BASE);
-    expect(record.visualDelta?.snapshots).toEqual([{ path: SHOT, component: "card", status: "changed", share: 0.01 }]);
+    const { record } = await evidence(fake, THRESHOLD);
+
+    expect(record.visualDelta?.snapshots).toEqual([{ path: SHOT, component: "card", status: "unmeasured", reason: "not measured yet" }]);
+    expect(record.visualDelta?.mergeBase).toBeNull();
     expect(record.visualDelta?.policy).toEqual({ mode: "shadow", maxChangedShare: 0.01, pixelTolerance: 0.1 });
+    expect(fake.calls.filter((call) => call === "getContentBytes" || call === "compareFiles")).toEqual([]);
   });
 
-  it("records an unreadable head blob as unmeasured with the reason, and still posts the evidence", async () => {
-    const port = githubPort(changedShot().wire);
-    const failing: GitHubPort = { ...port, fileBytes: async (repo, path, ref) => (ref === HEAD ? Promise.reject(new FakeHttpError(502, "bad gateway")) : port.fileBytes(repo, path, ref)) };
+  it("records nothing when the repo's mode is off or the repo has no threshold", async () => {
+    const [off, none] = [await evidence(changedShot(), { ...THRESHOLD, mode: "off" }), await evidence(changedShot())];
 
-    const { record } = await evidence(failing, THRESHOLD);
-
-    expect(record.visualDelta?.snapshots).toEqual([{ path: SHOT, component: "card", status: "unmeasured", reason: expect.stringMatching(new RegExp(`^unreadable at ${HEAD}: .*502`)) }]);
+    expect([off.record.visualDelta, none.record.visualDelta]).toEqual([undefined, undefined]);
   });
 
-  it("records a blob that is not a PNG, or over maxBytes, as unmeasured", async () => {
-    const notPng = world([{ path: SHOT, status: "modified" }], { [`${MERGE_BASE}:${SHOT}`]: card(), [`${HEAD}:${SHOT}`]: new TextEncoder().encode("not an image") });
+  it("reads a snapshot renamed into the snapshot paths as added, and one renamed out of them as removed", async () => {
+    const files = [
+      { path: SHOT, previousPath: "ui/docs/card.png", status: "renamed" },
+      { path: "ui/docs/b.png", previousPath: "ui/visual/s.spec.ts-snapshots/b--x-chromium-linux.png", status: "renamed" },
+    ];
 
-    const [text, big] = [await evidence(githubPort(notPng.wire), THRESHOLD), await evidence(githubPort(changedShot().wire), { ...THRESHOLD, maxBytes: 10 })];
+    const { record } = await evidence(world(files), THRESHOLD);
 
-    expect(text.record.visualDelta?.snapshots[0]).toMatchObject({ status: "unmeasured", reason: `not a PNG at ${HEAD}` });
-    expect(big.record.visualDelta?.snapshots[0]).toMatchObject({ status: "unmeasured", reason: `over 10 bytes at ${MERGE_BASE}` });
-  });
-
-  it("lists added and removed snapshots unmeasured by share, and measures none past maxSnapshots", async () => {
-    const files = [{ path: SHOT, status: "modified" }, { path: "ui/visual/s.spec.ts-snapshots/new--a-chromium-linux.png", status: "added" }, { path: "ui/visual/s.spec.ts-snapshots/old--b-chromium-linux.png", status: "removed" }];
-
-    const capped = await evidence(githubPort(world(files).wire), { ...THRESHOLD, maxSnapshots: 2 });
-
-    expect(capped.record.visualDelta?.snapshots.map((s) => [s.component, s.status])).toEqual([["card", "unmeasured"], ["old", "removed"], ["new", "added"]]);
-    expect(capped.record.visualDelta?.snapshots[0]?.reason).toBe("3 changed snapshots are over the cap of 2");
-  });
-
-  it("measures a renamed snapshot against its old path at the merge base, and reads one renamed away as removed", async () => {
-    const OLD = "ui/visual/stories.spec.ts-snapshots/card--plain-chromium-linux.png";
-    const files = [{ path: SHOT, previousPath: OLD, status: "renamed" }, { path: "ui/docs/b.png", previousPath: "ui/visual/s.spec.ts-snapshots/b--x-chromium-linux.png", status: "renamed" }];
-
-    const { record } = await evidence(githubPort(world(files, { [`${MERGE_BASE}:${OLD}`]: card(), [`${HEAD}:${SHOT}`]: card(true) }).wire), THRESHOLD);
-
-    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.share])).toEqual([["b", "removed", undefined], ["card", "changed", 0.01]]);
+    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status])).toEqual([["b", "removed"], ["card", "added"]]);
   });
 
   it("keeps the evidence comment under 60,000 characters when a PR regenerates hundreds of snapshots, counting what it leaves out", async () => {
@@ -56,7 +39,7 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
     const reports = Array.from({ length: 400 }, (_, i) => ({ path: `ui/api/${long}-${i}.api.md`, status: "modified" }));
     const files = [...added, { path: shot(999), status: "removed" }, ...reports];
 
-    const { record } = await evidence(githubPort(world(files).wire), THRESHOLD);
+    const { record } = await evidence(world(files), THRESHOLD);
 
     expect(evidenceComment(record).length).toBeLessThan(60_000);
     expect(record.visualDelta?.omitted).toEqual({ snapshots: 361, api: 380 });
@@ -66,24 +49,30 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
   it("matches the public API, token and harness paths, a token test aside", async () => {
     const files = [{ path: "ui/api/index.api.md", status: "modified" }, { path: "ui/src/theme/config.ts", status: "modified" }, { path: "ui/src/theme/config.test.ts", status: "modified" }, { path: "ui/playwright.config.ts", status: "modified" }];
 
-    const { record } = await evidence(githubPort(world(files).wire), THRESHOLD);
+    const { record } = await evidence(world(files), THRESHOLD);
 
     expect([record.visualDelta?.api, record.visualDelta?.tokens, record.visualDelta?.harness]).toEqual([["ui/api/index.api.md"], ["ui/src/theme/config.ts"], ["ui/playwright.config.ts"]]);
   });
 
   it("leaves the decision as it is without the threshold, and keeps a record the evidence schema reads", async () => {
-    const [shadow, none] = [await evidence(githubPort(changedShot().wire), THRESHOLD), await evidence(githubPort(changedShot().wire))];
+    const [shadow, none] = [await evidence(changedShot(), THRESHOLD), await evidence(changedShot())];
 
     expect(shadow.record.decision).toEqual(none.record.decision);
-    expect(MergeEvidenceSchema.parse(shadow).record.visualDelta?.snapshots[0]?.share).toBe(0.01);
+    expect(MergeEvidenceSchema.parse(shadow).record.visualDelta?.snapshots[0]?.reason).toBe("not measured yet");
   });
+});
 
-  it("reads no blob and records nothing when the repo's mode is off", async () => {
-    const fake = changedShot();
+describe("VisualDeltaSchema", () => {
+  const recorded = { policy: { mode: "shadow", maxChangedShare: 0.01, pixelTolerance: 0.1 }, mergeBase: null, snapshots: [], api: [], tokens: [], harness: [] };
+  const snapshot = (path: string) => ({ path, component: "card", status: "added" });
 
-    const { record } = await evidence(githubPort(fake.wire), { ...THRESHOLD, mode: "off" });
+  it("refuses a delta with more than 40 snapshots or a string over 300 characters, so an unbounded writer fails at the parse", () => {
+    const forty = Array.from({ length: 40 }, (_, i) => snapshot(`s${i}.png`));
 
-    expect(record.visualDelta).toBeUndefined();
-    expect(fake.calls).not.toContain("getContentBytes");
+    expect(VisualDeltaSchema.safeParse({ ...recorded, snapshots: forty }).success).toBe(true);
+    expect(VisualDeltaSchema.safeParse({ ...recorded, snapshots: [...forty, snapshot("s40.png")] }).success).toBe(false);
+    expect(VisualDeltaSchema.safeParse({ ...recorded, snapshots: [snapshot("p".repeat(300))] }).success).toBe(true);
+    expect(VisualDeltaSchema.safeParse({ ...recorded, snapshots: [snapshot("p".repeat(301))] }).success).toBe(false);
+    expect(VisualDeltaSchema.safeParse({ ...recorded, api: Array.from({ length: 21 }, (_, i) => `a${i}.api.md`) }).success).toBe(false);
   });
 });

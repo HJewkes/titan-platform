@@ -326,10 +326,10 @@ interface EvidenceReads {
   threshold?: VisualThreshold;
 }
 
-/** Off, or no threshold for the repo, reads nothing, so a repo that never opted in pays no blob reads. */
-async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, prFiles }: Observed, threshold: VisualThreshold | undefined): Promise<{ visualDelta: VisualDelta } | undefined> {
+/** Off, or no threshold for the repo, records nothing, so a repo that never opted in carries no delta. */
+function visualDeltaOf({ prFiles }: Observed, threshold: VisualThreshold | undefined): { visualDelta: VisualDelta } | undefined {
   if (threshold === undefined || threshold.mode === "off") return undefined;
-  return { visualDelta: await readVisualDelta(port, { repo: input.repo, head: input.head, baseRef: pr.baseRef }, prFiles, threshold) };
+  return { visualDelta: readVisualDelta(prFiles, threshold) };
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
@@ -339,7 +339,7 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
-  const visual = await visualDeltaOf(port, input, observed, reads.threshold);
+  const visual = visualDeltaOf(observed, reads.threshold);
   const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };

@@ -14,6 +14,20 @@
       "find": "const VisualThresholdSchema = z.strictObject({",
       "replace": "const VisualThresholdSchema = z.object({",
       "kills": ["loadConfig keeps each repo's visual threshold, and refuses a misspelt key, a share above 1 or a repo that is not owner/name"]
+    },
+    {
+      "name": "the visual threshold accepts mode on before anything decides on it",
+      "file": "products/factory/src/config.ts",
+      "find": "mode: z.enum([\"off\", \"shadow\"]),",
+      "replace": "mode: z.enum([\"off\", \"shadow\", \"on\"]),",
+      "kills": ["loadConfig refuses a visual threshold mode of on, and caps the measuring work config can ask for"]
+    },
+    {
+      "name": "the visual threshold's maxBytes has no ceiling",
+      "file": "products/factory/src/config.ts",
+      "find": "maxBytes: z.number().int().positive().max(20 * MI).optional(),",
+      "replace": "maxBytes: z.number().int().positive().optional(),",
+      "kills": ["loadConfig refuses a visual threshold mode of on, and caps the measuring work config can ask for"]
     }
   ]
 }

@@ -64,23 +64,32 @@ const GateDecisionSchema = z.looseObject({
   reason: z.string(),
 });
 
+/**
+ * The visual delta is posted whole in the evidence comment, which GitHub caps at 65,536 characters, so the schema bounds
+ * every list and string: a writer that skips the reader's own caps fails at the parse, not at GitHub.
+ */
+export const VISUAL_DELTA_CAPS = { snapshots: 40, paths: 20, text: 300 } as const;
+
+const boundedText = z.string().max(VISUAL_DELTA_CAPS.text);
+const pathList = z.array(boundedText).max(VISUAL_DELTA_CAPS.paths);
+
 const SnapshotDeltaSchema = z.looseObject({
-  path: z.string(),
-  component: z.string(),
+  path: boundedText,
+  component: boundedText,
   status: z.enum(["changed", "added", "removed", "unmeasured"]),
   share: z.number().min(0).max(1).optional(),
-  reason: z.string().optional(),
+  reason: boundedText.optional(),
 });
 
 /** The evidence step's visual delta (TP-4320); a record whose delta is malformed fails the parse, so its merge gates. */
-const VisualDeltaSchema = z.looseObject({
-  policy: z.looseObject({ mode: z.enum(["off", "shadow", "on"]), maxChangedShare: z.number(), pixelTolerance: z.number() }),
-  mergeBase: z.string().nullable(),
-  snapshots: z.array(SnapshotDeltaSchema),
-  api: z.array(z.string()),
-  tokens: z.array(z.string()),
-  harness: z.array(z.string()),
-  unread: z.string().optional(),
+export const VisualDeltaSchema = z.looseObject({
+  policy: z.looseObject({ mode: z.enum(["off", "shadow"]), maxChangedShare: z.number(), pixelTolerance: z.number() }),
+  mergeBase: boundedText.nullable(),
+  snapshots: z.array(SnapshotDeltaSchema).max(VISUAL_DELTA_CAPS.snapshots),
+  api: pathList,
+  tokens: pathList,
+  harness: pathList,
+  unread: boundedText.optional(),
   omitted: z.looseObject({ snapshots: z.number().optional(), api: z.number().optional(), tokens: z.number().optional(), harness: z.number().optional() }).optional(),
 });
 

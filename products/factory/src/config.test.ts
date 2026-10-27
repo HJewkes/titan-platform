@@ -129,6 +129,19 @@ describe("loadConfig", () => {
     expect(() => load({ ui: rule })).toThrow(/visualThreshold/);
   });
 
+  it("refuses a visual threshold mode of on, and caps the measuring work config can ask for", () => {
+    const rule = { mode: "shadow", snapshotPaths: [], apiPaths: [], tokenPaths: [], harnessPaths: [] };
+    const load = (more: object) => loadConfig(configPath(xdg({ shepherd: { visualThreshold: { "acme/ui": { ...rule, ...more } } } })));
+    const mi = 1024 * 1024;
+
+    expect(load({ maxSnapshots: 200, maxBytes: 20 * mi, maxPixels: 32 * mi, maxTotalPixels: 256 * mi }).shepherd?.visualThreshold?.["acme/ui"]?.maxTotalPixels).toBe(256 * mi);
+    expect(() => load({ mode: "on" })).toThrow(/mode/);
+    expect(() => load({ maxBytes: 20 * mi + 1 })).toThrow(/maxBytes/);
+    expect(() => load({ maxSnapshots: 201 })).toThrow(/maxSnapshots/);
+    expect(() => load({ maxPixels: 32 * mi + 1 })).toThrow(/maxPixels/);
+    expect(() => load({ maxTotalPixels: 256 * mi + 1 })).toThrow(/maxTotalPixels/);
+  });
+
   it("reads the held-repair gate reset flag, and rejects a value other than off or on and an unknown key", () => {
     const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
 

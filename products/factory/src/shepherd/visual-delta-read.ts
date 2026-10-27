@@ -1,13 +1,14 @@
-// The evidence step's read of a PR's visual delta (TP-4320): every snapshot it changes measured from the merge base to
-// the head, and the public API, token and harness paths it touches. Recorded only; nothing decides on it yet.
-import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
-import { statusOf } from "../required-checks.js";
-import { DEFAULT_PIXEL_TOLERANCE, componentOf, snapshotShare } from "./visual-delta.js";
+// The evidence step's read of a PR's visual delta (TP-4320): the snapshots it changes, and the public API, token and
+// harness paths it touches. Recorded only; nothing decides on it yet. No blob is read here: every snapshot pair records
+// as not measured until a bounded decoder measures it, so no byte the PR supplies reaches a decoder from this step.
+import type { PrFile } from "@titan-design/github";
+import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
+import { DEFAULT_PIXEL_TOLERANCE, componentOf } from "./visual-delta.js";
 import { caseFoldedMatcher, visualMatches } from "./visual-gate.js";
 
 /** `shepherd.visualThreshold` for one repo. */
 export interface VisualThreshold {
-  mode: "off" | "shadow" | "on";
+  mode: "off" | "shadow";
   maxChangedShare?: number;
   pixelTolerance?: number;
   snapshotPaths: string[];
@@ -17,12 +18,11 @@ export interface VisualThreshold {
   maxSnapshots?: number;
   maxBytes?: number;
   maxPixels?: number;
+  maxTotalPixels?: number;
 }
 
 const DEFAULT_MAX_CHANGED_SHARE = 0.01;
-const DEFAULT_MAX_SNAPSHOTS = 80;
-const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
-const DEFAULT_MAX_PIXELS = 16 * 1024 * 1024;
+const NOT_MEASURED = "not measured yet";
 
 type SnapshotStatus = "changed" | "added" | "removed" | "unmeasured";
 
@@ -37,7 +37,7 @@ interface SnapshotDelta {
 /** What the evidence step records; `policy` is the config that judged this head, so a later config change is not retroactive. */
 export interface VisualDelta {
   policy: { mode: VisualThreshold["mode"]; maxChangedShare: number; pixelTolerance: number };
-  /** Null when no snapshot needed it, or it could not be read. */
+  /** Null until a measured pair needs it. */
   mergeBase: string | null;
   snapshots: SnapshotDelta[];
   api: string[];
@@ -49,136 +49,28 @@ export interface VisualDelta {
   omitted?: Partial<Record<"snapshots" | "api" | "tokens" | "harness", number>>;
 }
 
-/**
- * The record is posted whole in the evidence comment, which GitHub caps at 65,536 characters, so every list and string
- * is bounded: at most 40 snapshots and 20 paths per list, each string at most 300 characters.
- */
-const SHOWN_SNAPSHOTS = 40;
-const SHOWN_PATHS = 20;
-const MAX_TEXT = 300;
-
-interface VisualDeltaTarget {
-  repo: RepoSlug;
-  head: string;
-  baseRef: string;
-}
-
-/** A snapshot to measure: `basePath` is where it sat at the merge base, its rename source if it moved. */
-interface Pair {
-  path: string;
-  basePath: string;
-}
-
-interface Sorted {
-  listed: SnapshotDelta[];
-  pairs: Pair[];
-}
-
 const delta = (path: string, status: SnapshotStatus, more: Partial<SnapshotDelta> = {}): SnapshotDelta => ({ path, component: componentOf(path), status, ...more });
 
 /** A snapshot renamed out of the snapshot paths no longer has a head render, so it reads as removed; one renamed in has no base render, so it reads as added. */
-function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => boolean): Sorted {
-  const sorted: Sorted = { listed: [], pairs: [] };
+function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => boolean): SnapshotDelta[] {
+  const sorted: SnapshotDelta[] = [];
   for (const file of files) {
     const from = file.previousPath !== undefined && isSnapshot(file.previousPath) ? file.previousPath : undefined;
     if (!isSnapshot(file.path)) {
-      if (from !== undefined) sorted.listed.push(delta(from, "removed"));
+      if (from !== undefined) sorted.push(delta(from, "removed"));
       continue;
     }
-    if (file.status === "added" || (file.previousPath !== undefined && from === undefined)) sorted.listed.push(delta(file.path, "added"));
-    else if (file.status === "removed") sorted.listed.push(delta(file.path, "removed"));
-    else sorted.pairs.push({ path: file.path, basePath: from ?? file.path });
+    if (file.status === "added" || (file.previousPath !== undefined && from === undefined)) sorted.push(delta(file.path, "added"));
+    else if (file.status === "removed") sorted.push(delta(file.path, "removed"));
+    else sorted.push(delta(file.path, "unmeasured", { reason: NOT_MEASURED }));
   }
   return sorted;
-}
-
-interface Measure {
-  port: GitHubPort;
-  repo: RepoSlug;
-  head: string;
-  mergeBase: string;
-  pixelTolerance: number;
-  maxBytes: number;
-  maxPixels: number;
-}
-
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const IHDR_END = 29;
-
-/**
- * Why a blob is refused before decoding, or undefined when its decode is bounded. The blob comes from the PR, and pngjs
- * sizes its work by the header, not the bytes: a non-interlaced PNG allocates from the declared width × height, and an
- * interlaced one inflates with no limit at all. So the header is read first, and only a non-interlaced PNG within
- * `maxPixels` is decoded.
- */
-function refusal(bytes: Uint8Array, m: Measure, ref: string): string | undefined {
-  if (bytes.byteLength > m.maxBytes) return `over ${m.maxBytes} bytes at ${ref}`;
-  const header = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const isPng = header.length >= IHDR_END && PNG_SIGNATURE.every((byte, i) => header[i] === byte) && header.toString("latin1", 12, 16) === "IHDR";
-  if (!isPng) return `not a PNG at ${ref}`;
-  const pixels = header.readUInt32BE(16) * header.readUInt32BE(20);
-  if (pixels > m.maxPixels) return `over ${m.maxPixels} pixels at ${ref}`;
-  return header[28] === 0 ? undefined : `interlaced at ${ref}`;
-}
-
-async function readBlob(m: Measure, path: string, ref: string): Promise<Uint8Array | string> {
-  try {
-    const bytes = await m.port.fileBytes(m.repo, path, ref);
-    if (bytes === null) return `absent at ${ref}`;
-    return refusal(bytes, m, ref) ?? bytes;
-  } catch (error) {
-    return `unreadable at ${ref}: ${statusOf(error)}`;
-  }
-}
-
-/** Every way a snapshot cannot be measured reads as `unmeasured` with its reason, never as a throw. */
-async function measure(m: Measure, pair: Pair): Promise<SnapshotDelta> {
-  const [base, head] = await Promise.all([readBlob(m, pair.basePath, m.mergeBase), readBlob(m, pair.path, m.head)]);
-  if (typeof base === "string") return delta(pair.path, "unmeasured", { reason: base });
-  if (typeof head === "string") return delta(pair.path, "unmeasured", { reason: head });
-  try {
-    return delta(pair.path, "changed", { share: snapshotShare(base, head, { pixelTolerance: m.pixelTolerance }) });
-  } catch {
-    return delta(pair.path, "unmeasured", { reason: "not a decodable PNG" });
-  }
-}
-
-async function mergeBaseOf(port: GitHubPort, { repo, baseRef, head }: VisualDeltaTarget): Promise<{ sha: string } | { unread: string }> {
-  try {
-    return { sha: (await port.compareFiles(repo, baseRef, head)).mergeBaseSha };
-  } catch (error) {
-    return { unread: `the merge base is unreadable: ${statusOf(error)}` };
-  }
-}
-
-interface Measured {
-  mergeBase: string | null;
-  measured: SnapshotDelta[];
-}
-
-/** Over the cap, or with no merge base, every pair is unmeasured: one blob read per snapshot is skipped, never guessed. */
-async function measurePairs(port: GitHubPort, target: VisualDeltaTarget, pairs: readonly Pair[], threshold: VisualThreshold, total: number): Promise<Measured> {
-  if (pairs.length === 0) return { mergeBase: null, measured: [] };
-  const cap = threshold.maxSnapshots ?? DEFAULT_MAX_SNAPSHOTS;
-  const skipAll = (reason: string) => pairs.map((pair) => delta(pair.path, "unmeasured", { reason }));
-  if (total > cap) return { mergeBase: null, measured: skipAll(`${total} changed snapshots are over the cap of ${cap}`) };
-  const base = await mergeBaseOf(port, target);
-  if ("unread" in base) return { mergeBase: null, measured: skipAll(base.unread) };
-  const limits = {
-    pixelTolerance: threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE,
-    maxBytes: threshold.maxBytes ?? DEFAULT_MAX_BYTES,
-    maxPixels: threshold.maxPixels ?? DEFAULT_MAX_PIXELS,
-  };
-  const m: Measure = { port, repo: target.repo, head: target.head, mergeBase: base.sha, ...limits };
-  const measured: SnapshotDelta[] = [];
-  for (const pair of pairs) measured.push(await measure(m, pair));
-  return { mergeBase: base.sha, measured };
 }
 
 /** Both sides of every rename, once each, so moving a public API report or token file away still counts as changing it. */
 const bothSides = (files: readonly PrFile[]): string[] => [...new Set(files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath])))];
 
-const clip = (text: string): string => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text);
+const clip = (text: string): string => (text.length > VISUAL_DELTA_CAPS.text ? `${text.slice(0, VISUAL_DELTA_CAPS.text - 1)}…` : text);
 
 /** Unmeasured and removed shots first, then the largest shares, then added shots, so a capped list keeps what gates. */
 const RANK: Record<SnapshotStatus, number> = { unmeasured: 0, removed: 1, changed: 2, added: 3 };
@@ -193,39 +85,39 @@ const clipSnapshot = ({ path, component, reason, ...rest }: SnapshotDelta): Snap
 
 type Lists = Pick<VisualDelta, "snapshots" | "api" | "tokens" | "harness">;
 
-/** Caps each list and clips each string, counting what was left out; the policy and merge base stay whole. */
+/** Caps each list and clips each string, counting what was left out; the policy stays whole. */
 function bounded(lists: Lists): Lists & Pick<VisualDelta, "omitted"> {
   const omitted: NonNullable<VisualDelta["omitted"]> = {};
   const cap = <T>(key: keyof Lists, items: readonly T[], limit: number): T[] => {
     if (items.length > limit) omitted[key] = items.length - limit;
     return items.slice(0, limit);
   };
-  const snapshots = cap("snapshots", [...lists.snapshots].sort(byWeight), SHOWN_SNAPSHOTS).map(clipSnapshot);
-  const paths = (key: "api" | "tokens" | "harness") => cap(key, lists[key], SHOWN_PATHS).map(clip);
+  const snapshots = cap("snapshots", [...lists.snapshots].sort(byWeight), VISUAL_DELTA_CAPS.snapshots).map(clipSnapshot);
+  const paths = (key: "api" | "tokens" | "harness") => cap(key, lists[key], VISUAL_DELTA_CAPS.paths).map(clip);
   const shown = { snapshots, api: paths("api"), tokens: paths("tokens"), harness: paths("harness") };
   return { ...shown, ...(Object.keys(omitted).length > 0 && { omitted }) };
 }
 
+/** Parsed before it is stored, so a record over the schema's bounds throws here rather than at GitHub's comment limit. */
+function checked(visualDelta: VisualDelta): VisualDelta {
+  VisualDeltaSchema.parse(visualDelta);
+  return visualDelta;
+}
+
 /**
- * Reads the PR's visual delta at `target.head` from its pinned file list; `files` is a string when that list could not
- * be read. Token paths skip tests and docs, as a test under a token directory paints nothing; API reports are markdown
- * and harness specs are tests, so those two lists match every path.
+ * Reads the PR's visual delta from its pinned file list; `files` is a string when that list could not be read. Token
+ * paths skip tests and docs, as a test under a token directory paints nothing; API reports are markdown and harness
+ * specs are tests, so those two lists match every path.
  */
-export async function readVisualDelta(port: GitHubPort, target: VisualDeltaTarget, files: readonly PrFile[] | string, threshold: VisualThreshold): Promise<VisualDelta> {
-  const pixelTolerance = threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE;
-  const policy = { mode: threshold.mode, maxChangedShare: threshold.maxChangedShare ?? DEFAULT_MAX_CHANGED_SHARE, pixelTolerance };
-  if (typeof files === "string") return { policy, mergeBase: null, snapshots: [], api: [], tokens: [], harness: [], unread: clip(files) };
+export function readVisualDelta(files: readonly PrFile[] | string, threshold: VisualThreshold): VisualDelta {
+  const policy = { mode: threshold.mode, maxChangedShare: threshold.maxChangedShare ?? DEFAULT_MAX_CHANGED_SHARE, pixelTolerance: threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE };
+  if (typeof files === "string") return checked({ policy, mergeBase: null, snapshots: [], api: [], tokens: [], harness: [], unread: clip(files) });
   const paths = bothSides(files);
-  const { listed, pairs } = sortSnapshots(files, caseFoldedMatcher(threshold.snapshotPaths));
-  const { mergeBase, measured } = await measurePairs(port, target, pairs, threshold, listed.length + pairs.length);
-  return {
-    policy,
-    mergeBase,
-    ...bounded({
-      snapshots: [...measured, ...listed],
-      api: paths.filter(caseFoldedMatcher(threshold.apiPaths)),
-      tokens: visualMatches(paths, threshold.tokenPaths),
-      harness: paths.filter(caseFoldedMatcher(threshold.harnessPaths)),
-    }),
+  const lists = {
+    snapshots: sortSnapshots(files, caseFoldedMatcher(threshold.snapshotPaths)),
+    api: paths.filter(caseFoldedMatcher(threshold.apiPaths)),
+    tokens: visualMatches(paths, threshold.tokenPaths),
+    harness: paths.filter(caseFoldedMatcher(threshold.harnessPaths)),
   };
+  return checked({ policy, mergeBase: null, ...bounded(lists) });
 }

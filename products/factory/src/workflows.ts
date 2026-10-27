@@ -11,7 +11,7 @@ import { deployCheckoutFor, ownCheckout } from "./cli-service.js";
 import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
 import { configRef, current, liveField, type ConfigRef, type Live } from "./config-ref.js";
 import { configuredMainWatch } from "./main-watch-ports.js";
-import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, withHoldAdversary } from "./workflows-live.js";
+import { holdAdversary, liveSpawnLimits, reviewAccounts, successorAccounts, visualThresholdOf, withHoldAdversary } from "./workflows-live.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts, TaskClose } from "./shepherd/cleanup.js";
@@ -47,7 +47,6 @@ import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewTarget, ReviewWiring } from "./shepherd/review.js";
-import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
@@ -274,11 +273,6 @@ function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
 
 function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> | undefined {
   return record && Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase(), value]));
-}
-
-/** Read through the live config at each evidence step, so a threshold edit applies at the next head without a restart; repo keys match in any case. */
-function visualThresholdOf(config: ConfigRef): (repo: string) => VisualThreshold | undefined {
-  return (repo) => lowerKeys(config.get().shepherd?.visualThreshold)?.[repo.toLowerCase()];
 }
 
 /** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`; a key left out keeps its default. */
