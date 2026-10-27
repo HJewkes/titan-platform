@@ -18,6 +18,9 @@ export interface Mutation {
   kills: string[];
 }
 
+/** A generated edit: a Mutation with no declared kills, since it proves nothing about a named test. */
+export type HeadMutation = Omit<Mutation, "kills">;
+
 export interface MutationSpec {
   v: 1;
   mutations: Mutation[];
@@ -117,7 +120,7 @@ function targetRefusal(file: string, config: FixProofConfig): string | undefined
  * harness path, and must exist there (`baseText` null means it does not) with `find` occurring exactly once. `at` names
  * the commit `baseText` came from in the error, for a caller that checks against another one.
  */
-export function checkMutation(mutation: Mutation, baseText: string | null, config: FixProofConfig, at = "the merge base"): MutationCheck {
+export function checkMutation(mutation: HeadMutation, baseText: string | null, config: FixProofConfig, at = "the merge base"): MutationCheck {
   const refused = targetRefusal(mutation.file, config);
   if (refused !== undefined) return { ok: false, error: `mutation ${mutation.name}: ${mutation.file} ${refused}` };
   if (baseText === null) return { ok: false, error: `mutation ${mutation.name}: ${mutation.file} does not exist at ${at}` };
