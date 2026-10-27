@@ -64,6 +64,10 @@
         "link": "/reference/owner-proof"
       },
       {
+        "text": "review-burden",
+        "link": "/reference/review-burden"
+      },
+      {
         "text": "rpc-protocol",
         "link": "/reference/rpc-protocol"
       },

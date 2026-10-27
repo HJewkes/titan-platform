@@ -54,11 +54,13 @@ const READERS = {
   "shepherd.spawnGate.load5": (s: Shepherd) => s.spawnGate?.load5,
   "shepherd.spawnGate.buildLoad5": (s: Shepherd) => s.spawnGate?.buildLoad5,
   "shepherd.gateReset.noReproProceed": (s: Shepherd) => s.gateReset?.noReproProceed,
+  "shepherd.gateReset.nonSourceNoRepro": (s: Shepherd) => s.gateReset?.nonSourceNoRepro,
   "shepherd.gateReset.heldRepair": (s: Shepherd) => s.gateReset?.heldRepair,
   "shepherd.gateReset.twoMergeRelease": (s: Shepherd) => s.gateReset?.twoMergeRelease,
   "shepherd.review.adversaryProfile": (s: Shepherd) => s.review?.adversaryProfile,
   "shepherd.review.fallbackConfigDirs": (s: Shepherd) => s.review?.fallbackConfigDirs,
   "shepherd.review.maxConcurrent": (s: Shepherd) => s.review?.maxConcurrent,
+  "shepherd.taskClose": (s: Shepherd) => s.taskClose,
 };
 
 type LiveValues = { [P in keyof typeof READERS]: ReturnType<(typeof READERS)[P]> };

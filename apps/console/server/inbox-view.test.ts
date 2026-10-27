@@ -7,6 +7,7 @@ import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
+import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
@@ -335,10 +336,10 @@ describe("actionFor", () => {
     expect(action).toMatchObject({ kind: "terminal", command: `titan-factory gate resolve ${RUN_PLAIN} sh-sent-back --json '<payload>'` });
   });
 
-  it("leaves an agent's approval request on its own session", () => {
+  it("points an agent's approval request at its broker row, which inbox.prepare reads back", () => {
     const approval = item("chat:msg-8", { sources: [{ system: "agent-chat", ref: "msg-8" }], kind: "approve" });
 
-    expect(actionFor(approval, undefined).action.kind).toBe("terminal");
+    expect(actionFor(approval, undefined).action).toEqual({ kind: "approve-chat", msgId: "msg-8" });
   });
 
   it("holds a gate on a replay-diverged run to Morning while TP-3918 is open, and still taps a healthy one", () => {
@@ -378,10 +379,16 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
   });
 
-  it("stays on the terminal for a kind with no console tap yet", () => {
-    const { action } = actionFor(deposited({ kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "factory" }), undefined);
+  it("becomes an owner-op tap for a deploy-pause-clear", () => {
+    const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) } as const;
 
-    expect(action.kind === "terminal" && action.reason).toBe("a deploy-pause-clear op has no console tap yet; run its command");
+    expect(actionFor(deposited(pauseOp), undefined).action).toEqual({ kind: "owner-op", op: pauseOp });
+  });
+
+  it("stays on the terminal for a kind with no console tap yet", () => {
+    const { action } = actionFor(deposited({ kind: "factory-config-set", path: "shepherd.spawnGate.load5", value: 4 }), undefined);
+
+    expect(action.kind === "terminal" && action.reason).toBe("a factory-config-set op has no console tap yet; run its command");
   });
 
   it("holds a gate op with no live row to Morning, as a rowless hitl gate is", () => {
@@ -407,6 +414,14 @@ describe("a deposit's typed op", () => {
     expect(held!.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
     expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
   });
+
+  it("shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge", () => {
+    const [held] = inboxItems([deposited({ ...mergeOp, pr: 3 })], [row(RUN_G10, 3, "g10-adversary: authority change")]);
+    const [open] = inboxItems([deposited(mergeOp)], [row(RUN_PLAIN, 7)]);
+
+    expect(held).toMatchObject({ action: { kind: "owner-op" }, hold: { class: "g10-adversary", reason: "g10-adversary: authority change" } });
+    expect(open).not.toHaveProperty("hold");
+  });
 });
 
 describe("inbox ordering", () => {
@@ -419,16 +434,32 @@ describe("inbox ordering", () => {
     expect(items.map((each) => each.id)).toEqual([newer.id, older.id]);
   });
 
-  it("orders 3000 live-sized items within 200 ms", () => {
-    const many = Array.from({ length: 3000 }, (_, n) =>
+  const liveSized = (count: number) => {
+    const many = Array.from({ length: count }, (_, n) =>
       n % 3 === 0 ? gate(`${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`, new Date(Date.UTC(2026, 9, 1) + n * 1000).toISOString()) : item(`ask-${n}`, { lens: n % 2 === 0 ? "planning" : "blocking-agent" }),
     );
     const rows = many.filter((_, n) => n % 3 === 0).map((each, n) => row(each.sources[0]!.ref.slice(0, each.sources[0]!.ref.indexOf("/")), n + 1));
+    return { many, rows };
+  };
 
-    const started = performance.now();
-    const items = inboxItems(many, rows);
+  it("orders 3000 live-sized items", () => {
+    const { many, rows } = liveSized(3000);
 
-    expect(performance.now() - started).toBeLessThan(200);
-    expect(items).toHaveLength(3000);
+    expect(inboxItems(many, rows)).toHaveLength(3000);
+  });
+
+  it("orders live-sized items in work linear in their count", () => {
+    // Keying the rows lowercases each run id once and a gate's lookup lowercases its own; a scan of the rows per gate is quadratic.
+    const meter = callMeter([[String.prototype, "toLowerCase"]]);
+    try {
+      const { ratio } = linearWork((size) => {
+        const { many, rows } = liveSized(size);
+        return () => inboxItems(many, rows);
+      }, { from: 48, to: 3072, meter: meter.calls });
+
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      meter.restore();
+    }
   });
 });

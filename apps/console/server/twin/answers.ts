@@ -3,6 +3,7 @@
 import type { ServedCommands } from "../../src/data/rpc.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_PRE_S3A_SUMMARY, AR_RUN_SUMMARY } from "./autoresearch.js";
 import { TWIN_NOW } from "./clock.js";
+import { TWIN_VIDEO_EDITS, TWIN_VIDEO_PROPS } from "./video-props.js";
 
 type Served = ServedCommands;
 export type TwinCommand = keyof Served & string;
@@ -309,6 +310,8 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   }),
   answer("videos.list", {}, { videos: [...FEED_VIDEOS], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
+  answer("videos.props", { videoId: VIDEO.id }, TWIN_VIDEO_PROPS),
+  answer("videos.edits", { videoId: VIDEO.id }, TWIN_VIDEO_EDITS),
   answer("config.surfaces", {}, CONFIG_SURFACES),
   answer("config.drift", {}, CONFIG_DRIFT),
   answer("config.hosts", {}, CONFIG_HOSTS),

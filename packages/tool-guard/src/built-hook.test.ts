@@ -20,6 +20,7 @@ describe("the built tool-guard", () => {
   it.each([
     ["a push to main", "git push origin HEAD:main"],
     ["a push after a CR and a #", "echo x\r#; git push origin HEAD:main"],
+    ["a push rerouted by -c remote.origin.push", "git -c remote.origin.push=refs/heads/feat:refs/heads/main push origin feat"],
   ])("denies %s through the hook with exit 0", (_form, command) => {
     const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event(command), env: { ...process.env, HOME: home }, encoding: "utf-8" });
 

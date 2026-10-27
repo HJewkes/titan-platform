@@ -6,12 +6,16 @@ import { silentLogger, type Logger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GateNotifyOptions } from "./gate-notify-sweep.js";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
-import { SHUTDOWN_SWEEP_GRACE_MS } from "./serve-shutdown.js";
+import { SHUTDOWN_SWEEP_GRACE_MS, closeServer } from "./serve-shutdown.js";
+import type { Sweep } from "./sweep.js";
 import { gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
 
 const GRACE_MS = 300;
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+afterEach(() => {
+  vi.useRealTimers();
+  dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+});
 
 interface Logged {
   fields: Record<string, unknown>;
@@ -86,12 +90,26 @@ describe("serve's bounded shutdown", () => {
   it("a hung sweep tick no longer holds close past the grace", async () => {
     const { log, lines } = recordingLogger();
     const server = await serve(landScenario(), log, slowNotifier(never));
-    const started = Date.now();
 
     await server.close();
 
-    expect(Date.now() - started).toBeLessThan(GRACE_MS + 2_000);
     expect(lines).toContainEqual({ msg: "closed", fields: expect.objectContaining({ abandoned: ["gate notify"] }) });
+  });
+
+  it("close gives a hung tick the grace and no longer", async () => {
+    vi.useFakeTimers();
+    const hung: Sweep = { name: "hung", tick: async () => undefined, halt: () => undefined, inFlight: () => never, abort: vi.fn(), stop: async () => undefined };
+    const parts = { sweeps: [hung], watches: [], mainWatch: undefined, ingress: undefined, daemon: { close: async () => undefined }, unbindCarry: () => undefined };
+    let closed = false;
+
+    void closeServer({ ...parts, host: { runtime: { shutdown: () => undefined }, close: () => undefined } }, silentLogger, GRACE_MS).then(() => (closed = true));
+    await vi.advanceTimersByTimeAsync(GRACE_MS - 1);
+    const closedBeforeGrace = closed;
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(closedBeforeGrace).toBe(false);
+    expect(closed).toBe(true);
+    expect(hung.abort).toHaveBeenCalledTimes(1);
   });
 
   it("a hung tick's child process is killed at the end of the grace", async () => {
@@ -100,11 +118,9 @@ describe("serve's bounded shutdown", () => {
     const server = await serve(landScenario(), recordingLogger().log, childNotifier(pidFile));
     await vi.waitFor(() => expect(existsSync(pidFile) && readFileSync(pidFile, "utf8").trim()).toBeTruthy());
     const pid = Number(readFileSync(pidFile, "utf8"));
-    const started = Date.now();
 
     await server.close();
 
-    expect(Date.now() - started).toBeLessThan(GRACE_MS + 2_000);
     await vi.waitFor(() => expect(isAlive(pid)).toBe(false), { timeout: 2_000 });
   });
 

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the full pass opts back in to tool spans and context blocks",
+      "file": "products/active-work/src/session-index/refresh.ts",
+      "find": "      facetLimit: options.facetLimit,\n",
+      "replace": "      facetLimit: options.facetLimit,\n      indexToolSpans: true,\n      contextBlocks: true,\n",
+      "kills": [
+        "runRefresh stores only prompt and reply spans and no context_block rows for a transcript with tool calls"
+      ]
+    },
+    {
+      "name": "the lock wait sleeps out its retry delay through an abort",
+      "file": "products/active-work/src/session-index/refresh.ts",
+      "find": "await sleep(retryDelayMs(attempt), undefined, { signal: options.signal })",
+      "replace": "await sleep(retryDelayMs(attempt), undefined, {})",
+      "kills": [
+        "withRefreshLock stops waiting for a held lock once the signal aborts, without running fn"
+      ]
+    }
+  ]
+}

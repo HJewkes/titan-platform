@@ -6,6 +6,8 @@ export const RESULT_PREFIX = "fix-proof/v1 ";
 export const RESULT_LINE_MAX_BYTES = 4096;
 const MAX_ERROR_CHARS = 200;
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+/** fix-proof-run.sh's shown_ref: a plain ref alphabet with `?` for anything else, or `<none>` for an empty ref. */
+const SHOWN_REF = /^(?:[A-Za-z0-9._/+?-]+|<none>)$/;
 
 export interface FixProofResult {
   head: string;
@@ -19,8 +21,15 @@ export interface FixProofResult {
   /** True when format dropped entries to fit the 4 KB line. */
   truncated: boolean;
   error?: string;
-  /** The mutation check, present only for a diff of test material alone that adds or changes a mutation spec. */
+  /**
+   * The mutation check, present for a diff of test material alone that adds or changes a mutation spec, and as an error
+   * beside an `error` verdict for a source diff whose spec has a kill naming no test at head.
+   */
   mutants?: MutantsResult;
+  /** The base branch the line judged, as fix-proof-run.sh shows a ref; a judge that predates it prints none. */
+  base?: string;
+  /** Only on a `refused` line: the default branch fix-proof runs against, which `base` is not. */
+  defaultBranch?: string;
 }
 
 export type ParsedResultLine = { ok: true; result: FixProofResult } | { ok: false; error: string };
@@ -72,6 +81,8 @@ function canonical(result: FixProofResult): FixProofResult {
   };
   if (result.error !== undefined) out.error = result.error;
   if (result.mutants !== undefined) out.mutants = canonicalMutants(result.mutants);
+  if (result.base !== undefined) out.base = result.base;
+  if (result.defaultBranch !== undefined) out.defaultBranch = result.defaultBranch;
   return out;
 }
 
@@ -240,10 +251,26 @@ function validateScalars(value: UnknownRecord): string | null {
   return null;
 }
 
+const isShownRef = (value: unknown): boolean => typeof value === "string" && SHOWN_REF.test(value);
+
+/** A refused line ran nothing, so it carries no count or test, and it names both refs so no reader parses its error text. */
+function validateRefs(value: UnknownRecord): string | null {
+  if (value.base !== undefined && !isShownRef(value.base)) return "base must be a branch name as fix-proof-run.sh shows one";
+  if (value.verdict !== "refused") return value.defaultBranch === undefined ? null : "defaultBranch is set only on a refused line";
+  if (value.base === undefined || !isShownRef(value.defaultBranch)) return "a refused line must name its base and the default branch";
+  const { counts } = value;
+  const counted = !isRecord(counts) || TEST_CLASSES.some((name) => counts[name] !== 0);
+  return counted || !Array.isArray(value.tests) || value.tests.length > 0 ? "a refused line must have no count and no test" : null;
+}
+
 function validate(value: unknown): string | null {
   if (!isRecord(value)) return "result must be an object";
   const problem =
-    checkKeys(value, RESULT_KEYS, ["error", "mutants"], "") ?? validateScalars(value) ?? validateCounts(value.counts) ?? validateMutants(value.mutants, value.truncated);
+    checkKeys(value, RESULT_KEYS, ["error", "mutants", "base", "defaultBranch"], "") ??
+    validateScalars(value) ??
+    validateCounts(value.counts) ??
+    validateMutants(value.mutants, value.truncated) ??
+    validateRefs(value);
   if (problem !== null) return problem;
   if (value.verdict === "reproduced" && (value.counts as UnknownRecord).reproduces === 0) return "verdict reproduced with no reproducing test";
   if (!Array.isArray(value.tests)) return "tests must be an array";

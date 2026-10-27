@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>render-qa stage fixture</title>
+    <style>
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #0d1117; color: #f0f3f6; font-family: sans-serif; }
+      .xp-band-top, .xp-band-bottom { position: absolute; left: 0; width: 1920px; box-sizing: border-box; padding: 0 60px; font-size: 42px; line-height: 56px; }
+      .xp-band-top { top: 0; height: 122px; padding-top: 33px; }
+      .xp-band-bottom { top: 915px; height: 165px; padding-top: 54px; }
+      #stage { position: absolute; left: 60px; top: 122px; width: 1800px; height: 793px; overflow: hidden; }
+      .ex-row { font-size: 42px; line-height: 56px; margin-bottom: 64px; }
+      .ex-code-line { font: 42px/56px monospace; white-space: pre; }
+      .ex-code-line[data-qa-context] { opacity: 0.35; }
+    </style>
+  </head>
+  <body>
+    <div class="xp-chrome">
+      <header class="xp-band-top"><h1 class="xp-headline" style="margin: 0; font-size: 42px">Stage fixture</h1></header>
+      <footer class="xp-band-bottom">source: synthetic fixture</footer>
+    </div>
+    <div id="stage"></div>
+    <script>
+      // A stage between two chrome bands, filled from the query: `rows=<n>` list rows (120 px each) or `code=<n>` a code
+      // card of n full-width lines whose first line is focused and the rest dimmed as context. The content mounts at
+      // 1 s, so an overflow is reported on a seek, after the page is up, as a framework reports a render that throws:
+      // the stage empties and an uncaught error reaches the page.
+      const BEAT_START_S = 1
+      const CODE_LINE = `const ${'x'.repeat(49)} = 1;`
+      const query = new URLSearchParams(location.search)
+      const stage = document.getElementById('stage')
+
+      function content() {
+        if (query.has('code')) {
+          const lines = Array.from({ length: Number(query.get('code')) }, (_, i) => `<div class="ex-code-line"${i === 0 ? '' : ' data-qa-context=""'}>${CODE_LINE}</div>`)
+          return `<div class="ex-code">${lines.join('')}</div>`
+        }
+        return Array.from({ length: Number(query.get('rows') ?? 0) }, (_, i) => `<div class="ex-row">row ${i + 1}</div>`).join('')
+      }
+
+      function seek(t) {
+        stage.innerHTML = t >= BEAT_START_S ? content() : ''
+        const over = stage.scrollHeight - stage.clientHeight
+        if (over > 0) {
+          stage.innerHTML = ''
+          reportError(new Error(`stage-fixture overflows its stage box by ${over} px`))
+        }
+      }
+
+      seek(0)
+      window.__titanMotion = { seek, ready: () => document.fonts.ready.then(() => undefined), duration: 3 }
+    </script>
+  </body>
+</html>

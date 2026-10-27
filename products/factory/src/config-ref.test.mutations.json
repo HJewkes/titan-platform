@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "only a line that names no base binds, never one naming the PR's base",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "(candidate.run.status !== \"completed\" || base === binding.baseRef)",
+      "replace": "(candidate.run.status !== \"completed\" || base === undefined)",
+      "kills": [
+        "configuredRoutes after a config reload lets readFixProof see noReproProceed on with no restart"
+      ]
+    }
+  ]
+}

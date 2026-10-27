@@ -31,6 +31,7 @@ export const CiSnapshotResult = z.looseObject({
   readAt: z.number().optional(),
   contexts: z.array(z.string()).optional(),
   orphaned: z.array(OrphanedCheckRecord).optional(),
+  timedOut: z.looseObject({ afterMs: z.number(), reason: z.string() }).optional(),
 });
 
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional(), unmoved: z.boolean().optional(), at: z.number().optional() });

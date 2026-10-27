@@ -487,6 +487,10 @@ the item `recheck` saw, which may be a non-primary item that step 3 merged away.
   the answer. Put the source that should receive answers first.
 - `rank` returns a new array and never filters; drop closed items before ranking if you
   only want open ones.
+- Clean any author- or agent-written text with `promptLine` before it reaches an owner
+  prompt, terminal or decisions file. It strips escape sequences, C0 and C1 controls, bidi
+  and other format characters, and flattens every line break (U+2028 and U+2029 included).
+  To keep the text's own lines, split on `PROMPT_LINE_BREAK` and clean each line.
 
 ## Where it came from
 

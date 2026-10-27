@@ -196,3 +196,34 @@ describe("one session in a basement tree and a mac mirror", () => {
     expect(sessionRow()[0]).toMatchObject({ turn_count: 2, commit_count: 1, push_count: 1 });
   });
 });
+
+describe("echo state across a mirrored session (TP-880)", () => {
+  const ECHOES = [
+    line({ type: "ai-title", aiTitle: "Shared title", timestamp: "2026-10-01T00:00:00Z" }),
+    line({ type: "mode", mode: "plan", timestamp: "2026-10-01T00:00:00Z" }),
+  ];
+  const copyA = () => transcriptAt("copy-a/projects/p", [...ECHOES, ...SHARED, ...BASEMENT_TAIL], "server");
+  const copyB = () => transcriptAt("copy-b/projects/p", [...ECHOES, ...SHARED, ...MAC_TAIL], "server", "mac");
+  const facts = () => graph.db.prepare("SELECT transcript_id, seq, event_type, byte_offset FROM fact ORDER BY transcript_id, seq").all();
+  const echoFactsPerCopy = () => graph.db.prepare("SELECT transcript_id, event_type FROM fact WHERE event_type IN ('ai_title', 'mode') ORDER BY transcript_id, seq").all();
+
+  it("keeps each copy's own echo facts, and a rewound copy gets its echoes back", async () => {
+    const [a, b] = [copyA(), copyB()];
+    await refreshCorpus(graph, [a, b]);
+    const fresh = facts();
+    const idA = graph.transcripts.ensure(a.displayPath).sourceId;
+    const idB = graph.transcripts.ensure(b.displayPath).sourceId;
+    expect(echoFactsPerCopy()).toEqual([
+      { transcript_id: idA, event_type: "ai_title" },
+      { transcript_id: idA, event_type: "mode" },
+      { transcript_id: idB, event_type: "ai_title" },
+      { transcript_id: idB, event_type: "mode" },
+    ]);
+
+    purgeTranscript(graph, idA);
+    graph.transcripts.rewind(a.displayPath);
+    await refreshCorpus(graph, [a, b]);
+
+    expect(facts()).toEqual(fresh);
+  });
+});

@@ -4,11 +4,13 @@ import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import { stepIdMatches } from "../definition.js";
 import { BaseCheckResult } from "../workflows/land-base.js";
+import type { OwnerAtHeadRow } from "../owner-at-head.js";
 import type { LandOptions } from "../workflows/land.js";
 import { headWaits } from "./freeze-wait.js";
 import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
+import { proofOnBase, type ProofOnBase } from "./proof-base.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated, type Escalation } from "./route-table.js";
@@ -176,13 +178,13 @@ export function shepherdLandOptions(
     const verdict = verdictFor(headSha);
     return verdict?.kind === "MERGE" && reread.has(verdict) ? { ...verdict, evidence: reread.get(verdict) } : verdict;
   };
+  const proof = proofOnBase((headSha) => mergeEvidenceAt(headSha, current));
   const refresh = async (ctx: WorkflowContext, headSha: string): Promise<void> => {
-    const verdict = verdictFor(headSha);
-    const evidence = mergeEvidenceAt(headSha, current);
-    if (verdict && evidence) reread.set(verdict, await refreshMergeEvidence(ctx, evidence, effective().visualPaths));
+    await rereadEvidence(ctx, headSha, { verdictFor, current, reread }, effective().visualPaths);
+    await proof.reread(ctx, headSha, decidedBase());
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
-    const decision = onDecidedBase(shepherdGatePolicy(effective(), current).decide(action, target), target?.headSha, decidedBase(), current);
+    const decision = onDecidedBase(shepherdGatePolicy(effective(), current).decide(action, target), target?.headSha, decidedBase(), current, proof);
     if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
     if (escalated !== undefined && target?.headSha !== undefined && clearedByFreshMerge(escalated, decision, target.headSha, current)) return clearedDecision(escalated, decision, target.headSha);
@@ -192,19 +194,45 @@ export function shepherdLandOptions(
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   const allowEvidence = (merge: { headSha: string }) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record });
-  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, skillPathsAt: (headSha) => skillPathsAt(headSha, current) };
+  return { policy: { decide }, allowEvidence, unsettled: headWaits(refresh), featureBase: () => effective().featureBase === true, evidenceBase: (headSha) => mergeEvidenceAt(headSha, current)?.record.baseRef, readOn: proof.readIfUnread, skillPathsAt: (headSha) => skillPathsAt(headSha, current), ownerAtHeadAt: (headSha) => ownerAtHeadAt(headSha, current) };
+}
+
+interface Reviews {
+  verdictFor: (headSha: string) => Verdict | undefined;
+  current: (headSha: string) => Verdict | undefined;
+  reread: WeakMap<Verdict, unknown>;
+}
+
+/** The MERGE evidence at the head read again, so later decisions about that review judge the re-read. */
+async function rereadEvidence(ctx: WorkflowContext, headSha: string, reviews: Reviews, visualPaths: string[] | undefined): Promise<void> {
+  const verdict = reviews.verdictFor(headSha);
+  const evidence = mergeEvidenceAt(headSha, reviews.current);
+  if (verdict && evidence) reviews.reread.set(verdict, await refreshMergeEvidence(ctx, evidence, visualPaths));
 }
 
 /**
- * An allow judged on evidence read on another base than the one being decided gates: a retarget and back during the
- * re-read could otherwise merge on the other base's review rules and merge tree. Evidence with no base, or a decision
- * with no checked base, is left as it is.
+ * A decision on evidence read on another base than the one being decided gates: a retarget and back during the re-read
+ * could otherwise merge on the other base's review rules and merge tree. So does a fix-proof that judged another base,
+ * or proved none, until a read on this one proves the head. An allow and a mechanical MRG-AU gate a coordinator may resolve
+ * become no-facts; any other gate keeps its rule and names the off-base proof first. Evidence with no base, or a decision with
+ * no checked base, is left as it is.
  */
-function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): GateDecision {
-  const evidenceBase = headSha === undefined ? undefined : mergeEvidenceAt(headSha, verdictFor)?.record.baseRef;
-  if (decision.outcome !== "allow" || base === undefined || evidenceBase === undefined || evidenceBase === base) return decision;
-  return { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason: `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` };
+function onDecidedBase(decision: GateDecision, headSha: string | undefined, base: string | undefined, verdictFor: (headSha: string) => Verdict | undefined, proof: ProofOnBase): GateDecision {
+  if (decision.outcome === "deny" || base === undefined || headSha === undefined) return decision;
+  const evidenceBase = mergeEvidenceAt(headSha, verdictFor)?.record.baseRef;
+  const factsElsewhere = evidenceBase !== undefined && evidenceBase !== base;
+  const offBase = factsElsewhere ? `the merge facts at ${headSha} were read on base ${evidenceBase}, not on ${base}, the base being decided` : proof.unproven(headSha, base);
+  if (offBase === undefined) return decision;
+  if (decision.outcome === "gate" && !isAutoMergeRule(decision.rule)) return { ...decision, reason: `${offBase}; ${decision.reason}` };
+  const reason = decision.outcome === "gate" ? `${offBase}; ${decision.reason}` : offBase;
+  return { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts", version: 1 }, reason };
 }
+
+/**
+ * The MRG-AU rows a coordinator may resolve mechanically; off the decided base they become no-facts. Every other gate keeps its own
+ * rule, so the visual-path packet, the D21 owner-at-head row and the decision class still key on it.
+ */
+const isAutoMergeRule = (rule: PolicyRule): boolean => rule.table === "authority" && rule.rowId.startsWith("MRG-AU");
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
   const reason = escalationReason(escalated.escalation, escalated.detail, escalated.words);
@@ -279,6 +307,22 @@ function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) =
 /** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
 function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
   return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
+}
+
+/**
+ * The D21 facts the MERGE evidence at this head holds, whatever rule the gate opens under; land reads a skill change from
+ * `skillPathsAt`. An owner-gate seat never runs the merge guard, and the guard's first row wins over the rest
+ * (merge-facts.ts), so a visual-path or files-unread gate can carry a weakened CI policy too. A MERGE whose evidence is
+ * malformed read no files the owner can trust, so it reads as unread.
+ */
+function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
+  const evidence = mergeEvidenceAt(headSha, verdictFor);
+  if (evidence === undefined) return verdictFor(headSha)?.kind === "MERGE" ? ["files-unread"] : [];
+  const rows: OwnerAtHeadRow[] = [];
+  if (evidence.ciPolicy?.kind === "weakened") rows.push("ci-policy-weakened");
+  if (evidence.ciPolicy?.kind === "malformed") rows.push("ci-policy-malformed");
+  if (evidence.changedFilesUnread !== undefined) rows.push("files-unread");
+  return rows;
 }
 
 function skillNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

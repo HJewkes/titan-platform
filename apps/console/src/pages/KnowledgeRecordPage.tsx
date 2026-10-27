@@ -1,24 +1,39 @@
 import type { ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, FilePathLabel, HStack, Link, MarkdownProse, Pill, Spinner, Tab, TabList, Tabs, Typography, VStack } from "@titan-design/react-ui";
 import { EXIT } from "@titan-design/registry";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
+import { KnowledgeGraph } from "./KnowledgeGraph.js";
 
 type KnowledgeRecord = ConsoleCommands["work.record"]["result"];
 
-/** One note or source: `MarkdownProse` and `FilePathLabel` until react-ui has the knowledge reader (TP-859). */
-export function KnowledgeRecordPage({ recordRef }: { recordRef: string }): ReactNode {
+/**
+ * One note or source, or with `?tab=graph` the graph around any ref: the Graph tab never reads the
+ * record, so `#/knowledge/task:<id>?tab=graph` works for a task or session too.
+ */
+export function KnowledgeRecordPage({ recordRef, graph }: { recordRef: string; graph: boolean }): ReactNode {
+  return (
+    <VStack gap={4}>
+      <Trail recordRef={recordRef} />
+      <Tabs index={graph ? 1 : 0} onChange={(index) => open({ view: "knowledge", id: recordRef, ...(index === 1 ? { query: "tab=graph" } : {}) })}>
+        <TabList>
+          <Tab>Record</Tab>
+          <Tab>Graph</Tab>
+        </TabList>
+      </Tabs>
+      {graph ? <KnowledgeGraph center={recordRef} /> : <RecordRead recordRef={recordRef} />}
+    </VStack>
+  );
+}
+
+/** `MarkdownProse` and `FilePathLabel` until react-ui has the knowledge reader (TP-859). */
+function RecordRead({ recordRef }: { recordRef: string }): ReactNode {
   const record = useQuery("work.record", { ref: recordRef });
   if (record.status === "loading") return <Spinner size="sm" label={`Loading ${recordRef}`} />;
   if (record.data === undefined) {
     const message = record.error.code === EXIT.NOINPUT ? `No record ${recordRef}` : `Could not load ${recordRef}: ${record.error.message}`;
-    return (
-      <VStack gap={4}>
-        <Trail recordRef={recordRef} />
-        <Alert status="error" message={message} />
-      </VStack>
-    );
+    return <Alert status="error" message={message} />;
   }
   return <Reader record={record.data} />;
 }
@@ -26,7 +41,6 @@ export function KnowledgeRecordPage({ recordRef }: { recordRef: string }): React
 function Reader({ record }: { record: KnowledgeRecord }): ReactNode {
   return (
     <VStack gap={4}>
-      <Trail recordRef={record.ref} />
       <VStack gap={2}>
         <Typography variant="h2">{record.title}</Typography>
         <Meta record={record} />

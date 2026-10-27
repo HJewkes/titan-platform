@@ -24,7 +24,8 @@
           "packages/anthropic-account",
           "packages/test-kit",
           "packages/owner-proof",
-          "packages/openai-account"
+          "packages/openai-account",
+          "packages/review-burden"
         ],
         "1": [
           "packages/retrieval",
@@ -68,7 +69,8 @@
           "packages/dispatch-ledger",
           "packages/speech-vet",
           "packages/autoresearch",
-          "packages/review-workflow"
+          "packages/review-workflow",
+          "packages/render-qa"
         ],
         "ui": [
           "packages/react-app"
@@ -106,7 +108,8 @@
           "packages/anthropic-account",
           "packages/test-kit",
           "packages/owner-proof",
-          "packages/openai-account"
+          "packages/openai-account",
+          "packages/review-burden"
         ],
         [
           "packages/retrieval",
@@ -150,7 +153,8 @@
           "packages/dispatch-ledger",
           "packages/speech-vet",
           "packages/autoresearch",
-          "packages/review-workflow"
+          "packages/review-workflow",
+          "packages/render-qa"
         ],
         [
           "packages/react-app"

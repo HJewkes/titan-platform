@@ -23,15 +23,18 @@ import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { orderCommand, statusOrder, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
+import { mergeBaseCommand } from "./merge-base-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
 import { thawCommand } from "./thaw-command.js";
+import { fixPrCommand } from "./fix-pr-command.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
+import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
@@ -76,7 +79,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
   const { task, implementer, registrant, reviewer, kind, head: headSha, base } = args;
-  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base };
+  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
@@ -279,8 +282,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   description: "The watch list: every shepherded PR whose run is active (default), finished, or all of them",
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
-  run: async ({ state }, ctx) =>
-    watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
+  run: async ({ state }, ctx) => watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
@@ -375,10 +377,13 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.freeze": repoFreezeCommand,
   "shepherd.thaw": thawCommand,
   "shepherd.order": orderCommand,
+  "shepherd.fix-pr": fixPrCommand,
+  "shepherd.merge-base": mergeBaseCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
   "shepherd.prs": prsCommand,
+  "shepherd.watch": watchCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

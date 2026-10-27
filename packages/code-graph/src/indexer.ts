@@ -27,7 +27,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  */
 export const INDEX_VERSION = "0.32.0";
 
-/** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
+/** The languages walked and extracted. `typescript` covers `.ts`, `.tsx`, `.mjs` and `.cjs`. */
 const LANGUAGES = ["typescript", "python"] as const;
 
 export interface IndexOptions {

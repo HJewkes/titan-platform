@@ -61,6 +61,21 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(env))).toThrow(new RegExp(`invalid config .*${"titan-factory"}.config\\.json`));
   });
 
+  it("keeps the original parse error as the cause of the wrapped error", () => {
+    const env = xdg({});
+    writeFileSync(configPath(env), "{ not json");
+
+    let thrown: unknown;
+    try {
+      loadConfig(configPath(env));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).toHaveProperty("cause", expect.any(SyntaxError));
+  });
+
   it("reads the shepherd seats directory and charter path", () => {
     const env = xdg({ shepherd: { seatsDir: "/seats", charterPath: "/charter.md" } });
 
@@ -117,6 +132,13 @@ describe("loadConfig", () => {
 
     expect(load({ noReproProceed: "on" }).shepherd?.gateReset).toEqual({ noReproProceed: "on" });
     expect(() => load({ noReproProceed: "shadow" })).toThrow(/noReproProceed/);
+  });
+
+  it("reads the non-source NO_REPRO key, and rejects seat-waives until its resolver path exists", () => {
+    const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
+
+    expect(load({ nonSourceNoRepro: "record-fact" }).shepherd?.gateReset).toEqual({ nonSourceNoRepro: "record-fact" });
+    expect(() => load({ nonSourceNoRepro: "seat-waives" })).toThrow(/nonSourceNoRepro/);
   });
 
   it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {

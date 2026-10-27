@@ -5,11 +5,12 @@ import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
+import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
 import type { OpenPrList } from "./pr-list.js";
 import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { listCommitStatuses } from "./commit-status-read.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
 import { compareFiles, readAncestry } from "./compare.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
@@ -237,6 +238,8 @@ interface GhCheckRun {
   status: string;
   conclusion: string | null;
   started_at: string | null;
+  completed_at: string | null;
+  output?: { title: string | null } | null;
   head_sha: string;
   details_url: string | null;
   html_url: string | null;
@@ -253,6 +256,8 @@ async function listCheckRuns(api: Rest, repo: string, sha: string, filter?: "all
     status: run.status,
     conclusion: run.conclusion,
     startedAt: run.started_at,
+    completedAt: run.completed_at ?? null,
+    title: run.output?.title ?? null,
     headSha: run.head_sha,
     appId: run.app?.id ?? null,
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
@@ -269,17 +274,6 @@ async function resolveCommit(api: Rest, repo: string, sha: string): Promise<stri
     if (error instanceof GhError && (error.status === 422 || error.status === 404)) return null;
     throw error;
   }
-}
-
-/** A list shorter than `total_count` throws rather than read as complete, because a missing failure would read as green. */
-async function listCommitStatuses(api: Rest, repo: string, sha: string): Promise<CommitStatus[]> {
-  let total = 0;
-  const statuses = await api.pages(`repos/${repo}/commits/${sha}/status`, { per_page: "100" }, (page: { total_count: number; statuses: CommitStatus[] }) => {
-    total = page.total_count;
-    return page.statuses;
-  });
-  if (statuses.length !== total) throw new Error(`the combined status of ${sha} listed ${statuses.length} of ${total} statuses`);
-  return statuses.map((status) => ({ context: status.context, state: status.state }));
 }
 
 /** Actions job URLs read `.../actions/runs/<runId>/job/<jobId>`. */

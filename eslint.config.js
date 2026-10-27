@@ -18,6 +18,36 @@ const EVENTS_API_SELECTORS = [
   { selector: "MemberExpression[property.name=/^list.*Events/][object.name='activity']", message: EVENTS_API_MESSAGE },
 ];
 
+const MOTION_PATHS = [
+  "/ui/beats/",
+  "/motion/",
+  "/products/explainer/src/beat-",
+  "/products/explainer/src/camera",
+  "/products/explainer/src/timing",
+  "/products/explainer/src/cues",
+  "/products/explainer/src/anchor-grid",
+  "/products/explainer/src/storyboard",
+  "/products/explainer/src/resolve-beat",
+  "/products/explainer/src/composition/",
+];
+
+// Tests that still compare a clock with a limit. TP-4264 empties this list and TP-4076 owns the two tool-guard files; only remove entries.
+const CLOCK_BUDGET_BASELINE = [
+  "apps/console/server/events-relay.test.ts",
+  "apps/console/server/rounds-submit.test.ts",
+  "packages/anthropic-account/src/node/login.test.ts",
+  "packages/anthropic-account/src/node/refresh.test.ts",
+  "packages/anthropic-account/src/node/usage-file.test.ts",
+  "packages/daemon/src/file-watch.test.ts",
+  "packages/daemon/src/lifecycle.test.ts",
+  "packages/github/src/octokit-client.test.ts",
+  "packages/speech-tts/src/command-tts.test.ts",
+  "packages/speech-tts/src/fake-tts.test.ts",
+  "packages/speech-tts/src/http-tts.test.ts",
+  "packages/tool-guard/src/merge-lint/merge-lint.test.ts",
+  "packages/tool-guard/src/shell/procsub-heredoc.test.ts",
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -29,6 +59,10 @@ export default tseslint.config(
       "scripts/fixtures/eslint-recommended/**",
       // Holds deliberate Events API uses; scripts/eslint-recommended.test.mjs lints it from its own directory.
       "scripts/fixtures/events-api/**",
+      // Holds a deliberate Date.now(); scripts/eslint-recommended.test.mjs lints it from its own directory.
+      "scripts/fixtures/wall-clock/**",
+      // Holds a deliberate bare gray-matter import; scripts/eslint-recommended.test.mjs lints it from its own directory.
+      "scripts/fixtures/gray-matter/**",
     ],
   },
   js.configs.recommended,
@@ -46,6 +80,28 @@ export default tseslint.config(
   {
     files: ["products/factory/**", "packages/github/**"],
     rules: { "no-restricted-syntax": ["error", ...EVENTS_API_SELECTORS] },
+  },
+  // Beat and motion code must derive frames from the beat's t, so a seek or a second render matches (TP-4138). The explainer holds no ui/beats or motion dir yet, so its beat, camera, timing and composition page sources are named.
+  {
+    files: ["**/products/explainer/src/**", "**/ui/beats/**", "**/motion/**"],
+    rules: { "titan/no-wall-clock-motion": ["error", { paths: MOTION_PATHS }] },
+  },
+  // A test that compares elapsed time, or a ratio of times, with a limit fails on a loaded hosted runner: count the work, or time it only under a bench flag (TP-4262).
+  {
+    files: ["**/*.test.{ts,tsx,mts,mjs}"],
+    ignores: CLOCK_BUDGET_BASELINE,
+    rules: { "titan/no-test-clock-budget": "error" },
+  },
+  // A bare gray-matter import evaluates `---js` frontmatter; only the wrapper sets the safe engines (TP-1007).
+  {
+    files: ["products/active-work/**"],
+    ignores: ["products/active-work/src/utils/gray-matter-io.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { paths: [{ name: "gray-matter", message: "Import parseFrontmatter and friends from src/utils/gray-matter-io.ts: a bare gray-matter import executes `---js` frontmatter." }] },
+      ],
+    },
   },
   { languageOptions: { globals: globals.node } },
   { files: ["apps/*/src/**"], languageOptions: { globals: globals.browser } },

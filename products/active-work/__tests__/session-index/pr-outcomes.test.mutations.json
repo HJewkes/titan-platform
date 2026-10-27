@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the resolver polls every PR it is handed",
+      "file": "products/active-work/src/session-index/pr-outcomes.ts",
+      "find": "      return !row?.outcome_checked_at || row.state?.toLowerCase() === 'open';\n",
+      "replace": "      return true;\n",
+      "kills": [
+        "the gh PR resolver a pass over 100 merged and checked PRs and 3 open ones polls only the 3 open"
+      ]
+    }
+  ]
+}

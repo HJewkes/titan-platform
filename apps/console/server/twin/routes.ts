@@ -28,6 +28,7 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "theater-search", hash: "#/theater?q=relay" },
   { name: "theater-empty", hash: "#/theater?q=zzz&tag=plan" },
   { name: "theater-player", hash: "#/theater/v-relay-intro" },
+  { name: "theater-beat-editor", hash: "#/theater/v-relay-intro?t=2&edit=1" },
   { name: "shepherd", hash: "#/shepherd" },
   { name: "shepherd-detail", hash: `#/shepherd/${encodeURIComponent("orbit/relay#12")}` },
   { name: "autoresearch", hash: "#/autoresearch" },

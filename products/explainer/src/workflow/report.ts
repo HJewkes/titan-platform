@@ -1,6 +1,6 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
-import { isBridgeStage, STAGES, StageRecordSchema, type Check, type StageName, type StageRecord, type Stop } from "./records.js";
+import { STAGES, StageRecordSchema, type Check, type StageName, type StageRecord, type Stop } from "./records.js";
 
 /** `reused`: before `--from`, taken from the base run; `cached`: a stage-key hit on a finished child run. */
 export type StageStatus = "ran" | "cached" | "reused" | "failed" | "not run";
@@ -54,6 +54,8 @@ export interface RunReport {
   videoId: string;
   linked: LinkedRun[];
   videoUsd: number;
+  /** The owner edit this run carries, over the run it was drafted on. */
+  edit?: { editId: string; beats: number; baseRunId: string };
   rows: ReportRow[];
 }
 
@@ -81,7 +83,7 @@ function row(stage: StageName, record: StageRecord | undefined, failed: boolean)
   const status: StageStatus = !record ? "not run" : failed ? "failed" : record.reusedFrom ? "reused" : record.cached ? "cached" : "ran";
   const usage = record?.usage;
   return {
-    stage, status, bridged: isBridgeStage(stage),
+    stage, status, bridged: record?.bridged === true,
     wallMs: record?.wallMs ?? 0, usd: usage?.usd ?? 0, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0,
     cacheReadTokens: usage?.cacheReadTokens ?? 0, cacheWriteTokens: usage?.cacheWriteTokens ?? 0, calls: usage?.calls ?? 0, retries: record?.retries ?? 0,
     cacheHit: status === "reused" || status === "cached", costUnknown: usage?.costUnknown === true,
@@ -110,6 +112,7 @@ export interface ReportInput {
   stop?: Stop;
   videoId: string;
   linked: readonly LinkedRun[];
+  edit?: RunReport["edit"];
 }
 
 export function buildReport(input: ReportInput): RunReport {
@@ -122,7 +125,8 @@ export function buildReport(input: ReportInput): RunReport {
     ...(input.run.error ? { error: input.run.error } : {}),
     from: input.from, to: input.to, budgetUsd: input.budgetUsd, ...(input.stop ? { stop: input.stop } : {}),
     runWallMs: end - Date.parse(input.run.startedAt), totals: sums,
-    videoId: input.videoId, linked: [...input.linked], videoUsd: sums.usd + input.linked.reduce((acc, run) => acc + run.usd, 0), rows,
+    videoId: input.videoId, linked: [...input.linked], videoUsd: sums.usd + input.linked.reduce((acc, run) => acc + run.usd, 0),
+    ...(input.edit ? { edit: input.edit } : {}), rows,
   };
 }
 
@@ -145,8 +149,15 @@ function header(report: RunReport): string[] {
     `- Cache hits: ${t.cacheHits} stages reused from a base run or the stage cache`,
     `- Video ${report.videoId}: ${report.linked.length + 1} runs, total ${usd(report.videoUsd)}`,
     ...report.linked.map((r) => `  - linked run ${r.runId}: ${usd(r.usd)}`),
-    `- Bridged stages (today's template commands through the host's bridge file, not yet ported): ${report.rows.filter((r) => r.bridged).map((r) => r.stage).join(", ")}`,
+    ...(report.edit ? [`- Edit \`${report.edit.editId}\` (${report.edit.beats} beats) over run \`${report.edit.baseRunId}\``] : []),
+    ...bridgedLine(report),
   ];
+}
+
+/** Every stage runs in-process now; only a record reused from a run made before its port was bridged. */
+function bridgedLine(report: RunReport): string[] {
+  const bridged = report.rows.filter((r) => r.bridged).map((r) => r.stage);
+  return bridged.length === 0 ? [] : [`- Bridged stages (records from before their TypeScript port, through the host's bridge file): ${bridged.join(", ")}`];
 }
 
 function table(report: RunReport): string[] {

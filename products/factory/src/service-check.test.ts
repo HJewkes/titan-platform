@@ -604,6 +604,17 @@ describe("titan-factory service check", () => {
       expect(JSON.parse(out)).toMatchObject({ ok: false, cause: "deploy stalled", detail: { runningSha: BUILD, behind: 0, consecutiveRefusals: 2, lastRefusal: expect.stringContaining("index.lock") } });
     });
 
+    it("ends the deploy stalled line with the pacer's wait, keeping the alarm's detail", async () => {
+      const deployPending = { sha: TARGET, since: "2026-01-01T11:00:00.000Z", deploysBy: "2026-01-01T12:30:00.000Z", waiting: { why: "2 busy run(s)", until: "2026-01-01T12:30:00.000Z" } };
+
+      const text = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS), deployPending }) });
+      const json = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS), deployPending }) }, "--json");
+
+      expect(text.code).toBe(EXIT.FAILURE);
+      expect(text.out).toMatch(new RegExp(`^deploy stalled: .*; deploy ${TARGET} waits: 2 busy run\\(s\\) until 2026-01-01T12:30:00.000Z\\n$`));
+      expect(JSON.parse(json.out)).toMatchObject({ cause: "deploy stalled", detail: { consecutiveRefusals: 2, deployWaitSha: TARGET, deployWaitWhy: "2 busy run(s)" } });
+    });
+
     it("names a stale index.lock by path and age, and never removes it", async () => {
       const { code, out, calls } = await check({ print: running, health: healthy(), lock: STALE });
 
@@ -625,6 +636,47 @@ describe("titan-factory service check", () => {
       const fresh = await check({ print: running, health: healthy(), lock: { state: "fresh", path: LOCK, ageMs: 5 * 60_000 } });
 
       expect([held.code, fresh.code]).toEqual([EXIT.OK, EXIT.OK]);
+    });
+  });
+
+  describe("the deploy the pacer holds (TP-2427)", () => {
+    const WANTED = "c".repeat(40);
+    const UNTIL = "2026-01-01T12:15:00.000Z";
+    const pending = (waiting?: Record<string, unknown>): Record<string, unknown> => ({
+      deployPending: { sha: WANTED, since: "2026-01-01T11:55:00.000Z", deploysBy: "2026-01-01T13:25:00.000Z", ...(waiting && { waiting }) },
+    });
+    const OK = `ok: /health answers from pid ${PID} with github ok`;
+
+    it("names the pending deploy's wait reason and until-time on the ok line", async () => {
+      const { code, out } = await check({ print: running, health: healthy(pending({ why: "inside the quiet window", until: UNTIL })) });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).toBe(`${OK}; deploy ${WANTED} waits: inside the quiet window until ${UNTIL}\n`);
+    });
+
+    it("carries deployWaitSha, deployWaitWhy and deployWaitUntil in --json detail", async () => {
+      const { out } = await check({ print: running, health: healthy(pending({ why: "1 busy run(s)", until: UNTIL })) }, "--json");
+
+      expect(JSON.parse(out)).toMatchObject({ ok: true, cause: null, detail: { deployWaitSha: WANTED, deployWaitWhy: "1 busy run(s)", deployWaitUntil: UNTIL } });
+    });
+
+    it("omits the until-time of a paused wait", async () => {
+      const why = "deploys are paused; titan-factory service pause --clear lifts it";
+
+      const text = await check({ print: running, health: healthy(pending({ why })) });
+      const json = await check({ print: running, health: healthy(pending({ why })) }, "--json");
+
+      expect(text.out).toBe(`${OK}; deploy ${WANTED} waits: ${why}\n`);
+      expect(JSON.parse(json.out)).toMatchObject({ detail: { deployWaitWhy: why, deployWaitUntil: null } });
+    });
+
+    it("adds nothing for a pending deploy with no wait, or none pending", async () => {
+      const unheld = await check({ print: running, health: healthy(pending()) });
+      const none = await check({ print: running, health: healthy({ deployPending: null }) }, "--json");
+
+      expect(unheld.out).toBe(`${OK}\n`);
+      expect(JSON.parse(none.out)).toMatchObject({ message: OK });
+      expect(JSON.parse(none.out).detail).toEqual({});
     });
   });
 

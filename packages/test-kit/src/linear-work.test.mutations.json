@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "linearWork forgives quadratic work by dividing by GROWTH twice",
+      "file": "packages/test-kit/src/linear-work.ts",
+      "find": "large / (GROWTH * small)",
+      "replace": "large / (GROWTH * GROWTH * small)",
+      "kills": [
+        "linearWork fails quadratic work and stops at the first rung past the limit",
+        "linearWork judges only rungs from `steady` on, so a pattern's states waking one per character read as linear"
+      ]
+    },
+    {
+      "name": "linearWork judges no rung below the top size",
+      "file": "packages/test-kit/src/linear-work.ts",
+      "find": "return size < (steady ?? 0) ? 0 : large / (GROWTH * small);",
+      "replace": "return size < (steady ?? Infinity) ? 0 : large / (GROWTH * small);",
+      "kills": [
+        "linearWork fails quadratic work and stops at the first rung past the limit",
+        "linearWork judges only rungs from `steady` on, so a pattern's states waking one per character read as linear"
+      ]
+    }
+  ]
+}

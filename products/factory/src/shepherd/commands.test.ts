@@ -421,6 +421,16 @@ describe("shepherd.register slice", () => {
     expect(again.registration.slice).toBeNull();
   });
 
+  it("a re-register without lastSlice keeps the stored last-slice mark", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const first = await registered(w, { ...pr1, lastSlice: true });
+
+    const again = await registered(w, { ...pr1, implementer: "impl-b" });
+
+    expect([first.registration.lastSlice, again.registration.lastSlice]).toEqual([true, true]);
+  });
+
   it("a slice and noSlice together are refused", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });

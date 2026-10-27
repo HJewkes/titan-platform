@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "vi.waitFor keeps vitest's 1 s default when a call names no timeout",
+      "file": "scripts/vitest-wait-budget.mjs",
+      "find": "{ ...options, timeout: options.timeout ?? WAIT_BUDGET_MS }",
+      "replace": "{ ...options, timeout: options.timeout }",
+      "kills": [
+        "gives vi.waitFor the budget when a call names no timeout"
+      ]
+    }
+  ]
+}

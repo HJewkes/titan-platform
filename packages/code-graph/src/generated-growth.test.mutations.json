@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "gitattributes patterns compile a backtracking RegExp again",
+      "file": "packages/code-graph/src/generated.ts",
+      "find": "return new LinearRegExp(prefix",
+      "replace": "return new RegExp(prefix",
+      "kills": [
+        "a .gitattributes pattern that is a hostile glob grows linearly with the path for d/ and 20 stars",
+        "a .gitattributes pattern that is a hostile glob grows linearly with the path for 12 globstar segments",
+        "a .gitattributes pattern that is a hostile glob grows linearly with the path for d/ and 20 stars under a later opt-out line",
+        "a .gitattributes pattern that is a hostile glob grows linearly with the path for 12 globstar segments under a later opt-out line"
+      ]
+    },
+    {
+      "name": "an opt-out line is a backtracking lookahead again",
+      "file": "packages/code-graph/src/generated.ts",
+      "find": "return new LinearRegExp(`(?!${rejected})(?:${rx.source})`, \"\", (id) => rx.test(id) && !optOuts.some((o) => o.test(id)));",
+      "replace": "return new RegExp(`(?!${rejected})(?:${rx.source})`);",
+      "kills": [
+        "a .gitattributes pattern that is a hostile glob grows linearly with the path for d/ and 20 stars under a later opt-out line",
+        "a .gitattributes pattern that is a hostile glob grows linearly with the path for 12 globstar segments under a later opt-out line"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the plan's source reading does not stop a proceed",
+      "file": "products/factory/src/shepherd/test-only-diff.ts",
+      "find": "if (planned.kind === \"unread\" || planned.diff.kind === \"source\" || planned.diff.kind === \"unread\") return false;",
+      "replace": "if (planned.kind === \"unread\" || planned.diff.kind === \"unread\") return false;",
+      "kills": [
+        "sourceFreeDiff (TP-4275) reads a diff with .changeset/config.json, which the fix-proof plan sorts as source, as not free of source",
+        "sourceFreeDiff (TP-4275) reads a diff with packages/x/src/docs/render.ts, which the fix-proof plan sorts as source, as not free of source",
+        "sourceFreeDiff (TP-4275) reads a diff with packages/x/src/a.test.helpers.ts, which the fix-proof plan sorts as source, as not free of source",
+        "sourceFreeDiff (TP-4275) reads a diff with apps/console/fixtures/rounds/a.md, which the fix-proof plan sorts as source, as not free of source",
+        "sourceFreeDiff (TP-4275) reads a diff with site/guides/parse.md, which the fix-proof plan sorts as source, as not free of source",
+        "sourceFreeDiff (TP-4275) reads a diff with .github/workflows/ci.yml, which the fix-proof plan sorts as source, as not free of source"
+      ]
+    },
+    {
+      "name": "a source-free diff skips the blob probe",
+      "file": "products/factory/src/shepherd/test-only-diff.ts",
+      "find": "return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;\n}",
+      "replace": "return true;\n}",
+      "kills": [
+        "sourceFreeDiff (TP-4275) fails closed when a carried path's blob is not read inline"
+      ]
+    }
+  ]
+}

@@ -19,10 +19,18 @@ refuses any profile whose installed file is not `"surface": "headless"`, because
 agent-chat puts an interactive agent's brief in `claude`'s argv. `execSafe` runs
 an absolute path with a minimal environment and no shell.
 
+`spawnAsCaller` is the spawn for a command a human or an agent runs, not a daemon. It
+forwards the caller's `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` and `CLAUDE_CONFIG_DIR` when
+set, so the broker sees an agent's spawn as that agent's and a least-used account pick
+prefers the caller's account on a tie. Nothing else from the caller's environment reaches
+the child.
+
 ## When to reach for it
 
 A product that must start an agent-chat agent under a named profile, or give an ended
-agent's Claude Code session one more message, from code. To run one headless Claude turn
+agent's Claude Code session one more message, from code. Use `dispatchToAgentChat` from a
+daemon, which spawns headless profiles as the human, and `spawnAsCaller` from a CLI command
+that spawns on behalf of whoever runs it. To run one headless Claude turn
 in-process with a typed result, use [agent](./agent.md) instead. To record which process
 owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 
@@ -31,7 +39,7 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 Verified against 0.0.0.
 
 ```ts
-import { BrokerUnavailableError, assertInstalledHeadless, dataFence, dispatchToAgentChat, execSafe, listAgents, messageAgent, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, assertInstalledHeadless, dataFence, dispatchToAgentChat, execSafe, listAgents, messageAgent, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller } from "@titan-design/agent-dispatch";
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
@@ -48,6 +56,19 @@ await dispatchToAgentChat(
   profiles,
 );
 // { peerName: "item-42" } once the broker accepts the spawn
+
+await spawnAsCaller(
+  {
+    agentChatBinPath: "/opt/homebrew/bin/agent-chat",
+    name: "planner-1",
+    profile: "coordinator",
+    brief: "Plan the next slice",
+    cwd: "/path/to/repo",
+    account: "least-used", // also host, surface, remoteControl
+  },
+  15_000,
+);
+// { name: "planner-1", lines: ["account: ...", "Spawned planner-1 ..."] }
 
 assertInstalledHeadless("headless-reviewer"); // throws DispatchError unless <agent-chat home>/profiles/headless-reviewer.json is headless
 
@@ -129,6 +150,10 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
   Tests that spawn through a fake binary must install that file. The broker re-reads the
   profile afterwards, so a write in between still reaches it until agent-chat's surface
   lock lands.
+- `spawnAsCaller` checks no profile allowlist and no headless surface: the broker gates
+  the spawn as it would the caller's own CLI call. It fails the way `dispatchToAgentChat`
+  does. An agent-chat too old to know `--account`, `--host` or `--remote-control` fails
+  with its usage error as the message.
 - A spawn that hangs throws `DispatchTimeoutError`, not plain `DispatchError`: the broker
   may already have started the agent, so read the roster before re-dispatching.
 - A failed spawn throws `DispatchError` with the CLI's stdout reason (broker refusals,
@@ -169,5 +194,5 @@ in `agent-profiles.ts`. `listAgents` and `retire` were added afterwards for Shep
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
 brief) by TP-518, `parkAgent` by TP-548, `messageAgent` by TP-728, and
 `assertInstalledHeadless` (ported from relay's `daemon/src/profile-guard.ts`, PR #59) by
-TP-470. The `./limits`
+TP-470, and `spawnAsCaller` by TP-4215. The `./limits`
 subpath (TP-2067) replaces the `pools:` and `funds:` blocks of a coordinator charter.

@@ -169,6 +169,27 @@ describe("words split by quoting", () => {
   });
 });
 
+describe("bare spans of a spliced word", () => {
+  it.each([
+    ["a single-quoted value after a bare key", "query='{viewer{login}}'", [[0, 6]]],
+    ["a bare glob after a single-quoted key", "'query='*", [[6, 7]]],
+    ["a double-quoted part between bare text", 'a"*"b', [[0, 1], [2, 3]]],
+    ["an escape", "a\\*b", [[0, 1], [2, 3]]],
+    ["an ANSI-C string before bare text", "$'\\x7b'a,b}", [[1, 5]]],
+    ["a double-quoted variable before bare text", '"$X"*', [[2, 3]]],
+  ])("records the unquoted ranges of %s", (_how, src, spans) => {
+    expect(tokenize(src)[0]).toMatchObject({ spliced: true, bare: { spans } });
+  });
+
+  it("keeps no record on a word read whole one way", () => {
+    expect(tokenize("'{a,b}' {a,b}").map((t) => (t.type === "word" ? t.bare : t.type))).toEqual([undefined, undefined]);
+  });
+
+  it("records the spans of a redirect target", () => {
+    expect(redirects(tokenize("cat > 'a'*"))[0]?.target?.bare).toEqual({ text: "a*", spans: [[1, 2]] });
+  });
+});
+
 describe("ANSI-C strings", () => {
   it.each([
     ["$'\\x7e/.npmrc'", "~/.npmrc"],

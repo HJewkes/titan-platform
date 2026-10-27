@@ -29,7 +29,16 @@ interface NoReproTestOnly {
  */
 export async function proceedsOnNoRepro(port: GitHubPort, gate: NoReproTestOnly, line: string): Promise<boolean> {
   if (gate.flag !== "on" || !TEST_ONLY_PROOF_KINDS.has(gate.kind)) return false;
+  if (!mayProceedLine(line)) return false;
+  return (await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === "test-only";
+}
+
+/**
+ * A vacuous or test-less line with no mutants: the only NO_REPRO line any proceed path may let past. A line carrying mutants stays
+ * NO_REPRO, since a surviving mutation or a refused spec is a verdict on the tests.
+ */
+export function mayProceedLine(line: string): boolean {
   const parsed = parseResultLine(line);
   if (!parsed.ok || !VACUOUS_VERDICTS.has(parsed.result.verdict) || parsed.result.mutants !== undefined) return false;
-  return (await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === "test-only";
+  return true;
 }

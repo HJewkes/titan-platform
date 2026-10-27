@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "edit check runs without the template fill",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "deps.fill ?? fillProblems",
+      "replace": "deps.fill ?? (() => [])",
+      "kills": [
+        "explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"
+      ]
+    },
+    {
+      "name": "the fill skips the emphasis gate",
+      "file": "products/explainer/src/workflow/edit-fill.ts",
+      "find": "return emphasisProblems(kept, fillScript(",
+      "replace": "return [] || emphasisProblems(kept, fillScript(",
+      "kills": [
+        "explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"
+      ]
+    },
+    {
+      "name": "the fill check pins the slots the base's resolve stored",
+      "file": "products/explainer/src/workflow/edit-cli.ts",
+      "find": "fill(parsed.data, base.resolved, base.pinned)",
+      "replace": "fill(parsed.data, base.resolved, base.generated)",
+      "kills": [
+        "explainer edit check through the template fill refuses an edit that moves a fallback beat onto its chosen spec, where the cue's element does not exist"
+      ]
+    },
+    {
+      "name": "the edit check fills beats the base's resolve cut",
+      "file": "products/explainer/src/workflow/edit-fill.ts",
+      "find": "const kept = { ...script, beats: keptBeats(script.beats, resolved) };",
+      "replace": "const kept = { ...script, beats: script.beats };",
+      "kills": [
+        "explainer edit check through the template fill passes an edit on a base whose resolve cut a sim beat, filling only the beats it kept"
+      ]
+    }
+  ]
+}

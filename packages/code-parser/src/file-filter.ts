@@ -10,6 +10,11 @@ const EXCLUDED_DIRS = [
   ".git",
   ".claude",
   "coverage",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".tox",
 ];
 
 const EXCLUDED_PATTERNS = [
@@ -23,7 +28,8 @@ const EXCLUDED_PATTERNS = [
 ];
 
 const LANGUAGE_EXTENSIONS: Record<string, string[]> = {
-  typescript: [".ts", ".tsx"],
+  // `.mjs`/`.cjs` hold no JSX, so the typescript grammar parses them (TP-4161).
+  typescript: [".ts", ".tsx", ".mjs", ".cjs"],
   python: [".py"],
 };
 

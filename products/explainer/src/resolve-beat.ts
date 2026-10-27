@@ -53,11 +53,14 @@ function resolveKey(beat: Beat, router: VisualRouter): ResolveKey | ResolveRefus
 
 const keyText = (key: ResolveKey): string => `function ${key.function}, job ${key.job}, content ${key.content}, route ${key.route}`;
 
+/** The E-RESOLVE-STILL-MOTION predicate: a cast-in-motion job on a layer that does not move. */
+export const isStillMotion = (job: string, layer: VisualLayer): boolean => job === "cast-in-motion" && layer !== "custom";
+
 function chosen(beat: Beat, key: ResolveKey, row: ResolveRow, spec: BeatSpec): ResolvedBeat | ResolveRefusal {
   const { visual } = beat;
   const framing = visual.framing ?? row.then.framing;
   const layer = visual.layer ?? row.then.layer;
-  if (key.job === "cast-in-motion" && layer !== "custom") return { beat: beat.id, code: "E-RESOLVE-STILL-MOTION", detail: "a cast-in-motion beat must resolve to a moving (custom) layer" };
+  if (isStillMotion(key.job, layer)) return { beat: beat.id, code: "E-RESOLVE-STILL-MOTION", detail: "a cast-in-motion beat must resolve to a moving (custom) layer" };
   const anchors = visual.anchors ?? [...FRAMING_ANCHORS[framing]];
   return { id: beat.id, chapter: beat.chapter, key, row: row.id, beat: spec.type, component: spec.component, band: spec.speech.band, framing, layer, anchors };
 }

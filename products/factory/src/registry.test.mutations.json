@@ -9,6 +9,15 @@
       "kills": [
         "factory registry surfaces the factory, shepherd, needs and autoresearch commands as MCP tools, with no prefix doubling and no resolve tool"
       ]
+    },
+    {
+      "name": "shepherd fix-pr is left out of the shepherd commands",
+      "file": "products/factory/src/shepherd/commands.ts",
+      "find": "  \"shepherd.fix-pr\": fixPrCommand,\n",
+      "replace": "",
+      "kills": [
+        "factory registry surfaces the factory, shepherd, needs and autoresearch commands as MCP tools, with no prefix doubling and no resolve tool"
+      ]
     }
   ]
 }

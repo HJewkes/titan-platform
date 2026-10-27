@@ -38,6 +38,9 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `deriveEvalView` derives the view evals read from it, and
 `migrateTourV0` lifts a spike tour to v1.
 `emptyStageRuns` fails a beat whose stage area holds no non-decor content box for more than 3 s of measured moments.
+`contentFillFindings` fails a beat whose settled element boxes span less than 60 % of the frame width.
+`cutCells` cuts beat-aware contact-sheet stills from beat bounds, measured cue times and beat kind (or the page's marks), stable when a beat is lengthened.
+`explainer sheets` (`writeContactSheets`) tiles those stills, each with a label strip, into one PNG per chapter.
 `scriptSha` names a script by its canonical-JSON sha, and
 `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`.
 For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and
@@ -59,12 +62,22 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `beatSpecFor` rejects an unknown beat,
 `parseBeatSlots` rejects bad slots and duplicate emphasis ids,
 `cueElement` resolves a cue target to exactly one emphasis element, and
+`fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
 `placeBeatSystem` lands a system's steps in order in a profile's blocks.
 `loadStylePacks` reads the style packs (`doctrine/style-packs/*.yaml`: four selections of existing titan-design tokens by slot) and rejects a pack naming a token outside the pinned `tokens.css` names, the wrong kind of token for a slot, or a channel whose look it would copy,
 while each profile names the packs it allows and its voice band (Kokoro voice id and rate), and a render variant's `stylePack` puts the pack's content hash in the render key.
+For a `sim` beat, a `SimModel` in `SIM_MODELS` simulates from the seed's generator only (`runPure` refuses `Math.random` and clocks with `SimPurityError`),
+`sweepSim` runs it over one swept param and an optional facet with a seed per point, and
+`freezeSim` seals the runs as an `explainer.sim-trace/v1` trace (`SimTraceSchema`) keyed by its canonical-JSON sha256.
+`loadSims` reads the sim-model registry (`doctrine/sims/*.yaml`) and
+`checkSims` reports a model with no doctrine file, a file with no model, and a doctrine statistic the model never emits.
+`simCheck` passes a sim beat only when its run reproduces a gathered number fact within the doctrine tolerance, refusing a tolerance under 3 se, over a tenth of the claim, or on a fitted statistic, and
+`runSimPass` sweeps, freezes and checks every sim beat at resolve, which cuts the failing ones before tts behind the `sim-cut-orphan` gate.
+`reviewRounds` is the pilot model (`review-rounds`: round 1 passes with chance p1, later rounds with chance q, emitting mean reviews and the 5+ share, refusing a q under `MIN_LATER_PASS` or a prs over `MAX_REVIEW_PRS`), and
+`fitLaterRoundPass` solves q from a gathered 5+ share, which the doctrine lists in `fittedFrom`.
 `explainer guide types` writes each type's planner guide to `doctrine/guides/planner/<type>.md`.
 `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
 For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new),
@@ -79,6 +92,7 @@ Q-E12 (`seatRoutes`) and Q-E14 (`explainRoutes`) only route beats to the L1 judg
 `runItems` is that L1 item judge: one call per chapter over `itemRoutes` (explain, seat and list routes, nothing else), asking whether each routed item is explained, each routed beat seated, and which listed item is the odd one out;
 it voids any verdict without a verbatim quote, plants a name-only canary beat per call, and
 `explainer eval items` runs it three times by default under eval id `L1-items`.
+`varietyScriptCheck` (in `L0_CHECKS`) adds the script-only variety lints as warnings: `variety:hook-formula`, `variety:connector-share` (over 30 % of beats opening on so, but, then, and or now), `variety:cue-action` (one cue action across the script) and `variety:framing-run` when beats author `visual.framing`; `resolvedVarietyRows` holds the resolver's choices to the profile's component, template and framing limits at `checks:resolve`.
 `explainer eval pace` runs only those lints on a spike or script/v1 file, with heard durations from `--timing`, appends their rows and prints items a minute per chapter, then the reused beats to re-voice when there are any.
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
@@ -111,11 +125,28 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
+then the render stage in process (`runRenderStage`: the template fill to a storyboard under beat-NN ids from `storyboardIds`, `compileTimeline`, the composition page with the style pack's CSS, `renderVideo` behind the run type's gate profile, a `duration-agreement` gate over the manifest and a reported `two-run` check, behind a `RenderEngine` seam),
+then the qa stage in process (`runQaStage`: render-qa's gate at the cue moments and the 2 Hz sweep in Chromium behind a `QaEngine` seam, the `doctrine/qa/gate-profile.yaml` verdict through `loadQaGate`, the probe and framediff behind the motion-happened, clipped-text, content-fill and stage-empty checks, the DIRECTION timing gates of `timing-gates.ts` with thresholds from the type profile's `pacing`, render-qa's `mediaScan` behind the reported black-frames, silence-2s and frozen-frames checks, and `qa.json` as `explainer.qa/v1` with findings by beat and anchor),
+then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
+`fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
+resolve builds each `layer: "custom"` beat's layer through claude-print by default, behind an esbuild compile gate and import allowlist, repairs a layer that fails the gate in one agent-chat round priced from the agent's transcript (when the host passes a repairer), and reuses an earlier run's build of an unchanged packet,
 `explainer stage` runs one stage from stored shas,
 `--from`/`--to`/`--pin` start and stop mid-pipeline,
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-edit/v1` (slot and tune fields per template beat, over a base run's script and render), and
+`applyEdit` applies it to the base script, refusing a stale base, an unknown or custom-layer beat and a slot change that drops an element a cue targets, and returns the new script and a field diff.
+`explainer edit check` prints that verdict with the slot-overrides gate, the template fill and the emphasis-target gate, and writes nothing,
+`explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
+`explainer edit list` lists a render's or a video's edits with their linked run's status.
+`explainer props --mp4-sha <sha>` reads the run that exported a render and gives each kept template beat its slot JSON Schema, filled value with overrides, overridden fields, cue-locked ids, span and still time, plus whether a save can change the render (it can, now render draws from the fill).
+`compileTimeline` turns a storyboard and an optional words.json (its only reader) into the page's `timeline.json`: heard durations or planned ones with `provisional: true`, beat-local cue seconds for `word` or `word#n`, and slots parsed by `BEAT_SLOTS` until `@titan-design/beats` publishes; `writeTimeline` writes it as canonical JSON.
+`renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
+mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
+`assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.
+`renderVideo` with `qa: { mode: "gate" }` runs render-qa's cue-moment gate (`src/qa/cue-gate.ts`, shared with the qa stage) before mixing; held errors write `qa.json` and throw `QaRefused`, leaving no mix, mp4 or manifest.
+`RenderManifestSchema` is `explainer.render-manifest/v1`: workers, frames, durations, draft, `qaGate` (`absent` with no `qa` option, `passed` with `qa: { heldErrors: 0, gateProfile }`, or `skipped`), a strict `RenderHostSchema` host with no hostname or paths (`collectRenderHost`), and the timeline, page, mix, mp4, vtt and words shas.
+`toVtt` and `captionCues` write WebVTT from timed words (42 characters or 8 words a cue, broken at sentence ends, held 0.3 s).

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runAaFloorCli } from "../aa-floor-cli.js";
 import { ArtifactStore } from "./artifacts.js";
 import { openState } from "./host.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 import { runAbCli } from "./samples-cli.js";
 import { runStageCli } from "./stage-cli.js";
 
@@ -35,7 +35,7 @@ function casesDir(inputs: Record<string, string>): string {
 function setup() {
   fx = fixture();
   const model = fakeScriptModel(undefined, { usd: 0.05 });
-  const host = fakeHost(fx, model, fakeBridge());
+  const host = fakeHost(fx, model, fakeRender());
   const out: string[] = [];
   const err: string[] = [];
   const deps = { host, out: (t: string) => out.push(t), err: (t: string) => err.push(t) };

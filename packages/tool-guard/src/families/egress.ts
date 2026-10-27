@@ -4,6 +4,7 @@ import type { WordToken } from "../shell/lexer.js";
 import { classified } from "../spellings.js";
 import type { SpellingId } from "../spellings.js";
 import type { ClassifiedAction, ClassifyContext, Family } from "../types.js";
+import { ghPathUnknown } from "./gh-path.js";
 import { httpRequest, UNKNOWN_METHOD } from "./http-request.js";
 import { readOptions, set } from "./options.js";
 
@@ -146,7 +147,7 @@ function pushUrl(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  if (cmd.name === "gh") return gist(cmd);
+  if (cmd.name === "gh") return ghPathUnknown(cmd) ? [classified("bash.egress.gh-gist", { host: "gist.github.com" })] : gist(cmd);
   if (cmd.name === "git") return pushUrl(cmd, ctx);
   return [...upload(cmd, ctx), ...socket(cmd), ...remoteCopy(cmd), ...cloudCopy(cmd)];
 }

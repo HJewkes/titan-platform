@@ -7,7 +7,7 @@ import { defineWorkflow } from "./definition.js";
 import { ownerResolver, presenceReason, resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
-import { fakeOwnerHelper } from "./test-support/owner-edges.js";
+import { fakeOwnerHelper, fakeOwnerSigner } from "./test-support/owner-edges.js";
 
 const HEAD = "a".repeat(40);
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -49,7 +49,7 @@ async function resolve(host: FactoryHost, runId: string, env: NodeJS.ProcessEnv,
 describe("gate resolve with owner presence", () => {
   it("the owner resolves a gate from an agent-chat-launched session once presence is confirmed", async () => {
     const { host, runId } = await pausedMerge();
-    const { reasons } = fakeOwnerHelper(PROOF);
+    const { reasons } = fakeOwnerSigner();
 
     const { code } = await resolve(host, runId, AGENT_SHELL);
 
@@ -60,7 +60,7 @@ describe("gate resolve with owner presence", () => {
 
   it("an agent in the same session is refused when presence is not confirmed and the gate stays pending", async () => {
     const { host, runId } = await pausedMerge();
-    fakeOwnerHelper(undefined);
+    fakeOwnerSigner({ cancel: true });
 
     const { code, err } = await resolve(host, runId, AGENT_SHELL);
 
@@ -69,21 +69,35 @@ describe("gate resolve with owner presence", () => {
     expect(host.gates.get(`${runId}/approve-merge`)).toMatchObject({ status: "pending", resolvedBy: undefined });
   });
 
-  it("the stored resolver carries the presence proof as confirmEvent", async () => {
+  it("the stored resolver names the owner-signed presence record, which the resolve spent", async () => {
     const { host, runId } = await pausedMerge();
-    fakeOwnerHelper(PROOF);
+    fakeOwnerSigner();
 
     await resolve(host, runId, AGENT_SHELL);
 
-    expect(host.gates.get(`${runId}/approve-merge`)?.resolvedBy).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });
+    const resolvedBy = host.gates.get(`${runId}/approve-merge`)?.resolvedBy;
+    expect(resolvedBy).toMatchObject({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: expect.stringMatching(/^gate-batch:/) });
+    const record = host.batches.get(resolvedBy!.confirmEvent!.slice("gate-batch:".length));
+    expect(record?.items).toMatchObject([{ gate: `${runId}/approve-merge`, outcome: "resolved" }]);
+  });
+
+  it("an agent shell is refused when no owner key is installed, and says why", async () => {
+    const { host, runId } = await pausedMerge();
+    fakeOwnerHelper(PROOF);
+
+    const { code, err } = await resolve(host, runId, AGENT_SHELL);
+
+    expect(code).toBe(1);
+    expect(err).toContain("owner presence refused: no owner signing key");
+    expect(host.gates.get(`${runId}/approve-merge`)?.status).toBe("pending");
   });
 
   it("a repeat of an answered resolve asks for no presence", async () => {
     const { host, runId } = await pausedMerge();
-    fakeOwnerHelper(PROOF);
+    fakeOwnerSigner();
     await resolve(host, runId, AGENT_SHELL);
     await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("completed"));
-    const repeat = fakeOwnerHelper(PROOF);
+    const repeat = fakeOwnerSigner();
 
     const { code, out } = await resolve(host, runId, AGENT_SHELL);
 
@@ -119,7 +133,7 @@ describe("gate resolve with owner presence", () => {
     ["a line separator", "merge approved"],
   ])("a decision carrying %s is refused before any dialog and the gate stays pending", async (_name, decision) => {
     const { host, runId } = await pausedMerge();
-    const { reasons } = fakeOwnerHelper(PROOF);
+    const { reasons } = fakeOwnerSigner();
 
     const { code, err } = await resolve(host, runId, AGENT_SHELL, JSON.stringify({ decision, headSha: HEAD }));
 
@@ -229,7 +243,7 @@ describe("gate resolve by a coordinator", () => {
 
   it("still asks for owner presence on a stuck-behind abandon from an agent shell", async () => {
     const { host, runId } = await pausedAt("stuck-behind");
-    const { reasons } = fakeOwnerHelper(undefined);
+    const { reasons } = fakeOwnerSigner({ cancel: true });
     const io = { stdout: () => {}, stderr: () => {}, env: AGENT_SHELL };
 
     await resolveGate(host, io, runId, "stuck-behind", '{"decision":"abandon"}').catch(() => 1);
@@ -239,18 +253,20 @@ describe("gate resolve by a coordinator", () => {
 });
 
 describe("ownerResolver", () => {
-  it("refuses an agent shell without presence, proves it with presence, and asks nothing of the owner's own terminal", async () => {
+  it("refuses an agent shell without a signed hold release, names its record with one, and asks nothing of the owner's own terminal", async () => {
+    const { host } = await pausedMerge();
+    const held = { runId: "run-1", repo: "octo/demo", pr: 1, head: HEAD, ownerHold: { reason: "owner-asked: synthetic", at: new Date(0).toISOString() } };
     const reason = "release the owner-asked hold on octo/demo#1";
-    const refused = fakeOwnerHelper(undefined);
-    const agent = await ownerResolver(AGENT_SHELL, reason);
-    const confirmed = fakeOwnerHelper(PROOF);
-    const proved = await ownerResolver(AGENT_SHELL, reason);
-    const ownShell = fakeOwnerHelper(undefined);
-    const terminal = await ownerResolver({}, reason);
+    const refused = fakeOwnerSigner({ cancel: true });
+    const agent = await ownerResolver(AGENT_SHELL, host.batches, held, reason);
+    const signed = fakeOwnerSigner();
+    const proved = await ownerResolver(AGENT_SHELL, host.batches, held, reason);
+    const ownShell = fakeOwnerSigner();
+    const terminal = await ownerResolver({}, host.batches, held, reason);
 
     expect(agent).toBe(`owner presence was not confirmed, so tc-synthetic, a shell agent-chat launched, is refused: only the owner may ${reason}`);
-    expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: PROOF });
+    expect(proved).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli", confirmEvent: expect.stringMatching(/^gate-batch:/) });
     expect(terminal).toEqual({ class: "owner-terminal", id: userInfo().username, channel: "factory-cli" });
-    expect([refused.reasons, confirmed.reasons, ownShell.reasons]).toEqual([[reason], [reason], []]);
+    expect([refused.reasons, signed.reasons, ownShell.reasons]).toEqual([[reason], [reason], []]);
   });
 });

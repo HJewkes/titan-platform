@@ -15,7 +15,7 @@ import { conflictCheckRoute, conflictCheckedGates, conflictsAt, leaveOnConflict 
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { SeatHeld, ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
-import { ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
+import { ciPolicyAt, ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
 import { checkedBaseTap, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { shepherdPrParams, type ShepherdPrParams } from "./pr-params.js";
 import { g10ReleaseRoutes, releaseBeforeLeaving, releaseG10Hold } from "./g10-release.js";
@@ -135,7 +135,8 @@ function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verd
   const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);
   const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
-  return { ...options, ...(unsettled && { unsettled }), ...merge, ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha), sendBackOffered: sendBackOffer() };
+  const atHead = { ownerBriefAt: (headSha: string) => ownerBriefAt(verdictFor(headSha), headSha), ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };
+  return { ...options, ...(unsettled && { unsettled }), ...merge, ...atHead, sendBackOffered: sendBackOffer() };
 }
 
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */

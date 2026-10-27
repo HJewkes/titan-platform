@@ -34,6 +34,18 @@ function count(items: string[]): number {
   return items.length;
 }
 `;
+const GEN_MJS = `import { A } from "./a.js";
+
+export function run(argv) {
+  return argv.includes("--check") ? A : 0;
+}
+`;
+const LEGACY_CJS = `function pad(text) {
+  return text.padStart(4);
+}
+
+module.exports = { pad };
+`;
 const PY = `import json
 
 
@@ -141,6 +153,30 @@ describe("indexPaths", () => {
     expect(metric("src/List.tsx", "function_count")).toBe(2);
     expect(metric("src/List.tsx#List", "symbol_cyclomatic")).toBe(4);
     expect(metric("src/List.tsx#count", "symbol_cyclomatic")).toBe(1);
+  });
+
+  // TP-4161: each case goes red if its extension is dropped from code-parser's typescript filter.
+  it("indexes a .mjs script's symbols and its import of a .ts module", async () => {
+    await fs.writeFile(path.join(root, "src/gen.mjs"), GEN_MJS);
+
+    const result = await index();
+
+    const nodes = store.listNodes(result.snapshotId, { includeSymbols: true });
+    expect(nodes.find((n) => n.id === "src/gen.mjs")).toMatchObject({ kind: "file", language: "typescript" });
+    expect(nodes.map((n) => n.id)).toContain("src/gen.mjs#run");
+    expect(store.listEdges(result.snapshotId)).toContainEqual(
+      expect.objectContaining({ srcId: "src/gen.mjs", dstId: "src/a.ts", kind: "imports" }),
+    );
+  });
+
+  it("indexes a .cjs module's function symbol", async () => {
+    await fs.writeFile(path.join(root, "src/legacy.cjs"), LEGACY_CJS);
+
+    const result = await index();
+
+    const nodes = store.listNodes(result.snapshotId, { includeSymbols: true });
+    expect(nodes.find((n) => n.id === "src/legacy.cjs")).toMatchObject({ kind: "file", language: "typescript" });
+    expect(nodes.map((n) => n.id)).toContain("src/legacy.cjs#pad");
   });
 
   it("links a co-located test to its source (linked_test_count)", async () => {

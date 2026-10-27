@@ -1,5 +1,7 @@
 import { toJSONSchema, z } from "zod";
 import { LedgerOptionSchema } from "./ledger.js";
+import { policyCategory } from "./normalize.js";
+import { checkUnlock } from "./unlock.js";
 
 /** The confidence a reply needs in a category with no policy row (plan 3.3). */
 export const DEFAULT_MIN_CONFIDENCE = 0.8;
@@ -66,8 +68,13 @@ export function decideJsonSchemas(): { input: Record<string, unknown>; reply: Re
   };
 }
 
+/** Rows match on `policyCategory`, so `Tech Design` reads `tech_design`; when several spellings match, the strictest threshold wins. */
 export function minConfidenceFor(category: string, policy: DecidePolicy): number {
-  return policy.categories?.[category]?.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+  const key = policyCategory(category);
+  const matches = Object.entries(policy.categories ?? {}).flatMap(([name, row]) =>
+    policyCategory(name) === key && row.minConfidence !== undefined ? [row.minConfidence] : []
+  );
+  return matches.length > 0 ? Math.max(...matches) : DEFAULT_MIN_CONFIDENCE;
 }
 
 function citationErrors(reply: DecideReply, input: DecideInput): string[] {
@@ -82,13 +89,29 @@ function optionIndexErrors(reply: DecideReply, input: DecideInput): string[] {
   return [`optionIndex ${index} is outside the ${input.options.length} input options`];
 }
 
+/** A picked option is only trusted when the answer text says the same thing. */
+function answerMatchErrors(reply: DecideReply, input: DecideInput): string[] {
+  const option = reply.optionIndex === null ? undefined : input.options[reply.optionIndex];
+  if (option === undefined || reply.answer.trim() === option.label.trim()) return [];
+  return [`answer ${JSON.stringify(reply.answer)} does not match option ${reply.optionIndex} ${JSON.stringify(option.label)}`];
+}
+
+function forceEscalation(reply: DecideReply, reason: string): DecideReply {
+  const escalateReason = reply.escalate && reply.escalateReason ? `${reply.escalateReason}; ${reason}` : reason;
+  return { ...reply, escalate: true, escalateReason };
+}
+
 /** A reply under its category's threshold stands only as an escalation, with the reason recorded. */
 function applyThreshold(reply: DecideReply, input: DecideInput, policy: DecidePolicy): DecideReply {
   const min = minConfidenceFor(input.category, policy);
   if (reply.confidence >= min) return reply;
-  const reason = `confidence ${reply.confidence} is under the ${input.category} threshold ${min}`;
-  const escalateReason = reply.escalate && reply.escalateReason ? `${reply.escalateReason}; ${reason}` : reason;
-  return { ...reply, escalate: true, escalateReason };
+  return forceEscalation(reply, `confidence ${reply.confidence} is under the ${input.category} threshold ${min}`);
+}
+
+/** An answer the unlock table claims stays with the owner, however confident the decider is. */
+function applyUnlock(reply: DecideReply, input: DecideInput): DecideReply {
+  const check = checkUnlock(input.question, reply.answer, input.category);
+  return check.ok ? reply : forceEscalation(reply, check.reason);
 }
 
 /** Checks a raw reply against its input; a bad reply is a typed failure, never a throw. */
@@ -97,7 +120,11 @@ export function validate(reply: unknown, input: DecideInput, policy: DecidePolic
   if (!parsed.success) {
     return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "reply"}: ${i.message}`) };
   }
-  const errors = [...citationErrors(parsed.data, input), ...optionIndexErrors(parsed.data, input)];
+  const errors = [
+    ...citationErrors(parsed.data, input),
+    ...optionIndexErrors(parsed.data, input),
+    ...answerMatchErrors(parsed.data, input),
+  ];
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, reply: applyThreshold(parsed.data, input, policy) };
+  return { ok: true, reply: applyUnlock(applyThreshold(parsed.data, input, policy), input) };
 }

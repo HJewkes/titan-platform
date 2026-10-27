@@ -26,12 +26,13 @@ Before adding code:
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. |
 | [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. |
-| [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). |
+| [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies), the opt-in `no-wall-clock-motion` (no wall clock or unseeded randomness in beat and motion code) and `todo-needs-issue` (every TODO names a task id). |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`openai-account`](#cap-openai-account) | 0 | You need token-free Codex account state from an explicit CODEX_HOME: parse `codex login status`, validate rollout token_count rate_limits evidence and refuse admission when its observation freshness cannot be verified. |
 | [`owner-proof`](#cap-owner-proof) | 0 | You must accept an action only when the owner signed a statement for it with an ECDSA P-256 key (such as the Secure Enclave key behind Touch ID). |
+| [`review-burden`](#cap-review-burden) | 0 | You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
@@ -65,6 +66,7 @@ Before adding code:
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer, plus `fromRoundQuestions`/`answeredFromFeedback` to read a round's questions and feedback back as OwnerItems, and `ask:`/`component:`/`token:`/`topic:` relation keys that relate items without merging them, and `consolidate`, which turns the open queue into the approvals Flow (per-PR and topic groups, influence order, holds, and a per-PR `shipBlockedBy` from open change requests), and an optional `audience` (owner or operator) with the `forAudience` reader filter, and owner card fields (`class`, `irreversible`, `shown`, `default`, `onSilence`, option `consequence`) checked by `cardLint`/`ownerCardSchema`. |
 | [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`, or gate a repo review on every recommendation and P1 or P2 topic having a task, dup, fold, drop or pending-owner row with `summaryRecommendations`, `prioritizedTopics`, `parseDispositions` and `checkDispositions`. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
+| [`render-qa`](#cap-render-qa) | 2 | You need to check a rendered page's layout at chosen moments (overlaps, off-frame, small or low-contrast text, wraps, frame rules) and separate held errors from transient ones before encoding, sample a whole video on a fixed 2 Hz grid with a settled sample per beat (`sweepMoments`), measure text line boxes, clipping ancestors and content boxes at moments (`probeMoments`), count changed pixels per frame of an MP4 (`frameDiffs`, through ffmpeg), or find an MP4's black, silent (2 s and more) and frozen stretches (`mediaScan`, through ffmpeg). |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. |
 | [`review-workflow`](#cap-review-workflow) | 2 | You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). |
@@ -216,9 +218,10 @@ Code must decide whether an owner, agent or automation process may merge, releas
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`
 - `conditions`: `isCarryFencedPath`, `unmetConditions`
 - `schema`: `policyTableSchema`
+- `taint`: `taintSourceSchema`
 - `evaluate`: `evaluate`, `canResolve`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
@@ -319,11 +322,11 @@ Key exports:
 
 ### [`eslint-plugin`](https://hjewkes.github.io/titan-platform/reference/eslint-plugin)
 
-Tier 0, `@titan-design/eslint-plugin@0.3.0`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, opt-in code lines of at most 200 characters, comments that hold code, and TODO comments without a tracking task
+Tier 0, `@titan-design/eslint-plugin@0.3.0`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, opt-in code lines of at most 200 characters, opt-in no wall clock in beat and motion code, comments that hold code, and TODO comments without a tracking task
 
 **Use this when:**
 
-You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
+You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), the opt-in `max-line-length` (no code line over 200 characters), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies), the opt-in `no-wall-clock-motion` (no wall clock or unseeded randomness in beat and motion code) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
 
 Key exports:
 
@@ -332,6 +335,8 @@ Key exports:
 - `no-chained-type-assertions`: `noChainedTypeAssertions`
 - `no-commented-code`: `noCommentedCode`
 - `no-internal-module-mock`: `noInternalModuleMock`
+- `no-test-clock-budget`: `noTestClockBudget`
+- `no-wall-clock-motion`: `DEFAULT_MOTION_PATHS`, `noWallClockMotion`
 - `todo-needs-issue`: `todoNeedsIssue`
 - `index`: `recommended`
 
@@ -364,14 +369,16 @@ Tier 0, `@titan-design/fix-proof@0.8.0`. Proves a fix PR's new tests fail on the
 
 You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. For a tests-only diff it also tells test material from source (`testOnlyOf`) and parses `*.mutations.json` specs, and `classifyMutants` decides whether every declared mutation was killed, which the judge adds to the line as `mutants`. Its `fix-proof exec` bin builds and tests one side in a git worktree and writes encoded reports, and `exec --side mutants` runs each declared mutation against the merge base in the sandbox; `fix-proof judge` (also `dist/judge.js`) decodes them, runs only git and prints that line, so CI can keep PR-head code out of the job that prints the verdict. To decide who may merge afterwards, use authority.
 
+A package compiles globs or other untrusted patterns to a RegExp: construct a `LinearRegExp` from `@titan-design/fix-proof/linear-regexp` in place of `new RegExp`, so matching cannot backtrack polynomially; its tests count `linearRegExpSteps()` instead of timing it.
+
 Key exports:
 
 - `config`: `isHarnessPath`, `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
+- `linear-regexp`: `LinearRegExp`, `linearRegExpSteps`
 - `plan`: `planFixProof`, `testOnlyOf`, `testOnlyReading`
 - `mutation`: `checkMutation`, `parseMutationSpec`
-- `mutant-classify`: `classifyMutants`, `testFileOfSpec`
-- `classify`: `classifyReports`
+- `mutant-classify`: `classifyMutants`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
@@ -427,6 +434,25 @@ Key exports:
 
 - `statement`: `canonical`, `keyIdOf`, `keyRing`, `verifySigned`, `Envelope`, `KeyRing`, `ProofInput`, `Refusal`, `StatementKind`, `Verified`
 
+<a id="cap-review-burden"></a>
+
+### [`review-burden`](https://hjewkes.github.io/titan-platform/reference/review-burden)
+
+Tier 0, `@titan-design/review-burden@0.0.0`. Pure review-burden score for a pull request: path classes, one-way door facts and the merge-danger footer parser
+
+**Use this when:**
+
+You need to say how much a pull request asks of its reviewer, or whether a revert would undo it, from facts alone with no model call. `burdenScore` turns a numstat-shaped file list, the `$tiers` map, the changed `package.json` sides and the PR body into a 0 to 100 score with every part shown; `doorFacts` lists the one-way facts (migration path, major changeset, authority-protected path, removed `exports`/`bin`/`name` key, deleted stored-data path); `parseFooter` reads the author's `` footer. It does no git or GitHub I/O, so a CLI and Shepherd compute the same number; to decide who may merge, use authority.
+
+Key exports:
+
+- `config`: `resolveConfig`
+- `path-class`: `classifyPath`, `pathClassifier`
+- `footer`: `hasContract`, `parseFooter`
+- `door`: `doorFacts`, `effectiveDoor`, `underDeclared`
+- `score`: `burdenFacts`, `burdenScore`, `scoreParts`, `unitOf`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-burden)
+
 <a id="cap-rpc-protocol"></a>
 
 ### [`rpc-protocol`](https://hjewkes.github.io/titan-platform/reference/rpc-protocol)
@@ -471,8 +497,13 @@ Tier 0, `@titan-design/test-kit@0.1.0`. Typed test doubles: partialFake builds a
 
 A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. For a whole fake service with behaviour, use the package's own fake (for example `fakeGitHub()` in `github`).
 
+A test must show an operation is linear or bounded, typically a glob or regex matcher that could backtrack: `linearWork` with `hostileGlobs` and a step meter, or `countCalls` with a cap, asserts counted work, never a time.
+
 Key exports:
 
+- `count-calls`: `callMeter`, `countCalls`, `CallMeter`, `CountedMethod`
+- `hostile-globs`: `hostileGlobs`, `HostileGlob`
+- `linear-work`: `GROWTH`, `LINEAR_WORK_LIMIT`, `linearWork`, `WorkGrowth`, `WorkOptions`
 - `partial-fake`: `partialFake`
 
 <a id="cap-tool-guard"></a>
@@ -535,9 +566,10 @@ Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin
 Key exports:
 
 - `dispatch`: `BrokerUnavailableError`, `DispatchError`, `DispatchTimeoutError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `spawn-as-caller`: `callerEnv`, `spawnAsCaller`
 - `call-timing`: `observeAgentChatCalls`
 - `profile-guard`: `assertInstalledHeadless`, `installedProfilesDir`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`
+- `exec`: `ExecError`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
@@ -1069,6 +1101,26 @@ Key exports:
 - `edit`: `encodeEdit`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/queue-mirror)
 
+<a id="cap-render-qa"></a>
+
+### `render-qa`
+
+Tier 2, private, `packages/render-qa`. Render QA gate: in-page geometry inspection, cue moments and the persistence rule over any __titanMotion page
+
+**Use this when:**
+
+You need to check a rendered page's layout at chosen moments (overlaps, off-frame, small or low-contrast text, wraps, frame rules) and separate held errors from transient ones before encoding, sample a whole video on a fixed 2 Hz grid with a settled sample per beat (`sweepMoments`), measure text line boxes, clipping ancestors and content boxes at moments (`probeMoments`), count changed pixels per frame of an MP4 (`frameDiffs`, through ffmpeg), or find an MP4's black, silent (2 s and more) and frozen stretches (`mediaScan`, through ffmpeg). It drives any `__titanMotion` page through `frame-capture`; for the capture and encode themselves use `frame-capture`, and for the pure checks over boxes already measured use the explainer's `clippedText` and `contentFill`.
+
+Key exports:
+
+- `inspect`: `inspectScript`
+- `held`: `addLateFill`, `classify`, `countByKind`, `isErrorKind`
+- `moments`: `buildMoments`, `sweepMoments`
+- `session`: `inspectAt`, `openQaPage`
+- `crops`: `writeCrops`
+- `framediff`: `changedShare`, `decodeArgs`
+- More in `packages/render-qa/src/index.ts`
+
 <a id="cap-review-panel"></a>
 
 ### [`review-panel`](https://hjewkes.github.io/titan-platform/reference/review-panel)
@@ -1145,8 +1197,7 @@ Key exports:
 - `facet`: `backfillFacets`
 - `apply`: `applyDelta`
 - `purge`: `purgeTranscript`
-- `rollup`: `reconcile`, `rollupSessions`
-- `refresh`: `indexTranscript`
+- `rollup`: `reconcile`, `rollupSessions`, `rollupYielding`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-graph)
 
 <a id="cap-session-read"></a>
@@ -1416,6 +1467,9 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `deriveEvalView` derives the view evals read from it, and
 `migrateTourV0` lifts a spike tour to v1.
 `emptyStageRuns` fails a beat whose stage area holds no non-decor content box for more than 3 s of measured moments.
+`contentFillFindings` fails a beat whose settled element boxes span less than 60 % of the frame width.
+`cutCells` cuts beat-aware contact-sheet stills from beat bounds, measured cue times and beat kind (or the page's marks), stable when a beat is lengthened.
+`explainer sheets` (`writeContactSheets`) tiles those stills, each with a label strip, into one PNG per chapter.
 `scriptSha` names a script by its canonical-JSON sha, and
 `explainer eval l0` runs the L0 checks and appends `structure.tsv` and `runs.jsonl` rows that carry `rules_sha`.
 For an owner's blind read, `prepareOwnerSession` writes two-track storyboards under a sealed key and
@@ -1437,12 +1491,22 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `beatSpecFor` rejects an unknown beat,
 `parseBeatSlots` rejects bad slots and duplicate emphasis ids,
 `cueElement` resolves a cue target to exactly one emphasis element, and
+`fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
 `placeBeatSystem` lands a system's steps in order in a profile's blocks.
 `loadStylePacks` reads the style packs (`doctrine/style-packs/*.yaml`: four selections of existing titan-design tokens by slot) and rejects a pack naming a token outside the pinned `tokens.css` names, the wrong kind of token for a slot, or a channel whose look it would copy,
 while each profile names the packs it allows and its voice band (Kokoro voice id and rate), and a render variant's `stylePack` puts the pack's content hash in the render key.
+For a `sim` beat, a `SimModel` in `SIM_MODELS` simulates from the seed's generator only (`runPure` refuses `Math.random` and clocks with `SimPurityError`),
+`sweepSim` runs it over one swept param and an optional facet with a seed per point, and
+`freezeSim` seals the runs as an `explainer.sim-trace/v1` trace (`SimTraceSchema`) keyed by its canonical-JSON sha256.
+`loadSims` reads the sim-model registry (`doctrine/sims/*.yaml`) and
+`checkSims` reports a model with no doctrine file, a file with no model, and a doctrine statistic the model never emits.
+`simCheck` passes a sim beat only when its run reproduces a gathered number fact within the doctrine tolerance, refusing a tolerance under 3 se, over a tenth of the claim, or on a fitted statistic, and
+`runSimPass` sweeps, freezes and checks every sim beat at resolve, which cuts the failing ones before tts behind the `sim-cut-orphan` gate.
+`reviewRounds` is the pilot model (`review-rounds`: round 1 passes with chance p1, later rounds with chance q, emitting mean reviews and the 5+ share, refusing a q under `MIN_LATER_PASS` or a prs over `MAX_REVIEW_PRS`), and
+`fitLaterRoundPass` solves q from a gathered 5+ share, which the doctrine lists in `fittedFrom`.
 `explainer guide types` writes each type's planner guide to `doctrine/guides/planner/<type>.md`.
 `explainer eval l1` and `l2` run the L1 judge and L2 viewer through a configured claude-print or codex judge, void any score without a verbatim quote, plant canaries in every call, and key rows by an `eval_version` over rubric, judge and fixtures.
 For pace evals, `fromScriptV1` and `fromSpikeScript` project a script to `PaceBeat`s (the items each beat puts on screen, their role from `CUE_KIND_ROLES`, and which are new),
@@ -1457,6 +1521,7 @@ Q-E12 (`seatRoutes`) and Q-E14 (`explainRoutes`) only route beats to the L1 judg
 `runItems` is that L1 item judge: one call per chapter over `itemRoutes` (explain, seat and list routes, nothing else), asking whether each routed item is explained, each routed beat seated, and which listed item is the odd one out;
 it voids any verdict without a verbatim quote, plants a name-only canary beat per call, and
 `explainer eval items` runs it three times by default under eval id `L1-items`.
+`varietyScriptCheck` (in `L0_CHECKS`) adds the script-only variety lints as warnings: `variety:hook-formula`, `variety:connector-share` (over 30 % of beats opening on so, but, then, and or now), `variety:cue-action` (one cue action across the script) and `variety:framing-run` when beats author `visual.framing`; `resolvedVarietyRows` holds the resolver's choices to the profile's component, template and framing limits at `checks:resolve`.
 `explainer eval pace` runs only those lints on a spike or script/v1 file, with heard durations from `--timing`, appends their rows and prints items a minute per chapter, then the reused beats to re-voice when there are any.
 To calibrate checks against labels, `LabelsSchema` parses a `labels/v1` labelled set (the v4 one is `fixtures/spike/redesign-explainer-v4/labels.json`) and
 `calibrate` scores structure rows against it: precision and recall per check, with borderline labels counting as neither, and recall on the owner-named beats over error-severity rows.
@@ -1489,14 +1554,31 @@ trued beat lengths,
 `words.json` with absolute word times,
 `voice.json`, and
 a per-beat take cache),
-then render, QA and contact sheets through a host bridge file of today's template commands (marked as bridged in every report row),
+then the render stage in process (`runRenderStage`: the template fill to a storyboard under beat-NN ids from `storyboardIds`, `compileTimeline`, the composition page with the style pack's CSS, `renderVideo` behind the run type's gate profile, a `duration-agreement` gate over the manifest and a reported `two-run` check, behind a `RenderEngine` seam),
+then the qa stage in process (`runQaStage`: render-qa's gate at the cue moments and the 2 Hz sweep in Chromium behind a `QaEngine` seam, the `doctrine/qa/gate-profile.yaml` verdict through `loadQaGate`, the probe and framediff behind the motion-happened, clipped-text, content-fill and stage-empty checks, the DIRECTION timing gates of `timing-gates.ts` with thresholds from the type profile's `pacing`, render-qa's `mediaScan` behind the reported black-frames, silence-2s and frozen-frames checks, and `qa.json` as `explainer.qa/v1` with findings by beat and anchor),
+then the sheets stage in process (`runSheetsStage`: ffprobe and ffmpeg through `ffmpegMedia`, `buildSidecar` for the theater's `video-meta@1` sidecar with an `explainer` block of video id, run ids, profile, script sha and fingerprint, and the poster),
+`fingerprintOf` and `layoutKey` give each beat its `component/slots/anchors` layout key for the variety lints,
 then a hard-linked export to the theater;
 every stage but export is its own `explainer.<stage>` child workflow behind a stage cache keyed on the input shas it reads, its settings and variant file, and a sample index;
+resolve builds each `layer: "custom"` beat's layer through claude-print by default, behind an esbuild compile gate and import allowlist, repairs a layer that fails the gate in one agent-chat round priced from the agent's transcript (when the host passes a repairer), and reuses an earlier run's build of an unchanged packet,
 `explainer stage` runs one stage from stored shas,
 `--from`/`--to`/`--pin` start and stop mid-pipeline,
 `--budget-usd` is a resumable hard stop,
 follow-up runs join the same video, and
 `explainer run report [--compare <runId>]` writes `run-report.md` with per-stage wall time, usd, tokens, retries, cache hits, output shas and the video's linked-run total.
+For an owner edit of a finished run, `SlotEditSchema` parses an `explainer.slot-edit/v1` (slot and tune fields per template beat, over a base run's script and render), and
+`applyEdit` applies it to the base script, refusing a stale base, an unknown or custom-layer beat and a slot change that drops an element a cue targets, and returns the new script and a field diff.
+`explainer edit check` prints that verdict with the slot-overrides gate, the template fill and the emphasis-target gate, and writes nothing,
+`explainer edit apply [--start]` stores the script and the ledger row `<dataDir>/edits/<editId>.json` and launches the linked run from resolve (script and custom layers pinned, a $0.25 backstop), and
+`explainer edit list` lists a render's or a video's edits with their linked run's status.
+`explainer props --mp4-sha <sha>` reads the run that exported a render and gives each kept template beat its slot JSON Schema, filled value with overrides, overridden fields, cue-locked ids, span and still time, plus whether a save can change the render (it can, now render draws from the fill).
+`compileTimeline` turns a storyboard and an optional words.json (its only reader) into the page's `timeline.json`: heard durations or planned ones with `provisional: true`, beat-local cue seconds for `word` or `word#n`, and slots parsed by `BEAT_SLOTS` until `@titan-design/beats` publishes; `writeTimeline` writes it as canonical JSON.
+`renderVideo` renders a served `__titanMotion` page for a `RenderTimeline` through `@titan-design/frame-capture` to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json`,
+mixing narration with `mixAudio` or, with none, a sample-exact `silentMix` and `draft: true`.
+`assertDurationAgreement` refuses a page and mix whose lengths differ by more than `DURATION_TOLERANCE_S`; `renderVideo` then deletes the mp4 and writes no manifest.
+`renderVideo` with `qa: { mode: "gate" }` runs render-qa's cue-moment gate (`src/qa/cue-gate.ts`, shared with the qa stage) before mixing; held errors write `qa.json` and throw `QaRefused`, leaving no mix, mp4 or manifest.
+`RenderManifestSchema` is `explainer.render-manifest/v1`: workers, frames, durations, draft, `qaGate` (`absent` with no `qa` option, `passed` with `qa: { heldErrors: 0, gateProfile }`, or `skipped`), a strict `RenderHostSchema` host with no hostname or paths (`collectRenderHost`), and the timeline, page, mix, mp4, vtt and words shas.
+`toVtt` and `captionCues` write WebVTT from timed words (42 characters or 8 words a cue, broken at sentence ends, held 0.3 s).
 
 Key exports:
 

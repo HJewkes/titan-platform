@@ -17,7 +17,7 @@ export type { CardRule } from "./card.js";
 export { audienceOf, forAudience } from "./audience.js";
 export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from "./deposit.js";
 export type { OwnerItemDeposit } from "./deposit.js";
-export { HOLD_CLASSES, opKeys, ownerOpSchema } from "./op.js";
+export { HOLD_CLASSES, MERGE_WAITS, opKeys, ownerOpSchema } from "./op.js";
 export type { OwnerOp, OwnerOpKind } from "./op.js";
 export { consolidate } from "./consolidate.js";
 export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockReason } from "./consolidate.js";
@@ -28,6 +28,8 @@ export { alarmKey, askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind
 export { collapseRepeats } from "./repeats.js";
 export type { RelationKeyKind } from "./keys.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
+export { PROMPT_LINE_BREAK, promptLine } from "./prompt-text.js";
+export type { PromptLineOptions } from "./prompt-text.js";
 export { rank } from "./rank.js";
 export { recheck } from "./recheck.js";
 export type { Recheck, RecheckCite, RecheckDrop, RecheckFlag, RecheckFlagKind } from "./recheck.js";

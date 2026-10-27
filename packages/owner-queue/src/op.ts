@@ -10,13 +10,19 @@ const configPath = z.string().max(200).regex(/^[A-Za-z][\w-]*(\.[A-Za-z][\w-]*)*
 export const HOLD_CLASSES = ["g10", "owner-asked"] as const;
 
 /**
+ * A merge-at-head that waits out a g10 hold: the owner approves now, and the merge goes through only once the adversary
+ * loop closes with MERGE at the same head. Absent, the merge goes past the hold.
+ */
+export const MERGE_WAITS = ["adversary-loop"] as const;
+
+/**
  * The typed target of an owner action. It names what to act on and is never authority: the
  * system of record re-reads every field at tap time, so a deposit that lies only gets `moved`.
  */
 export const ownerOpSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("resolve-gate"), gateId: name, headSha, decision: name }),
   z.strictObject({ kind: z.literal("release-hold"), repo, pr, headSha, holdClass: z.enum(HOLD_CLASSES) }),
-  z.strictObject({ kind: z.literal("merge-at-head"), repo, pr, headSha }),
+  z.strictObject({ kind: z.literal("merge-at-head"), repo, pr, headSha, waitFor: z.enum(MERGE_WAITS).optional() }),
   z.strictObject({ kind: z.literal("close-pr"), repo, pr, headSha }),
   z.strictObject({ kind: z.literal("factory-config-set"), path: configPath, value: z.json(), expectFrom: z.json().optional() }),
   z.strictObject({ kind: z.literal("deploy-pause-clear"), pausedAt: z.iso.datetime({ offset: true }), target: name }),

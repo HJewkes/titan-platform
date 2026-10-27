@@ -1,7 +1,6 @@
 import { FileListTruncatedError, PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import { pathTouches } from "@titan-design/review-panel";
 import { SHEPHERD_ACTOR } from "./events.js";
-import { SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
+import { shepherdPathTouches } from "./g10-class-rules.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
@@ -42,12 +41,12 @@ interface HoldFiles {
 }
 
 /**
- * The panel matches a file's new path only, so a rename's old path is classed as a file of its own: renaming a policy file
- * away keeps its class. Only path touches count, so a kind alone (security or unread) names no hold.
+ * The panel matches a rename's old path too, so renaming a policy file away keeps its class. Only path touches count, so a
+ * kind alone (security or unread) names no hold.
  */
 function signoffFactsOf(files: readonly PrFile[]): { touches: string[]; paths: string[] } {
   const paths = files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]));
-  return { touches: pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES), paths };
+  return { touches: shepherdPathTouches(files), paths };
 }
 
 /** Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness reviewer instead. */
