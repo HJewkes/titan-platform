@@ -43,7 +43,7 @@ function LineChart({ slots, reveal, colours }: ChartViewProps) {
     ...(colours[i] === undefined ? {} : { colour: colours[i] }),
   }));
   const heading = { ...(slots.title === undefined ? {} : { title: slots.title }), ...(slots.unit === undefined ? {} : { unit: slots.unit }) };
-  return <GraphFrame {...heading} points={points} growAtS={growAtS} frame={axisFrame(slots)} />;
+  return <GraphFrame {...heading} points={points} growAtS={growAtS} frame={axisFrame(slots)} legend={slots.legend ?? false} />;
 }
 
 const VIEWS: Partial<Record<ChartSlots["kind"], ChartView>> = { bar: BarChart, line: LineChart };
