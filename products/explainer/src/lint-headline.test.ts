@@ -50,6 +50,7 @@ describe("Q-D7 assertion headlines", () => {
   it("fails a topic label and a bare imperative, naming the beat", () => {
     expect(hasSubjectAndVerb("The courier's parcel route")).toBe(false);
     expect(hasSubjectAndVerb("Check the ledger")).toBe(false);
+    expect(hasSubjectAndVerb("Checks the ledger", () => ["VBZ", "DT", "NN"])).toBe(false);
     expect(assertionRow("Ledger lookups at the desk").row).toMatchObject({ pass: false, detail_beats: ["w2"] });
   });
 
