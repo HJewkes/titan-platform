@@ -10,7 +10,7 @@ import { loadQaGate } from "../qa/gate-profile.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { timelineFromArtifact } from "../qa/qa-timeline.js";
 import { buildPage, fixtureDurationS, kindsTimeline, renderFrames, servePage, STAGE, type PageServer, type Render } from "./page.test-helpers.js";
-import { writeParitySheet } from "./parity-sheet.js";
+import { sheetKind, writeParitySheet } from "./parity-sheet.js";
 import { resolveBeat } from "./registry.js";
 import type { TimelineBeat } from "./timeline.js";
 
@@ -133,6 +133,42 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     }
   });
 
+  // Mutation: draw every chart kind past bar as a line; a gauge then renders as a line chart and the page opens.
+  test("a chart of a kind with no view (gauge) fails the page and names the kind", async () => {
+    const browser = await launch();
+    try {
+      const open = openCapturePage(browser, server.url("index.html", "/timelines/gauge-chart.timeline.json"), STAGE);
+
+      await assert.rejects(open, /page error while loading: chart kind "gauge" is not drawn yet; drawn kinds: bar, line/);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  // Mutation: let the arch-map take any node count; six nodes then fail as a stage overflow, not as this refusal.
+  test("an arch-map of six nodes is refused, since the path holds two to five", async () => {
+    const browser = await launch();
+    try {
+      const open = openCapturePage(browser, server.url("index.html", "/timelines/six-node-map.timeline.json"), STAGE);
+
+      await assert.rejects(open, /page error while loading: arch-map draws 2 to 5 nodes, not 6/);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  // Mutation: skip the edge check; the map_state map with no edges then draws Ledger -> Scanner and the page opens.
+  test("an arch-map whose edges are not the node path is refused, so no link is drawn that the map lacks", async () => {
+    const browser = await launch();
+    try {
+      const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
+
+      await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test("a provisional timeline is stamped DRAFT and a spoken one is not", async () => {
     const browser = await launch();
     try {
@@ -191,7 +227,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     try {
       const sheet = await writeParitySheet(pageDir, kindsTimeline(), outDir);
 
-      const kinds = [...new Set(kindsTimeline().beats.map((beat) => beat.kind))];
+      const kinds = [...new Set(kindsTimeline().beats.map(sheetKind))];
       assert.deepEqual(sheet.frames.map((f) => f.file), kinds.flatMap((k) => [`kind-${k}-first.png`, `kind-${k}-settled.png`]));
       assert.deepEqual(sheet.frames.filter((f) => f.tag === "settled" && f.inkShare < INK_FLOOR).map((f) => f.kind), []);
       assert.ok(statSync(join(outDir, sheet.sheet)).size > 0);

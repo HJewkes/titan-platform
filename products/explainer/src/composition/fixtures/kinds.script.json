@@ -148,6 +148,116 @@
    }
   },
   {
+   "id": "d8",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "The floor merged 14 changes, the cache hit 92 percent, and 3 lanes stayed green.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "The floor merged more than it took in",
+    "job": "numbers",
+    "beat": "stat",
+    "labels": [
+     "Merged 14",
+     "Cache hits 92%",
+     "Green lanes 3"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "figures-1",
+      "atCue": "14"
+     },
+     {
+      "action": "V6",
+      "target": "figures-2",
+      "atCue": "92"
+     },
+     {
+      "action": "V6",
+      "target": "figures-3",
+      "atCue": "3"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d9",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "By lane, router merged six, cache merged four, and docs merged two.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "The router lane merged the most",
+    "job": "numbers",
+    "beat": "chart",
+    "labels": [
+     "router: 6",
+     "cache: 4",
+     "docs: 2"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "series-1",
+      "atCue": "router"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d10",
+   "chapter": "ch2",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 7,
+   "spoken": "This week merges went from three to five, dipped to four, rose to seven, and held at six.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Merges climbed through the week",
+    "job": "numbers",
+    "beat": "chart",
+    "labels": [
+     "2026-10-19: 3",
+     "2026-10-20: 5",
+     "2026-10-21: 4",
+     "2026-10-22: 7",
+     "2026-10-23: 6"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "series-1",
+      "atCue": "three"
+     },
+     {
+      "action": "V6",
+      "target": "series-2",
+      "atCue": "five"
+     },
+     {
+      "action": "V6",
+      "target": "series-3",
+      "atCue": "four"
+     },
+     {
+      "action": "V6",
+      "target": "series-4",
+      "atCue": "seven"
+     },
+     {
+      "action": "V6",
+      "target": "series-5",
+      "atCue": "six"
+     }
+    ]
+   }
+  },
+  {
    "id": "d4",
    "chapter": "ch3",
    "function": "WHAT",
@@ -173,6 +283,90 @@
       "action": "V6",
       "target": "facts-2",
       "atCue": "flaky"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d11",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 7,
+   "spoken": "We ran one shared queue, now five small lanes; the backlog ran past midnight, now it clears by ten.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Lanes cleared the backlog the queue left",
+    "job": "numbers",
+    "beat": "compare",
+    "labels": [
+     "before: One shared queue",
+     "after: Five small lanes",
+     "before: Backlog past midnight",
+     "after: Clear by ten"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "rows-1",
+      "atCue": "shared"
+     },
+     {
+      "action": "V6",
+      "target": "rows-2",
+      "atCue": "lanes"
+     },
+     {
+      "action": "V6",
+      "target": "rows-3",
+      "atCue": "backlog"
+     },
+     {
+      "action": "V6",
+      "target": "rows-4",
+      "atCue": "clears"
+     }
+    ]
+   }
+  },
+  {
+   "id": "d12",
+   "chapter": "ch4",
+   "function": "WHAT",
+   "mode": "explain",
+   "plannedS": 6,
+   "spoken": "Work moves from intake to the router, into a lane, and out through merge.",
+   "fact_ids": [],
+   "visual": {
+    "assertion": "Every change walks the same four stops",
+    "job": "numbers",
+    "beat": "arch-map",
+    "labels": [
+     "Intake",
+     "Router",
+     "Lane",
+     "Merge"
+    ],
+    "cues": [
+     {
+      "action": "V6",
+      "target": "nodes-1",
+      "atCue": "intake"
+     },
+     {
+      "action": "V6",
+      "target": "nodes-2",
+      "atCue": "router"
+     },
+     {
+      "action": "V6",
+      "target": "nodes-3",
+      "atCue": "lane"
+     },
+     {
+      "action": "V6",
+      "target": "nodes-4",
+      "atCue": "merge"
      }
     ]
    }

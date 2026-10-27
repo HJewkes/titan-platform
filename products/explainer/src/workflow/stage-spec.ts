@@ -27,7 +27,7 @@ import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x11", rewrite: "x6", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "m10", qa: "x10f", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x11", rewrite: "x6", eval: "x6", resolve: "p5c2s2f2s2b", tts: "p6b", render: "m10c4", qa: "x10f", sheets: "x10",
 };
 
 /** The artifacts each stage reads. */
@@ -39,7 +39,7 @@ const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
   script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
-  render: ["code", "slots", "generated-slots"], qa: ["visual", "code", "slots"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
+  render: ["code", "slots", "generated-slots", "custom-layers"], qa: ["visual", "code", "slots"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
 };
 
 /** A stage variant file: settings for one stage, whose content hash goes into the stage key. */

@@ -34,7 +34,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "build:page": "vite build -c src/composition/vite.config.ts",
-    "page:sheet": "esbuild src/composition/parity-sheet-cli.ts --bundle --platform=node --format=esm --packages=external --log-level=warning --outfile=dist/sheet/page-sheet.mjs && node dist/sheet/page-sheet.mjs"
+    "page:sheet": "esbuild src/composition/parity-sheet-cli.ts --bundle --platform=node --format=esm --packages=external --log-level=warning --outfile=dist/sheet/page-sheet.mjs && node dist/sheet/page-sheet.mjs",
+    "page:pairs": "esbuild src/composition/pair-sheet-cli.ts --bundle --platform=node --format=esm --packages=external --log-level=warning --outfile=dist/sheet/page-pairs.mjs && node dist/sheet/page-pairs.mjs",
+    "render:smoke": "esbuild src/render/render-smoke-cli.ts --bundle --platform=node --format=esm --packages=external --log-level=warning --outfile=dist/render-smoke.mjs && node dist/render-smoke.mjs"
   },
   "dependencies": {
     "@titan-design/agent": "workspace:^",

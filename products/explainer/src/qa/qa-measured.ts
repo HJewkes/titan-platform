@@ -3,7 +3,7 @@ import type { Stage } from "../anchor-grid.js";
 import { clippedText, type MeasuredText } from "../clip-checks.js";
 import { contentFillFindings } from "../content-fill.js";
 import { anchorFindings, type QaFinding } from "../occupancy-checks.js";
-import { buildOccupancy, type OccupancyTable } from "../occupancy-table.js";
+import { buildOccupancy, CUSTOM_LAYER_ELEMENT, type BeatLayout, type OccupancyTable } from "../occupancy-table.js";
 import { emptyStageRuns, type StageMoment } from "../stage-empty-checks.js";
 import type { MeasuredFinding } from "./qa-report.js";
 import type { QaTimeline } from "./qa-timeline.js";
@@ -47,10 +47,20 @@ function fillFindings(settled: readonly ProbedMoment[], stage: Stage): QaFinding
   });
 }
 
-/** One DOM occupancy table per settled moment, keyed by the probe's element names, which the findings name too. */
-function occupancy(settled: readonly ProbedMoment[], stage: Stage): OccupancyTable[] {
+/** Each custom-layer beat's declared anchors, which place its layer in the occupancy table where its DOM may not. */
+export const layerLayouts = (timeline: QaTimeline): BeatLayout[] =>
+  timeline.beats.flatMap((beat) => (beat.layer === "custom" && beat.anchors ? [{ beat: beat.id, layer: beat.layer, anchors: beat.anchors }] : []));
+
+/** One occupancy table per settled moment, keyed by the probe's element names, which the findings name too. */
+function occupancy(timeline: QaTimeline, settled: readonly ProbedMoment[], stage: Stage): OccupancyTable[] {
   const marks = settled.map((m) => ({ beat: m.beat, t: m.t, elements: contentBoxes(m).map((box) => ({ id: box.element, box: box.box })) }));
-  return buildOccupancy({ stage, layouts: [], marks });
+  return buildOccupancy({ stage, layouts: layerLayouts(timeline), marks });
+}
+
+/** A finding on a custom-layer beat that names no element of its own is the layer's, so it reports the layer's anchors. */
+function layerOwned(timeline: QaTimeline, findings: readonly QaFinding[]): QaFinding[] {
+  const custom = new Set(layerLayouts(timeline).map((layout) => layout.beat));
+  return findings.map((finding) => (custom.has(finding.beat) && !finding.elements?.length && !finding.box ? { ...finding, elements: [CUSTOM_LAYER_ELEMENT] } : finding));
 }
 
 /**
@@ -67,7 +77,7 @@ export function measuredFindings(input: MeasuredInput): MeasuredFinding[] {
     ...fillFindings(settled, input.stage),
     ...emptyStageRuns(input.probed.map(stageMoment), { x: 0, y: 0, ...input.stage }),
   ];
-  return anchorFindings(findings, occupancy(settled, input.stage), input.stage).map((anchored, i) => {
+  return anchorFindings(layerOwned(input.timeline, findings), occupancy(input.timeline, settled, input.stage), input.stage).map((anchored, i) => {
     const { t } = findings[i]!;
     return { code: anchored.code, severity: anchored.severity, beat: anchored.beat, ...(t === undefined ? {} : { t }), anchors: anchored.anchors, message: anchored.message };
   });

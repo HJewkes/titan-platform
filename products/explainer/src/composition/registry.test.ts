@@ -17,10 +17,6 @@ const SHOWCASE_KINDS = new Set(["catalogue"]);
  * TP-4276 slice removes the kinds it ports; an entry the registry now draws fails the fence, so the list only shrinks.
  */
 const NOT_DRAWN: Readonly<Record<string, string>> = {
-  stat: "P2b ports StatBeat",
-  chart: "P2b ports BarChartBeat (bar) and GraphBeat (line); spark and gauge throw",
-  compare: "P2b ports CompareBeat",
-  "arch-map": "P2b ports ArchMapBeat with flow.ts",
   "metrics-panel": "pin-only, falls back to list; ScorecardTable port is TP-4277",
   "kanban-flow": "pin-only, falls back to list; no component anywhere yet (design first, TP-4277)",
   stakes: "TP-4277 (P4a) ports StatBeat for it",
@@ -75,7 +71,7 @@ const shippedPageKinds = (): Map<string, Set<string>> =>
 
 describe("the composition page's beat registry", () => {
   test("an unknown kind throws and names the kinds it knows", () => {
-    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, catalogue$/);
+    assert.throws(() => resolveBeat("hologram"), /^Error: unknown beat kind "hologram"; known kinds: hook, held, list, verdict-card, fact-flash, claim-card, button, outro, stat, chart, compare, arch-map, catalogue$/);
   });
 
   test("an inherited property name is not a beat kind", () => {
@@ -131,7 +127,7 @@ describe("registry keys against the doctrine beat specs", () => {
 });
 
 describe("profile coverage fence", () => {
-  // Mutation: delete an entry (stat) from NOT_DRAWN; daily-overview can emit stat and nothing draws it.
+  // Mutation: delete an entry (stakes) from NOT_DRAWN; pr can emit stakes and nothing draws it.
   test("every spec type a shipped profile can put on the page is registered or on NOT_DRAWN", () => {
     const uncovered = [...shippedPageKinds()].flatMap(([type, kinds]) =>
       [...kinds].filter((kind) => !Object.hasOwn(NOT_DRAWN, kind) && !registeredKinds().includes(kind)).map((kind) => `${type}: ${kind}`),
@@ -148,12 +144,12 @@ describe("profile coverage fence", () => {
     assert.deepEqual(stale, []);
   });
 
-  test("daily-overview's undrawn kinds are the ones it can emit", () => {
+  test("daily-overview's undrawn kinds are only the pin-only ones", () => {
     const daily = shippedPageKinds().get("daily-overview") ?? new Set<string>();
 
     const undrawn = [...daily].filter((kind) => !registeredKinds().includes(kind)).sort();
 
-    assert.deepEqual(undrawn, ["arch-map", "chart", "compare", "kanban-flow", "stat"]);
+    assert.deepEqual(undrawn, ["kanban-flow"]);
   });
 });
 

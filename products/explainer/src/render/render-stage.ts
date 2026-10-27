@@ -9,6 +9,7 @@ import type { Check, StageOutcome } from "../workflow/records.js";
 import { renameWordsBeats } from "./beat-ids.js";
 import { compileTimeline, writeTimeline } from "./compile-timeline.js";
 import { defaultCompositionPage, servePage, treeSha, type BuiltPage } from "./composition-page.js";
+import { stageCustomLayers, withCustomLayers, type PageLayer } from "./custom-layers.js";
 import { renderBoard } from "./render-board.js";
 import { renderVideo, RenderWordsSchema, type RenderInput, type RenderResult, type RenderWords } from "./render-video.js";
 
@@ -44,6 +45,7 @@ interface Prepared {
 }
 
 const STYLE_FILE = "style-pack.css";
+const CUSTOM_LAYERS = "custom-layers";
 const STEM = "render";
 
 function need(input: RenderStageInput, name: string): string {
@@ -65,23 +67,37 @@ function linkedWavs(input: RenderStageInput, ids: ReadonlyMap<string, string>, s
 }
 
 /** The page tree render serves and qa serves again: the built page, with the style pack's sheet linked from its head. */
-function stagedPage(built: BuiltPage, styleCss: string | undefined, dir: string): string {
+function stagedPage(built: BuiltPage, styleCss: string | undefined, dir: string): void {
   cpSync(built.dir, dir, { recursive: true });
   if (styleCss !== undefined) {
     writeFileSync(path.join(dir, STYLE_FILE), `:root { ${styleCss} }\n`);
     const index = path.join(dir, "index.html");
     writeFileSync(index, readFileSync(index, "utf8").replace("</head>", `<link rel="stylesheet" href="./${STYLE_FILE}" /></head>`));
   }
-  return treeSha(dir);
+}
+
+/**
+ * The custom beats' layers, bundled into the page tree. A run with no built tree draws them from their template spec,
+ * with a note; a tree that lacks one of them throws.
+ */
+async function pageLayers(input: RenderStageInput, custom: ReadonlyMap<string, string>, scratch: string, pageDir: string): Promise<{ layers: Map<string, PageLayer>; notes: string[] }> {
+  if (custom.size === 0) return { layers: new Map(), notes: [] };
+  const sha = input.artifacts[CUSTOM_LAYERS];
+  if (sha === undefined) return { layers: new Map(), notes: [`no custom-layers tree, so custom beats are drawn from their template spec: ${[...custom.keys()].join(", ")}`] };
+  const treeDir = path.join(scratch, CUSTOM_LAYERS);
+  input.store.materialise(sha, treeDir);
+  const layers = await stageCustomLayers(treeDir, custom, pageDir);
+  return { layers, notes: [`${layers.size} custom layers drawn`] };
 }
 
 async function prepare(input: RenderStageInput, config: RenderConfig, engine: RenderEngine, scratch: string): Promise<Prepared> {
-  const { board, extras, ids, notes } = renderBoard(input);
+  const { board, extras, ids, custom } = renderBoard(input);
   const words = renameWordsBeats(json(input, "words"), ids);
-  const timeline = compileTimeline(board, words, { extras });
   const pageDir = path.join(scratch, "page");
-  const pageSha = stagedPage(await engine.page(), config.styleCss, pageDir);
-  return { timeline, pageDir, pageSha, audio: { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) }, notes };
+  stagedPage(await engine.page(), config.styleCss, pageDir);
+  const { layers, notes } = await pageLayers(input, custom, scratch, pageDir);
+  const timeline = withCustomLayers(compileTimeline(board, words, { extras }), layers);
+  return { timeline, pageDir, pageSha: treeSha(pageDir), audio: { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) }, notes };
 }
 
 async function renderOnce(run: Prepared, config: RenderConfig, engine: RenderEngine, outDir: string): Promise<RenderResult> {

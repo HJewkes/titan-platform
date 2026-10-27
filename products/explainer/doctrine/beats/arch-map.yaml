@@ -2,7 +2,7 @@ schema: beat-spec/v1
 type: arch-map
 summary: "The system's parts and how they connect; the map later beats return to."
 role: explain
-component: { name: MapBeat, maturity: spike }
+component: { name: ArchMapBeat, maturity: spike }
 slots: map
 speech: { band: concept }
 durationS: [10, 18, 40]

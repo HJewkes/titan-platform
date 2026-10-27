@@ -38,6 +38,15 @@
       "kills": [
         "qa stage clipped-text fails the X3 b20 headline whose third line its band cuts, anchored on the cells the headline sits on"
       ]
+    },
+    {
+      "name": "qa occupancy tables ignore the layers' declared anchors",
+      "file": "products/explainer/src/qa/qa-measured.ts",
+      "find": "layouts: layerLayouts(timeline), marks",
+      "replace": "layouts: [], marks",
+      "kills": [
+        "qa stage motion-happened reports a still custom-layer beat by the anchors its layer declares"
+      ]
     }
   ]
 }

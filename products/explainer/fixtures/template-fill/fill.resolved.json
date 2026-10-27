@@ -124,7 +124,7 @@
       "row": "numbers",
       "beat": "arch-map",
       "component": {
-        "name": "MapBeat",
+        "name": "ArchMapBeat",
         "maturity": "spike"
       },
       "band": "concept",

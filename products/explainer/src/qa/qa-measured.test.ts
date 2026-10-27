@@ -47,6 +47,16 @@ describe("qa stage motion-happened", () => {
     expect(report.pass).toBe(false);
   });
 
+  // Mutation: qa-measured builds its tables with `layouts: []`; the layer's cells never reach the report.
+  it("reports a still custom-layer beat by the anchors its layer declares", async () => {
+    const b2Start = 4 * RENDER_FPS;
+    const layered = { ...TWO_BEATS, beats: [TWO_BEATS.beats[0], { ...TWO_BEATS.beats[1], layer: "custom", module: "./custom-layers/b2.js", anchors: ["B2:C3"] }] };
+
+    const { report } = await harness.run({ diffAt: (n) => (n > b2Start ? 0 : 0.02) }, { timeline: layered });
+
+    expect(report.measured.filter((f) => f.code === "motion-happened")).toEqual([expect.objectContaining({ beat: "b2", anchors: ["B2", "C2", "B3", "C3"] })]);
+  });
+
   it("passes when every beat moves before its settled sample", async () => {
     const { report, checks } = await harness.run({}, { timeline: TWO_BEATS });
 
