@@ -43,7 +43,17 @@ export interface VisualDelta {
   harness: string[];
   /** Why the changed files could not be read, so nothing here was matched. */
   unread?: string;
+  /** How many entries past each list's cap were left out, so a capped list still says it is not whole. */
+  omitted?: Partial<Record<"snapshots" | "api" | "tokens" | "harness", number>>;
 }
+
+/**
+ * The record is posted whole in the evidence comment, which GitHub caps at 65,536 characters, so every list and string
+ * is bounded: at most 40 snapshots and 20 paths per list, each string at most 300 characters.
+ */
+const SHOWN_SNAPSHOTS = 40;
+const SHOWN_PATHS = 20;
+const MAX_TEXT = 300;
 
 interface VisualDeltaTarget {
   repo: RepoSlug;
@@ -139,8 +149,31 @@ async function measurePairs(port: GitHubPort, target: VisualDeltaTarget, pairs: 
   return { mergeBase: base.sha, measured };
 }
 
-/** Both sides of every rename, so moving a public API report or token file away still counts as changing it. */
-const bothSides = (files: readonly PrFile[]): string[] => files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
+/** Both sides of every rename, once each, so moving a public API report or token file away still counts as changing it. */
+const bothSides = (files: readonly PrFile[]): string[] => [...new Set(files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath])))];
+
+const clip = (text: string): string => (text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text);
+
+/** Unmeasured and removed shots first, then the largest shares, then added shots, so a capped list keeps what gates. */
+const RANK: Record<SnapshotStatus, number> = { unmeasured: 0, removed: 1, changed: 2, added: 3 };
+const byWeight = (a: SnapshotDelta, b: SnapshotDelta): number => RANK[a.status] - RANK[b.status] || (b.share ?? 0) - (a.share ?? 0);
+
+const clipSnapshot = ({ path, component, reason, ...rest }: SnapshotDelta): SnapshotDelta => ({ path: clip(path), component: clip(component), ...rest, ...(reason !== undefined && { reason: clip(reason) }) });
+
+type Lists = Pick<VisualDelta, "snapshots" | "api" | "tokens" | "harness">;
+
+/** Caps each list and clips each string, counting what was left out; the policy and merge base stay whole. */
+function bounded(lists: Lists): Lists & Pick<VisualDelta, "omitted"> {
+  const omitted: NonNullable<VisualDelta["omitted"]> = {};
+  const cap = <T>(key: keyof Lists, items: readonly T[], limit: number): T[] => {
+    if (items.length > limit) omitted[key] = items.length - limit;
+    return items.slice(0, limit);
+  };
+  const snapshots = cap("snapshots", [...lists.snapshots].sort(byWeight), SHOWN_SNAPSHOTS).map(clipSnapshot);
+  const paths = (key: "api" | "tokens" | "harness") => cap(key, lists[key], SHOWN_PATHS).map(clip);
+  const shown = { snapshots, api: paths("api"), tokens: paths("tokens"), harness: paths("harness") };
+  return { ...shown, ...(Object.keys(omitted).length > 0 && { omitted }) };
+}
 
 /**
  * Reads the PR's visual delta at `target.head` from its pinned file list; `files` is a string when that list could not
@@ -150,16 +183,18 @@ const bothSides = (files: readonly PrFile[]): string[] => files.flatMap((file) =
 export async function readVisualDelta(port: GitHubPort, target: VisualDeltaTarget, files: readonly PrFile[] | string, threshold: VisualThreshold): Promise<VisualDelta> {
   const pixelTolerance = threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE;
   const policy = { mode: threshold.mode, maxChangedShare: threshold.maxChangedShare ?? DEFAULT_MAX_CHANGED_SHARE, pixelTolerance };
-  if (typeof files === "string") return { policy, mergeBase: null, snapshots: [], api: [], tokens: [], harness: [], unread: files };
+  if (typeof files === "string") return { policy, mergeBase: null, snapshots: [], api: [], tokens: [], harness: [], unread: clip(files) };
   const paths = bothSides(files);
   const { listed, pairs } = sortSnapshots(files, caseFoldedMatcher(threshold.snapshotPaths));
   const { mergeBase, measured } = await measurePairs(port, target, pairs, threshold, listed.length + pairs.length);
   return {
     policy,
     mergeBase,
-    snapshots: [...measured, ...listed],
-    api: paths.filter(caseFoldedMatcher(threshold.apiPaths)),
-    tokens: visualMatches(paths, threshold.tokenPaths),
-    harness: paths.filter(caseFoldedMatcher(threshold.harnessPaths)),
+    ...bounded({
+      snapshots: [...measured, ...listed],
+      api: paths.filter(caseFoldedMatcher(threshold.apiPaths)),
+      tokens: visualMatches(paths, threshold.tokenPaths),
+      harness: paths.filter(caseFoldedMatcher(threshold.harnessPaths)),
+    }),
   };
 }

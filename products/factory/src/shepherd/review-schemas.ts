@@ -81,6 +81,7 @@ const VisualDeltaSchema = z.looseObject({
   tokens: z.array(z.string()),
   harness: z.array(z.string()),
   unread: z.string().optional(),
+  omitted: z.looseObject({ snapshots: z.number().optional(), api: z.number().optional(), tokens: z.number().optional(), harness: z.number().optional() }).optional(),
 });
 
 const EvidenceRecordSchema = z.looseObject({

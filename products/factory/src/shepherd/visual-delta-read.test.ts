@@ -3,6 +3,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
+import { evidenceComment } from "./evidence-comment.js";
 import { mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import { MergeEvidenceSchema } from "./review-schemas.js";
 import type { VisualThreshold } from "./visual-delta-read.js";
@@ -87,7 +88,7 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
 
     const capped = await evidence(githubPort(world(files).wire), { ...THRESHOLD, maxSnapshots: 2 });
 
-    expect(capped.record.visualDelta?.snapshots.map((s) => [s.component, s.status])).toEqual([["card", "unmeasured"], ["new", "added"], ["old", "removed"]]);
+    expect(capped.record.visualDelta?.snapshots.map((s) => [s.component, s.status])).toEqual([["card", "unmeasured"], ["old", "removed"], ["new", "added"]]);
     expect(capped.record.visualDelta?.snapshots[0]?.reason).toBe("3 changed snapshots are over the cap of 2");
   });
 
@@ -97,7 +98,21 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
 
     const { record } = await evidence(githubPort(world(files, { [`${MERGE_BASE}:${OLD}`]: card(), [`${HEAD}:${SHOT}`]: card(true) }).wire), THRESHOLD);
 
-    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.share])).toEqual([["card", "changed", 0.01], ["b", "removed", undefined]]);
+    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.share])).toEqual([["b", "removed", undefined], ["card", "changed", 0.01]]);
+  });
+
+  it("keeps the evidence comment under 60,000 characters when a PR regenerates hundreds of snapshots, counting what it leaves out", async () => {
+    const long = "x".repeat(400);
+    const shot = (i: number) => `ui/visual/stories.spec.ts-snapshots/${long}-${i}--default-chromium-linux.png`;
+    const added = Array.from({ length: 400 }, (_, i) => ({ path: shot(i), status: "added" }));
+    const reports = Array.from({ length: 400 }, (_, i) => ({ path: `ui/api/${long}-${i}.api.md`, status: "modified" }));
+    const files = [...added, { path: shot(999), status: "removed" }, ...reports];
+
+    const { record } = await evidence(githubPort(world(files).wire), THRESHOLD);
+
+    expect(evidenceComment(record).length).toBeLessThan(60_000);
+    expect(record.visualDelta?.omitted).toEqual({ snapshots: 361, api: 380 });
+    expect(record.visualDelta?.snapshots[0]?.status).toBe("removed");
   });
 
   it("matches the public API, token and harness paths, a token test aside", async () => {
