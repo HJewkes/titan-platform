@@ -65,7 +65,9 @@ const PACKAGE_NAME = "@titan-design/explainer";
 
 const isExplainerPackage = (dir: string): boolean => {
   const manifest = path.join(dir, "package.json");
-  return existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as { name?: unknown }).name === PACKAGE_NAME;
+  if (!existsSync(manifest)) return false;
+  const parsed: unknown = JSON.parse(readFileSync(manifest, "utf8"));
+  return typeof parsed === "object" && parsed !== null && "name" in parsed && parsed.name === PACKAGE_NAME;
 };
 
 /**
