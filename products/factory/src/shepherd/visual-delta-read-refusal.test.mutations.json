@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a PNG declaring more than maxPixels is decoded",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "if (pixels > m.maxPixels) return",
+      "replace": "if (pixels > Infinity) return",
+      "kills": [
+        "the visual delta reader on what a PR commits refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced"
+      ]
+    },
+    {
+      "name": "a configured maxPixels is ignored for the default pixel cap",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "maxPixels: threshold.maxPixels ?? DEFAULT_MAX_PIXELS,",
+      "replace": "maxPixels: DEFAULT_MAX_PIXELS,",
+      "kills": [
+        "the visual delta reader on what a PR commits refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced"
+      ]
+    },
+    {
+      "name": "an interlaced PNG is inflated with no limit",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "return header[28] === 0 ? undefined :",
+      "replace": "return true ? undefined :",
+      "kills": [
+        "the visual delta reader on what a PR commits refuses before decoding a PNG whose header declares more than maxPixels, or that is interlaced"
+      ]
+    },
+    {
+      "name": "a file renamed into the snapshot paths is measured against a base path it never had",
+      "file": "products/factory/src/shepherd/visual-delta-read.ts",
+      "find": "if (file.status === \"added\" || (file.previousPath !== undefined && from === undefined))",
+      "replace": "if (file.status === \"added\")",
+      "kills": [
+        "the visual delta reader on what a PR commits reads a file renamed into the snapshot paths as added, never pairing it with a base path it did not have"
+      ]
+    }
+  ]
+}
