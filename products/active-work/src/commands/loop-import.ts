@@ -28,7 +28,8 @@ async function readSeed(file: string): Promise<TierSeed> {
   try {
     parsed = JSON.parse(await fs.readFile(file, 'utf8'));
   } catch (err) {
-    throw new ValidationError(`Could not read the tier seed ${file}: ${(err as Error).message}`);
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new ValidationError(`Could not read the tier seed ${file}: ${reason}`);
   }
   const seed = TierSeedSchema.safeParse(parsed);
   if (!seed.success) throw new ValidationError(`Tier seed ${file}: ${seed.error.message}`);

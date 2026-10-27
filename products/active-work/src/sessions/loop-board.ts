@@ -27,7 +27,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export const LoopSourceSchema = z.enum(['ledger', 'session', 'handoff', 'teleport']);
 
-export const BoardLoopSchema = z.object({
+const BoardLoopSchema = z.object({
   id: z.string(),
   title: z.string(),
   initiative: z.string(),
@@ -49,9 +49,9 @@ export const BoardLoopSchema = z.object({
   source: LoopSourceSchema,
   sessionRef: z.string().nullable(),
 });
-export type BoardLoop = z.infer<typeof BoardLoopSchema>;
+type BoardLoop = z.infer<typeof BoardLoopSchema>;
 
-export const BoardTreeNodeSchema = z.object({
+const BoardTreeNodeSchema = z.object({
   id: z.string(),
   title: z.string(),
   goal: z.string(),
@@ -66,7 +66,7 @@ export const BoardTreeNodeSchema = z.object({
     highChurnNoProgress: z.boolean(),
   }),
 });
-export type BoardTreeNode = z.infer<typeof BoardTreeNodeSchema>;
+type BoardTreeNode = z.infer<typeof BoardTreeNodeSchema>;
 
 export const LoopBoardSchema = z.object({
   ledger: z.object({ path: z.string(), mtime: z.string().nullable() }).nullable(),
@@ -81,7 +81,7 @@ export const LoopBoardSchema = z.object({
 });
 export type LoopBoard = z.infer<typeof LoopBoardSchema>;
 
-export interface SessionLoopSet {
+interface SessionLoopSet {
   initiative: string;
   loops: OpenLoop[];
   /** Task id -> done, for the initiative's own tasks. */
@@ -138,12 +138,12 @@ function ledgerLoop(row: LedgerLoop, now: Date): BoardLoop {
 }
 
 function issueText(error: z.ZodError): string {
-  const issue = error.issues[0]!;
+  const issue = error.issues[0];
   return `${issue.path.join('.') || '(row)'}: ${issue.message}`;
 }
 
 function rowLabel(row: unknown, index: number): string {
-  const id = (row as { id?: unknown } | null)?.id;
+  const id = typeof row === 'object' && row !== null && 'id' in row ? row.id : undefined;
   return typeof id === 'string' && id.length > 0 ? `ledger row ${id}` : `ledger row ${index + 1}`;
 }
 
@@ -255,22 +255,20 @@ function parseOrWarn(text: string, label: string, warnings: string[]): unknown {
   try {
     return YAML.parse(text) as unknown;
   } catch (err) {
-    warnings.push(`Could not parse ${label}: ${(err as Error).message}`);
+    warnings.push(`Could not parse ${label}: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
 
-function listOf(value: unknown, key: string): unknown[] | null {
-  const list = (value as Record<string, unknown> | null)?.[key];
-  return Array.isArray(list) ? (list as unknown[]) : null;
-}
+const LedgerFileSchema = z.looseObject({ loops: z.array(z.unknown()) });
+const TreeFileSchema = z.looseObject({ goals: z.unknown(), nodes: z.array(z.unknown()) });
 
 async function loadLedger(paths: LedgerPaths, warnings: string[]): Promise<BoardInput['ledger']> {
   const file = await readOptionalFile(paths.loopsPath);
   if (file === null) return null;
-  const rows = listOf(parseOrWarn(file.text, paths.loopsPath, warnings), 'loops');
-  if (rows === null) warnings.push(`${paths.loopsPath} has no \`loops:\` list`);
-  return { path: paths.loopsPath, mtime: file.mtime, rows: rows ?? [] };
+  const parsed = LedgerFileSchema.safeParse(parseOrWarn(file.text, paths.loopsPath, warnings));
+  if (!parsed.success) warnings.push(`${paths.loopsPath} has no \`loops:\` list`);
+  return { path: paths.loopsPath, mtime: file.mtime, rows: parsed.data?.loops ?? [] };
 }
 
 /** The ledger's valid rows, for callers that read it without the rest of the board. */
@@ -286,13 +284,10 @@ export async function readLedgerLoops(
 async function loadTree(paths: LedgerPaths, warnings: string[]): Promise<BoardInput['tree']> {
   const file = await readOptionalFile(paths.treePath);
   if (file === null) return null;
-  const parsed = parseOrWarn(file.text, paths.treePath, warnings);
-  const nodes = listOf(parsed, 'nodes');
-  if (nodes === null) {
-    warnings.push(`${paths.treePath} has no \`nodes:\` list`);
-    return null;
-  }
-  return { goals: (parsed as Record<string, unknown>).goals, nodes };
+  const parsed = TreeFileSchema.safeParse(parseOrWarn(file.text, paths.treePath, warnings));
+  if (parsed.success) return { goals: parsed.data.goals, nodes: parsed.data.nodes };
+  warnings.push(`${paths.treePath} has no \`nodes:\` list`);
+  return null;
 }
 
 async function loadSessionSet(activeRoot: string, slug: string, now: Date): Promise<SessionLoopSet> {

@@ -16,7 +16,7 @@ import { readGlobalConfig } from '../utils/global-config.js';
 import { getLockPath } from '../utils/paths.js';
 import { assertValidSlug } from '../utils/slug.js';
 
-export const LEDGER_DEFAULTS = {
+const LEDGER_DEFAULTS = {
   initiative: 'titan-platform',
   loops: 'sources/open-loops.yml',
   tree: 'sources/tech-tree.yml',
@@ -56,10 +56,10 @@ export async function resolveLedgerPaths(
   };
 }
 
-export function parseYamlDocument(text: string, label: string): Document {
+function parseYamlDocument(text: string, label: string): Document {
   const doc = parseDocument(text);
   if (doc.errors.length > 0) {
-    throw new ValidationError(`Could not parse ${label}: ${doc.errors[0]!.message}`);
+    throw new ValidationError(`Could not parse ${label}: ${doc.errors[0].message}`);
   }
   return doc;
 }
@@ -72,7 +72,7 @@ export async function readOptionalFile(
     const [text, stat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath)]);
     return { text, mtime: stat.mtime.toISOString() };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') return null;
     throw err;
   }
 }
@@ -83,17 +83,17 @@ function loopRows(doc: Document, label: string): YAMLSeq {
   return rows;
 }
 
-function rowId(row: unknown): string | null {
-  if (!isMap(row)) return null;
-  const id = row.get('id');
-  return typeof id === 'string' && id.length > 0 ? id : null;
+function asRow(node: unknown): { id: string; map: YAMLMap } | null {
+  if (!isMap(node)) return null;
+  const id = node.get('id');
+  return typeof id === 'string' && id.length > 0 ? { id, map: node } : null;
 }
 
 function rowIndex(rows: YAMLSeq): Map<string, YAMLMap> {
   const byId = new Map<string, YAMLMap>();
-  for (const row of rows.items) {
-    const id = rowId(row);
-    if (id !== null) byId.set(id, row as YAMLMap);
+  for (const node of rows.items) {
+    const row = asRow(node);
+    if (row !== null) byId.set(row.id, row.map);
   }
   return byId;
 }
@@ -122,14 +122,14 @@ async function writeDocument(filePath: string, doc: Document): Promise<void> {
 // import
 // ---------------------------------------------------------------------------
 
-export interface ImportInput {
+interface ImportInput {
   snapshotText: string;
   treeText?: string;
   seed?: TierSeed;
   now: Date;
 }
 
-export interface ImportResult {
+interface ImportResult {
   ledger: string;
   tree: string | null;
   added: number;
@@ -151,29 +151,37 @@ function upsertRow(existing: YAMLMap, incoming: YAMLMap): void {
 function mergeSnapshot(ledger: Document, snapshot: Document, result: ImportResult): void {
   const rows = loopRows(ledger, 'the ledger');
   const byId = rowIndex(rows);
-  for (const [index, row] of loopRows(snapshot, 'the snapshot').items.entries()) {
-    const id = rowId(row);
-    if (id === null) {
+  for (const [index, node] of loopRows(snapshot, 'the snapshot').items.entries()) {
+    const row = asRow(node);
+    if (row === null) {
       result.warnings.push(`Skipped snapshot row ${index + 1}: it has no id`);
       continue;
     }
-    const existing = byId.get(id);
+    const existing = byId.get(row.id);
     if (existing === undefined) {
-      rows.add(row);
-      byId.set(id, row as YAMLMap);
+      rows.add(row.map);
+      byId.set(row.id, row.map);
       result.added += 1;
     } else {
-      upsertRow(existing, row as YAMLMap);
+      upsertRow(existing, row.map);
       result.updated += 1;
     }
   }
 }
 
+const SEED_TIERS = [
+  ['S', 'S'],
+  ['A', 'A'],
+  ['B', 'B'],
+  ['C', 'C'],
+  ['Parked', 'parked'],
+  ['parked', 'parked'],
+] as const;
+
 function seedEntries(seed: TierSeed): Array<[string, Tier, number]> {
-  return Object.entries(seed).flatMap(([key, ids]) => {
-    const tier = (key === 'Parked' ? 'parked' : key) as Tier;
-    return (ids ?? []).map((id, i): [string, Tier, number] => [id, tier, i + 1]);
-  });
+  return SEED_TIERS.flatMap(([key, tier]) =>
+    (seed[key] ?? []).map((id, i): [string, Tier, number] => [id, tier, i + 1]),
+  );
 }
 
 /** Seeds only rows nobody has tiered, so a re-import with the same seed is a no-op. */
@@ -227,7 +235,7 @@ export async function importLedger(paths: LedgerPaths, input: ImportInput): Prom
 // tier
 // ---------------------------------------------------------------------------
 
-export interface RankedRow {
+interface RankedRow {
   id: string;
   tier: string | null;
   rank: number | null;
@@ -243,33 +251,27 @@ function byRank(a: RankedRow, b: RankedRow): number {
  * Inserting between two ranks takes their midpoint, so no other row's rank
  * changes; a renumber would rewrite rows the owner did not move.
  */
-export function rankFor(
-  rows: RankedRow[],
-  targetId: string,
-  tier: string,
-  before?: string,
-): number {
+function rankFor(rows: RankedRow[], targetId: string, tier: string, before?: string): number {
   const peers = rows.filter((row) => row.id !== targetId && row.tier === tier).sort(byRank);
   const last = Math.max(0, ...peers.map((row) => row.rank ?? 0)) + 1;
   if (before === undefined) return last;
-  const at = peers.findIndex((row) => row.id === before);
-  if (at === -1) throw new ValidationError(`--before ${before} is not a loop in tier ${tier}`);
-  const next = peers[at]!.rank;
-  if (next === null) return last;
-  const prev = at > 0 ? peers[at - 1]!.rank : null;
-  return prev === null ? next - 1 : (prev + next) / 2;
+  const next = peers.find((row) => row.id === before);
+  if (next === undefined) throw new ValidationError(`--before ${before} is not a loop in tier ${tier}`);
+  if (next.rank === null) return last;
+  const at = peers.indexOf(next);
+  const prev = at > 0 ? peers[at - 1].rank : null;
+  return prev === null ? next.rank - 1 : (prev + next.rank) / 2;
 }
 
 function rankedRows(rows: YAMLSeq): RankedRow[] {
-  return rows.items.flatMap((row) => {
-    const id = rowId(row);
-    if (id === null) return [];
-    const map = row as YAMLMap;
-    const tier = map.get('tier');
-    const rank = map.get('tier_rank');
+  return rows.items.flatMap((node) => {
+    const row = asRow(node);
+    if (row === null) return [];
+    const tier = row.map.get('tier');
+    const rank = row.map.get('tier_rank');
     return [
       {
-        id,
+        id: row.id,
         tier: typeof tier === 'string' ? tier : null,
         rank: typeof rank === 'number' ? rank : null,
       },
@@ -277,7 +279,7 @@ function rankedRows(rows: YAMLSeq): RankedRow[] {
   });
 }
 
-export interface TierInput {
+interface TierInput {
   id: string;
   tier: Tier | null;
   before?: string;
