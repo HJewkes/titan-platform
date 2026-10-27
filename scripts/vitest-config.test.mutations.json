@@ -9,6 +9,15 @@
       "kills": [
         "gives vi.waitFor the budget when a call names no timeout"
       ]
+    },
+    {
+      "name": "a watchdog change runs only the scripts tests",
+      "file": "scripts/test-scope.mjs",
+      "find": "\"scripts/vitest-file-watchdog.mjs\",",
+      "replace": "",
+      "kills": [
+        "runs the full suite for a pull request that changes a file every test loads"
+      ]
     }
   ]
 }

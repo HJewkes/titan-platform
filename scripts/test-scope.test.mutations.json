@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "CI never gets the hang reporters",
+      "file": "scripts/test-scope.mjs",
+      "find": "const reporters = env.CI ?",
+      "replace": "const reporters = false ?",
+      "kills": [
+        "vitestArgs adds the hang reporters on CI, keeping the default output beside them"
+      ]
+    },
+    {
+      "name": "a local run gets the hang reporters too",
+      "file": "scripts/test-scope.mjs",
+      "find": "const reporters = env.CI ?",
+      "replace": "const reporters = true ?",
+      "kills": [
+        "vitestArgs passes no filter for a full run"
+      ]
+    },
+    {
+      "name": "CI drops the hanging-process reporter",
+      "file": "scripts/test-scope.mjs",
+      "find": "[\"default\", \"hanging-process\", ",
+      "replace": "[\"default\", ",
+      "kills": [
+        "vitestArgs adds the hang reporters on CI, keeping the default output beside them"
+      ]
+    },
+    {
+      "name": "CI replaces the default reporter",
+      "file": "scripts/test-scope.mjs",
+      "find": "[\"default\", \"hanging-process\", ",
+      "replace": "[\"hanging-process\", ",
+      "kills": [
+        "vitestArgs adds the hang reporters on CI, keeping the default output beside them"
+      ]
+    }
+  ]
+}
