@@ -38,7 +38,7 @@ interface Scenario {
 }
 
 function input(s: Scenario): ExtremeFindingsInput {
-  const reach = { [LOG_TEST]: [LOG.file], [MIXED_TEST]: [LOG.file, ADD.file], ...s.reach, ...s.outsideTests };
+  const reach: Record<string, string[]> = { [LOG_TEST]: [LOG.file], [MIXED_TEST]: [LOG.file, ADD.file], ...s.reach, ...s.outsideTests };
   const suite = Object.keys({ [LOG_TEST]: 0, [MIXED_TEST]: 0, ...s.reach });
   const report: HeadMutantsReport = {
     head: HEAD,
