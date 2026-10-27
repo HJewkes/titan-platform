@@ -12,6 +12,9 @@ and only their spoken line.
 - Keep each number you leave on the spoken line exactly as the original writes it.
 - When a number leaves the spoken line, do not put a vague word in its place; keep the number as the original says
   it, or cut the clause and let the label carry it.
+- Keep every clause as concrete as the original: name the thing, the file, the person or the example it names. Never
+  trade a named thing for "things", "stuff", "various parts" or "a number of" anything.
+- Do not end a beat on a new short summing-up line, a moral or a button; end where the point is made.
 - Do not add facts, "imagine", recaps, colons or semicolons. Do not drop a fact: whatever the original says stays
   on the spoken line or goes to the labels.
 - When a number leaves the spoken line, put it in `labels_added` with the noun it counts, as the original words it:
@@ -20,6 +23,8 @@ and only their spoken line.
   the line, and you may say how many there are. Keep what the sentence said about the list; "there are three of them"
   alone says nothing. Example: "We skip the oven timer, glaze notes and crate labels." becomes spoken "We skip three
   things the screen lists." with labels_added ["oven timer", "glaze notes", "crate labels"].
+- A beat whose directive lists stock phrases: these are words our scripts say far more often than people do. Say
+  what each one means in plain words of your own, and do not swap it for another stock phrase.
 - A beat whose directive starts "Your last version was not used" was rewritten before and refused. The line says
   why; fix that in this version, and do not hand back the version it describes.
 

@@ -28,7 +28,7 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 
 const EVERY_REFUSAL: RefusalRule[] = [
   "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "number-vague", "device-added",
-  "label-bare", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
+  "closer-added", "label-bare", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,
@@ -82,6 +82,15 @@ describe("renderRewritePrompt", () => {
 
     expect(prompt).toContain('- Lists of three: "the scan, the row and the label.". Put every item in labels_added, one each');
     expect(prompt).not.toMatch(/the one that matters/i);
+  });
+
+  it("asks a beat to say its stock phrases in plain words, naming each", () => {
+    const withPhrases: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", shape: [5, 18], phrases: ["stays", "the catch"] }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, withPhrases);
+
+    expect(prompt).toContain('- Stock phrases: "stays", "the catch". Say what each one means in plain words of your own.');
+    expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain("- Stock phrases:");
   });
 
   it("tells a refused beat in plain words why its last version was not used", () => {

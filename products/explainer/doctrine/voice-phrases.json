@@ -1,0 +1,5 @@
+{
+  "schema": "voice-phrases/v1",
+  "method": "slop-forensics comparison on the TP-3765 script-tells corpus (TP-4305): words, bigrams and trigrams said at least 5 times as often in our scripts and the other models' scripts as in the human explainers, in at least 3 of those scripts. Literature-seeded items kept only when they pass here; data-derived items kept only when they show in both families and read as voice, not subject matter.",
+  "phrases": ["alone", "becomes a", "matters", "now how", "on its own", "quietly", "stays", "the catch", "the result is"]
+}
