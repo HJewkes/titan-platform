@@ -46,6 +46,16 @@ describe("the kind sheet's cells", () => {
 
     assert.deepEqual(beats, ["held:a", "hook:b"]);
   });
+
+  // Mutation: key the sheet on the spec type alone; the line chart after a bar chart never reaches the sheet.
+  test("draw a bar chart and a line chart each on their own row", () => {
+    const chart = (kind: string) => ({ slots: { kind, series: [{ id: "series-1", label: "a", value: 1 }] } });
+    const timeline = parseTimeline({ durationS: 6, beats: [beat("a", "chart", 0, 2, chart("bar")), beat("b", "chart", 2, 2, chart("line")), beat("c", "chart", 4, 2, chart("bar"))] });
+
+    const beats = [...new Set(kindCells(timeline).map((c) => `${c.kind}:${c.beat}`))];
+
+    assert.deepEqual(beats, ["chart-bar:a", "chart-line:b"]);
+  });
 });
 
 describe("a frame's ink share", () => {

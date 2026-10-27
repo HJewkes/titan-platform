@@ -1,5 +1,5 @@
 {
-  "durationS": 44.949999999999996,
+  "durationS": 77.25,
   "beats": [
     {
       "id": "opening",
@@ -236,8 +236,178 @@
     },
     {
       "id": "beat-04",
-      "kind": "fact-flash",
+      "kind": "stat",
       "startS": 26.25,
+      "durationS": 6.25,
+      "cues": {
+        "3": 4.05,
+        "14": 1.25,
+        "92": 3
+      },
+      "slots": {
+        "figures": [
+          {
+            "id": "figures-1",
+            "value": 14,
+            "label": "Merged"
+          },
+          {
+            "id": "figures-2",
+            "value": 92,
+            "unit": "%",
+            "label": "Cache hits"
+          },
+          {
+            "id": "figures-3",
+            "value": 3,
+            "label": "Green lanes"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "figures-1",
+          "atS": 1.25
+        },
+        {
+          "target": "figures-2",
+          "atS": 3
+        },
+        {
+          "target": "figures-3",
+          "atS": 4.05
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "The floor merged more than it took in",
+      "chapter": {
+        "n": 2,
+        "of": 5,
+        "label": "Lanes"
+      }
+    },
+    {
+      "id": "beat-05",
+      "kind": "chart",
+      "startS": 32.5,
+      "durationS": 5.2,
+      "cues": {
+        "router": 0.9
+      },
+      "slots": {
+        "kind": "bar",
+        "series": [
+          {
+            "id": "series-1",
+            "label": "router",
+            "value": 6
+          },
+          {
+            "id": "series-2",
+            "label": "cache",
+            "value": 4
+          },
+          {
+            "id": "series-3",
+            "label": "docs",
+            "value": 2
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "series-1",
+          "atS": 0.9
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "The router lane merged the most",
+      "chapter": {
+        "n": 2,
+        "of": 5,
+        "label": "Lanes"
+      }
+    },
+    {
+      "id": "beat-06",
+      "kind": "chart",
+      "startS": 37.7,
+      "durationS": 7.3,
+      "cues": {
+        "three": 1.95,
+        "five": 2.65,
+        "four": 3.7,
+        "seven": 4.75,
+        "six": 6.15
+      },
+      "slots": {
+        "kind": "line",
+        "title": "Lanes",
+        "series": [
+          {
+            "id": "series-1",
+            "label": "10-19",
+            "value": 3
+          },
+          {
+            "id": "series-2",
+            "label": "10-20",
+            "value": 5
+          },
+          {
+            "id": "series-3",
+            "label": "10-21",
+            "value": 4
+          },
+          {
+            "id": "series-4",
+            "label": "10-22",
+            "value": 7
+          },
+          {
+            "id": "series-5",
+            "label": "10-23",
+            "value": 6
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "series-1",
+          "atS": 1.95
+        },
+        {
+          "target": "series-2",
+          "atS": 2.65
+        },
+        {
+          "target": "series-3",
+          "atS": 3.7
+        },
+        {
+          "target": "series-4",
+          "atS": 4.75
+        },
+        {
+          "target": "series-5",
+          "atS": 6.15
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "Merges climbed through the week",
+      "chapter": {
+        "n": 2,
+        "of": 5,
+        "label": "Lanes"
+      }
+    },
+    {
+      "id": "beat-07",
+      "kind": "fact-flash",
+      "startS": 45,
       "durationS": 5.9,
       "cues": {
         "renamed": 2.3,
@@ -277,9 +447,145 @@
       }
     },
     {
-      "id": "beat-05",
+      "id": "beat-08",
+      "kind": "compare",
+      "startS": 50.9,
+      "durationS": 7.65,
+      "cues": {
+        "shared": 1.25,
+        "lanes": 3,
+        "backlog": 3.7,
+        "clears": 5.8
+      },
+      "slots": {
+        "leftTitle": "Before",
+        "rightTitle": "After",
+        "rows": [
+          {
+            "id": "rows-1",
+            "alias": "rows-2",
+            "left": "One shared queue",
+            "right": "Five small lanes"
+          },
+          {
+            "id": "rows-3",
+            "alias": "rows-4",
+            "left": "Backlog past midnight",
+            "right": "Clear by ten"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "rows-1",
+          "part": "left",
+          "atS": 1.25
+        },
+        {
+          "target": "rows-2",
+          "part": "right",
+          "atS": 3
+        },
+        {
+          "target": "rows-3",
+          "part": "left",
+          "atS": 3.7
+        },
+        {
+          "target": "rows-4",
+          "part": "right",
+          "atS": 5.8
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "Lanes cleared the backlog the queue left",
+      "chapter": {
+        "n": 4,
+        "of": 5,
+        "label": "Reflection"
+      }
+    },
+    {
+      "id": "beat-09",
+      "kind": "arch-map",
+      "startS": 58.55,
+      "durationS": 5.9,
+      "cues": {
+        "intake": 1.25,
+        "router": 2.3,
+        "lane": 3.35,
+        "merge": 4.75
+      },
+      "slots": {
+        "title": "Reflection",
+        "nodes": [
+          {
+            "id": "nodes-1",
+            "label": "Intake"
+          },
+          {
+            "id": "nodes-2",
+            "label": "Router"
+          },
+          {
+            "id": "nodes-3",
+            "label": "Lane"
+          },
+          {
+            "id": "nodes-4",
+            "label": "Merge"
+          }
+        ],
+        "edges": [
+          {
+            "id": "edges-1",
+            "from": "nodes-1",
+            "to": "nodes-2"
+          },
+          {
+            "id": "edges-2",
+            "from": "nodes-2",
+            "to": "nodes-3"
+          },
+          {
+            "id": "edges-3",
+            "from": "nodes-3",
+            "to": "nodes-4"
+          }
+        ]
+      },
+      "reveals": [
+        {
+          "target": "nodes-1",
+          "atS": 1.25
+        },
+        {
+          "target": "nodes-2",
+          "atS": 2.3
+        },
+        {
+          "target": "nodes-3",
+          "atS": 3.35
+        },
+        {
+          "target": "nodes-4",
+          "atS": 4.75
+        }
+      ],
+      "chips": [],
+      "hints": {},
+      "headline": "Every change walks the same four stops",
+      "chapter": {
+        "n": 4,
+        "of": 5,
+        "label": "Reflection"
+      }
+    },
+    {
+      "id": "beat-10",
       "kind": "claim-card",
-      "startS": 32.15,
+      "startS": 64.45,
       "durationS": 5.55,
       "slots": {
         "claim": "Small lanes ship faster than one big queue",
@@ -309,9 +615,9 @@
       }
     },
     {
-      "id": "beat-06",
+      "id": "beat-11",
       "kind": "button",
-      "startS": 37.699999999999996,
+      "startS": 70,
       "durationS": 3.8,
       "slots": {
         "line": "Read the digest",
@@ -333,9 +639,9 @@
       }
     },
     {
-      "id": "beat-07",
+      "id": "beat-12",
       "kind": "outro",
-      "startS": 41.49999999999999,
+      "startS": 73.8,
       "durationS": 3.45,
       "slots": {
         "line": "That is the day"
