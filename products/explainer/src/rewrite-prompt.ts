@@ -36,6 +36,7 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "number-invented": "a count appeared that the original never says; add no number of your own",
     "number-vague": "a vague word stood in for a number; keep the number or cut the clause",
     "device-added": "it gained a colon, a semicolon, a tail or a \"let's\" the original did not have; say it as a plain sentence",
+    "closer-added": "it ended on a new short summing-up line the original did not have; end where the point is made",
     "label-bare": "a label held only a number; give it the noun it counts",
     "list-lost": "an item of the list left the line without a label of its own; label every item",
     "list-emptied": "keep one item of the list in the line",

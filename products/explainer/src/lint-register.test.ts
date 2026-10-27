@@ -4,6 +4,7 @@ import {
   REGISTER_CHECK_IDS,
   REGISTER_MEASURES,
   REGISTER_METRICS,
+  endsOnShortest,
   numberSpans,
   phraseSpans,
   registerCheck,
@@ -230,6 +231,15 @@ describe("Q-V11 register rows", () => {
     expect(plain).toMatchObject({ value: 0, pass: true });
   });
 
+  it("reports the share of beats that end on their shortest sentence against chance, and never warns", () => {
+    const button = "The desk reads each scan before it prints a label. It never guesses.";
+    const steady = "It waits. The desk reads each scan before it prints a label.";
+
+    const row = rows(button, button, steady, steady, "One sentence only.").get("register:shortest-last");
+
+    expect(row).toMatchObject({ severity: "warning", pass: true, value: 0.5, threshold: 0.5, detail_beats: ["h1", "w4"] });
+  });
+
   it("warns below a floor, passes inside the band, and warns over the cap", () => {
     const secondPerson = (n: number) => rows(...filler(16), ...Array.from({ length: n }, () => "You see it.")).get("register:second-person");
 
@@ -277,6 +287,15 @@ describe("numberSpans and triadSpans", () => {
 
     expect(spans.map((s) => s.text)).toEqual(["Pick red, green or blue,", "then the queue, the worker and the log."]);
     expect(spans.map((s) => line.slice(s.index, s.index + s.text.length))).toEqual(spans.map((s) => s.text));
+  });
+});
+
+describe("endsOnShortest", () => {
+  it("is true only when the last of two or more sentences is shorter than every other", () => {
+    expect(endsOnShortest("The desk reads each scan first. It prints.")).toBe(true);
+    expect(endsOnShortest("It prints. The desk reads each scan first.")).toBe(false);
+    expect(endsOnShortest("The desk prints. It waits now.")).toBe(false);
+    expect(endsOnShortest("It prints.")).toBe(false);
   });
 });
 

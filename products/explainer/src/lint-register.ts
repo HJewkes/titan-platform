@@ -167,8 +167,19 @@ export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
  */
 export const MAX_CROWDED_BEAT_SHARE = 0.24;
 const NUMBERS_PER_BEAT_ID = "register:numbers-per-beat";
+const SHORTEST_LAST_ID = "register:shortest-last";
 
-export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID];
+export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID, SHORTEST_LAST_ID];
+
+/** A line's sentence lengths in words, in spoken order. */
+const lineSentenceLengths = (spoken: string): number[] => sentenceLengths(spokenText([spoken]));
+
+/** Whether a line of two or more sentences ends on its one shortest sentence: the cadence of a button or a moral. */
+export function endsOnShortest(spoken: string): boolean {
+  const lengths = lineSentenceLengths(spoken);
+  const last = lengths.at(-1)!;
+  return lengths.length >= 2 && lengths.slice(0, -1).every((n) => n > last);
+}
 
 const below = (value: number, band: Band): boolean => band.min !== undefined && value < band.min;
 
@@ -190,8 +201,22 @@ function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[], s: 
   });
 }
 
+/**
+ * The share of multi-sentence beats that end on their shortest sentence, against the share chance gives (1 in k for a
+ * beat of k sentences). Reported only: no human band exists at beat level, so it never warns (TP-4308).
+ */
+function shortestLastRow(beats: readonly { id: string; spoken: string }[]): L0Result {
+  const multi = beats.filter((beat) => lineSentenceLengths(beat.spoken).length >= 2);
+  const ending = multi.filter((beat) => endsOnShortest(beat.spoken));
+  const chance = multi.reduce((sum, beat) => sum + 1 / lineSentenceLengths(beat.spoken).length, 0);
+  const share = (n: number): number => (multi.length === 0 ? 0 : n / multi.length);
+  return ruleRow(SHORTEST_LAST_ID, {
+    value: share(ending.length), threshold: share(chance), pass: true, mode: "heuristic", severity: "warning", beats: ending.map((beat) => beat.id),
+  });
+}
+
 /** Q-V11: how far the spoken register sits from human explainers, one warning row a metric; never a gate. */
 export const registerCheck: L0Check = ({ script }) => {
   const parsed = spokenText(script.beats.map((beat) => beat.spoken));
-  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats, parsed)];
+  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats, parsed), shortestLastRow(script.beats)];
 };

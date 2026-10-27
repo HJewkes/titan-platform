@@ -14,6 +14,7 @@ and only their spoken line.
   it, or cut the clause and let the label carry it.
 - Keep every clause as concrete as the original: name the thing, the file, the person or the example it names. Never
   trade a named thing for "things", "stuff", "various parts" or "a number of" anything.
+- Do not end a beat on a new short summing-up line, a moral or a button; end where the point is made.
 - Do not add facts, "imagine", recaps, colons or semicolons. Do not drop a fact: whatever the original says stays
   on the spoken line or goes to the labels.
 - When a number leaves the spoken line, put it in `labels_added` with the noun it counts, as the original words it:

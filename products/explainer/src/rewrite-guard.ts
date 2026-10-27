@@ -1,6 +1,6 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
 import { contentTerms, sentencesOf } from "./lint-text.js";
-import { DEVICE_METRICS, deviceSpans, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
+import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { beatCues, spokenWordIndex, type ScriptBeat } from "./script-schema.js";
 import { numberForms, remapCuesInPlace } from "./spoken-numbers.js";
@@ -16,6 +16,7 @@ export type BeatRejectionRule =
   | "number-invented"
   | "number-vague"
   | "device-added"
+  | "closer-added"
   | "label-bare"
   | "list-lost"
   | "list-emptied"
@@ -145,6 +146,21 @@ function deviceRejections(before: string, after: BeatRewrite): BeatRejection[] {
     rule: "device-added" as const,
     detail: `the rewrite adds a ${metric} device the original did not have; say it as a plain sentence`,
   }));
+}
+
+// A closing line this short reads as a button ("That is the point."), not as the beat's last step.
+const MAX_CLOSER_WORDS = 6;
+
+/**
+ * A rewrite must not add a closer: a new last sentence, the beat's shortest and a few words long, where the original
+ * did not end on its shortest. A rewrite pass tends to add them (TP-4308); a short line the original said is kept.
+ */
+function closerRejections(before: string, after: BeatRewrite): BeatRejection[] {
+  const last = spokenText([after.spoken]).sentences.at(-1) ?? "";
+  const inherited = spokenText([before]).sentences.some((sentence) => norm(sentence) === norm(last));
+  const short = spokenText([last]).words.length <= MAX_CLOSER_WORDS;
+  if (!endsOnShortest(after.spoken) || !short || inherited || endsOnShortest(before)) return [];
+  return [{ rule: "closer-added", detail: `the rewrite ends on a new short line the original did not have: "${last}"` }];
 }
 
 /** A moved number's label must carry its noun phrase ("143 claimed"), because a bare "143" tells the viewer nothing. */
@@ -357,6 +373,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...numberRejections(before.spoken, after, lists),
     ...vagueRejections(before.spoken, after),
     ...deviceRejections(before.spoken, after),
+    ...closerRejections(before.spoken, after),
     ...listRejections(lists, after),
     ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),

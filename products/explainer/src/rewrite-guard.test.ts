@@ -84,6 +84,38 @@ describe("guardBeat", () => {
     });
   });
 
+  describe("closer-added", () => {
+    const LONG_LAST = "The desk server checks each scan. Then it writes every checked row to the ledger before the courier asks.";
+
+    it("rejects a rewrite that ends on a new short summing-up line", () => {
+      const after = { spoken: `${LONG_LAST} That is the whole point.`, labelsAdded: [] };
+
+      const rejected = rules(beatWith({}, LONG_LAST), after);
+
+      expect(rejected).toContain("closer-added");
+    });
+
+    it("accepts a rewrite that ends on a short line the original already said", () => {
+      const before = beatWith({}, "Nothing is lost. The desk server checks each scan and writes every checked row to the ledger.");
+      const after = { spoken: "The desk server checks each scan and writes every checked row to the ledger. Nothing is lost.", labelsAdded: [] };
+
+      expect(rules(before, after)).not.toContain("closer-added");
+    });
+
+    it("accepts a new short last line when the original already ended on its shortest", () => {
+      const before = beatWith({}, "The desk server checks each scan and writes the rows to the ledger. Then it prints.");
+      const after = { spoken: "The desk server checks each scan and writes the rows to the ledger. It then prints.", labelsAdded: [] };
+
+      expect(rules(before, after)).not.toContain("closer-added");
+    });
+
+    it("accepts a rewrite whose new last line is not its shortest", () => {
+      const after = { spoken: "It checks. The desk server writes every checked row to the ledger before the courier asks.", labelsAdded: [] };
+
+      expect(rules(beatWith({}, LONG_LAST), after)).not.toContain("closer-added");
+    });
+  });
+
   describe("device-added", () => {
     const PLAIN = "The desk server checks each scan. The ledger keeps the rows. Nobody retypes them.";
     const COLONED = "The desk server checks each scan. The ledger keeps one thing: the rows. Nobody retypes them.";
