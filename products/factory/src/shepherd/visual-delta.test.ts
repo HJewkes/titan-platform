@@ -1,5 +1,6 @@
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
+import { type Decoded, decodePngBounded } from "./png-bounded.js";
 import { componentOf, contentBox, snapshotShare } from "./visual-delta.js";
 
 type Rgb = readonly [number, number, number];
@@ -21,25 +22,30 @@ function fill(image: PNG, x: number, y: number, size: number, colour: Rgb): PNG 
   return image;
 }
 
-const bytes = (image: PNG): Uint8Array => PNG.sync.write(image);
+/** Round-trips through the encoder and the bounded decoder, as a snapshot blob reaches the measure. */
+function decode(image: PNG): Decoded {
+  const decoded = decodePngBounded(PNG.sync.write(image), { maxPixels: 1 << 20 });
+  if ("refused" in decoded) throw new Error(decoded.refused);
+  return decoded;
+}
 
 /** A 100×100 white frame with a black 10×10 square at (20, 20), as a tight specimen crop sits in a story viewport. */
 const squareInFrame = (): PNG => fill(frame(100, 100), 20, 20, 10, BLACK);
 
 describe("snapshotShare", () => {
   it("gives 0 for identical images", () => {
-    expect(snapshotShare(bytes(squareInFrame()), bytes(squareInFrame()))).toBe(0);
+    expect(snapshotShare(decode(squareInFrame()), decode(squareInFrame()))).toBe(0);
   });
 
   it("divides by the content box, so one changed pixel of a 10×10 square in a 100×100 frame is 0.01", () => {
     const head = squareInFrame();
     paint(head, 25, 25, [255, 0, 0]);
 
-    expect(snapshotShare(bytes(squareInFrame()), bytes(head))).toBe(0.01);
+    expect(snapshotShare(decode(squareInFrame()), decode(head))).toBe(0.01);
   });
 
   it("gives 1 when the dimensions differ", () => {
-    expect(snapshotShare(bytes(frame(100, 100)), bytes(frame(100, 101)))).toBe(1);
+    expect(snapshotShare(decode(frame(100, 100)), decode(frame(100, 101)))).toBe(1);
   });
 
   it("does not count an antialiased edge whose shade shifts", () => {
@@ -49,19 +55,19 @@ describe("snapshotShare", () => {
       return image;
     };
 
-    expect(snapshotShare(bytes(edge(96)), bytes(edge(160)))).toBe(0);
+    expect(snapshotShare(decode(edge(96)), decode(edge(160)))).toBe(0);
   });
 
   it("counts a change the default pixel tolerance would let pass when the tolerance is tighter", () => {
     const head = squareInFrame();
     paint(head, 25, 25, [12, 12, 12]);
 
-    expect(snapshotShare(bytes(squareInFrame()), bytes(head))).toBe(0);
-    expect(snapshotShare(bytes(squareInFrame()), bytes(head), { pixelTolerance: 0.01 })).toBe(0.01);
+    expect(snapshotShare(decode(squareInFrame()), decode(head))).toBe(0);
+    expect(snapshotShare(decode(squareInFrame()), decode(head), { pixelTolerance: 0.01 })).toBe(0.01);
   });
 
   it("caps a background change at 1", () => {
-    expect(snapshotShare(bytes(squareInFrame()), bytes(fill(frame(100, 100, BLACK), 20, 20, 10, WHITE)))).toBe(1);
+    expect(snapshotShare(decode(squareInFrame()), decode(fill(frame(100, 100, BLACK), 20, 20, 10, WHITE)))).toBe(1);
   });
 });
 
@@ -69,11 +75,11 @@ describe("contentBox", () => {
   it("bounds the pixels that differ from the corner colour across both images", () => {
     const moved = fill(frame(100, 100), 50, 60, 10, BLACK);
 
-    expect(contentBox([squareInFrame(), moved])).toEqual({ x: 20, y: 20, width: 40, height: 50 });
+    expect(contentBox([decode(squareInFrame()), decode(moved)])).toEqual({ x: 20, y: 20, width: 40, height: 50 });
   });
 
   it("is null for blank frames", () => {
-    expect(contentBox([frame(10, 10), frame(10, 10, BLACK)])).toBeNull();
+    expect(contentBox([decode(frame(10, 10)), decode(frame(10, 10, BLACK))])).toBeNull();
   });
 });
 

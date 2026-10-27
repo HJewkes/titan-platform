@@ -28,6 +28,13 @@
       "find": "if (!accounts) return undefined;",
       "replace": "if (!accounts) return () => [];",
       "kills": ["successorAccounts wires no rotation when no review is wired, so a successor keeps the fixer config directory"]
+    },
+    {
+      "name": "a visual threshold repo key matches only in its own case",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "find(([key]) => key.toLowerCase() === repo.toLowerCase())",
+      "replace": "find(([key]) => key === repo)",
+      "kills": ["visualThresholdOf matches a repo key in any case, and reads an edit to the live config on the next call"]
     }
   ]
 }

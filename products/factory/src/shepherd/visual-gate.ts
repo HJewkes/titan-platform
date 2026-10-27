@@ -38,7 +38,7 @@ export function visualMatches(paths: readonly string[], visualPaths: readonly st
   return paths.filter((path) => !cannotRender(path) && isVisual(path));
 }
 
-function caseFoldedMatcher(globs: readonly string[]): (path: string) => boolean {
+export function caseFoldedMatcher(globs: readonly string[]): (path: string) => boolean {
   try {
     const matches = compileGlobs(globs.map((glob) => glob.toLowerCase()));
     return (path) => matches(path.toLowerCase());
