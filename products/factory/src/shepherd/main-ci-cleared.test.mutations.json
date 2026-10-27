@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sweep clears on a base with no required contexts",
+      "file": "products/factory/src/shepherd/main-ci-cleared.ts",
+      "find": "gate.id, main, { required: true });",
+      "replace": "gate.id, main, { required: false });",
+      "kills": ["the gone sweep on a main-ci-timeout gate keeps the gate when the base requires no context"]
+    },
+    {
+      "name": "a still-running main tip reads as green",
+      "file": "products/factory/src/coordinator-evidence-read.ts",
+      "find": "  if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.length > 0) return undefined;",
+      "replace": "  if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.some((finding) => finding.kind === \"failed\")) return undefined;",
+      "kills": ["the gone sweep on a main-ci-timeout gate keeps the gate while main is still running"]
+    },
+    {
+      "name": "a green tip that does not contain the merge clears the gate",
+      "file": "products/factory/src/coordinator-evidence-read.ts",
+      "find": "  if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.length > 0) return undefined;",
+      "replace": "  if (judged.counted === 0 || judged.findings.length > 0) return undefined;",
+      "kills": ["the gone sweep on a main-ci-timeout gate keeps the gate when the green main commit does not contain the merge"]
+    },
+    {
+      "name": "the run fails on the sweep's main green cancel",
+      "file": "products/factory/src/shepherd/main-green-ack.ts",
+      "find": "  if (reason.startsWith(MAIN_GREEN)) return true;",
+      "replace": "  if (reason.startsWith(MAIN_GREEN)) return false;",
+      "kills": ["the gone sweep on a main-ci-timeout gate clears the gate once a later main commit containing the merge is green on every required context, and the run finishes"]
+    },
+    {
+      "name": "only the live sweep clears main-ci-timeout gates",
+      "file": "products/factory/src/shepherd/gone-elsewhere.ts",
+      "find": "  if (scope === \"gated\") (await",
+      "replace": "  if (scope === \"live\") (await",
+      "kills": ["the gone sweep on a main-ci-timeout gate reports the clear on a dry run and cancels nothing"]
+    }
+  ]
+}

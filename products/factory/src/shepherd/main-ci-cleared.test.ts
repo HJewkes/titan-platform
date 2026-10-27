@@ -10,7 +10,7 @@ import { sleep } from "../workflows/land.js";
 import { freezeStoreRef } from "./freeze.js";
 import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere } from "./gone-elsewhere.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { MAIN_GREEN } from "./post-merge.js";
+import { MAIN_GREEN } from "./main-green-ack.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { shepherdStoreRef } from "./store.js";

@@ -3,7 +3,7 @@ import { mainGreenAt, type MainGreenEvidence } from "../coordinator-evidence-rea
 import { mainMergeOf, stepOf } from "../coordinator-evidence.js";
 import type { FactoryHost } from "../host.js";
 import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded } from "./bounded.js";
-import { MAIN_GREEN } from "./post-merge.js";
+import { MAIN_GREEN } from "./main-green-ack.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { cancelUnlessSettled } from "./stale-gates.js";
 
@@ -18,7 +18,7 @@ export interface ClearedMainGate {
 type ClearReads = Pick<ShepherdServices, "store" | "port" | "readTimer" | "now">;
 
 /** The reason names every fact the clear rests on, so the run's record of the gate and its gate-cancel event both carry the evidence. */
-export function mainGreenReason(evidence: MainGreenEvidence): string {
+function mainGreenReason(evidence: MainGreenEvidence): string {
   const runs = evidence.runs.map((run) => `${run.name} #${run.id} ${run.conclusion}`).join(", ");
   const where = `main commit ${evidence.greenSha} on ${evidence.base} of ${evidence.repo} contains merge ${evidence.mergeSha} of PR #${evidence.pr} (merge base ${evidence.mergeBaseSha})`;
   return `${MAIN_GREEN}${where} and is green on every required context: ${runs}; read ${evidence.readAt}`;

@@ -1,5 +1,5 @@
 import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
-import { GATE_CANCELLED_SIGNAL, type StepRoute, type WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { acknowledgeBrief, frozenDecision } from "../gate-brief.js";
@@ -10,6 +10,7 @@ import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
 import { judgeMain, mainRulesReader, onlyCancels, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
+import { clearedOnGreen } from "./main-green-ack.js";
 import { MainCiReads } from "./main-watch.js";
 import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
 import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
@@ -94,7 +95,7 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
     await onMainGreen(ctx, red);
   }
   else if (result.verdict === "red") await onMainRed(ctx, red, fixer, result.detail, demotions);
-  else if (target.mergeSha !== "") await askMainCiTimeout(ctx, `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is not red, but unread: ${result.detail}. Acknowledge.`, { ...target, headline: `No completed main CI run on ${target.repo} contains the merge`, detail: result.detail });
+  else if (target.mergeSha !== "") await askOwner(ctx, "main-ci-timeout", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is not red, but unread: ${result.detail}. Acknowledge.`, { ...target, headline: `No completed main CI run on ${target.repo} contains the merge`, detail: result.detail });
   else await mainRedAck(ctx, demotions, `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}.`, { ...target, headline: `Main CI on ${target.repo} is ${result.verdict}`, detail: result.detail });
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, { ...target, headline: `PR #${target.pr} in ${target.repo} merged with after stages`, detail: `Do by hand: ${result.after.join(", ")}.` });
   await step(ctx, "sh-cleanup", cleanupInput(ctx, target), CleanupResult);
@@ -153,25 +154,12 @@ async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-fr
 const mainRedAck = (ctx: WorkflowContext, demotions: GateDemotions, situation: string, about: MainRedAbout): Promise<void> =>
   demotions.mainRed ? mainRedFyi(ctx, situation, about) : askOwner(ctx, "main-red", `${situation} Acknowledge.`, about);
 
-type AckAbout = { repo: string; mergeSha: string; headline: string; detail: string };
-
-async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, about: AckAbout): Promise<void> {
-  const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck, brief: acknowledgeBrief(about) });
+/** Only main-ci-timeout takes the gone sweep's cancel as its answer, once a green main commit contains the merge. */
+async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, about: { repo: string; mergeSha: string; headline: string; detail: string }): Promise<void> {
+  const recordCancel = stepId === "main-ci-timeout";
+  const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck, brief: acknowledgeBrief(about), recordCancel });
+  if (recordCancel && clearedOnGreen(stepId, answer)) return;
   if (OwnerAck.parse(answer.data).mergeSha !== about.mergeSha) throw new Error(`${stepId} answer names a different merge sha than ${about.mergeSha}`);
-}
-
-/** How the gone sweep's cancel of a main-ci-timeout gate starts once a green main commit contains the merge (TP-4319). */
-export const MAIN_GREEN = "main green: ";
-
-/** The sweep's cancel answers the gate as the owner's acknowledgement would; the run records its reason, which names the evidence. Any other cancel fails the run. */
-async function askMainCiTimeout(ctx: WorkflowContext, prompt: string, about: AckAbout): Promise<void> {
-  const answer = await ctx.assisted("main-ci-timeout", prompt, { schema: OwnerAck, brief: acknowledgeBrief(about), recordCancel: true });
-  if (answer.signal !== GATE_CANCELLED_SIGNAL) {
-    if (OwnerAck.parse(answer.data).mergeSha !== about.mergeSha) throw new Error(`main-ci-timeout answer names a different merge sha than ${about.mergeSha}`);
-    return;
-  }
-  const reason = String(answer.data?.reason);
-  if (!reason.startsWith(MAIN_GREEN)) throw new Error(`main-ci-timeout was cancelled: ${reason}`);
 }
 
 export interface MainCiInput {
