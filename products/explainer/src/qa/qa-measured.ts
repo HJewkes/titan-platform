@@ -52,7 +52,7 @@ export const layerLayouts = (timeline: QaTimeline): BeatLayout[] =>
   timeline.beats.flatMap((beat) => (beat.layer === "custom" && beat.anchors ? [{ beat: beat.id, layer: beat.layer, anchors: beat.anchors }] : []));
 
 /** One occupancy table per settled moment, keyed by the probe's element names, which the findings name too. */
-export function occupancy(timeline: QaTimeline, settled: readonly ProbedMoment[], stage: Stage): OccupancyTable[] {
+function occupancy(timeline: QaTimeline, settled: readonly ProbedMoment[], stage: Stage): OccupancyTable[] {
   const marks = settled.map((m) => ({ beat: m.beat, t: m.t, elements: contentBoxes(m).map((box) => ({ id: box.element, box: box.box })) }));
   return buildOccupancy({ stage, layouts: layerLayouts(timeline), marks });
 }

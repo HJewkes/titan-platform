@@ -54,7 +54,7 @@ async function seenAt(timeline: Timeline, t: number): Promise<Seen> {
       const el = document.getElementById(id);
       if (!el) return undefined;
       const { x, y, width, height } = el.getBoundingClientRect();
-      return { box: { x, y, width, height }, text: el.textContent ?? "" };
+      return { box: { x, y, width, height }, text: el.textContent };
     }, { seconds: t, id: SYNTHETIC_ELEMENT });
     // A failed import settles ready() before its error reaches the page; one more turn lets it land.
     await page.waitForTimeout(200);

@@ -8,7 +8,7 @@ import { LAYER_HOST_GLOBAL } from "../composition/layer-host.js";
 import type { Timeline } from "../composition/timeline.js";
 
 /** Where the bundled layers sit in the served page tree, so a timeline names each one relative to the page. */
-export const LAYERS_PAGE_DIR = "custom-layers";
+const LAYERS_PAGE_DIR = "custom-layers";
 
 const LayersIndexSchema = z.object({
   schema: z.literal("explainer.custom-layers/v1"),
@@ -37,7 +37,7 @@ const hostPlugin: Plugin = {
 };
 
 /** One layer's TSX as an ESM file the page can import, sharing the page's React and motion modules. */
-export async function bundleLayer(source: string, sourcefile: string): Promise<string> {
+async function bundleLayer(source: string, sourcefile: string): Promise<string> {
   const result = await build({
     stdin: { contents: source, loader: "tsx", sourcefile }, bundle: true, write: false, format: "esm", jsx: "automatic", logLevel: "silent", plugins: [hostPlugin],
   });

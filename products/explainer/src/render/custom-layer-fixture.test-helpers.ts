@@ -5,7 +5,7 @@ import path from "node:path";
 
 /** The cells the synthetic layer declares, and the box it draws over them on the 1920×1080 stage. */
 export const SYNTHETIC_ANCHORS = ["B2:E5"];
-export const SYNTHETIC_BOX = { x: 320, y: 180, width: 1280, height: 720 };
+const SYNTHETIC_BOX = { x: 320, y: 180, width: 1280, height: 720 };
 export const SYNTHETIC_ELEMENT = "parcel-hold";
 
 /** A custom layer as a builder would write one: a default-export component on the motion clock, allowlisted imports only. */

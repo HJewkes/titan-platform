@@ -36,6 +36,15 @@
       "kills": [
         "the render stage reports two-run as a failed, non-gating check when the second render's bytes differ"
       ]
+    },
+    {
+      "name": "render's inputs leave out the custom-layers tree",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "render: [\"code\", \"slots\", \"generated-slots\", \"custom-layers\"]",
+      "replace": "render: [\"code\", \"slots\", \"generated-slots\"]",
+      "kills": [
+        "the render stage's custom layers bundles a custom beat's layer into the served page and names it from the timeline beat"
+      ]
     }
   ]
 }

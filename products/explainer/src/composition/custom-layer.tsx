@@ -15,18 +15,21 @@ function publishHost(): void {
   Object.assign(globalThis, { [LAYER_HOST_GLOBAL]: { react: React, "react/jsx-runtime": jsxRuntime, "@titan-design/react-ui/motion": motion } });
 }
 
+const isLayer = (value: unknown): value is Layer => typeof value === "function";
+
 async function importLayer(url: string): Promise<Layer> {
   publishHost();
   const module: { default?: unknown } = await import(/* @vite-ignore */ new URL(url, location.href).href).catch((error: unknown) => {
     throw new Error(`custom layer ${url} failed to load: ${error instanceof Error ? error.message : String(error)}`);
   });
-  if (typeof module.default !== "function") throw new Error(`custom layer ${url} has no default export component`);
-  loaded.set(url, module.default as Layer);
-  return module.default as Layer;
+  const layer = module.default;
+  if (!isLayer(layer)) throw new Error(`custom layer ${url} has no default export component`);
+  loaded.set(url, layer);
+  return layer;
 }
 
 /** One import per module URL, however often its beat mounts. */
-export function loadLayer(url: string): Promise<Layer> {
+function loadLayer(url: string): Promise<Layer> {
   const pending = loading.get(url) ?? importLayer(url);
   loading.set(url, pending);
   return pending;
