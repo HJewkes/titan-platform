@@ -69,7 +69,7 @@ describe("colour scales keep their lightness in order (CH-22)", () => {
     expect(verdicts).toEqual([true, true, false]);
   });
 
-  it("accepts a diverging ramp light at its centre and refuses one that only rises or repeats a step", () => {
+  it("accepts a diverging ramp light at its centre and refuses one that runs one way or repeats a step", () => {
     // Arrange / Act
     const verdicts = [RED_BLUE, BLUES, ["#b2182b", "#f7f7f7", "#f7f7f7", "#2166ac"]].map((colours) => isMonotonicScale("diverging", colours));
 
