@@ -35,5 +35,6 @@ describe("qa stage captions", () => {
 
     expect(checks["captions-onset"]).toMatchObject({ gate: false, pass: false, detail: "1 caption onset: cue 1 starts 0.50 s from its first word (at most ±0.3)" });
     expect(report.captions?.findings.map((finding) => finding.rule)).toEqual(["onset"]);
+    expect(checks["captions-complete"]?.pass).toBe(true);
   });
 });
