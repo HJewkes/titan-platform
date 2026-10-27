@@ -1493,6 +1493,7 @@ For an owner's blind read, `prepareOwnerSession` writes two-track storyboards un
 `cueElement` resolves a cue target to exactly one emphasis element, and
 `fillScript` maps each template beat of a script/v1 and its resolved row to slot props its spec's schema accepts (derived < resolver slots < `visual.slots`), falling back to a list it records and listing every refusal in a `FillError`,
 `checkBeatSpecs` reports vocabulary, slot-ref, duration, recipe-length and emphasis-target issues.
+`chartFrameProblems` refuses a chart or replot slot set with bars off a zero baseline or on a broken axis, a colour scale whose lightness (`lightness`, CIELAB L*) is out of order (`isMonotonicScale`), or a legend where direct labels fit, behind the resolve `chart-integrity` gate.
 `loadBeatSystems` reads the beat-system registry (`doctrine/beat-systems/*.yaml`: nine ordered beat patterns, such as the CL order and BLUF, that a profile binds inside a structure's blocks) and rejects a system or step beat outside the vocabulary,
 `beatSystemFor` rejects an unknown system, and
 `placeBeatSystem` lands a system's steps in order in a profile's blocks.
