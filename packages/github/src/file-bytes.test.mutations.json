@@ -24,7 +24,7 @@
     },
     {
       "name": "the fake round-trips stored bytes through UTF-8",
-      "file": "packages/github/src/fake.ts",
+      "file": "packages/github/src/fake-bytes.ts",
       "find": "  if (stored) return stored.slice();",
       "replace": "  if (stored) return new TextEncoder().encode(new TextDecoder().decode(stored));",
       "kills": ["fileBytes over the fake returns a PNG's bytes exactly, including bytes that are not valid UTF-8"]

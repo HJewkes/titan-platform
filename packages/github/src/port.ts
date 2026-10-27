@@ -114,7 +114,6 @@ export interface GitHubWire {
   deleteRef(repo: RepoSlug, branch: string): Promise<void>;
   getDefaultBranch(repo: RepoSlug): Promise<string>;
   getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
-  /** The file's exact bytes, any size GitHub serves; null when the path is absent at `ref`. */
   getContentBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
