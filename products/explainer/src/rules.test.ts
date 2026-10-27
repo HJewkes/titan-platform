@@ -79,13 +79,13 @@ describe("L0 rules scoped by structure", () => {
 });
 
 describe("the shipped Q-rule registry", () => {
-  it("holds the 75 rules: 55 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
+  it("holds the 76 rules: 56 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings", () => {
     const byType = (type: string) => registry.rules.filter((r) => checkType(r) === type).length;
     const warnings = registry.rules.filter((r) => r.l0?.severity === "warning").map((r) => r.id);
 
-    expect(registry.rules).toHaveLength(75);
-    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([55, 13, 7]);
-    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-F14", "Q-F15", "Q-V11", "Q-V12"]);
+    expect(registry.rules).toHaveLength(76);
+    expect([byType("L0"), byType("L0+J"), byType("J")]).toEqual([56, 13, 7]);
+    expect(warnings.sort()).toEqual(["Q-D1", "Q-E10", "Q-E12", "Q-E13", "Q-E14", "Q-E19", "Q-E8", "Q-F14", "Q-F15", "Q-V11"]);
   });
 
   it("resolves every phase-1 alias to the one rule that absorbed it", () => {

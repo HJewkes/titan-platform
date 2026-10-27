@@ -21,7 +21,7 @@ const FIRST_PLURAL = /\b(?:we|we['’](?:re|ve|ll|d)|us|our|ours)\b/gi;
 const CONTRACTION = /\b\w+['’](?:s|t|re|ve|ll|d|m)\b/gi;
 const TRIAD = /\b[\w'’-]+(?: [\w'’-]+){0,2}, [\w'’-]+(?: [\w'’-]+){0,2},? (?:and|or) [\w'’-]+(?: [\w'’-]+){0,2}[.,;:!?]/gi;
 const COLON_REVEAL = /(?<!\d):\s+[^.!?:\n]{1,60}[.!?]/gi;
-const NOT_X_TAIL = /[,;:]\s+not (?:by |the |a |an |its |their |from |as )?[\w'’-]+(?: [\w'’-]+){0,4}\s*[.!?]/gi;
+const NOT_X_TAIL = /[,;:]\s+(?:not|never|no) (?:by |the |a |an |its |their |from |as )?[\w'’-]+(?: [\w'’-]+){0,4}\s*[.!?]/gi;
 const SEMICOLON = /;/g;
 const LETS = /\blet['’]?s\b|\blet us\b/gi;
 // TP-4306's regexes as written, which agree with the Biber tagger at P 0.90 / R 0.89 and P 1.00 / R 1.00.

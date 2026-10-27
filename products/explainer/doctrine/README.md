@@ -151,7 +151,7 @@ rules:
 - **Id:** `<src>-<ref>[.<n>]`, where `<src>` is `dir`, `story`, `creator`, `talks`, `vid`, `motion`,
   `taste` or `owner`, and `<ref>` is the VT §4 id (`dir-P1`, `story-19`, `motion-G4`, `motion-preset-15`);
   an `owner-feedback` rule uses the owner's rule number instead (`owner-FB3`, `owner-FB2.1`), and a
-  `script-register` rule uses `register-` and the study's slice id (`register-N6`).
+  `script-register` rule uses `register-` and the study's slice id (`register-N6`); a `talks-and-slides` rule taken from the content-standards matrix uses its matrix id (`talks-ST11`).
   `.<n>` only splits one source row into several rules that share `source.ref`. Never `Q-`: that
   prefix belongs to `rules.yaml`. The id never carries the layer.
 - **Text:** 40 words or fewer, the rule's do and don't condensed. Never change a number.

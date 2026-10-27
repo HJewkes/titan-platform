@@ -1,5 +1,6 @@
+import { misakiEnglish, type G2p } from "@titan-design/speech-g2p";
 import type { L0Check } from "./eval-l0.js";
-import { countRow } from "./lint-text.js";
+import { countRow, wordsOf } from "./lint-text.js";
 import type { ScriptBeat } from "./script-schema.js";
 
 // Geometry of the headline band, from the explainer chrome stylesheet: `.xp-band-top` is padded by
@@ -40,3 +41,38 @@ export const overlongHeadlines = (beats: readonly ScriptBeat[]): ScriptBeat[] =>
 
 /** Q-V13: a beat headline wraps to at most two lines at the band's width, so the band never clips it. */
 export const headlineCheck: L0Check = ({ script }) => [countRow("Q-V13", overlongHeadlines(script.beats).map((beat) => beat.id))];
+
+export const ASSERTION_MAX_WORDS = 10;
+
+// Penn tags of a finite verb: a headline needs one to assert something rather than name a topic.
+const FINITE_VERB_TAGS: ReadonlySet<string> = new Set(["VBZ", "VBP", "VBD", "MD"]);
+
+/** Penn part-of-speech tags, one per token. */
+export type Tagger = (text: string) => string[];
+
+let g2p: G2p | undefined;
+// Built on first use: loading the G2P lexicon takes about a second, so only a run that reads a headline pays it.
+const g2pTags: Tagger = (text) => (g2p ??= misakiEnglish()).tokens(text).map((token) => token.tag);
+
+/** A finite verb after the first token: a subject and its verb. A topic label has none, and a bare imperative's verb comes first. */
+export const hasSubjectAndVerb = (headline: string, tag: Tagger = g2pTags): boolean =>
+  tag(headline).some((each, i) => i > 0 && FINITE_VERB_TAGS.has(each));
+
+export type AssertionDefect = "over-ten-words" | "no-subject-verb" | "written-after-narration";
+
+/** What keeps a beat's headline from being an assertion: its length, its missing verb, or a narration written first. */
+export function assertionDefects(beat: ScriptBeat, tag: Tagger = g2pTags): AssertionDefect[] {
+  const headline = headlineOf(beat);
+  const defects: AssertionDefect[] = [];
+  if (wordsOf(headline).length > ASSERTION_MAX_WORDS) defects.push("over-ten-words");
+  if (!hasSubjectAndVerb(headline, tag)) defects.push("no-subject-verb");
+  if (beat.authored && Date.parse(beat.authored.assertion_at) > Date.parse(beat.authored.spoken_at)) defects.push("written-after-narration");
+  return defects;
+}
+
+/** Q-D7: every beat's headline asserts its point, a subject and a verb in at most ten words, written before its narration. */
+export function assertionCheckWith(tag: Tagger = g2pTags): L0Check {
+  return ({ script }) => [countRow("Q-D7", script.beats.filter((beat) => assertionDefects(beat, tag).length > 0).map((beat) => beat.id))];
+}
+
+export const assertionCheck: L0Check = assertionCheckWith();

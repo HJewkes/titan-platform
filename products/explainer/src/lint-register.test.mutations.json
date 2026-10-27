@@ -20,21 +20,30 @@
       ]
     },
     {
+      "name": "tails count only \"not\", never \"never\" or \"no\"",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "const NOT_X_TAIL = /[,;:]\\s+(?:not|never|no) (?:by",
+      "replace": "const NOT_X_TAIL = /[,;:]\\s+not (?:by",
+      "kills": [
+        "register metrics on hand-counted text counts \"Y, never X\" and \"Y, no X\" tails as the same device"
+      ]
+    },
+    {
+      "name": "a tail opener needs no space, so \"nobody\" reads as \"no body\"",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "(?:not|never|no) (?:by",
+      "replace": "(?:not|never|no)(?:by",
+      "kills": [
+        "register metrics on hand-counted text does not count \"never\" or \"no\" inside a clause, or words that start with them"
+      ]
+    },
+    {
       "name": "the neg-synthetic band caps at 25 per 1k",
       "file": "products/explainer/src/lint-register.ts",
       "find": "\"neg-synthetic\": { max: 2.5 },",
       "replace": "\"neg-synthetic\": { max: 25 },",
       "kills": [
         "Q-V11 register rows warns on one \"no X\" negation in a 157-word script and passes the same script without it"
-      ]
-    },
-    {
-      "name": "the downtoners row warns like any other",
-      "file": "products/explainer/src/lint-register.ts",
-      "find": " && !REPORTED_ONLY_METRICS.has(metric);",
-      "replace": ";",
-      "kills": [
-        "Q-V11 register rows reports a downtoner rate over its band but never warns on it"
       ]
     }
   ]

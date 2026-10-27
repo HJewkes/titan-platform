@@ -79,6 +79,22 @@ describe("register metrics on hand-counted text", () => {
     expect(measure("not-x-tails", "It ships fast, not by luck. It holds: not the cache. It rests, not by the old north gate today.")).toBe(3);
   });
 
+  it('counts "Y, never X" and "Y, no X" tails as the same device', () => {
+    const tails = "Bake the loaf whole, never sliced. The oven warms once, no second pass needed.";
+
+    const counted = measure("not-x-tails", tails);
+
+    expect(counted).toBe(2);
+  });
+
+  it('does not count "never" or "no" inside a clause, or words that start with them', () => {
+    const clauses = "The baker never rushes the dough. There is no second oven, nobody waits. It rests, nonetheless.";
+
+    const counted = measure("not-x-tails", clauses);
+
+    expect(counted).toBe(0);
+  });
+
   it("counts semicolons", () => {
     expect(measure("semicolons", "One; two; three.")).toBeCloseTo(666.667, 3);
   });
