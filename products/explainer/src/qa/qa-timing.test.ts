@@ -37,6 +37,19 @@ describe("qa stage timing gates", () => {
     expect(["picture-change", "static-window", "cue-onset", "reading-hold"].map((name) => checks[name]?.pass)).toEqual([true, true, true, true]);
     expect(report.pass).toBe(true);
   });
+
+  it.each([
+    ["words-per-frame", 21],
+    ["headline-label-words", 11],
+  ])("fails the stage on %s with a %i-word headline", async (check, n) => {
+    const headline = Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+    const wordy = () => ({ ...FULL_STAGE, texts: [{ ...FULL_STAGE.texts[0]!, text: headline }] });
+
+    const { report, checks } = await harness.run({ probeAt: wordy });
+
+    expect(checks[check]).toMatchObject({ gate: true, pass: false });
+    expect(report.pass).toBe(false);
+  });
 });
 
 describe("qa stage spec timing", () => {

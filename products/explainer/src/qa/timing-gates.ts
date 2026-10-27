@@ -1,12 +1,13 @@
 /**
  * DIRECTION timing gates (TP-2669) over what the qa stage already holds: the QA timeline, the STT `words.json`, the
  * MP4's per-frame change, the DOM probe at every sampled moment and the type profile's pacing. Each gate returns
- * `{ id, value, threshold, pass, warn?, beats }`; the four done_when gates gate the qa stage, the rest are reported.
+ * `{ id, value, threshold, pass, warn?, beats }`; the gates in `TIMING_GATES` gate the qa stage, the rest are reported.
  *
  * Gating: picture-change (warn above `pacing.pictureChangeMaxS`, fail above `pictureChangeFailS`), static-window,
- * cue-onset and reading-hold. Reported, ported from the spike's gates.ts: G1 length against `runtime`, G7 first
- * motion, G8 text size, G9 headline and label word caps, G10 display text shared with narration, G12 held-beat count
- * against `pacing.held`, G13 verdict timing.
+ * cue-onset and reading-hold (TP-2669); G9 headline and label word caps, G10 display text shared with narration and
+ * words-per-frame (TP-4325: the redundancy effect, on-screen text as key words rather than the narration's sentences).
+ * Reported, ported from the spike's gates.ts: G1 length against `runtime`, G7 first motion, G8 text size, G12
+ * held-beat count against `pacing.held`, G13 verdict timing.
  *
  * Not ported: G2 and G3 (articulation and density read spike words fields the TS `words.json` lacks), G4 (cue onset
  * here checks every cue against its word, and picture-change reads the same framediff window), G5 and G6 (they are
@@ -29,6 +30,10 @@ const FIRST_MOTION_S = 0.2;
 const HEADLINE_WORDS = 10;
 const LABEL_WORDS = 3;
 const SHARED_RUN_WORDS = 5;
+/** Assertion-evidence slides averaged about 21 words against 41 for topic-bullet ones: the near-20 line, not a tested threshold. */
+const FRAME_WORDS = 20;
+/** Code is the beat's evidence, not prose to read against the narration, so its tokens are not on-screen words. */
+const CODE_TAGS = new Set(["pre", "code"]);
 const VERDICT_SHARE = 0.1;
 /** Seconds of float slack, so a cue exactly on the line is not failed by binary rounding. */
 const EPS = 1e-9;
@@ -273,6 +278,17 @@ function g10Shared(input: TimingInput): TimingGate {
   return { id: "G10", value: hits.length, threshold: `no run ≥ ${SHARED_RUN_WORDS} words`, pass: hits.length === 0, beats: uniq(hits.map((t) => t.beat)) };
 }
 
+/** words-per-frame: the prose words on screen together at each sampled moment, code aside, stay at or under 20. */
+function wordsPerFrame({ probed }: TimingInput): TimingGate {
+  const counts = probed.map((moment) => ({
+    beat: moment.beat,
+    n: moment.texts.filter((t) => !CODE_TAGS.has(t.tag)).reduce((sum, t) => sum + tokens(t.text).length, 0),
+  }));
+  const over = counts.filter((c) => c.n > FRAME_WORDS);
+  const value = counts.length === 0 ? null : Math.max(...counts.map((c) => c.n));
+  return { id: "words-per-frame", value, threshold: `≤ ${FRAME_WORDS} words on screen`, pass: over.length === 0, beats: uniq(over.map((c) => c.beat)) };
+}
+
 /** G12: the count of declared held beats within the profile's `pacing.held` band. */
 function g12Held({ timeline, held, profile }: TimingInput): TimingGate {
   const [min, max] = profile.pacing.held;
@@ -289,13 +305,13 @@ function g13Verdict({ timeline, words }: TimingInput): TimingGate {
   return { id: "G13", value: first === undefined ? null : r(first.t, 1), threshold: `≤ ${VERDICT_SHARE * 100} % of runtime`, pass, beats: first ? [first.beat] : [] };
 }
 
-/** The gates that fail the qa stage (the TP-2669 done_when); every other gate is reported. */
-export const TIMING_GATES: readonly string[] = ["picture-change", "static-window", "cue-onset", "reading-hold"];
+/** The gates that fail the qa stage (the TP-2669 and TP-4325 done_when); every other gate is reported. */
+export const TIMING_GATES: readonly string[] = ["picture-change", "static-window", "cue-onset", "reading-hold", "G9", "G10", "words-per-frame"];
 
 function timingGates(input: TimingInput): TimingGate[] {
   return [
     pictureChange(input), staticWindow(input), cueOnset(input), readingHold(input),
-    ...g1Length(input), g7FirstMotion(input), g8TextSize(input), g9Labels(input), g10Shared(input), g12Held(input), g13Verdict(input),
+    ...g1Length(input), g7FirstMotion(input), g8TextSize(input), g9Labels(input), g10Shared(input), wordsPerFrame(input), g12Held(input), g13Verdict(input),
   ];
 }
 
