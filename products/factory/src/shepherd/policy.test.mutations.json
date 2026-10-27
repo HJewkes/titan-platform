@@ -38,6 +38,15 @@
       "kills": [
         "merge evidence read on another base than the one being decided gates an allow on main whose MERGE record was bound to the parent branch, as no-facts"
       ]
+    },
+    {
+      "name": "stricterPolicy unions the two sides' baselines",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "  if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;\n",
+      "replace": "  const either = trusted.visualBaselines ?? other.visualBaselines;\n  if (either) stricter.visualBaselines = { check: either.check, paths: [...new Set([...(trusted.visualBaselines?.paths ?? []), ...(other.visualBaselines?.paths ?? [])])] };\n",
+      "kills": [
+        "a seat with visual baselines (TP-2662) keeps baselines in a stricter policy only when both sides carry the same ones"
+      ]
     }
   ]
 }

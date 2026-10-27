@@ -9,7 +9,8 @@
  * merge left to Shepherd once the adversary loop closes with MERGE at the same head.
  */
 import type { MERGE_WAITS, OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
-import { holdClassOf, type InboxItem } from "./inbox-view.js";
+import { holdClassOf } from "./gate-strip.js";
+import type { InboxItem } from "./inbox-view.js";
 import type { OpPreview, ShepherdSource } from "./shepherd.js";
 
 export type OpAction = Extract<InboxItem["action"], { kind: "owner-op" }>;

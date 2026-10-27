@@ -4,7 +4,7 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { ReadTimer } from "./bounded.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import type { GhGateway } from "./gh-gateway-port.js";
-import type { MergeOrder, MergeOrderRules, OrderWaits } from "./merge-order.js";
+import type { MergeOrder, MergeOrderRules, OrderWaits, RunHolds } from "./merge-order.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
 import type { ReviewSlots } from "./review-slots.js";
@@ -46,6 +46,7 @@ export interface ShepherdServices extends SnapshotServices {
 
 export interface MergeOrderServices {
   order: () => MergeOrder;
+  holds: () => RunHolds;
   rules: MergeOrderRules;
   waits: OrderWaits;
   now: () => number;

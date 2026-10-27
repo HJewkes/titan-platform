@@ -436,7 +436,7 @@ skipped with a note.
 | Stage | Gate | Reported |
 |---|---|---|
 | `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
-| `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
+| `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite); `word-budget` (a beat or block of the rewritten script over the cap resolve holds it to; a round reverts a beat whose rewrite takes it over, as `word-budget`) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
 
 **Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
 chapter of the draft once, with nothing before it, and lists every question the chapter raises and leaves

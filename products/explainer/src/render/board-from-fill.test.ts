@@ -29,7 +29,8 @@ describe("boardFromFill page extras", () => {
     expect(filled.beats.some((beat) => beat.reveals.length > 0)).toBe(true);
     for (const drawn of filled.beats) {
       const { reveals, chips, hints } = drawn;
-      expect(extras.get(ids.get(drawn.id)!)).toMatchObject({ reveals, chips, hints });
+      const continues = hints.continues === undefined ? {} : { continues: ids.get(hints.continues) };
+      expect(extras.get(ids.get(drawn.id)!)).toMatchObject({ reveals, chips, hints: { ...hints, ...continues } });
     }
   });
 
@@ -48,5 +49,19 @@ describe("boardFromFill page extras", () => {
       headline: beat.visual.assertion,
       chapter: { n: 2, of: script.chapters.length, label: script.chapters[1]!.label },
     });
+  });
+
+  it("names the beat a continuation follows by its storyboard id, not its script id", () => {
+    // Arrange
+    const script = fixtureScript();
+    const filled = fill(script);
+    const ids = beatIdMap(filled.beats.map((beat) => beat.id));
+
+    // Act
+    const { extras } = boardFromFill(script, filled, ids);
+
+    // Assert
+    expect(filled.beats.find((beat) => beat.id === "b3")?.hints.continues).toBe("b2");
+    expect(extras.get(ids.get("b3")!)?.hints.continues).toBe(ids.get("b2"));
   });
 });

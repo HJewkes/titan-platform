@@ -12,6 +12,8 @@ export interface GateBeat {
   startS: number;
   durationS: number;
   cues?: Readonly<Record<string, number>>;
+  /** The fill's page hints as `timeline.json` carries them; only `qaLeadLine` is read here. */
+  hints?: { qaLeadLine?: true };
 }
 
 /** `gate` holds the render while errors are held; `skip` renders unchecked and the manifest says so. */
@@ -38,9 +40,14 @@ function qaTimeline({ beats }: { beats: readonly GateBeat[] }): QaTimeline {
   };
 }
 
+/** Beats whose lead line stands alone, from the timeline's own hints: the set the qa stage derives from the fill. */
+function leadLines({ beats }: { beats: readonly GateBeat[] }): Set<string> {
+  return new Set(beats.filter((beat) => beat.hints?.qaLeadLine).map((beat) => beat.id));
+}
+
 /** render-qa's cue-moment gate over the served page, the same code the qa stage runs. */
 export function qaGateWith(engine: Pick<QaEngine, "open">): RenderQaGate {
-  return (pageUrl, timeline, gate) => cueGate(engine, pageUrl, qaTimeline(timeline), gate);
+  return (pageUrl, timeline, gate) => cueGate(engine, pageUrl, qaTimeline(timeline), gate, { lead: leadLines(timeline) });
 }
 
 export const defaultQaGate: RenderQaGate = (pageUrl, timeline, gate) => qaGateWith(chromiumQaEngine())(pageUrl, timeline, gate);

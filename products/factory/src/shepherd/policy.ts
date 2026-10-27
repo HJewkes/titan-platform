@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { MergeMethod } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -8,7 +9,7 @@ import type { OwnerAtHeadRow } from "../owner-at-head.js";
 import type { LandOptions } from "../workflows/land.js";
 import { headWaits } from "./freeze-wait.js";
 import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
-import { shownPaths } from "./visual-gate.js";
+import { shownPaths, type VisualBaselines } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import { proofOnBase, type ProofOnBase } from "./proof-base.js";
 import { CiPolicySchema } from "./review-schemas.js";
@@ -58,6 +59,8 @@ export interface EffectivePolicy {
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
   visualPaths?: string[];
+  /** The seat's baseline check and files: a head matching `visualPaths` that changes no baseline merges on that check's success. */
+  visualBaselines?: VisualBaselines;
   /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
   featureBase?: true;
   /** The seat's `release-merge` grant: a Version Packages PR may merge on its preflight; absent, the release waits for the owner. */
@@ -74,6 +77,7 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
+  visualBaselines: z.strictObject({ check: z.string(), paths: z.array(z.string()) }).optional(),
   featureBase: z.literal(true).optional(),
   release: z.literal("grant").optional(),
 });
@@ -116,12 +120,17 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
+    ...(seat?.visualPaths && seat.visualBaselines && { visualBaselines: seat.visualBaselines }),
     ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
     ...(seat?.grants.includes(RELEASE_MERGE_GRANT) && { release: "grant" as const }),
   };
 }
 
-/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base or release grant, never loosen any. */
+/**
+ * `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a
+ * feature base, release grant or visual baselines, never loosen any. Baselines clear visual heads, so they survive only
+ * when both sides carry the same ones; a run stored before the field has none and keeps the glob gate.
+ */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
@@ -129,6 +138,7 @@ export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy)
   const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
   if (!other.featureBase) delete stricter.featureBase;
   if (other.release !== "grant") delete stricter.release;
+  if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;
   return stricter;
 }
 
@@ -155,7 +165,9 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
   return {
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
-      if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
+      if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) {
+        return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths, effective.visualBaselines);
+      }
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}${skillNote(target?.headSha, verdictFor)}` };
     },
   };
@@ -180,7 +192,7 @@ export function shepherdLandOptions(
   };
   const proof = proofOnBase((headSha) => mergeEvidenceAt(headSha, current));
   const refresh = async (ctx: WorkflowContext, headSha: string): Promise<void> => {
-    await rereadEvidence(ctx, headSha, { verdictFor, current, reread }, effective().visualPaths);
+    await rereadEvidence(ctx, headSha, { verdictFor, current, reread }, effective());
     await proof.reread(ctx, headSha, decidedBase());
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
@@ -204,10 +216,10 @@ interface Reviews {
 }
 
 /** The MERGE evidence at the head read again, so later decisions about that review judge the re-read. */
-async function rereadEvidence(ctx: WorkflowContext, headSha: string, reviews: Reviews, visualPaths: string[] | undefined): Promise<void> {
+async function rereadEvidence(ctx: WorkflowContext, headSha: string, reviews: Reviews, visual: Pick<EffectivePolicy, "visualPaths" | "visualBaselines">): Promise<void> {
   const verdict = reviews.verdictFor(headSha);
   const evidence = mergeEvidenceAt(headSha, reviews.current);
-  if (verdict && evidence) reviews.reread.set(verdict, await refreshMergeEvidence(ctx, evidence, visualPaths));
+  if (verdict && evidence) reviews.reread.set(verdict, await refreshMergeEvidence(ctx, evidence, visual));
 }
 
 /**

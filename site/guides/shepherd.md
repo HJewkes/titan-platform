@@ -1018,6 +1018,10 @@ grants_extra:
 visual_paths:
   - packages/ui/src/components/**
   - "**/*.stories.tsx"
+visual_baselines:
+  check: visual
+  paths:
+    - packages/ui/specimen/baseline/**
 ---
 ```
 
@@ -1028,6 +1032,9 @@ visual_paths:
   does a glob no repo-relative path can match: leading or trailing whitespace, a backslash, an
   empty segment (a leading, doubled or trailing `/`), or a `.` or `..` segment, in the glob or
   in any of its `{a,b}` alternatives, or a fullwidth slash or invisible format character.
+- **`visual_baselines`** names a CI check that diffs rendered output against committed
+  baseline files, and the globs of those files. It needs `visual_paths`, a non-empty `check`
+  and globs under the same rules. See [Visual baselines](#visual-baselines).
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a
   repo name under any owner.
@@ -1042,7 +1049,7 @@ visual_paths:
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
 (both sides of a rename) against the globs. Files that cannot render never match: names
-with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
+with `.test.`, `.spec.`, `.test-d.` or `.spec-d.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;
@@ -1056,6 +1063,35 @@ file any of them calls visual gates. If one of those seats has neither `visual_p
 the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
 `visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
+
+### Visual baselines {#visual-baselines}
+
+A seat can add `visual_baselines: { check, paths }` beside `visual_paths`. The check is one
+that fails on any pixel drift without a committed baseline update, so a rendered change has to
+add, change or remove a file under `paths`. Shepherd then asks the owner about a visual
+pull request only when it shows a real rendered diff. At a head whose changed files match
+`visual_paths`:
+
+- a changed baseline file (added, modified or removed): the merge gates on `visual-path`,
+  and the reason lists the baseline files;
+- no baseline file changed, and every run of `check` at that head from GitHub Actions
+  concluded `success`: the visual files do not gate, the merge goes on to `MRG-AU-RV`, and
+  the evidence comment records that the visual files changed no baseline and the check
+  passed;
+- no baseline file changed, but the check is missing, pending or not `success`: the merge
+  gates on `visual-path` as without baselines.
+
+A remote that several seats list keeps `visual_baselines` only when every seat with
+`visual_paths` declares the same block. Otherwise it has none, and the glob gate stands.
+
+A rendering file that no baseline covers, such as a new component with no story or
+specimen, changes no baseline, so it merges on a green check. The seat owner opts in to
+that gap by adding the block.
+
+The run's policy is frozen at registration. A run registered before its seat added
+`visual_baselines` has none in its stored policy. A repeat `register` keeps baselines only
+when the stored policy and the new one carry the same block, so such a run keeps the glob
+gate for its whole life, and a gate it already opened is not decided again.
 
 The seat book is read again on every `register`, so a change applies without a restart. An
 invalid seat file or charter fails every registration until it is fixed. Path spelling
@@ -1551,7 +1587,10 @@ wait. A repeat at the same head keeps the first row and its time.
 
 **Who waits.** Every other registered run whose pull request changes one of the reserved
 paths waits in its merge step, like any hold, until the reserving pull request merges or
-closes, its run stops driving, or the reservation passes its TTL. Paths listed in
+closes, its run stops driving, or the reservation passes its TTL. While a person holds the
+reserving run (an owner hold, or a g10 or other gating hold no reviewer has satisfied), its
+reservation orders nothing, so a held run never parks its peers until the TTL (TP-4133); it
+orders them again once the hold lifts. Paths listed in
 `generated-paths.json` and the rule's `ignore` globs (`.changeset/**`) never count. A run
 that cannot read its own changed paths waits behind every live reservation, bounded by the
 TTL. Two reservations that overlap land in the order they were taken.
@@ -1579,7 +1618,9 @@ cycle. The hold reason names the reserving pull request and the shared paths:
 merge order: waiting behind #2301 (products/explainer/CAPABILITY.md)
 ```
 
-`shepherd status` shows that reason as the waiting row's next action. The reserving row
+`shepherd status` shows that reason as the waiting row's next action, and a waiting merge past
+the phase limit names it in its stall flag too. The waiting run's `shepherd timeline` gets one
+`order-wait` event each time it starts waiting behind a reservation. The reserving row
 carries its reservation, with its state and the pull requests waiting behind it:
 
 ```
@@ -1592,7 +1633,7 @@ lists the pull requests it waited behind. `shepherd timeline` lists the reservin
 `"enabled": true` in `merge-order.json` are ordered: titan-platform today.
 
 **Reading and clearing by hand.** `titan-factory shepherd order [owner/repo]` lists every
-reservation with its age, its state (`live`, `expired`, `not driving` or `rule off`), the
+reservation with its age, its state (`live`, `expired`, `not driving`, `held` or `rule off`), the
 pull requests it let land first, the earlier reservations it waits behind, and the pull
 requests waiting behind it. It reads the database and serve's memory only, never GitHub.
 

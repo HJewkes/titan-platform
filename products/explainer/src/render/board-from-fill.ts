@@ -17,10 +17,16 @@ interface FillBoard {
   extras: Map<string, PageExtras>;
 }
 
-function pageExtras(script: ScriptV1, beat: ScriptBeat, drawn: FilledBeat): PageExtras {
+/** The fill names the beat a continuation follows by script id; the page and timeline know only storyboard ids. */
+function pageHints(hints: FilledBeat["hints"], ids: ReadonlyMap<string, string>): FilledBeat["hints"] {
+  const { continues } = hints;
+  return continues === undefined ? hints : { ...hints, continues: ids.get(continues) ?? continues };
+}
+
+function pageExtras(script: ScriptV1, beat: ScriptBeat, drawn: FilledBeat, ids: ReadonlyMap<string, string>): PageExtras {
   const index = script.chapters.findIndex((chapter) => chapter.id === beat.chapter);
   return {
-    reveals: drawn.reveals, chips: drawn.chips, hints: drawn.hints, headline: beat.visual.assertion,
+    reveals: drawn.reveals, chips: drawn.chips, hints: pageHints(drawn.hints, ids), headline: beat.visual.assertion,
     chapter: { n: index + 1, of: script.chapters.length, label: script.chapters[index]!.label },
   };
 }
@@ -36,7 +42,7 @@ export function boardFromFill(script: ScriptV1, filled: FilledScript, ids: Reado
     const beat = byId.get(drawn.id)!;
     const id = ids.get(drawn.id)!;
     const cues = beatCues(beat.visual);
-    extras.set(id, pageExtras(script, beat, drawn));
+    extras.set(id, pageExtras(script, beat, drawn, ids));
     return {
       id, type: drawn.spec, duration_s: beat.plannedS, spoken: beat.spoken, slots: drawn.slots,
       ...(cues.length > 0 ? { cues } : {}),

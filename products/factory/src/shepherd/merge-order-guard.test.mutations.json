@@ -42,10 +42,11 @@
     {
       "name": "the guard records no wait for status",
       "file": "products/factory/src/shepherd/merge-order-guard.ts",
-      "find": "if (blocker && reason) deps.waits?.set(",
-      "replace": "if (blocker && !reason) deps.waits?.set(",
+      "find": "  waits.set(runId, wait);\n",
+      "replace": "",
       "kills": [
-        "the merge-order guard records the wait it reads for status, and drops it once the PR may merge"
+        "the merge-order guard records the wait it reads for status, and drops it once the PR may merge",
+        "the merge-order guard logs one order-wait event per wait, not one per poll, so the timeline shows what the merge waits on"
       ]
     }
   ]
