@@ -118,6 +118,7 @@ rules:
     aliases: [X2, TC1]
     related: [P1]
     owner_support: none
+    note: "Q-W1:stake-30s (TP-4333, RW-15) is a warning row beside it: the stake by min(15 %, 30 s) of planned time, so a long video still lands it in its first 30 s."
     l0: { severity: error, status: implemented, checks: ["Q-W1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W2
@@ -264,6 +265,7 @@ rules:
     aliases: [X15, TC16]
     related: ["CT R10"]
     owner_support: none
+    note: "Q-F11:late-facts (TP-4333, RW-16) is a warning row beside it: no beat starting in the last 10 % of planned time cites a fact no earlier beat cited, except the close's button."
     l0: { severity: error, status: implemented, checks: ["Q-F11"] }
   - id: Q-F12
     rule: "simplifications voiced once; limits before the close"
