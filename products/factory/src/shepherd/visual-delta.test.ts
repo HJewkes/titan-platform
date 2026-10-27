@@ -1,0 +1,96 @@
+import { PNG } from "pngjs";
+import { describe, expect, it } from "vitest";
+import { componentOf, contentBox, snapshotShare } from "./visual-delta.js";
+
+type Rgb = readonly [number, number, number];
+const WHITE: Rgb = [255, 255, 255];
+const BLACK: Rgb = [0, 0, 0];
+
+function frame(width: number, height: number, background: Rgb = WHITE): PNG {
+  const image = new PNG({ width, height });
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) paint(image, x, y, background);
+  return image;
+}
+
+function paint(image: PNG, x: number, y: number, [r, g, b]: Rgb): void {
+  image.data.set([r, g, b, 255], (y * image.width + x) * 4);
+}
+
+function fill(image: PNG, x: number, y: number, size: number, colour: Rgb): PNG {
+  for (let dy = 0; dy < size; dy += 1) for (let dx = 0; dx < size; dx += 1) paint(image, x + dx, y + dy, colour);
+  return image;
+}
+
+const bytes = (image: PNG): Uint8Array => PNG.sync.write(image);
+
+/** A 100×100 white frame with a black 10×10 square at (20, 20), as a tight specimen crop sits in a story viewport. */
+const squareInFrame = (): PNG => fill(frame(100, 100), 20, 20, 10, BLACK);
+
+describe("snapshotShare", () => {
+  it("gives 0 for identical images", () => {
+    expect(snapshotShare(bytes(squareInFrame()), bytes(squareInFrame()))).toBe(0);
+  });
+
+  it("divides by the content box, so one changed pixel of a 10×10 square in a 100×100 frame is 0.01", () => {
+    const head = squareInFrame();
+    paint(head, 25, 25, [255, 0, 0]);
+
+    expect(snapshotShare(bytes(squareInFrame()), bytes(head))).toBe(0.01);
+  });
+
+  it("gives 1 when the dimensions differ", () => {
+    expect(snapshotShare(bytes(frame(100, 100)), bytes(frame(100, 101)))).toBe(1);
+  });
+
+  it("does not count an antialiased edge whose shade shifts", () => {
+    const edge = (shade: number): PNG => {
+      const image = fill(fill(frame(40, 40), 0, 0, 20, BLACK), 0, 20, 20, BLACK);
+      for (let y = 0; y < 40; y += 1) paint(image, 20, y, [shade, shade, shade]);
+      return image;
+    };
+
+    expect(snapshotShare(bytes(edge(96)), bytes(edge(160)))).toBe(0);
+  });
+
+  it("counts a change the default pixel tolerance would let pass when the tolerance is tighter", () => {
+    const head = squareInFrame();
+    paint(head, 25, 25, [12, 12, 12]);
+
+    expect(snapshotShare(bytes(squareInFrame()), bytes(head))).toBe(0);
+    expect(snapshotShare(bytes(squareInFrame()), bytes(head), { pixelTolerance: 0.01 })).toBe(0.01);
+  });
+
+  it("caps a background change at 1", () => {
+    expect(snapshotShare(bytes(squareInFrame()), bytes(fill(frame(100, 100, BLACK), 20, 20, 10, WHITE)))).toBe(1);
+  });
+});
+
+describe("contentBox", () => {
+  it("bounds the pixels that differ from the corner colour across both images", () => {
+    const moved = fill(frame(100, 100), 50, 60, 10, BLACK);
+
+    expect(contentBox([squareInFrame(), moved])).toEqual({ x: 20, y: 20, width: 40, height: 50 });
+  });
+
+  it("is null for blank frames", () => {
+    expect(contentBox([frame(10, 10), frame(10, 10, BLACK)])).toBeNull();
+  });
+});
+
+describe("componentOf", () => {
+  it("names a story shot by its story title", () => {
+    const path = "packages/ui/tests/visual/reference/stories.spec.ts-snapshots/custom-workout-mesocard--default-chromium-linux.png";
+
+    expect(componentOf(path)).toBe("custom-workout-mesocard");
+  });
+
+  it("names a specimen shot by its spec's stem and the snapshot", () => {
+    const path = "packages/ui/specimen/baseline/set-row.screenshot.test.ts-snapshots/completed-chromium-linux.png";
+
+    expect(componentOf(path)).toBe("set-row/completed");
+  });
+
+  it("falls back to the bare snapshot name outside either layout", () => {
+    expect(componentOf("docs/shots/hero.png")).toBe("hero");
+  });
+});

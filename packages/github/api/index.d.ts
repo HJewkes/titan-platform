@@ -371,6 +371,7 @@ interface GitHubWire {
     deleteRef(repo: RepoSlug, branch: string): Promise<void>;
     getDefaultBranch(repo: RepoSlug): Promise<string>;
     getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
+    getContentBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
     putContent(repo: RepoSlug, request: PutFileRequest): Promise<{
         blobSha: string;
     }>;
@@ -456,6 +457,8 @@ interface GitHubPort {
     /** Refuses (skips) the default branch and a head that lives in another repo. */
     deleteRef(repo: RepoSlug, head: HeadRef): Promise<WriteResult>;
     getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
+    /** `getFile` for binary content such as a PNG: the bytes undecoded, read through `git/blobs` past the 1 MB inline limit. */
+    fileBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
     putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{
         blobSha: string;
     }>>;
@@ -1068,6 +1071,8 @@ interface FakeGitHub {
         content: string;
         blobSha: string;
     }>;
+    /** `ref:path` to a binary file's bytes for `getContentBytes`; a key absent here falls back to `files`, UTF-8 encoded. */
+    bytes: Map<string, Uint8Array>;
     /** The login `createComment` posts as and `getAuthenticatedLogin` answers with. */
     actor: string;
     /** PR number to its changed files. `listPrFiles` returns at most 3,000 of them, like GitHub. */

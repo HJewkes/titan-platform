@@ -15,6 +15,7 @@ import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budge
 import { draftTemplateFill } from "../script-fill.js";
 import { parseSpine } from "../spine-schema.js";
 import { labelConventionsVerdict } from "../label-conventions.js";
+import { chartIntegrityVerdict } from "../chart-integrity.js";
 import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
@@ -195,6 +196,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "word-budget", gate: true, reads: ["resolved"], run: wordBudgetVerdict },
     { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
     { name: "template-fill", gate: true, reads: ["script", "resolved"], run: templateFillVerdict },
+    { name: "chart-integrity", gate: true, reads: ["script", "resolved"], run: chartIntegrityVerdict },
     { name: "sim-check", gate: false, reads: ["sim-traces"], run: simCheckVerdict },
     { name: "sim-cut-orphan", gate: true, reads: ["script", "resolved"], run: simCutOrphanVerdict },
   ],
