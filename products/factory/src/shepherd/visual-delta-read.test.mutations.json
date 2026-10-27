@@ -25,8 +25,8 @@
     {
       "name": "a configured maxBytes is ignored for the default blob cap",
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
-      "find": "bytes.byteLength > m.maxBytes ?",
-      "replace": "bytes.byteLength > DEFAULT_MAX_BYTES ?",
+      "find": "if (bytes.byteLength > m.maxBytes)",
+      "replace": "if (bytes.byteLength > DEFAULT_MAX_BYTES)",
       "kills": ["the merge evidence under shepherd.visualThreshold shadow records a blob that is not a PNG, or over maxBytes, as unmeasured"]
     },
     {
