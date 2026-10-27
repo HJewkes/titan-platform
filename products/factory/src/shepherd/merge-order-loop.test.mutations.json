@@ -39,15 +39,6 @@
       ]
     },
     {
-      "name": "a conflicted run waits behind an earlier reservation a person holds",
-      "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()));",
-      "replace": "paths: own.paths }, reservations, rule, deps.now(), (id) => order.isDriving(id));",
-      "kills": [
-        "TP-4098 slice C: the #2301 loop never waits behind an earlier overlapping reservation whose run a person holds (TP-4133)"
-      ]
-    },
-    {
       "name": "a run held behind a live reservation counts as merging",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
       "find": "    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;\n",

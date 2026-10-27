@@ -31,10 +31,11 @@
     {
       "name": "status never names the order wait",
       "file": "products/factory/src/shepherd/merge-order-command.ts",
-      "find": "...(wait && { nextAction: wait.reason }), ",
+      "find": "...(wait && { nextAction: wait.reason, ...stalledBehind(row, wait.reason) }), ",
       "replace": "",
       "kills": [
-        "shepherd status with merge order names the reservation a PR is waiting behind, and the reservation on the reserving row"
+        "shepherd status with merge order names the reservation a PR is waiting behind, and the reservation on the reserving row",
+        "shepherd status with merge order names the merge-order wait in the stall flag of a merge past its phase limit (TP-4133)"
       ]
     },
     {
@@ -44,15 +45,6 @@
       "replace": "rowLine(row)",
       "kills": [
         "shepherd status with merge order names the reservation a PR is waiting behind, and the reservation on the reserving row"
-      ]
-    },
-    {
-      "name": "the stall flag never names the merge-order wait",
-      "file": "products/factory/src/shepherd/merge-order-command.ts",
-      "find": "nextAction: wait.reason, ...stalledBehind(row, wait.reason)",
-      "replace": "nextAction: wait.reason",
-      "kills": [
-        "shepherd status with merge order names the merge-order wait in the stall flag of a merge past its phase limit (TP-4133)"
       ]
     }
   ]

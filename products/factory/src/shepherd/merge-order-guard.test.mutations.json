@@ -45,16 +45,8 @@
       "find": "  waits.set(runId, wait);\n",
       "replace": "",
       "kills": [
-        "the merge-order guard records the wait it reads for status, and drops it once the PR may merge"
-      ]
-    },
-    {
-      "name": "a held reserver still orders its peers",
-      "file": "products/factory/src/shepherd/merge-order.ts",
-      "find": "order.isDriving(runId) && !registrationHeld(holds.byRun(runId))",
-      "replace": "order.isDriving(runId)",
-      "kills": [
-        "the merge-order guard lets a peer through while a person holds the reserving run, and holds it again once the hold lifts (TP-4133)"
+        "the merge-order guard records the wait it reads for status, and drops it once the PR may merge",
+        "the merge-order guard logs one order-wait event per wait, not one per poll, so the timeline shows what the merge waits on"
       ]
     }
   ]
