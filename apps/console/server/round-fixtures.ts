@@ -93,6 +93,25 @@ export async function stagedIndexedRound(from: string, id: string, roundJson: un
   return staged;
 }
 
+export interface CopiedRounds {
+  source: RoundsSource;
+  /** Writes `id`'s withdrawn.json as `round-withdraw.ts` would, so a page test can withdraw a round at any point. */
+  withdraw: (id: string, reason: string) => Promise<void>;
+  remove: () => Promise<void>;
+}
+
+/** A temp copy of every fixture round, so a page test can change the rounds dir under a page it already loaded. */
+export async function copiedRounds(): Promise<CopiedRounds> {
+  const root = await mkdtemp(path.join(tmpdir(), "copied-rounds-"));
+  await cp(FIXTURE_ROUNDS.dir, root, { recursive: true });
+  const body = (reason: string) => JSON.stringify({ schema: "titan-console/withdrawn@1", reason, at: "2031-03-04T12:00:00.000Z" });
+  return {
+    source: { dir: root },
+    withdraw: (id, reason) => writeFile(path.join(root, id, "withdrawn.json"), body(reason)),
+    remove: () => rm(root, { recursive: true, force: true }),
+  };
+}
+
 /** A temp rounds dir holding fixture round `id` sent with `feedback`, so a page test reads it back through rounds.get. */
 export async function sentRound(id: string, feedback: unknown): Promise<StagedRound> {
   const staged = await stagedRound(id, id, JSON.parse(await readFile(path.join(FIXTURE_ROUNDS.dir, id, "round.json"), "utf8")));

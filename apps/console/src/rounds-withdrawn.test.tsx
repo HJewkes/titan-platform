@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
-import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource } from "@titan-design/rpc-client";
-import { FIXTURE_ROUNDS } from "../server/round-fixtures.js";
+import { copiedRounds, type CopiedRounds } from "../server/round-fixtures.js";
 import { listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
 
@@ -17,30 +14,22 @@ const ANSWERED_THEN_WITHDRAWN = "kiln-schedule-r1";
 const REPLACEMENT = "orbit-retry-r1";
 const LATE = "beacon-states-r1";
 
-let root: string;
-let dir: string;
-
-async function withdraw(id: string, reason: string): Promise<void> {
-  const body = { schema: "titan-console/withdrawn@1", reason, at: "2031-03-04T12:00:00.000Z" };
-  await writeFile(path.join(dir, id, "withdrawn.json"), JSON.stringify(body));
-}
+let rounds: CopiedRounds;
 
 beforeEach(async () => {
-  root = await mkdtemp(path.join(tmpdir(), "console-rounds-withdrawn-"));
-  dir = path.join(root, "rounds");
-  await cp(FIXTURE_ROUNDS.dir, dir, { recursive: true });
-  await withdraw(SUPERSEDED, `superseded-by:${REPLACEMENT}`);
-  await withdraw(CLOSED, "closed");
-  await withdraw(ANSWERED_THEN_WITHDRAWN, "answered-elsewhere");
+  rounds = await copiedRounds();
+  await rounds.withdraw(SUPERSEDED, `superseded-by:${REPLACEMENT}`);
+  await rounds.withdraw(CLOSED, "closed");
+  await rounds.withdraw(ANSWERED_THEN_WITHDRAWN, "answered-elsewhere");
 });
 
 afterEach(async () => {
   cleanup();
-  await rm(root, { recursive: true, force: true });
+  await rounds.remove();
 });
 
 async function renderRounds(): Promise<void> {
-  const calls = { [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds({ dir })) };
+  const calls = { [snapshotKey("rounds.list", {})]: successEnvelope(await listRounds(rounds.source)) };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls }), "text/html");
   window.location.hash = "#/rounds";
   render(
@@ -53,7 +42,7 @@ async function renderRounds(): Promise<void> {
 
 /** A daemon stand-in that reads the rounds dir on every `rounds.list` call, so a later withdrawal shows on the next fetch. */
 const liveRounds: DataSource = {
-  call: async (name) => (name === "rounds.list" ? successEnvelope(await listRounds({ dir })) : errorEnvelope(`${name} is not served here`, 69)),
+  call: async (name) => (name === "rounds.list" ? successEnvelope(await listRounds(rounds.source)) : errorEnvelope(`${name} is not served here`, 69)),
   subscribe: () => ({ close: () => undefined }),
 };
 
@@ -101,7 +90,7 @@ describe("withdrawn rounds on the rounds list", () => {
     await renderLiveRounds();
     await waitFor(() => expect(rowIdsIn("open")).toContain(`round-row-${LATE}`));
 
-    await withdraw(LATE, "closed");
+    await rounds.withdraw(LATE, "closed");
     fireEvent.focus(window);
 
     await waitFor(() => expect(rowIdsIn("withdrawn")).toContain(`round-row-${LATE}`));
