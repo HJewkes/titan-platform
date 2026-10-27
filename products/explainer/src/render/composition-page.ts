@@ -61,20 +61,43 @@ export async function cachedPage(source: PageSource, cacheRoot: string, build: P
   return { dir, sha: treeSha(dir) };
 }
 
-// src/render/ and dist/render/ both sit two levels under the package root; the page builds from its sources in src/.
-const PACKAGE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const PAGE_SOURCE: PageSource = {
-  root: path.join(PACKAGE_ROOT, "src", "composition"),
-  extra: [path.join(PACKAGE_ROOT, "src", "beat-slots.ts"), path.join(PACKAGE_ROOT, "src", "anchor-grid.ts"), path.join(PACKAGE_ROOT, "package.json")],
+const PACKAGE_NAME = "@titan-design/explainer";
+
+const isExplainerPackage = (dir: string): boolean => {
+  const manifest = path.join(dir, "package.json");
+  return existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as { name?: unknown }).name === PACKAGE_NAME;
 };
 
-async function viteBuild(outDir: string): Promise<void> {
-  const { build } = await import("vite");
-  await build({ configFile: path.join(PAGE_SOURCE.root, "vite.config.ts"), logLevel: "warn", build: { outDir, emptyOutDir: true } });
+/**
+ * The page sources of the explainer package that holds `fromDir`. The module runs from src/render/ under vitest and
+ * tsx but from a tsup chunk in dist/, so the package root is found by its package.json, not by counting levels.
+ */
+export function pageSourceFrom(fromDir: string): PageSource {
+  let dir = path.resolve(fromDir);
+  while (!isExplainerPackage(dir)) {
+    const parent = path.dirname(dir);
+    if (parent === dir) throw new Error(`no ${PACKAGE_NAME} package.json above ${fromDir}`);
+    dir = parent;
+  }
+  const src = path.join(dir, "src");
+  return {
+    root: path.join(src, "composition"),
+    extra: [path.join(src, "beat-slots.ts"), path.join(src, "anchor-grid.ts"), path.join(dir, "package.json")],
+  };
 }
 
+const viteBuild =
+  (source: PageSource): PageBuild =>
+  async (outDir) => {
+    const { build } = await import("vite");
+    await build({ configFile: path.join(source.root, "vite.config.ts"), logLevel: "warn", build: { outDir, emptyOutDir: true } });
+  };
+
 /** The composition page from this package's sources, built with Vite at most once per source sha under `cacheRoot`. */
-export const compositionPage = (cacheRoot: string): Promise<BuiltPage> => cachedPage(PAGE_SOURCE, cacheRoot, viteBuild);
+export function compositionPage(cacheRoot: string): Promise<BuiltPage> {
+  const source = pageSourceFrom(path.dirname(fileURLToPath(import.meta.url)));
+  return cachedPage(source, cacheRoot, viteBuild(source));
+}
 
 /** The composition page in the host's explainer cache, where the render CLI and the render stage share one build. */
 export const defaultCompositionPage = (): Promise<BuiltPage> => compositionPage(path.join(appDirs("explainer").cache, "composition"));
