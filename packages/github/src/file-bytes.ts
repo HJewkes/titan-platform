@@ -8,11 +8,6 @@ interface ContentsEntry {
   content?: string;
 }
 
-interface Blob {
-  encoding: string;
-  content: string;
-}
-
 /**
  * The contents API inlines a file only up to 1 MB; past that it answers `encoding: "none"` with no content, so the
  * bytes come from `git/blobs/{sha}`, which serves blobs up to 100 MB. A decoded length that is not the reported size
@@ -30,7 +25,7 @@ export async function readContentBytes(api: Rest, repo: string, path: string, re
 
 /** Read through `text`, which keeps no ETag cache: a cached multi-megabyte blob body would outlive every caller. */
 async function blobBase64(api: Rest, repo: string, sha: string): Promise<string> {
-  const blob = JSON.parse(await api.text(`repos/${repo}/git/blobs/${sha}`)) as Blob;
-  if (blob.encoding !== "base64") throw new Error(`blob ${sha} is ${blob.encoding}-encoded, not base64`);
-  return blob.content;
+  const blob: unknown = JSON.parse(await api.text(`repos/${repo}/git/blobs/${sha}`));
+  if (typeof blob === "object" && blob !== null && "encoding" in blob && blob.encoding === "base64" && "content" in blob && typeof blob.content === "string") return blob.content;
+  throw new Error(`blob ${sha} answered no base64 content`);
 }
