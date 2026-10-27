@@ -9,6 +9,15 @@
       "kills": [
         "the CI-policy line across the review's own steps survives an unsettled re-read at the same head"
       ]
+    },
+    {
+      "name": "rereadInput drops the run's baselines",
+      "file": "products/factory/src/shepherd/merge-settle.ts",
+      "find": "    ...(visualBaselines && { visualBaselines }),\n",
+      "replace": "",
+      "kills": [
+        "the run's visual policy across an unsettled re-read (TP-2662) keeps the run's visual paths and baselines, so the comment's decision matches decide"
+      ]
     }
   ]
 }

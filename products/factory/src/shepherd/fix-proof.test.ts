@@ -9,6 +9,7 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
 import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, fixProofVerdict, lastResultLine, readFixProof } from "./fix-proof.js";
+import { judgedBaseOf, proofBaseOf } from "./fix-proof-base.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
@@ -32,14 +33,20 @@ const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status:
 /** The fake PR's base is `main`, so this is the repo running fix-proof on every PR into it. */
 const addWorkflowAtBase = (fake: FakeGitHub) => fake.files.set(`main:${WORKFLOW_EDIT.path}`, { content: "name: fix-proof\n", blobSha: "w1" });
 
-/** `base` is the ref the line judged; a refused line also names the default branch it was not. */
-function resultLine(head: string, verdict: FixProofResult["verdict"], base?: string): string {
+/** `base` is the ref the line judged, the fake PR's `main` unless named; null is a judge's line from before the field. A refused line also names the default branch it was not. */
+function resultLine(head: string, verdict: FixProofResult["verdict"], base: string | null = "main"): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  const refs = { ...(base !== undefined && { base }), ...(verdict === "refused" && { defaultBranch: "main" }) };
+  const refs = { ...(base !== null && { base }), ...(verdict === "refused" && { defaultBranch: "main" }) };
   return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...refs });
 }
 const STACKED = "feat/parent";
 const REFUSED_JOB = 70;
+
+/** A read without the base it was bound to, which the TP-4259 tests below assert on their own. */
+function unbound(read: unknown): z.infer<typeof FixProofReadSchema> | undefined {
+  if (typeof read !== "object" || read === null) return undefined;
+  return FixProofReadSchema.parse(Object.fromEntries(Object.entries(read).filter(([key]) => key !== "boundBase")));
+}
 
 function parsedLine(line: string): FixProofResult {
   const parsed = parseResultLine(line);
@@ -53,6 +60,7 @@ function mutantsLine(mutants: "killed" | "not-killed", counts: Partial<FixProofR
   return formatResultLine({
     head: H,
     mergeBase: BASE,
+    base: "main",
     verdict: "vacuous",
     counts: { reproduces: 0, "passes-on-base": 2, "new-api": 0, "fails-on-head": 0, "not-run": 0, ...counts },
     notCollected: [],
@@ -191,8 +199,8 @@ describe("sh-fix-proof in reviewPhase", () => {
     if (scene.external) store.get().hold(runId, "seat review", scene.external);
     await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
-    const proof = (results.find((result) => result.stepId === `sh-fix-proof:${H}`)?.data as { result?: unknown } | undefined)?.result;
-    return { verdicts, spawns: dispatch.spawns, stepIds: results.map((result) => result.stepId), proof, inputs };
+    const proofRead = (results.find((result) => result.stepId === `sh-fix-proof:${H}`)?.data as { result?: unknown } | undefined)?.result;
+    return { verdicts, spawns: dispatch.spawns, stepIds: results.map((result) => result.stepId), proof: unbound(proofRead), inputs };
   }
 
   it("ends a correctness PR with a vacuous proof at its head as NO_REPRO before any reviewer is spawned", async () => {
@@ -305,7 +313,7 @@ describe("sh-fix-proof in reviewPhase", () => {
       });
 
       it("keeps NO_REPRO when its mutation spec is refused", async () => {
-        const refused = mutantsLine("killed").replace(/"mutants":\{.*\}\}$/, '"mutants":{"verdict":"error","results":[],"error":"mutants: spec refused"}}');
+        const refused = formatResultLine({ ...parsedLine(mutantsLine("killed")), mutants: { verdict: "error", results: [], error: "mutants: spec refused" } });
 
         const { verdicts, spawns } = await review(correctness({ log: actionsLog(refused), files: [...TEST_ONLY_FILES, CHANGESET] }));
 
@@ -641,6 +649,8 @@ describe("readFixProof", () => {
     port?: (port: GitHubPort) => GitHubPort;
     noReproProceed?: "on";
     baseRef?: string;
+    /** The base the read is bound to, as land's re-read on a decided base asks. */
+    base?: string;
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
@@ -667,7 +677,8 @@ describe("readFixProof", () => {
     };
     const timeoutMs = options.timeoutMs ?? 10_000;
     const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
-    return { fake, elapsed: () => clock, read: () => readFixProof({ port, store, ...(options.noReproProceed && { noReproProceed: options.noReproProceed }) }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
+    const raw = () => readFixProof({ port, store, ...(options.noReproProceed && { noReproProceed: options.noReproProceed }) }, { repo: REPO, head: H, runId: "run-1", ...(options.base !== undefined && { base: options.base }) }, timing, signal);
+    return { fake, elapsed: () => clock, raw, read: async () => unbound(await raw()) };
   }
 
   it("keeps NO_REPRO when the PR head has moved to a tests-only head off the one the proof was read at", async () => {
@@ -710,10 +721,18 @@ describe("readFixProof", () => {
     expect(fake.calls).toEqual(["getPr"]);
   });
 
-  it("skips the gate with the reason recorded when the PR's head branch cannot be read", async () => {
+  it("reads error, never skipped, when the PR's head branch cannot be read, so the gate it may hold is not waved through", async () => {
     const { read } = registered("feature", [fixProofRun()], { unreadablePr: true });
 
-    expect(await read()).toEqual({ kind: "skipped", reason: expect.stringContaining("head branch unreadable") });
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("head branch unreadable") });
+  });
+
+  it("reads error, never skipped, when the registration store cannot be read", async () => {
+    const unbound = shepherdStoreRef();
+
+    const read = await readFixProof({ port: githubPort(fakeGitHub().wire), store: unbound }, { repo: REPO, head: H, runId: "run-1" }, { now: () => 0, sleep: async () => undefined }, signal);
+
+    expect(read).toEqual({ kind: "error", reason: expect.stringContaining("the registered kind is unreadable") });
   });
 
   it("settles as missing after the short grace when the head has no GitHub Actions run at all", async () => {
@@ -879,7 +898,7 @@ describe("readFixProof", () => {
   it("reads a completed fix-proof run with no result line for the head as error, not missing", async () => {
     const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(resultLine(OLD, "reproduced")) } });
 
-    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no result line for this head") });
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof run at this head judged the PR's base") });
   });
 
   it("reads a PR that deletes the fix-proof workflow and leaves no run as error", async () => {
@@ -911,6 +930,51 @@ describe("readFixProof", () => {
       const { read } = registered("correctness", [stacked], { baseRef: STACKED, logs: refusedLog, files: [SCRIPT_EDIT] });
 
       expect(await read()).toEqual({ kind: "untrusted", line: resultLine(H, "refused", STACKED), verdict: "refused", reason: expect.stringContaining("harness: scripts/fix-proof-run.sh") });
+    });
+
+    describe("the base the read was bound to", () => {
+      const failing = (method: "jobLogTail" | "checkRuns") => (base: GitHubPort): GitHubPort => ({ ...base, [method]: async () => Promise.reject(new Error(`${method} down`)) });
+
+      const stamped: [string, CheckRun[], Registered, string][] = [
+        ["a result", [fixProofRun()], {}, "result"],
+        ["an untrusted read", [fixProofRun()], { files: [SCRIPT_EDIT] }, "untrusted"],
+        ["a stall into error", [fixProofRun({ status: "in_progress", conclusion: null })], {}, "error"],
+        ["a job log that never reads", [fixProofRun()], { port: failing("jobLogTail") }, "error"],
+        ["a read that throws", [fixProofRun()], { port: failing("checkRuns") }, "error"],
+        ["a missing run", [], { timeoutMs: 1_500_000 }, "missing"],
+      ];
+
+      it.each(stamped)("is stamped on %s", async (_scene, runs, options, kind) => {
+        const { raw } = registered("correctness", runs, { logs: { [FIX_PROOF_JOB]: actionsLog(resultLine(H, "reproduced")) }, ...options });
+
+        expect(await raw()).toMatchObject({ kind, boundBase: "main" });
+      });
+
+      it.each([
+        ["a kind that needs no proof", "feature", {}],
+        ["a gate that cannot be read", "feature", { unreadablePr: true }],
+        ["a read whose PR base cannot be read", "correctness", { unreadablePr: true }],
+      ] as const)("is absent on %s", async (_scene, kind, options) => {
+        const { raw } = registered(kind, [fixProofRun()], options);
+
+        expect(await raw()).not.toHaveProperty("boundBase");
+      });
+
+      it("leaves the judged base to the line, which an untrusted read names too", async () => {
+        const { raw } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(resultLine(H, "reproduced", STACKED)) }, files: [SCRIPT_EDIT], baseRef: STACKED });
+
+        const proof = FixProofReadSchema.parse(await raw());
+
+        expect(proof).toMatchObject({ kind: "untrusted", boundBase: STACKED });
+        expect(judgedBaseOf(proof, H)).toBe(STACKED);
+        expect(proofBaseOf(proof, H)).toBe(STACKED);
+      });
+    });
+
+    it("never binds a line that names no base, so the read errors at the deadline instead of standing on it", async () => {
+      const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(resultLine(H, "reproduced", null)) }, files: [SOURCE_EDIT] });
+
+      expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("judged the PR's base before the deadline") });
     });
 
     it("reads an error line whose message is the refusal text as an error, not a refusal", async () => {
@@ -951,6 +1015,16 @@ describe("readFixProof", () => {
   describe("a diff only under .github/workflows/ (TP-3861)", () => {
     const headRuns = (validate: string) => [fixProofRun(), { ...successRun("validate", 41, undefined, validate), headSha: H }, { ...successRun("dag-check", 42), headSha: H }];
 
+    it("judges the base the read is bound to and names it, not the PR's live base (TP-4259)", async () => {
+      const { fake, read } = registered("correctness", headRuns("success"), { files: [CI_PIN], base: STACKED });
+      fake.compares.set(`${STACKED}...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
+
+      const proof = await read();
+
+      expect(proof).toMatchObject({ kind: "workflow-ci", head: H, baseRef: STACKED, mergeBase: MERGE_BASE });
+      expect(proofBaseOf(FixProofReadSchema.parse(proof), H)).toBe(STACKED);
+    });
+
     function workflowScene(base: string, head: string, files: PrFile[] = [CI_PIN]) {
       const scene = registered("correctness", headRuns(head), { files });
       seedBaseCi(scene.fake, base);
@@ -964,6 +1038,7 @@ describe("readFixProof", () => {
         kind: "workflow-ci",
         proved: true,
         head: H,
+        baseRef: "main",
         mergeBase: MERGE_BASE,
         base: [
           { name: "validate", sha: MERGE_BASE, runId: 31, conclusion: "failure" },

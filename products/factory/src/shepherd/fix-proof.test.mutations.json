@@ -39,13 +39,12 @@
       ]
     },
     {
-      "name": "a run binds on GitHub's live base whatever base its line judged",
+      "name": "a read that throws records no base it was bound to",
       "file": "products/factory/src/shepherd/fix-proof.ts",
-      "find": "return base === undefined || (\"baseRef\" in binding && base === binding.baseRef);",
-      "replace": "return base === undefined || \"baseRef\" in binding;",
+      "find": "    return boundTo({ kind: \"error\", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` }, binding);",
+      "replace": "    return { kind: \"error\", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };",
       "kills": [
-        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) reads the main run's line when a run refused on the stacked base is listed on main beside it",
-        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) reads error at the deadline, never missing or the refusal, when the only run listed on main judged the stacked base"
+        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) the base the read was bound to is stamped on a read that throws"
       ]
     }
   ]

@@ -4,7 +4,8 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { fixProofRoute, fixProofStanding, fixProofVerdict, proofBaseOf, type FixProofReadSchema } from "./fix-proof.js";
+import { fixProofRoute, fixProofStanding, fixProofVerdict, type FixProofReadSchema } from "./fix-proof.js";
+import { proofBaseOf } from "./fix-proof-base.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ProofStanding } from "./take-verdict.js";
 
