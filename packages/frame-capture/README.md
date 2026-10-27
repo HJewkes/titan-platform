@@ -31,6 +31,10 @@ await captureFrames({ url, fps: 30, width: 1920, height: 1080, workers: 8 }, (_,
 await encoder.finish();
 ```
 
+With `workers` above 1, pass `beatStartsS` (the seconds at which the page lays out a fresh
+scene) so every chunk starts on a beat: the render then matches a sequential one frame for
+frame. Without it, chunks split by frame count and can start mid-beat.
+
 `playwright-core` is a peer dependency; install a Chromium headless shell for it with
 `pnpm exec playwright-core install --only-shell chromium`. The encoder and `mixAudio`
 need `ffmpeg` on `PATH`.

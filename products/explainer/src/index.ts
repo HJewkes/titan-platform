@@ -291,3 +291,10 @@ export {
   type GatherResult,
   type ReviewBundle,
 } from "./presets/repo-explainer/index.js";
+export {
+  AudioSpecSchema,
+  buildAudioSpecs,
+  stripPronunciationMarkup,
+  type AudioSpec,
+  type BaseSpec,
+} from "./audio-spec.js";

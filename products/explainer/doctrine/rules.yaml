@@ -397,13 +397,14 @@ rules:
     rule: "Naive-reader pass: undefined names and open whys per minute (fresh context)"
     fields: [beats.spoken]
     aliases: [K12]
+    related: ["FB 2"]
     owner_support: none
     note: "`explainer eval cold` measures it: undefined items per chapter minute, from a viewer streamed one chapter at a time."
     judge: { layer: L1, status: cited, rubric: rubrics/l1-cold.md }
   - id: Q-E7
     rule: "At most 4 new on-screen items a beat (cue targets, map reveals, pins, cards and new_terms)"
     fields: [beats.visual, beats.new_terms]
-    related: [Q-F8, "SM M1"]
+    related: [Q-F8, "SM M1", "FB 3"]
     owner_support: for
     note: "Owner feedback named two overloaded beats. Q-F8 still counts spoken names; this counts what is on screen too."
     l0: { severity: error, status: implemented, checks: ["Q-E7"] }
@@ -417,8 +418,8 @@ rules:
   - id: Q-E9
     rule: "At least 15 s from the end of a dense beat (fails Q-E7 or Q-E8) to the start of the next dense beat"
     fields: [beats.visual, beats.plannedS]
-    related: ["SM M4"]
-    owner_support: none
+    related: ["SM M4", "FB 5"]
+    owner_support: for
     note: "A warning until a timed human check confirms the 15 s gap."
     l0: { severity: warning, status: implemented, checks: ["Q-E9"] }
   - id: Q-E10
@@ -431,7 +432,7 @@ rules:
   - id: Q-E11
     rule: "A beat that states an invariant has a map on screen and states at most one"
     fields: [beats.spoken, beats.visual, video.invariants]
-    related: ["SM M5"]
+    related: ["SM M5", "FB 6"]
     owner_support: for
     note: "Owner feedback rule 6: an invariant is seated in the architecture. A beat states one by an inv: cue or a video.invariants phrase in its spoken text."
     l0: { severity: error, status: implemented, checks: ["Q-E11"] }
@@ -452,7 +453,37 @@ rules:
   - id: Q-E14
     rule: "A beat that names three or more new items glosses them (prefilter for the L1 item judge)"
     fields: [beats.spoken, beats.visual]
-    related: [Q-E6, "SM M3"]
+    related: [Q-E6, "SM M3", "FB 2"]
     owner_support: none
     note: "Prefilter only, about half false positives (SM:277); never gates."
     l0: { severity: warning, status: implemented, checks: ["Q-E14"] }
+  - id: Q-E15
+    rule: "The journey comes before the architecture: no chapter shows the architecture before the first chapter that follows one task's journey, and each journey step states why it is needed"
+    fields: [chapters.question, beats.chapter, beats.visual]
+    related: ["FB 1"]
+    rubric_dims: [J3]
+    owner_support: for
+    note: "Owner feedback rule 1. Needs the spine (spine/v1); until TP-2988 lands the check is pending. The L1 J3 anchor carries the judge half."
+    l0: { severity: error, status: pending, owner: TP-2988 }
+    judge: { layer: L1, status: cited, rubric: rubrics/l1-script.md }
+  - id: Q-E16
+    rule: "A list holds one kind of item: every item in a list or card set has the same declared kind"
+    fields: [beats.visual, beats.spoken]
+    related: ["FB 4", "SM M6"]
+    owner_support: for
+    note: "Owner feedback rule 4. Needs the declared item kind from the spine ledger (TP-2988)."
+    l0: { severity: error, status: pending, owner: TP-2988 }
+  - id: Q-E17
+    rule: "Every named item is in the spine ledger and defined before its first use"
+    fields: [beats.new_terms, beats.spoken, beats.visual]
+    related: [Q-E6, Q-E14, "FB 2"]
+    owner_support: for
+    note: "Owner feedback rule 2, the ledger half. Q-E14 routes the likely gaps and Q-E6 measures them with a cold viewer."
+    l0: { severity: error, status: pending, owner: TP-2988 }
+  - id: Q-E18
+    rule: "Each invariant is seated: it names the architecture row that keeps it, or the fact that shows how it breaks today"
+    fields: [video.invariants, beats.visual]
+    related: [Q-E11, "FB 6"]
+    owner_support: for
+    note: "Owner feedback rule 6, the spine half. Q-E11 checks the map on screen; this checks the spine seat. Pending on the spine lints (S4 of the script rules plan)."
+    l0: { severity: error, status: pending, owner: TP-2988 }

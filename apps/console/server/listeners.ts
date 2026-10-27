@@ -8,6 +8,9 @@
  * must equal the head the round showed, or nothing is posted and the outcome is `moved`. The
  * result is kept in `<round>/answer.json`, written once; while the factory is unreachable nothing
  * is written, and `sweep` retries such rounds when the console starts.
+ *
+ * The other tells the seat that filed a decision round that the owner answered it (`round-asker.ts`). It runs for
+ * every answered round with an `asker.json`, whether or not gate answers are on.
  */
 import { createHash } from "node:crypto";
 import { open, readdir, type FileHandle } from "node:fs/promises";
@@ -17,6 +20,7 @@ import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type Gate
 import { RoundSchema, type Manifest, type Question } from "./round-schema.js";
 import { FeedbackDocument } from "./round2-adapter.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
+import { notifyAsker, type SeatNotifier } from "./round-asker.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -53,6 +57,8 @@ export interface ListenerDeps {
   roundsDir: string;
   shepherd: Pick<ShepherdSource, "list">;
   answer: GateAnswerClient;
+  /** Absent, no asking seat is told of an answer. */
+  notify?: SeatNotifier;
   now?: () => Date;
   logger?: { warn(fields: Record<string, unknown>, message: string): void };
 }
@@ -219,17 +225,29 @@ async function answerRound(deps: ListenerDeps, roundId: string): Promise<void> {
   await writeOnce(path.join(dir, ANSWER_FILE), recordOf(answer, decision, outcome, (deps.now ?? (() => new Date()))()));
 }
 
+async function tellAsker(deps: ListenerDeps, roundId: string): Promise<void> {
+  if (deps.notify === undefined) return;
+  try {
+    await notifyAsker(deps.roundsDir, roundId, deps.notify, (deps.now ?? (() => new Date()))());
+  } catch (error) {
+    deps.logger?.warn({ roundId }, `${roundId}: the asking seat was not told of the answer (${error instanceof Error ? error.message : String(error)})`);
+  }
+}
+
 /** A failure here must never fail the submit that already wrote the owner's answer; the sweep retries it. */
-const attempt = (deps: ListenerDeps, roundId: string): Promise<void> => answerRound(deps, roundId).catch(() => undefined);
+async function attempt(deps: ListenerDeps, roundId: string): Promise<void> {
+  if (deps.enabled) await answerRound(deps, roundId).catch(() => undefined);
+  await tellAsker(deps, roundId);
+}
 
 export function createRoundListeners(deps: ListenerDeps): RoundListeners {
   return {
     async afterRoundSubmit(roundId, result) {
-      if (!deps.enabled || result.status !== "submitted") return;
+      if (result.status !== "submitted") return;
       await attempt(deps, roundId);
     },
     async sweep() {
-      if (!deps.enabled) return;
+      if (!deps.enabled && deps.notify === undefined) return;
       const entries = await readdir(deps.roundsDir).catch(() => []);
       for (const roundId of entries.filter((name) => ROUND_ID.test(name))) await attempt(deps, roundId);
     },
