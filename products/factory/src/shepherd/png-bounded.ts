@@ -11,11 +11,11 @@ export interface Decoded {
   readonly rgba: Uint8Array;
 }
 
-export interface Refused {
+interface Refused {
   readonly refused: string;
 }
 
-export interface PngLimits {
+interface PngLimits {
   readonly maxPixels: number;
 }
 
@@ -181,7 +181,7 @@ function unfilter(raw: Buffer, header: Header): Decoded | Refused {
   const bpp = header.colourType === RGBA ? 4 : 3;
   const stride = header.width * bpp;
   const rgba = new Uint8Array(header.width * header.height * 4);
-  let above = new Uint8Array(stride);
+  let above: Uint8Array = new Uint8Array(stride);
   for (let y = 0; y < header.height; y += 1) {
     const start = y * (stride + 1);
     const filter = raw.readUInt8(start);
