@@ -1,10 +1,13 @@
 import { z } from "zod";
 import { L0_CHECKS, runL0, type L0Check, type L0Result } from "./eval-l0.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness } from "./eval-harness.js";
+import { wordsOf } from "./lint-text.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith, type SpeechVerdict } from "./lint-voice.js";
 import { guardBeat, rewrittenBeat, type BeatGuardOptions, type BeatRejection } from "./rewrite-guard.js";
 import { MAX_REWRITE_ROUNDS, REWRITE_TARGET_ROWS, planRegisterEdits, type RefusalRule, type RegisterEditPlan } from "./rewrite-plan.js";
 import { renderRewritePrompt } from "./rewrite-prompt.js";
+import { overBudget } from "./resolve-budget.js";
+import { draftBudgets } from "./script-budget.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 
@@ -47,7 +50,7 @@ export interface RejectedBeat {
 
 export interface RevertedBeat {
   beat: string;
-  /** The error rows the rewrite made this beat fail. */
+  /** The error rows the rewrite made this beat fail, and `word-budget` when it took the beat or its block over a cap. */
   rows: string[];
 }
 
@@ -211,6 +214,31 @@ function gainedErrors(before: readonly L0Result[], after: readonly L0Result[], r
   });
 }
 
+const overKeys = (beats: readonly ScriptBeat[], profile: string): Set<string> =>
+  new Set(overBudget(draftBudgets({ beats: [...beats], profile })).map((row) => `${row.scope}:${row.id}`));
+
+/**
+ * The rewritten beats that took their beat, or by growing their block, a block over its word cap. The script stage
+ * holds the draft to resolve's caps, so a rewrite that breaks one is reverted rather than failing resolve (TP-4288).
+ */
+function gainedBudget(script: ScriptV1, after: readonly ScriptBeat[], rewritten: readonly string[]): RevertedBeat[] {
+  const was = overKeys(script.beats, script.profile);
+  const gained = new Set([...overKeys(after, script.profile)].filter((key) => !was.has(key)));
+  const wordsAt = (beats: readonly ScriptBeat[], i: number): number => wordsOf(beats[i]!.spoken).length;
+  return rewritten.flatMap((id) => {
+    const i = script.beats.findIndex((beat) => beat.id === id);
+    const blockGrew = gained.has(`block:${script.beats[i]!.chapter}`) && wordsAt(after, i) > wordsAt(script.beats, i);
+    return gained.has(`beat:${id}`) || blockGrew ? [{ beat: id, rows: ["word-budget"] }] : [];
+  });
+}
+
+/** One entry per beat, its rows from every source in order. */
+function joinReverts(...sources: readonly RevertedBeat[][]): RevertedBeat[] {
+  const rows = new Map<string, string[]>();
+  for (const { beat, rows: from } of sources.flat()) rows.set(beat, [...(rows.get(beat) ?? []), ...from]);
+  return [...rows].map(([beat, beatRows]) => ({ beat, rows: beatRows }));
+}
+
 interface RoundOutcome {
   script: ScriptV1;
   rows: L0Result[];
@@ -265,7 +293,8 @@ async function runRound({ script, rows, refused }: RoundInput, round: number, de
   if (chapters.length === 0) return { script, rows, calls: [] };
   const replies = await Promise.all(chapters.map((chapter) => callChapter(chapter, script, plan, deps)));
   const merged = mergeReplies(script, plan, replies, deps);
-  const reverted = gainedErrors(rows, runL0({ ...script, beats: merged.beats }, undefined, checks), merged.rewritten);
+  const errors = gainedErrors(rows, runL0({ ...script, beats: merged.beats }, undefined, checks), merged.rewritten);
+  const reverted = joinReverts(errors, gainedBudget(script, merged.beats, merged.rewritten));
   const back = new Set(reverted.map((r) => r.beat));
   const candidate = merged.beats.map((beat, i) => (back.has(beat.id) ? script.beats[i]! : beat));
   const greedy = keepChapters(script, rows, candidate, checks);
@@ -307,7 +336,7 @@ function checkRounds(rounds: number): number {
 /**
  * Rewrites spoken lines toward the Q-V11 target rows, one schema-bound model call per chapter a round. A chapter is kept
  * only when, on top of the chapters kept before it, it fails no more target rows, comes closer to band, fails no more
- * error rows and turns no protected row red; a beat that gains an error row is reverted, and a failed call leaves its
+ * error rows and turns no protected row red; a beat that gains an error row or goes over its word cap is reverted, and a failed call leaves its
  * chapter as it was. Numbers are spelled for the voice before the first round and in each candidate before it is vetted.
  */
 export async function rewriteScript(script: ScriptV1, deps: RewriteDeps): Promise<RewriteResult> {
