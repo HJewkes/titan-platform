@@ -7,7 +7,8 @@
  * cue-onset and reading-hold (TP-2669); G9 headline and label word caps, G10 display text shared with narration and
  * words-per-frame (TP-4325: the redundancy effect, on-screen text as key words rather than the narration's sentences).
  * Reported, ported from the spike's gates.ts: G1 length against `runtime`, G7 first motion, G8 text size, G12
- * held-beat count against `pacing.held`, G13 verdict timing.
+ * held-beat count against `pacing.held`, G13 verdict timing, and early-reveal and hold-through-reference (TP-4329,
+ * `reference-timing.ts`).
  *
  * Not ported: G2 and G3 (articulation and density read spike words fields the TS `words.json` lacks), G4 (cue onset
  * here checks every cue against its word, and picture-change reads the same framediff window), G5 and G6 (they are
@@ -22,6 +23,7 @@ import { cueResolverFromWords } from "../cues.js";
 import type { TypeProfile } from "../profile-schema.js";
 import type { ScriptTiming } from "../timing.js";
 import { timelineS, type QaTimeline } from "./qa-timeline.js";
+import { earlyReveal, holdThroughReference, textSpans, type TextSpan } from "./reference-timing.js";
 
 /** A frame counts as changed when more than 10 pixels of the 320x180 grey frame moved (the spike's static level). */
 const STATIC_LEVEL = 10 / (FRAMEDIFF_WIDTH * FRAMEDIFF_HEIGHT);
@@ -173,30 +175,6 @@ export function cueOnset(input: TimingInput): TimingGate {
   return { id: "cue-onset", value: r(Math.max(0, ...finite)), threshold: `±${cueOnsetS} s of its word`, pass: beats.length === 0, beats };
 }
 
-interface TextSpan {
-  text: string;
-  beat: string;
-  fromS: number;
-  /** The first sample it is gone at; null when it is still shown at the last sample. */
-  untilS: number | null;
-}
-
-/** Each text's runs of consecutive samples on screen, keyed by element and text. */
-function textSpans(probed: readonly ProbedMoment[]): TextSpan[] {
-  const open = new Map<string, TextSpan>();
-  const spans: TextSpan[] = [];
-  for (const moment of probed) {
-    const shown = new Map(moment.texts.map((t) => [`${t.element}\u0000${t.text}`, t.text]));
-    for (const [key, span] of open) {
-      if (shown.has(key)) continue;
-      spans.push({ ...span, untilS: moment.t });
-      open.delete(key);
-    }
-    for (const [key, text] of shown) if (!open.has(key)) open.set(key, { text, beat: moment.beat, fromS: moment.t, untilS: null });
-  }
-  return [...spans, ...open.values()];
-}
-
 function spokenBetween(input: TimingInput, fromS: number, toS: number): Set<string> {
   const said = input.timeline.beats.flatMap((beat) => (input.words.get(beat.id)?.words ?? []).map((w) => ({ word: w.word, t: beat.startS + w.startS })));
   return new Set(said.filter((w) => w.t >= fromS && w.t <= toS).flatMap((w) => tokens(w.word)));
@@ -317,6 +295,7 @@ function timingGates(input: TimingInput): TimingGate[] {
   return [
     pictureChange(input), staticWindow(input), cueOnset(input), readingHold(input),
     ...g1Length(input), g7FirstMotion(input), g8TextSize(input), g9Labels(input), g10Shared(input), wordsPerFrame(input), g12Held(input), g13Verdict(input),
+    earlyReveal(input), holdThroughReference(input),
   ];
 }
 
