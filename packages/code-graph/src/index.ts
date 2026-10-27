@@ -84,6 +84,14 @@ export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/te
 export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
 export type { IstanbulCoverage, SymbolSpan } from "./analysis/coverage.js";
 export { attributeCoverage, COVERAGE_METRIC_NAME } from "./analysis/coverage.js";
+export type {
+  BodyDeletePlan,
+  BodyDeleteSkip,
+  BodyDeleteTarget,
+  HeadMutation,
+  PlanBodyDeletesInput,
+} from "./analysis/body-delete.js";
+export { MAX_BODY_DELETES, planBodyDeletes } from "./analysis/body-delete.js";
 export type { MinifiedSource, MinifyLanguage } from "./analysis/context/minify.js";
 export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./analysis/context/minify.js";
 /**
