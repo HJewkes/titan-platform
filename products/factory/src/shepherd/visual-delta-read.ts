@@ -158,7 +158,12 @@ const clip = (text: string): string => (text.length > MAX_TEXT ? `${text.slice(0
 const RANK: Record<SnapshotStatus, number> = { unmeasured: 0, removed: 1, changed: 2, added: 3 };
 const byWeight = (a: SnapshotDelta, b: SnapshotDelta): number => RANK[a.status] - RANK[b.status] || (b.share ?? 0) - (a.share ?? 0);
 
-const clipSnapshot = ({ path, component, reason, ...rest }: SnapshotDelta): SnapshotDelta => ({ path: clip(path), component: clip(component), ...rest, ...(reason !== undefined && { reason: clip(reason) }) });
+const clipSnapshot = ({ path, component, reason, ...rest }: SnapshotDelta): SnapshotDelta => ({
+  path: clip(path),
+  component: clip(component),
+  ...rest,
+  ...(reason !== undefined && { reason: clip(reason) }),
+});
 
 type Lists = Pick<VisualDelta, "snapshots" | "api" | "tokens" | "harness">;
 
