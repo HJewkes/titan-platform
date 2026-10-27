@@ -29,7 +29,7 @@
       ]
     },
     {
-      "name": "a file renamed into the snapshot paths is measured against a base path it never had",
+      "name": "a file renamed into the snapshot paths is measured, not read as added",
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
       "find": "if (file.status === \"added\" || (file.previousPath !== undefined && from === undefined))",
       "replace": "if (file.status === \"added\")",
