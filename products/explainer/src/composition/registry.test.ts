@@ -153,7 +153,7 @@ describe("profile coverage fence", () => {
 
     const undrawn = [...daily].filter((kind) => !registeredKinds().includes(kind)).sort();
 
-    assert.deepEqual(undrawn, ["arch-map", "chart", "compare", "kanban-flow", "metrics-panel", "stat"]);
+    assert.deepEqual(undrawn, ["arch-map", "chart", "compare", "kanban-flow", "stat"]);
   });
 });
 

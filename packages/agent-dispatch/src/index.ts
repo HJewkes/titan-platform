@@ -43,7 +43,7 @@ export {
   type ParkOptions,
   type ParkResult,
 } from "./park.js";
-export { buildMessageArgs, messageAgent, receivesMessages } from "./message.js";
+export { buildMessageArgs, messageAgent, receivesMessages, type MessageOptions, type WakeSource } from "./message.js";
 export { dataFence } from "./fence.js";
 export {
   buildListAgentsArgs,
