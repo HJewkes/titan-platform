@@ -145,6 +145,16 @@ describe("rewrite stage checks", () => {
     expect(verdict(run, "no-new-l0-error")).toMatchObject({ pass: true });
   });
 
+  it("gates on a rewritten beat over the word cap resolve holds it to", () => {
+    const overH1 = { ...rewritten, beats: rewritten.beats.map((beat) => (beat.id === "h1" ? { ...beat, plannedS: 5 } : beat)) };
+
+    const over = runStageChecks("rewrite", input({ draft: json(draft), script: json(overH1), "rewrite-report": report(true) }));
+    const within = runStageChecks("rewrite", input({ draft: json(draft), script: json(rewritten), "rewrite-report": report(true) }));
+
+    expect(verdict(over, "word-budget")).toMatchObject({ gate: true, pass: false, detail: expect.stringMatching(/^over: h1 26\/14 words/) });
+    expect(verdict(within, "word-budget")).toMatchObject({ gate: true, pass: true });
+  });
+
   it("passes when the error row was already red on the draft", () => {
     const run = runStageChecks("rewrite", input({ draft: json(draft), script: json(rewritten), "rewrite-report": report(true) }, [l0Check(false)]));
 
@@ -218,7 +228,7 @@ describe("running a stage's checks", () => {
       gather: [],
       audition: [],
       script: ["l0:gate", "l0-warnings:reported", "pace:gate", "cues-present:gate", "unknown-words:gate", "word-budget:gate", "runtime:gate", "beat-length:gate", "label-conventions:reported"],
-      rewrite: ["no-new-l0-error:gate", "rewrite-rows:reported"],
+      rewrite: ["no-new-l0-error:gate", "word-budget:gate", "rewrite-rows:reported"],
       eval: [], resolve: [
         "variety-top-component:reported", "variety-component-run:reported", "variety-template-share:reported", "variety-framing-run:reported",
         "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "template-fill:gate",

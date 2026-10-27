@@ -178,6 +178,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   ],
   rewrite: [
     { name: "no-new-l0-error", gate: true, reads: ["draft", "script"], run: noNewL0Error },
+    { name: "word-budget", gate: true, reads: ["script"], run: (input) => draftWordBudget(script(input, "script")) },
     { name: "rewrite-rows", gate: false, reads: ["rewrite-report"], run: rewriteTargetRows },
   ],
   eval: [],

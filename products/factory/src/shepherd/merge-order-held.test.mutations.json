@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a held reserver still orders its peers",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "order.isDriving(runId) && !registrationHeld(holds.byRun(runId))",
+      "replace": "order.isDriving(runId)",
+      "kills": [
+        "whether a reserving run still orders its peers (TP-4133) orders nothing while a hold no reviewer has satisfied stands",
+        "whether a reserving run still orders its peers (TP-4133) orders nothing under an owner hold, even with the hold satisfied"
+      ]
+    },
+    {
+      "name": "a reviewer-satisfied hold still orders nothing",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "(registration.ownerHold !== null || registration.holdSatisfied === null)",
+      "replace": "true",
+      "kills": [
+        "whether a reserving run still orders its peers (TP-4133) still orders them once a reviewer satisfied its hold, since it may merge at that head"
+      ]
+    },
+    {
+      "name": "a satisfied hold lifts an owner hold too",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "registration.ownerHold !== null || registration.holdSatisfied === null",
+      "replace": "registration.holdSatisfied === null",
+      "kills": [
+        "whether a reserving run still orders its peers (TP-4133) orders nothing under an owner hold, even with the hold satisfied"
+      ]
+    }
+  ]
+}

@@ -510,9 +510,9 @@ no message and no record, and the console's start-up sweep retries it.
 
 The message is fixed text: the round id, the `feedback.json` path, why this seat is told, and
 whether the answer carries free text (a question comment, an option note, a written answer, or
-general text). Nothing the filing seat wrote is relayed. Notices still carry human provenance:
-`round-notice-transport.ts` sends them through `agent-chat debug send`, which delivers from the
-human seat, until an agent-chat console wake source (CC-1507) replaces that one seam.
+general text). Nothing the filing seat wrote is relayed. `round-notice-transport.ts` sends notices through
+`agent-chat debug send --source console` (CC-1507): they arrive from the human seat, labelled
+`wake_source="console"`, without `human-endorsed` provenance.
 
 ```sh
 titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
@@ -726,7 +726,7 @@ video shows) or about the video itself (how the system made it: what works, what
 
 The notice is fixed text naming the video id, the time and the note id, sent through the same
 `agent-chat` transport as round notices (`round-notice-transport.ts`), which delivers it from the
-human seat. Agents write video file names, folders and sidecars, so the notice carries none of
+human seat labelled `wake_source="console"`. Agents write video file names, folders and sidecars, so the notice carries none of
 them and never the comment's text; the seat reads the note with `videos.notes <videoId>`. Delivery is best effort: the note is stored
 either way, `routedTo: { seat, delivered }` says whether the send went through, and nothing retries
 a failed send. Verdicts are not routed (`routedTo: null`).

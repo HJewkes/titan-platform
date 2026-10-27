@@ -31,6 +31,15 @@
       "kills": [
         "tts stage checks passes with a beat resolve cut, whose cue tts never voiced"
       ]
+    },
+    {
+      "name": "the rewrite stage has no word-budget gate",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"word-budget\", gate: true, reads: [\"script\"], run: (input) => draftWordBudget(script(input, \"script\")) },\n",
+      "replace": "",
+      "kills": [
+        "rewrite stage checks gates on a rewritten beat over the word cap resolve holds it to"
+      ]
     }
   ]
 }

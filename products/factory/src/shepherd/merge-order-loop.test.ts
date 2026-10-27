@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
+import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -153,11 +154,19 @@ function heldInMerge(loop: Loop, pr: number): string {
   return runId;
 }
 
-/** R stands in for a conflicted run that reserved while `ahead` was merging, so it waits on `ahead` and holds the rest. */
-function reserveAhead(loop: Loop, r: string, ahead: string): void {
-  const since = "2026-10-23T10:00:00.000Z";
+/**
+ * R stands in for an unheld conflicted run that reserved Y's paths while `ahead` was merging, so it waits on `ahead` and
+ * holds the rest. It is a bare running run that never merges Y; a held one would order nothing (TP-4133).
+ */
+function reserveAhead(loop: Loop, ahead: string): string {
+  const since = "2026-10-23T09:59:00.000Z";
+  const r = "run-r-stand-in";
+  new WorkflowRunStore(loop.host.db).create({ id: r, workflowName: "stand-in", params: { repo: REPO }, status: "running", currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: since, completedAt: null, error: null });
   loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths: [CAPABILITY], ahead: [ahead], since, reason: "R waits on X" });
+  return r;
 }
+
+const endReservation = (loop: Loop, r: string): void => void loop.order.release(REPO, r, { at: "2026-10-23T10:00:00.000Z" });
 
 /** X conflicts at its current head with nothing merged, until its fixer pushes. */
 function dirtyUntilPushed(loop: Loop): void {
@@ -253,45 +262,56 @@ describe("TP-4098 slice C: the #2301 loop", () => {
 
   it("never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring", async () => {
     const loop = loopWorld(true);
-    const r = heldInMerge(loop, Y);
     const x = heldInMerge(loop, X);
-    await vi.waitFor(() => expect([currentStep(loop, Y), currentStep(loop, X)]).toEqual([expect.stringMatching(/^merge:/), expect.stringMatching(/^merge:/)]), WAIT);
-    reserveAhead(loop, r, x);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^merge:/), WAIT);
+    const r = reserveAhead(loop, x);
     shepherd(loop, Z);
     await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
 
     dirtyUntilPushed(loop);
     loop.store.release(x);
     await finish(loop, X);
-    loop.store.release(r);
-    await finish(loop, Y, Z);
+    endReservation(loop, r);
+    await finish(loop, Z);
 
     expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
-    expect(loop.merged).toEqual([X, Y, Z]);
+    expect(loop.merged).toEqual([X, Z]);
   });
 
   it("stops waiting on a run it let merge first once that run is held behind a live reservation", async () => {
     const loop = loopWorld(true);
-    loop.fake.prFiles.set(Y, [{ path: "products/other/README.md", status: "modified" }]);
-    const r = heldInMerge(loop, Y);
     const z = heldInMerge(loop, Z);
-    await vi.waitFor(() => expect([currentStep(loop, Y), currentStep(loop, Z)]).toEqual([expect.stringMatching(/^merge:/), expect.stringMatching(/^merge:/)]), WAIT);
+    await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
     dirtyUntilPushed(loop);
     const x = shepherd(loop, X);
     await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
 
-    reserveAhead(loop, r, x);
+    const r = reserveAhead(loop, x);
     await finish(loop, X);
-    loop.store.release(r);
+    endReservation(loop, r);
     loop.store.release(z);
-    await finish(loop, Y, Z);
+    await finish(loop, Z);
 
     expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
-    expect(loop.merged).toEqual([X, Y, Z]);
+    expect(loop.merged).toEqual([X, Z]);
+  });
+
+  it("never waits behind an earlier overlapping reservation whose run a person holds (TP-4133)", async () => {
+    const loop = loopWorld(true);
+    const r = reserveAhead(loop, "run-none");
+    loop.store.register({ repo: REPO, pr: Y, runId: r, task: `demo/${Y}`, implementer: `impl-${Y}`, policy: AUTO_POLICY });
+    loop.store.hold(r, "g10-adversary: policy touch");
+    dirtyUntilPushed(loop);
+
+    shepherd(loop, X);
+    await finish(loop, X);
+
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [], moved: false }]);
+    expect(loop.merged).toEqual([X]);
   });
 
   it("stops waiting on a run it let merge first once that run leaves its merge step unmerged", async () => {

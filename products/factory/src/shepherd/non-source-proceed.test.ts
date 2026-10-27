@@ -17,9 +17,9 @@ const JOB = 77;
 /** A run that never waived, so its proof standing reads no waiver step. */
 const unwaived = partialFake<WorkflowContext>({ iteration: () => 0 });
 
-function vacuousLine(mutants?: FixProofResult["mutants"]): string {
+function vacuousLine(mutants?: FixProofResult["mutants"], base = "main"): string {
   const counts: FixProofResult["counts"] = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head: H, mergeBase: MERGE_BASE, base: "main", verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
+  return formatResultLine({ head: H, mergeBase: MERGE_BASE, base, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false, ...(mutants && { mutants }) });
 }
 
 type Flag = "keep-owner" | "record-fact" | undefined;
@@ -62,7 +62,10 @@ async function standingOf(files: PrFile[], flag: Flag, kind = "correctness", lin
   const store = shepherdStoreRef();
   store.bind(db);
   store.get().register({ repo: REPO, pr: 1, runId: "run-1", task: "demo: tidy", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind });
-  const timing = { now: () => 0, sleep: async () => undefined, pollMs: 1_000, timeoutMs: 10_000 };
+  // Each sleep moves the clock, so a read that never binds reaches its deadline; under a frozen clock it spun its
+  // worker and hung CI with no test failing (TP-4287).
+  let at = 0;
+  const timing = { now: () => at, sleep: async (ms: number) => void (at += ms), pollMs: 1_000, timeoutMs: 10_000 };
   const deps = { port: githubPort(fake.wire), store, ...(flag && { nonSourceNoRepro: flag }) };
   const read = await readFixProof(deps, { repo: REPO, head: H, runId: "run-1" }, timing, new AbortController().signal);
   return proofStandingAt(unwaived, H, read);
@@ -146,5 +149,12 @@ describe("shepherd.gateReset.nonSourceNoRepro (TP-4275)", () => {
     const files: PrFile[] = [{ path: "packages/x/src/parse.test.ts", status: "removed" }];
 
     expect(await standingOf(files, "record-fact")).toEqual(NON_SOURCE);
+  });
+
+  // A line that never binds once spun this file's worker forever, so CI hung with no test failing (TP-4287).
+  it("ends the read at its deadline when the only line judged another base", async () => {
+    const line = vacuousLine(undefined, "release");
+
+    expect(await standingOf(TEST_CONVERSION, "record-fact", "correctness", line)).toMatchObject({ standing: { unverified: "unread", reason: expect.stringContaining("before the deadline") } });
   });
 });

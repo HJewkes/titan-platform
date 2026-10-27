@@ -19,7 +19,8 @@ import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry } from "../rules.js";
 import { chunkedScript, isChunked } from "./script-chunks.js";
 import {
-  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, scriptPlan, sharedSections, wholeScript,
+  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan, sharedSections,
+  wholeScript,
   type Call, type Lint, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
 import { StageFailure } from "./stage-failure.js";
@@ -119,14 +120,15 @@ async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Li
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
   const stamped = stampLedgerTerms(draft.script, lint.spine, lint.rows);
   const repair = await repairScript(call, prompt, plan, stamped, lint);
+  const retimed = retimeRepaired(repair?.script ?? stamped.script, draft.retimed);
   return {
-    script: repair?.script ?? stamped.script,
+    script: retimed.script,
     stamps: repair?.stamps ?? stamped.stamps,
     usage: repair ? addUsage(draft.usage, repair.usage) : draft.usage,
     retries,
     stripped: repair?.stripped ?? draft.stripped ?? [],
-    checks: repair ? [repair.check] : [],
-    notes: repair?.dropped ?? draft.dropped ?? [],
+    checks: [...(repair ? [repair.check] : []), ...retimed.checks],
+    notes: [...(repair?.dropped ?? draft.dropped ?? []), ...retimed.notes],
   };
 }
 

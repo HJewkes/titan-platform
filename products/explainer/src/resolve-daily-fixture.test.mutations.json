@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the daily's stats block offers metrics-panel again",
+      "file": "products/explainer/doctrine/types/daily-overview.yaml",
+      "find": "beats: [stat, chart], labels: 'A stat",
+      "replace": "beats: [stat, chart, metrics-panel], labels: 'A stat",
+      "kills": [
+        "the daily's stats block offers only kinds whose slots derive from a script's labels"
+      ]
+    }
+  ]
+}

@@ -112,9 +112,10 @@ describe("explainer rewrite", () => {
 
 describe("explainer rewrite --speech-vet", () => {
   it("vets a rewritten sentence of 26 to 32 words and keeps it when speech-vet accepts it", async () => {
+    // h1 gets the seconds to speak LONG_H1 within its word cap.
     const vet = fakeVet("accepted");
 
-    await run(write("in.json", choppy()), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
+    await run(write("in.json", choppy({ h1: { plannedS: 13 } })), ["--speech-vet", "--rounds", "1", "--report", join(dir, "report.json")], {
       harness: () => fakeRewriter(longH1).harness,
       speechVet: vet.speechVet,
     });

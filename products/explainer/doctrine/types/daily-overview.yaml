@@ -3,7 +3,7 @@
 # side quests, the most consequential ships get a generated diagram or chart, then stats and a reflection.
 schema: type-profile/v1
 type: daily-overview
-version: 0.5.1
+version: 0.5.2
 family: briefing
 intent: "What the factory got done against its goals: each lane and what it moved, the ships that mattered most, the side quests, the stats, then what slows us down and what to change."
 audience: { default: owner-internal, allow: [owner-internal] }
@@ -21,7 +21,7 @@ structure:
     - { id: lanes, goal: "Each lane in turn: a lead beat, then one continuation beat per named thread, labelled by lane, and the count of the rest.", seconds: [60, 90], beats: [list, chart, kanban-flow], labels: 'A list row is written "<lane> · <text>" so it gets a lane chip. A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
     - { id: ships, goal: "The two or three most consequential ships, each described with a diagram or chart.", seconds: [25, 45], beats: [compare, arch-map, chart, claim-card], labels: 'A compare beat lists one label "before: <text>" and one "after: <text>", both sides. An arch-map lists 2-5 short package or stage names in flow order. A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
     - { id: side-quests, goal: "The side quests, named as side quests.", seconds: [8, 15], beats: [list, fact-flash] }
-    - { id: stats, goal: "Spend, its split, merges, cost per merge and the trend against the prior days.", seconds: [12, 20], beats: [stat, chart, metrics-panel], labels: 'A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
+    - { id: stats, goal: "Spend, its split, merges, cost per merge and the trend against the prior days.", seconds: [12, 20], beats: [stat, chart], labels: 'A stat lists one to four labels, each with its number. A chart lists three or more "name: number" labels; a date name (YYYY-MM-DD) draws a 7-day graph.' }
     - { id: reflection, goal: "What slows us down, the top priorities, and proposed changes to how we work.", seconds: [15, 30], beats: [list, claim-card] }
     - { id: ask, goal: "What the owner does next, then the button to the digest.", seconds: [5, 10], beats: [button], require: [button] }
 cuts: []

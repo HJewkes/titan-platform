@@ -59,10 +59,13 @@ await dispatchToAgentChat(
   The timeout is required (`DEFAULT_PARK_TIMEOUT_MS` is 60 s). Shepherd passes
   `{ noFixRoundCheck: true }` for `--no-fix-round-check`, so agent-chat does not ask it back;
   any other caller leaves it out and gets the same argv as before.
-- `messageAgent(bin, name, text, timeoutMs)` runs `agent-chat debug send -- <name> <text>`:
+- `messageAgent(bin, name, text, timeoutMs, options?)` runs `agent-chat debug send -- <name> <text>`:
   the broker delivers the text to a live agent as one channel message from the human seat,
   which starts a turn in an idle session. A name with no live session rejects with
-  `DispatchError` carrying the broker's reason. The text is in argv.
+  `DispatchError` carrying the broker's reason. The text is in argv. Pass
+  `{ source: "console" }` (or `"watchdog"`, `"shepherd"`) for `--source`, so the message
+  arrives labelled `wake_source=<source>` without human provenance; a caller that leaves it
+  out gets the same argv as before.
 - `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
   longest backtick run in it (at least three), preceded by a line saying it is data.
 - Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it

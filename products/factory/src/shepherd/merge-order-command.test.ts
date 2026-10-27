@@ -10,6 +10,7 @@ import { eventsSince } from "./events.js";
 import { formatShepherd } from "./format.js";
 import { orderCommand, statusOrder } from "./merge-order-command.js";
 import { MergeOrder, type MergeOrderRules, type Reservation } from "./merge-order.js";
+import { OWNER_GATE_POLICY } from "./policy.js";
 import type { MergeOrderServices } from "./services.js";
 import { shepherdStoreRef } from "./store.js";
 import type { WatchRow } from "./view.js";
@@ -27,7 +28,8 @@ const reservation = (runId: string, pr: number, since: string): Reservation => (
 
 /** Two overlapping reservations, #101 then #102, each run driving; the clock reads 30 minutes after #101 reserved. */
 function orderWorld() {
-  const routes = factoryRoutesFor({ port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => AT + 30 * 60_000, mergeOrderRules: RULES });
+  const store = shepherdStoreRef();
+  const routes = factoryRoutesFor({ port: githubPort(fakeGitHub().wire), store, now: () => AT + 30 * 60_000, mergeOrderRules: RULES });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [], routes });
   hosts.push(host);
   const runs = new WorkflowRunStore(host.db);
@@ -37,7 +39,7 @@ function orderWorld() {
   order.reserve(reservation("run-102", 102, minutes(5)));
   const services: MergeOrderServices = routes.shepherd!.mergeOrder!;
   services.waits.set("run-103", { repo: REPO, pr: 103, behind: 101, reason: `merge order: waiting behind #101 (${SHARED})` });
-  return { host, order, services, ctx: partialFake<FactoryContext>({ host, shepherd: routes.shepherd! }) };
+  return { host, order, services, store: store.get(), ctx: partialFake<FactoryContext>({ host, shepherd: routes.shepherd! }) };
 }
 
 const run = (w: ReturnType<typeof orderWorld>, args: object) => orderCommand.run(orderCommand.args.parse(args), w.ctx);
@@ -56,6 +58,19 @@ describe("shepherd order", () => {
     expect(reservations.map(({ pr, ageMinutes, state, behind, waiting }) => ({ pr, ageMinutes, state, behind, waiting }))).toEqual([
       { pr: 101, ageMinutes: 30, state: "live", behind: [], waiting: [103] },
       { pr: 102, ageMinutes: 25, state: "live", behind: [101], waiting: [] },
+    ]);
+  });
+
+  it("lists a reservation whose run a person holds as held, and no later reservation waits behind it (TP-4133)", async () => {
+    const w = orderWorld();
+    w.store.register({ repo: REPO, pr: 101, runId: "run-101", task: "demo/T-101", implementer: "impl-101", policy: OWNER_GATE_POLICY });
+    w.store.hold("run-101", "g10-adversary: policy touch");
+
+    const { reservations } = await run(w, { action: "list", repo: REPO });
+
+    expect(reservations.map(({ pr, state, behind }) => ({ pr, state, behind }))).toEqual([
+      { pr: 101, state: "held", behind: [] },
+      { pr: 102, state: "live", behind: [] },
     ]);
   });
 
@@ -89,5 +104,13 @@ describe("shepherd status with merge order", () => {
 
     expect(text).toContain(`${REPO}#103 merging head-10 merge order: waiting behind #101 (${SHARED})`);
     expect(text).toContain(`${REPO}#101 fixing head-10 waiting to merge [merge order: reserved 1 path(s) since ${minutes(0)}, live; #103 waiting]`);
+  });
+
+  it("names the merge-order wait in the stall flag of a merge past its phase limit (TP-4133)", () => {
+    const w = orderWorld();
+    const stalled = { ...row("run-103", 103, "merging"), stalled: { reason: "30 min in merging, over the 15 min limit" } };
+
+    expect(statusOrder(w.services, stalled).stalled).toEqual({ reason: `30 min in merging, over the 15 min limit; merge order: waiting behind #101 (${SHARED})` });
+    expect(statusOrder(w.services, row("run-103", 103, "merging")).stalled).toBeUndefined();
   });
 });

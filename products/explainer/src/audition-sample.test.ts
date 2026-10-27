@@ -61,4 +61,25 @@ describe("audition sampling reply", () => {
     expect(checkSample(ctx, "no object here").issues).toEqual(["the reply holds no JSON object"]);
     expect(check(validReply().map((s) => ({ ...s, likelihood: 0 })))).toMatchObject({ issues: expect.arrayContaining([expect.stringMatching(/^spines\.0\.likelihood/)]) });
   });
+
+  it("refuses a daily spine that leads its stats block with metrics-panel, naming the kinds that derive", () => {
+    // Arrange
+    const daily = profileFor(set, "daily-overview");
+    const dailyMap = buildMaterialMap({ factsSha: "0".repeat(64), format: "facts-md", facts, profile: daily, structures: set.structures, vocabulary: loadDoctrine().vocabulary.signals });
+    const slots = auditionPool(dailyMap, daily).slots;
+    const blocks = new Map(slots.map((s) => [s.structure, slotBlocks(daily, structureFor(set.structures, s.structure))]));
+    const dailyCtx: SampleContext = { slots, structures: set.structures, profile: daily, map: dailyMap, facts, blocks };
+    const spines = slots.map((slot) => ({
+      structure: slot.structure, system: slot.system, likelihood: 0.3, sentence: "s", hook: { fact: "F1", line: "l" },
+      blocks: blocks.get(slot.structure)!.map((b) => ({ id: b.id, question: "q", facts: ["F2"], seconds: 15, beat: b.id === "stats" ? "metrics-panel" : b.beats[0]!, covers: [] })),
+      payoff: "goals", signatureLayer: "x", cuts: [],
+    }));
+
+    // Act
+    const { issues } = checkSample(dailyCtx, JSON.stringify({ spines }));
+
+    // Assert
+    expect(slots.length).toBeGreaterThan(0);
+    expect(issues).toEqual(slots.map((_, i) => `spines.${i}.stats.beat: metrics-panel is not one of stat, chart`));
+  });
 });

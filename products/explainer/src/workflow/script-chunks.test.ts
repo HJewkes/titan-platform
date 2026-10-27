@@ -2,6 +2,7 @@ import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-de
 import { describe, expect, it } from "vitest";
 import type { L0Check, L0Result } from "../eval-l0.js";
 import { chapterScopedChecks, shippedRuleRegistry } from "../rules.js";
+import { draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { BEAT_FUNCTIONS, CHIP_KINDS, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { runScriptStage, StageFailure, type ModelStageInput } from "./model-stages.js";
@@ -154,6 +155,23 @@ describe("chunked script drafting", () => {
     expect(script.beats.find((beat) => beat.id === "ch3-a")?.spoken).toBe("The bench tests the wick first.");
     expect(script.beats.find((beat) => beat.id === "ch4-a")?.spoken).toBe("The bench tests the wick first.");
     expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200, cache 20 read, 8 written; 1 -> 0 failing chapter checks");
+  });
+
+  it("re-times a beat its chapter repair pushed one word over its cap, with no extra call, so the word-budget gate passes", async () => {
+    const overByOne = "The bench tests the wick first, then the glass, then the hook, and only then does the lamp go out to the shop.";
+    const model = fakeModel((prompt) => {
+      const chapter = taskChapter(prompt);
+      if (chapter === "ch3") return isRepair(prompt) ? { beats: [beatOf("ch3-a", "ch3", overByOne)] } : chapterReply("ch3", "The BROKEN bench skips the wick.");
+      return chapter === "ch1" ? chapterReply("ch1", "The lantern bench tests the wick.") : chapterReply(chapter);
+    });
+
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    expect(model.prompts).toHaveLength(LONG + 1);
+    expect(script.beats.find((beat) => beat.id === "ch3-a")).toMatchObject({ spoken: overByOne, plannedS: 9 });
+    expect(draftWordBudget(script).pass).toBe(true);
+    expect(outcome.checks).toContainEqual({ name: "word-budget-retime", gate: false, pass: true, detail: "re-timed 1 beat(s) to fit their words: ch3-a 8→9 s" });
+    expect(outcome.notes).toContain("word-budget re-time: ch3-a 8→9 s");
   });
 
   it("joins the chapters in the spine's order, keeping every beat id, and gathers each chapter's glossary", async () => {

@@ -123,6 +123,19 @@ describe("the script stage's plan retry", () => {
     expect(scriptRow(result)).toMatchObject({ calls: 2, retries: 1 });
   });
 
+  it("re-times a draft whose only fault is a beat a word or two over its cap, with no plan retry", async () => {
+    fx = fixture();
+    const draft = { ...plannedAt(12.5), beats: plannedAt(12.5).beats.map((beat) => (beat.id === "h1" ? { ...beat, plannedS: 9 } : beat)) };
+    expect(planFaults(draft)).toEqual(["h1 26/25 words (9 s at 2.8 w/s; 26 words need 10 s)"]);
+    const model = fakeScriptModel(draft, { asWritten: true });
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(1);
+    expect(scriptRow(result)).toMatchObject({ calls: 1, retries: 0 });
+  });
+
   // Mutation: dropping the word-budget gate from STAGE_CHECKS lets this run complete.
   it("fails the stage on its word-budget and runtime gates when the retry is no better", async () => {
     fx = fixture();
