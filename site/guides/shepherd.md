@@ -466,7 +466,13 @@ request of each run that is waiting on a gate. When that pull request was merged
 elsewhere, the serve process cancels the run and its gate, whichever gate it waits on and
 whether the run is held. A run waiting on a main-red, main-red-again, main-frozen or
 after-stages gate is left alone: those gates are about main and, for a freeze, hold the owner's
-release, so only an owner or a coordinator on a green main clears them. A coordinator may also abandon a gate
+release, so only an owner or a coordinator on a green main clears them. The same check clears a
+`main-ci-timeout` gate with no owner answer once the base branch's tip contains the merge sha and
+is green on every required context (TP-4319). It cancels the gate with a reason that starts
+`main green: ` and names the green commit, the merge base and each required run; the run records
+that reason as the gate's answer and goes on to cleanup, and a gate-cancel event on the run keeps the
+same text. While that tip is red or still running, does not contain the merge, or the base has no
+required contexts, the gate stays open. A coordinator may also abandon a gate
 whose pull request is merged or closed (only on a fresh read of that state), and answer an
 `sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
 The same check supersedes a gate

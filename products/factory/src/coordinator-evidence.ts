@@ -156,9 +156,20 @@ export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
 
 const MAIN_PROMPT = /^Main CI on (\S+) at merge ([0-9a-f]{40}) \(PR #(\d+)\) /;
 
+export interface MainMerge {
+  repo: string;
+  mergeSha: string;
+  pr: number;
+}
+
 /** A main-red or main-frozen gate about one merge, whose brief points at that merge's main CI. */
-export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): { repo: string; mergeSha: string; pr: number } | undefined {
-  const match = Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? MAIN_PROMPT.exec(gate.prompt) : null;
+export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): MainMerge | undefined {
+  return Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? mainMergeOf(gate) : undefined;
+}
+
+/** The merge a post-merge gate asks about, whatever its step, when its prompt and brief both name it. */
+export function mainMergeOf(gate: Pick<GateRecord, "prompt" | "evidenceRef">): MainMerge | undefined {
+  const match = MAIN_PROMPT.exec(gate.prompt);
   if (!match || gate.evidenceRef !== `$ gh run list -R ${match[1]} -c ${match[2]}`) return undefined;
   return { repo: match[1]!, mergeSha: match[2]!, pr: Number(match[3]) };
 }
