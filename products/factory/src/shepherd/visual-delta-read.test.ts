@@ -91,6 +91,15 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
     expect(capped.record.visualDelta?.snapshots[0]?.reason).toBe("3 changed snapshots are over the cap of 2");
   });
 
+  it("measures a renamed snapshot against its old path at the merge base, and reads one renamed away as removed", async () => {
+    const OLD = "ui/visual/stories.spec.ts-snapshots/card--plain-chromium-linux.png";
+    const files = [{ path: SHOT, previousPath: OLD, status: "renamed" }, { path: "ui/docs/b.png", previousPath: "ui/visual/s.spec.ts-snapshots/b--x-chromium-linux.png", status: "renamed" }];
+
+    const { record } = await evidence(githubPort(world(files, { [`${MERGE_BASE}:${OLD}`]: card(), [`${HEAD}:${SHOT}`]: card(true) }).wire), THRESHOLD);
+
+    expect(record.visualDelta?.snapshots.map((s) => [s.component, s.status, s.share])).toEqual([["card", "changed", 0.01], ["b", "removed", undefined]]);
+  });
+
   it("matches the public API, token and harness paths, a token test aside", async () => {
     const files = [{ path: "ui/api/index.api.md", status: "modified" }, { path: "ui/src/theme/config.ts", status: "modified" }, { path: "ui/src/theme/config.test.ts", status: "modified" }, { path: "ui/playwright.config.ts", status: "modified" }];
 

@@ -14,11 +14,13 @@ import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
 import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
-import { ownerHoldOf, riskFactsOf, riskTier, type RiskTier } from "./risk-tier.js";
+import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
+import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
 
 export { isGithubPath };
+export type { EvidenceRecord };
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 
@@ -79,40 +81,6 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   proofUnverified?: string;
   /** The base branch the head's fix-proof line says it judged, when the line names one. */
   proofBase?: string;
-}
-
-export interface EvidenceCheckRun {
-  name: string;
-  id: number;
-  appId: number | null;
-  conclusion: string | null;
-}
-
-/** What `allowEvidence` stores in `merge-policy`, whole. The PR comment carries the same record with `verdictLocator` reduced to a `LocatorReference`. */
-export interface EvidenceRecord {
-  runId: string;
-  repo: RepoSlug;
-  pr: number;
-  head: string;
-  baseRef: string;
-  testMergeSha: string | null;
-  checkRuns: EvidenceCheckRun[];
-  verdictLocator: SourceTextLocator;
-  reviewer: AgentIdentity;
-  decision: GateDecision;
-  /** The `mergeable_state` the decision judged, after any re-reads. */
-  mergeableState: string;
-  /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
-  carry?: CarryFact;
-  ciPolicy?: CiPolicy;
-  /** On a weakened line, every changed line of the changed `.github/` files, shown or counted, for the D21 card. */
-  ciPolicyChanges?: CiPolicyFileChange[];
-  proofUnverified?: string;
-  proofBase?: string;
-  /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
-  riskTier?: RiskTier;
-  /** The measured visual delta under `shepherd.visualThreshold` (TP-4320); absent when that is off for the repo. */
-  visualDelta?: VisualDelta;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -352,12 +320,6 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
-/** The head's fix-proof standing and judged base, absent keys left out so a record spreads them as they are. */
-const proofFields = (input: MergeEvidenceInput): Pick<EvidenceRecord, "proofUnverified" | "proofBase"> => ({
-  ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
-  ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
-});
-
 /** What the evidence step reads beyond its input: the App `shepherd/review` counts from, and the repo's `shepherd.visualThreshold`. */
 interface EvidenceReads {
   reviewAppId?: number;
@@ -368,30 +330,6 @@ interface EvidenceReads {
 async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, prFiles }: Observed, threshold: VisualThreshold | undefined): Promise<{ visualDelta: VisualDelta } | undefined> {
   if (threshold === undefined || threshold.mode === "off") return undefined;
   return { visualDelta: await readVisualDelta(port, { repo: input.repo, head: input.head, baseRef: pr.baseRef }, prFiles, threshold) };
-}
-
-type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier };
-
-function evidenceRecord(input: MergeEvidenceInput, { pr, merge, runs, ciPolicyChanges }: Observed, decision: GateDecision, { ciPolicy, riskTier: tier, visualDelta }: RecordExtras): EvidenceRecord {
-  return {
-    runId: input.runId,
-    repo: input.repo,
-    pr: input.pr,
-    head: input.head,
-    baseRef: pr.baseRef,
-    testMergeSha: pr.mergeSha,
-    checkRuns: runs.map((run) => ({ name: run.name, id: run.id, appId: run.appId, conclusion: run.conclusion })),
-    verdictLocator: input.verdict.locator,
-    reviewer: input.resolver,
-    decision,
-    mergeableState: pr.mergeableState,
-    ...(merge.carry && { carry: merge.carry }),
-    ...(ciPolicy && { ciPolicy }),
-    ...(ciPolicyChanges && { ciPolicyChanges }),
-    ...proofFields(input),
-    riskTier: tier,
-    ...(visualDelta && { visualDelta }),
-  };
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */

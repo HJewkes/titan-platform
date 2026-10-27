@@ -1,5 +1,4 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import type { RepoSlug } from "@titan-design/github";
 import { OVERLAY_SHAPES, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
@@ -209,7 +208,7 @@ export interface ReviewWiring extends ProfileCheck, ScopedRereviewWiring, ScopeC
   /** `shepherd.gateReset.twoMergeRelease` other than off: whether two MERGEs release a g10-adversary hold or only record that they would. */
   twoMergeRelease?: TwoMergeMode;
   /** `shepherd.visualThreshold` for a repo, read per evidence step; absent, or undefined for a repo, measures nothing. */
-  visualThreshold?: (repo: RepoSlug) => VisualThreshold | undefined;
+  visualThreshold?: (repo: string) => VisualThreshold | undefined;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };

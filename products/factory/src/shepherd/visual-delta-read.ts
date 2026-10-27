@@ -24,7 +24,7 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
 type SnapshotStatus = "changed" | "added" | "removed" | "unmeasured";
 
-export interface SnapshotDelta {
+interface SnapshotDelta {
   path: string;
   component: string;
   status: SnapshotStatus;
@@ -45,7 +45,7 @@ export interface VisualDelta {
   unread?: string;
 }
 
-export interface VisualDeltaTarget {
+interface VisualDeltaTarget {
   repo: RepoSlug;
   head: string;
   baseRef: string;
@@ -68,14 +68,14 @@ const delta = (path: string, status: SnapshotStatus, more: Partial<SnapshotDelta
 function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => boolean): Sorted {
   const sorted: Sorted = { listed: [], pairs: [] };
   for (const file of files) {
-    const fromSnapshot = file.previousPath !== undefined && isSnapshot(file.previousPath);
+    const from = file.previousPath !== undefined && isSnapshot(file.previousPath) ? file.previousPath : undefined;
     if (!isSnapshot(file.path)) {
-      if (fromSnapshot) sorted.listed.push(delta(file.previousPath as string, "removed"));
+      if (from !== undefined) sorted.listed.push(delta(from, "removed"));
       continue;
     }
     if (file.status === "added") sorted.listed.push(delta(file.path, "added"));
     else if (file.status === "removed") sorted.listed.push(delta(file.path, "removed"));
-    else sorted.pairs.push({ path: file.path, basePath: fromSnapshot ? (file.previousPath as string) : file.path });
+    else sorted.pairs.push({ path: file.path, basePath: from ?? file.path });
   }
   return sorted;
 }

@@ -7,7 +7,7 @@ function changedPaths(files: readonly PrFile[]): string[] {
   return files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
 }
 
-export interface PathsRead {
+interface PathsRead {
   paths: string[];
   /** The files `paths` came from, with their statuses; empty when unread. */
   files: PrFile[];
