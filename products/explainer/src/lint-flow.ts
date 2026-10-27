@@ -1,5 +1,20 @@
 import type { L0Check, L0Result } from "./eval-l0.js";
-import { bodyBeats, contentTerms, countRow, isChapterOpen, ruleRow, sentencesOf, sharesTerm, startShares, wordsOf } from "./lint-text.js";
+import {
+  bodyBeats,
+  contentTerms,
+  countRow,
+  isChapterOpen,
+  type NumberPolicy,
+  rfNumberIssues,
+  rfSentenceIssues,
+  rfWords,
+  ruleRow,
+  sentencesOf,
+  sharesTerm,
+  startShares,
+  wordsOf,
+} from "./lint-text.js";
+import { mapSides, type RfBeat, type RfIssue, type RfScript } from "./rf-script.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
 
 const CONNECTIVE = /^(but|so|therefore|because|yet|then|instead|however|otherwise|still|that is why|which means)\b/i;
@@ -188,3 +203,88 @@ export const flowCheck: L0Check = ({ script }) => {
     plainOpening(beats),
   ];
 };
+
+const STAKE_BY = 0.15;
+const RULE3_MAX_ITEMS = 4;
+const RULE5_DENSE_ITEMS = 3;
+const CHIP_ROWS = 7;
+const LIST_KINDS: Record<string, ReadonlySet<string>> = {
+  HookBeat: new Set(["card", "fan", "rule"]),
+  ListBeat: new Set(["row", "rows", "col", "stamp", "left", "right", "risk", "open"]),
+};
+
+/** What one video's RF lint run allows; the frozen scripts each carried their own copy in build_script.py. */
+export interface RfTextProfile extends NumberPolicy {
+  /** Word cap on the last beat: the v4 tagline's 8, or a closing CLOSE beat's 25. */
+  outroMaxWords?: number;
+  /** The owner's script rules 3 (a list shows at most 4 items) and 5 (no dense list straight after another). */
+  ownerRules?: boolean;
+  banned?: readonly string[];
+}
+
+const scriptIssue = (check: string, message: string): RfIssue => ({ beat: null, check, severity: "error", message });
+
+/** Q-W1: the first STAKE beat starts within 15 % of the planned runtime. */
+function stakeIssues(beats: readonly RfBeat[]): RfIssue[] {
+  const total = beats.reduce((sum, b) => sum + b.plannedS, 0);
+  const stake = beats.findIndex((b) => b.function === "STAKE");
+  const stakeAt = beats.slice(0, stake === -1 ? beats.length : stake).reduce((sum, b) => sum + b.plannedS, 0);
+  return stakeAt > STAKE_BY * total ? [scriptIssue("Q-W1", "stake after 15%")] : [];
+}
+
+function outroIssues(beats: readonly RfBeat[], cap: number): RfIssue[] {
+  const outro = beats.at(-1);
+  return outro && rfWords(outro.spoken).length > cap ? [scriptIssue("Q-F11", `outro over ${cap} words`)] : [];
+}
+
+/** The items a list-like beat shows: HookBeat cards, ListBeat rows, or the longer side of a CompareBeat. */
+function shownItems({ visual }: RfBeat): number {
+  const kinds = visual.cues.map((c) => c.target.split(":")[0]!);
+  if (visual.render === "CompareBeat") return Math.max(...["left", "right"].map((side) => kinds.filter((k) => k === side).length));
+  const listed = LIST_KINDS[visual.render];
+  return listed ? kinds.filter((k) => listed.has(k)).length : 0;
+}
+
+/** Owner rules 3 and 5; the edge table is one growing table, not a list, so it is exempt. */
+function ownerRuleIssues(beats: readonly RfBeat[]): RfIssue[] {
+  const dense = (b: RfBeat) => b.visual.render in LIST_KINDS && shownItems(b) >= RULE5_DENSE_ITEMS;
+  const long = beats
+    .filter((b) => shownItems(b) > RULE3_MAX_ITEMS)
+    .map((b): RfIssue => ({ beat: b.id, check: "rule3", severity: "error", message: `${shownItems(b)} items, cap ${RULE3_MAX_ITEMS}` }));
+  const adjacent = beats.flatMap((b, i): RfIssue[] => {
+    const prev = beats[i - 1];
+    return prev && dense(prev) && dense(b) ? [{ beat: b.id, check: "rule5", severity: "error", message: `a dense list straight after ${prev.id}` }] : [];
+  });
+  return [...long, ...adjacent];
+}
+
+/** The item camera's chip panel holds 7 rows: at most that many distinct chips on one chapter's item. */
+function chipRowIssues(beats: readonly RfBeat[]): RfIssue[] {
+  const seen = new Map<string, Set<string>>();
+  for (const b of beats) {
+    const chips = seen.get(b.chapter) ?? new Set<string>();
+    seen.set(b.chapter, chips);
+    for (const side of mapSides(b.visual.map_state)) for (const chip of side.item?.chips ?? []) chips.add(chip.text);
+  }
+  return [...seen]
+    .filter(([, chips]) => chips.size > CHIP_ROWS)
+    .map(([chapter, chips]) => ({ beat: chapter, check: "chips", severity: "error", message: `${chips.size} distinct chips on one item, cap ${CHIP_ROWS}` }));
+}
+
+/** A beat's own text lints; the numbers rule reads only new (`origin: v4`) narration, since reused audio cannot change. */
+const beatTextIssues = (b: RfBeat, profile: RfTextProfile): RfIssue[] => [
+  ...(b.origin === "v4" ? rfNumberIssues(b.id, b.spoken, profile) : []),
+  ...rfSentenceIssues(b.id, b.spoken, profile.banned),
+];
+
+/** The build_script.py text lints (L1): bands, banned phrases, numbers, outro length, owner rules 3/5 and chip rows. */
+export function rfTextLint(script: RfScript, profile: RfTextProfile): RfIssue[] {
+  const { beats } = script;
+  return [
+    ...chipRowIssues(beats),
+    ...(profile.ownerRules ? ownerRuleIssues(beats) : []),
+    ...beats.flatMap((b) => beatTextIssues(b, profile)),
+    ...stakeIssues(beats),
+    ...outroIssues(beats, profile.outroMaxWords ?? MAX_OUTRO_WORDS),
+  ];
+}
