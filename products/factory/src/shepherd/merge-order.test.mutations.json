@@ -36,6 +36,15 @@
       "kills": [
         "which reservations a PR waits behind never waits behind a reservation that let it merge first"
       ]
+    },
+    {
+      "name": "an expiry keeps its row, so every later read expires it again",
+      "file": "products/factory/src/shepherd/merge-order.ts",
+      "find": "\"DELETE FROM shepherd_merge_order WHERE repo = ? AND run_id = ? AND since = ?\"",
+      "replace": "\"UPDATE shepherd_merge_order SET reason = reason WHERE repo = ? AND run_id = ? AND since = ?\"",
+      "kills": [
+        "the merge-order store expires a reservation once: a second expiry of it ends nothing and logs nothing"
+      ]
     }
   ]
 }

@@ -52,11 +52,18 @@ export function widenEventKinds(db: Db): void {
   db.exec(rebuildWithKinds(["hold", "release", "freeze", "thaw", "repair-stop", "repair-go"]));
 }
 
-export const EVENT_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go", "gate-cancel"] as const;
+const GATE_CANCEL_KINDS = ["hold", "release", "freeze", "thaw", "repair-stop", "repair-go", "gate-cancel"] as const;
 
 /** A main gate a sweep cancelled because the freeze episode it asked about had thawed (TP-3952). */
 export function gateCancelKindMigration(version = 39): Migration {
-  return { version, name: "factory:shepherd_event_gate_cancel", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
+  return { version, name: "factory:shepherd_event_gate_cancel", up: (db) => db.exec(rebuildWithKinds(GATE_CANCEL_KINDS)) };
+}
+
+export const EVENT_KINDS = [...GATE_CANCEL_KINDS, "order-reserve", "order-release", "order-expired"] as const;
+
+/** A merge-order reservation taken, released (by its run or a seat's break-glass clear) or expired past its TTL (TP-4098 D). */
+export function orderEventKindsMigration(version = 44): Migration {
+  return { version, name: "factory:shepherd_event_merge_order", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
 }
 
 export type EventKind = (typeof EVENT_KINDS)[number];

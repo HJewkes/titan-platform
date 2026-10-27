@@ -38,6 +38,15 @@
       "kills": [
         "the merge-order guard holds a PR whose changed paths cannot be read until the reservation passes its TTL"
       ]
+    },
+    {
+      "name": "the guard records no wait for status",
+      "file": "products/factory/src/shepherd/merge-order-guard.ts",
+      "find": "if (blocker && reason) deps.waits?.set(",
+      "replace": "if (blocker && !reason) deps.waits?.set(",
+      "kills": [
+        "the merge-order guard records the wait it reads for status, and drops it once the PR may merge"
+      ]
     }
   ]
 }

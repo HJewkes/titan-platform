@@ -16,7 +16,7 @@ describe("shepherd port access declarations", () => {
   it("refuses in-process exactly the commands the hand-kept list named before", () => {
     const refused = SHEPHERD_COMMANDS.map((command) => command.name).filter((name) => isRegistered(name) && writesPort(name, {}));
 
-    expect(refused.sort()).toEqual(["shepherd.hold", "shepherd.merge", "shepherd.release", "shepherd.repair-stop", "shepherd.resync", "shepherd.review"]);
+    expect(refused.sort()).toEqual(["shepherd.hold", "shepherd.merge", "shepherd.order", "shepherd.release", "shepherd.repair-stop", "shepherd.resync", "shepherd.review"]);
   });
 
   it("a list-or-write command reads on list and writes on any other action", () => {
