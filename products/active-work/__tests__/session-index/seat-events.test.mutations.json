@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "only handoffs and teleports count as seat motion",
+      "file": "products/active-work/src/session-index/seat-events.ts",
+      "find": "e.kind IN ('handoff', 'teleport') AND ",
+      "replace": "",
+      "kills": ["readSeatEvents returns each seat its newest handoff or teleport, ignoring other lifecycle kinds"]
+    }
+  ]
+}
