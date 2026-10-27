@@ -351,8 +351,10 @@ rules:
     rule: "The assertion is authored before the narration; subject and verb, at most 10 words, no topic label"
     fields: [beats.visual.assertion, beats.authored]
     aliases: [R14, S7, K14]
+    related: [Q-V13]
     owner_support: none
-    l0: { severity: error, status: pending, owner: SQ5 }
+    note: "TP-4328 (ST-11, PR-24, RW-14). The verb half reads speech-g2p's part-of-speech tags: a finite verb after the first word. The authored-first half reads beats.authored only when a beat carries it."
+    l0: { severity: error, status: implemented, checks: ["Q-D7"], scope: chapter }
   - id: Q-D8
     rule: "The architecture act opens on a generic model with at most 5 slots; the close references it"
     fields: [video.generic_model, beats.function, beats.spoken]
