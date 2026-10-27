@@ -203,11 +203,13 @@ describe("words-per-frame", () => {
     expect(gate).toMatchObject({ value: n, pass, beats: pass ? [] : ["b1"] });
   });
 
-  it("leaves code out of the count", () => {
-    const probed: ProbedMoment[] = [{ beat: "b1", t: 1, texts: [{ ...text(many(40)), tag: "pre" }, text(many(5))], boxes: [] }];
+  it("leaves a code-walk beat's highlighted lines out of the count", () => {
+    const timeline = { beats: [{ ...beat("b1", 0, 4), kind: "code-walk" }] };
+    const codeLine = { ...text(many(40)), tag: "span", cls: "tok-kw", element: "span.tok-kw" };
+    const probed: ProbedMoment[] = [{ beat: "b1", t: 1, texts: [codeLine], boxes: [] }];
 
-    const gate = gateOf({ probed }, "words-per-frame");
+    const gate = gateOf({ timeline, probed }, "words-per-frame");
 
-    expect(gate).toMatchObject({ value: 5, pass: true });
+    expect(gate).toMatchObject({ value: null, pass: true });
   });
 });

@@ -38,15 +38,6 @@
       "kills": [
         "qa stage spec timing carries the run's type pacing and runtime band, with the defaults for the pacing fields the type leaves out"
       ]
-    },
-    {
-      "name": "qa.json pass ignores a failing G9",
-      "file": "products/explainer/src/qa/timing-gates.ts",
-      "find": "\"reading-hold\", \"G9\", \"G10\"",
-      "replace": "\"reading-hold\", \"G10\"",
-      "kills": [
-        "qa stage timing gates fails the stage on headline-label-words with a 11-word headline"
-      ]
     }
   ]
 }

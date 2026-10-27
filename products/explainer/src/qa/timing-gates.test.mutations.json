@@ -11,12 +11,12 @@
       ]
     },
     {
-      "name": "words-per-frame counts code tokens as prose",
+      "name": "words-per-frame counts code-walk beats as prose",
       "file": "products/explainer/src/qa/timing-gates.ts",
-      "find": "moment.texts.filter((t) => !CODE_TAGS.has(t.tag)).reduce(",
-      "replace": "moment.texts.reduce(",
+      "find": "probed.filter((moment) => !code.has(moment.beat)).map(",
+      "replace": "probed.map(",
       "kills": [
-        "words-per-frame leaves code out of the count"
+        "words-per-frame leaves a code-walk beat's highlighted lines out of the count"
       ]
     }
   ]

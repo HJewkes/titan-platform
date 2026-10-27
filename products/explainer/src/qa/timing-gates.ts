@@ -17,6 +17,7 @@
  */
 import { FRAMEDIFF_HEIGHT, FRAMEDIFF_WIDTH, type ProbedMoment, type ProbedText } from "@titan-design/render-qa";
 import { z } from "zod";
+import type { BeatSlotRef } from "../beat-slots.js";
 import { cueResolverFromWords } from "../cues.js";
 import type { TypeProfile } from "../profile-schema.js";
 import type { ScriptTiming } from "../timing.js";
@@ -32,8 +33,11 @@ const LABEL_WORDS = 3;
 const SHARED_RUN_WORDS = 5;
 /** Assertion-evidence slides averaged about 21 words against 41 for topic-bullet ones: the near-20 line, not a tested threshold. */
 const FRAME_WORDS = 20;
-/** Code is the beat's evidence, not prose to read against the narration, so its tokens are not on-screen words. */
-const CODE_TAGS = new Set(["pre", "code"]);
+/**
+ * Code is the beat's evidence, not prose to read against the narration. The probe's tag is a text node's own parent
+ * (a highlight `span` inside `div.ex-code-line`, never `pre` or `code`), so code is told apart by the beat's slot kind.
+ */
+const CODE_KINDS: ReadonlySet<string> = new Set<BeatSlotRef>(["code-walk", "docs-vs-code", "fix"]);
 const VERDICT_SHARE = 0.1;
 /** Seconds of float slack, so a cue exactly on the line is not failed by binary rounding. */
 const EPS = 1e-9;
@@ -278,11 +282,12 @@ function g10Shared(input: TimingInput): TimingGate {
   return { id: "G10", value: hits.length, threshold: `no run ≥ ${SHARED_RUN_WORDS} words`, pass: hits.length === 0, beats: uniq(hits.map((t) => t.beat)) };
 }
 
-/** words-per-frame: the prose words on screen together at each sampled moment, code aside, stay at or under 20. */
-function wordsPerFrame({ probed }: TimingInput): TimingGate {
-  const counts = probed.map((moment) => ({
+/** words-per-frame: the words on screen together at each sampled moment of a prose beat stay at or under 20. */
+function wordsPerFrame({ probed, timeline }: TimingInput): TimingGate {
+  const code = new Set(timeline.beats.filter((beat) => beat.kind !== undefined && CODE_KINDS.has(beat.kind)).map((beat) => beat.id));
+  const counts = probed.filter((moment) => !code.has(moment.beat)).map((moment) => ({
     beat: moment.beat,
-    n: moment.texts.filter((t) => !CODE_TAGS.has(t.tag)).reduce((sum, t) => sum + tokens(t.text).length, 0),
+    n: moment.texts.reduce((sum, t) => sum + tokens(t.text).length, 0),
   }));
   const over = counts.filter((c) => c.n > FRAME_WORDS);
   const value = counts.length === 0 ? null : Math.max(...counts.map((c) => c.n));
