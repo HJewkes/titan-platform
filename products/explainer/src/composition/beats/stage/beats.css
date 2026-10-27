@@ -1,0 +1,315 @@
+/* Ported unchanged from the daily spike beats (SOURCE_REV 6a09ca2); the composition page imports it once from mount.tsx. */
+/*
+ * Static beat styling from titan-design tokens; anything that moves is set inline from f(t).
+ * Every beat is authored on the one 1920x1080 design canvas, sized from the video scale below rather than per-beat
+ * px. The react-ui spacing tokens are sized for UI (8 px stacks) and read at 1/3 scale on a 1080p frame (MEMO 2.1).
+ */
+/* The beat scale. Overlays outside a .beat-frame (an explainer's chrome) opt in with .beat-scale. */
+.beat-frame, .beat-scale {
+  /* S96 type scale: headline 96, body 48, code 40. Display and gaps scale with body (6/7); label and caption
+     stop at the 40 px floor for 1080 video (TD-856), which a lint in typeFloor.test.ts enforces. */
+  --beat-display: 123px;
+  --beat-title: 96px;
+  --beat-body: 48px;
+  --beat-caption: 40px;
+  --beat-label: 40px;
+  --beat-code: 40px;
+  --beat-gap-sm: 14px;
+  --beat-gap: 27px;
+  --beat-gap-lg: 48px;
+  --beat-inset: 41px;
+  --beat-radius: 21px;
+  --beat-content-width: 80%;
+  --beat-tick-box: calc(var(--beat-body) * 10 / 7);
+}
+.beat-frame {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--beat-gap);
+  padding: var(--beat-gap-lg) 0;
+  background: var(--color-background-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
+}
+/* The shared grid: one centred content box that every top-level block stretches to. */
+.beat-frame > * {
+  box-sizing: border-box;
+  width: var(--beat-content-width);
+}
+.beat-eyebrow {
+  margin: 0;
+  color: var(--color-brand-primary);
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-caption);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.beat-title {
+  margin: 0;
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-display);
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.beat-word {
+  display: inline-block;
+  margin-right: 0.25em;
+}
+.beat-subtitle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--beat-body);
+}
+.beat-stats {
+  display: flex;
+  gap: var(--beat-gap-lg);
+}
+.beat-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap-sm);
+  padding: var(--beat-inset);
+  border-radius: var(--beat-radius);
+  background: var(--color-surface-raised);
+}
+.beat-stat-label {
+  color: var(--color-text-secondary);
+  font-size: var(--beat-body);
+}
+.beat-stat-value {
+  font-family: var(--font-family-heading);
+  font-size: calc(var(--beat-display) * 1.5);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.beat-stat-unit {
+  margin-left: 0.15em;
+  color: var(--color-text-tertiary);
+  font-size: 0.4em;
+}
+/* A pill, not a content-box block: it opts out of the shared 80 % width. */
+.beat-frame > .beat-stat-delta {
+  width: auto;
+  font-size: var(--beat-body);
+}
+.beat-stat-delta {
+  align-self: center;
+  padding: 8px 24px;
+  border-radius: 999px;
+  background: var(--color-status-success-subtle);
+  color: var(--color-status-success);
+  font-size: var(--beat-caption);
+}
+.beat-stat-delta[data-state='problem'] { background: var(--color-status-error-vivid-subtle); color: var(--color-status-error-vivid); }
+.beat-stat-delta[data-state='neutral'] { background: var(--color-surface-raised); color: var(--color-text-secondary); }
+.beat-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.beat-check-item {
+  display: flex;
+  align-items: center;
+  gap: var(--beat-gap);
+  padding: var(--beat-gap) var(--beat-inset);
+  border-radius: var(--beat-radius);
+  background: var(--color-surface-raised);
+  font-size: var(--beat-body);
+}
+.beat-check-box {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--beat-tick-box);
+  height: var(--beat-tick-box);
+  border: 4px solid var(--color-border-prominent);
+  border-radius: 16px;
+}
+.beat-check-mark {
+  color: var(--color-status-success);
+  font-size: var(--beat-body);
+  line-height: 1;
+}
+.beat-heading {
+  margin: 0;
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-title);
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.beat-card {
+  box-sizing: border-box;
+  padding: var(--beat-inset);
+  border: 2px solid var(--color-hairline-default);
+  border-radius: var(--beat-radius);
+  background: var(--color-surface-raised);
+}
+.beat-code {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--beat-body);
+}
+.beat-code-path {
+  margin-bottom: var(--beat-gap-sm);
+  color: var(--color-text-tertiary);
+  font-size: var(--beat-caption);
+}
+.beat-code-line {
+  display: flex;
+  gap: var(--beat-gap);
+  padding: 12px 24px;
+  border-radius: 12px;
+  white-space: pre;
+}
+.beat-code-line[data-op='add'] { background: var(--color-status-success-subtle); }
+.beat-code-line[data-op='add'] .beat-code-sign { color: var(--color-status-success); }
+.beat-code-line[data-op='del'] { background: var(--color-status-error-subtle); }
+.beat-code-line[data-op='del'] .beat-code-sign { color: var(--color-status-error); }
+.beat-code-text { position: relative; }
+.beat-code-strike {
+  position: absolute;
+  top: 52%;
+  left: 0;
+  height: 4px;
+  background: var(--color-status-error);
+}
+/* flex-shrink 0 on the bar: in a flex column the value label otherwise squeezes it (S3's graph bug). */
+.beat-graph-plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 48px;
+  border-bottom: 2px solid var(--color-hairline-default);
+}
+.beat-graph-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+.beat-graph-value {
+  margin-bottom: 12px;
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-body);
+}
+.beat-graph-bar {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 12px 12px 0 0;
+  background: var(--color-dataviz-categorical-0);
+}
+.beat-graph-bar-accent {
+  position: absolute;
+  inset: 0;
+  background: var(--color-result-improve);
+}
+.beat-graph-labels {
+  display: flex;
+  gap: 48px;
+  color: var(--color-text-secondary);
+  font-size: var(--beat-caption);
+}
+.beat-graph-labels > span { flex: 1; text-align: center; }
+.beat-terminal {
+  overflow: hidden;
+  border: 2px solid var(--color-hairline-default);
+  border-radius: var(--beat-radius);
+  background: var(--color-surface-base);
+}
+.beat-terminal-bar {
+  display: flex;
+  gap: 12px;
+  padding: 18px 24px;
+  background: var(--color-surface-overlay);
+}
+.beat-terminal-bar > i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-border-prominent);
+}
+.beat-terminal-body {
+  min-height: 300px;
+  padding: var(--beat-inset);
+  font-family: var(--font-family-mono);
+  font-size: var(--beat-body);
+  line-height: 1.6;
+  white-space: pre;
+}
+.beat-terminal-caret { background: var(--color-text-primary); }
+.beat-terminal-out { color: var(--color-text-secondary); }
+.beat-timeline-track {
+  position: relative;
+  height: 4px;
+  margin: var(--beat-gap-sm) 0;
+  background: var(--color-hairline-default);
+}
+.beat-timeline-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--color-brand-primary);
+}
+.beat-timeline-head {
+  position: absolute;
+  top: -14px;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+}
+.beat-timeline-events { display: flex; gap: var(--beat-gap); }
+.beat-timeline-event {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap-sm);
+  font-size: var(--beat-body);
+}
+.beat-timeline-when {
+  color: var(--color-brand-primary);
+  font-family: var(--font-family-heading);
+  /* 0.85x title: four 4-character labels fit their equal slots, so cards stay under the playhead stops. */
+  font-size: calc(var(--beat-title) * 0.85);
+}
+.beat-compare { display: flex; gap: var(--beat-gap-lg); }
+.beat-compare-side { flex: 1; }
+.beat-compare-title {
+  margin-bottom: var(--beat-gap-sm);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-body);
+}
+.beat-compare-title[data-accent='true'] { color: var(--color-brand-primary); }
+.beat-compare-row {
+  padding: var(--beat-gap-sm) 0;
+  border-top: 2px solid var(--color-hairline-default);
+  color: var(--color-text-secondary);
+  font-size: var(--beat-body);
+}
+.beat-outro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap);
+}
+.beat-outro-links { display: flex; gap: var(--beat-gap); font-size: var(--beat-caption); }
+.beat-outro-links > a { color: var(--color-brand-primary); }

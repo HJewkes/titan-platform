@@ -234,9 +234,11 @@ describe("pre-push ranges", () => {
       const merge = repo.git(["rev-parse", "HEAD"]).trim();
       const hang = path.join(tempDir("egress-scan-hang-"), "ssh");
       bares.push(path.dirname(hang));
-      fs.writeFileSync(hang, "#!/bin/sh\nexec sleep 3 >/dev/null 2>&1\n", { mode: 0o755 });
+      // A remote that answers after the timeout with main's tip: a list that waited for it would drop onMain.
+      const mainTip = repo.git(["rev-parse", "main"]).trim();
+      const advert = `003d${mainTip} refs/heads/main\\n0000`;
+      fs.writeFileSync(hang, `#!/bin/sh\nsleep 1\nprintf '${advert}'\ncat >/dev/null\n`, { mode: 0o755 });
 
-      const started = Date.now();
       const commits = commitsForUpdate(
         repo.dir,
         "origin",
@@ -244,7 +246,6 @@ describe("pre-push ranges", () => {
         { pushUrl: "ssh://host/repo", timeoutMs: 300, env: { ...process.env, GIT_SSH_COMMAND: hang } },
       );
 
-      expect(Date.now() - started).toBeLessThan(2500);
       expect(commits).toContain(onMain);
     });
 

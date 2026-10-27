@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rebuild claims .next without holding its lock",
+      "file": "products/active-work/src/session-index/rebuild.ts",
+      "find": "  const release = await lockNext(nextPath);\n",
+      "replace": "  const release = async () => {};\n",
+      "kills": [
+        "rebuildGraph two rebuilds resuming the same .next at once: one swaps, the other is refused"
+      ]
+    }
+  ]
+}

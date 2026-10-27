@@ -11,7 +11,8 @@ import { repairHint } from "../l0-repair-hints.js";
 import type { Stamped, LedgerStamp } from "../ledger-stamp.js";
 import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import type { RuleRegistry } from "../rules.js";
-import { budgetSection, planFaults, planHint } from "../script-budget.js";
+import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
+import { FILL_RULE, fillHint, TEMPLATE_FILL_ID } from "../script-fill.js";
 import { parseScript } from "../script-load.js";
 import { DraftScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
@@ -192,6 +193,15 @@ export const wholeScript = (plan: ScriptPlan): Reader => ({ check: (outcome) => 
 export interface Draft extends Checked {
   usage: StageUsage;
   retried: boolean;
+  /** The beats the $0 re-time raised in the kept reply, as `reflection-1 18→19 s`. */
+  retimed: string[];
+}
+
+/** A parsed reply re-timed against the reader's own faults, so a draft that only needs seconds costs no retry. */
+function retimedReply(reply: Checked, reader: Reader): Checked & { retimed: string[] } {
+  if (!reply.script) return { ...reply, retimed: [] };
+  const { draft, moves } = retimeOverBudget(reply.script, reader.faults);
+  return { ...reply, script: draft, retimed: moves };
 }
 
 /** One retry naming each beat over resolve's word cap and the runtime; kept only when it parses and fails fewer. */
@@ -199,7 +209,7 @@ async function planRetry(call: Call, prompt: string, reader: Reader, draft: Draf
   const faults = reader.faults(draft.script);
   if (faults.length === 0) return draft;
   const outcome = await call(retryPrompt(prompt, planHint(faults)));
-  const reply = reader.check(outcome);
+  const reply = retimedReply(reader.check(outcome), reader);
   const better = reply.script !== undefined && reader.faults(reply.script).length < faults.length;
   return { ...(better ? reply : draft), usage: addUsage(draft.usage, stageUsage(outcome.usage)), retried: true };
 }
@@ -207,12 +217,21 @@ async function planRetry(call: Call, prompt: string, reader: Reader, draft: Draf
 /** The first call, and one retry: naming the schema issues when its reply does not parse, or its plan faults when it does. */
 export async function draftScript(call: Call, prompt: string, reader: Reader): Promise<Draft> {
   const first = await call(prompt);
-  const result = reader.check(first);
+  const result = retimedReply(reader.check(first), reader);
   const usage = stageUsage(first.usage);
   if (result.script) return planRetry(call, prompt, reader, { ...result, script: result.script, usage, retried: false });
   if (!isSchemaFailure(first)) return { ...result, usage, retried: false };
   const second = await call(retryPrompt(prompt, result.error ?? ""));
-  return { ...reader.check(second), usage: addUsage(stageUsage(first.usage), stageUsage(second.usage)), retried: true };
+  return { ...retimedReply(reader.check(second), reader), usage: addUsage(stageUsage(first.usage), stageUsage(second.usage)), retried: true };
+}
+
+/** The re-time after the last repair round, which keeps any reply that fails fewer L0 rows whatever its word count. */
+export function retimeRepaired(script: ScriptV1, earlier: readonly string[]): { script: ScriptV1; checks: Check[]; notes: string[] } {
+  const { draft, moves } = retimeOverBudget(script);
+  const all = [...earlier, ...moves];
+  if (all.length === 0) return { script: draft, checks: [], notes: [] };
+  const detail = `re-timed ${all.length} beat(s) to fit their words: ${all.join(", ")}`;
+  return { script: draft, checks: [{ name: "word-budget-retime", gate: false, pass: true, detail }], notes: all.map((move) => `word-budget re-time: ${move}`) };
 }
 
 export const failingErrors = (rows: readonly L0Result[]): L0Result[] => rows.filter((row) => row.severity === "error" && !row.pass);
@@ -229,13 +248,25 @@ export interface Lint {
   g2p: Tokens;
 }
 
+interface OwnRow {
+  rule: string;
+  hint: (row: L0Result) => string;
+}
+
+/** The rows the repair rounds answer that no L0 rule owns: each one's rule and Found line. */
+const ownRows = (script: ScriptV1, lint: Pick<Lint, "g2p">): ReadonlyMap<string, OwnRow> =>
+  new Map([
+    [UNKNOWN_WORDS_ID, { rule: UNKNOWN_WORDS_RULE, hint: () => unknownWordsHint(lint.g2p, spellScript(script)) }],
+    [TEMPLATE_FILL_ID, { rule: FILL_RULE, hint: (row: L0Result) => fillHint(script, row.detail_beats) }],
+  ]);
+
 export function failureList(rows: readonly L0Result[], rules: RuleRegistry, script: ScriptV1, lint: Pick<Lint, "facts" | "spine" | "g2p" | "coverage">): string {
   const ruleFor = (id: string) => rules.rules.find((rule) => rule.id === id || (rule.l0?.status === "implemented" && rule.l0.checks.includes(id)));
-  const words = (row: L0Result) => row.check_id === UNKNOWN_WORDS_ID;
-  const rule = (row: L0Result) => (words(row) ? UNKNOWN_WORDS_RULE : ruleFor(row.check_id)?.rule ?? "see the rules above");
+  const own = ownRows(script, lint);
+  const rule = (row: L0Result) => own.get(row.check_id)?.rule ?? ruleFor(row.check_id)?.rule ?? "see the rules above";
   const where = (row: L0Result) => `beats: ${row.detail_beats.join(", ") || "the whole script"}; measured ${row.value}, needs ${row.threshold}`;
   const found = (row: L0Result) => {
-    const hint = words(row) ? unknownWordsHint(lint.g2p, spellScript(script)) : repairHint(row, script, lint.facts, lint.spine, lint.coverage);
+    const hint = own.get(row.check_id)?.hint(row) ?? repairHint(row, script, lint.facts, lint.spine, lint.coverage);
     return hint ? `\n  Found: ${hint}` : "";
   };
   return rows.map((row) => `- ${row.check_id}: ${rule(row)} (${where(row)})${found(row)}`).join("\n");

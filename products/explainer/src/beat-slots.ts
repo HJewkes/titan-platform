@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * The slot schemas a beat spec's `slots` names (VT §5.3 "zod ref"): what the builder must fill
  * before a beat renders. A top-level array whose items carry an `id` is an emphasis target list:
- * a script cue's `target` names one of those ids (plan, owner override 1).
+ * a script cue's `target` names one of those ids, or an item's `alias` (plan, owner override 1).
  */
 
 const Id = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "expected a kebab-case element id");
@@ -37,6 +37,18 @@ const ProofCheck = z.object({ id: Id, name: Label, base: z.enum(["fail", "pass",
 // A row's lane is the short chip a `<lane> · <text>` label names.
 const ListRow = z.object({ id: Id, text: Line, mark: z.enum(["tick", "cross", "risk", "open", "dot"]), lane: Label.max(12).optional() }).strict();
 
+// Cues number compare labels one by one, so a row is named by its left label's id and its right label's alias.
+const CompareRow = z.object({ id: Id, alias: Id.optional(), left: Line, right: Line }).strict();
+
+// How a chart's axis and colour are drawn; the chart-integrity gate refuses the forms that mislead (CH-11, CH-13, CH-20, CH-22).
+const Hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "expected a #rrggbb colour");
+const ChartFrame = {
+  baseline: z.number().optional(),
+  axisBreak: z.boolean().optional(),
+  scale: z.object({ kind: z.enum(["sequential", "diverging"]), colours: z.array(Hex).min(2).max(11) }).strict().optional(),
+  legend: z.boolean().optional(),
+};
+
 const items = (min: number, max: number) => z.array(Item).min(min).max(max);
 const graph = { nodes: z.array(Node).min(2).max(12), edges: z.array(Edge).max(16) };
 
@@ -57,7 +69,7 @@ export const BEAT_SLOTS = {
   schema: z.object({ tables: z.array(z.object({ id: Id, name: Label, columns: z.array(Label).min(1) }).strict()).min(1).max(6), relations: z.array(Edge).default([]) }).strict(),
   "code-walk": z.object({ path: z.string().min(1), language: Label, mode: z.enum(["plain", "diff"]), simplified: z.boolean(), lines: z.array(CodeLine).min(1).max(10) }).strict(),
   "algo-trace": z.object({ steps: z.array(z.object({ id: Id, state: z.array(Label).min(1), note: Line }).strict()).min(2).max(12) }).strict(),
-  compare: z.object({ leftTitle: Label, rightTitle: Label, rows: z.array(z.object({ id: Id, left: Line, right: Line }).strict()).min(1).max(4) }).strict(),
+  compare: z.object({ leftTitle: Label, rightTitle: Label, rows: z.array(CompareRow).min(1).max(4) }).strict(),
   "docs-vs-code": z.object({ docs: Line, source: Source, path: z.string().min(1), lines: z.array(CodeLine).min(1).max(6) }).strict(),
   "issue-pin": z.object({ title: Line.optional(), issues: z.array(z.object({ id: Id, title: Line, severity: Severity, pin: Id.optional() }).strict()).min(1).max(5) }).strict(),
   fix: z.object({ path: z.string().min(1), lines: z.array(CodeLine).min(1).max(10) }).strict(),
@@ -74,7 +86,9 @@ export const BEAT_SLOTS = {
   scorecard: z.object({ rows: z.array(z.object({ id: Id, label: Label, call: Label, reason: Line.optional() }).strict()).min(2).max(8) }).strict(),
   "reading-list": z.object({ items: z.array(z.object({ id: Id, path: z.string().min(1), why: Line }).strict()).min(1).max(6) }).strict(),
   "fact-flash": z.object({ facts: items(1, 4) }).strict(),
-  chart: z.object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12) }).strict(),
+  chart: z
+    .object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12), ...ChartFrame })
+    .strict(),
   list: z.object({ title: Label.optional(), rows: z.array(ListRow).min(1).max(5) }).strict(),
   "verdict-card": z.object({ verdict: Line, call: Label, reasons: items(1, 3) }).strict(),
   "change-group": z.object({ groups: z.array(z.object({ id: Id, title: Label, why: Line, files: z.array(z.string().min(1)).min(1), pin: Id.optional() }).strict()).min(2).max(4) }).strict(),
@@ -89,6 +103,7 @@ export const BEAT_SLOTS = {
       y: Label,
       source: Source,
       series: z.array(z.object({ id: Id, label: Label, points: z.array(z.object({ x: z.number(), y: z.number() }).strict()).min(1) }).strict()).min(1).max(6),
+      ...ChartFrame,
     })
     .strict(),
   sim: z
@@ -97,7 +112,8 @@ export const BEAT_SLOTS = {
       seed: z.number().int(),
       params: z.record(z.string(), z.number()),
       sweep: z.object({ param: z.string().min(1), from: z.number(), to: z.number(), steps: z.number().int().min(2) }).strict(),
-      claim: z.object({ value: z.number(), tolerance: z.number().nonnegative() }).strict().optional(),
+      // The claimed value is a gathered number fact and the tolerance is doctrine, so the script cannot set its own bar.
+      claim: z.object({ fact: z.string().min(1), statistic: z.string().min(1), at: z.number() }).strict().optional(),
       readouts: z.array(z.object({ id: Id, label: Label }).strict()).min(1).max(4),
     })
     .strict(),

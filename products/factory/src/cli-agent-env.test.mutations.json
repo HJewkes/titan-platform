@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "shepherd merge declared a read",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.merge\": \"write\",",
+      "replace": "\"shepherd.merge\": \"read\",",
+      "kills": [
+        "write verbs in an agent env with no serve answering shepherd merge exits UNAVAILABLE and makes no GitHub call"
+      ]
+    },
+    {
+      "name": "shepherd order declared a read",
+      "file": "products/factory/src/shepherd/port-access.ts",
+      "find": "\"shepherd.order\": \"list-or-write\",",
+      "replace": "\"shepherd.order\": \"read\",",
+      "kills": [
+        "write verbs in an agent env with no serve answering order clear exits UNAVAILABLE and leaves the reservation in place"
+      ]
+    },
+    {
+      "name": "land skips the agent-env refusal",
+      "file": "products/factory/src/cli-land.ts",
+      "find": "if (refusedInProcess(verbs, probe, opts.port, \"land\")) return;",
+      "replace": "",
+      "kills": [
+        "write verbs in an agent env with no serve answering land exits UNAVAILABLE and makes no GitHub call"
+      ]
+    },
+    {
+      "name": "resume skips the agent-env refusal",
+      "file": "products/factory/src/cli-host-verbs.ts",
+      "find": "if (await refusedWithoutServe(verbs, opts.port, \"resume\")) return;",
+      "replace": "",
+      "kills": [
+        "write verbs in an agent env with no serve answering resume exits UNAVAILABLE and makes no GitHub call"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
-import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
+import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName, type StatusRow } from "./commands.js";
 import type { PrRow } from "./prs.js";
+import type { OrderResult, OrderRow } from "./merge-order-command.js";
 import type { RepairStopResult } from "./repair-stop-command.js";
 import type { RepoFreezeResult } from "./repo-freeze-command.js";
 import type { ReviewAsk } from "./review-request.js";
@@ -9,6 +10,7 @@ import type { ResyncReport } from "./resync.js";
 import type { ThawResult } from "./thaw-command.js";
 import type { WatchResult } from "./watch-command.js";
 import type { FixPrResult } from "./fix-pr-command.js";
+import type { MergeBaseResult } from "./merge-base-command.js";
 import type { Freeze } from "./freeze.js";
 import { lastAwaitClause } from "./none-reason.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
@@ -27,7 +29,7 @@ type ResultSchemas = { [Name in ShepherdCommandName]: { result: ZodType<Shepherd
 /** A verb with no entry here fails to compile, so a new one cannot fall through to another verb's text. */
 const FORMATTERS: Formatters = {
   "shepherd.register": formatRegistered,
-  "shepherd.status": formatRows,
+  "shepherd.status": formatStatus,
   "shepherd.list": formatRows,
   "shepherd.waiting": formatWaiting,
   "shepherd.timeline": formatTimeline,
@@ -36,7 +38,9 @@ const FORMATTERS: Formatters = {
   "shepherd.repair-stop": formatRepairStops,
   "shepherd.freeze": formatRepoFreezes,
   "shepherd.thaw": formatThaw,
+  "shepherd.order": formatOrder,
   "shepherd.fix-pr": formatFixPr,
+  "shepherd.merge-base": formatMergeBase,
   "shepherd.merge": formatMerge,
   "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
@@ -86,6 +90,11 @@ function formatRepairStops({ changed, stops }: RepairStopResult): string {
 function formatWatches({ changed, watches }: WatchResult): string {
   const lines = watches.map((watch) => `${watch.repo}#${watch.pr}  on ${watch.on.join(",")}  ${watch.seat === null ? "to its digest seat" : `copy to ${watch.seat}`} (by ${watch.actor}, ${watch.at})`);
   return `${changed ? "changed; " : ""}${watches.length === 0 ? "no watches" : `watches:\n${lines.join("\n")}`}\n`;
+}
+
+function formatMergeBase({ runId, changed, exception }: MergeBaseResult): string {
+  if (exception) return `run ${runId}: fix rounds may merge the base (${exception.reason}; by ${exception.actor}, ${exception.at})\n`;
+  return `run ${runId}: ${changed ? "exception revoked; " : ""}fix rounds do not merge the base\n`;
 }
 
 function formatRepoFreezes({ detail, freezes, mainRed = [] }: RepoFreezeResult): string {
@@ -162,6 +171,25 @@ function heldLine(held: NonNullable<WatchRow["held"]>): string {
 
 function formatRows(rows: WatchRow[]): string {
   return rows.length === 0 ? "no shepherded PRs\n" : `${rows.map(rowLine).join("\n")}\n`;
+}
+
+/** A row holding a merge-order reservation says so after its blockers. */
+function formatStatus(rows: StatusRow[]): string {
+  const reserved = ({ mergeOrder: held }: StatusRow): string =>
+    held ? ` [merge order: reserved ${held.paths.length} path(s) since ${held.since}, ${held.state}${waitingText(held.waiting)}]` : "";
+  return rows.length === 0 ? "no shepherded PRs\n" : `${rows.map((row) => `${rowLine(row)}${reserved(row)}`).join("\n")}\n`;
+}
+
+const waitingText = (waiting: readonly number[]): string => (waiting.length === 0 ? "" : `; ${waiting.map((pr) => `#${pr}`).join(", ")} waiting`);
+
+function orderLine(row: OrderRow): string {
+  const prs = (label: string, list: readonly number[]): string => (list.length === 0 ? "" : `; ${label} ${list.map((pr) => `#${pr}`).join(", ")}`);
+  return `${row.repo}#${row.pr}  ${row.state}  ${row.ageMinutes}m  ${row.paths.length} path(s)${prs("ahead", row.ahead)}${prs("behind", row.behind)}${prs("waiting", row.waiting)}`;
+}
+
+function formatOrder({ cleared, reservations }: OrderResult): string {
+  const head = cleared ? `cleared ${cleared.repo}#${cleared.pr}'s reservation\n` : "";
+  return `${head}${reservations.length === 0 ? "no merge-order reservations" : `merge-order reservations:\n${reservations.map(orderLine).join("\n")}`}\n`;
 }
 
 function entryLine(entry: TimelineEntry): string {

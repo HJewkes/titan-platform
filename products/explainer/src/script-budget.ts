@@ -9,6 +9,8 @@ import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
 import { overBudget, scriptBudgets, type BudgetRow } from "./resolve-budget.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { loadSpeechBands } from "./speech-bands.js";
+import { draftFillFaults } from "./script-fill.js";
+import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { shippedVisualRouter } from "./visual-router.js";
 
 type Draft = Pick<ScriptV1, "beats" | "profile">;
@@ -22,14 +24,18 @@ function resolvedBands(draft: Draft, specs: ReadonlyMap<string, BeatSpec>): Pick
   });
 }
 
-/** The word budgets resolve will hold the draft to, from the same function resolve calls. */
+/**
+ * The word budgets resolve will hold the draft to, from the same function resolve calls. Counted on the voiced draft:
+ * rewrite spells every number before resolve reads the script, and "$2.55" is one token but several spoken words.
+ */
 export function draftBudgets(draft: Draft): BudgetRow[] {
   const specs = loadBeatSpecs();
-  return scriptBudgets(draft, resolvedBands(draft, specs), specs).rows;
+  const voiced = { ...draft, beats: draft.beats.map(spellSpokenNumbers) };
+  return scriptBudgets(voiced, resolvedBands(voiced, specs), specs).rows;
 }
 
-/** The planned seconds a beat's words need at its slot's rate. */
-const secondsFor = (row: BudgetRow): number => Math.ceil(row.words / row.wordsPerS);
+/** The planned seconds a beat's words need at its slot's rate; the epsilon matches the cap's, so 56 words at 2.8 need 20 s. */
+const secondsFor = (row: BudgetRow): number => Math.ceil(row.words / row.wordsPerS - 1e-9);
 
 const overText = (row: BudgetRow): string =>
   `${row.scope === "block" ? "block " : ""}${row.id} ${row.words}/${row.cap} words (${row.seconds} s at ${row.wordsPerS} w/s; ${row.words} words need ${secondsFor(row)} s)`;
@@ -88,10 +94,61 @@ export function draftBeatLengths(draft: Draft): { pass: boolean; detail: string 
   return { pass: faults.length === 0, detail: faults.length === 0 ? `every beat within ${MIN_BEAT_S}-${MAX_BEAT_S} s` : `out of band: ${faults.join("; ")}` };
 }
 
-/** Everything the plan check fails the draft on: each over-budget beat or block, each beat out of Q-F8's band, then the runtime. */
-export function planFaults(draft: Draft): string[] {
+/**
+ * Everything the plan check fails the draft on: each over-budget beat or block, each beat out of Q-F8's band, the
+ * runtime, then each beat resolve's template fill would refuse.
+ */
+export function planFaults(draft: ScriptV1): string[] {
   const runtime = draftRuntime(draft);
-  return [...wordBudgetFaults(draft), ...beatLengthFaults(draft).map((fault) => `beat length: ${fault}`), ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`])];
+  const lengths = beatLengthFaults(draft).map((fault) => `beat length: ${fault}`);
+  return [...wordBudgetFaults(draft), ...lengths, ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`]), ...draftFillFaults(draft)];
+}
+
+/** The most seconds a re-time adds to one beat: at concept's 2.8 w/s that covers 5 words over, and each measured overage needed 1 s. */
+const RETIME_MAX_S = 2;
+
+interface Retimed<D extends Draft> {
+  draft: D;
+  /** Each re-timed beat and its seconds, as `reflection-1 18→19 s`; empty when the draft is returned as it came. */
+  moves: string[];
+}
+
+const blockMaxS = (profile: TypeProfile, chapter: string): number | undefined =>
+  profile.structure.blocks.find((block) => block.id === chapter)?.seconds[1];
+
+/** The draft with one over-budget beat raised to the seconds its words need, or undefined when a bound refuses it. */
+function raised<D extends Draft>(draft: D, row: BudgetRow, profile: TypeProfile): D | undefined {
+  const beat = draft.beats.find((candidate) => candidate.id === row.id);
+  const need = secondsFor(row);
+  if (!beat || need - beat.plannedS > RETIME_MAX_S || need > MAX_BEAT_S) return undefined;
+  const next = { ...draft, beats: draft.beats.map((candidate) => (candidate === beat ? { ...beat, plannedS: need } : candidate)) };
+  const blockS = blockMaxS(profile, beat.chapter);
+  if (blockS !== undefined && chapterSeconds(next, beat.chapter) > blockS) return undefined;
+  return plannedTotal(next) <= profile.runtime.maxS ? next : undefined;
+}
+
+const strictSubset = (after: readonly string[], before: readonly string[]): boolean =>
+  after.length < before.length && after.every((fault) => before.includes(fault));
+
+/**
+ * The $0 word-budget repair: each beat a few words over its cap gets the seconds its words need, within
+ * `RETIME_MAX_S`, Q-F8's longest beat, its block's longest airtime and the profile's longest runtime. A block row is
+ * never re-timed, since its cap does not move with plannedS. The result is kept only when it fails a strict subset of
+ * the `faults` it failed before; anything larger still fails, for the plan retry or the gate. A chapter part passes
+ * its own reader's faults, since the whole draft's runtime fault names a total the part cannot reach.
+ */
+export function retimeOverBudget<D extends ScriptV1>(draft: D, faults: (draft: D) => string[] = planFaults): Retimed<D> {
+  const profile = profileFor(loadProfiles(), draft.profile);
+  const rows = overBudget(draftBudgets(draft)).filter((row) => row.scope === "beat");
+  let next = draft;
+  const moves: string[] = [];
+  for (const row of rows) {
+    const candidate = raised(next, row, profile);
+    if (!candidate) continue;
+    moves.push(`${row.id} ${row.seconds}→${secondsFor(row)} s`);
+    next = candidate;
+  }
+  return moves.length > 0 && strictSubset(faults(next), faults(draft)) ? { draft: next, moves } : { draft, moves: [] };
 }
 
 /**
@@ -101,10 +158,10 @@ export function planFaults(draft: Draft): string[] {
  * 35-45 s beat per chapter, which Q-F8 fails, so the seconds go to more beats, not longer ones.
  */
 export const planHint = (faults: readonly string[]): string =>
-  `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise plannedS until each beat's words fit under its cap and the beats sum to the profile's target runtime, but keep every beat other than the close within ${MIN_BEAT_S}-${MAX_BEAT_S} s: split a longer beat into continuation beats in the same chapter, one idea each. Then write each beat's spoken text close to its new cap, so no slot is left silent.`;
+  `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise plannedS until each beat's words fit under its cap and the beats sum to the profile's target runtime, but keep every beat other than the close within ${MIN_BEAT_S}-${MAX_BEAT_S} s: split a longer beat into continuation beats in the same chapter, one idea each. Then write each beat's spoken text close to its new cap, so no slot is left silent. A beat whose labels overflow its beat spec keeps that many labels and moves the rest to a continuation beat in the same chapter.`;
 
 const capLine = ({ chapter, spec }: LeadBeat, wordsPerS: number): string =>
-  `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down`;
+  `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down, counting each number as the words the voice reads`;
 
 /**
  * Each lead's share of the target. A fixed profile's chapters are its macro's blocks in order, so they take the

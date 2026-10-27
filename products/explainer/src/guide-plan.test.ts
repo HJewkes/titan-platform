@@ -45,6 +45,17 @@ describe("guidePlan", () => {
     expect(guidePlan("plan")).not.toContain("register-N6");
   });
 
+  it("tells the script stage, and only it, to keep a beat concrete when a number moves to the screen", () => {
+    const script = guidePlan("script");
+
+    const line = /\*\*register-AV3\*\*: (.*)/.exec(script)?.[1] ?? "";
+
+    expect(line).toContain("Each beat names a concrete thing");
+    expect(line).toContain('never say "some" or "many"');
+    expect(line).not.toMatch(/\d/);
+    expect(guidePlan("plan")).not.toContain("register-AV3");
+  });
+
   it("states spoken register as direction, with none of the Q-V11 bands", () => {
     const guide = guidePlan("script");
     const register = guide.split("## Write it to be spoken")[1]?.split("## Rules for")[0] ?? "";

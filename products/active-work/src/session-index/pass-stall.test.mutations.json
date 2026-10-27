@@ -7,7 +7,7 @@
       "find": "await rollupYielding(graph, touched, yieldPoint)",
       "replace": "rollupSessions(graph, touched)",
       "kills": [
-        "session index pass over 500 dirty transcripts a delta pass never stalls the event loop for a second"
+        "session index pass over 60 dirty transcripts a delta pass yields between transcripts and between sessions it rolls up"
       ]
     },
     {
@@ -16,17 +16,16 @@
       "find": "  return rollupYielding(graph, [...sessions], yieldPoint);\n",
       "replace": "  return rollupSessions(graph, [...sessions]);\n",
       "kills": [
-        "session index pass over 500 dirty transcripts a pass resuming unfinished turns never stalls the event loop for a second"
+        "session index pass over 60 dirty transcripts a pass resuming unfinished turns yields between sessions it rolls up"
       ]
     },
     {
-      "name": "the sliced rollup never yields",
-      "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "      await yieldPoint();\n",
-      "replace": "",
+      "name": "the full pass hands refreshCorpus no yieldPoint",
+      "file": "products/active-work/src/session-index/refresh.ts",
+      "find": "      facetLimit: options.facetLimit,\n      yieldPoint,\n",
+      "replace": "      facetLimit: options.facetLimit,\n",
       "kills": [
-        "session index pass over 500 dirty transcripts a delta pass never stalls the event loop for a second",
-        "session index pass over 500 dirty transcripts a pass resuming unfinished turns never stalls the event loop for a second"
+        "session index pass over 60 dirty transcripts a --full rebuild with an episode sweep yields between transcripts and sessions"
       ]
     }
   ]

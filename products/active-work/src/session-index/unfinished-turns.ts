@@ -1,4 +1,4 @@
-import { rollupSessions } from '@titan-design/session-graph';
+import { rollupYielding } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from './graph.js';
 
 const UNFINISHED_PAGE = 2_000;
@@ -43,33 +43,6 @@ async function unfinishedSessions(
     cursor = page[page.length - 1].rowid;
     await yieldPoint();
   }
-}
-
-/**
- * Roll up `sessionIds` one session per transaction, yielding after each. One
- * transaction over a 500-session delta held the daemon's event loop for
- * seconds (TP-4172); the rollup recomputes rather than accumulates, so slicing
- * it changes no row. A throw at a yield point (a shutdown abort) rolls up the
- * rest before it propagates, as the scan does, so no continued turn is left
- * with stale aggregates.
- */
-export async function rollupYielding(
-  graph: WorkspaceGraph,
-  sessionIds: readonly string[],
-  yieldPoint: () => Promise<void>,
-): Promise<number> {
-  const unique = [...new Set(sessionIds)];
-  let updated = 0;
-  for (const [i, sessionId] of unique.entries()) {
-    updated += rollupSessions(graph, [sessionId]);
-    try {
-      await yieldPoint();
-    } catch (err) {
-      rollupSessions(graph, unique.slice(i + 1));
-      throw err;
-    }
-  }
-  return updated;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { CONFIG_PATH } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, PR_FILES_CAP, type GitHubPort, type PrFile } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { MAX_PROBED_PATHS, testOnlyDiff } from "./test-only-diff.js";
+import { MAX_PROBED_PATHS, sourceFreeDiff, testOnlyDiff } from "./test-only-diff.js";
 
 const REPO = "o/r";
 const REPO_CONFIG = JSON.stringify({
@@ -341,5 +341,27 @@ describe("testOnlyDiff", () => {
 
   it("fails closed when the registration names no PR", async () => {
     expect(await testOnlyDiff(scene([]), REPO, null, HEAD)).toMatchObject({ kind: "unread" });
+  });
+});
+
+describe("sourceFreeDiff (TP-4275)", () => {
+  const added = (path: string): PrFile => ({ path, status: "added" });
+  const TESTS_AND_SUPPORT = [added("packages/x/src/__tests__/parse.test.ts"), removed("packages/x/src/parse.test.ts"), added("packages/x/src/test-support/cases.ts"), added(".changeset/convert.md")];
+
+  it("reads tests, a deleted test, test support and a changeset as free of source", async () => {
+    expect(await sourceFreeDiff(scene(TESTS_AND_SUPPORT, { baseConfig: RUNTIME_CONFIG }), REPO, 1, HEAD)).toBe(true);
+  });
+
+  it.each([".changeset/config.json", "packages/x/src/docs/render.ts", "packages/x/src/a.test.helpers.ts", "apps/console/fixtures/rounds/a.md", "site/guides/parse.md", ".github/workflows/ci.yml"])(
+    "reads a diff with %s, which the fix-proof plan sorts as source, as not free of source",
+    async (path) => {
+      expect(await sourceFreeDiff(scene([...TESTS_AND_SUPPORT, modified(path)], { baseConfig: RUNTIME_CONFIG }), REPO, 1, HEAD)).toBe(false);
+    },
+  );
+
+  it("fails closed when a carried path's blob is not read inline", async () => {
+    const port = gitlinkAt(scene(TESTS_AND_SUPPORT, { baseConfig: RUNTIME_CONFIG }), "packages/x/src/test-support/cases.ts", HEAD);
+
+    expect(await sourceFreeDiff(port, REPO, 1, HEAD)).toBe(false);
   });
 });

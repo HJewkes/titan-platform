@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "redact trims the text between token spans",
+      "file": "packages/github/src/redact.ts",
+      "find": "  return render(exact, spansOf(exact), (piece) => piece);",
+      "replace": "  return render(exact, spansOf(exact), (piece) => piece.trim());",
+      "kills": [
+        "token shape scrub TP-1504 gaps scans whitespace after a keyword in linear time"
+      ]
+    }
+  ]
+}

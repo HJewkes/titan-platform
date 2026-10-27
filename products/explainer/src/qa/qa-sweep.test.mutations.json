@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the outro's settleBy is not passed to the sweep",
+      "file": "products/explainer/src/qa/qa-timeline.ts",
+      "find": "sweepMoments([lead, beat], { settleBy: (b) => (b === beat ? settleBy(beat) : 0) })",
+      "replace": "sweepMoments([lead, beat])",
+      "kills": [
+        "qa stage on a beat that fades out over its last second passes content-fill on an outro, whose settled sample comes before its fade"
+      ]
+    },
+    {
+      "name": "the qa stage sweeps even when the variant sets sweep: false",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "sweep: config.sweep !== false, probe: true }",
+      "replace": "sweep: true, probe: true }",
+      "kills": [
+        "qa stage sampling samples the cue moments only when the variant sets sweep: false"
+      ]
+    },
+    {
+      "name": "the qa spec defaults to cue moments only",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "const { sweep = true } =",
+      "replace": "const { sweep = false } =",
+      "kills": [
+        "qa stage spec sweep param sweeps unless a variant sets sweep: false, and refuses any other param"
+      ]
+    }
+  ]
+}

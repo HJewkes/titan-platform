@@ -14,9 +14,11 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 | `structures/<id>.yaml` | One `narrative-structure/v1` per narrative structure a profile may pick | `loadStructures` |
 | `beat-systems/<id>.yaml` | One `beat-system/v1` per beat system: an ordered beat pattern a profile plays inside a structure's blocks | `loadBeatSystems` |
 | `lexicon.json` | How a word is said aloud (speech-vet `lexicon.v1`); each entry's `phonemes.misaki` reaches the Kokoro voice ahead of misaki's own lexicon | `kokoroEngine` |
+| `voice-phrases.json` | The phrases our scripts say far more often than human explainers (TP-4305), derived outside git from the script-tells corpus; only the list is kept here | `registerCheck` |
 | `speech-bands.yaml` | Each speech band's voiced words a minute and density cap (DIRECTION C5 and C15, decision 317a): the tts stage's per-beat rate and the word budget's caps | `loadSpeechBands` |
 | `beats/<type>.yaml` | One `beat-spec/v1` per beat type: the builder's packet, and a ref to its zod slot schema in `src/beat-slots.ts` | `loadBeatSpecs` |
 | `sims/<id>.yaml` | One `sim-model/v1` per sim model: its params and bounds, the statistics a claim may name with each tolerance and its `why`, and `fittedFrom`; the code model is in `SIM_MODELS` | `loadSims` |
+| `qa/gate-profile.yaml` | The qa stage's gate profile (`explainer.qa-gate-profile/v1`): the render-qa finding kinds that fail the stage and the inspector thresholds, by default and per video type | `loadQaGate` |
 | `style-packs/<id>.yaml` | One `style-pack/v1` per style pack: existing titan-design token names by slot | `loadStylePacks` |
 | `style-tokens.json` | The token names of react-ui's `tokens.css`, the file the explainer template imports; rewrite it with `scripts/pin-style-tokens.mjs`, never by hand | `loadStylePacks` |
 | `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |

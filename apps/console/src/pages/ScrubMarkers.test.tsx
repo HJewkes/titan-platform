@@ -30,4 +30,12 @@ describe("scrub markers", () => {
     render(<ScrubMarkers notes={[marker("n1", 50)]} duration={Number.NaN} seek={() => undefined} />);
     expect(screen.queryByTestId("theater-markers")).toBeNull();
   });
+
+  it("draws a tick where each beat starts, even with no notes, and seeks to the beat's start when tapped", () => {
+    const seek = vi.fn();
+    render(<ScrubMarkers notes={[]} beats={[{ id: "b-compare", startS: 0 }, { id: "b-list", startS: 50 }]} duration={200} seek={seek} />);
+    expect(screen.getByTestId("theater-beat-marker-b-list").style.left).toBe("25%");
+    fireEvent.click(screen.getByLabelText("Seek to beat b-list at 0:50"));
+    expect(seek).toHaveBeenCalledWith(50);
+  });
 });

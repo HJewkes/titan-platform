@@ -43,6 +43,7 @@ import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
 import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
 import { conflictBaseRoute } from "./conflict-base.js";
+import { expireOrder } from "./merge-order-expiry.js";
 import { orderedConflict, releaseOrder, type OrderRun } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -227,6 +228,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   await recordHeadOrigin(run, ci.data);
   run.lastCi = ci.data;
   expireStaleGates(run.ctx, ci.data.headSha);
+  await expireOrder(run, ci.data.headSha);
   await reholdMovedHead(run, ci.data.headSha);
   if (!reviewable(ci.data)) return;
   if (ci.data.verdict === "green") run.conflictWakes = 0;

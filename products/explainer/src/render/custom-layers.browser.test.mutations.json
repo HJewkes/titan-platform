@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a custom beat is drawn through its kind's view, not its layer",
+      "file": "products/explainer/src/composition/Composition.tsx",
+      "find": "if (beat.layer === \"custom\" && beat.module !== undefined) return",
+      "replace": "if (false) return",
+      "kills": [
+        "a custom layer on the composition page renders at startS + 1 with no page error, its anchors in the occupancy table"
+      ]
+    }
+  ]
+}

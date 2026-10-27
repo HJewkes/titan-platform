@@ -63,13 +63,14 @@ it("loads the factory test setup and the wait budget for every test", () => {
 
 // Every test runs these, so a pull request touching one must run the whole suite, not just scripts/.
 it("runs the full suite for a pull request that changes a file every test loads", () => {
-  const loadedByEveryTest = [...config.test.globalSetup, ...config.test.setupFiles, "scripts/wait-budget.mjs"];
+  const loadedByEveryTest = [...config.test.globalSetup, ...config.test.setupFiles, "scripts/wait-budget.mjs", "scripts/vitest-file-watchdog.mjs"];
   for (const path of loadedByEveryTest) expect(testScope([path], readWorkspace()), path).toEqual({ mode: "full", reason: path });
 });
 
+// Each check waits out a 100 ms interval first, so a thirteenth check means the wait outlived vitest's 1 s default.
 it("gives vi.waitFor the budget when a call names no timeout", async () => {
-  const start = Date.now();
-  await vi.waitFor(() => expect(Date.now() - start).toBeGreaterThan(1_200), { interval: 100 });
+  let checks = 0;
+  await vi.waitFor(() => expect((checks += 1)).toBe(13), { interval: 100 });
 });
 
 function domTestPackages() {

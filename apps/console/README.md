@@ -52,6 +52,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_AGENT_CHAT_BIN` | `agent-chat` on the service's `PATH` | the agent-chat CLI that tells a seat its decision round was answered (`agent-chat debug send`); a send that fails is retried when the console next starts |
+| `TITAN_CONSOLE_EXPLAINER_BIN` | `explainer` on the service's `PATH` | the explainer CLI the theater's beat editor reads through (`explainer props`, `explainer edit check`); not found, the editor shows a gap line instead; a relative path gets its own "must be an absolute path" gap |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
@@ -512,9 +513,9 @@ no message and no record, and the console's start-up sweep retries it.
 
 The message is fixed text: the round id, the `feedback.json` path, why this seat is told, and
 whether the answer carries free text (a question comment, an option note, a written answer, or
-general text). Nothing the filing seat wrote is relayed. Notices still carry human provenance:
-`round-notice-transport.ts` sends them through `agent-chat debug send`, which delivers from the
-human seat, until an agent-chat console wake source (CC-1507) replaces that one seam.
+general text). Nothing the filing seat wrote is relayed. `round-notice-transport.ts` sends notices through
+`agent-chat debug send --source console` (CC-1507): they arrive from the human seat, labelled
+`wake_source="console"`, without `human-endorsed` provenance.
 
 ```sh
 titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
@@ -728,7 +729,7 @@ video shows) or about the video itself (how the system made it: what works, what
 
 The notice is fixed text naming the video id, the time and the note id, sent through the same
 `agent-chat` transport as round notices (`round-notice-transport.ts`), which delivers it from the
-human seat. Agents write video file names, folders and sidecars, so the notice carries none of
+human seat labelled `wake_source="console"`. Agents write video file names, folders and sidecars, so the notice carries none of
 them and never the comment's text; the seat reads the note with `videos.notes <videoId>`. Delivery is best effort: the note is stored
 either way, `routedTo: { seat, delivered }` says whether the send went through, and nothing retries
 a failed send. Verdicts are not routed (`routedTo: null`).
@@ -743,6 +744,47 @@ about the content written after its latest `ship` verdict, in file order (a comm
 is video-coord's, never open): `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
+### Beat editor
+
+On a paused explainer render, **Edit this beat** opens the template beat under the playhead (the
+beat whose `[startS, endS)` holds it) with a form generated from its slot JSON Schema, and seeks the
+player to the beat's `stillS`, so the still is the render itself. Beat starts are ticks on the strip
+under the video. All four commands run the installed explainer CLI with a fixed argv, no shell and a 20 s
+timeout; the console never imports explainer. The child gets only `PATH`, `HOME`, `USER`, the
+locale, `TMPDIR`, the `XDG_*` dirs and `EXPLAINER_*` variables, never the daemon's `TITAN_CONSOLE_*`
+settings. A props answer is kept per render sha for 10 minutes, so reopening a video does not run
+the CLI again; a failed read is not kept.
+
+- **`videos.props`** (read) `{ videoId }` runs `explainer props --mp4-sha <the render's sha256> --json`
+  and returns `{ mp4Sha, props, gaps }`. `props` is null with one gap line when the CLI is missing,
+  the render was not made by `explainer run`, or the CLI fails (its exit code and first stderr line).
+- **`videos.edit-check`** (read) `{ videoId, runId, scriptSha, beats }` builds an
+  `explainer.slot-edit/v1` over the current render and pipes it to `explainer edit check -`, a dry run
+  that writes nothing. It returns `{ verdict: { ok, problems, diff }, gaps }`; a draft over 64 KB is
+  refused. The form shows each problem at the field it names and the diff as before and after.
+
+- **`videos.edit`** (owner-write) `{ videoId, runId, scriptSha, beats, fromNote? }` builds the same
+  slot-edit over the current render and pipes it to `explainer edit apply - --start --json`, which
+  stores the edited script, writes the edit's ledger row and launches the linked run from resolve,
+  detached, so the request never waits on a render. It returns `{ saved: { editId, scriptSha, started },
+  problems, gaps }`; `saved` is null with explainer's problems when it refuses the edit, such as a
+  second save of a started edit. `fromNote` is the id of a note on this video, refused (65) otherwise.
+  It is refused like `videos.note` on loopback, with a bearer and while `TITAN_CONSOLE_OWNER_WRITES`
+  is off.
+- **`videos.edits`** (read) `{ videoId }` runs `explainer edit list --mp4-sha <the render's sha256>
+  --json` and returns `{ edits, gaps }`: each saved edit's beats, the note it cites and its run status.
+
+Save stays visible but disabled with `saveBack.reason` until explainer reports that the render reads
+edits (TP-2992 S3). Once it does, Save is on while the draft changes a field and the latest check
+found no problem. The draft is one per video (TP-4021 Q-O1): edits to several beats collect until one
+"Save and render" sends them as one edit, one script and one run. "Turn into edit" on a comment made
+on the current render opens the beat under the note's time with the note cited in the draft; the
+note itself is not changed. The editor lists the video's saved edits with their run status and reads
+them again every 5 s while a run is going. Export replaces the mp4 in place when the run finishes,
+so the theater then plays the new render, its earlier notes read as on an earlier render, and the
+pre-edit render stays only in explainer's artifact store. An explainer that does not report the
+run's script sha gets a gap line and no draft check or save (TP-4263).
 
 ### Video metadata
 

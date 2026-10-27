@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a red past its wait never awaits the running tip that contains it",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "return running === undefined ? red : { verdict: \"awaiting\", awaitedSha: running };",
+      "replace": "return red;",
+      "kills": [
+        "readMainCi on a red whose fix merged after it with its run still in progress holds the red for the fix's run and reads its green as clearing it",
+        "shepherd-pr on the episode 29 shape: a red, then a fix merged over it with its run in progress freezes nothing, files no task and spawns no fixer when the fix's run goes green"
+      ]
+    },
+    {
+      "name": "a tip whose required run already failed is still awaited",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "if (!findings.some((finding) => finding.kind === \"pending\") || findings.some((finding) => finding.kind === \"failed\")) return undefined;",
+      "replace": "if (findings.length === 0) return undefined;",
+      "kills": [
+        "readMainCi on a red whose fix merged after it with its run still in progress lets the red stand on the next poll once the awaited run goes red"
+      ]
+    },
+    {
+      "name": "an unreadable tip is awaited instead of letting the red stand",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "const running = await runningDescendant(read, redSha, rules).catch(() => undefined);",
+      "replace": "const running = await runningDescendant(read, redSha, rules).catch(() => \"unread\");",
+      "kills": [
+        "readMainCi on a red whose fix merged after it with its run still in progress lets the red stand at its wait, as before, when the tip's runs cannot be read"
+      ]
+    },
+    {
+      "name": "a held red is re-read only when a wait expires",
+      "file": "products/factory/src/shepherd/post-merge.ts",
+      "find": "if (watch.red !== undefined && (clock.expired() || watch.awaiting !== undefined)) {",
+      "replace": "if (watch.red !== undefined && clock.expired()) {",
+      "kills": [
+        "readMainCi on a red whose fix merged after it with its run still in progress lets the red stand on the next poll once the awaited run goes red"
+      ]
+    }
+  ]
+}

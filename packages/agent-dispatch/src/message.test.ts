@@ -39,6 +39,14 @@ describe("messageAgent", () => {
     expect(recordedArgv()).toEqual(["debug", "send", "--", "impl-a", "--fix the parser\nthen push"]);
   });
 
+  it("passes --source console ahead of --, so the text stays one operand", async () => {
+    const bin = fakeAgentChat(`echo "Delivered to impl-a (msg_id m1)."\n`);
+
+    await messageAgent(bin, "impl-a", "--fix the parser", 10_000, { source: "console" });
+
+    expect(recordedArgv()).toEqual(["debug", "send", "--source", "console", "--", "impl-a", "--fix the parser"]);
+  });
+
   it("leaves the caller's event loop free while the broker works", async () => {
     const bin = fakeAgentChat(`sleep 1\necho "Delivered to impl-a (msg_id m1)."\n`);
     let ticks = 0;

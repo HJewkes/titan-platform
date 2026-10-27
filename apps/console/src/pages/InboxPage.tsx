@@ -5,6 +5,7 @@ import type { MergeWait } from "../../server/inbox-op.js";
 import { useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
 import { open, parseRoute } from "../router.js";
+import { GateStripView } from "./GateStrip.js";
 import { openExternal } from "./homeLinks.js";
 import { NudgeSection } from "./InboxNudges.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
@@ -237,6 +238,7 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
           {item.evidence !== undefined ? <EvidenceLink evidence={item.evidence} /> : null}
+          {item.gates !== undefined ? <GateStripView strip={item.gates} /> : null}
           <RowAction item={item} />
         </VStack>
       </CardContent>

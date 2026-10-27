@@ -2,24 +2,6 @@
   "v": 1,
   "mutations": [
     {
-      "name": "an abort at a yield point drops the sessions after it",
-      "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "      rollupSessions(graph, unique.slice(i + 1));\n",
-      "replace": "",
-      "kills": [
-        "sliced rollup an abort at a yield point still rolls up the sessions after it"
-      ]
-    },
-    {
-      "name": "a repeated session id is rolled up twice",
-      "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "const unique = [...new Set(sessionIds)];",
-      "replace": "const unique = [...sessionIds];",
-      "kills": [
-        "sliced rollup yields once per session"
-      ]
-    },
-    {
       "name": "the unfinished-turn gather reads every page without yielding",
       "file": "products/active-work/src/session-index/unfinished-turns.ts",
       "find": "    cursor = page[page.length - 1].rowid;\n    await yieldPoint();\n",

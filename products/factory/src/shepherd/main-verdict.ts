@@ -75,4 +75,12 @@ function judgeContext(sha: string, runs: readonly CheckRun[], name: string, apps
   return { findings: headCheckFindings({ headSha: sha, contexts: [name], runs: named, requiredApps: apps }), counted: named.length };
 }
 
-export const warningOf = (warnings: readonly CheckRun[]): string | undefined => (warnings.length > 0 ? `not required, so not blocking: ${[...new Set(warnings.map((run) => run.name))].join(", ")}` : undefined);
+/**
+ * A failed read that is a cancel, never a red: at least one run was cancelled, and every other failed run passed without
+ * succeeding, as a required job skipped behind a cancelled one does (TP-4230).
+ */
+export function onlyCancels(failed: readonly CheckRun[]): boolean {
+  return failed.some((run) => run.conclusion === "cancelled") && failed.every((run) => run.conclusion === "cancelled" || isPassing(run));
+}
+
+export const warningOf =(warnings: readonly CheckRun[]): string | undefined => (warnings.length > 0 ? `not required, so not blocking: ${[...new Set(warnings.map((run) => run.name))].join(", ")}` : undefined);

@@ -1294,7 +1294,7 @@
   },
   "products/factory/src/shepherd/post-merge.ts": {
     "titan/max-line-length": {
-      "count": 7
+      "count": 6
     }
   },
   "products/factory/src/shepherd/pr-params.ts": {
@@ -1499,7 +1499,7 @@
   },
   "products/factory/src/shepherd/wake-brief.ts": {
     "titan/max-line-length": {
-      "count": 2
+      "count": 1
     }
   },
   "products/factory/src/shepherd/wake.ts": {

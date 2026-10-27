@@ -1,7 +1,8 @@
+import { formatResultLine } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel, type PanelPlan, type PanelVerdict, type ReviewShape, type ReviewerAgent } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
-import { aggregatePanel, panelFindingsText, panelMerge, panelReviewerNames } from "./review-panel-step.js";
+import { aggregatePanel, panelFindingsText, panelMerge, panelReviewerNames, proofPlanFields } from "./review-panel-step.js";
 import { isOwnReviewer } from "./cleanup.js";
 import { defectClassSection } from "./wake-brief.js";
 
@@ -107,5 +108,21 @@ describe("panelReviewerNames", () => {
     expect(names).toEqual({ adversary: "rv-octo-demo-7-adversary-2", perf: "rv-octo-demo-7-perf" });
     expect(Object.values(names).every(isOwnReviewer(REPO, 7))).toBe(true);
     expect(Object.values(names).some(isOwnReviewer(REPO, 8))).toBe(false);
+  });
+});
+
+describe("proofPlanFields for a head proceeding on its NO_REPRO", () => {
+  const counts = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
+  const line = formatResultLine({ head: HEAD, mergeBase: fakeSha("plan-base"), verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  const vacuousRead = { kind: "result" as const, line, verdict: "vacuous" };
+
+  it.each(["no-repro-test-only", "no-repro-non-source"] as const)("plans a tests member for a %s standing", (unverified) => {
+    expect(proofPlanFields(vacuousRead, HEAD, { unverified })).toEqual({ testOnlyProof: true });
+  });
+
+  it("plans a tests member for a workflow-only head proceeding on its unproved CI read (TP-4275)", () => {
+    const ciRead = { kind: "workflow-ci" as const, proved: false, head: HEAD, mergeBase: fakeSha("plan-base"), base: [], atHead: [], reason: "unproved" };
+
+    expect(proofPlanFields(ciRead, HEAD, { unverified: "no-repro-non-source", reason: "unproved" })).toEqual({ testOnlyProof: true });
   });
 });

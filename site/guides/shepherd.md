@@ -167,6 +167,27 @@ source still needs `REPRO`, and so does a diff the classifier cannot read in ful
 run keeps its gate. A line that carries `mutants` still passes only through `provedByMutants`, so a
 surviving mutation or a refused spec ends the round as `NO_REPRO`.
 
+`shepherd.gateReset.nonSourceNoRepro` widens that past tests (TP-4275). It is `keep-owner` when
+absent: a `NO_REPRO` opens the owner's `sh-sent-back` gate, as above. With `record-fact`, a
+`NO_REPRO` on a pull request that changes no source goes to review marked `no-repro-non-source`,
+and no `sh-sent-back` gate opens. Shepherd does not keep its own list of source paths; it reads the
+diff the way the proof did. A fix-proof line proceeds only when the fix-proof plan, under
+`.github/fix-proof.json` at both the merge base and main's tip, sorts no path as source: tests,
+carried files, mutation specs and `.changeset/*.md` alone, with harness and `runtime` paths read as
+source and every blob read inline. Docs, `.changeset/config.json` and any path outside those globs
+are source. A diff that only deletes a test, or plans no test, also changes no source, so it goes to
+review, and the reviewer is asked whether each deleted test covered anything still live. A
+workflow-only diff proceeds on its unproved CI read, which exists only for a diff that
+`workflowCiProof` read as workflows, changesets and generated paths alone. The mark is recorded on the
+head's proof standing and its merge evidence, and the review panel plans a tests member that judges
+each changed test, each deleted test and each workflow edit. The merge grant is unchanged, so a
+held or owner-gated run still goes to the owner. The mutants rule above still holds: a line that
+carries `mutants` stays `NO_REPRO`. A `security` run, any source path, a diff that cannot be read in
+full, and a head that moved keep the `NO_REPRO`. It is a live editable row, so a
+`factory-config-set` owner op flips it with no restart, as for `heldRepair`. A third value,
+`seat-waives`, would let the owning seat answer the waivable gate. It is not built yet, so the config
+refuses it.
+
 ## Phases
 
 ```mermaid
@@ -445,7 +466,13 @@ request of each run that is waiting on a gate. When that pull request was merged
 elsewhere, the serve process cancels the run and its gate, whichever gate it waits on and
 whether the run is held. A run waiting on a main-red, main-red-again, main-frozen or
 after-stages gate is left alone: those gates are about main and, for a freeze, hold the owner's
-release, so only an owner or a coordinator on a green main clears them. A coordinator may also abandon a gate
+release, so only an owner or a coordinator on a green main clears them. The same check clears a
+`main-ci-timeout` gate with no owner answer once the base branch's tip contains the merge sha and
+is green on every required context (TP-4319). It cancels the gate with a reason that starts
+`main green: ` and names the green commit, the merge base and each required run; the run records
+that reason as the gate's answer and goes on to cleanup, and a gate-cancel event on the run keeps the
+same text. While that tip is red or still running, does not contain the merge, or the base has no
+required contexts, the gate stays open. A coordinator may also abandon a gate
 whose pull request is merged or closed (only on a fresh read of that state), and answer an
 `sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
 The same check supersedes a gate
@@ -997,6 +1024,10 @@ grants_extra:
 visual_paths:
   - packages/ui/src/components/**
   - "**/*.stories.tsx"
+visual_baselines:
+  check: visual
+  paths:
+    - packages/ui/specimen/baseline/**
 ---
 ```
 
@@ -1007,6 +1038,9 @@ visual_paths:
   does a glob no repo-relative path can match: leading or trailing whitespace, a backslash, an
   empty segment (a leading, doubled or trailing `/`), or a `.` or `..` segment, in the glob or
   in any of its `{a,b}` alternatives, or a fullwidth slash or invisible format character.
+- **`visual_baselines`** names a CI check that diffs rendered output against committed
+  baseline files, and the globs of those files. It needs `visual_paths`, a non-empty `check`
+  and globs under the same rules. See [Visual baselines](#visual-baselines).
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a
   repo name under any owner.
@@ -1021,7 +1055,7 @@ visual_paths:
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
 (both sides of a rename) against the globs. Files that cannot render never match: names
-with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
+with `.test.`, `.spec.`, `.test-d.` or `.spec-d.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;
@@ -1035,6 +1069,35 @@ file any of them calls visual gates. If one of those seats has neither `visual_p
 the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
 `visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
+
+### Visual baselines {#visual-baselines}
+
+A seat can add `visual_baselines: { check, paths }` beside `visual_paths`. The check is one
+that fails on any pixel drift without a committed baseline update, so a rendered change has to
+add, change or remove a file under `paths`. Shepherd then asks the owner about a visual
+pull request only when it shows a real rendered diff. At a head whose changed files match
+`visual_paths`:
+
+- a changed baseline file (added, modified or removed): the merge gates on `visual-path`,
+  and the reason lists the baseline files;
+- no baseline file changed, and every run of `check` at that head from GitHub Actions
+  concluded `success`: the visual files do not gate, the merge goes on to `MRG-AU-RV`, and
+  the evidence comment records that the visual files changed no baseline and the check
+  passed;
+- no baseline file changed, but the check is missing, pending or not `success`: the merge
+  gates on `visual-path` as without baselines.
+
+A remote that several seats list keeps `visual_baselines` only when every seat with
+`visual_paths` declares the same block. Otherwise it has none, and the glob gate stands.
+
+A rendering file that no baseline covers, such as a new component with no story or
+specimen, changes no baseline, so it merges on a green check. The seat owner opts in to
+that gap by adding the block.
+
+The run's policy is frozen at registration. A run registered before its seat added
+`visual_baselines` has none in its stored policy. A repeat `register` keeps baselines only
+when the stored policy and the new one carry the same block, so such a run keeps the glob
+gate for its whole life, and a gate it already opened is not decided again.
 
 The seat book is read again on every `register`, so a change applies without a restart. An
 invalid seat file or charter fails every registration until it is fixed. Path spelling
@@ -1445,6 +1508,8 @@ Agents (seats, implementers and fixers) merge the base into a registered PR only
   tells the agent to merge the base and resolve the conflict.
 - A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`,
   or as `mergeUps.baseRed` when it waited on a red base.
+- A run with a planner's merge-base exception, when the fix needs code that has landed on the
+  base since the branch was cut. See [Merge-base exception](#merge-base-exception).
 
 They do not merge the base in these cases:
 
@@ -1456,6 +1521,33 @@ They do not merge the base in these cases:
 
 `stats` counts foreign merges of the base as `foreignMergeUps`, so a week above 0 in a repo
 means an agent merged the base when it should not have.
+
+### Merge-base exception {#merge-base-exception}
+
+Sometimes a fix round cannot be done without code that merged to the base after the branch was
+cut. For example, the fix calls an export that another PR has just added on main. A planner or
+coordinator who decides that the round should merge the base records an exception on the run:
+
+```
+titan-factory shepherd allow-merge-base owner/repo#N --reason "the fix needs #12 from main"
+titan-factory shepherd revoke-merge-base owner/repo#N
+```
+
+The exception is a row in `shepherd_merge_base_exception`, keyed by the run, holding the reason,
+the caller (`AGENT_CHAT_NAME`, else the agent id, else the OS user) and the time. A repeat replaces the reason. The row
+follows the registration to the run that replaces a failed one. While it stands, every fix-round
+brief except a conflict's works as follows (`products/factory/src/shepherd/wake-brief.ts`):
+
+- A ci-red brief drops "Do not merge the base branch to re-run CI or to bring the PR up to date".
+- The brief says a planner allowed the merge, gives the `git merge origin/<base>` recipe, and
+  says not to merge the base for any other reason.
+- A fenced `merge-base exception` block carries who allowed it and why. The planner's words stay
+  in the fence and never reach the brief's own text.
+
+A conflict wake asks for the merge anyway, so it does not change. If the exception cannot be
+read, the run has none, and the wake still goes out with the forbidding line. A merge made under
+the exception is still a head Shepherd did not make. It starts CI again, can reset the review,
+and is counted in `foreignMergeUps`.
 
 ## Merge train {#merge-train}
 
@@ -1501,7 +1593,10 @@ wait. A repeat at the same head keeps the first row and its time.
 
 **Who waits.** Every other registered run whose pull request changes one of the reserved
 paths waits in its merge step, like any hold, until the reserving pull request merges or
-closes, its run stops driving, or the reservation passes its TTL. Paths listed in
+closes, its run stops driving, or the reservation passes its TTL. While a person holds the
+reserving run (an owner hold, or a g10 or other gating hold no reviewer has satisfied), its
+reservation orders nothing, so a held run never parks its peers until the TTL (TP-4133); it
+orders them again once the hold lifts. Paths listed in
 `generated-paths.json` and the rule's `ignore` globs (`.changeset/**`) never count. A run
 that cannot read its own changed paths waits behind every live reservation, bounded by the
 TTL. Two reservations that overlap land in the order they were taken.
@@ -1510,14 +1605,17 @@ TTL. Two reservations that overlap land in the order they were taken.
 recorded as `ahead` and land first; they are never held behind it. In the `sh-order-wait`
 step the conflicted run gives up the train and waits for them, and for any earlier
 overlapping reservation. Then it wakes its fixer once, in the usual conflict wake, so the one
-merge of main happens at the base they leave behind. A push to the pull request during the
-wait ends it with no wake; the next land round reads the new head.
+merge of main happens at the base they leave behind. An `ahead` run that leaves its merge step
+without merging (CI red, demoted, parked) is no longer waited on (TP-4103). A push to the pull
+request during the wait ends it with no wake; the next land round reads the new head.
 
 **TTL and release.** The rule file `merge-order.json` sets the TTL per repo (120 minutes for
 titan-platform). The run deletes its row in `sh-order-unreserve` when it ends, merged or not.
 A row whose run crashed stops blocking once the run no longer drives, so no sweeper is
 needed. A seat's repair-stop still wins over the conflict wake; the reservation keeps
-blocking under it until the TTL.
+blocking under it until the TTL. On its first CI read past the TTL, the reserving run ends its
+row in `sh-order-expire`, logs `order-expired` once, and tells its seat once that overlapping
+pull requests may now land first and conflict it again.
 
 **How it reads.** A waiting run's merge step answers `skipped: "held"` and spends no CI
 cycle. The hold reason names the reserving pull request and the shared paths:
@@ -1526,9 +1624,31 @@ cycle. The hold reason names the reserving pull request and the shared paths:
 merge order: waiting behind #2301 (products/explainer/CAPABILITY.md)
 ```
 
+`shepherd status` shows that reason as the waiting row's next action, and a waiting merge past
+the phase limit names it in its stall flag too. The waiting run's `shepherd timeline` gets one
+`order-wait` event each time it starts waiting behind a reservation. The reserving row
+carries its reservation, with its state and the pull requests waiting behind it:
+
+```
+hjewkes/titan-platform#2301 fixing … [merge order: reserved 2 path(s) since 2026-10-23T10:57:00.000Z, live; #2311 waiting]
+```
+
 The conflicted run shows `merging` while it waits in `sh-order-wait`; the step's result
-lists the pull requests it waited behind. Only repos with `"enabled": true` in
-`merge-order.json` are ordered: titan-platform today.
+lists the pull requests it waited behind. `shepherd timeline` lists the reserving run's
+`order-reserve`, `order-release` and `order-expired` events. Only repos with
+`"enabled": true` in `merge-order.json` are ordered: titan-platform today.
+
+**Reading and clearing by hand.** `titan-factory shepherd order [owner/repo]` lists every
+reservation with its age, its state (`live`, `expired`, `not driving`, `held` or `rule off`), the
+pull requests it let land first, the earlier reservations it waits behind, and the pull
+requests waiting behind it. It reads the database and serve's memory only, never GitHub.
+
+`titan-factory shepherd order clear owner/repo#N --reason <text>` is the seat's break-glass.
+It deletes that pull request's reservation, so every run waiting behind it may merge on its
+next read and a run still in `sh-order-wait` wakes its fixer. The clear is logged as an
+`order-release` event naming the caller and `cleared by hand: <reason>`. It refuses, and
+changes nothing, when the pull request holds no reservation. Clear only a reservation that
+is stuck: a cleared pull request can be conflicted again by the merges it let through.
 
 ## The Version Packages pull request {#version-packages}
 
@@ -1719,7 +1839,7 @@ the agent. A run reads the fix-proof oracle when its kind is `correctness`, `sec
 
 | Kind | What proves it | What fails it | Neither | On a fail |
 | --- | --- | --- | --- | --- |
-| Correctness fix | fix-proof `reproduced`: the tests the PR adds or changes fail at the merge base and pass at head | a `vacuous` or `no-tests` line that its mutants do not prove, which reads `NO_REPRO` | `error`, `untrusted` or `unread` go to review marked unverified, and a MERGE keeps the merge-on-green grant (owner decision 303) | `NO_REPRO` wakes the implementer for a reproducing test at most twice. The third goes to `sh-sent-back` ([register](#register)) |
+| Correctness fix | fix-proof `reproduced`: the tests the PR adds or changes fail at the merge base and pass at head | a `vacuous` or `no-tests` line that its mutants do not prove, which reads `NO_REPRO` | `error`, `refused`, `untrusted` or `unread` go to review marked unverified, and a MERGE keeps the merge-on-green grant (owner decision 303). A PR whose proof was bound to another base than the one it merges into (a stacked PR retargeted with the same head) is read again on that base. It merges once a fix-proof line or CI read names that base, whose trust is judged as above. A re-read that names no run there opens an owner gate (TP-4259) | `NO_REPRO` wakes the implementer for a reproducing test at most twice. The third goes to `sh-sent-back` ([register](#register)) |
 | Test-only | either a mutation spec that `provedByMutants` accepts, or, with `noReproProceed` on, a spec-free `correctness` or `test-only` diff that the classifier reads as test material alone. That diff goes to review marked `no-repro-test-only` and gets a blocking tests member ([the test-only kind](#the-test-only-kind), [review panel](#review-panel)) | a surviving mutation, a changed test with no spec, a refused spec, a deleted test, source in the diff, or a diff the classifier cannot read in full. Each of these reads `NO_REPRO`. A `FIX_FIRST` from the tests member sends the head back | none | as for a correctness fix |
 | Value or refactor (`feature`, `refactor`, `unknown`) | no mechanical oracle, so only the review proves it | a reviewer's `FIX_FIRST` | none | the [routing](#routing) table |
 | Security | fix-proof `reproduced` only. The test-only path is closed to it (`no-repro-test-only.ts`), and a `security` run never leaves `security` | `NO_REPRO`, as for a correctness fix | as for a correctness fix | as for a correctness fix. A reviewed MERGE never carries to a new head |

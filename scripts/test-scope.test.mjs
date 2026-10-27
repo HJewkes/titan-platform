@@ -119,6 +119,17 @@ describe("vitestArgs", () => {
   it("passes no filter for a full run", () => {
     expect(vitestArgs({ mode: "full", reason: "push" })).toEqual(["run", "--passWithNoTests"]);
   });
+
+  // A CI run once hung 74 minutes past its last file with nothing naming the culprit (TP-4287).
+  it("adds the hang reporters on CI, keeping the default output beside them", () => {
+    expect(vitestArgs({ mode: "full", reason: "push" }, { CI: "true" })).toEqual([
+      "run",
+      "--passWithNoTests",
+      "--reporter=default",
+      "--reporter=hanging-process",
+      "--reporter=./scripts/vitest-file-watchdog.mjs",
+    ]);
+  });
 });
 
 describe("readWorkspace on this repo", () => {

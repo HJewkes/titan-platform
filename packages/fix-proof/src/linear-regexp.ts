@@ -170,9 +170,18 @@ interface Run {
   readonly marks: Uint32Array;
   /** Pending states of a closure; a state is pushed once per edge into it, so it holds every edge. */
   readonly stack: Int32Array;
-  readonly length: number;
+  length: number;
   generation: number;
 }
+
+let steps = 0;
+
+/**
+ * The NFA steps every LinearRegExp has simulated in this process: one per state a closure visits and one per state a
+ * character is tested against. A test reads it before and after a match to assert counted work, which no load on the
+ * machine moves, where a timing ratio would flake (TP-4262).
+ */
+export const linearRegExpSteps = (): number => steps;
 
 const stateSet = (capacity: number): StateSet => ({ items: new Int32Array(capacity), size: 0 });
 
@@ -187,6 +196,7 @@ function close(run: Run, from: number, position: number, into: StateSet): boolea
   run.stack[top++] = from;
   while (top > 0) {
     const at = run.stack[--top]!;
+    steps += 1;
     if (run.marks[at] === run.generation) continue;
     run.marks[at] = run.generation;
     const state = run.states[at]!;
@@ -211,20 +221,37 @@ function advance(run: Run, current: StateSet, char: string, position: number, ne
   let matched = false;
   for (let i = 0; i < current.size; i += 1) {
     const state = run.states[current.items[i]!]!;
+    steps += 1;
     if (state.kind === "char" && state.test(char)) matched = close(run, state.next, position + 1, next) || matched;
   }
   return matched;
 }
 
+/** Starts `run` on an input `length` long with no state marked, clearing the marks only once their generations wrap. */
+function restart(run: Run, length: number): void {
+  run.length = length;
+  if (run.generation >= MAX_GENERATION - length - 2) {
+    run.marks.fill(0);
+    run.generation = 0;
+  }
+  run.generation += 1;
+}
+
+const MAX_GENERATION = 0xffff_ffff;
+
 function compile(source: string, flags: string): (input: string) => boolean {
   const states: State[] = [{ kind: "match" }];
   const start = build(new Parser(source, flags).parse(), 0, states);
-  const edges = edgesOf(states);
   // `test` searches, so a match may begin at any position; an anchored source stops reading once no state is left.
   const searches = beginsInside(states, start);
+  // Allocated once: a script's words can test a glob hundreds of thousands of times, and four typed arrays made per
+  // test were most of the hook's CPU on a 64 KB one (TP-4272).
+  const run = newRun(states, edgesOf(states), 0);
+  const sets = [stateSet(states.length), stateSet(states.length)] as const;
   return (input) => {
-    const run = newRun(states, edges, input.length);
-    let [current, next] = [stateSet(states.length), stateSet(states.length)];
+    restart(run, input.length);
+    let [current, next] = sets;
+    current.size = 0;
     let matched = close(run, start, 0, current);
     for (let position = 0; position < input.length && !matched && (searches || current.size > 0); position += 1) {
       next.size = 0;

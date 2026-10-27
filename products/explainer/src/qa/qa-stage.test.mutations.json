@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "qa leaves the MP4 out of its key",
+      "file": "products/explainer/src/workflow/stage-spec.ts",
+      "find": "qa: [\"mp4\", \"timeline\", \"words\", \"script\", \"resolved\", \"page\"]",
+      "replace": "qa: [\"timeline\", \"words\", \"script\", \"resolved\", \"page\"]",
+      "kills": [
+        "qa stage spec keys on the MP4, so a new render reruns qa and the same render hits the cache"
+      ]
+    },
+    {
+      "name": "qa registers no mp4-duration check",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"mp4-duration\", gate: true, reads: [\"qa\"], run: mp4DurationVerdict },\n",
+      "replace": "",
+      "kills": [
+        "qa stage fails mp4-duration when the MP4 runs 0.034 s past its timeline",
+        "qa stage passes mp4-duration when the MP4 runs 0.033 s past its timeline"
+      ]
+    },
+    {
+      "name": "qa runs late-fill over lead-line beats too",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "{ lead: leadLineBeats(input), cropDir",
+      "replace": "{ cropDir",
+      "kills": [
+        "qa stage late-fill on a lead-line beat passes held-errors when visual marks the beat qaLeadLine, as the spike's qa skips it"
+      ]
+    }
+  ]
+}

@@ -176,11 +176,11 @@ async function unreadBlob(port: GitHubPort, repo: RepoSlug, files: readonly PrFi
   return undefined;
 }
 
-/**
- * Classifies the PR's diff at `expectedHead`, the immutable head under judgement: a PR whose head has moved is unread, since a gate decided
- * from a moving ref could be replayed against a head it never classified. Undefined pins nothing and is for a caller that holds no head.
- * Every read error, a list at the file cap, a harness path, an unparseable entry or a blob not read inline fails closed. */
-export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, expectedHead: string | undefined): Promise<TestOnlyDiff> {
+type Unread = Extract<TestOnlyDiff, { kind: "unread" }>;
+type PlannedDiff = { kind: "planned"; diff: TestOnlyDiff; files: readonly PrFile[]; refs: TrustedRefs };
+
+/** The PR's diff planned under the trusted configs, with the file list and refs its blob probes need. */
+async function planDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, expectedHead: string | undefined): Promise<PlannedDiff | Unread> {
   if (pr === null) return { kind: "unread", reason: "the registration names no PR, so its changed files are unknown" };
   const files = await readFiles(port, repo, pr);
   if ("unread" in files) return { kind: "unread", reason: files.unread };
@@ -191,8 +191,28 @@ export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number 
   if ("unread" in configs) return { kind: "unread", reason: configs.unread };
   const siblings = await specSiblingsAtHead(port, repo, files, configs.refs.headSha);
   if ("unread" in siblings) return { kind: "unread", reason: siblings.unread };
-  const diff = classify(nameStatus.text, configs.texts, siblings);
-  if (diff.kind !== "test-only") return diff;
-  const unread = await unreadBlob(port, repo, files, configs.refs);
-  return unread === undefined ? diff : { kind: "unread", reason: unread };
+  return { kind: "planned", diff: classify(nameStatus.text, configs.texts, siblings), files, refs: configs.refs };
+}
+
+/**
+ * Classifies the PR's diff at `expectedHead`, the immutable head under judgement: a PR whose head has moved is unread, since a gate decided
+ * from a moving ref could be replayed against a head it never classified. Undefined pins nothing and is for a caller that holds no head.
+ * Every read error, a list at the file cap, a harness path, an unparseable entry or a blob not read inline fails closed. */
+export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, expectedHead: string | undefined): Promise<TestOnlyDiff> {
+  const planned = await planDiff(port, repo, pr, expectedHead);
+  if (planned.kind === "unread") return planned;
+  if (planned.diff.kind !== "test-only") return planned.diff;
+  const unread = await unreadBlob(port, repo, planned.files, planned.refs);
+  return unread === undefined ? planned.diff : { kind: "unread", reason: unread };
+}
+
+/**
+ * TP-4275: true when the plan finds no source path in the diff at `head` under either trusted config, so the PR changes only tests,
+ * carried files, mutation specs and changesets, a deleted test or none planned included. It fails closed as `testOnlyDiff` does,
+ * blob probes included, so it never reads a path as non-source that the CI plan reads as source.
+ */
+export async function sourceFreeDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, head: string): Promise<boolean> {
+  const planned = await planDiff(port, repo, pr, head);
+  if (planned.kind === "unread" || planned.diff.kind === "source" || planned.diff.kind === "unread") return false;
+  return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;
 }

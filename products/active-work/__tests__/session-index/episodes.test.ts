@@ -109,7 +109,8 @@ describe('episode refresh', () => {
 
     const pass = await refreshEpisodes(graph, before, Infinity, yieldPoint);
 
-    expect(yieldPoint).toHaveBeenCalledTimes(3);
+    // One per session written, and one after the single page of the backlog sweep.
+    expect(yieldPoint).toHaveBeenCalledTimes(4);
     expect(pass).toEqual({ episodesWritten: 3, episodeBacklog: 0 });
     expect(staleEpisodeSessions(graph.db)).toEqual([]);
   });

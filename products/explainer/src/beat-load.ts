@@ -29,9 +29,14 @@ export function beatSpecFor(specs: ReadonlyMap<string, BeatSpec>, type: string):
   throw new UnknownBeatError(type, [...specs.keys()]);
 }
 
-/** The ids of a validated target list; the slot schema guarantees each element carries one. */
-const idsOf = (list: unknown): string[] =>
-  Array.isArray(list) ? list.flatMap((element: unknown) => (typeof element === "object" && element !== null && "id" in element && typeof element.id === "string" ? [element.id] : [])) : [];
+const namesOf = (element: unknown): string[] => {
+  if (typeof element !== "object" || element === null) return [];
+  const { id, alias } = element as { id?: unknown; alias?: unknown };
+  return [id, alias].filter((name): name is string => typeof name === "string");
+};
+
+/** The ids (and aliases) of a validated target list; the slot schema guarantees each element carries an id. */
+const idsOf = (list: unknown): string[] => (Array.isArray(list) ? list.flatMap(namesOf) : []);
 
 function duplicateTargets(spec: BeatSpec, slots: Record<string, unknown>): string[] {
   return (spec.emphasis?.targets ?? []).flatMap((field) => {

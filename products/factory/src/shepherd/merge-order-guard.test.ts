@@ -7,7 +7,7 @@ import { factoryMigrations, openFactoryHost, type FactoryHost } from "../host.js
 import { SHEPHERD_MIGRATIONS, factoryRoutesFor } from "../workflows.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { mergeOrderGuard } from "./merge-order-guard.js";
-import { MergeOrder, fileRules, type MergeOrderRule, type MergeOrderRules } from "./merge-order.js";
+import { MergeOrder, fileRules, type MergeOrderRule, type MergeOrderRules, type OrderWaits } from "./merge-order.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { ShepherdStore, shepherdStoreRef } from "./store.js";
@@ -65,6 +65,46 @@ describe("the merge-order guard", () => {
     expect(await reasonFor(rig())).toBe(`merge order: waiting behind #2301 (${SHARED})`);
   });
 
+  it("records the wait it reads for status, and drops it once the PR may merge", async () => {
+    const r = rig();
+    const waits: OrderWaits = new Map();
+    const guard = mergeOrderGuard({ order: () => r.order, registrations: () => r.store, rules: ON, now: () => r.clock.now, waits });
+    const read = () => guard.reason(r.port, REPO, 2310, "main", HEADS[2310], "topic-2310");
+
+    await read();
+    const during = [...waits.entries()];
+    r.fake.pr(2301).merged = true;
+    await read();
+
+    expect(during).toEqual([["run-y", { repo: REPO, pr: 2310, behind: 2301, reason: `merge order: waiting behind #2301 (${SHARED})` }]]);
+    expect([...waits.entries()]).toEqual([]);
+  });
+
+  it("lets a peer through while a person holds the reserving run, and holds it again once the hold lifts (TP-4133)", async () => {
+    const r = rig();
+    r.store.register({ repo: REPO, pr: 2301, runId: "run-x", task: "demo/X", implementer: "impl-x", policy: AUTO_POLICY });
+    r.store.hold("run-x", "g10-adversary: policy touch");
+
+    const whileHeld = await reasonFor(r);
+    r.store.release("run-x");
+
+    expect(whileHeld).toBeUndefined();
+    expect(await reasonFor(r)).toBe(`merge order: waiting behind #2301 (${SHARED})`);
+  });
+
+  it("logs one order-wait event per wait, not one per poll, so the timeline shows what the merge waits on", async () => {
+    const r = rig();
+    const guard = mergeOrderGuard({ order: () => r.order, registrations: () => r.store, rules: ON, now: () => r.clock.now });
+    const read = () => guard.reason(r.port, REPO, 2310, "main", HEADS[2310], "topic-2310");
+
+    await read();
+    await read();
+
+    expect(r.store.eventsOf("run-y").map(({ kind, pr, reason, headSha }) => ({ kind, pr, reason, headSha }))).toEqual([
+      { kind: "order-wait", pr: 2310, reason: `merge order: waiting behind #2301 (${SHARED})`, headSha: HEADS[2310] },
+    ]);
+  });
+
   it("lets a PR with no reserved path through", async () => {
     expect(await reasonFor(rig([file("src/y.ts")]))).toBeUndefined();
   });
@@ -86,7 +126,7 @@ describe("the merge-order guard", () => {
     const paused = rig();
     running(paused.runs, "run-paused", "paused");
     paused.order.reserve({ ...paused.order.list(REPO)[0]!, runId: "run-paused" });
-    paused.order.release(REPO, "run-x");
+    paused.order.release(REPO, "run-x", { at: new Date(AT).toISOString() });
     const expired = rig();
     expired.clock.now = AT + 120 * 60_000;
 
@@ -95,7 +135,7 @@ describe("the merge-order guard", () => {
 
   it("never holds a PR behind its own reservation", async () => {
     const r = rig();
-    r.order.release(REPO, "run-x");
+    r.order.release(REPO, "run-x", { at: new Date(AT).toISOString() });
     r.order.reserve({ repo: REPO, runId: "run-y", pr: 2310, headSha: HEADS[2310], baseSha: fakeSha("base"), paths: [SHARED], ahead: [], since: new Date(AT).toISOString(), reason: "conflicted" });
     running(r.runs, "run-y");
 

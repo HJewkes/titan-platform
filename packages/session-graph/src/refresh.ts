@@ -2,15 +2,15 @@ import { promises as fs } from "node:fs";
 import { hasTable } from "@titan-design/store-sqlite";
 import os from "node:os";
 import { contentHash, resumePoint } from "@titan-design/locator";
-import { TranscriptParseError, expandHome, extractTranscript, type DiscoveredTranscript } from "@titan-design/session-read";
-import { applyDelta } from "./apply.js";
+import { TranscriptParseError, expandHome, extractTranscript, type DiscoveredTranscript, type TranscriptDelta } from "@titan-design/session-read";
+import { applyDelta, applyDeltaYielding } from "./apply.js";
 import { advanceFacet, backfillFacets } from "./facet.js";
 import { allSessionIds, type SessionGraph } from "./graph.js";
 import { enrichPrs, type PrEnrichment, type PrResolver } from "./outcomes.js";
 import { resolveOrigins, type OriginEnrichment, type OriginResolver } from "./origin.js";
 import { purgeTranscript } from "./purge.js";
 import { projectReviewRounds, type ReviewerProfilePredicate, type ReviewProjection } from "./review-rounds.js";
-import { reconcile, rollupSessions, type ReconcileCounts } from "./rollup.js";
+import { reconcile, rollupSessions, rollupYielding, type ReconcileCounts } from "./rollup.js";
 import { allTaskIds, enrichTasks, NO_ENRICHMENT, type TaskEnrichment, type TaskResolver } from "./tasks.js";
 
 export interface IndexOptions {
@@ -30,6 +30,8 @@ export interface IndexOptions {
   indexToolSpans?: boolean;
   /** Store `context_block` audit rows. Default false. Turning it on later fills only bytes read after that; a rebuild fills the rest. */
   contextBlocks?: boolean;
+  /** Awaited between bounded synchronous steps so a daemon caller can hand the event loop to readers. Absent, each step runs in one go. */
+  yieldPoint?: () => Promise<void>;
 }
 
 export interface RefreshOptions extends IndexOptions {
@@ -91,7 +93,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     // After extraction, never before: a parse failure quarantines the transcript,
     // and purging first would destroy rows we could then no longer rebuild.
     const handedOff = rewound ? purgeTranscript(graph, row.sourceId) : [];
-    applyDelta(graph, row.sourceId, delta, { account: transcript.account, indexSdkPrompts: options.indexSdkPrompts });
+    await applyTranscriptDelta(graph, row.sourceId, delta, transcript, options);
     advanceFacet(graph.db, row.sourceId, rewound ? 0 : point.start, delta.lastByteOffset);
     const stat = await fs.stat(transcript.absolutePath);
     graph.transcripts.advance(transcript.displayPath, {
@@ -110,6 +112,12 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     graph.transcripts.markStatus(transcript.displayPath, "quarantined", err.message);
     return { ...base, status: "quarantined", facts: 0, reason: err.message };
   }
+}
+
+async function applyTranscriptDelta(graph: SessionGraph, transcriptId: number, delta: TranscriptDelta, transcript: DiscoveredTranscript, options: IndexOptions): Promise<void> {
+  const source = { account: transcript.account, indexSdkPrompts: options.indexSdkPrompts };
+  if (options.yieldPoint) await applyDeltaYielding(graph, transcriptId, delta, source, options.yieldPoint);
+  else applyDelta(graph, transcriptId, delta, source);
 }
 
 export interface RefreshSummary {
@@ -146,29 +154,42 @@ export interface RefreshSummary {
  */
 export async function refreshCorpus(graph: SessionGraph, transcripts: readonly DiscoveredTranscript[], options: RefreshOptions = {}): Promise<RefreshSummary> {
   const { resolveTasks, resolveOrigins: originResolver, resolvePrs, isReviewerProfile, full, facetLimit, homeDir, present, ...perTranscript } = options;
-  const counts = { indexed: 0, unchanged: 0, rewound: 0, missing: 0, quarantined: 0 };
-  const touched: string[] = [];
-  let facts = 0;
-  for (const transcript of transcripts) {
-    const outcome = await indexTranscript(graph, transcript, perTranscript);
-    counts[outcome.status] += 1;
-    facts += outcome.facts;
-    touched.push(...outcome.sessionIds);
-  }
+  const pause = perTranscript.yieldPoint ?? noPause;
+  const { counts, touched, facts } = await indexAll(graph, transcripts, perTranscript, pause);
   // The backfill deletes and rewrites `context_block`, so it must follow the same policy as the forward read.
   const facets = await backfillFacets(graph, transcripts, { limit: facetLimit, contextBlocks: perTranscript.contextBlocks });
   touched.push(...facets.sessionIds);
-  const turnsRolledUp = rollupSessions(graph, full ? allSessionIds(graph) : touched);
+  const rollupIds = full ? allSessionIds(graph) : touched;
+  const turnsRolledUp = perTranscript.yieldPoint ? await rollupYielding(graph, rollupIds, perTranscript.yieldPoint) : rollupSessions(graph, rollupIds);
   // Before reconcile, so a worker's subagent row gets its ended_at in the same pass.
   const origins = await resolveOrigins(graph, originResolver);
+  await pause();
   const reconciled = reconcile(graph);
+  await pause();
   // After reconcile, so a merge a transcript witnessed is already sticky when the forge answers.
   const prs = await enrichPrs(graph, resolvePrs);
   const reviews = projectReviewRounds(graph, { isReviewerProfile });
+  await pause();
   const tasks = await enrichTasks(graph, resolveTasks, allTaskIds(graph));
   const markedMissing = await markMissing(graph, transcripts, homeDir ?? os.homedir(), present);
   const facetSummary = { facetsBackfilled: facets.backfilled, facetBacklog: facets.backlog };
   return { transcripts: transcripts.length, ...counts, facts, turnsRolledUp, reconciled, tasks, origins, prs, reviews, markedMissing, ...facetSummary };
+}
+
+const noPause = async (): Promise<void> => {};
+
+async function indexAll(graph: SessionGraph, transcripts: readonly DiscoveredTranscript[], options: IndexOptions, pause: () => Promise<void>) {
+  const counts = { indexed: 0, unchanged: 0, rewound: 0, missing: 0, quarantined: 0 };
+  const touched: string[] = [];
+  let facts = 0;
+  for (const transcript of transcripts) {
+    const outcome = await indexTranscript(graph, transcript, options);
+    counts[outcome.status] += 1;
+    facts += outcome.facts;
+    touched.push(...outcome.sessionIds);
+    await pause();
+  }
+  return { counts, touched, facts };
 }
 
 /** Rows absent from discovery are only nominated; an `fs.stat` decides, so an empty scan cannot condemn the corpus. */

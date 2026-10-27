@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { optionText, OWNER_LABELS } from "./calibration-agreement.js";
 import type { CalibrationQueue, ItemKind, QueueItem } from "./calibration-queue.js";
 
 /** About how long one item takes: read an excerpt and answer yes or no, or read two storyboards and pick one. */
-const MINUTES_PER_ITEM: Record<ItemKind, number> = { verdict: 1.25, pair: 2 };
+const MINUTES_PER_ITEM: Record<ItemKind, number> = { verdict: 1.25, pair: 2, listener: 1.25 };
 
 export const roundMinutes = (items: readonly QueueItem[]): number => Math.round(items.reduce((total, item) => total + MINUTES_PER_ITEM[item.kind], 0));
 
@@ -28,9 +29,23 @@ const question = (item: QueueItem) => ({
   signsOff: `your label for item ${item.id}`,
 });
 
+const CONSOLE_ID_MAX = 32;
+const HASH_LENGTH = 8;
+
+/**
+ * The console accepts section ids of 1 to 32 of letters, digits, `_` and `-`. A long case keeps a readable prefix and
+ * ends in a hash of the whole case, so the same case always gets the same id and cases sharing a prefix differ.
+ */
+export function sectionId(caseId: string): string {
+  const slug = `case-${caseId.replace(/[^a-z0-9-]/gi, "-")}`;
+  if (slug.length <= CONSOLE_ID_MAX) return slug;
+  const hash = createHash("sha256").update(caseId).digest("hex").slice(0, HASH_LENGTH);
+  return `${slug.slice(0, CONSOLE_ID_MAX - HASH_LENGTH - 1)}-${hash}`;
+}
+
 function section(caseId: string, items: readonly QueueItem[], video: RoundCase | undefined) {
   return {
-    id: `case-${caseId.replace(/[^a-z0-9-]/gi, "-")}`,
+    id: sectionId(caseId),
     title: video?.title ?? caseId,
     questionIds: items.map((item) => item.id),
     variantKeys: [],

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the render gate lets held QA errors through, so the smoke passes them",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "if (held > 0) throw new QaRefused(input.stem, qaJson, held);",
+      "replace": "if (held > 999) throw new QaRefused(input.stem, qaJson, held);",
+      "kills": [
+        "fails on held QA errors, reporting each row's kind and beat, and renders no second time"
+      ]
+    }
+  ]
+}

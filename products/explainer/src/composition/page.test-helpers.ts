@@ -4,13 +4,16 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { captureFrames } from "@titan-design/frame-capture";
 import { build } from "vite";
-import { parseTimeline } from "./timeline.js";
+import { parseTimeline, type Timeline } from "./timeline.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const FIXTURES = join(HERE, "fixtures");
+/** The package's fixtures, where kinds.timeline.json (one beat per drawn kind) sits beside the other stage inputs. */
+const PACKAGE_FIXTURES = join(HERE, "../../fixtures");
 const TYPES: Record<string, string> = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -39,15 +42,16 @@ function tcpAddress(address: AddressInfo | string | null): AddressInfo {
   return address;
 }
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** Loopback HTTP over the built page, with the fixture timelines at /timelines/ and, held back by `slowMs`, at /slow/. */
+/**
+ * Loopback HTTP over the built page, with the page's fixture timelines at /timelines/ and, held back by `slowMs`, at
+ * /slow/, and the package fixtures at /fixtures/.
+ */
 export async function servePage(pageDir: string, slowMs: number): Promise<PageServer> {
   const server = createServer((req, res) => {
     const path = normalize(new URL(req.url ?? "/", "http://page").pathname);
     const [, prefix = "", ...rest] = path.split("/");
-    const file = prefix === "timelines" || prefix === "slow" ? join(FIXTURES, ...rest) : join(pageDir, path);
-    const held = prefix === "slow" ? delay(slowMs) : Promise.resolve();
+    const file = prefix === "timelines" || prefix === "slow" ? join(FIXTURES, ...rest) : prefix === "fixtures" ? join(PACKAGE_FIXTURES, ...rest) : join(pageDir, path);
+    const held = prefix === "slow" ? sleep(slowMs) : Promise.resolve();
     held
       .then(() => readFile(file))
       .then(
@@ -83,3 +87,5 @@ export async function renderFrames(url: string): Promise<Render> {
 export function fixtureDurationS(name: string): number {
   return parseTimeline(JSON.parse(readFileSync(join(FIXTURES, name), "utf8"))).durationS;
 }
+
+export const kindsTimeline = (): Timeline => parseTimeline(JSON.parse(readFileSync(join(PACKAGE_FIXTURES, "kinds.timeline.json"), "utf8")));

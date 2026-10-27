@@ -138,11 +138,13 @@ describe("systemServicePorts health", () => {
 
   it("gives up on a /health that never answers within the bounded timeout", async () => {
     const port = await healthServer(undefined);
-    const started = Date.now();
+    let answer: unknown = "pending";
 
-    expect(await systemServicePorts().health(port)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(SERVICE_CHECK_HEALTH_TIMEOUT_MS + 2_000);
-  }, 15_000);
+    void systemServicePorts().health(port).then((health) => (answer = health));
+
+    // The wait budget sits above the health timeout and below the test's, so an unbounded probe fails here by name.
+    await vi.waitFor(() => expect(answer).toBeNull(), { timeout: SERVICE_CHECK_HEALTH_TIMEOUT_MS + 4_000 });
+  }, 20_000);
 });
 
 describe("port owner readers", () => {

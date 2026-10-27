@@ -2,6 +2,7 @@ import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-de
 import { describe, expect, it } from "vitest";
 import type { L0Check, L0Result } from "../eval-l0.js";
 import { chapterScopedChecks, shippedRuleRegistry } from "../rules.js";
+import { draftWordBudget } from "../script-budget.js";
 import { parseSpine } from "../spine-schema.js";
 import { BEAT_FUNCTIONS, CHIP_KINDS, ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { runScriptStage, StageFailure, type ModelStageInput } from "./model-stages.js";
@@ -156,6 +157,23 @@ describe("chunked script drafting", () => {
     expect(outcome.notes).toContain("chapter ch3: 2 call(s), $0.0200, cache 20 read, 8 written; 1 -> 0 failing chapter checks");
   });
 
+  it("re-times a beat its chapter repair pushed one word over its cap, with no extra call, so the word-budget gate passes", async () => {
+    const overByOne = "The bench tests the wick first, then the glass, then the hook, and only then does the lamp go out to the shop.";
+    const model = fakeModel((prompt) => {
+      const chapter = taskChapter(prompt);
+      if (chapter === "ch3") return isRepair(prompt) ? { beats: [beatOf("ch3-a", "ch3", overByOne)] } : chapterReply("ch3", "The BROKEN bench skips the wick.");
+      return chapter === "ch1" ? chapterReply("ch1", "The lantern bench tests the wick.") : chapterReply(chapter);
+    });
+
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    expect(model.prompts).toHaveLength(LONG + 1);
+    expect(script.beats.find((beat) => beat.id === "ch3-a")).toMatchObject({ spoken: overByOne, plannedS: 9 });
+    expect(draftWordBudget(script).pass).toBe(true);
+    expect(outcome.checks).toContainEqual({ name: "word-budget-retime", gate: false, pass: true, detail: "re-timed 1 beat(s) to fit their words: ch3-a 8→9 s" });
+    expect(outcome.notes).toContain("word-budget re-time: ch3-a 8→9 s");
+  });
+
   it("joins the chapters in the spine's order, keeping every beat id, and gathers each chapter's glossary", async () => {
     const { script } = await runStage(spineOf(LONG), fakeModel(passingVideo), markerChecks);
 
@@ -250,6 +268,68 @@ const draftIn = (prompt: string): ScriptV1 => ScriptSchema.parse(JSON.parse(/## 
 const isPatchAsk = (prompt: string): boolean => prompt.includes('"beats" lists exactly the beats');
 /** Q-W10 names a chapter, not a beat: here every chapter one of whose beats speaks "STALL". */
 const chapterWideCheck: L0Check = ({ script }) => [row("Q-W10", [...new Set(script.beats.filter((beat) => beat.spoken.includes("STALL")).map((beat) => beat.chapter))])];
+
+// Synthetic bench rows for one list beat; the list slot schema holds five.
+const BENCH_ROWS = ["wick tested", "glass tested", "hook tested", "base tested", "cap tested", "seal tested", "lamp boxed"];
+
+/** ch3-a drawn as a list of `rows`, cued at a word it speaks. */
+const listBeat = (rows: readonly string[]) => ({
+  ...beatOf("ch3-a", "ch3", "The bench tests the wick first."),
+  visual: { assertion: "The bench tests each wick", job: "numbers", beat: "list", labels: [...rows], cues: [{ action: "V6", target: "rows-1", atCue: "bench" }] },
+});
+
+/** ch3's chapter reply with ch3-a as a list of `rows`, ch3-b as `chapterReply` drafts it. */
+const ch3With = (rows: readonly string[]): Record<string, unknown> => ({
+  ...chapterReply("ch3"),
+  beats: [listBeat(rows), beatOf("ch3-b", "ch3", "So the lamp lights only when it is safe.")],
+});
+
+const isPlanRetry = (prompt: string): boolean => prompt.includes("The plan check failed");
+const isJoined = (prompt: string): boolean => prompt.includes("## Task: the joined script");
+
+describe("the template fill on the chunked path", () => {
+  it("names a chapter's 7-row list in its plan retry and answers it as a template-fill row in the chapter's repair", async () => {
+    // Arrange
+    const model = fakeModel((prompt) => {
+      const chapter = taskChapter(prompt);
+      if (chapter === "ch3") return isRepair(prompt) ? { beats: [listBeat(BENCH_ROWS.slice(0, 5))] } : ch3With(BENCH_ROWS);
+      return chapter === "ch1" ? chapterReply("ch1", "The lantern bench tests the wick.") : chapterReply(chapter);
+    });
+
+    // Act
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    // Assert
+    const ch3 = model.prompts.filter((prompt) => taskChapter(prompt) === "ch3");
+    expect(ch3.filter(isPlanRetry)[0]).toMatch(/- template fill: ch3-a \(list\): .*<=5 items/);
+    const repair = ch3.find(isRepair)!;
+    expect(repair).toContain("- template-fill: a beat's labels fit its beat spec's slots;");
+    expect(repair).toContain("beats: ch3-a;");
+    expect(outcome.notes).toContain("chapter ch3: 3 call(s), $0.0300, cache 30 read, 12 written; 1 -> 0 failing chapter checks");
+    expect(script.beats.find((beat) => beat.id === "ch3-a")?.visual.labels).toHaveLength(5);
+  });
+
+  it("gives a 7-row list the chapter rounds left to the whole-video round as a template-fill row, and keeps its patch", async () => {
+    // Arrange
+    const model = fakeModel((prompt) => {
+      if (isJoined(prompt)) return { beats: [listBeat(BENCH_ROWS.slice(0, 5))] };
+      const chapter = taskChapter(prompt);
+      if (chapter === "ch3") return isRepair(prompt) ? { beats: [listBeat(BENCH_ROWS)] } : ch3With(BENCH_ROWS);
+      return chapter === "ch1" ? chapterReply("ch1", "The lantern bench tests the wick.") : chapterReply(chapter);
+    });
+
+    // Act
+    const { script, outcome } = await runStage(spineOf(LONG), model, markerChecks);
+
+    // Assert
+    const joined = model.prompts.filter(isJoined);
+    expect(joined).toHaveLength(1);
+    expect(joined[0]).toMatch(/- template-fill: .*\(beats: ch3-a; measured 1, needs 0\)\n {2}Found: template fill: ch3-a \(list\)/);
+    expect(outcome.notes).toContain("chapter ch3: 4 call(s), $0.0400, cache 40 read, 16 written; 1 -> 1 failing chapter checks");
+    expect(outcome.notes).toContain("whole video: 1 call(s), $0.0100, cache 10 read, 4 written; 1 -> 0 failing error checks");
+    expect(script.beats.find((beat) => beat.id === "ch3-a")?.visual.labels).toHaveLength(5);
+  });
+});
 
 describe("beat-level chapter repair", () => {
   // Mutation: taking the patch as the whole chapter, not splicing it in place, loses ch3-b and ch3-c.

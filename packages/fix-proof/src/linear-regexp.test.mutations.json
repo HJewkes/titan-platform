@@ -9,6 +9,35 @@
       "kills": [
         "LinearRegExp agrees with RegExp on 400 random sources, under each of its flags, on every input up to 4 characters"
       ]
+    },
+    {
+      "name": "LinearRegExp tests with the backtracking native RegExp instead of its NFA",
+      "file": "packages/fix-proof/src/linear-regexp.ts",
+      "find": "this.#matches = matches ?? cachedCompile(source, flags);",
+      "replace": "this.#matches = matches ?? ((native) => (input: string) => native.test(input))(new RegExp(source, flags));",
+      "kills": [
+        "LinearRegExp grows linearly with the path for d/ and 20 stars",
+        "LinearRegExp grows linearly with the path for 12 globstar segments",
+        "LinearRegExp counts steps in proportion to the input it reads"
+      ]
+    },
+    {
+      "name": "each test allocates its own pair of state sets again",
+      "file": "packages/fix-proof/src/linear-regexp.ts",
+      "find": "let [current, next] = sets;",
+      "replace": "let [current, next] = [stateSet(states.length), stateSet(states.length)];",
+      "kills": [
+        "LinearRegExp tests again and again without allocating a buffer per test"
+      ]
+    },
+    {
+      "name": "a test starts with the marks the previous test left",
+      "file": "packages/fix-proof/src/linear-regexp.ts",
+      "find": "    restart(run, input.length);",
+      "replace": "    run.length = input.length;",
+      "kills": [
+        "LinearRegExp agrees with RegExp on 400 random sources, under each of its flags, on every input up to 4 characters"
+      ]
     }
   ]
 }

@@ -136,6 +136,29 @@ function beatOutputs(source: Source): JudgedOutput[] {
   });
 }
 
+const LISTENER_QUESTION = "Is this chapter clear enough to follow on one hearing?";
+
+/** Every chapter the listener heard, dense ones too: each is a candidate threshold example, its verdict the screen's. */
+function listenerOutputs(source: Source, listener: ListenerResult, maxDensity: number): JudgedOutput[] {
+  return listener.chapters.filter((c) => c.failure === null).flatMap((c) => {
+    const beats = source.beats.filter((b) => b.chapter === c.chapter);
+    if (beats.length === 0) return [];
+    return [{
+      ...source.ref,
+      judge: "listener" as const,
+      kind: "listener" as const,
+      target: c.chapter,
+      question: LISTENER_QUESTION,
+      excerpt: `[${c.chapter}] ${spokenOf(beats)}`,
+      pass: c.density <= maxDensity,
+      configId: listener.judge,
+      run: "",
+      evalVersion: listener.eval_version,
+      density: c.density,
+    }];
+  });
+}
+
 /** A chapter the listener result does not hold was never heard, so it fails the screen like a dense one. */
 function listenerScreen(listener: ListenerResult, maxDensity: number): Screen {
   const clear = new Set(listener.chapters.filter((c) => c.failure === null && c.density <= maxDensity).map((c) => c.chapter));
@@ -151,9 +174,10 @@ function readListener(entry: ManifestCase, maxDensity: number | undefined): List
 /**
  * A cold zero the judge gave ("not stated", or a quote not in the chapter) carries a void_reason too, and is kept.
  * Under `maxDensity`, only chapters a listener could follow keep their items, and only a script that is clear
- * overall keeps its whole-video rubric items; `density` then ranks the case for clearest-first order.
+ * overall keeps its whole-video rubric items; `density` then ranks the case for clearest-first order, and
+ * `listener` holds every heard chapter as a candidate "clear on one hearing?" item.
  */
-export function judgedOutputs(entry: ManifestCase, maxDensity?: number): { outputs: JudgedOutput[]; script: string; density?: number } {
+export function judgedOutputs(entry: ManifestCase, maxDensity?: number): { outputs: JudgedOutput[]; listener: JudgedOutput[]; script: string; density?: number } {
   const raw: unknown = JSON.parse(readFileSync(entry.script, "utf8"));
   const beats = paceInput(raw, entry.format, undefined).beats;
   const listener = readListener(entry, maxDensity);
@@ -161,5 +185,6 @@ export function judgedOutputs(entry: ManifestCase, maxDensity?: number): { outpu
   const ref = { case: entry.case, videoType: entry.video_type, split: entry.split, ownerNamed: entry.owner_named };
   const source = { ref, sha: scriptSha(raw), beats, evals: join(entry.bench, "evals"), screen };
   const outputs = latestPerTarget([...coldOutputs(source), ...rubricOutputs(source), ...beatOutputs(source)]);
-  return { outputs, script: scriptText(beats), ...(listener ? { density: listener.density } : {}) };
+  const heard = listener ? listenerOutputs(source, listener, maxDensity!) : [];
+  return { outputs, listener: heard, script: scriptText(beats), ...(listener ? { density: listener.density } : {}) };
 }

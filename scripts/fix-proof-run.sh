@@ -10,10 +10,12 @@
 #   emit <base|head|mutants> <out>                        copy those files into $GITHUB_OUTPUT as report (and rerun)
 #   receive <dir>                                         write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD and
 #                                                         REPORT_MUTANTS into <dir>
-#   judge <runner> <repo> <base> <head> <dir>             print the verdict from the reports in <dir>, or an error
-#                                                         line when FIX_PROOF_REFUSED holds a reason
-#   merge-base <repo> <base> <head>                       write sha=<merge base> into $GITHUB_OUTPUT, or refused=<reason>
-#                                                         when env BASE_REF is not env DEFAULT_BRANCH
+#   judge <runner> <repo> <base> <head> <dir>             print the verdict from the reports in <dir>, naming env BASE_REF,
+#                                                         or a refused line naming FIX_PROOF_REFUSED_BASE and
+#                                                         FIX_PROOF_REFUSED_DEFAULT when FIX_PROOF_REFUSED holds a reason
+#   merge-base <repo> <base> <head>                       write sha=<merge base> into $GITHUB_OUTPUT, or refused=<reason>,
+#                                                         refused_base and refused_default when env BASE_REF is not env
+#                                                         DEFAULT_BRANCH
 #   specs <repo> <base> <head>                            write present=true into $GITHUB_OUTPUT when the diff adds or
 #                                                         changes a *.mutations.json spec, else present=false
 #
@@ -199,11 +201,21 @@ error_line() {
   printf 'fix-proof/v1 {"head":"%s","mergeBase":"%s","verdict":"error","counts":{"reproduces":0,"passes-on-base":0,"new-api":0,"fails-on-head":0,"not-run":0},"notCollected":[],"deletedTests":[],"configEdited":false,"tests":[],"truncated":false,"error":"%s"}\n' "$1" "$2" "$message"
 }
 
+line_ref() {
+  if [ "$1" = "<none>" ]; then printf '%s' "$1"; else shown_ref "$1"; fi
+}
+
+# The refused verdict names both refs in fields of their own, so no reader has to parse a message to find them.
+refused_line() {
+  printf 'fix-proof/v1 {"head":"%s","mergeBase":"%s","verdict":"refused","counts":{"reproduces":0,"passes-on-base":0,"new-api":0,"fails-on-head":0,"not-run":0},"notCollected":[],"deletedTests":[],"configEdited":false,"tests":[],"truncated":false,"base":"%s","defaultBranch":"%s"}\n' \
+    "$1" "$2" "$(line_ref "$3")" "$(line_ref "$4")"
+}
+
 judge() {
   local runner=$1 repo=$2 base=$3 head=$4 dir=$5
   if [ -n "${FIX_PROOF_REFUSED:-}" ]; then
     echo "fix-proof: refused: $FIX_PROOF_REFUSED" >&2
-    error_line "$head" "$base" "$FIX_PROOF_REFUSED"
+    refused_line "$head" "$base" "${FIX_PROOF_REFUSED_BASE:-}" "${FIX_PROOF_REFUSED_DEFAULT:-}"
     return 0
   fi
   if ! has_judge "$runner"; then
@@ -211,11 +223,12 @@ judge() {
     error_line "$head" "$base" "$SKIPPED"
     return 0
   fi
-  local -a mutants=()
-  # A merge-base judge that predates the flag would refuse it as unknown, so it gets the three reports it reads.
+  local -a mutants=() base_ref=()
+  # A merge-base judge that predates a flag would refuse it as unknown, so it gets only the flags it reads.
   grep -qsF -- '"mutants-report"' "$runner"/packages/fix-proof/dist/*.js && mutants=(--mutants-report "$dir/mutants.report")
+  [ -n "${BASE_REF:-}" ] && grep -qsF -- '"base-ref"' "$runner"/packages/fix-proof/dist/*.js && base_ref=(--base-ref "$(shown_ref "$BASE_REF")")
   node "$runner/packages/fix-proof/dist/judge.js" --repo "$repo" --base "$base" --head "$head" \
-    --base-report "$dir/base.report" --base-rerun-report "$dir/base-rerun.report" --head-report "$dir/head.report" "${mutants[@]}"
+    --base-report "$dir/base.report" --base-rerun-report "$dir/base-rerun.report" --head-report "$dir/head.report" "${mutants[@]}" "${base_ref[@]}"
 }
 
 # A branch name as the refusal may show it: anything outside a plain ref alphabet becomes ?, so the reason cannot
@@ -228,8 +241,8 @@ shown_ref() {
 merge_base() {
   local repo=$1 base=$2 head=$3 base_ref=${BASE_REF:-} default=${DEFAULT_BRANCH:-}
   if [ -z "$base_ref" ] || [ -z "$default" ] || [[ $base_ref == *$'\n'* ]] || [ "$base_ref" != "$default" ]; then
-    printf 'refused=fix-proof runs only against the default branch: base %s is not %s\n' \
-      "$(shown_ref "$base_ref")" "$(shown_ref "$default")" >>"${GITHUB_OUTPUT:?}"
+    printf 'refused=fix-proof runs only against the default branch: base %s is not %s\nrefused_base=%s\nrefused_default=%s\n' \
+      "$(shown_ref "$base_ref")" "$(shown_ref "$default")" "$(shown_ref "$base_ref")" "$(shown_ref "$default")" >>"${GITHUB_OUTPUT:?}"
     return 0
   fi
   local sha

@@ -104,7 +104,7 @@ function vacuousTestOnly(): FakeGitHub {
   fake.addPr({ headSha: H, mergeSha: fakeSha("config-ref-merge") });
   fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), { ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }] }]);
   const counts = { reproduces: 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  const line = formatResultLine({ head: H, mergeBase: BASE, verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  const line = formatResultLine({ head: H, mergeBase: BASE, base: "main", verdict: "vacuous", counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
   fake.jobLogs.set(FIX_PROOF_JOB, ["Run pnpm fix-proof", line, "Post job cleanup."].map((text) => `2026-10-11T12:00:00.0000000Z ${text}`).join("\n"));
   fake.prFiles.set(1, TESTS_ONLY);
   fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });

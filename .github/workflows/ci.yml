@@ -20,6 +20,8 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    # Green runs take 30 to 72 minutes; a hung test step once sat 74 minutes past its last file (TP-4287).
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:

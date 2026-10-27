@@ -37,6 +37,15 @@
       "kills": [
         "sh-fix-proof in reviewPhase under the review panel, whose g10 plan has correctness and adversary but no tests member briefs every member, not only correctness, that an unreadable proof is unverified"
       ]
+    },
+    {
+      "name": "a read that throws records no base it was bound to",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "    return boundTo({ kind: \"error\", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` }, binding);",
+      "replace": "    return { kind: \"error\", reason: `the ${FIX_PROOF_CHECK} check could not be read: ${failureOf(error)}` };",
+      "kills": [
+        "readFixProof a line that names the base it judged, which GitHub lists on the PR's live base (TP-4259) the base the read was bound to is stamped on a read that throws"
+      ]
     }
   ]
 }

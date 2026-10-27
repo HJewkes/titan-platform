@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { resolveScript, visual } from "../resolve-fixtures.test-helpers.js";
 import { ArtifactStore } from "../workflow/artifacts.js";
 import { openState, runOneStage } from "../workflow/host.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "../workflow/run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "../workflow/run-fakes.test-helpers.js";
 import type { BeatWorker, BuilderRef, LayerBuild } from "./beat-worker.js";
 
 // Synthetic: an invented parcel desk; no real script, facts, prompt or session.
@@ -41,7 +41,7 @@ function pinInputs(second: typeof TEMPLATE = TEMPLATE): Record<string, string> {
   }
 }
 
-const host = (worker: BeatWorker) => fakeHost(fx, fakeScriptModel(), fakeBridge(), { beatWorker: worker });
+const host = (worker: BeatWorker) => fakeHost(fx, fakeScriptModel(), fakeRender(), { beatWorker: worker });
 
 describe("the layer build cache", () => {
   it("reads on the next run a build stored by an earlier run, with zero worker calls", async () => {

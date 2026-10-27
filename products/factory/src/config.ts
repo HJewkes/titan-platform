@@ -236,10 +236,23 @@ export const FactoryConfigSchema = z.object({
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
+       * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275).
        */
       gateReset: z
-        .strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional(), noReproProceed: z.enum(["off", "on"]).optional() })
+        .strictObject({
+          twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
+          heldRepair: z.enum(["off", "on"]).optional(),
+          noReproProceed: z.enum(["off", "on"]).optional(),
+          nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
+        })
         .optional(),
+      /**
+       * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
+       * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
+       * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
+       */
+      taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.

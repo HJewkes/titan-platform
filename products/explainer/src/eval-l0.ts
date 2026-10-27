@@ -18,6 +18,7 @@ import { headlineCheck } from "./lint-headline.js";
 import { visualKindCheck } from "./lint-visual-kind.js";
 import { claimsCheck } from "./lint-claims.js";
 import { coverageCheck, reflectionCheck } from "./lint-coverage.js";
+import { varietyScriptCheck } from "./variety-lints.js";
 import type { SpineV1 } from "./spine-schema.js";
 import type { ScriptTiming } from "./timing.js";
 
@@ -63,6 +64,7 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
 export const L0_CHECKS: readonly L0Check[] = [
   mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, ledgerCheck, spineCheck,
   heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, headlineCheck, claimsCheck, coverageCheck, reflectionCheck,
+  varietyScriptCheck,
 ];
 
 /** Every check's rows, less the rows of a rule scoped away from the script (`structures` or `except_profiles` in rules.yaml). */

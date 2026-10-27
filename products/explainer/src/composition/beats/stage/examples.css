@@ -1,0 +1,189 @@
+/* Ported unchanged from the daily spike example beats (SOURCE_REV 6a09ca2); the composition page imports it once from mount.tsx. */
+/* Example beats, on the same 1920x1080 video scale as beats.css (--beat-* variables on .beat-frame). */
+.ex-headline {
+  margin: 0;
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-title);
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.ex-hook-grid {
+  display: grid;
+  gap: var(--beat-gap);
+}
+.ex-hook-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap-sm);
+  padding: var(--beat-inset);
+  border: 4px solid var(--color-hairline-default);
+  border-radius: var(--beat-radius);
+  background: var(--color-surface-raised);
+}
+.ex-hook-label {
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-body);
+}
+.ex-hook-detail {
+  font-size: var(--beat-label);
+  white-space: nowrap;
+}
+
+.beat-frame > .ex-map {
+  position: relative;
+  width: 1728px;
+}
+.ex-map-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.ex-map-edge {
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 5;
+}
+.ex-map-arrowhead { fill: var(--color-text-secondary); }
+.ex-map-token {
+  fill: var(--color-brand-primary);
+  filter: drop-shadow(0 0 12px var(--color-brand-primary));
+}
+.ex-map-loop-label {
+  fill: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--beat-label);
+  text-anchor: middle;
+}
+.ex-map-node {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-width: 4px;
+  border-radius: var(--beat-radius);
+}
+.ex-map-step {
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-family-heading);
+  font-size: var(--beat-caption);
+}
+.ex-map-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--beat-label);
+}
+
+.ex-code {
+  padding: var(--beat-gap) var(--beat-inset);
+  font-family: var(--font-family-mono);
+}
+.ex-code-path {
+  display: flex;
+  align-items: center;
+  gap: var(--beat-gap);
+  margin-bottom: var(--beat-gap);
+  color: var(--color-text-tertiary);
+  font-size: var(--beat-caption);
+}
+.ex-code-tag {
+  padding: 4px 20px;
+  border-radius: 999px;
+  background: var(--color-status-warning-subtle);
+  color: var(--color-status-warning);
+  font-family: var(--font-family-body);
+}
+.ex-code-body { position: relative; }
+.ex-code-bar {
+  position: absolute;
+  left: -24px;
+  right: -24px;
+  border-left: 8px solid var(--color-brand-primary);
+  border-radius: 8px;
+  background: var(--color-brand-primary-subtle);
+}
+.ex-code-line {
+  position: relative;
+  height: calc(var(--beat-code) * 1.5);
+  font-size: var(--beat-code);
+  line-height: calc(var(--beat-code) * 1.5);
+  white-space: pre;
+}
+.ex-tok-keyword { color: var(--color-brand-primary); }
+.ex-tok-number { color: var(--color-dataviz-categorical-2); }
+.ex-tok-call { color: var(--color-dataviz-categorical-1); }
+.ex-tok-comment { color: var(--color-text-tertiary); font-style: italic; }
+
+.ex-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ex-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--beat-gap);
+  padding: var(--beat-gap) var(--beat-inset);
+  border-radius: var(--beat-radius);
+  background: var(--color-surface-raised);
+  font-size: var(--beat-body);
+}
+.ex-list-box {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--beat-tick-box);
+  height: var(--beat-tick-box);
+  border: 4px solid var(--color-border-prominent);
+  border-radius: 16px;
+}
+.ex-list-tick {
+  color: var(--color-status-success);
+  font-size: var(--beat-body);
+  line-height: 1;
+}
+.ex-list-row[data-mark='risk'] .ex-list-box { border-color: var(--color-status-warning); }
+.ex-list-row[data-mark='risk'] .ex-list-tick { color: var(--color-status-warning); font-weight: 800; }
+.ex-list-row[data-mark='open'] .ex-list-tick { color: var(--color-text-secondary); }
+.ex-list-row[data-mark='problem'] .ex-list-box { border-color: var(--color-status-error-vivid); }
+.ex-list-row[data-mark='problem'] .ex-list-tick { color: var(--color-status-error-vivid); font-weight: 800; }
+.ex-list-row[data-mark='neutral'] .ex-list-tick { color: var(--color-text-secondary); }
+.ex-list-text { flex: 1; }
+.ex-list-ref {
+  padding: 8px 24px;
+  border-radius: 999px;
+  background: var(--color-brand-primary-subtle);
+  color: var(--color-brand-primary);
+  font-size: var(--beat-caption);
+}
+.ex-map-edge-inferred { stroke-dasharray: 16 12; }
+.ex-bars { display: flex; flex-direction: column; gap: 14px; width: 100%; margin: 0; padding: 0; list-style: none; }
+.ex-bar-row { display: grid; grid-template-columns: 340px 1fr 220px; align-items: center; gap: 28px; height: 64px; font-size: var(--beat-label); }
+.ex-bar-label { text-align: right; white-space: nowrap; font-family: var(--font-family-mono); color: var(--color-text-primary); }
+.ex-bar-track { position: relative; height: 48px; border-radius: 8px; background: var(--color-surface-raised); }
+.ex-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px; background: var(--color-text-secondary); }
+.ex-bar-row[data-tone='problem'] .ex-bar-fill { background: var(--color-status-error-vivid); }
+.ex-bar-row[data-tone='ok'] .ex-bar-fill { background: var(--color-status-success); }
+.ex-bar-cap { position: absolute; top: -8px; bottom: -8px; width: 6px; margin-left: -3px; border-radius: 3px; background: var(--color-text-primary); }
+.ex-bar-value { white-space: nowrap; font-family: var(--font-family-heading); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ex-bars-note { margin: 28px 0 0; font-size: var(--beat-label); color: var(--color-text-secondary); text-align: center; }
+.ex-axis-origin { display: flex; align-items: center; gap: 12px; font-size: var(--beat-caption); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+/* Under the bars, at the start of the tracks (label column 340px + gap 28px), where the scale begins. */
+.ex-bars ~ .ex-axis-origin { margin: 10px 0 0 368px; }
+/* A line's origin sits in a left gutter, level with the axis line, like a y-axis tick. */
+.beat-graph-plot[data-origin], .beat-graph-labels[data-origin] { padding-left: 132px; }
+.beat-graph-plot > .ex-axis-origin { position: absolute; left: 0; bottom: -18px; width: 112px; justify-content: flex-end; }
+.ex-axis-break { flex-shrink: 0; width: 36px; height: 22px; background: repeating-linear-gradient(-60deg, transparent 0 6px, var(--color-text-primary) 6px 10px); }
+/* A legend only comes with seven or more series, so its bars pack tighter to leave the legend room. */
+.ex-bars:has(~ .ex-chart-legend) { gap: 8px; }
+.ex-bars:has(~ .ex-chart-legend) .ex-bar-row { height: 56px; }
+.ex-chart-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 36px; margin: 28px 0 0; padding: 0; list-style: none; font-size: var(--beat-label); }
+.ex-chart-legend-entry { display: flex; align-items: center; gap: 12px; }
+.ex-chart-legend-swatch { width: 24px; height: 24px; border-radius: 6px; background: var(--color-text-secondary); }

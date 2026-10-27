@@ -21,8 +21,8 @@ export function shownPaths(paths: readonly string[]): string {
   return paths.slice(0, SHOWN_VISUAL_PATHS).map((path) => oneLine(path, MAX_SHOWN_PATH)).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
 }
 
-/** Tests, markdown and type declarations under a visual glob change no rendered output (decision 303, Q2). */
-const NON_RENDERING = /(\.(test|spec)\.[^/]*|\.md|\.d\.ts)$/;
+/** Tests, vitest type tests (`.test-d.ts`), markdown and type declarations under a visual glob change no rendered output (decision 303, Q2). */
+const NON_RENDERING = /(\.(test|spec)(-d)?\.[^/]*|\.md|\.d\.ts)$/;
 
 function cannotRender(path: string): boolean {
   const name = path.toLowerCase().split("/").pop() ?? "";

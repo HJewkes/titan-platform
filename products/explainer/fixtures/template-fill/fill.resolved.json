@@ -124,7 +124,7 @@
       "row": "numbers",
       "beat": "arch-map",
       "component": {
-        "name": "MapBeat",
+        "name": "ArchMapBeat",
         "maturity": "spike"
       },
       "band": "concept",
@@ -212,8 +212,8 @@
       "row": "verdict",
       "beat": "verdict-card",
       "component": {
-        "name": "VerdictChip",
-        "maturity": "doc"
+        "name": "ListBeat",
+        "maturity": "spike"
       },
       "band": "story",
       "framing": "focus",

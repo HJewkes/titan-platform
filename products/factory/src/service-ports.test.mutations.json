@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a /health that never answers is waited on ten times the bounded timeout",
+      "file": "products/factory/src/service-ports.ts",
+      "find": "probeHealth(port, { timeoutMs })",
+      "replace": "probeHealth(port, { timeoutMs: timeoutMs * 10 })",
+      "kills": [
+        "systemServicePorts health gives up on a /health that never answers within the bounded timeout"
+      ]
+    }
+  ]
+}

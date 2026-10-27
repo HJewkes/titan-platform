@@ -21,8 +21,9 @@ export function deriveList(beat: ScriptBeat, scope: BeatScope, mark?: Mark): Der
     const row = marked(label);
     return { id: `rows-${i + 1}`, text: row.text, mark: mark ?? row.mark, ...(row.lane === undefined ? {} : { lane: row.lane }) };
   });
-  const hints = rows.length > HEADED_ROWS_MAX ? { headingYields: true as const } : {};
-  return { slots: { ...chapterTitle(scope), rows }, reveals: itemReveals(beat, "rows", rows.length), hints };
+  const title = chapterTitle(scope);
+  const hints = { ...(rows.length > HEADED_ROWS_MAX ? { headingYields: true as const } : {}), ...(title.title === undefined ? { titleOmitted: true as const } : {}) };
+  return { slots: { ...title, rows }, reveals: itemReveals(beat, "rows", rows.length), hints };
 }
 
 const textItems = (field: string, texts: readonly string[]) => texts.map((text, i) => ({ id: `${field}-${i + 1}`, text }));

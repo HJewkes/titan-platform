@@ -82,8 +82,10 @@ export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
 export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
 export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
-export type { IstanbulCoverage, SymbolSpan } from "./analysis/coverage.js";
-export { attributeCoverage, COVERAGE_METRIC_NAME } from "./analysis/coverage.js";
+export { attributeCoverage, COVERAGE_METRIC_NAME, coveredFunctionStarts, type IstanbulCoverage, type SymbolSpan } from "./analysis/coverage.js";
+export { MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type PlanBodyDeletesInput } from "./analysis/body-delete.js";
+export { DELETION_CANDIDATE_SIGNAL, extremeFindings, PSEUDO_TESTED_SIGNAL, type ExtremeFindingsInput, type ExtremeSummary } from "./analysis/pseudo-tested.js";
+export { runExtremeMutation, type ExtremeMutationOptions, type ExtremeMutationResult } from "./analysis/extreme-mutation.js";
 export type { MinifiedSource, MinifyLanguage } from "./analysis/context/minify.js";
 export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./analysis/context/minify.js";
 /**

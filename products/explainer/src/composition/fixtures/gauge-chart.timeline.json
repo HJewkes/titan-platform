@@ -1,0 +1,12 @@
+{
+  "durationS": 2,
+  "beats": [
+    {
+      "id": "dial",
+      "kind": "chart",
+      "startS": 0,
+      "durationS": 2,
+      "slots": { "kind": "gauge", "series": [{ "id": "series-1", "label": "Queue", "value": 40 }] }
+    }
+  ]
+}

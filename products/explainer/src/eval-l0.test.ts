@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { L0_CHECKS, runL0 } from "./eval-l0.js";
+import { L0_CHECKS, l0HardPass, runL0 } from "./eval-l0.js";
 import { ScriptSchema } from "./script-schema.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 
@@ -47,5 +47,18 @@ describe("Q-F12 voiced limits, exempt for the daily briefing only", () => {
     const rows = limitsRowsFor("repo-tour", "design-journey");
 
     expect(rows.map((r) => r.pass)).toEqual([false]);
+  });
+});
+
+describe("script-only variety lints at L0", () => {
+  it("reports a stock hook as a warning row that never fails the script", () => {
+    const script = ScriptSchema.parse(scriptWith({ spoken: "So what can parcel-desk crib from the ledger service?" }));
+
+    const rows = runL0(script, undefined, L0_CHECKS).filter((r) => r.check_id.startsWith("variety:"));
+
+    expect(rows.map((r) => r.check_id)).toEqual(["variety:hook-formula", "variety:connector-share", "variety:cue-action"]);
+    expect(rows.find((r) => r.check_id === "variety:hook-formula")).toMatchObject({ severity: "warning", pass: false, detail_beats: ["c2-1-stations"] });
+    expect(rows.every((r) => r.severity === "warning")).toBe(true);
+    expect(l0HardPass(rows)).toBe(true);
   });
 });

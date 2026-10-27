@@ -7,7 +7,7 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { PrTarget } from "./gates.js";
 import { HOLD_POLL_MS, type HoldTiming } from "./hold.js";
 import { stillOpen } from "./merge-order-guard.js";
-import { blockers, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation } from "./merge-order.js";
+import { blockers, orderDriving, overlapping, withinTtl, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type Reservation, type RunHolds } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { stageOf } from "./train-shadow-peers.js";
 import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
@@ -15,7 +15,8 @@ import { TRAIN_WORKFLOW, type MergeTrainRef } from "./train.js";
 const RESERVE_STEP = "sh-order-reserve";
 const WAIT_STEP = "sh-order-wait";
 const UNRESERVE_STEP = "sh-order-unreserve";
-export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT_STEP, UNRESERVE_STEP].map((id) => ({ id, kind: "dispatch" }));
+export const EXPIRE_STEP = "sh-order-expire";
+export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT_STEP, UNRESERVE_STEP, EXPIRE_STEP].map((id) => ({ id, kind: "dispatch" }));
 
 interface OrderInput extends PrTarget {
   runId: string;
@@ -30,6 +31,8 @@ const ReleaseResult = z.looseObject({ released: z.boolean() });
 
 interface MergeOrderStepDeps {
   order: () => MergeOrder;
+  /** Whose runs a person holds, so a held reservation orders nothing (TP-4133). */
+  holds: () => RunHolds;
   rules: MergeOrderRules;
   port: GitHubPort;
   train: MergeTrainRef;
@@ -55,7 +58,7 @@ type PeerPaths = () => Promise<{ paths: string[]; unread?: string }>;
  * lets three runs wait on each other in a ring until the TTL, so a peer counts only when the guard would let it merge.
  */
 async function heldByOrder(deps: MergeOrderStepDeps, repo: RepoSlug, runId: string, read: PeerPaths, reservations: readonly Reservation[], rule: MergeOrderRule): Promise<boolean> {
-  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), (id) => deps.order().isDriving(id));
+  const live = (self: OrderSelf): Blocker[] => blockers(self, reservations, rule, deps.now(), orderDriving(deps.order(), deps.holds()));
   if (live({ repo, runId, paths: [], unread: true }).length === 0) return false;
   const theirs = await read();
   for (const blocker of live({ repo, runId, paths: theirs.paths, unread: theirs.unread !== undefined })) {
@@ -100,14 +103,17 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   return { reserved: true, ahead };
 }
 
-/** The PRs of the `ahead` runs still driving and not since held behind a live reservation, read again on every poll. */
+/**
+ * The PRs of the `ahead` runs still driving, still merging and not since held behind a live reservation, read again on
+ * every poll. A run that left its merge step unmerged (CI red, demoted, parked) is not waited on (TP-4103).
+ */
 async function mergingStill(deps: MergeOrderStepDeps, repo: RepoSlug, ahead: readonly string[], reservations: readonly Reservation[], rule: MergeOrderRule): Promise<number[]> {
   const runs = new Map(deps.order().driving().map((run) => [run.id, run]));
   const prs: number[] = [];
   for (const run of ahead.flatMap((runId) => runs.get(runId) ?? [])) {
     const pr = Number(run.params.pr);
     const headSha = stageOf(run)?.headSha;
-    if (headSha !== undefined && (await heldByOrder(deps, repo, run.id, peerPaths(deps.port, repo, pr, headSha), reservations, rule))) continue;
+    if (headSha === undefined || (await heldByOrder(deps, repo, run.id, peerPaths(deps.port, repo, pr, headSha), reservations, rule))) continue;
     prs.push(pr);
   }
   return prs;
@@ -120,7 +126,7 @@ async function waitingOn(deps: MergeOrderStepDeps, input: OrderInput): Promise<n
   const reservations = order.list(input.repo);
   const own = reservations.find((reservation) => reservation.runId === input.runId);
   if (!rule?.enabled || own === undefined || !withinTtl(own, rule, deps.now())) return [];
-  const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), (id) => order.isDriving(id));
+  const earlier = blockers({ repo: input.repo, runId: input.runId, paths: own.paths }, reservations, rule, deps.now(), orderDriving(order, deps.holds()));
   const ahead = await mergingStill(deps, input.repo, own.ahead, reservations, rule);
   const open: number[] = [];
   for (const pr of [...earlier.map((blocker) => blocker.reservation.pr), ...ahead]) if (await stillOpen(deps.port, input.repo, pr)) open.push(pr);
@@ -152,12 +158,12 @@ export function mergeOrderRoutes(deps: MergeOrderStepDeps): StepRoute[] {
   return [
     codeRoute(RESERVE_STEP, deps.now, (input: OrderInput) => reserve(deps, input)),
     codeRoute(WAIT_STEP, deps.now, (input: OrderInput, signal) => waitTurn(deps, input, signal)),
-    codeRoute(UNRESERVE_STEP, deps.now, async (input: { repo: RepoSlug; runId: string }) => ({ released: deps.order().release(input.repo, input.runId) })),
+    codeRoute(UNRESERVE_STEP, deps.now, async (input: { repo: RepoSlug; runId: string }) => ({ released: deps.order().release(input.repo, input.runId, { at: new Date(deps.now()).toISOString() }) })),
   ];
 }
 
 /** A run replaying history recorded before the order steps existed takes the path it took then. */
-function replayingWithout(ctx: WorkflowContext, stepId: string): boolean {
+export function replayingWithout(ctx: WorkflowContext, stepId: string): boolean {
   const next = ctx.historyNext();
   return next !== undefined && !stepIdMatches(stepId, next);
 }
@@ -166,6 +172,8 @@ export interface OrderRun {
   ctx: WorkflowContext;
   target: PrTarget;
   orderSteps: number;
+  /** Set by a recorded reservation and cleared by its release or expiry, so a replay rebuilds it. */
+  reserved?: boolean;
 }
 
 /**
@@ -177,6 +185,7 @@ export async function orderedConflict(run: OrderRun, headSha: string, wake: () =
   const n = run.orderSteps++;
   const input: OrderInput = { ...run.target, runId: run.ctx.runId, headSha };
   if (!(await step(run.ctx, `${RESERVE_STEP}:${n}`, input, ReserveResult)).reserved) return wake();
+  run.reserved = true;
   const waited = await step(run.ctx, `${WAIT_STEP}:${n}`, input, WaitResult);
   return waited.moved ? undefined : wake();
 }
@@ -185,4 +194,5 @@ export async function orderedConflict(run: OrderRun, headSha: string, wake: () =
 export async function releaseOrder(run: OrderRun): Promise<void> {
   if (replayingWithout(run.ctx, UNRESERVE_STEP)) return;
   await step(run.ctx, `${UNRESERVE_STEP}:${run.orderSteps}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
+  run.reserved = false;
 }

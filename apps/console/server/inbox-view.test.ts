@@ -7,6 +7,7 @@ import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
+import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
@@ -206,6 +207,35 @@ describe("inbox.list on a fixture factory", () => {
     expect(byId(list, `gate:${RUN_GONE}/approve-merge`)?.action).toMatchObject({ command: `titan-factory gate resolve ${RUN_GONE} approve-merge --json '<payload>'` });
     expect(byId(list, "task:EX-9")).toMatchObject({ evidence: "#/tasks/EX-9", action: { route: "#/tasks/EX-9" } });
     expect(byId(list, "round:ship-r1/ship")).toMatchObject({ evidence: "#/rounds/ship-r1", action: { roundId: "ship-r1" } });
+  });
+
+  it("joins each gate on a live PR to its gate strip at that head", async () => {
+    const reads: unknown[] = [];
+    const gated: RpcAnswer = (command, args) => {
+      if (command === "shepherd.timeline") return { row: ROWS.find((each) => each.pr === args["pr"]), entries: [{ kind: "event", event: "hold", reason: "g10-review: opus review at head", actor: "shepherd", at: "2026-10-10T01:00:00.000Z", headSha: HEAD }] };
+      if (command === "shepherd.waiting") return { owner: [], seat: [] };
+      if (command === "shepherd.ghRead") {
+        reads.push(args["path"]);
+        return { status: 200, body: { total_count: 1, check_runs: [{ name: "build", status: "in_progress", conclusion: null }] }, at: "2026-10-10T01:00:00.000Z", stale: false, source: "github" };
+      }
+      return fixtureFactory(command, args);
+    };
+
+    const list = await listInbox(await serveFactory(gated));
+
+    expect(byId(list, `gate:${RUN_G10}/approve-merge`)?.gates?.unmet).toEqual([
+      { key: "ci:build", label: "CI build (pending)" },
+      { key: "hold:g10-review", label: "held: g10-review (0/1 MERGE) by shepherd" },
+    ]);
+    expect(byId(list, "chat:msg-7")?.gates).toBeUndefined();
+    expect(reads).toContain(`repos/${REPO}/commits/${HEAD}/check-runs?per_page=100`);
+  });
+
+  it("shows a gate's unreadable sources as unknown unmet rows without failing the list", async () => {
+    const list = await listInbox(await serveFactory(fixtureFactory));
+
+    expect(list.gaps).toEqual([]);
+    expect(byId(list, `gate:${RUN_PLAIN}/approve-merge`)?.gates?.unmet.map((gate) => gate.key)).toEqual(["unknown:timeline", "unknown:waiting", "unknown:checkRuns"]);
   });
 
   it("releases an owner-asked hold before the gate it holds is offered", async () => {
@@ -433,16 +463,32 @@ describe("inbox ordering", () => {
     expect(items.map((each) => each.id)).toEqual([newer.id, older.id]);
   });
 
-  it("orders 3000 live-sized items within 200 ms", () => {
-    const many = Array.from({ length: 3000 }, (_, n) =>
+  const liveSized = (count: number) => {
+    const many = Array.from({ length: count }, (_, n) =>
       n % 3 === 0 ? gate(`${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`, new Date(Date.UTC(2026, 9, 1) + n * 1000).toISOString()) : item(`ask-${n}`, { lens: n % 2 === 0 ? "planning" : "blocking-agent" }),
     );
     const rows = many.filter((_, n) => n % 3 === 0).map((each, n) => row(each.sources[0]!.ref.slice(0, each.sources[0]!.ref.indexOf("/")), n + 1));
+    return { many, rows };
+  };
 
-    const started = performance.now();
-    const items = inboxItems(many, rows);
+  it("orders 3000 live-sized items", () => {
+    const { many, rows } = liveSized(3000);
 
-    expect(performance.now() - started).toBeLessThan(200);
-    expect(items).toHaveLength(3000);
+    expect(inboxItems(many, rows)).toHaveLength(3000);
+  });
+
+  it("orders live-sized items in work linear in their count", () => {
+    // Keying the rows lowercases each run id once and a gate's lookup lowercases its own; a scan of the rows per gate is quadratic.
+    const meter = callMeter([[String.prototype, "toLowerCase"]]);
+    try {
+      const { ratio } = linearWork((size) => {
+        const { many, rows } = liveSized(size);
+        return () => inboxItems(many, rows);
+      }, { from: 48, to: 3072, meter: meter.calls });
+
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      meter.restore();
+    }
   });
 });

@@ -1,9 +1,11 @@
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mechanicalAuthorityReason } from "../coordinator-evidence.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { Verdict } from "./phases.js";
 import { EffectivePolicySchema, RegistrationRefused, resolveEffectivePolicy, shepherdGatePolicy, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { escalationReason } from "./route-table.js";
 import { lookupSeat, type Seat, type SeatBook } from "./seats.js";
 
 vi.mock("@titan-design/authority", async (importOriginal) => {
@@ -321,9 +323,68 @@ describe("merge evidence read on another base than the one being decided", () =>
     expect(decision.reason).toContain("read on base agent-chat/parent, not on main");
   });
 
-  it("allows when the evidence was read on the base being decided, or no base was checked", () => {
-    expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+  /** Main's evidence with a check still running, so MRG-AU gates on a reason a coordinator may resolve, its proof judged on `proofBase`. */
+  const mechanicallyGated = (baseRef: string, proofBase: string): MergeEvidence => {
+    const evidence = onBase(baseRef);
+    evidence.merge.checkRuns = [{ name: "validate", appId: 15368, headSha: HEAD, conclusion: null }];
+    return { ...evidence, record: { ...evidence.record, proofBase } };
+  };
+
+  it.each([
+    ["the fix-proof judged the parent branch", mechanicallyGated("main", "agent-chat/parent"), "judged base agent-chat/parent, not main"],
+    ["the merge facts were read on the parent branch", mechanicallyGated("agent-chat/parent", "main"), "read on base agent-chat/parent, not on main"],
+  ])("turns a mechanical MRG-AU gate into a merge-guard gate when %s, so no coordinator resolves it into a merge", (_scene, evidence, offBase) => {
+    const unguarded = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidence)).decide("merge", { headSha: HEAD });
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidence), undefined, () => "main");
+
+    const decision = options.policy.decide("merge", { headSha: HEAD });
+
+    expect(unguarded).toMatchObject({ outcome: "gate", rule: { table: "authority", rowId: "MRG-AU" } });
+    expect(mechanicalAuthorityReason(escalationReason("policy-denial", unguarded.reason))).toBe(true);
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
+    expect(decision.reason).toContain(offBase);
+    expect(decision.reason).toContain("no-non-green-run");
+  });
+
+  it("leaves a mechanical MRG-AU gate as it is when the facts and the fix-proof were both read on the base being decided", () => {
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(mechanicallyGated("main", "main")), undefined, () => "main");
+
+    expect(options.policy.decide("merge", { headSha: HEAD })).toMatchObject({ outcome: "gate", rule: { table: "authority", rowId: "MRG-AU" } });
+  });
+
+  const proved = (evidence: MergeEvidence, proofBase: string): MergeEvidence => ({ ...evidence, record: { ...evidence.record, proofBase } });
+
+  it("allows when the evidence and the fix-proof were both read on the base being decided, or no base was checked", () => {
+    expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(proved(onBase("main"), "main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
     expect(shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("agent-chat/parent"))).policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
+  });
+
+  it("allows on main a MERGE whose record names no proof base: it was bound to none, so decision 303 governs it", () => {
+    const decision = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(onBase("main")), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RV" } });
+  });
+
+  it("gates an allow on main whose MERGE record was bound to the parent branch, as no-facts", () => {
+    const decision = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(proved(onBase("main"), "agent-chat/parent")), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "no-facts" } });
+    expect(decision.reason).toContain(`the fix-proof at ${HEAD} judged base agent-chat/parent, not main`);
+  });
+
+  const onMain = (paths: string[], changedFilesUnread?: string): MergeEvidence => {
+    const evidence = evidenceAt(HEAD, paths);
+    return { ...evidence, ...(changedFilesUnread !== undefined && { changedFilesUnread }), record: { ...evidence.record, baseRef: "main", proofBase: "agent-chat/parent" } };
+  };
+
+  it.each([
+    ["visual-path", "acme/design", ["packages/ui/src/components/Button.tsx"], undefined, "the owner decides visual changes: packages/ui/src/components/Button.tsx"],
+    ["files-unread", "acme/gizmos", ["src/a.ts"], "the PR file list could not be read", "the PR file list could not be read"],
+  ])("keeps a %s gate's own rule on an off-base proof, naming the proof first", (rowId, repo, paths, unread, own) => {
+    const decision = shepherdLandOptions(() => effective(repo), reviewed(onMain(paths, unread)), undefined, () => "main").policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId } });
+    expect(decision.reason).toMatch(new RegExp(`the fix-proof at ${HEAD} judged base agent-chat/parent, not main, .*; ${own}`));
   });
 });
 
@@ -406,5 +467,53 @@ describe("a seat with visual paths", () => {
     const policy = effective("acme/design");
 
     expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
+  });
+});
+
+describe("a seat with visual baselines (TP-2662)", () => {
+  const BASELINES = { check: "visual", paths: ["packages/ui/specimen/baseline/**"] };
+  const BASELINED: Seat = { ...DESIGN, name: "baselined-seat", remotes: ["acme/baselined"], visualBaselines: BASELINES };
+  const UNOPTED: Seat = { ...GATED, name: "unopted-seat", remotes: ["acme/unopted"], visualBaselines: BASELINES };
+  const resolved = (seat: Seat) => resolveEffectivePolicy(lookupSeat({ seats: [seat], denied: [] }, seat.remotes[0]!));
+  const base: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "t", visualPaths: VISUAL_GLOBS };
+  const component = "packages/ui/src/components/Beat.tsx";
+
+  /** MRG-AU-RV facts at HEAD with a Beat.tsx change and the baseline check green from GitHub Actions. */
+  function clearedEvidence(changedPaths = [component]): MergeEvidence {
+    const evidence = evidenceAt(HEAD, changedPaths);
+    evidence.merge.checkRuns = [...evidence.merge.checkRuns, { name: "visual", appId: 15368, headSha: HEAD, conclusion: "success" }];
+    return evidence;
+  }
+
+  it("carries the seat's baselines into the run policy, and none for a seat without visual paths", () => {
+    expect(resolved(BASELINED)).toMatchObject({ visualPaths: VISUAL_GLOBS, visualBaselines: BASELINES });
+    expect(resolved(UNOPTED)).not.toHaveProperty("visualBaselines");
+  });
+
+  it("round-trips baselines through the stored policy schema and refuses an unknown baseline key", () => {
+    const policy = resolved(BASELINED);
+
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(policy)))).toEqual(policy);
+    expect(EffectivePolicySchema.safeParse({ ...policy, visualBaselines: { ...BASELINES, threshold: 1 } }).success).toBe(false);
+  });
+
+  it("keeps baselines in a stricter policy only when both sides carry the same ones", () => {
+    const other = { check: "visual", paths: ["snapshots/**"] };
+
+    expect(stricterPolicy({ ...base, visualBaselines: BASELINES }, { ...base, visualBaselines: { ...BASELINES } }).visualBaselines).toEqual(BASELINES);
+    expect(stricterPolicy({ ...base, visualBaselines: BASELINES }, { ...base, visualBaselines: other })).not.toHaveProperty("visualBaselines");
+    expect(stricterPolicy({ ...base, visualBaselines: BASELINES }, base)).not.toHaveProperty("visualBaselines");
+    expect(stricterPolicy(base, { ...base, visualBaselines: BASELINES })).not.toHaveProperty("visualBaselines");
+  });
+
+  it("allows a visual head that changed no baseline on the green check, and gates one that changed a baseline", () => {
+    const policy = resolved(BASELINED);
+    const baseline = "packages/ui/specimen/baseline/beat/default-chromium-linux.png";
+
+    const cleared = shepherdGatePolicy(policy, reviewed(clearedEvidence())).decide("merge", { headSha: HEAD });
+    const changed = shepherdGatePolicy(policy, reviewed(clearedEvidence([component, baseline]))).decide("merge", { headSha: HEAD });
+
+    expect(cleared).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" }, reason: expect.stringContaining(`visual files ${component} changed no baseline and visual passed`) });
+    expect(changed).toMatchObject({ outcome: "gate", rule: { rowId: "visual-path" }, reason: expect.stringContaining(baseline) });
   });
 });

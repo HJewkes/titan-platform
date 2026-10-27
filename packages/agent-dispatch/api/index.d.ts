@@ -488,19 +488,26 @@ declare function parseAgentRows(stdout: string): AgentRow[];
  * Message a live agent through `agent-chat debug send`: the broker delivers the
  * text as one channel message, which starts a turn in an idle session. Use it
  * for a live agent; `resumeAgent` is for an ended one. The CLI connects
- * unregistered, so the broker delivers the text from the human seat. Like
+ * unregistered, so the broker delivers the text from the human seat; a `source`
+ * labels it as that wake source, without human provenance. Like
  * `resumeAgent`, the text is in argv, where `ps` shows it.
  */
 
-/** `--` ends the options, so a text that begins with a dash stays one operand. */
-declare function buildMessageArgs(name: string, text: string): string[];
+/** Mirrors agent-chat's `WAKE_SOURCES`: the label a recipient sees instead of the owner typing. */
+type WakeSource = "watchdog" | "shepherd" | "console";
+interface MessageOptions {
+    /** Sent as `--source`, so the message arrives labelled `wake_source=<source>` rather than as the owner's words. */
+    source?: WakeSource;
+}
+/** `--` ends the options, so a text that begins with a dash stays one operand; `--source` must come before it. */
+declare function buildMessageArgs(name: string, text: string, options?: MessageOptions): string[];
 /**
  * Whether `messageAgent` can reach the agent a roster row names. An unregistered sender reaches only a connected
  * session, so a `detached` row (not exited, but nothing connected) is as unreachable as an `exited` one.
  */
 declare function receivesMessages(row: Pick<AgentRow, "presence">): boolean;
 /** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
-declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): Promise<void>;
+declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number, options?: MessageOptions): Promise<void>;
 
 /**
  * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
@@ -550,4 +557,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };
