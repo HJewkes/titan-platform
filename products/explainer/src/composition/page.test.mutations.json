@@ -4,8 +4,8 @@
     {
       "name": "beat windows end at the float boundary, so two beats share a frame",
       "file": "products/explainer/src/composition/Composition.tsx",
-      "find": "durationS={beat.durationS - BOUNDARY_S}",
-      "replace": "durationS={beat.durationS}",
+      "find": "durationS={beat.durationS - BOUNDARY_S} cues={beat.cues}>\n      <Frame ",
+      "replace": "durationS={beat.durationS} cues={beat.cues}>\n      <Frame ",
       "kills": [
         "the composition page the QA cue gate holds no error on the kind sheet's stage beats"
       ]
