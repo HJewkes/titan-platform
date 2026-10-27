@@ -82,14 +82,10 @@ export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
 export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
 export { groupTestsBySource, linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
-export type { IstanbulCoverage, SymbolSpan } from "./analysis/coverage.js";
-export { attributeCoverage, COVERAGE_METRIC_NAME, coveredFunctionStarts } from "./analysis/coverage.js";
-export type { BodyDeletePlan, BodyDeleteSkip, BodyDeleteTarget, PlanBodyDeletesInput } from "./analysis/body-delete.js";
-export { BODY_DELETE_SKIPS, MAX_BODY_DELETES, planBodyDeletes } from "./analysis/body-delete.js";
-export type { ExtremeFindingsInput, ExtremeSummary } from "./analysis/pseudo-tested.js";
-export { DELETION_CANDIDATE_SIGNAL, extremeFindings, PSEUDO_TESTED_SIGNAL } from "./analysis/pseudo-tested.js";
-export type { ExtremeMutationOptions, ExtremeMutationResult } from "./analysis/extreme-mutation.js";
-export { runExtremeMutation } from "./analysis/extreme-mutation.js";
+export { attributeCoverage, COVERAGE_METRIC_NAME, coveredFunctionStarts, type IstanbulCoverage, type SymbolSpan } from "./analysis/coverage.js";
+export { BODY_DELETE_SKIPS, MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget, type PlanBodyDeletesInput } from "./analysis/body-delete.js";
+export { DELETION_CANDIDATE_SIGNAL, extremeFindings, PSEUDO_TESTED_SIGNAL, type ExtremeFindingsInput, type ExtremeSummary } from "./analysis/pseudo-tested.js";
+export { runExtremeMutation, type ExtremeMutationOptions, type ExtremeMutationResult } from "./analysis/extreme-mutation.js";
 export type { MinifiedSource, MinifyLanguage } from "./analysis/context/minify.js";
 export { importMarker, isMinifyLanguage, minifySource, originalLine } from "./analysis/context/minify.js";
 /**
