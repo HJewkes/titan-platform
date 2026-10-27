@@ -25,18 +25,16 @@ export interface BodyDeleteTarget {
   mutation: HeadMutation;
 }
 
-export const BODY_DELETE_SKIPS = [
-  "uncovered",
-  "unchanged",
-  "expression-body",
-  "constructor",
-  "generator",
-  "overload-or-abstract",
-  "find-not-unique",
-  "find-over-cap",
-  "capped",
-] as const;
-export type BodyDeleteSkip = (typeof BODY_DELETE_SKIPS)[number];
+export type BodyDeleteSkip =
+  | "uncovered"
+  | "unchanged"
+  | "expression-body"
+  | "constructor"
+  | "generator"
+  | "overload-or-abstract"
+  | "find-not-unique"
+  | "find-over-cap"
+  | "capped";
 
 export interface BodyDeletePlan {
   targets: BodyDeleteTarget[];

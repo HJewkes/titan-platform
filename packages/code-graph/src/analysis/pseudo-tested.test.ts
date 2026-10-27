@@ -98,14 +98,16 @@ describe("extremeFindings: pseudo-tested", () => {
   });
 
   it("excludes unrun, unbuilt, unapplied, load-error and timeout targets", () => {
-    const [a, b, c, d, e] = ["a", "b", "c", "d", "e"].map((s) => target(`${PKG}/src/${s}.ts`, s)) as BodyDeleteTarget[];
+    const make = (symbol: string) => target(`${PKG}/src/${symbol}.ts`, symbol);
+    const [unrun, unbuilt, unapplied, broke, hung] = [make("a"), make("b"), make("c"), make("d"), make("e")] as const;
     const runs = [
-      { ...runOf(b!, undefined), built: false },
-      { ...runOf(c!, undefined), built: false, error: "find absent" },
-      runOf(d!, "load-error"),
-      runOf(e!, "timeout"),
+      { ...runOf(unbuilt, undefined), built: false },
+      { ...runOf(unapplied, undefined), built: false, error: "find absent" },
+      runOf(broke, "load-error"),
+      runOf(hung, "timeout"),
     ];
-    const { findings, summary } = extremeFindings(input({ targets: [a!, b!, c!, d!, e!], runs, unrun: [a!.mutation.name] }));
+    const targets = [unrun, unbuilt, unapplied, broke, hung];
+    const { findings, summary } = extremeFindings(input({ targets, runs, unrun: [unrun.mutation.name] }));
 
     expect(findings).toEqual([]);
     expect(summary).toMatchObject({ targets: 5, excluded: 5, survived: 0 });

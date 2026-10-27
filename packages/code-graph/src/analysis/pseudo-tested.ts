@@ -1,7 +1,7 @@
 import { MAX_HEAD_FAILURES, type HeadMutantRun, type HeadMutantsReport } from "@titan-design/fix-proof";
 import type { Finding } from "../check/findings.js";
 import { CODE_GRAPH_TOOL } from "../check/violation-location.js";
-import { BODY_DELETE_SKIPS, type BodyDeletePlan, type BodyDeleteSkip, type BodyDeleteTarget } from "./body-delete.js";
+import type { BodyDeletePlan, BodyDeleteSkip, BodyDeleteTarget } from "./body-delete.js";
 
 export const PSEUDO_TESTED_SIGNAL = "pseudo-tested";
 export const DELETION_CANDIDATE_SIGNAL = "test-deletion-candidate";
@@ -137,7 +137,17 @@ function deletionCandidates(input: ExtremeFindingsInput, statuses: ReadonlyMap<B
 
 function summaryOf(input: ExtremeFindingsInput, statuses: readonly TargetStatus[], candidates: number): ExtremeSummary {
   const count = (status: TargetStatus) => statuses.filter((s) => s === status).length;
-  const skipped = Object.fromEntries(BODY_DELETE_SKIPS.map((reason) => [reason, 0])) as Record<BodyDeleteSkip, number>;
+  const skipped: Record<BodyDeleteSkip, number> = {
+    uncovered: 0,
+    unchanged: 0,
+    "expression-body": 0,
+    constructor: 0,
+    generator: 0,
+    "overload-or-abstract": 0,
+    "find-not-unique": 0,
+    "find-over-cap": 0,
+    capped: 0,
+  };
   for (const { reason } of input.plan.skipped) skipped[reason] += 1;
   const { head, builds, wallMs, runs } = input.report;
   return {
