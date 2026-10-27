@@ -20,15 +20,21 @@ interface GraphPoint {
 }
 
 const GRAPH_PLOT_PX = 420;
+/** A dense chart's labels wrap to two lines, so its bars give back the height the second line takes. */
+const DENSE_PLOT_PX = 320;
+/** What the plot gives back to a legend drawn under the chart: up to two rows of 40 px entries. */
+const LEGEND_PLOT_PX = 120;
 const GROW_EACH_S = 0.13;
 const GROW_S = 0.6;
+/** Past this many points the 48 px column gap leaves a column narrower than a word of 40 px caption, so gaps close up and labels wrap. */
+const DENSE_AFTER_POINTS = 7;
 
 /** Beat-local seconds bar `index` starts growing. */
 export const graphGrowStart = (growAtS: number, index: number): number => growAtS + index * GROW_EACH_S;
 
 /** Bar height in px at beat-local `t`; the plot runs from the frame's floor, and the tallest value fills it. */
-function barHeight(t: number, index: number, value: number, axis: { floor: number; max: number }, growAtS: number): number {
-  return axisShare(value, axis.floor, axis.max) * GRAPH_PLOT_PX * progressAt(t, graphGrowStart(growAtS, index), GROW_S);
+function barHeight(t: number, index: number, value: number, axis: { floor: number; max: number; px: number }, growAtS: number): number {
+  return axisShare(value, axis.floor, axis.max) * axis.px * progressAt(t, graphGrowStart(growAtS, index), GROW_S);
 }
 
 function GraphBar({ point, height, lit }: { point: GraphPoint; height: number; lit: number }) {
@@ -48,22 +54,28 @@ interface GraphFrameProps {
   growAtS: number;
   /** Where the value axis starts and whether it is drawn broken; zero and unbroken by default. */
   frame?: AxisFrame;
+  /** A legend is drawn under the chart, so the plot leaves it room. */
+  legend?: boolean;
 }
 
+const plotPx = (points: number, legend: boolean): number => (points > DENSE_AFTER_POINTS ? DENSE_PLOT_PX : GRAPH_PLOT_PX) - (legend ? LEGEND_PLOT_PX : 0);
+
 /** A series by day: bars grow left to right from `growAtS`, and each point's value lights at its `litAtS`. */
-export function GraphFrame({ title, unit, points, growAtS, frame = { floor: 0, axisBreak: false } }: GraphFrameProps) {
+export function GraphFrame({ title, unit, points, growAtS, frame = { floor: 0, axisBreak: false }, legend = false }: GraphFrameProps) {
   const { t } = useBeatTime();
-  const axis = { floor: frame.floor, max: Math.max(frame.floor, ...points.map((point) => point.value)) };
+  const dense = points.length > DENSE_AFTER_POINTS;
+  const axis = { floor: frame.floor, max: Math.max(frame.floor, ...points.map((point) => point.value)), px: plotPx(points.length, legend) };
+  const layout = { "data-origin": marksOrigin(frame) || undefined, "data-dense": dense || undefined };
   return (
     <>
       {title && <h2 className="beat-heading" style={enter(t, 0)}>{unit ? `${title} (${unit})` : title}</h2>}
-      <div className="beat-graph-plot" data-origin={marksOrigin(frame) || undefined} style={{ height: GRAPH_PLOT_PX + 64 }}>
+      <div className="beat-graph-plot" {...layout} style={{ height: axis.px + 64 }}>
         <AxisOrigin {...frame} />
         {points.map((point, i) => (
           <GraphBar key={point.id} point={point} height={barHeight(t, i, point.value, axis, growAtS)} lit={progressAt(t, point.litAtS, MOTION.duration.slow)} />
         ))}
       </div>
-      <div className="beat-graph-labels" data-origin={marksOrigin(frame) || undefined}>
+      <div className="beat-graph-labels" {...layout}>
         {points.map((point) => <span key={point.id}>{point.label}</span>)}
       </div>
     </>
