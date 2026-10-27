@@ -54,8 +54,6 @@ export interface HeadMutantsReport {
 
 interface HeadTree extends MutantTree {
   report: HeadMutantsReport;
-  /** A file of the current package written since its last restore rebuild. */
-  dirty?: string;
 }
 
 const WHOLE_REPO = ".";
@@ -99,7 +97,6 @@ async function runOne(ht: HeadTree, mutation: HeadMutation, pkg: string, passing
   const suite = ht.report.suites[pkg] ?? [];
   if (suite.length === 0) return { ...run, error: `no test file under ${pkg}` };
   writeInTree(ht.tree, mutation.file, mutated(text, mutation));
-  ht.dirty = mutation.file;
   try {
     run.built = await rebuild(ht, mutation.file);
     if (!run.built) return run;
@@ -112,13 +109,15 @@ async function runOne(ht: HeadTree, mutation: HeadMutation, pkg: string, passing
 }
 
 async function runPackage(ht: HeadTree, pkg: string, mutations: readonly HeadMutation[], passing: BaselinePassing): Promise<void> {
-  ht.dirty = undefined;
+  let written: string | undefined;
   for (const mutation of mutations) {
     if (Date.now() >= ht.ctx.deadline) return;
-    ht.report.runs.push(await runOne(ht, mutation, pkg, passing));
+    const run = await runOne(ht, mutation, pkg, passing);
+    ht.report.runs.push(run);
+    if (run.error === undefined) written = mutation.file;
   }
   // The next package's rebuild leaves this one's dist mutated, so one restore rebuild per package replaces one per mutant.
-  if (ht.dirty !== undefined && !(await rebuild(ht, ht.dirty))) {
+  if (written !== undefined && !(await rebuild(ht, written))) {
     throw new RunError(`head-mutants: rebuilding ${pkg} after restoring failed`);
   }
 }
