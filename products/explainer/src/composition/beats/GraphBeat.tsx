@@ -1,4 +1,5 @@
 import { MOTION, useBeatTime } from "@titan-design/react-ui/motion";
+import { AxisOrigin, axisShare, marksOrigin, type AxisFrame } from "./chart-frame.js";
 import { enter, progressAt } from "./stage/entrance.js";
 
 /**
@@ -14,6 +15,8 @@ interface GraphPoint {
   value: number;
   /** Beat-local seconds the point's value lights. */
   litAtS: number;
+  /** The bar's colour on the chart's scale; the categorical default without one. */
+  colour?: string;
 }
 
 const GRAPH_PLOT_PX = 420;
@@ -23,17 +26,16 @@ const GROW_S = 0.6;
 /** Beat-local seconds bar `index` starts growing. */
 export const graphGrowStart = (growAtS: number, index: number): number => growAtS + index * GROW_EACH_S;
 
-/** Bar height in px at beat-local `t`; the tallest value fills the plot. */
-function barHeight(t: number, index: number, value: number, max: number, growAtS: number): number {
-  const p = progressAt(t, graphGrowStart(growAtS, index), GROW_S);
-  return max > 0 ? (value / max) * GRAPH_PLOT_PX * p : 0;
+/** Bar height in px at beat-local `t`; the plot runs from the frame's floor, and the tallest value fills it. */
+function barHeight(t: number, index: number, value: number, axis: { floor: number; max: number }, growAtS: number): number {
+  return axisShare(value, axis.floor, axis.max) * GRAPH_PLOT_PX * progressAt(t, graphGrowStart(growAtS, index), GROW_S);
 }
 
 function GraphBar({ point, height, lit }: { point: GraphPoint; height: number; lit: number }) {
   return (
     <div className="beat-graph-col">
       <span className="beat-graph-value" data-reveal={point.id} style={{ opacity: lit }}>{point.value}</span>
-      <div className="beat-graph-bar" style={{ height }} />
+      <div className="beat-graph-bar" style={{ height, ...(point.colour === undefined ? {} : { background: point.colour }) }} />
     </div>
   );
 }
@@ -44,21 +46,24 @@ interface GraphFrameProps {
   points: readonly GraphPoint[];
   /** Beat-local seconds the first bar starts growing. */
   growAtS: number;
+  /** Where the value axis starts and whether it is drawn broken; zero and unbroken by default. */
+  frame?: AxisFrame;
 }
 
 /** A series by day: bars grow left to right from `growAtS`, and each point's value lights at its `litAtS`. */
-export function GraphFrame({ title, unit, points, growAtS }: GraphFrameProps) {
+export function GraphFrame({ title, unit, points, growAtS, frame = { floor: 0, axisBreak: false } }: GraphFrameProps) {
   const { t } = useBeatTime();
-  const max = Math.max(0, ...points.map((point) => point.value));
+  const axis = { floor: frame.floor, max: Math.max(frame.floor, ...points.map((point) => point.value)) };
   return (
     <>
       {title && <h2 className="beat-heading" style={enter(t, 0)}>{unit ? `${title} (${unit})` : title}</h2>}
-      <div className="beat-graph-plot" style={{ height: GRAPH_PLOT_PX + 64 }}>
+      <div className="beat-graph-plot" data-origin={marksOrigin(frame) || undefined} style={{ height: GRAPH_PLOT_PX + 64 }}>
+        <AxisOrigin {...frame} />
         {points.map((point, i) => (
-          <GraphBar key={point.id} point={point} height={barHeight(t, i, point.value, max, growAtS)} lit={progressAt(t, point.litAtS, MOTION.duration.slow)} />
+          <GraphBar key={point.id} point={point} height={barHeight(t, i, point.value, axis, growAtS)} lit={progressAt(t, point.litAtS, MOTION.duration.slow)} />
         ))}
       </div>
-      <div className="beat-graph-labels">
+      <div className="beat-graph-labels" data-origin={marksOrigin(frame) || undefined}>
         {points.map((point) => <span key={point.id}>{point.label}</span>)}
       </div>
     </>

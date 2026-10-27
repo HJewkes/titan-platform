@@ -187,6 +187,7 @@
 }
 /* flex-shrink 0 on the bar: in a flex column the value label otherwise squeezes it (S3's graph bug). */
 .beat-graph-plot {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 48px;
