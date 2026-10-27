@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a directed beat names its phrases even when the phrases row passes",
+      "file": "products/explainer/src/rewrite-plan.ts",
+      "find": "failing(rows, \"register:phrases\") ? phraseSpans",
+      "replace": "true ? phraseSpans",
+      "kills": [
+        "planRegisterEdits: over-represented phrases names no phrase once the phrases row passes"
+      ]
+    }
+  ]
+}

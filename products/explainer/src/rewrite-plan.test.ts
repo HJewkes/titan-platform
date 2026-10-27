@@ -110,10 +110,13 @@ describe("planRegisterEdits: over-represented phrases", () => {
   });
 
   it("names no phrase once the phrases row passes", () => {
-    const s = script([CROWDED, ...Array.from({ length: 5 }, () => CROWDED), ...choppyLines(15)]);
+    const s = script([`${CROWDED} ${STOCK}`, ...Array.from({ length: 5 }, () => CROWDED), ...choppyLines(15)]);
+    const passing = runL0(s, undefined, [registerCheck]).map((row) => (row.check_id === "register:phrases" ? { ...row, pass: true } : row));
 
-    expect(failing(s)).not.toContain("register:phrases");
-    expect(plan(s).directives.some((d) => d.phrases)).toBe(false);
+    const directive = directiveFor(planRegisterEdits(s, passing).directives, "h1");
+
+    expect(directive?.numbers).toBeDefined();
+    expect(directive?.phrases).toBeUndefined();
   });
 });
 
