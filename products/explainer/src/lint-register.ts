@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
 
@@ -62,6 +63,23 @@ export const numberSpans = (text: string): TextSpan[] => spans(NUM_RUN, text);
 /** The lists of three the `triads` row counts, in order. */
 export const triadSpans = (text: string): TextSpan[] => spans(TRIAD, text);
 
+/** The doctrine's over-represented phrases (TP-4305), read once on first use. */
+let voicePhrases: RegExp | undefined;
+
+/** Each phrase's words in order, joined by anything that is not a word, so "the catch." and "The catch" both match. */
+function phrasePattern(phrases: readonly string[]): RegExp {
+  const words = (phrase: string) => phrase.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^A-Za-z0-9]+");
+  return new RegExp(`(?<![A-Za-z0-9'’])(?:${phrases.map(words).join("|")})(?![A-Za-z0-9]|['’][A-Za-z])`, "gi");
+}
+
+const phrasesRegExp = (): RegExp => {
+  voicePhrases ??= phrasePattern(JSON.parse(readFileSync(new URL("../doctrine/voice-phrases.json", import.meta.url), "utf8")).phrases);
+  return voicePhrases;
+};
+
+/** The over-represented phrases the `phrases` row counts, in order. */
+export const phraseSpans = (text: string): TextSpan[] => spans(phrasesRegExp(), text);
+
 const DEVICE_PATTERNS = { "colon-reveals": COLON_REVEAL, "not-x-tails": NOT_X_TAIL, semicolons: SEMICOLON, lets: LETS } as const;
 
 /** The style devices a rewrite must not add, each a register row that caps near zero. */
@@ -93,7 +111,7 @@ function sentenceCv(s: SpokenText): number | undefined {
 
 export const REGISTER_METRICS = [
   "numbers", "second-person", "we", "sentence-mean", "sentence-cv", "contractions",
-  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets",
+  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets", "phrases",
 ] as const;
 export type RegisterMetric = (typeof REGISTER_METRICS)[number];
 
@@ -110,6 +128,7 @@ export const REGISTER_MEASURES: Record<RegisterMetric, (s: SpokenText) => number
   "not-x-tails": punctuatedOnly((s) => count(NOT_X_TAIL, s.text)),
   semicolons: per1k(SEMICOLON),
   lets: per1k(LETS),
+  phrases: (s) => (1000 * phraseSpans(s.text).length) / Math.max(s.words.length, 1),
 };
 
 export interface Band {
@@ -118,9 +137,10 @@ export interface Band {
 }
 
 /**
- * Human-creator explainer scripts, per script, P25 to P90 (TP-3765 synthesis). Rates are per 1k words except the
- * sentence shape and "not-x-tails", which counts per script. Devices the research caps without a floor (triads,
- * colon reveals, tails, semicolons, let's) have no min, so a script is never told to add one.
+ * Human-creator explainer scripts, per script, P25 to P90 (TP-3765 synthesis; `phrases` from TP-4305's measure on the
+ * same scripts). Rates are per 1k words except the sentence shape and "not-x-tails", which counts per script. Devices
+ * the research caps without a floor (triads, colon reveals, tails, semicolons, let's, phrases) have no min, so a
+ * script is never told to add one.
  */
 export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   numbers: { min: 11.92, max: 25.62 },
@@ -134,6 +154,7 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   "not-x-tails": { max: 1 },
   semicolons: { max: 0.6 },
   lets: { max: 3.21 },
+  phrases: { max: 0.58 },
 };
 
 /** A beat may speak one number; the rest belong on screen (TP-3813). A beat over this is "crowded". */

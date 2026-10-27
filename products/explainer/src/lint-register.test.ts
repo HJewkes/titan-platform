@@ -5,6 +5,7 @@ import {
   REGISTER_MEASURES,
   REGISTER_METRICS,
   numberSpans,
+  phraseSpans,
   registerCheck,
   spokenText,
   triadSpans,
@@ -105,7 +106,7 @@ describe("register metrics on hand-counted text", () => {
   });
 });
 
-// Synthetic paragraphs scored by the research harness's own definitions (measure.py, derived.py) when this port
+// Synthetic paragraphs scored by the research harness's own definitions (measure.py, derived.py, phrases/measure.py) when this port
 // was written; the numbers are pinned here so the port cannot drift from them unseen.
 const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] = [
   {
@@ -120,6 +121,7 @@ const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] =
       numbers: 39.21568627450981, "second-person": 19.607843137254903, we: 0, "sentence-mean": 10.2,
       "sentence-cv": 0.19996154955265827, contractions: 58.8235294117647, triads: 19.607843137254903,
       "colon-reveals": 19.607843137254903, "not-x-tails": 1, semicolons: 19.607843137254903, lets: 19.607843137254903,
+      phrases: 0,
     },
   },
   {
@@ -136,6 +138,7 @@ const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] =
       numbers: 25.31645569620253, "second-person": 37.9746835443038, we: 37.9746835443038, "sentence-mean": 11.285714285714286,
       "sentence-cv": 0.38394306045830634, contractions: 37.9746835443038, triads: 0, "colon-reveals": 12.658227848101266,
       "not-x-tails": 1, semicolons: 25.31645569620253, lets: 12.658227848101266,
+      phrases: 12.658227848101266,
     },
   },
   {
@@ -153,6 +156,7 @@ const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] =
       numbers: 58.8235294117647, "second-person": 23.529411764705884, we: 23.529411764705884, "sentence-mean": 10.625,
       "sentence-cv": 0.36735282343519987, contractions: 70.58823529411765, triads: 11.764705882352942,
       "colon-reveals": 11.764705882352942, "not-x-tails": 1, semicolons: 0, lets: 11.764705882352942,
+      phrases: 0,
     },
   },
 ];
@@ -217,6 +221,15 @@ describe("Q-V11 register rows", () => {
     expect(clean).toMatchObject({ value: 0, pass: true });
   });
 
+  it("warns on one over-represented phrase in a 157-word script and passes the same script without it", () => {
+    const stock = rows(...filler(15), "The ledger matters most to the desk.").get("register:phrases");
+    const plain = rows(...filler(15), "The ledger counts most to the desk.").get("register:phrases");
+
+    expect(stock).toMatchObject({ severity: "warning", pass: false, threshold: 0.58 });
+    expect(stock?.value).toBeCloseTo(6.369, 3);
+    expect(plain).toMatchObject({ value: 0, pass: true });
+  });
+
   it("warns below a floor, passes inside the band, and warns over the cap", () => {
     const secondPerson = (n: number) => rows(...filler(16), ...Array.from({ length: n }, () => "You see it.")).get("register:second-person");
 
@@ -264,6 +277,24 @@ describe("numberSpans and triadSpans", () => {
 
     expect(spans.map((s) => s.text)).toEqual(["Pick red, green or blue,", "then the queue, the worker and the log."]);
     expect(spans.map((s) => line.slice(s.index, s.index + s.text.length))).toEqual(spans.map((s) => s.text));
+  });
+});
+
+describe("phraseSpans", () => {
+  it("finds a phrase across case and punctuation, as the harness's word stream does", () => {
+    const text = "The catch. The result, is plain. Now how does it end?";
+
+    expect(phraseSpans(text).map((span) => span.text)).toEqual(["The catch", "The result, is", "Now how"]);
+  });
+
+  it("skips a phrase word inside a longer word or a contraction", () => {
+    expect(phraseSpans("It mattered once. The catcher sat in aloneness. The desk's quietly's?")).toEqual([]);
+  });
+
+  it("finds as many spans as the row counts", () => {
+    const text = spokenText(["The desk stays on its own. That matters."]);
+
+    expect(phraseSpans(text.text)).toHaveLength(((measure("phrases", text.text) ?? 0) * text.words.length) / 1000);
   });
 });
 

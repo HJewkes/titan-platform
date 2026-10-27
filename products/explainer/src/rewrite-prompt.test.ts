@@ -84,6 +84,15 @@ describe("renderRewritePrompt", () => {
     expect(prompt).not.toMatch(/the one that matters/i);
   });
 
+  it("asks a beat to say its stock phrases in plain words, naming each", () => {
+    const withPhrases: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", shape: [5, 18], phrases: ["stays", "the catch"] }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, withPhrases);
+
+    expect(prompt).toContain('- Stock phrases: "stays", "the catch". Say what each one means in plain words of your own.');
+    expect(renderRewritePrompt(chapter, chapterBeats, plan(1))).not.toContain("- Stock phrases:");
+  });
+
   it("tells a refused beat in plain words why its last version was not used", () => {
     const prompt = renderRewritePrompt(chapter, chapterBeats, refusedPlan(["sentence-cap", "list-emptied", "number-lost"]));
 

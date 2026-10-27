@@ -55,7 +55,7 @@ const refusalLines = (refused: readonly string[]): string[] =>
   [...new Set(refused.map(refusalNote))].map((note) => `- Your last version was not used: ${note}.`);
 
 function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, shape, refused } = directive;
+  const { numbers, triads, phrases, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
@@ -65,6 +65,7 @@ function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round
     ...(triads
       ? [`- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`]
       : []),
+    ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }

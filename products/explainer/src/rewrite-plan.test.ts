@@ -90,6 +90,33 @@ describe("planRegisterEdits: numbers and triads", () => {
   });
 });
 
+describe("planRegisterEdits: over-represented phrases", () => {
+  const CROWDED = "The desk held 12 parcels, sent 3 back and lost two.";
+  const STOCK = "The desk stays calm. That matters.";
+
+  it("names the phrases a directed beat speaks while the phrases row fails", () => {
+    const s = script([`${CROWDED} ${STOCK}`, ...Array.from({ length: 5 }, () => CROWDED), ...choppyLines(15)]);
+
+    expect(failing(s)).toContain("register:phrases");
+    expect(directiveFor(plan(s).directives, "h1")?.phrases).toEqual(["stays", "matters"]);
+  });
+
+  it("directs no beat when the phrases row is the only one failing", () => {
+    const s = script([STOCK, ...choppyLines(20)]);
+    const phrasesOnly = runL0(s, undefined, [registerCheck]).filter((row) => row.check_id === "register:phrases");
+
+    expect(phrasesOnly).toMatchObject([{ pass: false }]);
+    expect(planRegisterEdits(s, phrasesOnly).directives).toEqual([]);
+  });
+
+  it("names no phrase once the phrases row passes", () => {
+    const s = script([CROWDED, ...Array.from({ length: 5 }, () => CROWDED), ...choppyLines(15)]);
+
+    expect(failing(s)).not.toContain("register:phrases");
+    expect(plan(s).directives.some((d) => d.phrases)).toBe(false);
+  });
+});
+
 describe("planRegisterEdits: round 2", () => {
   const LIST = "It checks the scan, the row and the label.";
 
