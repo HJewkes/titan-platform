@@ -31,7 +31,7 @@ export function nodeStateOf(node: TreeNode, byId: ReadonlyMap<string, TreeNode>)
 }
 
 /** The churn mark: high churn with no done-when progress reads as a warning before the title. */
-export function nodeLabel(node: TreeNode): string {
+function nodeLabel(node: TreeNode): string {
   const mark = node.churn.highChurnNoProgress ? "⚠ " : "";
   return `${mark}${node.title} · ${node.churn.closed14d} closed in 14d`;
 }
@@ -75,7 +75,7 @@ function bandsOf(lanes: readonly GraphGroup[], nodes: readonly GraphNode[], dag:
 function lanesOverLayered(lanes: readonly GraphGroup[]): GraphLayout {
   const dag = layeredLayout();
   const compute = (input: GraphLayoutInput) => {
-    const { routes: _dagRoutes, ...base } = dag.compute(input);
+    const base = dag.compute(input);
     const positions: Record<string, GraphPoint> = {};
     const groups: GraphGroupRegion[] = [];
     let top = 0;
@@ -88,17 +88,20 @@ function lanesOverLayered(lanes: readonly GraphGroup[]): GraphLayout {
       top += height;
     }
     const order = groups.flatMap((group) => group.nodeIds);
-    return { ...base, positions, order, height: Math.max(top, input.height), groups };
+    // The DAG's routes would run between its own rows, not the lanes'.
+    return { ...base, positions, order, height: Math.max(top, input.height), groups, routes: {} };
   };
   return { key: `lanes-over-layered:${lanes.map((lane) => lane.id).join(",")}`, compute };
 }
 
 type LaneLayout = (options: { lanes: GraphGroup[] }) => GraphLayout;
 
+const isLaneLayout = (value: unknown): value is LaneLayout => typeof value === "function";
+
 /** react-ui's own laneLayout once a release exports it (TD-1034); until then, lanes drawn over layeredLayout here. */
 export function treeLayout(mode: TreeLayoutMode, goals: TreeData["goals"]): GraphLayout {
   if (mode === "dag") return layeredLayout();
   const lanes = goals.map((goal) => ({ id: goal.id, label: goal.title }));
-  const released = (reactUi as unknown as { laneLayout?: LaneLayout }).laneLayout;
-  return released ? released({ lanes }) : lanesOverLayered(lanes);
+  const released = (reactUi as Record<string, unknown>).laneLayout;
+  return isLaneLayout(released) ? released({ lanes }) : lanesOverLayered(lanes);
 }
