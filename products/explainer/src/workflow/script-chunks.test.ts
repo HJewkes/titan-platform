@@ -278,11 +278,11 @@ const listBeat = (rows: readonly string[]) => ({
   visual: { assertion: "The bench tests each wick", job: "numbers", beat: "list", labels: [...rows], cues: [{ action: "V6", target: "rows-1", atCue: "bench" }] },
 });
 
-/** ch3's chapter reply with ch3-a as a list of `rows`. */
-const ch3With = (rows: readonly string[]): Record<string, unknown> => {
-  const reply = chapterReply("ch3");
-  return { ...reply, beats: [listBeat(rows), (reply.beats as unknown[])[1]] };
-};
+/** ch3's chapter reply with ch3-a as a list of `rows`, ch3-b as `chapterReply` drafts it. */
+const ch3With = (rows: readonly string[]): Record<string, unknown> => ({
+  ...chapterReply("ch3"),
+  beats: [listBeat(rows), beatOf("ch3-b", "ch3", "So the lamp lights only when it is safe.")],
+});
 
 const isPlanRetry = (prompt: string): boolean => prompt.includes("The plan check failed");
 const isJoined = (prompt: string): boolean => prompt.includes("## Task: the joined script");
