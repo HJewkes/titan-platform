@@ -1,0 +1,11 @@
+# Assertion-evidence craft for beat headlines (Alley; Garner & Alley 2013). The word cap and the verb
+# test live in the Q-D7 L0 row (src/lint-headline.ts); this line is the planner's direction only.
+schema: doctrine-craft/v1
+rules:
+  - id: talks-ST11
+    source: { doc: talks-and-slides, ref: ST11 }
+    text: "Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [plan, script]

@@ -251,5 +251,5 @@ export const hasSpokenDigits =(spoken: string): boolean => /\d/.test(spoken.repl
 /** Q-V12: a spoken line holds no digit, so the voice is not left to guess how a number is read. */
 export const spokenDigitsCheck: L0Check = ({ script }) => {
   const beats = script.beats.filter((beat) => hasSpokenDigits(beat.spoken)).map((beat) => beat.id);
-  return [ruleRow("Q-V12", { value: beats.length, threshold: 0, pass: beats.length === 0, beats, severity: "warning" })];
+  return [ruleRow("Q-V12", { value: beats.length, threshold: 0, pass: beats.length === 0, beats })];
 };
