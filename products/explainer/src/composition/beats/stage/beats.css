@@ -226,6 +226,7 @@
   font-size: var(--beat-caption);
 }
 .beat-graph-labels > span { flex: 1; text-align: center; }
+.beat-graph-plot[data-dense], .beat-graph-labels[data-dense] { gap: var(--beat-gap-sm); }
 .beat-terminal {
   overflow: hidden;
   border: 2px solid var(--color-hairline-default);
