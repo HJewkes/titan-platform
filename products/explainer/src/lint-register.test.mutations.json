@@ -18,6 +18,24 @@
       "kills": [
         "endsOnShortest is true only when the last of two or more sentences is shorter than every other"
       ]
+    },
+    {
+      "name": "the neg-synthetic band caps at 25 per 1k",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "\"neg-synthetic\": { max: 2.5 },",
+      "replace": "\"neg-synthetic\": { max: 25 },",
+      "kills": [
+        "Q-V11 register rows warns on one \"no X\" negation in a 157-word script and passes the same script without it"
+      ]
+    },
+    {
+      "name": "the downtoners row warns like any other",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": " && !REPORTED_ONLY_METRICS.has(metric);",
+      "replace": ";",
+      "kills": [
+        "Q-V11 register rows reports a downtoner rate over its band but never warns on it"
+      ]
     }
   ]
 }
