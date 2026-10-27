@@ -65,7 +65,7 @@ async function resolveCommit(ctx: Context, ref: string, flag: string): Promise<s
   return sha;
 }
 
-async function readConfig(ctx: Context, sha: string): Promise<string | null> {
+export async function readConfig(ctx: Context, sha: string): Promise<string | null> {
   const listed = await git(ctx, ["ls-tree", "--name-only", sha, "--", CONFIG_PATH], "listing the config");
   if (listed.trim() === "") return null;
   return git(ctx, ["show", `${sha}:${CONFIG_PATH}`], "reading the config");

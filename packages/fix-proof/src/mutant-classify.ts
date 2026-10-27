@@ -72,11 +72,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function fileOf(report: unknown, testFile: string): FileRun | undefined {
+/** The selected files of a vitest report whose paths are repo-relative, as the sides write it; empty when it does not read. */
+export function filesOfReport(report: unknown, selected: ReadonlySet<string>): Map<string, FileRun> {
   const files = isRecord(report) && Array.isArray(report.testResults) ? report.testResults : [];
   const rooted = files.map((file) => (isRecord(file) && typeof file.name === "string" ? { ...file, name: REPORT_ROOT + file.name } : file));
-  const read = readVitestReport({ testResults: rooted }, REPORT_ROOT, new Set([testFile]));
-  return read.ok ? read.files.get(testFile) : undefined;
+  const read = readVitestReport({ testResults: rooted }, REPORT_ROOT, selected);
+  return read.ok ? read.files : new Map();
+}
+
+function fileOf(report: unknown, testFile: string): FileRun | undefined {
+  return filesOfReport(report, new Set([testFile])).get(testFile);
 }
 
 function passesOnceInBaseline(baseline: FileRun | undefined, kill: string): boolean {
@@ -88,11 +93,11 @@ function passesOnceInBaseline(baseline: FileRun | undefined, kill: string): bool
 // expect matchers and node:assert both throw AssertionError; a timeout, a crash or any other throw is not evidence of a kill.
 const ASSERTION_FAILURE = /^\s*AssertionError(?: \[ERR_ASSERTION\])?:/;
 
-function failedOnAssertion(test: TestRun): boolean {
+export function failedOnAssertion(test: TestRun): boolean {
   return test.failures.length > 0 && test.failures.every((message) => ASSERTION_FAILURE.test(message));
 }
 
-function failedUnder(run: FileRun): TestRun[] {
+export function failedUnder(run: FileRun): TestRun[] {
   return [...run.tests.values()].filter((test) => test.status === "failed");
 }
 
