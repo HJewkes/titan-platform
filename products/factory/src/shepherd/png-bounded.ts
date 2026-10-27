@@ -50,6 +50,9 @@ const RGB = 2;
 
 const refuse = (reason: string): Refused => ({ refused: reason });
 
+/** The refusal for a header over `maxPixels`, so a caller can tell it from the others. */
+export const overPixels = (maxPixels: number): string => `over ${maxPixels} pixels`;
+
 function hasSignature(bytes: Uint8Array): boolean {
   return bytes.length >= SIGNATURE.length && SIGNATURE.every((byte, index) => bytes[index] === byte);
 }
@@ -126,7 +129,7 @@ function isSupported(header: Header): boolean {
 function headerRefusal(header: Header, limits: PngLimits): Refused | null {
   if (!isSupported(header)) return refuse("unsupported PNG format");
   if (header.width === 0 || header.height === 0) return refuse("empty image");
-  if (header.width * header.height > limits.maxPixels) return refuse(`over ${limits.maxPixels} pixels`);
+  if (header.width * header.height > limits.maxPixels) return refuse(overPixels(limits.maxPixels));
   return null;
 }
 
