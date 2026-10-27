@@ -6,7 +6,7 @@ import type { ConsoleContext } from "./owner-guard.js";
 import { keepsSlug, type WorkOptions } from "./work.js";
 
 /** What the page says until the host's active-work daemon serves `loop.board`. */
-export const OLD_DAEMON = "active-work ≥ 0.23 needed";
+const OLD_DAEMON = "active-work ≥ 0.23 needed";
 
 export const loopBoardResult = z.object({
   fetchedAt: z.string(),
@@ -46,7 +46,7 @@ export async function readLoopBoard(activeWork: ActiveWork, options: WorkOptions
 }
 
 /** Re-tiers one loop in the ledger through active-work's `loop.tier`. */
-export async function writeLoopTier(activeWork: ActiveWork, args: LoopTierArgs): Promise<z.infer<typeof loopTierAnswer>> {
+async function writeLoopTier(activeWork: ActiveWork, args: LoopTierArgs): Promise<z.infer<typeof loopTierAnswer>> {
   if (activeWork.write === undefined) throw failure("This active-work source takes no writes", EXIT.UNAVAILABLE);
   return activeWork.write("loop.tier", args);
 }

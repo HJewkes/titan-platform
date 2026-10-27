@@ -61,6 +61,6 @@ export function filterLoops(loops: readonly BoardLoop[], { initiative, status }:
 }
 
 /** A week without motion on a loop that is not done reads as stale, as in the mock. */
-export const STALE_DAYS = 7;
+const STALE_DAYS = 7;
 
 export const isStale = (loop: BoardLoop): boolean => loop.status !== "DONE" && (loop.daysSinceMotion ?? 0) >= STALE_DAYS;

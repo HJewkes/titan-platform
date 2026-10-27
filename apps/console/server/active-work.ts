@@ -122,8 +122,8 @@ const WRITES = {
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
-export type WriteName = keyof typeof WRITES;
-export type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
+type WriteName = keyof typeof WRITES;
+type WriteResult<K extends WriteName> = z.infer<(typeof WRITES)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
 export type WireDeliverable = z.infer<typeof deliverable>;

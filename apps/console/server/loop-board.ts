@@ -7,10 +7,10 @@ import { z } from "zod";
  * active-work side only has to match this file.
  */
 
-export const LOOP_STATUSES = ["ACTIVE", "STALLED", "LOST", "MISSING", "DONE"] as const;
-export const LOOP_SOURCES = ["ledger", "session", "handoff", "teleport"] as const;
+const LOOP_STATUSES = ["ACTIVE", "STALLED", "LOST", "MISSING", "DONE"] as const;
+const LOOP_SOURCES = ["ledger", "session", "handoff", "teleport"] as const;
 /** Tiers are advisory: coordinators weigh them and choose freely, and no dispatch code gates on one. */
-export const LOOP_TIERS = ["S", "A", "B", "C", "parked"] as const;
+const LOOP_TIERS = ["S", "A", "B", "C", "parked"] as const;
 
 export type LoopStatus = (typeof LOOP_STATUSES)[number];
 /** Null is Unsorted: the loop has no tier yet. */
