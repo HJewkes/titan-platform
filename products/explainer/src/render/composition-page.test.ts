@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cachedPage, treeSha, type PageBuild, type PageSource } from "./composition-page.js";
+import { cachedPage, pageSourceFrom, treeSha, type PageBuild, type PageSource } from "./composition-page.js";
 
 let dir: string;
 let source: PageSource;
@@ -90,5 +90,45 @@ describe("treeSha", () => {
 
     expect(equal).toBe(true);
     expect(treeSha(b)).not.toBe(treeSha(a));
+  });
+});
+
+describe("pageSourceFrom", () => {
+  /** A temp dir laid out like the explainer package, with a decoy package.json above it. */
+  function explainerPackage(): string {
+    writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "decoy-workspace" }));
+    const pkg = path.join(dir, "products", "explainer");
+    for (const sub of ["src/render", "src/composition", "dist"]) mkdirSync(path.join(pkg, sub), { recursive: true });
+    writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@titan-design/explainer" }));
+    return pkg;
+  }
+
+  const expectedSource = (pkg: string): PageSource => ({
+    root: path.join(pkg, "src", "composition"),
+    extra: [path.join(pkg, "src", "beat-slots.ts"), path.join(pkg, "src", "anchor-grid.ts"), path.join(pkg, "package.json")],
+  });
+
+  it("finds the sources in src/ when the module runs from src/render/", () => {
+    const pkg = explainerPackage();
+
+    const found = pageSourceFrom(path.join(pkg, "src", "render"));
+
+    expect(found).toEqual(expectedSource(pkg));
+  });
+
+  it("finds the same sources when the module runs from a dist/ chunk one level under the package", () => {
+    const pkg = explainerPackage();
+
+    const found = pageSourceFrom(path.join(pkg, "dist"));
+
+    expect(found).toEqual(expectedSource(pkg));
+  });
+
+  it("refuses when only another package's package.json sits above the module", () => {
+    writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "decoy-workspace" }));
+    const outside = path.join(dir, "elsewhere");
+    mkdirSync(outside);
+
+    expect(() => pageSourceFrom(outside)).toThrow("no @titan-design/explainer package.json");
   });
 });

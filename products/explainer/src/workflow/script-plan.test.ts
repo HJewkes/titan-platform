@@ -31,6 +31,33 @@ function plansOnRetry(script: ScriptV1, options: { never?: boolean } = {}): Fake
   return { runnerFor, prompts, budgets: [] };
 }
 
+/** A script model that answers its first prompt with `first` and every later one with `later`, both as written. */
+function repliesInTurn(first: ScriptV1, later: ScriptV1): FakeScriptModel {
+  const [opening, rest] = [fakeScriptModel(first, { asWritten: true }), fakeScriptModel(later, { asWritten: true })];
+  const prompts: string[] = [];
+  const runnerFor = (runner: AgentRunnerOptions) => {
+    const [one, two] = [opening.runnerFor(runner), rest.runnerFor(runner)];
+    return { run: (input: StepRunInput) => (prompts.push(input.prompt) === 1 ? one : two).run(input) };
+  };
+  return { runnerFor, prompts, budgets: [] };
+}
+
+// Synthetic dock rows for one chapter's list; no label quotes a real run.
+const DOCK_ROWS = ["dock 1 · Parcels sorted", "dock 2 · Night crew in", "dock 3 · Scanner fixed", "dock 4 · Bay cleared", "dock 5 · Labels printed", "dock 6 · Van loaded", "dock 7 · Shift closed"];
+
+const firstWord = (spoken: string): string => spoken.split(" ")[0]!.replace(/\W/g, "").toLowerCase();
+
+/** The planned draft with h1 drawn as a list of `h1Rows`, and h2, its chapter's continuation, as a list of `h2Rows`. */
+function withLists(h1Rows: string[], h2Rows: string[]): ScriptV1 {
+  const draft = plannedAt(12.5);
+  const labels: Record<string, string[]> = { h1: h1Rows, h2: h2Rows };
+  const asList = (beat: ScriptV1["beats"][number], rows: string[]) => ({
+    ...beat,
+    visual: { ...beat.visual, beat: "list", labels: rows, cues: [...beat.visual.cues, { action: "V6" as const, target: "rows-1", atCue: firstWord(beat.spoken) }] },
+  });
+  return { ...draft, beats: draft.beats.map((beat) => (labels[beat.id] ? asList(beat, labels[beat.id]!) : beat)) };
+}
+
 const scriptRow = (result: Awaited<ReturnType<typeof runVideo>>) => result.report.rows.find((r) => r.stage === "script")!;
 
 describe("the script stage's word-budget and runtime gates", () => {
@@ -137,6 +164,41 @@ describe("the script stage's plan retry", () => {
   });
 
   // Mutation: dropping the word-budget gate from STAGE_CHECKS lets this run complete.
+  // Mutation: dropping the fill faults from planFaults passes the 7-label list, so no retry is asked for.
+  it("retries once naming a 7-label list resolve's template fill refuses, and keeps the reply that moves rows to the continuation", async () => {
+    // Arrange
+    fx = fixture();
+    const overflow = withLists(DOCK_ROWS, []);
+    const split = withLists(DOCK_ROWS.slice(0, 4), DOCK_ROWS.slice(4));
+    const model = repliesInTurn(overflow, split);
+
+    // Act
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));
+
+    // Assert
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toMatch(/The plan check failed:\n- template fill: h1 \(list\): .*<=5 items/);
+    expect(model.prompts[1]).toContain("A beat whose labels overflow its beat spec keeps that many labels and moves the rest to a continuation beat in the same chapter.");
+    expect(scriptRow(result)).toMatchObject({ calls: 2, retries: 1 });
+    expect(result.status, result.error).toBe("completed");
+  });
+
+  it("answers a fill fault the plan retry left in an L0 repair round, naming the refused beat, and keeps the repair", async () => {
+    // Arrange
+    fx = fixture();
+    const overflow = withLists(DOCK_ROWS, []);
+    const model = fakeScriptModel(overflow, { asWritten: true, repaired: withLists(DOCK_ROWS.slice(0, 4), DOCK_ROWS.slice(4)) });
+
+    // Act
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, profile: "daily-overview", to: "script" }, fakeHost(fx, model, fakeRender()));
+
+    // Assert
+    expect(model.prompts).toHaveLength(3);
+    expect(model.prompts[2]).toContain("- template-fill: a beat's labels fit its beat spec's slots;");
+    expect(model.prompts[2]).toMatch(/\(beats: h1; measured 1, needs 0\)\n {2}Found: template fill: h1 \(list\): .*<=5 items/);
+    expect(result.status, result.error).toBe("completed");
+  });
+
   it("fails the stage on its word-budget and runtime gates when the retry is no better", async () => {
     fx = fixture();
     const model = plansOnRetry(plannedAt(5), { never: true });

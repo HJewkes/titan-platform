@@ -9,6 +9,7 @@ import { resolveBeat, type ResolvedBeat } from "./resolve-beat.js";
 import { overBudget, scriptBudgets, type BudgetRow } from "./resolve-budget.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { loadSpeechBands } from "./speech-bands.js";
+import { draftFillFaults } from "./script-fill.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
 import { shippedVisualRouter } from "./visual-router.js";
 
@@ -93,10 +94,14 @@ export function draftBeatLengths(draft: Draft): { pass: boolean; detail: string 
   return { pass: faults.length === 0, detail: faults.length === 0 ? `every beat within ${MIN_BEAT_S}-${MAX_BEAT_S} s` : `out of band: ${faults.join("; ")}` };
 }
 
-/** Everything the plan check fails the draft on: each over-budget beat or block, each beat out of Q-F8's band, then the runtime. */
-export function planFaults(draft: Draft): string[] {
+/**
+ * Everything the plan check fails the draft on: each over-budget beat or block, each beat out of Q-F8's band, the
+ * runtime, then each beat resolve's template fill would refuse.
+ */
+export function planFaults(draft: ScriptV1): string[] {
   const runtime = draftRuntime(draft);
-  return [...wordBudgetFaults(draft), ...beatLengthFaults(draft).map((fault) => `beat length: ${fault}`), ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`])];
+  const lengths = beatLengthFaults(draft).map((fault) => `beat length: ${fault}`);
+  return [...wordBudgetFaults(draft), ...lengths, ...(runtime.pass ? [] : [`runtime: ${runtime.detail}`]), ...draftFillFaults(draft)];
 }
 
 /** The most seconds a re-time adds to one beat: at concept's 2.8 w/s that covers 5 words over, and each measured overage needed 1 s. */
@@ -132,7 +137,7 @@ const strictSubset = (after: readonly string[], before: readonly string[]): bool
  * the `faults` it failed before; anything larger still fails, for the plan retry or the gate. A chapter part passes
  * its own reader's faults, since the whole draft's runtime fault names a total the part cannot reach.
  */
-export function retimeOverBudget<D extends Draft>(draft: D, faults: (draft: D) => string[] = planFaults): Retimed<D> {
+export function retimeOverBudget<D extends ScriptV1>(draft: D, faults: (draft: D) => string[] = planFaults): Retimed<D> {
   const profile = profileFor(loadProfiles(), draft.profile);
   const rows = overBudget(draftBudgets(draft)).filter((row) => row.scope === "beat");
   let next = draft;
@@ -153,7 +158,7 @@ export function retimeOverBudget<D extends Draft>(draft: D, faults: (draft: D) =
  * 35-45 s beat per chapter, which Q-F8 fails, so the seconds go to more beats, not longer ones.
  */
 export const planHint = (faults: readonly string[]): string =>
-  `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise plannedS until each beat's words fit under its cap and the beats sum to the profile's target runtime, but keep every beat other than the close within ${MIN_BEAT_S}-${MAX_BEAT_S} s: split a longer beat into continuation beats in the same chapter, one idea each. Then write each beat's spoken text close to its new cap, so no slot is left silent.`;
+  `The plan check failed:\n${faults.map((fault) => `- ${fault}`).join("\n")}\n\nRaise plannedS until each beat's words fit under its cap and the beats sum to the profile's target runtime, but keep every beat other than the close within ${MIN_BEAT_S}-${MAX_BEAT_S} s: split a longer beat into continuation beats in the same chapter, one idea each. Then write each beat's spoken text close to its new cap, so no slot is left silent. A beat whose labels overflow its beat spec keeps that many labels and moves the rest to a continuation beat in the same chapter.`;
 
 const capLine = ({ chapter, spec }: LeadBeat, wordsPerS: number): string =>
   `- ${chapter} (${spec.type}, ${spec.speech.band} band): at most plannedS × ${wordsPerS} words, rounded down, counting each number as the words the voice reads`;

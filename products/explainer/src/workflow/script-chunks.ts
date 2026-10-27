@@ -4,6 +4,7 @@ import { stampLedgerTerms } from "../ledger-stamp.js";
 import { loadProfiles, profileFor } from "../profile-load.js";
 import { chapterScopedChecks, shippedRuleRegistry } from "../rules.js";
 import { wordBudgetFaults } from "../script-budget.js";
+import { draftFillFaults, fillRows } from "../script-fill.js";
 import type { ScriptBeat, ScriptChapter, ScriptV1 } from "../script-schema.js";
 import type { SpineV1 } from "../spine-schema.js";
 import {
@@ -151,7 +152,7 @@ function chapterObject(raw: Record<string, unknown>, id: string, joined: Joined 
 
 const chapterReader = (ctx: Chunk, id: string, joined: Joined | undefined): Reader => ({
   check: (outcome) => chapterReply(outcome, id, joined, ctx.plan),
-  faults: wordBudgetFaults,
+  faults: (script) => [...wordBudgetFaults(script), ...draftFillFaults(script)],
 });
 
 /** A chapter's own failing rows: chapter-scoped rules, cut to the beats (or the chapter) of `id`. */
@@ -233,7 +234,7 @@ async function repairChapter(ctx: Chunk, prompt: string, joined: Joined | undefi
   const lintScript = (candidate: ScriptV1) => render(withPart(joined, candidate), ctx.lint.spine);
   return repairRounds(ctx.call, { script: part, stamps: [] }, {
     rounds: CHAPTER_REPAIR_ROUNDS,
-    failing: (candidate) => chapterRows(ctx.lint.rows(lintScript(candidate)), scoped, lintScript(candidate), id),
+    failing: (candidate) => [...chapterRows(ctx.lint.rows(lintScript(candidate)), scoped, lintScript(candidate), id), ...fillRows(candidate)],
     prompt: (candidate, rows) => chapterRepairPrompt(prompt, candidate, rows, failureList(rows, shippedRuleRegistry(), lintScript(candidate), ctx.lint)),
     read: (outcome, current, rows) => {
       const targets = patchTargets(rows, current);
@@ -306,7 +307,7 @@ async function repairVideo(ctx: Chunk, script: ScriptV1): Promise<Repaired> {
   };
   return repairRounds(ctx.call, stampLedgerTerms(script, spine, rows), {
     rounds: VIDEO_REPAIR_ROUNDS,
-    failing: (current) => failingErrors(rows(current)),
+    failing: (current) => [...failingErrors(rows(current)), ...fillRows(current)],
     prompt,
     read: (outcome, current) => patched(outcome, current, ctx.plan),
     settle: (current) => stampLedgerTerms(current, spine, rows),
