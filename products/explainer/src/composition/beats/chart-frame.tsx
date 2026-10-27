@@ -54,7 +54,7 @@ export function AxisOrigin({ floor, axisBreak }: AxisFrame) {
   );
 }
 
-export interface LegendEntry {
+interface LegendEntry {
   id: string;
   label: string;
   colour?: string;
