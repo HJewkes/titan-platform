@@ -27,7 +27,7 @@ import { CACHED_STAGES, type CachedStage, type StageName } from "./records.js";
  * this body's output. It is also the child workflow's registered version.
  */
 export const STAGE_VERSIONS: Record<CachedStage, string> = {
-  gather: "g2", audition: "pp10", script: "x11", rewrite: "x6", eval: "x6", resolve: "p5c2s2f2s2c", tts: "p6b", render: "m10c4", qa: "x10f", sheets: "x10",
+  gather: "g2", audition: "pp10", script: "x11", rewrite: "x6", eval: "x6", resolve: "p5c2s2f2s2c", tts: "p6b", render: "m10c5", qa: "x10f", sheets: "x10",
 };
 
 /** The artifacts each stage reads. */

@@ -901,8 +901,10 @@ new stage key.
   `chart-integrity` (`chart-integrity.ts`, TP-4332) reads each filled `chart` and `replot` beat's optional `baseline`,
   `axisBreak`, `scale` and `legend` slots: it fails bars on a baseline above zero or with a broken axis (CH-11, CH-13),
   a `sequential` colour scale whose CIELAB L* is not strictly monotonic or a `diverging` one not light at one interior
-  peak (CH-22), and a legend on up to `DIRECT_LABEL_MAX` (6) series, which direct labels fit (CH-20). The page kinds
-  draw none of the four slots yet, so the gate holds what a script or pin may ask for.
+  peak (CH-22), and a legend on up to `DIRECT_LABEL_MAX` (6) series, which direct labels fit (CH-20). The `chart`
+  page kind draws all four (`beats/chart-frame.tsx`, TP-4337): its axis starts at `baseline` and names it when it is
+  not zero, `axisBreak` draws a break mark at the origin, `scale` colours each point by value (a diverging scale
+  centred on the baseline) and `legend` keys each series to its colour. `replot` has no page kind yet.
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
   that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
   untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they

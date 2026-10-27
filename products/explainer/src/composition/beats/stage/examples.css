@@ -174,3 +174,9 @@
 .ex-bar-cap { position: absolute; top: -8px; bottom: -8px; width: 6px; margin-left: -3px; border-radius: 3px; background: var(--color-text-primary); }
 .ex-bar-value { white-space: nowrap; font-family: var(--font-family-heading); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ex-bars-note { margin: 28px 0 0; font-size: var(--beat-label); color: var(--color-text-secondary); text-align: center; }
+.ex-axis-origin { display: flex; align-items: center; gap: 12px; font-size: var(--beat-caption); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+.beat-graph-plot > .ex-axis-origin { position: absolute; left: 0; bottom: -40px; }
+.ex-axis-break { width: 28px; height: 14px; background: repeating-linear-gradient(-60deg, transparent 0 5px, var(--color-text-secondary) 5px 8px); }
+.ex-chart-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 36px; margin: 28px 0 0; padding: 0; list-style: none; font-size: var(--beat-label); }
+.ex-chart-legend-entry { display: flex; align-items: center; gap: 12px; }
+.ex-chart-legend-swatch { width: 24px; height: 24px; border-radius: 6px; background: var(--color-text-secondary); }
