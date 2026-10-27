@@ -7,7 +7,7 @@ import { wordBudgetFaults } from "../script-budget.js";
 import type { ScriptBeat, ScriptChapter, ScriptV1 } from "../script-schema.js";
 import type { SpineV1 } from "../spine-schema.js";
 import {
-  checkedObject, draftScript, factsSection, failingErrors, failureList, REPLY_RULES, repairPrompt, repairRounds, stageUsage,
+  checkedObject, draftScript, factsSection, failingErrors, failureList, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, stageUsage,
   type Call, type Checked, type Lint, type Reader, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
 import { patchTargets, patchTask, splicePatch } from "./chapter-patch.js";
@@ -221,6 +221,8 @@ interface ChapterResult {
   stripped: string[];
   /** The kept reply's dropped bad values, each note naming the chapter. */
   dropped: string[];
+  /** The beats the re-time raised in the kept draft. */
+  retimed: string[];
   before: number;
   after: number;
 }
@@ -260,7 +262,8 @@ async function writeChapter(ctx: Chunk, joined: Joined | undefined, index: numbe
   const repaired = await repairChapter(ctx, prompt, joined, draft.script);
   const stripped = repaired.stripped ?? draft.stripped ?? [];
   const dropped = (repaired.dropped ?? draft.dropped ?? []).map((note) => `chapter ${id}: ${note}`);
-  return { joined: withPart(joined, repaired.script), retried: draft.retried, stripped, dropped, before: repaired.before, after: repaired.after };
+  const { before, after } = repaired;
+  return { joined: withPart(joined, repaired.script), retried: draft.retried, stripped, dropped, retimed: draft.retimed, before, after };
 }
 
 /** Each call is counted against the run's cap before it is made: the chunked path has many, the single-call path three. */
@@ -360,7 +363,8 @@ async function writeAll(ctx: Chunk, progress: Progress): Promise<Written> {
   [progress.at, progress.start] = ["the whole-video repair", ctx.spent()];
   const video = await repairVideo(ctx, joinedScript(ctx, joined!));
   progress.notes.push(`whole video: ${spendSince(ctx.spent(), progress.start)}; ${video.before} -> ${video.after} failing error checks`);
-  return written(chapters, video, ctx.spent(), progress.notes);
+  const retimed = retimeRepaired(video.script, chapters.flatMap((chapter) => chapter.retimed));
+  return written(chapters, { ...video, script: retimed.script }, ctx.spent(), progress.notes, retimed);
 }
 
 /** A failed run keeps no notes, so its failure names what each finished part, and the one it stopped in, spent and fixed. */
@@ -370,7 +374,7 @@ function withNotes(error: unknown, progress: Progress, spent: StageUsage): unkno
   return new StageFailure(`${error.message}; after ${parts.join("; ")}`, error.usage, error.retries, error.checks);
 }
 
-function written(chapters: readonly ChapterResult[], video: Repaired, usage: StageUsage, notes: string[]): Written {
+function written(chapters: readonly ChapterResult[], video: Repaired, usage: StageUsage, notes: string[], retimed: Pick<Written, "checks" | "notes">): Written {
   const sum = (key: "before" | "after") => chapters.reduce((total, chapter) => total + chapter[key], 0);
   const detail = `chunked by chapter: ${sum("before")} failing chapter checks before repair, ${sum("after")} after; whole video: ${video.before} failing error checks before its repair, ${video.after} after`;
   return {
@@ -379,7 +383,7 @@ function written(chapters: readonly ChapterResult[], video: Repaired, usage: Sta
     usage,
     retries: chapters.filter((chapter) => chapter.retried).length,
     stripped: [...chapters.flatMap((chapter) => chapter.stripped), ...(video.stripped ?? [])],
-    checks: [{ name: "l0-repair", gate: false, pass: video.after === 0, detail }],
-    notes: [...notes, ...chapters.flatMap((chapter) => chapter.dropped), ...(video.dropped ?? []).map((note) => `whole video: ${note}`)],
+    checks: [{ name: "l0-repair", gate: false, pass: video.after === 0, detail }, ...retimed.checks],
+    notes: [...notes, ...chapters.flatMap((chapter) => chapter.dropped), ...(video.dropped ?? []).map((note) => `whole video: ${note}`), ...retimed.notes],
   };
 }

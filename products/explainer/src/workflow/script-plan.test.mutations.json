@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the first draft goes to the plan retry without a re-time",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "const result = retimedReply(reader.check(first), reader);",
+      "replace": "const result = { ...reader.check(first), retimed: [] };",
+      "kills": [
+        "the script stage's plan retry re-times a draft whose only fault is a beat a word or two over its cap, with no plan retry"
+      ]
+    }
+  ]
+}
