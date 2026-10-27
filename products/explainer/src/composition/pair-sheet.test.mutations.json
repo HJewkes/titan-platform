@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a beat settles at its very end, the first frame of the next beat",
+      "file": "products/explainer/src/composition/parity-sheet.ts",
+      "find": "return beat.durationS - fade - SETTLED_BEFORE_END_S;",
+      "replace": "return beat.durationS - fade;",
+      "kills": [
+        "cuts one cell per beat inside that beat's window, labelled with its kind"
+      ]
+    }
+  ]
+}
