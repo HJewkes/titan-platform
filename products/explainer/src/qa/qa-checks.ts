@@ -1,3 +1,4 @@
+import type { CaptionRule } from "./caption-check.js";
 import type { Check } from "../workflow/records.js";
 import { QaReportSchema, qaSummary, type MediaScanReport, type QaReport } from "./qa-report.js";
 import { TIMING_GATES, type TimingGate } from "./timing-gates.js";
@@ -62,4 +63,13 @@ export const mediaScanVerdict = (kind: keyof MediaScanReport, label: string) => 
   const found = report(input).mediaScan[kind];
   const shown = found.slice(0, DETAIL_FINDINGS).map(({ startS, endS, beats }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s [${beats.join(",")}]`).join("; ");
   return { pass: found.length === 0, detail: found.length === 0 ? `no ${label}` : `${found.length} ${label}: ${shown}` };
+};
+
+/** One caption rule's findings: none passes; a qa.json from before the caption check fails, as a missing gate does. */
+export const captionVerdict = (rule: CaptionRule) => (input: QaCheckInput): Verdict => {
+  const { captions } = report(input);
+  if (captions === undefined) return { pass: false, detail: "qa.json has no captions report" };
+  const found = captions.findings.filter((finding) => finding.rule === rule);
+  const shown = found.slice(0, DETAIL_FINDINGS).map((finding) => finding.message).join("; ");
+  return { pass: found.length === 0, detail: found.length === 0 ? `${captions.cues} cues, no ${rule} finding` : `${found.length} caption ${rule}: ${shown}` };
 };

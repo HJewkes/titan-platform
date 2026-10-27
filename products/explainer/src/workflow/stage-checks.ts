@@ -21,7 +21,8 @@ import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
-import { directionVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
+import { CAPTIONS_GATE } from "../qa/gate-profile.js";
+import { captionVerdict, directionVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
 import { assertDurationAgreement } from "../render/duration-check.js";
 import { RenderManifestSchema } from "../render/render-manifest.js";
 import { doctrineG2p } from "./voice-g2p.js";
@@ -221,6 +222,11 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "black-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("black", "black stretch") },
     { name: "silence-2s", gate: false, reads: ["qa"], run: mediaScanVerdict("silence", "silence of 2 s or more") },
     { name: "frozen-frames", gate: false, reads: ["qa"], run: mediaScanVerdict("freeze", "frozen stretch") },
+    { name: "captions-complete", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("complete") },
+    { name: "captions-words", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("words") },
+    { name: "captions-lines", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("lines") },
+    { name: "captions-cps", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("cps") },
+    { name: "captions-onset", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("onset") },
   ],
   sheets: [],
 };

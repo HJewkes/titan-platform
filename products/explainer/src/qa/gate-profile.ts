@@ -42,6 +42,12 @@ export interface QaGate {
   inspect: QaInspect;
 }
 
+/**
+ * Whether the caption checks fail the qa stage. Reported until the owner commits to WCAG 2.2 AA, which makes captions
+ * (WCAG 1.2.2 Level A) a hard gate; flipping this line is the whole switch.
+ */
+export const CAPTIONS_GATE = false;
+
 const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
 
 /** Parses `gate-profile.yaml`; a kind render-qa does not know, or a type no profile defines, fails the load. */
