@@ -10,6 +10,7 @@ import type { OpenPrList } from "./pr-list.js";
 import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { readContentBytes } from "./file-bytes.js";
 import { listCommitStatuses } from "./commit-status-read.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
 import { compareFiles, readAncestry } from "./compare.js";
@@ -52,6 +53,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     deleteRef: async (repo, branch) => void (await api.send("DELETE", `repos/${repo}/git/refs/heads/${branch}`)),
     getDefaultBranch: async (repo) => (await api.get<{ default_branch: string }>(`repos/${repo}`)).default_branch,
     getContent: (repo, path, ref) => getContent(api, repo, path, ref),
+    getContentBytes: (repo, path, ref) => readContentBytes(api, repo, path, ref),
     putContent: async (repo, request) => {
       const body = { message: request.message, content: Buffer.from(request.content, "utf8").toString("base64"), branch: request.branch, ...(request.expectedBlobSha ? { sha: request.expectedBlobSha } : {}) };
       const written = await api.send<{ content: { sha: string } }>("PUT", `repos/${repo}/contents/${request.path}`, {}, JSON.stringify(body));

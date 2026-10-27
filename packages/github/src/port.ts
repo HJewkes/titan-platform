@@ -114,6 +114,8 @@ export interface GitHubWire {
   deleteRef(repo: RepoSlug, branch: string): Promise<void>;
   getDefaultBranch(repo: RepoSlug): Promise<string>;
   getContent(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
+  /** The file's exact bytes, any size GitHub serves; null when the path is absent at `ref`. */
+  getContentBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
   putContent(repo: RepoSlug, request: PutFileRequest): Promise<{ blobSha: string }>;
   listPrs(repo: RepoSlug, headBranch: string): Promise<PullRequest[]>;
   listOpenPrs(repo: RepoSlug): Promise<PullRequest[]>;
@@ -184,6 +186,8 @@ export interface GitHubPort {
   /** Refuses (skips) the default branch and a head that lives in another repo. */
   deleteRef(repo: RepoSlug, head: HeadRef): Promise<WriteResult>;
   getFile(repo: RepoSlug, path: string, ref: string): Promise<RepoFile | null>;
+  /** `getFile` for binary content such as a PNG: the bytes undecoded, read through `git/blobs` past the 1 MB inline limit. */
+  fileBytes(repo: RepoSlug, path: string, ref: string): Promise<Uint8Array | null>;
   putFile(repo: RepoSlug, request: PutFileRequest): Promise<WriteResult<{ blobSha: string }>>;
   findPr(repo: RepoSlug, headBranch: string): Promise<PullRequest | null>;
   /** List rows carry no `behind` or `mergeableState`; read one with `getPr` for those. */
@@ -291,6 +295,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
     deleteRef: async (repo, head) => deleteRef(wire, repoOf(repo), { branch: checkRef("branch", head.branch), repo: head.repo }),
     getFile: async (repo, path, ref) => wire.getContent(repoOf(repo), checkPath(path), checkRef("ref", ref)),
+    fileBytes: async (repo, path, ref) => wire.getContentBytes(repoOf(repo), checkPath(path), checkRef("ref", ref)),
     putFile: async (repo, request) => putFile(wire, repoOf(repo), checkPutFile(request)),
     findPr: async (repo, headBranch) => findPr(wire, repoOf(repo), checkRef("head", headBranch)),
     listOpenPrs: async (repo, headPrefix = "") => (await wire.listOpenPrs(repoOf(repo))).filter((open) => open.headRef.startsWith(headPrefix)),

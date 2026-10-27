@@ -74,6 +74,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     jobLogs: new Map(),
     jobSteps: new Map(),
     files: new Map(),
+    bytes: new Map(),
     actor: "shepherd-bot",
     prFiles: new Map(),
     prChangedFiles: new Map(),
@@ -128,6 +129,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => record("getContent", getContent(fake, path, ref)),
+    getContentBytes: async (_repo, path, ref) => record("getContentBytes", getContentBytes(fake, path, ref)),
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),
@@ -206,6 +208,14 @@ function deleteRef(fake: FakeGitHub, prs: Map<number, PullRequest>, branch: stri
 function getContent(fake: FakeGitHub, path: string, ref: string): { path: string; blobSha: string; content: string } | null {
   const file = fake.files.get(`${ref}:${path}`);
   return file ? { path, blobSha: file.blobSha, content: file.content } : null;
+}
+
+function getContentBytes(fake: FakeGitHub, path: string, ref: string): Uint8Array | null {
+  const key = `${ref}:${path}`;
+  const stored = fake.bytes.get(key);
+  if (stored) return stored.slice();
+  const text = fake.files.get(key);
+  return text ? new TextEncoder().encode(text.content) : null;
 }
 
 function getPr(fake: FakeGitHub, prs: Map<number, PullRequest>, reads: Map<number, number>, number: number): PullRequest {
