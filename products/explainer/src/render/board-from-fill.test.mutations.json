@@ -36,6 +36,15 @@
       "kills": [
         "boardFromFill page extras takes the headline from the beat's assertion and numbers its chapter out of the script's"
       ]
+    },
+    {
+      "name": "continues keeps the script id",
+      "file": "products/explainer/src/render/board-from-fill.ts",
+      "find": "continues: ids.get(continues) ?? continues",
+      "replace": "continues",
+      "kills": [
+        "boardFromFill page extras names the beat a continuation follows by its storyboard id, not its script id"
+      ]
     }
   ]
 }
