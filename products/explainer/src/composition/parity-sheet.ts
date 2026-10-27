@@ -23,12 +23,23 @@ const STAGE = { width: 1920, height: 1080 };
 /** A kind's first and settled frames side by side, one kind per row. */
 const SHEET_COLUMNS = 2;
 
+/** Kinds drawn by a different view per value of one slot, by that slot: each variant gets its own sheet row. */
+const VARIANT_SLOT: Readonly<Record<string, string>> = { chart: "kind" };
+
 interface KindCell {
+  /** The spec type, with its variant when it has one (`chart-bar`, `chart-line`). */
   kind: string;
   beat: string;
   tag: "first" | "settled";
   /** Seconds from the timeline's start. */
   t: number;
+}
+
+/** The beat's spec type, suffixed with its variant slot's value for a kind that draws each variant differently. */
+export function sheetKind(beat: TimelineBeat): string {
+  const slot = Object.hasOwn(VARIANT_SLOT, beat.kind) ? VARIANT_SLOT[beat.kind]! : undefined;
+  const variant: unknown = slot !== undefined && typeof beat.slots === "object" && beat.slots !== null ? Reflect.get(beat.slots, slot) : undefined;
+  return typeof variant === "string" ? `${beat.kind}-${variant}` : beat.kind;
 }
 
 function cellsOf(beat: TimelineBeat): KindCell[] {
@@ -37,14 +48,14 @@ function cellsOf(beat: TimelineBeat): KindCell[] {
   const firstReveal = Math.min(...(beat.reveals ?? []).map((r) => r.atS), Infinity);
   const first = Math.min((Number.isFinite(firstReveal) ? firstReveal : 0) + FIRST_AFTER_S, settled);
   return [
-    { kind: beat.kind, beat: beat.id, tag: "first", t: beat.startS + first },
-    { kind: beat.kind, beat: beat.id, tag: "settled", t: beat.startS + settled },
+    { kind: sheetKind(beat), beat: beat.id, tag: "first", t: beat.startS + first },
+    { kind: sheetKind(beat), beat: beat.id, tag: "settled", t: beat.startS + settled },
   ];
 }
 
-/** Two cells for the first beat of each kind, in timeline order. */
+/** Two cells for the first beat of each kind (each variant of a variant kind), in timeline order. */
 export function kindCells(timeline: Timeline): KindCell[] {
-  const firsts = timeline.beats.filter((beat, i) => timeline.beats.findIndex((b) => b.kind === beat.kind) === i);
+  const firsts = timeline.beats.filter((beat, i) => timeline.beats.findIndex((b) => sheetKind(b) === sheetKind(beat)) === i);
   return firsts.flatMap(cellsOf);
 }
 

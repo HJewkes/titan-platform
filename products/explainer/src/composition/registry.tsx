@@ -2,10 +2,14 @@ import type { ComponentType, ReactElement } from "react";
 import type { z } from "zod";
 import { BEAT_SLOTS } from "../beat-slots.js";
 import { CatalogueBeat, CatalogueSlots } from "./beats/catalogue.js";
+import { ArchMapKindBeat } from "./beats/ArchMapBeat.js";
+import { ChartKindBeat } from "./beats/ChartBeat.js";
+import { CompareKindBeat } from "./beats/CompareBeat.js";
 import { HeldBeat } from "./beats/held.js";
 import { HookBeat } from "./beats/hook.js";
 import { FactFlashBeat, ListKindBeat, VerdictCardBeat } from "./beats/list-kinds.js";
 import { ButtonBeat, OutroKindBeat } from "./beats/OutroBeat.js";
+import { StatKindBeat } from "./beats/StatBeat.js";
 import { ClaimCardBeat } from "./beats/TitleBeat.js";
 import { useReveal, type Reveal } from "./beats/stage/reveal.js";
 import type { TimelineBeat } from "./timeline.js";
@@ -55,6 +59,10 @@ const BEATS: Readonly<Record<string, BeatDefinition>> = {
   "claim-card": defineBeat(BEAT_SLOTS["claim-card"], ClaimCardBeat, { stage: true, headline: false }),
   button: defineBeat(BEAT_SLOTS.button, ButtonBeat, { stage: true, headline: false }),
   outro: defineBeat(BEAT_SLOTS.outro, OutroKindBeat, { stage: true, headline: false }),
+  stat: defineBeat(BEAT_SLOTS.stat, StatKindBeat, { stage: true }),
+  chart: defineBeat(BEAT_SLOTS.chart, ChartKindBeat, { stage: true }),
+  compare: defineBeat(BEAT_SLOTS.compare, CompareKindBeat, { stage: true }),
+  "arch-map": defineBeat(BEAT_SLOTS.map, ArchMapKindBeat, { stage: true }),
   catalogue: defineBeat(CatalogueSlots, CatalogueBeat),
 };
 
