@@ -42,6 +42,7 @@ import { startSweep, type Sweep } from "./sweep.js";
 import type { ShepherdServices } from "./shepherd/services.js";
 import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
+import type { ClearedMainGate } from "./shepherd/main-ci-cleared.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { startVisualDeliverySweep } from "./shepherd/visual-delivery-sweep.js";
 import { startRoundShipSweep } from "./shepherd/round-ship-sweep.js";
@@ -311,7 +312,8 @@ async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices,
 
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>): Promise<void> {
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
-  for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
+  const onMainGreen = (cleared: ClearedMainGate) => log.info({ ...cleared }, "cleared a main-ci-timeout gate on a green main containing the merge");
+  for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed, onMainGreen })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
   for (const closed of closeThawedMainGates(host, services)) log.info({ ...closed }, "cancelled a main gate whose freeze episode had thawed");
   for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
 }

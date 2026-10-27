@@ -10,6 +10,7 @@ import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { failureOf } from "./error-class.js";
 import { judgeMain, mainRulesReader, onlyCancels, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
+import { clearedOnGreen } from "./main-green-ack.js";
 import { MainCiReads } from "./main-watch.js";
 import { rerunAlongsideFixer, rerunRedMain, type RerunInput } from "./main-rerun.js";
 import { FixTaskResult, FreezeResult, MAIN_RED_STEPS, MAIN_RERUN_STEP, UnfreezeResult, mainRedFyi, mainRedRoutes, type MainRedAbout, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
@@ -153,8 +154,11 @@ async function askFrozen(ctx: WorkflowContext, gate: "main-red-again" | "main-fr
 const mainRedAck = (ctx: WorkflowContext, demotions: GateDemotions, situation: string, about: MainRedAbout): Promise<void> =>
   demotions.mainRed ? mainRedFyi(ctx, situation, about) : askOwner(ctx, "main-red", `${situation} Acknowledge.`, about);
 
+/** Only main-ci-timeout takes the gone sweep's cancel as its answer, once a green main commit contains the merge. */
 async function askOwner(ctx: WorkflowContext, stepId: string, prompt: string, about: { repo: string; mergeSha: string; headline: string; detail: string }): Promise<void> {
-  const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck, brief: acknowledgeBrief(about) });
+  const recordCancel = stepId === "main-ci-timeout";
+  const answer = await ctx.assisted(stepId, prompt, { schema: OwnerAck, brief: acknowledgeBrief(about), recordCancel });
+  if (recordCancel && clearedOnGreen(stepId, answer)) return;
   if (OwnerAck.parse(answer.data).mergeSha !== about.mergeSha) throw new Error(`${stepId} answer names a different merge sha than ${about.mergeSha}`);
 }
 
