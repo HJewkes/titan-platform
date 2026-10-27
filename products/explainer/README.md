@@ -308,8 +308,8 @@ rejected and retried once in the same round, never merged. A round with a row th
 (Q-W3, Q-W4 or Q-W6 when the chapter lacks the beat they read, Q-W10, Q-V4 on a "Chapter ..." label) asks back the
 whole chapter as before. The chapters then join in the spine's order,
 the ledger stamp runs, and the whole script gets one repair round (`VIDEO_REPAIR_ROUNDS`) whose reply lists only the beats
-and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `unknown-words`, `word-budget`, `runtime`)
-run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
+and video fields it changes. The stage's gates (`l0`, `pace`, `cues-present`, `unknown-words`, `word-budget`, `runtime`,
+`template-fill`) run on the joined draft as on any other. Each chapter and the whole-video round leave a stage note with their calls,
 dollars and prompt-cache tokens read and written, and the path stops itself at the run's spend cap between calls.
 
 **Word-budget re-time (TP-4288).** A beat a few words over its cap gets the seconds its words need, at no cost
@@ -320,6 +320,15 @@ before the plan retry counts faults, so a draft that only needs seconds makes no
 repair round (the single call's, or the chunked path's whole-video round), which keeps any reply that fails fewer L0
 rows whatever its word count. Each move is a stage note and the reported check `word-budget-retime`, as
 `reflection-1 18→19 s`. Anything larger still fails the `word-budget` gate.
+
+**Template fill on the draft (TP-4289).** The script stage runs resolve's template fill on its own draft
+(`draftFillFaults`, `script-fill.ts`): the shipped router, no slots pin and no code. Beats whose slots come from run
+artifacts the stage lacks (`code-walk`, `docs-vs-code`, `fix`, `companion-link`) are left to resolve. Each refused beat
+is a plan fault, such as a list of 7 labels against the slot schema's 5 rows, so the plan retry names it and its hint
+asks for the split: keep as many labels as the beat spec holds and move the rest to a continuation beat in the same
+chapter. The chapter reader counts the same faults, every L0 repair round answers each refused beat as a
+`template-fill` row, and the `template-fill` gate fails what is left. A rewrite round reverts a beat whose appended
+labels make the fill refuse it, as `template-fill`.
 
 **The companion doc (TP-4026).** When the facts are gathered review facts (`facts.jsonl` of `ExplainerFact`s), the
 script stage also writes `companion` (`companion.md`, `renderCompanion`) and `chapter-links`
@@ -444,8 +453,8 @@ skipped with a note.
 
 | Stage | Gate | Reported |
 |---|---|---|
-| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `word-budget-retime` (the beats re-timed to fit their words); `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
-| `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite); `word-budget` (a beat or block of the rewritten script over the cap resolve holds it to; a round reverts a beat whose rewrite takes it over, as `word-budget`) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
+| `script` | `script-schema`; `l0` (error-severity L0 rows on the draft, spine lints and Q-E20 over the gathered facts included); `pace` (error-severity pace rows); `cues-present` (a beat whose beat spec has emphasis targets and no cue, or a chapter whose spine lead beat is on none of its beats); `unknown-words` (a spoken word of the spelled draft the voice's g2p, the doctrine lexicon included, has no phonemes for); `template-fill` (a beat resolve's template fill would refuse on the draft, code and companion beats left to resolve) | `l0-warnings` (warning rows, ghosts among them); `l0-repair`; `word-budget-retime` (the beats re-timed to fit their words); `script-unknown-keys` (keys dropped from the reply); `listener-questions` (opt-in, below) |
+| `rewrite` | `no-new-l0-error` (an error row that passed on the draft and fails on the rewrite); `word-budget` (a beat or block of the rewritten script over the cap resolve holds it to; a round reverts a beat whose rewrite takes it over, as `word-budget`, and one whose appended labels make the template fill refuse it, as `template-fill`) | `rewrite-rows` (the Q-V11 target rows: warning-severity, and noisy run to run per TP-3878) |
 
 **Listener questions (TP-4080).** `listener-questions` is the owner's exercise as a check: a fresh listener hears each
 chapter of the draft once, with nothing before it, and lists every question the chapter raises and leaves

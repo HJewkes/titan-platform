@@ -9,6 +9,24 @@
       "kills": [
         "the script stage's plan retry re-times a draft whose only fault is a beat a word or two over its cap, with no plan retry"
       ]
+    },
+    {
+      "name": "planFaults drops the draft's template-fill faults",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": ", ...draftFillFaults(draft)];",
+      "replace": "];",
+      "kills": [
+        "the script stage's plan retry retries once naming a 7-label list resolve's template fill refuses, and keeps the reply that moves rows to the continuation"
+      ]
+    },
+    {
+      "name": "the single-call repair rounds no longer answer template-fill rows",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];",
+      "replace": "const failing = (script: ScriptV1) => failingErrors(lint.rows(script));",
+      "kills": [
+        "the script stage's plan retry answers a fill fault the plan retry left in an L0 repair round, naming the refused beat, and keeps the repair"
+      ]
     }
   ]
 }
