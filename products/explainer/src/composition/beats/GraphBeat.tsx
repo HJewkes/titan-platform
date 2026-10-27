@@ -1,5 +1,5 @@
 import { MOTION, useBeatTime } from "@titan-design/react-ui/motion";
-import { AxisOrigin, axisShare, type AxisFrame } from "./chart-frame.js";
+import { AxisOrigin, axisShare, marksOrigin, type AxisFrame } from "./chart-frame.js";
 import { enter, progressAt } from "./stage/entrance.js";
 
 /**
@@ -57,13 +57,13 @@ export function GraphFrame({ title, unit, points, growAtS, frame = { floor: 0, a
   return (
     <>
       {title && <h2 className="beat-heading" style={enter(t, 0)}>{unit ? `${title} (${unit})` : title}</h2>}
-      <div className="beat-graph-plot" style={{ height: GRAPH_PLOT_PX + 64 }}>
+      <div className="beat-graph-plot" data-origin={marksOrigin(frame) || undefined} style={{ height: GRAPH_PLOT_PX + 64 }}>
         <AxisOrigin {...frame} />
         {points.map((point, i) => (
           <GraphBar key={point.id} point={point} height={barHeight(t, i, point.value, axis, growAtS)} lit={progressAt(t, point.litAtS, MOTION.duration.slow)} />
         ))}
       </div>
-      <div className="beat-graph-labels">
+      <div className="beat-graph-labels" data-origin={marksOrigin(frame) || undefined}>
         {points.map((point) => <span key={point.id}>{point.label}</span>)}
       </div>
     </>

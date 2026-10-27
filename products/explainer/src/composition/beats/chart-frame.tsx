@@ -43,9 +43,13 @@ export function scaleColours(scale: ChartScale, values: readonly number[], centr
   return values.map((value) => scale.colours[Math.round(position(value) * last)]!);
 }
 
+/** A frame names its axis origin only when the axis starts somewhere other than zero or is drawn broken. */
+export const marksOrigin = ({ floor, axisBreak }: AxisFrame): boolean => floor !== 0 || axisBreak;
+
 /** Where the value axis starts when it does not start at zero, and the break mark when it is drawn broken. */
-export function AxisOrigin({ floor, axisBreak }: AxisFrame) {
-  if (floor === 0 && !axisBreak) return null;
+export function AxisOrigin(frame: AxisFrame) {
+  if (!marksOrigin(frame)) return null;
+  const { floor, axisBreak } = frame;
   return (
     <span className="ex-axis-origin" data-axis-floor={floor}>
       {axisBreak && <span className="ex-axis-break" data-qa-decor="" aria-label="axis break" />}

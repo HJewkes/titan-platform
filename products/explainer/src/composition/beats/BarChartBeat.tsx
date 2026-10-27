@@ -62,10 +62,10 @@ export function BarChartFrame({ rows, growAtS, frame = NO_FRAME }: { rows: reado
   const axis = { floor: frame.floor, max: Math.max(frame.floor, ...rows.map((r) => Math.max(r.value, r.cap ?? 0))) };
   return (
     <>
-      <AxisOrigin {...frame} />
       <ul className="ex-bars">
         {rows.map((row, i) => <Bar key={row.id} row={row} i={i} t={t} axis={axis} growAtS={growAtS} />)}
       </ul>
+      <AxisOrigin {...frame} />
     </>
   );
 }
