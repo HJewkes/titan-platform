@@ -3,8 +3,11 @@ import { step } from "../workflows/land.js";
 import { MERGE_EVIDENCE_STEP, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import { MergeEvidenceSchema } from "./review-schemas.js";
 
+/** The run policy's visual globs and baselines, which the re-read must decide on exactly as `decide` does. */
+type VisualRunPolicy = Pick<MergeEvidenceInput, "visualPaths" | "visualBaselines">;
+
 /** The evidence step's input rebuilt from its own earlier output at the head, so a re-read takes exactly the facts the review supplied. */
-function rereadInput(runId: string, evidence: MergeEvidence, visualPaths: string[] | undefined): MergeEvidenceInput {
+function rereadInput(runId: string, evidence: MergeEvidence, { visualPaths, visualBaselines }: VisualRunPolicy): MergeEvidenceInput {
   const { record, merge } = evidence;
   const carried = merge.carry && { fromHead: merge.carry.fromHead, head: merge.carry.head, result: { equal: true, headTree: merge.carry.headTree, mergeTree: merge.carry.mergeTree } };
   return {
@@ -18,6 +21,7 @@ function rereadInput(runId: string, evidence: MergeEvidence, visualPaths: string
     seatGrants: merge.seatGrants,
     ...(carried && { carry: carried }),
     ...(visualPaths && { visualPaths }),
+    ...(visualBaselines && { visualBaselines }),
     ...(evidence.ciPolicy && { ciPolicy: evidence.ciPolicy }),
     ...(evidence.grantWithheld && { grantWithheld: evidence.grantWithheld }),
     ...(record.proofUnverified !== undefined && { proofUnverified: record.proofUnverified }),
@@ -26,6 +30,6 @@ function rereadInput(runId: string, evidence: MergeEvidence, visualPaths: string
 }
 
 /** The evidence step again at the same head; the workflow keys a repeated step id by iteration, so a replay reads the recorded answer. */
-export function refreshMergeEvidence(ctx: WorkflowContext, evidence: MergeEvidence, visualPaths: string[] | undefined): Promise<unknown> {
-  return step(ctx, `${MERGE_EVIDENCE_STEP}:${evidence.head}`, rereadInput(ctx.runId, evidence, visualPaths), MergeEvidenceSchema);
+export function refreshMergeEvidence(ctx: WorkflowContext, evidence: MergeEvidence, visual: VisualRunPolicy): Promise<unknown> {
+  return step(ctx, `${MERGE_EVIDENCE_STEP}:${evidence.head}`, rereadInput(ctx.runId, evidence, visual), MergeEvidenceSchema);
 }

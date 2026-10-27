@@ -1018,6 +1018,10 @@ grants_extra:
 visual_paths:
   - packages/ui/src/components/**
   - "**/*.stories.tsx"
+visual_baselines:
+  check: visual
+  paths:
+    - packages/ui/specimen/baseline/**
 ---
 ```
 
@@ -1028,6 +1032,9 @@ visual_paths:
   does a glob no repo-relative path can match: leading or trailing whitespace, a backslash, an
   empty segment (a leading, doubled or trailing `/`), or a `.` or `..` segment, in the glob or
   in any of its `{a,b}` alternatives, or a fullwidth slash or invisible format character.
+- **`visual_baselines`** names a CI check that diffs rendered output against committed
+  baseline files, and the globs of those files. It needs `visual_paths`, a non-empty `check`
+  and globs under the same rules. See [Visual baselines](#visual-baselines).
 - **`deny_repos`** lists checkout paths no registration may target. A deny path that a seat
   binds to a remote denies that remote. A path no seat binds denies its last segment as a
   repo name under any owner.
@@ -1042,7 +1049,7 @@ visual_paths:
 A seat with `visual_paths` resolves to `auto` even without `merge-on-green-approve`. At each
 head Shepherd decides, it matches the changed files the merge evidence read at that head
 (both sides of a rename) against the globs. Files that cannot render never match: names
-with `.test.` or `.spec.`, and names ending `.md` or `.d.ts`.
+with `.test.`, `.spec.`, `.test-d.` or `.spec-d.`, and names ending `.md` or `.d.ts`.
 
 - no file matches: the merge goes on to `MRG-AU-RV`, which still needs a `MERGE` at the head
   and green required checks;
@@ -1056,6 +1063,35 @@ file any of them calls visual gates. If one of those seats has neither `visual_p
 the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
 `visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
+
+### Visual baselines {#visual-baselines}
+
+A seat can add `visual_baselines: { check, paths }` beside `visual_paths`. The check is one
+that fails on any pixel drift without a committed baseline update, so a rendered change has to
+add, change or remove a file under `paths`. Shepherd then asks the owner about a visual
+pull request only when it shows a real rendered diff. At a head whose changed files match
+`visual_paths`:
+
+- a changed baseline file (added, modified or removed): the merge gates on `visual-path`,
+  and the reason lists the baseline files;
+- no baseline file changed, and every run of `check` at that head from GitHub Actions
+  concluded `success`: the visual files do not gate, the merge goes on to `MRG-AU-RV`, and
+  the evidence comment records that the visual files changed no baseline and the check
+  passed;
+- no baseline file changed, but the check is missing, pending or not `success`: the merge
+  gates on `visual-path` as without baselines.
+
+A remote that several seats list keeps `visual_baselines` only when every seat with
+`visual_paths` declares the same block. Otherwise it has none, and the glob gate stands.
+
+A rendering file that no baseline covers, such as a new component with no story or
+specimen, changes no baseline, so it merges on a green check. The seat owner opts in to
+that gap by adding the block.
+
+The run's policy is frozen at registration. A run registered before its seat added
+`visual_baselines` has none in its stored policy. A repeat `register` keeps baselines only
+when the stored policy and the new one carry the same block, so such a run keeps the glob
+gate for its whole life, and a gate it already opened is not decided again.
 
 The seat book is read again on every `register`, so a change applies without a restart. An
 invalid seat file or charter fails every registration until it is fixed. Path spelling
@@ -1560,14 +1596,17 @@ TTL. Two reservations that overlap land in the order they were taken.
 recorded as `ahead` and land first; they are never held behind it. In the `sh-order-wait`
 step the conflicted run gives up the train and waits for them, and for any earlier
 overlapping reservation. Then it wakes its fixer once, in the usual conflict wake, so the one
-merge of main happens at the base they leave behind. A push to the pull request during the
-wait ends it with no wake; the next land round reads the new head.
+merge of main happens at the base they leave behind. An `ahead` run that leaves its merge step
+without merging (CI red, demoted, parked) is no longer waited on (TP-4103). A push to the pull
+request during the wait ends it with no wake; the next land round reads the new head.
 
 **TTL and release.** The rule file `merge-order.json` sets the TTL per repo (120 minutes for
 titan-platform). The run deletes its row in `sh-order-unreserve` when it ends, merged or not.
 A row whose run crashed stops blocking once the run no longer drives, so no sweeper is
 needed. A seat's repair-stop still wins over the conflict wake; the reservation keeps
-blocking under it until the TTL.
+blocking under it until the TTL. On its first CI read past the TTL, the reserving run ends its
+row in `sh-order-expire`, logs `order-expired` once, and tells its seat once that overlapping
+pull requests may now land first and conflict it again.
 
 **How it reads.** A waiting run's merge step answers `skipped: "held"` and spends no CI
 cycle. The hold reason names the reserving pull request and the shared paths:
@@ -1576,9 +1615,29 @@ cycle. The hold reason names the reserving pull request and the shared paths:
 merge order: waiting behind #2301 (products/explainer/CAPABILITY.md)
 ```
 
+`shepherd status` shows that reason as the waiting row's next action. The reserving row
+carries its reservation, with its state and the pull requests waiting behind it:
+
+```
+hjewkes/titan-platform#2301 fixing … [merge order: reserved 2 path(s) since 2026-10-23T10:57:00.000Z, live; #2311 waiting]
+```
+
 The conflicted run shows `merging` while it waits in `sh-order-wait`; the step's result
-lists the pull requests it waited behind. Only repos with `"enabled": true` in
-`merge-order.json` are ordered: titan-platform today.
+lists the pull requests it waited behind. `shepherd timeline` lists the reserving run's
+`order-reserve`, `order-release` and `order-expired` events. Only repos with
+`"enabled": true` in `merge-order.json` are ordered: titan-platform today.
+
+**Reading and clearing by hand.** `titan-factory shepherd order [owner/repo]` lists every
+reservation with its age, its state (`live`, `expired`, `not driving` or `rule off`), the
+pull requests it let land first, the earlier reservations it waits behind, and the pull
+requests waiting behind it. It reads the database and serve's memory only, never GitHub.
+
+`titan-factory shepherd order clear owner/repo#N --reason <text>` is the seat's break-glass.
+It deletes that pull request's reservation, so every run waiting behind it may merge on its
+next read and a run still in `sh-order-wait` wakes its fixer. The clear is logged as an
+`order-release` event naming the caller and `cleared by hand: <reason>`. It refuses, and
+changes nothing, when the pull request holds no reservation. Clear only a reservation that
+is stuck: a cleared pull request can be conflicted again by the merges it let through.
 
 ## The Version Packages pull request {#version-packages}
 

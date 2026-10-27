@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a break-glass clear names no actor",
+      "file": "products/factory/src/shepherd/merge-order-command.ts",
+      "find": "actor: args.actor, reason: `cleared by hand",
+      "replace": "reason: `cleared by hand",
+      "kills": [
+        "shepherd order clears a reservation by hand and logs the release with the caller and the reason"
+      ]
+    },
+    {
+      "name": "a clear of a PR with no reservation is not refused",
+      "file": "products/factory/src/shepherd/merge-order-command.ts",
+      "find": "if (own === undefined) throw coded(",
+      "replace": "if (own === null) throw coded(",
+      "kills": [
+        "shepherd order refuses to clear a PR that holds no reservation, and changes nothing"
+      ]
+    },
+    {
+      "name": "no reservation is listed as waiting behind an earlier one",
+      "file": "products/factory/src/shepherd/merge-order-command.ts",
+      "find": "const behind = rule?.enabled ?",
+      "replace": "const behind = false ?",
+      "kills": [
+        "shepherd order lists each reservation with its age, the earlier reservation it waits behind and the PRs waiting behind it"
+      ]
+    },
+    {
+      "name": "status never names the order wait",
+      "file": "products/factory/src/shepherd/merge-order-command.ts",
+      "find": "...(wait && { nextAction: wait.reason }), ",
+      "replace": "",
+      "kills": [
+        "shepherd status with merge order names the reservation a PR is waiting behind, and the reservation on the reserving row"
+      ]
+    },
+    {
+      "name": "status never shows the reservation on the reserving row",
+      "file": "products/factory/src/shepherd/format.ts",
+      "find": "`${rowLine(row)}${reserved(row)}`",
+      "replace": "rowLine(row)",
+      "kills": [
+        "shepherd status with merge order names the reservation a PR is waiting behind, and the reservation on the reserving row"
+      ]
+    }
+  ]
+}

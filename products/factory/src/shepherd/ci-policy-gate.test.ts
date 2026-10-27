@@ -228,8 +228,20 @@ describe("the CI-policy line across the review's own steps", () => {
     const asked: Asked[] = [];
     const evidence = await evidenceFor(modified(CI_YML), UNCHANGED);
 
-    await refreshMergeEvidence(recordingCtx(asked, evidence), evidence, undefined);
+    await refreshMergeEvidence(recordingCtx(asked, evidence), evidence, {});
 
     expect(evidenceInput(asked).ciPolicy).toEqual(UNCHANGED);
+  });
+});
+
+describe("the run's visual policy across an unsettled re-read (TP-2662)", () => {
+  it("keeps the run's visual paths and baselines, so the comment's decision matches decide", async () => {
+    const asked: Asked[] = [];
+    const evidence = await evidenceFor(modified(CI_YML), UNCHANGED);
+    const visual = { visualPaths: ["packages/ui/**"], visualBaselines: { check: "visual", paths: ["packages/ui/specimen/baseline/**"] } };
+
+    await refreshMergeEvidence(recordingCtx(asked, evidence), evidence, visual);
+
+    expect(evidenceInput(asked)).toMatchObject(visual);
   });
 });

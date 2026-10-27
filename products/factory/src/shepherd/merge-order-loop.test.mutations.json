@@ -21,12 +21,12 @@
       ]
     },
     {
-      "name": "a push during the wait is never seen",
+      "name": "a run that left its merge step unmerged is still waited on",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "  return read !== undefined && read.headSha !== input.headSha;",
-      "replace": "  return false;",
+      "find": "if (headSha === undefined || (await heldByOrder(",
+      "replace": "if (headSha !== undefined && (await heldByOrder(",
       "kills": [
-        "TP-4098 slice C: the #2301 loop skips the wake when the head moves during the order wait, and lands the next round"
+        "TP-4098 slice C: the #2301 loop stops waiting on a run it let merge first once that run leaves its merge step unmerged"
       ]
     },
     {

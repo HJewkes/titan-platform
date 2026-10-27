@@ -5,6 +5,7 @@ import { parse } from "yaml";
 import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
+import type { VisualBaselines } from "./visual-gate.js";
 
 export { isRepo as isRepoKey } from "@titan-design/github";
 
@@ -113,7 +114,7 @@ export interface Seat {
   /** Repo-relative globs a PR must touch none of to merge without the owner; absent means the seat has not opted in. */
   visualPaths?: string[];
   /** The check and baseline globs that let a visual-path PR changing no baseline merge on a green check; absent keeps the glob gate. */
-  visualBaselines?: { check: string; paths: string[] };
+  visualBaselines?: VisualBaselines;
 }
 
 export interface SeatBook {
