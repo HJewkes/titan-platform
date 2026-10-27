@@ -210,6 +210,13 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     }
   });
 
+  // Mutation: keep the 48 px column gap on a dense chart; twelve labels then run past the stage box and the page fails.
+  test("a line chart of twelve points fits its stage box with and without a legend, through every frame", async () => {
+    const render = await renderFrames(server.url("index.html", "/timelines/dense-line.timeline.json"));
+
+    assert.equal(render.pageDurationS, fixtureDurationS("dense-line.timeline.json"));
+  });
+
   // Mutation: make useStageFit return before measuring; the too-wide line renders under the chrome and the page opens.
   test("a held line too wide for its stage box fails the page with the overflow", async () => {
     const browser = await launch();

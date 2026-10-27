@@ -908,6 +908,9 @@ new stage key.
   page kind draws all four (`beats/chart-frame.tsx`, TP-4337): its axis starts at `baseline` and names it when it is
   not zero, `axisBreak` draws a break mark at the origin, `scale` colours each point by value (a diverging scale
   centred on the baseline) and `legend` keys each series to its colour. `replot` has no page kind yet.
+  A line chart of more than 7 points closes its column gap and gives its plot 320 px, since its labels wrap to two
+  lines; a legend takes another 120 px from the plot. So a line chart of up to 12 points fits its stage box, with or
+  without a legend (TP-4338).
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
   that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
   untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they

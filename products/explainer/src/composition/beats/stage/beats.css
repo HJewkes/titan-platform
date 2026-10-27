@@ -195,7 +195,6 @@
 }
 .beat-graph-col {
   flex: 1;
-  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -226,8 +225,7 @@
   color: var(--color-text-secondary);
   font-size: var(--beat-caption);
 }
-/* A label wraps inside its own column, so the label row can never run wider than the plot above it. */
-.beat-graph-labels > span { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: center; }
+.beat-graph-labels > span { flex: 1; text-align: center; }
 .beat-graph-plot[data-dense], .beat-graph-labels[data-dense] { gap: var(--beat-gap-sm); }
 .beat-terminal {
   overflow: hidden;
