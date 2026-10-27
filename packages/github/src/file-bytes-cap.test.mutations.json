@@ -31,9 +31,9 @@
     },
     {
       "name": "the port passes a non-positive cap to the wire",
-      "file": "packages/github/src/port.ts",
-      "find": "checkPositiveInt(\"maxBytes\", opts.maxBytes)",
-      "replace": "opts.maxBytes",
+      "file": "packages/github/src/validate.ts",
+      "find": "checkPositiveInt(\"maxBytes\", maxBytes)",
+      "replace": "maxBytes",
       "kills": ["fileBytes with maxBytes over the fake refuses a cap that is not a positive integer before any wire call"]
     }
   ]

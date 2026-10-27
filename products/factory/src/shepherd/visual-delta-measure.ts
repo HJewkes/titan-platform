@@ -15,7 +15,7 @@ const DEFAULT_MAX_PIXELS = 16 * MI;
 const DEFAULT_MAX_TOTAL_PIXELS = 128 * MI;
 export const OVER_BUDGET = "over the step's pixel budget";
 
-export interface MeasureCaps {
+interface MeasureCaps {
   pixelTolerance: number;
   maxSnapshots?: number;
   maxBytes?: number;
@@ -91,7 +91,7 @@ async function mergeBaseOf(port: GitHubPort, { repo, baseRef, head }: MeasureTar
   }
 }
 
-export interface Measured {
+interface Measured {
   mergeBase: string | null;
   measured: PairMeasure[];
 }
