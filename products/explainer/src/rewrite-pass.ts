@@ -239,6 +239,12 @@ function joinReverts(...sources: readonly RevertedBeat[][]): RevertedBeat[] {
   return [...rows].map(([beat, beatRows]) => ({ beat, rows: beatRows }));
 }
 
+/** The rewritten beats a round puts back: each that gained an error row or took a word budget over its cap. */
+function revertedBeats(script: ScriptV1, rows: readonly L0Result[], merged: Merged, checks: readonly L0Check[]): RevertedBeat[] {
+  const errors = gainedErrors(rows, runL0({ ...script, beats: merged.beats }, undefined, checks), merged.rewritten);
+  return joinReverts(errors, gainedBudget(script, merged.beats, merged.rewritten));
+}
+
 interface RoundOutcome {
   script: ScriptV1;
   rows: L0Result[];
@@ -293,8 +299,7 @@ async function runRound({ script, rows, refused }: RoundInput, round: number, de
   if (chapters.length === 0) return { script, rows, calls: [] };
   const replies = await Promise.all(chapters.map((chapter) => callChapter(chapter, script, plan, deps)));
   const merged = mergeReplies(script, plan, replies, deps);
-  const errors = gainedErrors(rows, runL0({ ...script, beats: merged.beats }, undefined, checks), merged.rewritten);
-  const reverted = joinReverts(errors, gainedBudget(script, merged.beats, merged.rewritten));
+  const reverted = revertedBeats(script, rows, merged, checks);
   const back = new Set(reverted.map((r) => r.beat));
   const candidate = merged.beats.map((beat, i) => (back.has(beat.id) ? script.beats[i]! : beat));
   const greedy = keepChapters(script, rows, candidate, checks);
