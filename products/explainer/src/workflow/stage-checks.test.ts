@@ -234,7 +234,8 @@ describe("running a stage's checks", () => {
         "variety-min-framings:reported", "variety-cast-in-motion:reported", "emphasis-target:gate", "word-budget:gate", "slot-overrides:gate", "template-fill:gate",
         "chart-integrity:gate", "sim-check:reported", "sim-cut-orphan:gate",
       ], tts: ["cue-resolution:gate"], render: ["duration-agreement:gate"], qa: ["held-errors:gate", "mp4-duration:gate", "motion-happened:gate", "clipped-text:gate", "content-fill:gate", "stage-empty:reported",
-        "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate", "direction-gates:reported",
+        "picture-change:gate", "picture-change-warn:reported", "static-window:gate", "cue-onset:gate", "reading-hold:gate",
+        "headline-label-words:gate", "narration-shared-run:gate", "words-per-frame:gate", "direction-gates:reported",
         "black-frames:reported", "silence-2s:reported", "frozen-frames:reported"], sheets: [],
     });
   });
