@@ -116,12 +116,13 @@ function candidatesOf(file: string, source: SourceFile): Candidate[] {
   });
 }
 
-function shapeSkip(node: FunctionLike): BodyDeleteSkip | undefined {
+/** The block body an early return can go into, or why there is none. */
+function blockBody(node: FunctionLike): Node | BodyDeleteSkip {
   if (Node.isConstructorDeclaration(node)) return "constructor";
   if (!Node.isArrowFunction(node) && node.isGenerator()) return "generator";
   const body = node.getBody();
   if (body === undefined) return "overload-or-abstract";
-  return Node.isBlock(body) ? undefined : "expression-body";
+  return Node.isBlock(body) ? body : "expression-body";
 }
 
 function intersects(start: number, end: number, ranges: readonly (readonly [number, number])[]): boolean {
@@ -158,9 +159,8 @@ function uniqueFind(text: string, start: number, braceEnd: number): { find: stri
 
 function judge(file: string, text: string, candidate: Candidate, input: PlanBodyDeletesInput): Verdict {
   if (!intersects(candidate.lineStart, candidate.lineEnd, input.changed.get(file) ?? [])) return { reason: "unchanged" };
-  const shape = shapeSkip(candidate.node);
-  if (shape !== undefined) return { reason: shape };
-  const body = candidate.node.getBody() as Node;
+  const body = blockBody(candidate.node);
+  if (typeof body === "string") return { reason: body };
   if (!isCovered(candidate, body.getStartLineNumber(), input.covered.get(file))) return { reason: "uncovered" };
   const found = uniqueFind(text, candidate.node.getStart(), body.getStart() + 1);
   if ("reason" in found) return found;
