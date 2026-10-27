@@ -14,7 +14,7 @@ import type { ProbedMoment } from "@titan-design/render-qa";
 import type { TimingGate, TimingInput } from "./timing-gates.js";
 
 /** RW-12's margin past the last referring word. */
-export const HOLD_AFTER_S = 0.5;
+const HOLD_AFTER_S = 0.5;
 const EPS = 1e-9;
 /** Words too common to say the narration refers to an element. */
 const STOP: ReadonlySet<string> = new Set([
