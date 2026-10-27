@@ -1,6 +1,6 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { FreezeGuard } from "./freeze.js";
-import { blockers, type Blocker, type MergeOrder, type MergeOrderRules, type OrderSelf } from "./merge-order.js";
+import { blockers, type Blocker, type MergeOrder, type MergeOrderRule, type MergeOrderRules, type OrderSelf, type OrderWaits } from "./merge-order.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 
@@ -13,6 +13,7 @@ interface MergeOrderGuardDeps {
   registrations: () => RunLookup;
   rules: MergeOrderRules;
   now?: () => number;
+  waits?: OrderWaits;
 }
 
 const SHOWN_PATHS = 3;
@@ -46,6 +47,12 @@ function pinnedPerHead(): (port: GitHubPort, repo: RepoSlug, pr: number, head: s
   };
 }
 
+interface GuardTarget {
+  repo: RepoSlug;
+  runId: string;
+  pr: number;
+}
+
 /**
  * Why `repo#pr` waits behind an earlier conflicted PR that reserved paths it also changes. It reads nothing when the
  * repo's rule is off or no reservation in the repo is live, and it never orders a release PR, a stacked PR or a PR with
@@ -54,21 +61,27 @@ function pinnedPerHead(): (port: GitHubPort, repo: RepoSlug, pr: number, head: s
 export function mergeOrderGuard(deps: MergeOrderGuardDeps): FreezeGuard {
   const now = deps.now ?? Date.now;
   const pathsAt = pinnedPerHead();
+  const blockerOf = async (port: GitHubPort, { repo, runId, pr }: GuardTarget, rule: MergeOrderRule, baseRef: string, head: string | undefined): Promise<Blocker | undefined> => {
+    const order = deps.order();
+    const driving = (id: string): boolean => order.isDriving(id);
+    const reservations = order.list(repo);
+    if (blockers({ repo, runId, paths: [], unread: true }, reservations, rule, now(), driving).length === 0 || baseRef !== (await port.defaultBranch(repo))) return undefined;
+    for (const blocker of blockers({ repo, runId, ...(await pathsAt(port, repo, pr, head)) }, reservations, rule, now(), driving)) {
+      if (await stillOpen(port, repo, blocker.reservation.pr)) return blocker;
+    }
+    return undefined;
+  };
   return {
     async reason(port, repo, pr, baseRef, head, branch) {
       const rule = deps.rules(repo);
       if (!rule?.enabled || branch === VERSION_PACKAGES_BRANCH) return undefined;
-      const order = deps.order();
       const runId = deps.registrations().byPr(repo, pr)?.runId;
       if (runId === undefined) return undefined;
-      const driving = (id: string): boolean => order.isDriving(id);
-      const reservations = order.list(repo);
-      if (blockers({ repo, runId, paths: [], unread: true }, reservations, rule, now(), driving).length === 0 || baseRef !== (await port.defaultBranch(repo))) return undefined;
-      const self = { repo, runId, ...(await pathsAt(port, repo, pr, head)) };
-      for (const blocker of blockers(self, reservations, rule, now(), driving)) {
-        if (await stillOpen(port, repo, blocker.reservation.pr)) return reasonOf(blocker);
-      }
-      return undefined;
+      const blocker = await blockerOf(port, { repo, runId, pr }, rule, baseRef, head);
+      const reason = blocker && reasonOf(blocker);
+      if (blocker && reason) deps.waits?.set(runId, { repo: repo.toLowerCase(), pr, behind: blocker.reservation.pr, reason });
+      else deps.waits?.delete(runId);
+      return reason;
     },
   };
 }
