@@ -10,10 +10,15 @@ import {
   type OpenLoop,
 } from '../sessions/open-loops.js';
 import { findMergedPrLoops } from '../sessions/loop-pr-state.js';
+import { resolveLedgerPaths } from '../sessions/ledger-file.js';
+import { LoopSourceSchema, readLedgerLoops } from '../sessions/loop-board.js';
+import type { LedgerLoop } from '../schemas/loop-ledger.js';
 import { loadTasks } from '../lint/load-tasks.js';
 import type { Task } from '../schemas/task.js';
 import { assertValidSlug } from '../utils/slug.js';
 import { defineCommand } from '../registry/index.js';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -30,9 +35,11 @@ const OpenLoopSchema = z.object({
   due: z.string().optional(),
   /** Present when the loop is owed now: which of its triggers fired. */
   trigger_met: z.array(z.enum(['task-done', 'pr-merged', 'due'])).optional(),
+  /** A ledger row's file, relative to the ledger's initiative, or the session file stem. */
   session_file: z.string(),
   opened_at: z.string(),
   age_days: z.number().int().nonnegative(),
+  source: LoopSourceSchema,
 });
 
 const ResolvedLoopSchema = z.object({
@@ -77,7 +84,33 @@ function toOpenEntry(loop: OpenLoop, fired: LoopTrigger[]): OpenEntry {
     session_file: loop.sessionFile,
     opened_at: loop.openedAt,
     age_days: loop.ageDays,
+    source: 'session',
   };
+}
+
+function ledgerEntry(row: LedgerLoop, file: string, fallbackDate: string, now: Date): OpenEntry {
+  const openedAt = row.first_raised ?? row.last_motion?.date ?? fallbackDate;
+  const ms = new Date(openedAt).getTime();
+  return {
+    ref: row.id,
+    text: row.title,
+    kind: 'prose',
+    session_file: file,
+    opened_at: openedAt,
+    age_days: Number.isNaN(ms) ? 0 : Math.max(0, Math.floor((now.getTime() - ms) / MS_PER_DAY)),
+    source: 'ledger',
+  };
+}
+
+/** The platform ledger's open rows for this initiative; a missing ledger has none. */
+async function ledgerEntries(slug: string, context: OpenContext & { activeRoot: string }) {
+  const paths = await resolveLedgerPaths(context.activeRoot);
+  const { rows, mtime, warnings } = await readLedgerLoops(paths);
+  context.warnings.push(...warnings);
+  const file = path.relative(path.join(context.activeRoot, paths.initiative), paths.loopsPath);
+  return rows
+    .filter((row) => row.initiative === slug && row.status !== 'DONE')
+    .map((row) => ledgerEntry(row, file, mtime ?? context.now.toISOString(), context.now));
 }
 
 /**
@@ -158,12 +191,20 @@ export default defineCommand<Args, Result>({
       loadSessionsFromDir(initiativeDir),
       loadTasks(initiativeDir),
     ]);
-    const context = { initiativeDir, tasks, now: new Date(), warnings: ctx.warnings };
+    const context = {
+      initiativeDir,
+      activeRoot: ctx.activeRoot,
+      tasks,
+      now: new Date(),
+      warnings: ctx.warnings,
+    };
     const dueOnly = args.due === true;
     const wantOpen = dueOnly || args.state === 'open' || args.state === 'all';
     const wantResolved = !dueOnly && args.state !== 'open';
 
-    const open = wantOpen ? await openEntries(loaded, args, context) : [];
+    const open = wantOpen
+      ? [...(await openEntries(loaded, args, context)), ...(await ledgerEntries(args.slug, context))]
+      : [];
     return {
       slug: args.slug,
       open: dueOnly ? open.filter((loop) => loop.trigger_met !== undefined) : open,
