@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { MAX_MUTATION_EDIT, MAX_MUTATION_NAME, type HeadMutation } from "@titan-design/fix-proof";
 import {
   Node,
   Project,
@@ -12,17 +13,8 @@ import {
 import { symbolId } from "../extractors/symbol-id.js";
 
 export const MAX_BODY_DELETES = 10;
-/** fix-proof's MAX_MUTATION_EDIT: `replace`, the longer side, must fit under it. */
-const MAX_EDIT = 400;
 const EARLY_RETURN = " return undefined as never;";
-
-/** A generated edit: fix-proof's Mutation with no declared kills, since it proves nothing about a named test. */
-export interface HeadMutation {
-  name: string;
-  file: string;
-  find: string;
-  replace: string;
-}
+const NAME_PREFIX = "body-delete:";
 
 export interface BodyDeleteTarget {
   nodeId: string;
@@ -105,13 +97,19 @@ function qualifiedName(node: FunctionLike): string {
   return [...scopes, ownName(node) ?? `<anonymous@${node.getStartLineNumber()}>`].join(".");
 }
 
+/** `base`, or `base@line` and then `base@line~k`, whichever this file has not used yet. */
+function unseen(base: string, line: number, seen: Set<string>): string {
+  let symbol = base;
+  for (let k = 1; seen.has(symbol); k += 1) symbol = k === 1 ? `${base}@${line}` : `${base}@${line}~${k}`;
+  seen.add(symbol);
+  return symbol;
+}
+
 function candidatesOf(file: string, source: SourceFile): Candidate[] {
   const seen = new Set<string>();
   return source.getDescendants().filter(isFunctionLike).map((node) => {
     const lineStart = node.getStartLineNumber();
-    let symbol = qualifiedName(node);
-    if (seen.has(symbol)) symbol = `${symbol}@${lineStart}`;
-    seen.add(symbol);
+    const symbol = unseen(qualifiedName(node), lineStart, seen);
     return { nodeId: symbolId(file, symbol), symbol, node, lineStart, lineEnd: node.getEndLineNumber() };
   });
 }
@@ -150,11 +148,23 @@ function uniqueFind(text: string, start: number, braceEnd: number): { find: stri
   let from = start;
   for (;;) {
     const find = text.slice(from, braceEnd);
-    if (find.length + EARLY_RETURN.length > MAX_EDIT) return { reason: "find-over-cap" };
+    if (find.length + EARLY_RETURN.length > MAX_MUTATION_EDIT) return { reason: "find-over-cap" };
     if (occursOnce(text, find)) return { find };
     if (from === 0) return { reason: "find-not-unique" };
     from = lineStartBefore(text, from === lineStartBefore(text, from) ? from - 1 : from);
   }
+}
+
+/**
+ * Head mode keys runs and `unrun` by name, so a name is the file-qualified node id, which is unique across the plan. One
+ * over fix-proof's name cap keeps a hash of the whole id and as much of its tail as fits.
+ */
+function mutationName(nodeId: string): string {
+  const whole = NAME_PREFIX + nodeId;
+  if (whole.length <= MAX_MUTATION_NAME) return whole;
+  const digest = createHash("sha256").update(nodeId).digest("hex").slice(0, 12);
+  const room = MAX_MUTATION_NAME - NAME_PREFIX.length - digest.length - 2;
+  return `${NAME_PREFIX}${digest}:…${nodeId.slice(-room)}`;
 }
 
 function judge(file: string, text: string, candidate: Candidate, input: PlanBodyDeletesInput): Verdict {
@@ -165,7 +175,7 @@ function judge(file: string, text: string, candidate: Candidate, input: PlanBody
   const found = uniqueFind(text, candidate.node.getStart(), body.getStart() + 1);
   if ("reason" in found) return found;
   const { nodeId, symbol, lineStart, lineEnd } = candidate;
-  const mutation = { name: `body-delete:${symbol}`, file, find: found.find, replace: found.find + EARLY_RETURN };
+  const mutation = { name: mutationName(nodeId), file, find: found.find, replace: found.find + EARLY_RETURN };
   return { target: { nodeId, file, symbol, lineStart, lineEnd, mutation } };
 }
 
@@ -177,8 +187,8 @@ function seededSample(targets: BodyDeleteTarget[], max: number, seed: string): S
 }
 
 /**
- * One early-return mutant per changed, covered, block-bodied function in `files`; every other function is skipped with a
- * reason. Over `max`, a sample seeded by `seed` is kept and the rest are `capped`. Pure: nothing is read or written.
+ * One early-return mutant per changed, covered, block-bodied function in `files`; every other function declaration, method,
+ * arrow or function expression is skipped with a reason. Accessors are not considered. Over `max`, a sample seeded by `seed` is kept and the rest are `capped`. Pure: nothing is read or written.
  */
 export function planBodyDeletes(input: PlanBodyDeletesInput): BodyDeletePlan {
   const max = input.max ?? MAX_BODY_DELETES;

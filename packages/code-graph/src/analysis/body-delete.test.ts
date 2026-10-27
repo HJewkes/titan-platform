@@ -1,7 +1,13 @@
-import { checkMutation, parseFixProofConfig, type FixProofConfig } from "@titan-design/fix-proof";
+import {
+  checkMutation,
+  MAX_MUTATION_NAME,
+  parseFixProofConfig,
+  type FixProofConfig,
+  type HeadMutation,
+} from "@titan-design/fix-proof";
 import { Project, ts } from "ts-morph";
 import { describe, expect, it } from "vitest";
-import { MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan, type HeadMutation } from "./body-delete.js";
+import { MAX_BODY_DELETES, planBodyDeletes, type BodyDeletePlan } from "./body-delete.js";
 
 const FILE = "src/lib.ts";
 const SEED = "0123456789abcdef0123456789abcdef01234567";
@@ -36,7 +42,7 @@ function apply(text: string, mutation: HeadMutation): string {
 }
 
 function checkAtHead(mutation: HeadMutation, text: string) {
-  return checkMutation({ ...mutation, kills: ["generated"] }, text, config(), "head");
+  return checkMutation(mutation, text, config(), "head");
 }
 
 describe("planBodyDeletes", () => {
@@ -50,7 +56,7 @@ describe("planBodyDeletes", () => {
     const [target] = result.targets;
     expect(target).toMatchObject({ nodeId: `${FILE}#f`, file: FILE, symbol: "f", lineStart: 1, lineEnd: 1 });
     expect(target?.mutation).toEqual({
-      name: "body-delete:f",
+      name: `body-delete:${FILE}#f`,
       file: FILE,
       find: "export function f(a: number) {",
       replace: "export function f(a: number) { return undefined as never;",
@@ -194,6 +200,45 @@ describe("planBodyDeletes", () => {
 
     expect(one).toHaveLength(MAX_BODY_DELETES);
     expect(other).not.toEqual(one);
+  });
+
+  it("names same-named functions in two files apart, so head mode can key runs by name", () => {
+    const text = "export function run() {\n  return 1;\n}\n";
+    const files = new Map([["src/a.ts", text], ["src/b.ts", text]]);
+
+    const result = planBodyDeletes({
+      files,
+      changed: new Map([...files.keys()].map((file) => [file, [[1, 3] as [number, number]]])),
+      covered: new Map([...files.keys()].map((file) => [file, new Set([1])])),
+      seed: SEED,
+    });
+
+    expect(result.targets.map((t) => t.mutation.name)).toEqual(["body-delete:src/a.ts#run", "body-delete:src/b.ts#run"]);
+  });
+
+  it("gives three anonymous functions on one line three distinct names", () => {
+    const text = "[1].map(function () { return 1; }).map(function () { return 2; }).map(function () { return 3; });\n";
+
+    const result = plan(text, [1]);
+
+    const names = result.targets.map((t) => t.mutation.name);
+    expect(names).toHaveLength(3);
+    expect(new Set(names).size).toBe(3);
+  });
+
+  it("keeps a long qualified name within fix-proof's name cap and apart from a sibling sharing its tail", () => {
+    const deep = "VeryLongOuterClassNameForTesting";
+    const text = [
+      `class ${deep}A { methodWithAnEvenLongerNameThanUsual() {\n    return 1;\n  } }`,
+      `class ${deep}B { methodWithAnEvenLongerNameThanUsual() {\n    return 2;\n  } }`,
+    ].join("\n");
+
+    const result = plan(text, [1, 4]);
+
+    const names = result.targets.map((t) => t.mutation.name);
+    expect(names).toHaveLength(2);
+    for (const name of names) expect(name.length).toBeLessThanOrEqual(MAX_MUTATION_NAME);
+    expect(names[0]).not.toBe(names[1]);
   });
 
   it("refuses a max that is not a non-negative integer", () => {
