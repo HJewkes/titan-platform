@@ -60,8 +60,8 @@ function expectRefusedWithinBound(bytes: Uint8Array, reason: string): void {
   const result = decodePngBounded(bytes, LIMITS);
   const grown = process.memoryUsage().arrayBuffers - before;
 
-  expect(result).toEqual({ refused: reason });
   expect(grown).toBeLessThan(64 * MiB);
+  expect(result).toEqual({ refused: reason });
 }
 
 afterEach(() => {
