@@ -1,5 +1,5 @@
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
-import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
@@ -16,6 +16,7 @@ import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visu
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { ownerHoldOf, riskFactsOf, riskTier, type RiskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
+import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
 
 export { isGithubPath };
 
@@ -110,6 +111,8 @@ export interface EvidenceRecord {
   proofBase?: string;
   /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
   riskTier?: RiskTier;
+  /** The measured visual delta under `shepherd.visualThreshold` (TP-4320); absent when that is off for the repo. */
+  visualDelta?: VisualDelta;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -126,6 +129,7 @@ export interface MergeEvidence extends GrantWithheldField {
   changedFilesUnread?: string;
   /** The reviewer's CI-policy line, kept beside the facts because authority reads no reviewer text. */
   ciPolicy?: CiPolicy;
+  visualDelta?: VisualDelta;
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
@@ -138,6 +142,7 @@ export interface DecidableEvidence extends GrantWithheldField {
   unreadFacts?: string[];
   changedFilesUnread?: string;
   ciPolicy?: CiPolicy;
+  visualDelta?: VisualDelta;
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
@@ -283,6 +288,8 @@ interface Observed {
   changedFilesUnread?: string;
   changedLines?: number;
   ciPolicyChanges?: CiPolicyFileChange[];
+  /** The pinned changed files with their statuses, or why they could not be read. */
+  prFiles: PrFile[] | string;
 }
 
 interface KindRead {
@@ -342,7 +349,7 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   if (kind !== undefined) merge.kind = kind;
   const read = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
   const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
-  return { pr, merge, runs, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+  return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
 }
 
 /** The head's fix-proof standing and judged base, absent keys left out so a record spreads them as they are. */
@@ -351,17 +358,22 @@ const proofFields = (input: MergeEvidenceInput): Pick<EvidenceRecord, "proofUnve
   ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
 });
 
-/** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines, ciPolicyChanges: changes } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
-  const mergeableState = pr.mergeableState;
-  const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
-  const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
-  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input) };
-  const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
-  const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
-  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
-  const record: EvidenceRecord = {
+/** What the evidence step reads beyond its input: the App `shepherd/review` counts from, and the repo's `shepherd.visualThreshold`. */
+interface EvidenceReads {
+  reviewAppId?: number;
+  threshold?: VisualThreshold;
+}
+
+/** Off, or no threshold for the repo, reads nothing, so a repo that never opted in pays no blob reads. */
+async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, prFiles }: Observed, threshold: VisualThreshold | undefined): Promise<{ visualDelta: VisualDelta } | undefined> {
+  if (threshold === undefined || threshold.mode === "off") return undefined;
+  return { visualDelta: await readVisualDelta(port, { repo: input.repo, head: input.head, baseRef: pr.baseRef }, prFiles, threshold) };
+}
+
+type RecordExtras = Pick<EvidenceRecord, "ciPolicy" | "visualDelta"> & { riskTier: RiskTier };
+
+function evidenceRecord(input: MergeEvidenceInput, { pr, merge, runs, ciPolicyChanges }: Observed, decision: GateDecision, { ciPolicy, riskTier: tier, visualDelta }: RecordExtras): EvidenceRecord {
+  return {
     runId: input.runId,
     repo: input.repo,
     pr: input.pr,
@@ -372,13 +384,29 @@ export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput,
     verdictLocator: input.verdict.locator,
     reviewer: input.resolver,
     decision,
-    mergeableState,
+    mergeableState: pr.mergeableState,
     ...(merge.carry && { carry: merge.carry }),
-    ...ciPolicy,
-    ...(changes && { ciPolicyChanges: changes }),
+    ...(ciPolicy && { ciPolicy }),
+    ...(ciPolicyChanges && { ciPolicyChanges }),
     ...proofFields(input),
-    riskTier: riskTier(risk),
+    riskTier: tier,
+    ...(visualDelta && { visualDelta }),
   };
+}
+
+/** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reads: EvidenceReads = {}): Promise<MergeEvidence & { commentId: number }> {
+  const observed = await collectMergeFacts(port, input, isFrozen, kind, clock, reads.reviewAppId);
+  const { pr, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
+  const mergeableState = pr.mergeableState;
+  const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
+  const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
+  const visual = await visualDeltaOf(port, input, observed, reads.threshold);
+  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input) };
+  const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
+  const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
+  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input), commentId: comment.id };
 }

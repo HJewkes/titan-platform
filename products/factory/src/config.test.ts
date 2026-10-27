@@ -119,6 +119,16 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
   });
 
+  it("keeps each repo's visual threshold, and refuses a misspelt key, a share above 1 or a repo that is not owner/name", () => {
+    const rule = { mode: "shadow", maxChangedShare: 0.01, snapshotPaths: ["ui/**/*.png"], apiPaths: ["ui/api/*.api.md"], tokenPaths: [], harnessPaths: [], maxSnapshots: 80 };
+    const load = (visualThreshold: object) => loadConfig(configPath(xdg({ shepherd: { visualThreshold } })));
+
+    expect(load({ "acme/ui": rule }).shepherd?.visualThreshold).toEqual({ "acme/ui": rule });
+    expect(() => load({ "acme/ui": { ...rule, maxChangedShar: 0.02 } })).toThrow(/maxChangedShar/);
+    expect(() => load({ "acme/ui": { ...rule, maxChangedShare: 2 } })).toThrow(/visualThreshold/);
+    expect(() => load({ ui: rule })).toThrow(/visualThreshold/);
+  });
+
   it("reads the held-repair gate reset flag, and rejects a value other than off or on and an unknown key", () => {
     const load = (gateReset: object) => loadConfig(configPath(xdg({ shepherd: { gateReset } })));
 

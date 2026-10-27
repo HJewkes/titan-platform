@@ -117,6 +117,23 @@ export const FlakyChecksSchema = z.strictObject({
   waitSeconds: z.number().int().min(0).max(900),
 });
 
+/**
+ * One repo's visual-diff threshold (TP-4320). Absent, or `off`, measures nothing; `shadow` measures and records the delta on
+ * the merge evidence; `on` is reserved for deciding on it. `maxChangedShare` defaults to 0.01 of the content box,
+ * `pixelTolerance` to 0.1, `maxSnapshots` to 80 and `maxBytes` to 5 MiB per blob.
+ */
+const VisualThresholdSchema =z.strictObject({
+  mode: z.enum(["off", "shadow", "on"]),
+  maxChangedShare: z.number().min(0).max(1).optional(),
+  pixelTolerance: z.number().min(0).max(1).optional(),
+  snapshotPaths: z.array(z.string().min(1)),
+  apiPaths: z.array(z.string().min(1)),
+  tokenPaths: z.array(z.string().min(1)),
+  harnessPaths: z.array(z.string().min(1)),
+  maxSnapshots: z.number().int().positive().optional(),
+  maxBytes: z.number().int().positive().optional(),
+});
+
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
 export const SpawnGateConfigSchema = z.strictObject({
   load5: z.number().positive().optional(),
@@ -262,6 +279,8 @@ export const FactoryConfigSchema = z.object({
       consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */
+      visualThreshold: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), VisualThresholdSchema).optional(),
       /**
        * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
        * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.

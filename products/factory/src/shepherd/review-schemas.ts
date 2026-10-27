@@ -64,6 +64,25 @@ const GateDecisionSchema = z.looseObject({
   reason: z.string(),
 });
 
+const SnapshotDeltaSchema = z.looseObject({
+  path: z.string(),
+  component: z.string(),
+  status: z.enum(["changed", "added", "removed", "unmeasured"]),
+  share: z.number().min(0).max(1).optional(),
+  reason: z.string().optional(),
+});
+
+/** The evidence step's visual delta (TP-4320); a record whose delta is malformed fails the parse, so its merge gates. */
+const VisualDeltaSchema = z.looseObject({
+  policy: z.looseObject({ mode: z.enum(["off", "shadow", "on"]), maxChangedShare: z.number(), pixelTolerance: z.number() }),
+  mergeBase: z.string().nullable(),
+  snapshots: z.array(SnapshotDeltaSchema),
+  api: z.array(z.string()),
+  tokens: z.array(z.string()),
+  harness: z.array(z.string()),
+  unread: z.string().optional(),
+});
+
 const EvidenceRecordSchema = z.looseObject({
   runId: z.string(),
   repo: z.string(),
@@ -78,6 +97,7 @@ const EvidenceRecordSchema = z.looseObject({
   carry: CarryFact.optional(),
   ciPolicy: CiPolicySchema,
   ciPolicyChanges: CiPolicyChangesSchema,
+  visualDelta: VisualDeltaSchema.optional(),
 });
 
 /** The evidence step's output: the facts observed at one head and the record of what they decided. */
@@ -89,6 +109,7 @@ export const MergeEvidenceSchema = z.looseObject({
   unreadFacts: z.array(z.string()).optional(),
   changedFilesUnread: z.string().optional(),
   ciPolicy: CiPolicySchema,
+  visualDelta: VisualDeltaSchema.optional(),
 });
 
 const PanelMemberRead = z.looseObject({ shape: z.string(), profile: z.string(), blocking: z.boolean() });
