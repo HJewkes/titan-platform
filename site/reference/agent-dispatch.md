@@ -181,7 +181,8 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 - `resumeAgent` puts the message in argv, where `ps` shows it. Fence untrusted text with
   `dataFence` and keep secrets out of it.
 - `messageAgent` reaches a live agent only, and the broker delivers the text from the human
-  seat. For an ended agent use `resumeAgent`. The text is in argv.
+  seat. A `{ source }` option labels it as that wake source instead of the owner's words. For
+  an ended agent use `resumeAgent`. The text is in argv.
 - `resumeArgs` puts the message in argv. Resuming a live agent starts a second process on
   the same transcript; check liveness first.
 
