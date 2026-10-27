@@ -10,6 +10,7 @@ import { readTiming } from "../timing.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import type { StageOutcome } from "../workflow/records.js";
+import { captionReport } from "./caption-check.js";
 import { cueGate, type CueGateResult } from "./cue-gate.js";
 import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
@@ -44,6 +45,9 @@ function need(input: QaInput, name: string): string {
 
 const json = (input: QaInput, sha: string): unknown => JSON.parse(input.store.readText(sha));
 
+/** The render's caption track; a render that made none is the caption check's finding, not the stage's error. */
+const vttText = (input: QaInput): string | undefined => (input.artifacts.vtt === undefined ? undefined : input.store.readText(input.artifacts.vtt));
+
 /** Lays the render's page tree out in `dir` with its timeline beside it, and names the page to open on it. */
 function pageQuery(input: QaInput, dir: string): string {
   input.store.materialise(need(input, "page"), dir);
@@ -70,7 +74,7 @@ function storedIfLarge(input: QaInput, outputs: Record<string, string>, name: st
   return outputs[name];
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -102,6 +106,7 @@ async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, i
     measured: measuredFindings({ timeline, moments, probed, diffs, fps: RENDER_FPS, stage: { width: options.W, height: options.H } }),
     timing,
     mediaScan: mediaScanByBeat(await engine.mediaScan(mp4), timeline),
+    captions: captionReport(vttText(input), json(input, need(input, "words"))),
   };
 }
 
