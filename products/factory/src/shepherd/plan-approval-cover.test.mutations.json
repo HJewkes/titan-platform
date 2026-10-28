@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a line that only gained a trailing comma still counts as a change",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "text.trim().replace(/,$/, \"\").trim()",
+      "replace": "text.trim()",
+      "kills": ["a weakened CI-policy line against a plan approval is in scope when the only change past a trailing comma is the approved entry"]
+    },
+    {
+      "name": "an approved removal covers an added line of the same text",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "sided(entry.slice(0, 1), entry.slice(1))",
+      "replace": "sided(\"+\", entry.slice(1))",
+      "kills": ["a weakened CI-policy line against a plan approval is out of scope when the approved entry was a removal of the same text"]
+    },
+    {
+      "name": "one approved key covers every key the reviewer named",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "!keys.every((key) => scope.ciPolicyKeys?.includes(key))",
+      "replace": "!keys.some((key) => scope.ciPolicyKeys?.includes(key))",
+      "kills": ["a weakened CI-policy line against a plan approval is out of scope when a key the reviewer named is not approved"]
+    },
+    {
+      "name": "lines the card cap left out are taken as in scope",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": " && files.every((file) => file.omitted === 0)",
+      "replace": "",
+      "kills": ["a weakened CI-policy line against a plan approval is out of scope when the card cap left a line out or a file read closed"]
+    },
+    {
+      "name": "an allow names no plan round",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "if (approval) rounds.add(approval.round);",
+      "replace": "",
+      "kills": ["the plan honour of one decision names the round of the approval that covered a row, and nothing when none did"]
+    }
+  ]
+}

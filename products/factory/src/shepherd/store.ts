@@ -3,6 +3,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { planApprovalTable, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
 import { registrationOf } from "./registration-of.js";
@@ -251,6 +252,9 @@ export class ShepherdStore implements HoldLookup {
 
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
+
+  /** The owner's plan-time answers, which only the console's plan-approval action writes. */
+  readonly planApprovals = (): PlanApprovals => planApprovalTable(this.db, () => this.stamp());
 
   /** Planners' leave for a run's fix rounds to merge the base branch; read where a fix round's brief is built. */
   readonly mergeBaseExceptions = (): MergeBaseExceptions => mergeBaseExceptionTable(this.db, () => this.stamp());
