@@ -1,7 +1,10 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
+import { BEAT_SLOTS } from "../beat-slots.js";
+import { isMonotonicScale } from "../chart-integrity.js";
 import { failedGates } from "../workflow/stage-checks.js";
-import { contrastRatio, contrastReport, inPageCovers } from "./contrast-check.js";
+import { contrastRatio, contrastReport, inPageCovers, markGround } from "./contrast-check.js";
 import { CONTRAST } from "./gate-profile.js";
 import { qaStageHarness } from "./qa-stage.test-helpers.js";
 
@@ -59,6 +62,36 @@ describe("qa stage chart-mark contrast (WCAG 1.4.11)", () => {
     // Assert
     expect(report.marks.checked).toBe(0);
     expect(report.fallbacks).toContain("b1: chart kind gauge is not drawn, so its marks were not checked");
+  });
+});
+
+const FIXTURES = new URL("../composition/fixtures/", import.meta.url);
+
+/** Every chart beat in the composition fixtures that colours its marks from a sequential scale. */
+function sequentialCharts() {
+  return readdirSync(FIXTURES)
+    .filter((name) => name.endsWith(".timeline.json"))
+    .flatMap((name) => (JSON.parse(readFileSync(new URL(name, FIXTURES), "utf8")) as { beats: { id: string; kind: string; slots?: unknown }[] }).beats
+      .filter((beat) => beat.kind === "chart")
+      .map((beat) => ({ at: `${name} ${beat.id}`, slots: BEAT_SLOTS.chart.parse(beat.slots) }))
+      .filter(({ slots }) => slots.scale?.kind === "sequential"));
+}
+
+describe("fixture sequential chart scales (WCAG 1.4.11)", () => {
+  it("clear 3:1 against their chart's ground at every stop, lightness still ordered", () => {
+    // Arrange
+    const charts = sequentialCharts();
+
+    // Act
+    const below = charts.flatMap(({ at, slots }) => {
+      const ground = markGround(slots.kind)!;
+      return slots.scale!.colours.filter((stop) => contrastRatio(stop, ground) < CONTRAST.nonText).map((stop) => `${at} ${stop} on ${ground}`);
+    });
+
+    // Assert
+    expect(charts.length).toBeGreaterThan(0);
+    expect(below).toEqual([]);
+    expect(charts.filter(({ slots }) => !isMonotonicScale("sequential", slots.scale!.colours)).map(({ at }) => at)).toEqual([]);
   });
 });
 
