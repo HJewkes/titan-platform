@@ -2,7 +2,7 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a skill or visual plan-approval action reads extra fields, a decided marker included",
+      "name": "a skill plan-approval action reads a decided marker as an extra field",
       "file": "products/factory/src/console-action/record.ts",
       "find": "z.strictObject({ ...planApprovalFields, gate: z.enum([\"skill\", \"visual\"]), scope: PathScopeSchema }),",
       "replace": "z.looseObject({ ...planApprovalFields, gate: z.enum([\"skill\", \"visual\"]), scope: PathScopeSchema }),",

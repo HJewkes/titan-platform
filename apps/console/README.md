@@ -654,6 +654,27 @@ never a side. Ship rounds keep their own layout.
 
 ![A/B question at 1440](docs/question-ab-1440.png)
 
+### Plan approvals
+
+A plan round's question can record a TP-4284 plan approval, so a planned CI-policy, skill or visual
+change needs no owner gate at merge. The round lists `planApprovals` in its `round.json`: the
+console's own field, lifted off before review-schema's strict parse, as `supersedes` is. Each entry
+names a pick-one (`questionId`), the option that approves (`approve`), and the factory's entry
+verbatim: `task`, `repo`, `gate`, and `scope`. For `ci-policy` the scope is
+`{ciPolicyKeys, files: [{path, blob}]}`, where `blob` is `git hash-object` of the intended file, or
+null for a file absent at head. For `skill` or `visual` it is `{paths}`. A round whose entry names no
+pick-one, or an option the question lacks, is refused.
+
+- **The owner's submit only.** Once `rounds.submit` writes the answer, each question answered with
+  its `approve` option writes one `plan-approval` action record (`round` is the round id) into the
+  inbox actions dir. It is posted to the factory's `/owner/console-action`, which writes the row as
+  the console's owner-remote, keyed by the record's sha256. Only a feedback.json bound to the
+  round.json bytes on disk counts. Needs `TITAN_CONSOLE_INBOX_ACTIONS=1`.
+- **Once.** A record is named for its round and question and written once, so a second submit
+  (refused as `already-submitted`) and a repost both read back `already`. The start-up sweep
+  reposts only a record the submit wrote while the factory was unreachable. It never writes one
+  from a feedback.json that no submit wrote, such as a relayed or decided answer.
+
 ## Withdrawing rounds
 
 A withdrawn round has a `withdrawn.json` beside its `round.json`, written once; the rounds page
