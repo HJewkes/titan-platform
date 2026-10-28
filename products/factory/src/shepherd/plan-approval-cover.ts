@@ -37,32 +37,31 @@ export interface CiPolicyFacts {
 }
 
 /**
- * A weakened line is inside the scope when its keys, every changed `.github/` path and every changed line are. A line that
- * only gained or lost a trailing comma is no change, so appending one array entry needs only that entry. Any fact read
- * closed, or a line the card cap left out, cannot be shown inside the scope and gates.
+ * A weakened line is inside the scope when its keys, every changed `.github/` path and every changed line of the card's
+ * positional diff are, each line matched exactly, indentation included, since it decides YAML nesting. The one exemption
+ * is a removed and an added line at the same position of the same file that differ only by a trailing comma, so appending
+ * one array entry needs only that entry. Any fact read closed, a line the card cap left out or a line it cut gates.
  */
 export function ciPolicyInScope({ keys, githubPaths, changes, unreadFacts }: CiPolicyFacts): (scope: PlanApprovalScope) => boolean {
-  const files = CiPolicyChangesSchema.parse(changes);
-  const read = files !== undefined && (unreadFacts ?? []).length === 0 && files.every((file) => file.omitted === 0);
-  const lines = unpairedLines(files ?? []);
+  const parsed = CiPolicyChangesSchema.parse(changes);
+  const files = parsed ?? [];
+  const whole = parsed !== undefined && (unreadFacts ?? []).length === 0 && files.every((file) => file.omitted === 0 && file.lines.every((line) => !line.text.endsWith(CUT_MARK)));
+  const lines = files.flatMap(changedLines);
   return (scope) => {
-    if (!read || !keys.every((key) => scope.ciPolicyKeys?.includes(key))) return false;
-    const entries = new Set((scope.entries ?? []).map((entry) => sided(entry.slice(0, 1), entry.slice(1))));
+    if (!whole || !keys.every((key) => scope.ciPolicyKeys?.includes(key))) return false;
+    const entries = new Set(scope.entries ?? []);
     return pathsIn(githubPaths)(scope) && lines.every((line) => entries.has(line));
   };
 }
 
-const sided = (side: string, text: string): string => `${side}${text.trim().replace(/,$/, "").trim()}`;
+/** `shownLine` ends a line it cut at the card's width with this mark, so a cut line cannot be matched exactly. */
+const CUT_MARK = "\u2026";
 
-/** Every changed line, sided and normalized, less the removed and added pairs that normalize to the same text. */
-function unpairedLines(files: readonly Pick<CiPolicyFileChange, "lines">[]): string[] {
-  const texts = files.flatMap((file) => file.lines.map((line) => ({ side: line.side, text: sided("", line.text) })));
-  const added = texts.filter((line) => line.side === "+").map((line) => line.text);
-  const removed: string[] = [];
-  for (const line of texts.filter((each) => each.side === "-")) {
-    const twin = added.indexOf(line.text);
-    if (twin === -1) removed.push(line.text);
-    else added.splice(twin, 1);
-  }
-  return [...removed.map((text) => `-${text}`), ...added.map((text) => `+${text}`)];
+type CardLine = CiPolicyFileChange["lines"][number];
+
+const commaOnly = (a: CardLine, b: CardLine): boolean => a.side !== b.side && a.n === b.n && (`${a.text},` === b.text || `${b.text},` === a.text);
+
+/** One file's changed lines as `+<line>` or `-<line>`, less the same-position pairs that differ only by a trailing comma. */
+function changedLines(file: Pick<CiPolicyFileChange, "lines">): string[] {
+  return file.lines.filter((line) => !file.lines.some((other) => commaOnly(line, other))).map((line) => `${line.side}${line.text}`);
 }

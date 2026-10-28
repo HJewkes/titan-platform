@@ -32,5 +32,6 @@ export function registrationPolicy(store: ShepherdStore, runId: string): { polic
 export async function narrowToRegistration(run: PolicyRun): Promise<string | null | undefined> {
   const { policy, holdReason, approved } = await step(run.ctx, `sh-policy:${run.policyReads++}`, { runId: run.ctx.runId }, RegistrationPolicyResult);
   if (policy) run.policy = { ...stricterPolicy(policy, run.policy), ...(approved && { approved }) };
+  else delete run.policy.approved;
   return holdReason;
 }
