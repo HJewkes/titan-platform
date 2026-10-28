@@ -1924,9 +1924,11 @@ read attaches the task's approvals as `EffectivePolicy.approved`, so an approval
 registration counts at the next decision. A run param or stored policy cannot carry them. The
 `skill-path`, glob `visual-path` and `ci-policy-weakened` rows allow only when one approval of
 that gate holds every fact the row triggered on at the head. For `ci-policy-weakened` those
-facts are every weakened key, every changed `.github/` path and every changed line. A line that
-only gained or lost a trailing comma does not count as a change. If a line was left off the card
-or a file read closed, the row still gates. The allow reason names the plan round.
+facts are every weakened key, every changed `.github/` path and every changed line of the card's
+positional diff, each matched exactly, indentation included. The only exemption is a removed and
+an added line at the same position of one file that differ only by a trailing comma, so a moved,
+re-indented or cross-file line always needs its own entry. If a line was left off the card, cut
+at its width, or a file read closed, the row still gates. The allow reason names the plan round.
 `ci-policy-malformed`, `github-path`, `files-unread` and the visual-delta threshold gate never
 clear on an approval.
 
