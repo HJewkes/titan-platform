@@ -8,8 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { MAX_DEPOSIT_BYTES, readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { spoolQueueItems } from "./approval-items.js";
 import { withdrawDeposit } from "@titan-design/owner-queue/withdraw";
-import type { ConsoleConfig } from "./config.js";
+import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT, MAX_OPEN_DEPOSITS, MAX_OPEN_DEPOSITS_PER_ASKER, OWNER_ASKERS, fileDeposit } from "./inbox.js";
 import { closedPort, send, type Reply } from "./test-support.js";
@@ -324,6 +325,34 @@ describe("the open-deposit cap", () => {
     const replies = await Promise.all(owners.map((owner) => post(deposit({ asker: owner, depositId: "one-more" }))));
 
     expect(replies.map((reply) => reply.status)).toEqual(owners.map(() => 200));
+  });
+
+  it("accepts a sixth open deposit from an automation asker on the exempt list", async () => {
+    const automation = DEFAULT_CAP_EXEMPT_ASKERS[0]!;
+    await fillTo(MAX_OPEN_DEPOSITS_PER_ASKER, automation);
+
+    const reply = await post(deposit({ asker: automation, depositId: "sixth-alarm" }));
+
+    expect(reply.status).toBe(200);
+  });
+
+  it("still folds an exempt asker's open deposits that share an alarm key into one item", async () => {
+    const automation = DEFAULT_CAP_EXEMPT_ASKERS[0]!;
+    const alarm = (depositId: string) => deposit({ asker: automation, depositId, kind: "do", keys: ["alarm:deploy-watch"] });
+
+    const replies = [await post(alarm("alarm-1")), await post(alarm("alarm-2")), await post(alarm("alarm-1"))];
+
+    expect(replies.map((reply) => bodyOf(reply).data?.created)).toEqual([true, true, false]);
+    const { open } = await spoolQueueItems(config.inboxDir);
+    expect(open.map((item) => item.repeats)).toEqual([2]);
+  });
+
+  it("caps an automation asker missing from the exempt list", async () => {
+    await fillTo(MAX_OPEN_DEPOSITS_PER_ASKER, "unlisted-automation");
+
+    const reply = await post(deposit({ asker: "unlisted-automation", depositId: "sixth" }));
+
+    expect(reply.status).toBe(429);
   });
 
   it("lets only one of several racing deposits take the last slot", async () => {

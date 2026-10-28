@@ -68,6 +68,11 @@ export interface ConsoleConfig {
   ownerWrites: boolean;
   /** The owner-inbox spool `inbox.deposit` files into; `TITAN_CONSOLE_INBOX_DIR` overrides. */
   inboxDir: string;
+  /**
+   * Automation askers the five-open-asks cap skips, from `TITAN_CONSOLE_CAP_EXEMPT_ASKERS` (a comma list of exact names,
+   * never a pattern). Optional so a config built by hand exempts {@link DEFAULT_CAP_EXEMPT_ASKERS}; `resolveConfig` always sets it.
+   */
+  capExemptAskers?: string[];
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
   /**
@@ -158,6 +163,7 @@ export function resolveConfig(
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
     ...lanOptionsFrom(env, home, stateDir, machine),
     ...dataDirsFrom(env, home, platform, stateDir),
+    capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ...ownerOptionsFrom(env, home),
     configStore: configStoreFrom(env, home, platform),
     ...surfaceRootsFrom(env, home),
@@ -361,6 +367,15 @@ function lanNamesFrom(raw: string | undefined, machine: Machine): string[] {
 }
 
 /** `TITAN_CONSOLE_SEATS` is `seat=prefix` pairs separated by commas, e.g. `titan-coord=tpc`. */
+/** titan-factory files the deploy and planner alarms, which collapse by alarm key rather than wait on the cap. */
+export const DEFAULT_CAP_EXEMPT_ASKERS: readonly string[] = ["titan-factory"];
+
+/** An unset variable keeps the defaults; an empty one exempts nobody. */
+function capExemptAskersFrom(raw: string | undefined): string[] {
+  if (raw === undefined) return [...DEFAULT_CAP_EXEMPT_ASKERS];
+  return raw.split(",").map((name) => name.trim()).filter((name) => name !== "");
+}
+
 function seatPrefixesFrom(raw: string | undefined): SeatPrefix[] {
   if (raw === undefined || raw.trim() === "") return [];
   return raw.split(",").map((pair) => {

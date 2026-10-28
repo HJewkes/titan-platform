@@ -38,6 +38,15 @@
         "the open-deposit cap lets only one of several racing deposits take the last slot",
         "titan-console inbox file refuses a seat's sixth open ask, exits non-zero and lists its five open ids to merge or withdraw"
       ]
+    },
+    {
+      "name": "an exempt automation asker is capped like any seat",
+      "file": "apps/console/server/inbox.ts",
+      "find": "OWNER_ASKERS.has(asker) || exempt.includes(asker)",
+      "replace": "OWNER_ASKERS.has(asker)",
+      "kills": [
+        "the open-deposit cap accepts a sixth open deposit from an automation asker on the exempt list"
+      ]
     }
   ]
 }

@@ -50,6 +50,8 @@ export interface InboxSource {
   dir: string;
   /** Open deposits across every asker before a new one gets 429; defaults to {@link MAX_OPEN_DEPOSITS}. */
   maxOpenDeposits?: number;
+  /** Automation askers the per-asker cap skips, by exact name; defaults to none. */
+  capExemptAskers?: readonly string[];
   /** Checks a recommendation's locator cite against its transcript line; defaults to session-read's Claude transcripts. */
   events?: SessionEventTextSource;
 }
@@ -147,8 +149,8 @@ function assertNameable(deposit: OwnerItemDeposit): void {
   }
 }
 
-function assertUnderAskerCap(open: readonly FiledDeposit[], asker: string): void {
-  if (OWNER_ASKERS.has(asker)) return;
+function assertUnderAskerCap(open: readonly FiledDeposit[], asker: string, exempt: readonly string[]): void {
+  if (OWNER_ASKERS.has(asker) || exempt.includes(asker)) return;
   const ids = openIdsOf(open, asker);
   if (ids.length < MAX_OPEN_DEPOSITS_PER_ASKER) return;
   throw new DepositRefusedError(
@@ -158,9 +160,9 @@ function assertUnderAskerCap(open: readonly FiledDeposit[], asker: string): void
   );
 }
 
-function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposits: number): void {
+function assertUnderCaps(names: readonly string[], asker: string, { maxOpenDeposits, capExemptAskers }: Required<InboxSource>): void {
   const open = openDeposits(names);
-  assertUnderAskerCap(open, asker);
+  assertUnderAskerCap(open, asker, capExemptAskers);
   if (open.length >= maxOpenDeposits) {
     throw new DepositRefusedError(`the inbox already has ${maxOpenDeposits} open deposits`, EXIT.TEMPFAIL);
   }
@@ -170,12 +172,13 @@ function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposit
  * A repeat of a filed depositId returns its id even at a cap, since it adds nothing to the spool.
  * The repeat still goes through writeDeposit, which proves the file under that name is this deposit.
  */
-async function fileOnce({ dir, maxOpenDeposits, events }: Required<InboxSource>, deposit: OwnerItemDeposit): Promise<DepositResult> {
+async function fileOnce(source: Required<InboxSource>, deposit: OwnerItemDeposit): Promise<DepositResult> {
+  const { dir, events } = source;
   assertNameable(deposit);
   const id = depositItemId(deposit.asker, deposit.depositId);
   const names = await spoolNames(dir);
   const isRepeat = depositFileNames(deposit.asker, deposit.depositId).some((name) => names.includes(name));
-  if (!isRepeat) assertUnderCaps(names, deposit.asker, maxOpenDeposits);
+  if (!isRepeat) assertUnderCaps(names, deposit.asker, source);
   const { created } = await writeDeposit(dir, deposit, { events });
   return { id, created };
 }
@@ -190,7 +193,7 @@ function serializer(): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
-export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, events = readSessionEventText }: InboxSource) {
+export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, capExemptAskers = [], events = readSessionEventText }: InboxSource) {
   const serialize = serializer();
   return {
     [INBOX_DEPOSIT]: depositCommand({
@@ -198,7 +201,7 @@ export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, events
       description: "File one owner item into the owner inbox; a repeat depositId returns the item id it already has",
       args: ownerItemDepositSchema,
       result: depositResult,
-      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce({ dir, maxOpenDeposits, events }, deposit).catch(withoutSpoolPath)),
+      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce({ dir, maxOpenDeposits, capExemptAskers, events }, deposit).catch(withoutSpoolPath)),
     }),
   };
 }

@@ -19,6 +19,15 @@
         "resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given",
         "keeps a relative path as given, so the props panel's gap names it"
       ]
+    },
+    {
+      "name": "TITAN_CONSOLE_CAP_EXEMPT_ASKERS is ignored",
+      "file": "apps/console/server/config.ts",
+      "find": "if (raw === undefined) return [...DEFAULT_CAP_EXEMPT_ASKERS];",
+      "replace": "return [...DEFAULT_CAP_EXEMPT_ASKERS];",
+      "kills": [
+        "console config exempts titan-factory from the ask cap unless TITAN_CONSOLE_CAP_EXEMPT_ASKERS names the list, and an empty one exempts nobody"
+      ]
     }
   ]
 }

@@ -62,6 +62,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
+| `TITAN_CONSOLE_CAP_EXEMPT_ASKERS` | `titan-factory` | Comma list of exact automation asker names the five-open-asks cap skips (see "Owner inbox deposits"); empty exempts nobody |
 | `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list`, `rounds.get` and `approvals.flow`. `fixtures/rounds` holds synthetic ones for a browser check |
 | `TITAN_CONSOLE_AUTONOMY_DIR` | none | The autonomy tree `config.surfaces` reads `charter.md` and `seats/*.md` from, and the tree `config.compareTree` imports; unset, `config.surfaces` answers a gap for them and `config.compareTree` answers `not-configured`. It must be an absolute or `~/` path. `burndown.config.json` and `seat-watchdog.json` are read from `$AGENT_CHAT_HOME`, else `~/.agent-chat`. Only fields each surface's allowlist in `server/config-surfaces/catalog.ts` names carry a value |
 | `TITAN_CONSOLE_VIDEO_ROOTS` | none | Directories the theater lists `.mp4` and `.webm` renders from, joined with `:` (`;` on Windows), such as `$HOME/<data-dir>`. Walked to depth 8, skipping dot-dirs, `node_modules`, `archive` and symlinks, capped at 2000 videos. `videos.list` returns them by opaque id; `GET /media/videos/<id>` serves one with byte ranges and `/media/videos/<id>/captions` its `<name>.vtt`. A relative entry is refused; unset, the list is empty with one gap line |
@@ -386,7 +387,11 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   The message lists that asker's five open ids; merge two asks into one or withdraw one
   (`titan-console inbox withdraw <id> --reason ... --as <asker> --actor <seat>`), then file
   again. Answered and withdrawn deposits do not count, and a repeat `depositId` still answers
-  its id. The owner, asker `hjewkes` or `owner`, is never capped.
+  its id. The owner, asker `hjewkes` or `owner`, is never capped. Nor is an automation asker
+  named in `TITAN_CONSOLE_CAP_EXEMPT_ASKERS`, a comma list of exact names (no patterns). Unset,
+  it is `titan-factory`, which files the deploy and planner alarms; set it empty to exempt
+  nobody. An exempt asker still dedupes: a repeat `depositId` answers its existing id, and open
+  deposits sharing an `alarm:` key fold into one item (see "Repeat alarms").
 - **`unblocksNow`.** One line, trimmed, at most 200 characters, saying what the answer
   unblocks right now (`"unblocksNow":"merging example/repo#7"`). A deposit without it lists
   under Planning, never Blocking, whatever its asker or op: an ask with nothing waiting on it
