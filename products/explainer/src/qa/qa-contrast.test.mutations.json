@@ -2,12 +2,14 @@
   "v": 1,
   "mutations": [
     {
-      "name": "contrast gates the qa stage",
+      "name": "contrast reported again, not gated",
       "file": "products/explainer/src/qa/gate-profile.ts",
-      "find": "export const CONTRAST_GATE = false;",
-      "replace": "export const CONTRAST_GATE = true;",
+      "find": "export const CONTRAST_GATE = true;",
+      "replace": "export const CONTRAST_GATE = false;",
       "kills": [
-        "qa stage chart-mark contrast (WCAG 1.4.11) reports a bar whose scale colour sits under 3:1 on its track, and never fails the stage"
+        "qa stage chart-mark contrast (WCAG 1.4.11) fails the stage on a bar whose scale colour sits under 3:1 on its track",
+        "qa stage text contrast (WCAG 1.4.3) fails the stage on small text under 4.5:1, holding text from 24 px to 3:1",
+        "qa stage chart-mark contrast (WCAG 1.4.11) passes a line chart in the theme's own series colour"
       ]
     },
     {
@@ -16,7 +18,7 @@
       "find": "largeTextPx: 24,",
       "replace": "largeTextPx: 40,",
       "kills": [
-        "qa stage text contrast (WCAG 1.4.3) holds small text to 4.5:1 and large text to 3:1 by WCAG's 24 px size"
+        "qa stage text contrast (WCAG 1.4.3) fails the stage on small text under 4.5:1, holding text from 24 px to 3:1"
       ]
     },
     {
@@ -35,7 +37,7 @@
       "find": "return { pass: below.length === 0, detail: below.length === 0 ? `${checked} chart marks",
       "replace": "return { pass: true, detail: below.length === 0 ? `${checked} chart marks",
       "kills": [
-        "qa stage chart-mark contrast (WCAG 1.4.11) reports a bar whose scale colour sits under 3:1 on its track, and never fails the stage"
+        "qa stage chart-mark contrast (WCAG 1.4.11) fails the stage on a bar whose scale colour sits under 3:1 on its track"
       ]
     }
   ]

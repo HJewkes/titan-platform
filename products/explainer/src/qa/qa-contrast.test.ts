@@ -29,16 +29,16 @@ describe("WCAG contrast ratio", () => {
 });
 
 describe("qa stage chart-mark contrast (WCAG 1.4.11)", () => {
-  it("reports a bar whose scale colour sits under 3:1 on its track, and never fails the stage", async () => {
+  it("fails the stage on a bar whose scale colour sits under 3:1 on its track", async () => {
     // Arrange / Act
     const { report, checks } = await runChart({ kind: "bar", series: DESKS, scale: DIM_RAMP });
 
     // Assert
     expect(report.contrast?.marks.checked).toBe(2);
     expect(report.contrast?.marks.below.map(({ mark, colour }) => `${mark} ${colour}`)).toEqual(["desk-a #202020"]);
-    expect(checks["chart-mark-contrast"]).toMatchObject({ gate: false, pass: false });
+    expect(checks["chart-mark-contrast"]).toMatchObject({ gate: true, pass: false });
     expect(checks["chart-mark-contrast"]?.detail).toMatch(/^1\/2 chart marks under 3:1: \[b1\] desk-a #202020 on #31302F 1\.\d\d:1$/);
-    expect(failedGates(Object.values(checks))).toEqual([]);
+    expect(failedGates(Object.values(checks)).map((check) => check.name)).toEqual(["chart-mark-contrast"]);
   });
 
   it("passes a line chart in the theme's own series colour", async () => {
@@ -46,7 +46,7 @@ describe("qa stage chart-mark contrast (WCAG 1.4.11)", () => {
     const { checks } = await runChart({ kind: "line", series: DESKS });
 
     // Assert
-    expect(checks["chart-mark-contrast"]).toMatchObject({ gate: false, pass: true, detail: "2 chart marks at 3:1 or more" });
+    expect(checks["chart-mark-contrast"]).toMatchObject({ gate: true, pass: true, detail: "2 chart marks at 3:1 or more" });
   });
 
   it("names a chart kind the page does not draw as a fallback rather than checking it", () => {
@@ -63,7 +63,7 @@ describe("qa stage chart-mark contrast (WCAG 1.4.11)", () => {
 });
 
 describe("qa stage text contrast (WCAG 1.4.3)", () => {
-  it("holds small text to 4.5:1 and large text to 3:1 by WCAG's 24 px size", async () => {
+  it("fails the stage on small text under 4.5:1, holding text from 24 px to 3:1", async () => {
     // Arrange
     const findings = [lowContrast("Parcels waiting", 20, 4.2), lowContrast("Desk B", 30, 3.6)];
 
@@ -72,7 +72,8 @@ describe("qa stage text contrast (WCAG 1.4.3)", () => {
 
     // Assert
     expect(report.contrast?.text.below).toEqual([{ beat: "b1", text: "Parcels waiting", px: 20, ratio: 4.2, need: 4.5 }]);
-    expect(checks["text-contrast"]).toMatchObject({ gate: false, pass: false, detail: '1 text runs under contrast: [b1] "Parcels waiting" 20 px 4.2:1 (needs 4.5:1)' });
+    expect(checks["text-contrast"]).toMatchObject({ gate: true, pass: false, detail: '1 text runs under contrast: [b1] "Parcels waiting" 20 px 4.2:1 (needs 4.5:1)' });
+    expect(failedGates(Object.values(checks)).map((check) => check.name)).toEqual(["text-contrast"]);
   });
 
   it("passes when render-qa measured no text under its thresholds", async () => {
@@ -80,7 +81,7 @@ describe("qa stage text contrast (WCAG 1.4.3)", () => {
     const { checks } = await runChart({ kind: "line", series: DESKS });
 
     // Assert
-    expect(checks["text-contrast"]).toMatchObject({ gate: false, pass: true, detail: "no text under the contrast thresholds" });
+    expect(checks["text-contrast"]).toMatchObject({ gate: true, pass: true, detail: "no text under the contrast thresholds" });
   });
 });
 
