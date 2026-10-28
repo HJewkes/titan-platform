@@ -27,7 +27,10 @@ import { EXIT } from "@titan-design/registry";
 import { readSessionEventText } from "@titan-design/session-read";
 import { depositCommand } from "./owner-guard.js";
 
-export const MAX_OPEN_DEPOSITS_PER_ASKER = 200;
+/** TP-4353: a seat holds at most five open owner asks, so it merges or withdraws one before it files another. */
+export const MAX_OPEN_DEPOSITS_PER_ASKER = 5;
+/** The owner's own deposits are notes to self, never a seat's asks, so no per-asker cap applies to them. */
+export const OWNER_ASKERS: ReadonlySet<string> = new Set(["hjewkes", "owner"]);
 export const MAX_OPEN_DEPOSITS = 2000;
 export const INBOX_DEPOSIT = "inbox.deposit";
 
@@ -117,14 +120,19 @@ function isClosed(present: ReadonlySet<string>, { asker, depositId }: FiledDepos
   }
 }
 
-/** The asker of every deposit file with no answer or withdrawal beside it, under either the current or the legacy name. */
-function openDepositAskers(names: readonly string[]): (string | undefined)[] {
+/** Every deposit file with no answer or withdrawal beside it, under either the current or the legacy name. */
+function openDeposits(names: readonly string[]): FiledDeposit[] {
   const present = new Set(names);
   return names
     .filter((name) => !name.startsWith(".") && name.endsWith(DEPOSIT_SUFFIX) && !name.endsWith(ANSWER_SUFFIX))
     .map(parseDepositName)
-    .filter((filed) => !isClosed(present, filed))
-    .map((filed) => filed.asker);
+    .filter((filed) => !isClosed(present, filed));
+}
+
+/** The item ids of one asker's open deposits, so a refusal can name what to merge or withdraw. */
+function openIdsOf(open: readonly FiledDeposit[], asker: string): string[] {
+  const ids = open.filter((filed) => filed.asker === asker && filed.depositId !== undefined).map((filed) => depositItemId(asker, filed.depositId!));
+  return [...new Set(ids)].sort();
 }
 
 /** Size and name checks first, so an oversized or unnameable deposit is the caller's 400, never a 500. */
@@ -139,12 +147,21 @@ function assertNameable(deposit: OwnerItemDeposit): void {
   }
 }
 
+function assertUnderAskerCap(open: readonly FiledDeposit[], asker: string): void {
+  if (OWNER_ASKERS.has(asker)) return;
+  const ids = openIdsOf(open, asker);
+  if (ids.length < MAX_OPEN_DEPOSITS_PER_ASKER) return;
+  throw new DepositRefusedError(
+    `this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits; merge or withdraw one ` +
+      `(titan-console inbox withdraw <id> --reason ... --as <asker> --actor <seat>): ${ids.join(" ")}`,
+    EXIT.TEMPFAIL,
+  );
+}
+
 function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposits: number): void {
-  const askers = openDepositAskers(names);
-  if (askers.filter((each) => each === asker).length >= MAX_OPEN_DEPOSITS_PER_ASKER) {
-    throw new DepositRefusedError(`this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits`, EXIT.TEMPFAIL);
-  }
-  if (askers.length >= maxOpenDeposits) {
+  const open = openDeposits(names);
+  assertUnderAskerCap(open, asker);
+  if (open.length >= maxOpenDeposits) {
     throw new DepositRefusedError(`the inbox already has ${maxOpenDeposits} open deposits`, EXIT.TEMPFAIL);
   }
 }

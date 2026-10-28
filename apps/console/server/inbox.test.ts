@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { MAX_DEPOSIT_BYTES, readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { withdrawDeposit } from "@titan-design/owner-queue/withdraw";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT, MAX_OPEN_DEPOSITS, MAX_OPEN_DEPOSITS_PER_ASKER, fileDeposit } from "./inbox.js";
+import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT, MAX_OPEN_DEPOSITS, MAX_OPEN_DEPOSITS_PER_ASKER, OWNER_ASKERS, fileDeposit } from "./inbox.js";
 import { closedPort, send, type Reply } from "./test-support.js";
 
 const ASKER = "pc-test-agent";
@@ -285,7 +286,7 @@ describe("the open-deposit cap", () => {
     const other = await post(deposit({ asker: "another-agent", depositId: "one-too-many" }));
 
     expect([over.status, other.status]).toEqual([429, 200]);
-    expect(bodyOf(over).error).toBe(`this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits`);
+    expect(bodyOf(over).error).toMatch(new RegExp(`^this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits; merge or withdraw one`));
     expect(await spoolFiles()).toHaveLength(MAX_OPEN_DEPOSITS_PER_ASKER + 1);
   });
 
@@ -300,11 +301,29 @@ describe("the open-deposit cap", () => {
 
   it("counts only open deposits: an answered one frees a slot", async () => {
     await fillTo(MAX_OPEN_DEPOSITS_PER_ASKER);
-    await writeAnswer(config.inboxDir, depositItemId(ASKER, "seed-7"), { optionId: "yes", by: { class: "owner", id: "owner", channel: "console" }, at: "2026-01-01T00:00:00Z" });
+    await writeAnswer(config.inboxDir, depositItemId(ASKER, "seed-3"), { optionId: "yes", by: { class: "owner", id: "owner", channel: "console" }, at: "2026-01-01T00:00:00Z" });
 
     const reply = await post(deposit({ depositId: "after-an-answer" }));
 
     expect(reply.status).toBe(200);
+  });
+
+  it("does not count a withdrawn deposit", async () => {
+    await fillTo(MAX_OPEN_DEPOSITS_PER_ASKER);
+    await withdrawDeposit(config.inboxDir, depositItemId(ASKER, "seed-2"), { reason: "obsolete", as: ASKER, actor: ASKER });
+
+    const reply = await post(deposit({ depositId: "after-a-withdrawal" }));
+
+    expect(reply.status).toBe(200);
+  });
+
+  it("never caps the owner, whether filed as the owner login or the owner actor", async () => {
+    const owners = [...OWNER_ASKERS];
+    for (const owner of owners) await fillTo(MAX_OPEN_DEPOSITS_PER_ASKER, owner);
+
+    const replies = await Promise.all(owners.map((owner) => post(deposit({ asker: owner, depositId: "one-more" }))));
+
+    expect(replies.map((reply) => reply.status)).toEqual(owners.map(() => 200));
   });
 
   it("lets only one of several racing deposits take the last slot", async () => {
@@ -371,6 +390,20 @@ describe("titan-console inbox file", () => {
     expect(refused.stdout).toBe("");
     expect(refused.stderr).toMatch(/^inbox\.deposit refused \(HTTP 400\)/);
     expect(refused.stderr).not.toContain(marker);
+  });
+
+  it("refuses a seat's sixth open ask, exits non-zero and lists its five open ids to merge or withdraw", { timeout: 30_000 }, async () => {
+    const seeds = Array.from({ length: MAX_OPEN_DEPOSITS_PER_ASKER }, (_, index) => `seed-${index}`);
+    for (const depositId of seeds) await writeDeposit(config.inboxDir, deposit({ depositId }));
+
+    const refused = await runCli([JSON.stringify(deposit({ depositId: "sixth" }))]);
+
+    expect(refused.code).toBe(1);
+    expect(refused.stdout).toBe("");
+    expect(refused.stderr).toContain("titan-console inbox withdraw <id>");
+    const listed = refused.stderr.match(/deposit:[0-9a-f]{32}/g) ?? [];
+    expect(listed.sort()).toEqual(seeds.map((depositId) => depositItemId(ASKER, depositId)).sort());
+    expect((await spoolFiles()).length).toBe(MAX_OPEN_DEPOSITS_PER_ASKER);
   });
 });
 
