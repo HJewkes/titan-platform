@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { calibrateSpeed, encodeWav, type Audio, type TtsProvider } from "@titan-design/speech-tts";
+import { plainText } from "@titan-design/speech-vet";
 import type { SpeechBand } from "../beat-schema.js";
 import { keptBeats, ResolvedSchema } from "../resolve-stage.js";
 import { parseScript } from "../script-load.js";
@@ -70,7 +71,8 @@ interface VoicedBeat extends BeatRate {
   wav: Uint8Array;
 }
 
-const spokenWords = (spoken: string): string[] => spoken.split(/\s+/).filter(Boolean);
+// The voice reads the markup; the timed words, word count and captions take only the words a listener hears.
+const spokenWords = (spoken: string): string[] => plainText(spoken).split(/\s+/).filter(Boolean);
 
 const tenths = (value: number): number => Math.round(value * 10) / 10;
 

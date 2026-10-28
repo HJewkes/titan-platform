@@ -1,3 +1,4 @@
+import { plainText } from "@titan-design/speech-vet";
 import { z } from "zod";
 import { ANCHOR_SPEC_PATTERN } from "./anchor-grid.js";
 import { cueResolverFromWords } from "./cues.js";
@@ -190,7 +191,7 @@ export function beatCues(visual: Pick<ScriptBeat["visual"], "map_state" | "cues"
 
 /** Resolves a beat's cue to the index of the spoken word it names; throws on a cue never spoken. */
 export function spokenWordIndex(beat: Pick<ScriptBeat, "id" | "spoken">): (cue: string) => number {
-  const words = beat.spoken.split(/\s+/).map((word, i) => ({ word, startS: i }));
+  const words = plainText(beat.spoken).split(/\s+/).map((word, i) => ({ word, startS: i }));
   const resolve = cueResolverFromWords({ [beat.id]: words });
   return (cue) => resolve(beat.id, cue);
 }

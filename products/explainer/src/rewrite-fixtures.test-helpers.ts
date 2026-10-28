@@ -25,7 +25,7 @@ export const BEATS: Record<string, [chapter: string, rewrite: Rewrite]> = {
   }],
   w1: ["ch2", {
     before: "The scanner app sends 40 scans a minute. The desk server takes 2 seconds for each. It queues the rest. Nothing is lost.",
-    after: "Nothing is lost. The scanner app sends 40 scans a minute to the desk server, which takes a moment for each and queues the rest.",
+    after: "Nothing is lost. The scanner app sends 40 scans a [minute](=time) to the desk server, which takes a moment for each and queues the rest.",
     labels: ["2 seconds a scan"],
   }],
   w2: ["ch2", {

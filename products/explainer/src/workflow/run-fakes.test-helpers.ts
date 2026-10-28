@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
+import { plainText } from "@titan-design/speech-vet";
 import type { AgentRunnerOptions, StepRunInput, StepRunOutcome } from "@titan-design/workflow";
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { fakeRubricJudge, routeRubric } from "../cold-rubric-fakes.test-helpers.js";
@@ -227,7 +228,8 @@ export function fakeVoice(options: { dropWord?: string } = {}): FakeVoice {
     id: "fake-voice",
     capabilities: { phonemeInput: [], wordTimestamps: true, speedControl: true, voices: [], languages: ["en-US"], sampleRate: FAKE_RATE },
     synthesize: async (input, _voice, synthesis) => {
-      const words = ("text" in input ? input.text : "").split(/\s+/).filter(Boolean);
+      // Like Kokoro's g2p, it hears a `[w](=reading)` declaration as its word.
+      const words = plainText("text" in input ? input.text : "").split(/\s+/).filter(Boolean);
       const unknown = words.map((word, index) => ({ word, index })).filter((w) => w.word === options.dropWord);
       if (unknown.length > 0) throw new TtsUnknownWordsError("fake-voice", unknown);
       spoken.push(words.join(" "));

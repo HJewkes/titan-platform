@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { plainText } from "@titan-design/speech-vet";
 import { loadBeatSpecs, parseBeatSlots } from "../beat-load.js";
 import { parseTimeline, type Timeline, type TimelineBeat } from "../composition/timeline.js";
 import { cueResolverFromWords, type CueResolver } from "../cues.js";
@@ -52,7 +53,7 @@ function plannedResolver(board: Storyboard): CueResolver {
   const beats = new Map(board.beats.map((beat) => [beat.id, beat]));
   return (beatId, cue) => {
     const beat = beats.get(beatId)!;
-    return (spokenWordIndex(beat)(cue) / beat.spoken.split(/\s+/).length) * beat.duration_s;
+    return (spokenWordIndex(beat)(cue) / plainText(beat.spoken).split(/\s+/).length) * beat.duration_s;
   };
 }
 
