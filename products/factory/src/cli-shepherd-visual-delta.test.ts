@@ -82,8 +82,9 @@ describe("titan-factory shepherd visual-delta with no serve answering, in an age
   it("writes nothing to GitHub: no comment, merge, ref or branch update", async () => {
     const fixture = calibrationPr(true);
 
-    await visualDelta(fixture);
+    const result = await visualDelta(fixture);
 
+    expect(result.code).toBe(EXIT.OK);
     expect(Object.values(fixture.fake.effects).every((count) => count === 0)).toBe(true);
     expect(fixture.fake.comments.size).toBe(0);
   });
