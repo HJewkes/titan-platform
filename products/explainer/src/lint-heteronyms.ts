@@ -5,6 +5,8 @@ import type { ScriptBeat } from "./script-schema.js";
 
 // The apostrophe stays inside a word, as in speech-vet's occurrence count, so ordinals line up with its declarations.
 const WORD = /[A-Za-z]+(?:'[A-Za-z]+)*/g;
+// A place counts numbers too, as a model counting the line's words would, so "about 18 minutes" puts minutes third.
+const PLACE = /[A-Za-z0-9]+(?:'[A-Za-z]+)*/g;
 
 /**
  * Word tokens with no phonemes. The workspace runs no G2P, so the check can find each heteronym and its declaration
@@ -27,9 +29,10 @@ export interface UnsettledHeteronym {
   position?: number;
 }
 
-function positionOf(tokens: readonly PhonemeToken[], word: string, occurrence: number): number | undefined {
+function positionOf(spoken: string, word: string, occurrence: number): number | undefined {
   const form = word.toLowerCase();
-  const index = tokens.map(({ text }) => text.toLowerCase()).flatMap((text, i) => (text === form ? [i] : []))[occurrence - 1];
+  const places = [...plainText(spoken).matchAll(PLACE)].map(([text]) => text.toLowerCase());
+  const index = places.flatMap((text, i) => (text === form ? [i] : []))[occurrence - 1];
   return index === undefined ? undefined : index + 1;
 }
 
@@ -39,7 +42,7 @@ export function unsettledHeteronyms(spoken: string, table: HeteronymTable = engl
   return checkReadings(spoken, tokens, table)
     .filter(({ word, declared, status }) => (declared === null ? status === "warn" : !readingNames(table, word.toLowerCase()).includes(declared)))
     .map(({ word, occurrence }) => {
-      const position = positionOf(tokens, word, occurrence);
+      const position = positionOf(spoken, word, occurrence);
       return { word, readings: readingNames(table, word.toLowerCase()), ...(position === undefined ? {} : { position }) };
     });
 }

@@ -9,7 +9,8 @@ const DECIDED = [
   ["a time unit after a number", "The desk run took about 18 minutes.", "The desk run took about 18 [minutes](=time)."],
   ["an adjective after a", "The scan shows a minute detail on the label.", "The scan shows a [minute](=tiny) detail on the label."],
   ["a time unit before a pause", "Wait a minute, then rescan.", "Wait a [minute](=time), then rescan."],
-  ["a noun after a determiner", "The desk logs each use of the scanner.", "The desk logs each [use](=noun) of the scanner."],
+  ["a noun after a determiner", "The desk logs the use of the scanner.", "The desk logs the [use](=noun) of the scanner."],
+  ["a time unit counted by more", "Give it one more minute to settle.", "Give it one more [minute](=time) to settle."],
   ["a verb after a modal", "Couriers can use the scanner.", "Couriers can [use](=verb) the scanner."],
   ["a past read after a passive", "The label was read twice.", "The label was [read](=past) twice."],
 ] as const;
@@ -18,6 +19,9 @@ const UNDECIDED = [
   ["a minute whose next word is open class", "Every minute counts at the desk."],
   ["a noun after an adjective", "The scanner allows two hours of daily use."],
   ["a to before a pause", "The desk puts the scanner to use."],
+  ["an -s form after to", "The hook writes to records of each scan."],
+  ["a determiner standing as the subject", "This records the scan time."],
+  ["a pronoun each before an -s form", "Each records its own scan."],
 ] as const;
 
 describe("declaring heteronym readings from context", () => {

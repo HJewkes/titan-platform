@@ -18,6 +18,34 @@
       "kills": [
         "declaring heteronym readings from context declares only the occurrence its context decides and leaves Q-V10 naming the other by place"
       ]
+    },
+    {
+      "name": "an -s form after to reads as an infinitive",
+      "file": "products/explainer/src/heteronym-readings.ts",
+      "find": "prev === \"to\" && !pause && !form.endsWith(\"s\")",
+      "replace": "prev === \"to\" && !pause",
+      "kills": [
+        "declaring heteronym readings from context leaves an -s form after to bare, so Q-V10 still fails it"
+      ]
+    },
+    {
+      "name": "more counts as an intensifier before minute",
+      "file": "products/explainer/src/heteronym-readings.ts",
+      "find": "words(\"very too most quite rather extremely\")",
+      "replace": "words(\"very too most more quite rather extremely\")",
+      "kills": [
+        "declaring heteronym readings from context declares a time unit counted by more"
+      ]
+    },
+    {
+      "name": "a subject-capable determiner marks the noun",
+      "file": "products/explainer/src/heteronym-readings.ts",
+      "find": "words(\"a an the its their our your my every no of in for\")",
+      "replace": "words(\"a an the this each its their our your my every no of in for\")",
+      "kills": [
+        "declaring heteronym readings from context leaves a determiner standing as the subject bare, so Q-V10 still fails it",
+        "declaring heteronym readings from context leaves a pronoun each before an -s form bare, so Q-V10 still fails it"
+      ]
     }
   ]
 }

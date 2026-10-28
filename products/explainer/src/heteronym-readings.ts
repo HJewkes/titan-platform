@@ -26,7 +26,8 @@ const words = (list: string): ReadonlySet<string> => new Set(list.split(" "));
 
 // The time unit heads its phrase, so a pause or a function word follows it; the adjective modifies the noun after it.
 const AFTER_TIME = words("later ago earlier or and of to in for before after from on at by with per then when while is was has had left");
-const INTENSIFIERS = words("very so too most more quite rather extremely less");
+// "more", "less" and "so" also count time ("one more minute"), so they decide nothing.
+const INTENSIFIERS = words("very too most quite rather extremely");
 
 /** "minutes" is always the time unit: the adjective does not inflect. */
 const minute: Rule = ({ form, prev = "", next = "", pause }) => {
@@ -36,14 +37,16 @@ const minute: Rule = ({ form, prev = "", next = "", pause }) => {
   return prev === "a" || prev === "an" ? "tiny" : undefined;
 };
 
-// Closed-class words only: the g2p tagger was measured reading "daily use" and "live" as verbs.
-const NOUN_BEFORE = words("a an the this these those its their our your his my each every no any some of in for");
+// Closed-class words only: the g2p tagger was measured reading "daily use" and "live" as verbs. Determiners that can
+// stand alone as a subject ("this", "each", "some") are left out: "This records the scan" is a verb.
+const NOUN_BEFORE = words("a an the its their our your my every no of in for");
 const VERB_BEFORE = words("can cannot could will would shall should may might must do does did don't doesn't didn't won't can't");
 const SUBJECTS = words("i we you they");
 const S_SUBJECTS = words("he she it");
 
-// "to" before a pause is a preposition ("put to use."), so only "to" with words after it marks an infinitive.
-const infinitive = ({ prev, pause }: Context): boolean => prev === "to" && !pause;
+// "to" before a pause is a preposition ("put to use."), so only "to" with words after it marks an infinitive, and
+// never before an -s form ("writes to records of"), which an infinitive cannot take.
+const infinitive = ({ form, prev, pause }: Context): boolean => prev === "to" && !pause && !form.endsWith("s");
 
 const nounOrVerb: Rule = (context) => {
   const prev = context.prev ?? "";
