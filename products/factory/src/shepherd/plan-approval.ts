@@ -22,7 +22,7 @@ export const CiPolicyScopeSchema = z.strictObject({
 export const PathScopeSchema = z.strictObject({ paths: z.array(bounded).min(1).max(200) });
 
 /** One owner answer as a reader gets it back; the scope's shape follows the gate, one of the merge-guard rows a plan may name. */
-export const PlanApprovalSchema = z.discriminatedUnion("gate", [
+const PlanApprovalSchema =z.discriminatedUnion("gate", [
   z.strictObject({ gate: z.literal("ci-policy"), scope: CiPolicyScopeSchema, round: bounded }),
   z.strictObject({ gate: z.enum(["skill", "visual"]), scope: PathScopeSchema, round: bounded }),
 ]);

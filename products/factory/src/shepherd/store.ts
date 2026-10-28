@@ -106,12 +106,9 @@ export class ShepherdStore implements HoldLookup {
     const kind = KindSchema.parse(input.kind ?? "unknown");
     const at = this.stamp();
     this.db.transaction(() => {
-      this.db
-        .prepare(
-          `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
+      const insert = this.db.prepare(`INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      insert.run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
       writeRegistrationFacts(this.db, input.runId, input);
       writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
       claimPlanApprovals(this.db, input.runId, input.task, input.repo);
