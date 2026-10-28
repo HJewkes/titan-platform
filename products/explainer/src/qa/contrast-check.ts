@@ -34,18 +34,25 @@ const luminance = (hex: string): number => {
 
 /** WCAG contrast ratio of two `#rrggbb` colours, 1 to 21. */
 export function contrastRatio(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
-  return (hi + 0.05) / (lo + 0.05);
+  const [la, lb] = [luminance(a), luminance(b)];
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+type ChartSlots = z.infer<(typeof BEAT_SLOTS)["chart"]>;
+type ThemeToken = keyof typeof semanticColorsDark;
+interface MarkTokens {
+  mark: ThemeToken;
+  ground: ThemeToken;
 }
 
 /**
  * Each drawn chart kind's unscaled mark colour and the ground it sits on, as the stage CSS paints them: a bar fills
  * `.ex-bar-track` (examples.css), a line chart's column stands on the frame (beats.css `.beat-graph-bar`).
  */
-const CHART_MARK_TOKENS = {
+const CHART_MARK_TOKENS: Partial<Record<ChartSlots["kind"], MarkTokens>> = {
   bar: { mark: "text-secondary", ground: "surface-raised" },
   line: { mark: "dataviz-categorical-0", ground: "background-base" },
-} as const satisfies Record<string, { mark: keyof typeof semanticColorsDark; ground: keyof typeof semanticColorsDark }>;
+};
 
 interface TimelineBeat {
   id: string;
@@ -53,10 +60,7 @@ interface TimelineBeat {
   slots?: unknown;
 }
 
-type ChartSlots = z.infer<(typeof BEAT_SLOTS)["chart"]>;
-
-function beatMarks(id: string, slots: ChartSlots): ChartMark[] {
-  const tokens = CHART_MARK_TOKENS[slots.kind as keyof typeof CHART_MARK_TOKENS];
+function beatMarks(id: string, slots: ChartSlots, tokens: MarkTokens): ChartMark[] {
   const ground = semanticColorsDark[tokens.ground];
   const scaled = slots.scale ? scaleColours(slots.scale, slots.series.map((point) => point.value), slots.baseline ?? 0) : [];
   return slots.series.map((point, i) => {
@@ -70,7 +74,8 @@ function chartMarks(beats: readonly TimelineBeat[], fallbacks: string[]): ChartM
   return beats.flatMap((beat) => {
     if (beat.kind !== "chart") return [];
     const slots = BEAT_SLOTS.chart.safeParse(beat.slots);
-    if (slots.success && slots.data.kind in CHART_MARK_TOKENS) return beatMarks(beat.id, slots.data);
+    const tokens = slots.success ? CHART_MARK_TOKENS[slots.data.kind] : undefined;
+    if (slots.success && tokens) return beatMarks(beat.id, slots.data, tokens);
     fallbacks.push(`${beat.id}: ${slots.success ? `chart kind ${slots.data.kind} is not drawn` : "its chart slots do not parse"}, so its marks were not checked`);
     return [];
   });
