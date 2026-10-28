@@ -1166,9 +1166,13 @@ and the reason lists every cause:
 An added snapshot does not gate by itself, since no existing render changed. A new
 component is caught by its API report.
 
-A head that clears says so in its evidence comment, for example `visual files … changed 1
-snapshot, max 0.4% (≤ 1.0%), no public API, token or harness change, and visual passed at
-<head>`. A stored `visualDelta` that does not parse gates in every mode.
+A head that clears says so in its evidence comment, for example:
+
+```text
+visual files … changed 1 snapshot, max 0.4% (≤ 1.0%), no public API, token or harness change, and visual passed at 0123abc…
+```
+
+A stored `visualDelta` that does not parse gates in every mode.
 
 **Caps.** Each one is checked before the work and fails closed: `maxSnapshots` (default 80,
 at most 200) changed snapshots per head, past which every snapshot is unmeasured;
