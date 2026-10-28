@@ -4,7 +4,7 @@ import { VisualDeltaSchema } from "./review-schemas.js";
 import type { VisualDelta } from "./visual-delta-read.js";
 import { shownPaths } from "./visual-gate.js";
 
-const percent = (share: number): string => `${(share * 100).toFixed(1)}%`;
+export const percent = (share: number): string => `${(share * 100).toFixed(1)}%`;
 
 /**
  * A delta that fails the schema reads as unmeasured, so it gates whatever mode it claims; a stored record is read back
@@ -54,6 +54,15 @@ export function unclearedBaselines(changed: readonly string[], delta: VisualDelt
   const isCleared = (shot: VisualDelta["snapshots"][number]): boolean => shot.status === "added" || (shot.status === "changed" && shot.share !== undefined && shot.share <= on.policy.maxChangedShare);
   const cleared = new Set(on.snapshots.filter(isCleared).map((shot) => shot.path));
   return changed.filter((path) => !cleared.has(path));
+}
+
+/**
+ * What `on` would make of this delta, for the shadow line of the evidence comment. It speaks for the delta alone: under
+ * `on` the seat's baseline check must still be green, and a changed baseline the delta does not list still gates.
+ */
+export function wouldDecide(delta: VisualDelta): string {
+  const gate = visualDeltaGate({ ...delta, policy: { ...delta.policy, mode: "on" } });
+  return gate === undefined ? "clear" : `gate: ${gate}`;
 }
 
 /** How an allow under `on` was judged, for the clearance note; undefined keeps the TP-2662 wording. */

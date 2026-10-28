@@ -27,6 +27,26 @@
       "kills": [
         "a glob-matched PR on a seat with visual baselines opens one visual-path gate naming the baseline when the head also changes a baseline PNG"
       ]
+    },
+    {
+      "name": "the evidence comment leaves out the Visual diff section",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": "    ...visualDiffSection(record.visualDelta),\n",
+      "replace": "",
+      "kills": [
+        "a seat with visual baselines under visualThreshold on merges a snapshot change below the threshold with no approve-merge gate, and the comment shows the max share",
+        "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the component when a snapshot changes above the threshold",
+        "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the API report when the public API changes"
+      ]
+    },
+    {
+      "name": "a snapshot over the threshold gives no reason naming its component",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "(shot.share ?? 1) > policy.maxChangedShare) return [",
+      "replace": "false) return [",
+      "kills": [
+        "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the component when a snapshot changes above the threshold"
+      ]
     }
   ]
 }
