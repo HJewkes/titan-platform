@@ -1,6 +1,6 @@
 # Planner guide: repo-argument
 
-<!-- Generated from doctrine/types/repo-argument.yaml (profile 0.2.1) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/repo-argument.yaml (profile 0.2.2) by `explainer guide types`. Do not edit. -->
 
 One idea from the repo lands and sticks for a senior engineer on a first watch: why it matters, how it works, and the one thing to take away.
 

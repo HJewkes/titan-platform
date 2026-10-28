@@ -94,6 +94,34 @@ describe("the script stage's word-budget and runtime gates", () => {
 
     expect(draftRuntime(draft)).toMatchObject({ pass: true, detail: expect.stringContaining("or 45-90 s as cut decision-brief") });
   });
+
+  it("fails a public plan past its split line with the episodes to split it into, by chapter, rather than trimming it", () => {
+    const draft = { ...plannedAt(40), profile: "repo-argument" };
+
+    const runtime = draftRuntime(draft);
+
+    expect(runtime.pass).toBe(false);
+    expect(runtime.detail).toBe(
+      "the beats plan 480 s; repo-argument runs 210-300 s, target 240 s; past 360 s it splits into episodes at chapter breaks, not a trim: episode 1: ch1, ch2 (240 s); episode 2: ch3, ch4 (240 s)",
+    );
+  });
+
+  it("names a chapter too long for one episode as the one to split by section", () => {
+    const planned = { ...plannedAt(40), profile: "repo-argument" };
+    const draft = { ...planned, beats: planned.beats.map((beat) => (beat.chapter === "ch1" ? { ...beat, plannedS: 110 } : beat)) };
+
+    const runtime = draftRuntime(draft);
+
+    expect(runtime.detail).toMatch(/episode 1: ch1 \(330 s, so split ch1 by section\); episode 2: ch2, ch3 \(240 s\); episode 3: ch4 \(120 s\)$/);
+  });
+
+  it("names no split for a plan over its band but under its split line", () => {
+    const draft = { ...plannedAt(27), profile: "repo-argument" };
+
+    const runtime = draftRuntime(draft);
+
+    expect(runtime).toEqual({ pass: false, detail: "the beats plan 324 s; repo-argument runs 210-300 s, target 240 s" });
+  });
 });
 
 describe("the script stage's beat plan", () => {

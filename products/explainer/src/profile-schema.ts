@@ -83,9 +83,29 @@ const VoiceBandSchema = z
   .strict();
 
 /**
+ * Who a profile's videos are for: `public` ones are watched by choice, `assigned` ones by a viewer the work was handed
+ * to. A profile that names none is `assigned`: every shipped audience pack but one is the owner's, and a public video
+ * already needs an owner ask per publish, so public is the opt-in.
+ */
+export const AUDIENCE_KINDS = ["public", "assigned"] as const;
+export type AudienceKind = (typeof AUDIENCE_KINDS)[number];
+
+const RuntimeSchema = z.object({ targetS: Seconds, minS: Seconds, maxS: Seconds, splitAboveS: Seconds }).strict();
+export type RuntimeBand = z.infer<typeof RuntimeSchema>;
+
+/**
+ * The band a profile with no `runtime` of its own runs in (owner decision 551): a public video is at most 6 min and
+ * splits past it, an assigned one keeps the tour's 600 s.
+ */
+export const AUDIENCE_RUNTIME: Readonly<Record<AudienceKind, RuntimeBand>> = {
+  public: { targetS: 240, minS: 120, maxS: 360, splitAboveS: 360 },
+  assigned: { targetS: 600, minS: 480, maxS: 720, splitAboveS: 900 },
+};
+
+/**
  * One video type's profile (VT §5.3 plus plan §A.5). It carries no spend cap (owner Q5: exact cost
  * is tracked, with a runaway backstop only) and no signature requirement (the signature layer is a
- * pilot hypothesis, not a rule).
+ * pilot hypothesis, not a rule). Its runtime is resolved on parse: its own band wins over its audience's.
  */
 export const TypeProfileSchema = z
   .object({
@@ -94,9 +114,9 @@ export const TypeProfileSchema = z
     version: z.string().regex(/^\d+\.\d+\.\d+$/, "expected a semver version"),
     family: z.enum(PROFILE_FAMILIES),
     intent: z.string().min(1),
-    audience: z.object({ default: Kebab, allow: z.array(Kebab).min(1) }).strict(),
+    audience: z.object({ default: Kebab, allow: z.array(Kebab).min(1), kind: z.enum(AUDIENCE_KINDS).default("assigned") }).strict(),
     inputs: z.object({ adapters: z.array(z.string().min(1)), preconditions: z.array(Kebab) }).strict(),
-    runtime: z.object({ targetS: Seconds, minS: Seconds, maxS: Seconds, splitAboveS: Seconds }).strict(),
+    runtime: RuntimeSchema.optional(),
     structure: z.discriminatedUnion("order", [FixedStructureSchema, HeuristicStructureSchema]),
     cuts: z.array(z.object({ id: Kebab, type: Kebab.optional(), when: z.string().min(1), runtimeS: Band }).strict()).default([]),
     hook: z.string().min(1),
@@ -121,7 +141,8 @@ export const TypeProfileSchema = z
     styles: StylesSchema,
     voice: VoiceBandSchema,
   })
-  .strict();
+  .strict()
+  .transform((profile) => ({ ...profile, runtime: profile.runtime ?? AUDIENCE_RUNTIME[profile.audience.kind] }));
 
 export type TypeProfile = z.infer<typeof TypeProfileSchema>;
 export type ProfileBlock = z.infer<typeof BlockSchema>;

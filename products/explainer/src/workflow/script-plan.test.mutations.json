@@ -27,6 +27,24 @@
       "kills": [
         "the script stage's plan retry answers a fill fault the plan retry left in an L0 repair round, naming the refused beat, and keeps the repair"
       ]
+    },
+    {
+      "name": "draftRuntime names no episode split past the split line",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "if (plannedTotal(draft) <= splitAboveS) return \"\";",
+      "replace": "return \"\";",
+      "kills": [
+        "the script stage's word-budget and runtime gates fails a public plan past its split line with the episodes to split it into, by chapter, rather than trimming it"
+      ]
+    },
+    {
+      "name": "an episode over the band no longer names its chapter to split",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "${seconds > maxS ? `, so split ${chapters[0]} by section` : \"\"}",
+      "replace": "",
+      "kills": [
+        "the script stage's word-budget and runtime gates names a chapter too long for one episode as the one to split by section"
+      ]
     }
   ]
 }
