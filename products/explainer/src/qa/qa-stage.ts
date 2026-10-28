@@ -7,10 +7,12 @@ import { RENDER_FPS } from "../render/render-video.js";
 import { renameWordsBeats, storyboardIds } from "../render/beat-ids.js";
 import { ResolvedSchema } from "../resolve-stage.js";
 import { readTiming } from "../timing.js";
+import { parseTimeline } from "../composition/timeline.js";
 import type { ArtifactStore } from "../workflow/artifacts.js";
 import type { ModelStageInput } from "../workflow/model-stages.js";
 import type { StageOutcome } from "../workflow/records.js";
 import { captionReport } from "./caption-check.js";
+import { contrastReport } from "./contrast-check.js";
 import { cueGate, type CueGateResult } from "./cue-gate.js";
 import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
@@ -18,7 +20,7 @@ import { measuredFindings } from "./qa-measured.js";
 import { narrationFactsReport } from "./narration-facts.js";
 import { INLINE_MAX_BYTES, mediaScanByBeat, qaReport, qaSummary, type QaReport } from "./qa-report.js";
 import { timelineFromArtifact, timelineS, type QaTimeline } from "./qa-timeline.js";
-import type { QaGate } from "./gate-profile.js";
+import { CONTRAST, type QaGate } from "./gate-profile.js";
 import { serveTree } from "./serve-tree.js";
 import { timingProfile, timingReport, type TimingProfile } from "./timing-gates.js";
 
@@ -75,7 +77,7 @@ function storedIfLarge(input: QaInput, outputs: Record<string, string>, name: st
   return outputs[name];
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts" | "flash" | "contrast">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -110,6 +112,7 @@ async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, i
     captions: captionReport(vttText(input), json(input, need(input, "words"))),
     narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" ")),
     flash: await engine.flashScan(mp4),
+    contrast: contrastReport(parseTimeline(json(input, need(input, "timeline"))).beats, [...inspection.held.errors, ...inspection.held.info], CONTRAST, options),
   };
 }
 

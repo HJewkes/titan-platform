@@ -82,3 +82,18 @@ export function chartIntegrityVerdict(input: CheckInput): { pass: boolean; detai
   const shown = problems.slice(0, 5).join("; ") + (problems.length > 5 ? ` and ${problems.length - 5} more` : "");
   return { pass: problems.length === 0, detail: problems.length === 0 ? `${charts} chart beats read true` : `chart integrity: ${shown}` };
 }
+
+/**
+ * Whether a chart tells its series apart by colour alone (CH-20, WCAG 1.4.1): a replot of two or more series keyed
+ * by a legend. The slots carry no marker, dash or pattern, so without labels on the series colour is the only key.
+ * A chart beat draws one series whose every point has its own axis label, so it never is.
+ */
+export const colourOnlySeries = (ref: string, frame: ChartFrame): boolean => ref === "replot" && seriesCount(ref, frame) > 1 && frame.legend === true;
+
+/** The reported `colour-only-series` lint over the fill the resolve body ran. */
+export function colourOnlySeriesVerdict(input: CheckInput): { pass: boolean; detail: string } {
+  const filled = fillAtResolve(input);
+  if (filled instanceof FillError) throw new Error("the template fill refused; the template-fill gate names the beats");
+  const found = filled.beats.filter((beat) => CHART_REFS.has(beat.ref) && colourOnlySeries(beat.ref, frameOf(beat.ref, beat.slots))).map((beat) => beat.id);
+  return { pass: found.length === 0, detail: found.length === 0 ? "no chart tells its series apart by colour alone" : `series told apart by colour alone: ${found.join(", ")}` };
+}

@@ -96,3 +96,22 @@ export function flashVerdict(input: QaCheckInput): Verdict {
   const pass = flash.general.windows.length === 0 && flash.red.windows.length === 0;
   return { pass, detail: `${flashDetail("general", flash.general)}; ${flashDetail("red", flash.red)} (${flash.method})` };
 }
+
+/** Text runs under the WCAG text ratios: none passes; a qa.json from before the check fails, as a missing gate does. */
+export function textContrastVerdict(input: QaCheckInput): Verdict {
+  const { contrast } = report(input);
+  if (contrast === undefined) return { pass: false, detail: "qa.json has no contrast report" };
+  const { below } = contrast.text;
+  const shown = below.slice(0, DETAIL_FINDINGS).map(({ beat, text, px, ratio, need }) => `[${beat}] "${text}" ${px} px ${ratio}:1 (needs ${need}:1)`).join("; ");
+  return { pass: below.length === 0, detail: below.length === 0 ? "no text under the contrast thresholds" : `${below.length} text runs under contrast: ${shown}` };
+}
+
+/** Chart marks under the non-text ratio against their ground: none passes; a qa.json from before the check fails. */
+export function chartMarkContrastVerdict(input: QaCheckInput): Verdict {
+  const { contrast } = report(input);
+  if (contrast === undefined) return { pass: false, detail: "qa.json has no contrast report" };
+  const { checked, below } = contrast.marks;
+  const shown = below.slice(0, DETAIL_FINDINGS).map(({ beat, mark, colour, ground, ratio }) => `[${beat}] ${mark} ${colour} on ${ground} ${ratio.toFixed(2)}:1`).join("; ");
+  const need = contrast.thresholds.nonText;
+  return { pass: below.length === 0, detail: below.length === 0 ? `${checked} chart marks at ${need}:1 or more` : `${below.length}/${checked} chart marks under ${need}:1: ${shown}` };
+}

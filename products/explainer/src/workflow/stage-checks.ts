@@ -15,14 +15,17 @@ import { draftBeatLengths, draftRuntime, draftWordBudget } from "../script-budge
 import { draftTemplateFill } from "../script-fill.js";
 import { parseSpine } from "../spine-schema.js";
 import { labelConventionsVerdict } from "../label-conventions.js";
-import { chartIntegrityVerdict } from "../chart-integrity.js";
+import { chartIntegrityVerdict, colourOnlySeriesVerdict } from "../chart-integrity.js";
 import { leadBeats, uncuedTargets } from "../lead-beats.js";
 import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
-import { CAPTIONS_GATE, FLASH_GATE, NARRATION_FACTS_GATE } from "../qa/gate-profile.js";
-import { captionVerdict, directionVerdict, flashVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, narrationFactsVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
+import { CAPTIONS_GATE, CONTRAST_GATE, FLASH_GATE, NARRATION_FACTS_GATE } from "../qa/gate-profile.js";
+import {
+  captionVerdict, chartMarkContrastVerdict, directionVerdict, flashVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, narrationFactsVerdict,
+  textContrastVerdict, timingVerdict, timingWarnVerdict,
+} from "../qa/qa-checks.js";
 import { assertDurationAgreement } from "../render/duration-check.js";
 import { RenderManifestSchema } from "../render/render-manifest.js";
 import { doctrineG2p } from "./voice-g2p.js";
@@ -198,6 +201,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "slot-overrides", gate: true, reads: ["script", "resolved"], run: slotOverridesVerdict },
     { name: "template-fill", gate: true, reads: ["script", "resolved"], run: templateFillVerdict },
     { name: "chart-integrity", gate: true, reads: ["script", "resolved"], run: chartIntegrityVerdict },
+    { name: "colour-only-series", gate: CONTRAST_GATE, reads: ["script", "resolved"], run: colourOnlySeriesVerdict },
     { name: "sim-check", gate: false, reads: ["sim-traces"], run: simCheckVerdict },
     { name: "sim-cut-orphan", gate: true, reads: ["script", "resolved"], run: simCutOrphanVerdict },
   ],
@@ -229,6 +233,8 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "captions-onset", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("onset") },
     { name: "narration-facts", gate: NARRATION_FACTS_GATE, reads: ["qa"], run: narrationFactsVerdict },
     { name: "photosensitive-flash", gate: FLASH_GATE, reads: ["qa"], run: flashVerdict },
+    { name: "text-contrast", gate: CONTRAST_GATE, reads: ["qa"], run: textContrastVerdict },
+    { name: "chart-mark-contrast", gate: CONTRAST_GATE, reads: ["qa"], run: chartMarkContrastVerdict },
   ],
   sheets: [],
 };

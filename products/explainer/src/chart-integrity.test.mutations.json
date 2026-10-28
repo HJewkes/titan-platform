@@ -20,6 +20,15 @@
         "resolve gates on chart integrity fails the chart-integrity gate on a truncated bar chart a slots pin sets",
         "resolve gates on chart integrity passes a zero-based bar chart with an ordered ramp"
       ]
+    },
+    {
+      "name": "a legend never makes series colour-only",
+      "file": "products/explainer/src/chart-integrity.ts",
+      "find": "seriesCount(ref, frame) > 1 && frame.legend === true;",
+      "replace": "seriesCount(ref, frame) > 1 && frame.legend === false;",
+      "kills": [
+        "series are never told apart by colour alone (CH-20, WCAG 1.4.1) flags a replot of several series keyed only by a legend, whatever their count"
+      ]
     }
   ]
 }
