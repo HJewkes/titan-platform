@@ -64,10 +64,13 @@ export function baselineCheckGreen(merge: MergeFacts, check: string, allowedApps
   return runs.length > 0 && runs.every((run) => run.conclusion === "success");
 }
 
-/** The note an allow carries when visual files were cleared by the baseline check, so the evidence comment records why. */
-export function visualClearance(changedPaths: readonly string[], head: string, { visualPaths, visualBaselines }: VisualPolicy): string {
+/**
+ * The note an allow carries when visual files were cleared by the baseline check, so the evidence comment records why;
+ * `judged` says what a visual threshold measured, in place of "changed no baseline".
+ */
+export function visualClearance(changedPaths: readonly string[], head: string, { visualPaths, visualBaselines }: VisualPolicy, judged = "changed no baseline"): string {
   if (visualPaths === undefined || visualBaselines === undefined) return "";
   const visual = visualMatches(changedPaths, visualPaths);
   if (visual.length === 0) return "";
-  return `; visual files ${shownPaths(visual)} changed no baseline and ${oneLine(visualBaselines.check, MAX_SHOWN_PATH)} passed at ${head}`;
+  return `; visual files ${shownPaths(visual)} ${judged} and ${oneLine(visualBaselines.check, MAX_SHOWN_PATH)} passed at ${head}`;
 }

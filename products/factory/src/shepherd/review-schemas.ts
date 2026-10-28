@@ -83,7 +83,7 @@ const SnapshotDeltaSchema = z.looseObject({
 
 /** The evidence step's visual delta (TP-4320); a record whose delta is malformed fails the parse, so its merge gates. */
 export const VisualDeltaSchema = z.looseObject({
-  policy: z.looseObject({ mode: z.enum(["off", "shadow"]), maxChangedShare: z.number(), pixelTolerance: z.number() }),
+  policy: z.looseObject({ mode: z.enum(["off", "shadow", "on"]), maxChangedShare: z.number(), pixelTolerance: z.number() }),
   mergeBase: boundedText.nullable(),
   snapshots: z.array(SnapshotDeltaSchema).max(VISUAL_DELTA_CAPS.snapshots),
   api: pathList,
