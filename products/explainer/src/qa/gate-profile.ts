@@ -47,6 +47,8 @@ export interface QaGate {
  * (WCAG 1.2.2 Level A) a hard gate; flipping this line is the whole switch.
  */
 export const CAPTIONS_GATE = false;
+/** Whether an on-screen fact the narration never says fails the qa stage (WCAG 1.2.5 AA); waits on the same answer. */
+export const NARRATION_FACTS_GATE = false;
 
 const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
 
