@@ -1,13 +1,11 @@
 import type { GateRecord } from "@titan-design/hitl";
 import { mainGreenAt, type MainGreenEvidence } from "../coordinator-evidence-read.js";
-import { mainMergeOf, stepOf } from "../coordinator-evidence.js";
+import { MAIN_CI_TIMEOUT, mainMergeOf, stepOf } from "../coordinator-evidence.js";
 import type { FactoryHost } from "../host.js";
 import { RESYNC_CONCURRENCY, RESYNC_READ_TIMEOUT_MS, mapBounded } from "./bounded.js";
 import { MAIN_GREEN } from "./main-green-ack.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { cancelUnlessSettled } from "./stale-gates.js";
-
-const MAIN_CI_TIMEOUT = "main-ci-timeout";
 
 export interface ClearedMainGate {
   runId: string;

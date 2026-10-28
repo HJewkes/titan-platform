@@ -13,7 +13,9 @@ import { headGateAsks } from "./shepherd/stale-gates.js";
  * acknowledgement or main-frozen unfreeze once a green main commit contains the merge; and an abandon of a gate whose
  * PR is already merged or closed, whoever held it or whichever rule gated it, because nothing is left to merge. Owner
  * decision 529 (2026-10-22, TP-4048) adds a fourth: an sh-sent-back `await-new-head` while the PR is open at the gate's
- * own head, which only waits and merges nothing. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
+ * own head, which only waits and merges nothing. Owner decision 551 (2026-10-28, TP-4285) adds a main-ci-timeout
+ * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Every other gate, a
+ * visual or seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -91,7 +93,8 @@ export type RunFacts = z.infer<typeof RunFacts>;
 export type CheckRunFact = z.infer<typeof CheckRunFact>;
 
 export const MERGE_GATE = "approve-merge";
-export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze" } as const;
+export const MAIN_CI_TIMEOUT = "main-ci-timeout";
+export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze", [MAIN_CI_TIMEOUT]: "acknowledged" } as const;
 /** Gates about one PR whose `abandon` a coordinator may give once that PR is merged or closed. */
 export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed"]);
 export const SENT_BACK_GATE = "sh-sent-back";
@@ -162,7 +165,7 @@ export interface MainMerge {
   pr: number;
 }
 
-/** A main-red or main-frozen gate about one merge, whose brief points at that merge's main CI. */
+/** A main-red, main-frozen or main-ci-timeout gate about one merge, whose brief points at that merge's main CI. */
 export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): MainMerge | undefined {
   return Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? mainMergeOf(gate) : undefined;
 }

@@ -4,6 +4,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
 import {
   AWAIT_NEW_HEAD,
+  MAIN_CI_TIMEOUT,
   MAIN_GATES,
   MERGE_GATE,
   PR_GATES,
@@ -120,9 +121,10 @@ export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { state: findings.length > 0 ? "pending" : "green", failing: [] };
 }
 
+/** A main-ci-timeout gate asks the question Shepherd's own clear answers, so it needs the same required contexts. */
 function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> | undefined {
   const main = mainGate(gate);
-  return main && mainGreenAt(sources, gate.id, main, { required: false });
+  return main && mainGreenAt(sources, gate.id, main, { required: stepOf(gate.id) === MAIN_CI_TIMEOUT });
 }
 
 export type MainGreenEvidence = Extract<CoordinatorEvidence, { kind: "main-green" }>;

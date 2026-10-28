@@ -29,7 +29,7 @@ const NOW = Date.parse("2026-10-07T18:00:00Z");
 const MECHANICAL = authorityGateReason(HEAD, pendingCheck(HEAD));
 
 interface Scenario {
-  gate: "merge" | "sent-back" | "ci-failed" | "main-red" | "main-frozen";
+  gate: "merge" | "sent-back" | "ci-failed" | "main-red" | "main-frozen" | "main-ci-timeout";
   rule?: string;
   /** The recorded merge decision's reason; defaults to MRG-AU gating only on a required check still running. */
   reason?: string;
@@ -55,11 +55,16 @@ const shepherdPr = defineWorkflow({
     { id: "ci-failed", kind: "assisted" },
     { id: "main-red", kind: "assisted" },
     { id: "main-frozen", kind: "assisted" },
+    { id: "main-ci-timeout", kind: "assisted" },
     { id: "stuck-behind", kind: "assisted" },
   ],
   run: async (ctx) => {
     const scenario = JSON.parse(ctx.param("scenario")!) as Scenario;
     if (scenario.gate === "main-red") return void (await ctx.assisted("main-red", `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. Acknowledge.`, { schema: OwnerAck, brief: acknowledgeBrief({ repo: REPO, mergeSha: MERGE_SHA, headline: "Main CI is red", detail: "failed: validate" }) }));
+    if (scenario.gate === "main-ci-timeout") {
+      const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is not red, but unread: no completed main run containing it. Acknowledge.`;
+      return void (await ctx.assisted("main-ci-timeout", prompt, { schema: OwnerAck, brief: acknowledgeBrief({ repo: REPO, mergeSha: MERGE_SHA, headline: "No completed main CI run contains the merge", detail: "unread" }) }));
+    }
     if (scenario.gate === "main-frozen") {
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. The repo is frozen. Stay frozen, or unfreeze?`;
       return void (await ctx.assisted("main-frozen", prompt, frozenDecision({ repo: REPO, mergeSha: MERGE_SHA, situation: prompt })));
@@ -129,7 +134,7 @@ function mergedPr(gh: FakeGitHub): void {
   Object.assign(gh.pr(1), { state: "closed", merged: true, mergeSha: MERGE_SHA });
 }
 
-const STEPS: Record<Scenario["gate"] | "stuck-behind", string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen", "stuck-behind": "stuck-behind" };
+const STEPS: Record<Scenario["gate"] | "stuck-behind", string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen", "main-ci-timeout": "main-ci-timeout", "stuck-behind": "stuck-behind" };
 
 async function resolveAs(world: World, gate: Scenario["gate"] | "stuck-behind", payload: object) {
   const { reasons } = fakeOwnerHelper(undefined);
@@ -503,6 +508,62 @@ describe("coordinator acknowledgement of a red main a green main commit contains
     world.gh.setRuns(TIP, [successRun("validate", 21, undefined, "failure")]);
 
     expectFellBack(await resolveAs(world, "main-red", { decision: "acknowledged", mergeSha: MERGE_SHA }));
+  });
+});
+
+describe("coordinator acknowledgement of a main-ci-timeout gate (owner decision 551)", () => {
+  const ACK = { decision: "acknowledged", mergeSha: MERGE_SHA };
+
+  async function timedOut(mergeBaseSha = MERGE_SHA): Promise<World> {
+    const world = await paused({ gate: "main-ci-timeout" });
+    mergedPr(world.gh);
+    world.gh.compares.set(`${MERGE_SHA}...${TIP}`, { mergeBaseSha, files: [] });
+    return world;
+  }
+
+  it("acknowledges once a later main commit containing the merge is green on every required context, storing that read", async () => {
+    const world = await timedOut();
+
+    const result = await resolveAs(world, "main-ci-timeout", ACK);
+
+    expect(result.reasons).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.gate).toMatchObject({
+      status: "resolved",
+      payload: ACK,
+      resolvedBy: { class: "coordinator", id: "tc-synthetic" },
+      resolvedEvidence: { kind: "main-green", mergeSha: MERGE_SHA, greenSha: TIP, mergeBaseSha: MERGE_SHA, runs: [{ id: 21, conclusion: "success" }, { id: 22, conclusion: "success" }] },
+    });
+  });
+
+  it("falls back when the green main commit does not contain the merge", async () => {
+    expectFellBack(await resolveAs(await timedOut(fakeSha("elsewhere")), "main-ci-timeout", ACK));
+  });
+
+  it("falls back while a required context on main's tip is red or has not reported", async () => {
+    const red = await timedOut();
+    red.gh.setRuns(TIP, [successRun("validate", 21), successRun("dag-check", 22, undefined, "failure")]);
+    const missing = await timedOut();
+    missing.gh.setRuns(TIP, [successRun("validate", 21)]);
+
+    expectFellBack(await resolveAs(red, "main-ci-timeout", ACK));
+    expectFellBack(await resolveAs(missing, "main-ci-timeout", ACK));
+  });
+
+  it("falls back when the base requires no context, though main-red would take every Actions run there", async () => {
+    const timeout = await timedOut();
+    timeout.gh.rules = { contexts: [], strict: true };
+    const red = await paused({ gate: "main-red" });
+    mergedPr(red.gh);
+    red.gh.compares.set(`${MERGE_SHA}...${TIP}`, { mergeBaseSha: MERGE_SHA, files: [] });
+    red.gh.rules = { contexts: [], strict: true };
+
+    expectFellBack(await resolveAs(timeout, "main-ci-timeout", ACK));
+    expect((await resolveAs(red, "main-red", ACK)).gate?.status).toBe("resolved");
+  });
+
+  it("falls back on an acknowledgement naming another merge", async () => {
+    expectFellBack(await resolveAs(await timedOut(), "main-ci-timeout", { decision: "acknowledged", mergeSha: fakeSha("other") }));
   });
 });
 
