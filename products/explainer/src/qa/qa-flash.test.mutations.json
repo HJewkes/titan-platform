@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the flash check gates the stage",
+      "file": "products/explainer/src/qa/gate-profile.ts",
+      "find": "export const FLASH_GATE = false;",
+      "replace": "export const FLASH_GATE = true;",
+      "kills": [
+        "qa stage photosensitive flash reports a general flash above three a second, and never fails the stage",
+        "qa stage photosensitive flash reports a red flash above three a second, and never fails the stage"
+      ]
+    },
+    {
+      "name": "qa.json drops the flash scan",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "    flash: await engine.flashScan(mp4),\n",
+      "replace": "",
+      "kills": [
+        "qa stage photosensitive flash records the flash scan in qa.json",
+        "qa stage photosensitive flash reports a general flash above three a second, and never fails the stage",
+        "qa stage photosensitive flash reports a red flash above three a second, and never fails the stage"
+      ]
+    },
+    {
+      "name": "the flash check ignores red flashes",
+      "file": "products/explainer/src/qa/qa-checks.ts",
+      "find": "flash.general.windows.length === 0 && flash.red.windows.length === 0",
+      "replace": "flash.general.windows.length === 0",
+      "kills": [
+        "qa stage photosensitive flash reports a red flash above three a second, and never fails the stage"
+      ]
+    }
+  ]
+}
