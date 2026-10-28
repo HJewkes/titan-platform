@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { stringify } from "yaml";
 import { describe, expect, it } from "vitest";
 import { fixedProfile } from "./profile-fixtures.test-helpers.js";
+import type { TypeProfile } from "./profile-schema.js";
 import { EXPLAIN_REPO_DEFAULT_TYPE, loadProfiles, loadTypeProfiles, profileFor, UnknownProfileError } from "./profile-load.js";
 
 function writeTypes(files: Record<string, unknown>): string {
@@ -61,8 +62,9 @@ describe("loadProfiles", () => {
 
 /** The sound fixed profile as written by a profile that sets neither its own runtime nor, unless given, its audience kind. */
 function unbandedProfile(kind?: "public" | "assigned"): Record<string, unknown> {
-  const { runtime: _runtime, audience, ...rest } = fixedProfile();
-  return { ...rest, audience: { default: audience.default, allow: audience.allow, ...(kind ? { kind } : {}) } };
+  const { audience, ...written }: Partial<TypeProfile> = fixedProfile();
+  delete written.runtime;
+  return { ...written, audience: { default: audience!.default, allow: audience!.allow, ...(kind ? { kind } : {}) } };
 }
 
 describe("a profile's runtime band by audience", () => {
