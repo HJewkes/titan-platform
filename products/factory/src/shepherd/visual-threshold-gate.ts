@@ -22,12 +22,13 @@ function sensitiveReasons({ api, tokens, harness }: VisualDelta): string[] {
   return named.filter(([paths]) => paths.length > 0).map(([paths, kind]) => `${shownPaths(paths)} (${kind})`);
 }
 
-/** A removed or unmeasured snapshot fails closed; a measured one gates only above the threshold. */
+/** A removed or unmeasured snapshot fails closed; a measured one gates only above the threshold, and one with no share is above it. */
 function snapshotReasons({ snapshots, policy }: VisualDelta): string[] {
+  const over = `(over ${percent(policy.maxChangedShare)})`;
   const reasons = snapshots.flatMap((shot) => {
     if (shot.status === "removed") return [`${shot.path} removed`];
     if (shot.status === "unmeasured") return [`${shot.path} unmeasured: ${shot.reason ?? "no reason recorded"}`];
-    if (shot.status === "changed" && (shot.share ?? 1) > policy.maxChangedShare) return [`${shot.component} ${shot.path} changed ${percent(shot.share ?? 1)} (over ${percent(policy.maxChangedShare)})`];
+    if (shot.status === "changed" && (shot.share ?? 1) > policy.maxChangedShare) return [`${shot.component} ${shot.path} changed ${percent(shot.share ?? 1)} ${over}`];
     return [];
   });
   return reasons.length === 0 ? [] : [shownPaths(reasons)];
@@ -50,7 +51,8 @@ export function visualDeltaGate(delta: VisualDelta | undefined): string | undefi
 export function unclearedBaselines(changed: readonly string[], delta: VisualDelta | undefined): string[] {
   const { on } = readDelta(delta);
   if (on === undefined) return [...changed];
-  const cleared = new Set(on.snapshots.filter((shot) => shot.status === "added" || (shot.status === "changed" && shot.share !== undefined && shot.share <= on.policy.maxChangedShare)).map((shot) => shot.path));
+  const isCleared = (shot: VisualDelta["snapshots"][number]): boolean => shot.status === "added" || (shot.status === "changed" && shot.share !== undefined && shot.share <= on.policy.maxChangedShare);
+  const cleared = new Set(on.snapshots.filter(isCleared).map((shot) => shot.path));
   return changed.filter((path) => !cleared.has(path));
 }
 

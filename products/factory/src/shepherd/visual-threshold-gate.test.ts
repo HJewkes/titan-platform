@@ -99,7 +99,7 @@ describe("the merge decision under visual threshold mode on", () => {
   it("gates a changed baseline that is not a measured snapshot, and a delta that fails the schema", async () => {
     const snap = "packages/ui/specimen/baseline/__snapshots__/button.snap";
     const notMeasured = await decide([modified(BUTTON), modified(snap)], delta("on"));
-    const malformed = await decide([modified(BUTTON)], { ...delta("on"), snapshots: "none" } as unknown as VisualDelta);
+    const malformed = await decide([modified(BUTTON)], partialFake<VisualDelta>({ policy: delta("on").policy, mergeBase: null }));
 
     expect(notMeasured).toMatchObject({ ...VISUAL_GATE, reason: `the owner decides visual changes: ${snap}` });
     expect(malformed).toMatchObject({ ...VISUAL_GATE, reason: expect.stringContaining("malformed") });
