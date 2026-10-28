@@ -57,6 +57,7 @@ import { advisoryFile } from "./shepherd/advisory-file.js";
 import { configuredStackRestack, type StackRestackOn } from "./shepherd/stack-land.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
 import { proofWaiverMigration } from "./shepherd/proof-waiver.js";
+import { planApprovalMigration } from "./shepherd/plan-approval.js";
 import { repoFreezeMigration } from "./shepherd/repo-freeze.js";
 import { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lastSliceMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrantMigration, registrationFactsMigration, repairStopMigration, reviewRequestMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { gateCancelKindMigration, orderEventKindsMigration, orderWaitKindMigration, reclassMarkMigration, shepherdEventMigration } from "./shepherd/events.js";
@@ -164,7 +165,7 @@ export interface FactoryRouteDeps extends LandPrDeps {
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26), repairStopMigration(31), proofWaiverMigration(32), repoFreezeMigration(33), registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26), repairStopMigration(31), proofWaiverMigration(32), repoFreezeMigration(33), registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held

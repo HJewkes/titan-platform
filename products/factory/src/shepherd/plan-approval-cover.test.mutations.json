@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an entry matches a line at any line number",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "JSON.stringify([path, side, n, text])",
+      "replace": "JSON.stringify([path, side, text])",
+      "kills": [
+        "a weakened CI-policy line against a plan approval is out of scope when the approved line is also added to a second job",
+        "a weakened CI-policy line against a plan approval is out of scope when the approved entry sits at another line number"
+      ]
+    },
+    {
+      "name": "an entry matches a line in any file",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "JSON.stringify([path, side, n, text])",
+      "replace": "JSON.stringify([side, n, text])",
+      "kills": [
+        "a weakened CI-policy line against a plan approval is out of scope when the approved line is also placed in a second approved file"
+      ]
+    },
+    {
+      "name": "a trailing comma is no change in YAML too",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "const json = path.endsWith(\".json\");",
+      "replace": "const json = true;",
+      "kills": [
+        "a weakened CI-policy line against a plan approval is out of scope when a YAML line gained a trailing comma beside the approved line"
+      ]
+    },
+    {
+      "name": "a trailing comma is no change with no appended line after it",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": " && at(\"+\", n + 1) !== undefined",
+      "replace": "",
+      "kills": [
+        "a weakened CI-policy line against a plan approval is out of scope when a JSON line gained a trailing comma with no added line after it"
+      ]
+    },
+    {
+      "name": "an entry matches a line whatever its indentation",
+      "file": "products/factory/src/shepherd/plan-approval-cover.ts",
+      "find": "lines.every((line) => entries.has(placed(line)))",
+      "replace": "lines.every((line) => entries.has(placed(line)) || entries.has(placed({ ...line, text: line.text.trimStart() })))",
+      "kills": [
+        "a weakened CI-policy line against a plan approval is out of scope when the approved entry lacks the line's indentation"
+      ]
+    }
+  ]
+}

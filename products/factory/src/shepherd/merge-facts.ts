@@ -8,6 +8,8 @@ import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
 import { errorClass } from "./error-class.js";
 import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
 import { CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
+import type { PlanApproval } from "./plan-approval.js";
+import { ciPolicyInScope, pathsIn, planHonour, type PlanHonour } from "./plan-approval-cover.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
@@ -105,7 +107,8 @@ export interface MergeEvidence extends GrantWithheldField {
 export interface DecidableEvidence extends GrantWithheldField {
   head: string;
   merge: MergeFacts;
-  record: Pick<EvidenceRecord, "repo" | "pr">;
+  /** `ciPolicyChanges` is read only to show a weakened line inside an owner's plan approval. */
+  record: Pick<EvidenceRecord, "repo" | "pr" | "ciPolicyChanges">;
   mergeableState?: string;
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
@@ -144,27 +147,34 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
  * The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, MRG-AU-RC for a
  * tree-equal carry of the verdict to it, or MRG-AU-RM for a remerge-clean one, allows. A head that changes a repo skill
  * gates under any policy, and under `visualPaths` so does a head whose changed files match one, unless `visualBaselines`
- * shows no baseline changed and its check passed there.
+ * shows no baseline changed and its check passed there. An owner's plan approval clears the skill, visual-glob and
+ * weakened CI-policy rows only when one approval holds every fact that row triggered on at this head (owner decision 551).
  */
-export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[], visualBaselines?: VisualBaselines): GateDecision {
-  return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }), evidence);
+export function decideAutoMerge(
+  headSha: string,
+  evidence: DecidableEvidence | undefined,
+  visualPaths?: readonly string[],
+  visualBaselines?: VisualBaselines,
+  approved?: readonly PlanApproval[],
+): GateDecision {
+  return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }, planHonour(approved)), evidence);
 }
 
-function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy): GateDecision {
+function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visual: VisualPolicy, honour: PlanHonour): GateDecision {
   if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
-  const pathGate = changedFilesGate(evidence, visual);
+  const pathGate = changedFilesGate(evidence, visual, honour);
   if (pathGate) return pathGate;
-  const policyGate = ciPolicyGate(evidence);
+  const policyGate = ciPolicyGate(evidence, honour);
   if (policyGate) return policyGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     const clearance = visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta));
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}` };
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}${honour.note()}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
@@ -172,19 +182,20 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
 
 /**
  * Unread changed files gate under any policy; under visual paths they count as visual, as does an empty list. A skill
- * change gates under any policy too, with a guard row the coordinator-evidence resolve never admits, so only the owner clears it.
+ * change gates under any policy too, with a guard row the coordinator-evidence resolve never admits, so only the owner clears it,
+ * at merge or ahead of it in a plan approval naming each changed skill path.
  */
-function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBaselines }: VisualPolicy): GateDecision | undefined {
+function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBaselines }: VisualPolicy, honour: PlanHonour): GateDecision | undefined {
   const asVisual = visualPaths === undefined ? "" : ", so the PR counts as visual";
   if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
   const skills = skillPathsIn(evidence.merge.changedPaths);
-  if (skills.length > 0) return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };
+  if (skills.length > 0 && !honour.covers("skill", pathsIn(skills))) return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };
   const deltaGate = visualDeltaGate(evidence.visualDelta);
   if (deltaGate !== undefined) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${deltaGate}` };
   if (visualPaths === undefined) return undefined;
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
-  if (visual.length === 0) return undefined;
+  if (visual.length === 0 || honour.covers("visual", pathsIn(visual))) return undefined;
   const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
   return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);
 }
@@ -205,14 +216,18 @@ function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: G
 /**
  * A reviewer who says CI policy is weakened, or writes the line in a shape the parser refuses, gates any PR for the owner.
  * A `.github/` change, rename sources included, with no line gates too, so a stored record from before the line existed
- * fails closed.
+ * fails closed. A weakened line inside an owner's plan approval does not gate; a missing or malformed one always does.
  */
-function ciPolicyGate(evidence: DecidableEvidence): GateDecision | undefined {
+function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour): GateDecision | undefined {
   const { ciPolicy } = evidence;
-  if (ciPolicy?.kind === "malformed") return { outcome: "gate", rule: guardRule("ci-policy-malformed"), reason: CI_POLICY_MALFORMED_REASON };
-  if (ciPolicy?.kind === "weakened") return { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}` };
-  if (ciPolicy?.kind === "unchanged") return undefined;
   const github = evidence.merge.changedPaths.filter(isGithubPath);
+  if (ciPolicy?.kind === "malformed") return { outcome: "gate", rule: guardRule("ci-policy-malformed"), reason: CI_POLICY_MALFORMED_REASON };
+  if (ciPolicy?.kind === "weakened") {
+    const facts = { keys: ciPolicy.keys, githubPaths: github, changes: evidence.record.ciPolicyChanges, unreadFacts: evidence.unreadFacts };
+    const weakened: GateDecision = { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}` };
+    return honour.covers("ci-policy", ciPolicyInScope(facts)) ? undefined : weakened;
+  }
+  if (ciPolicy?.kind === "unchanged") return undefined;
   if (github.length === 0) return undefined;
   return { outcome: "gate", rule: guardRule("github-path"), reason: `${GITHUB_PATH_REASON_PREFIX}${shownPaths(github)}` };
 }

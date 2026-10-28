@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sh-policy read drops the task's plan approvals",
+      "file": "products/factory/src/shepherd/registration-policy.ts",
+      "find": "if (policy) run.policy = { ...stricterPolicy(policy, run.policy), ...(approved && { approved }) };",
+      "replace": "if (policy) run.policy = stricterPolicy(policy, run.policy);",
+      "kills": [
+        "a PR whose only guard row is ci-policy-weakened, a merge-lint entry merges with no owner gate under a console-written approval of that path, key and entry",
+        "a PR that adds a repo skill merges with no owner gate under a console-written approval of that skill path",
+        "a PR that changes a seat's visual path merges with no owner gate under a console-written approval of that path"
+      ]
+    },
+    {
+      "name": "the read honours rows any actor but the console wrote",
+      "file": "products/factory/src/shepherd/plan-approval.ts",
+      "find": "WHERE task = ? AND repo = ? AND actor = ?",
+      "replace": "WHERE task = ? AND repo = ? AND actor <> ?",
+      "kills": [
+        "a PR whose only guard row is ci-policy-weakened, a merge-lint entry gates at the same head under an agent-written approval of the same scope",
+        "a PR that adds a repo skill gates at the skill-path row under an agent-written approval of the same path",
+        "a PR that changes a seat's visual path gates at the visual-path row under an agent-written approval of the same path"
+      ]
+    },
+    {
+      "name": "a skill path gates whatever the plan approved",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (skills.length > 0 && !honour.covers(\"skill\", pathsIn(skills)))",
+      "replace": "if (skills.length > 0)",
+      "kills": ["a PR that adds a repo skill merges with no owner gate under a console-written approval of that skill path"]
+    },
+    {
+      "name": "a visual path gates whatever the plan approved",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "if (visual.length === 0 || honour.covers(\"visual\", pathsIn(visual))) return undefined;",
+      "replace": "if (visual.length === 0) return undefined;",
+      "kills": ["a PR that changes a seat's visual path merges with no owner gate under a console-written approval of that path"]
+    },
+    {
+      "name": "a weakened CI-policy line gates whatever the plan approved",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "return honour.covers(\"ci-policy\", ciPolicyInScope(facts)) ? undefined : weakened;",
+      "replace": "return weakened;",
+      "kills": ["a PR whose only guard row is ci-policy-weakened, a merge-lint entry merges with no owner gate under a console-written approval of that path, key and entry"]
+    }
+  ]
+}
