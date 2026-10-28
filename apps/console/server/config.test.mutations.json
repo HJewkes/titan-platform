@@ -7,7 +7,7 @@
       "find": "return bin === null ? {} : { explainerBin: bin };",
       "replace": "return bin === null || !path.isAbsolute(bin) ? {} : { explainerBin: bin };",
       "kills": [
-        "keeps a relative path as given, so the props panel's gap names it"
+        "console explainer binary keeps a relative path as given, so the props panel's gap names it"
       ]
     },
     {
@@ -16,8 +16,8 @@
       "find": "expandHome(env.TITAN_CONSOLE_EXPLAINER_BIN || \"explainer\", home)",
       "replace": "expandHome(\"explainer\", home)",
       "kills": [
-        "resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given",
-        "keeps a relative path as given, so the props panel's gap names it"
+        "console explainer binary resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given",
+        "console explainer binary keeps a relative path as given, so the props panel's gap names it"
       ]
     },
     {

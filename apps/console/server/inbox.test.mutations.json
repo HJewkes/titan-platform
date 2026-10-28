@@ -4,8 +4,8 @@
     {
       "name": "the owner is capped like any seat",
       "file": "apps/console/server/inbox.ts",
-      "find": "if (OWNER_ASKERS.has(asker)) return;",
-      "replace": "if (OWNER_ASKERS.size < 0) return;",
+      "find": "OWNER_ASKERS.has(asker) || exempt.includes(asker)",
+      "replace": "OWNER_ASKERS.size < 0 || exempt.includes(asker)",
       "kills": [
         "the open-deposit cap never caps the owner, whether filed as the owner login or the owner actor"
       ]
@@ -35,6 +35,7 @@
       "replace": "ids.length <= MAX_OPEN_DEPOSITS_PER_ASKER",
       "kills": [
         "the open-deposit cap answers 429 to an asker's open deposit number 6, and still files for another asker",
+        "the open-deposit cap caps an automation asker missing from the exempt list",
         "the open-deposit cap lets only one of several racing deposits take the last slot",
         "titan-console inbox file refuses a seat's sixth open ask, exits non-zero and lists its five open ids to merge or withdraw"
       ]
