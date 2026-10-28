@@ -13,7 +13,7 @@ type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
 export type InboxSection = "blocking" | "planning";
 
-export interface BlockingFacts {
+interface BlockingFacts {
   /** The live Shepherd row the item's gate or op joins, when it joins one. */
   row: WatchRow | undefined;
   /** Names of agents the broker sees live; undefined when the roster was not read, so no asker can be called live. */
@@ -88,10 +88,12 @@ const roundOf = (item: OwnerItem): string | undefined => {
 /** A round's questions as one row: the first question stands for it, and its per-question options stay on the round page. */
 function roundRow<T extends OwnerItem>(roundId: string, questions: readonly T[]): T & { questionCount: number } {
   const [first] = questions as [T, ...T[]];
-  const { options: _options, recommended: _recommended, ...row } = first;
+  const row: T = { ...first };
+  delete row.options;
+  delete row.recommended;
   const lens = questions.some((each) => each.lens === "blocking-merge") ? "blocking-merge" : first.lens;
   const keys = [...new Set(questions.flatMap((each) => each.keys))];
-  return { ...(row as T), id: `round:${roundId}`, lens, keys, questionCount: questions.length };
+  return { ...row, id: `round:${roundId}`, lens, keys, questionCount: questions.length };
 }
 
 /** One inbox row per round, in the place of its first question; an item from any other source passes through. */
