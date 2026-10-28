@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
 import { MergeGates } from "./GateStrip.js";
+import { PlanApprovalScope } from "./PlanApprovalScope.js";
 import { OptionCard, hasOptionCards, type OptionNoting } from "./OptionCard.js";
 import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -247,6 +248,7 @@ export function QuestionFacts({ question, answer }: { question: Question; answer
   return (
     <VStack gap={1}>
       <QuestionFrameLinks question={question} />
+      <PlanApprovalScope questionId={question.id} />
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
       {merge ? <MergeGates repo={merge.repo} pr={merge.pr} headSha={merge.headSha} /> : null}

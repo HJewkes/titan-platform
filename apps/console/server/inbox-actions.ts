@@ -239,11 +239,19 @@ const RESOLVED_MESSAGE: Record<ConsoleDecision, string> = {
 
 const resolvedMessage = (record: ActionRecord): string => (!isOpRecord(record) && record.action.kind === "resolve-gate" ? RESOLVED_MESSAGE[record.action.decision] : RESOLVED_MESSAGE.merge);
 
+const FIXED_MESSAGE = {
+  answered: "Answer sent",
+  already: "Already done by this confirmation",
+  off: "The factory's console-action route is not mounted; run the item's command on the terminal",
+} as const;
+
 function messageOf(outcome: Outcome, record: ActionRecord): string {
   if (!isOpRecord(record) && record.action.kind === "approve-chat") return verdictMessageOf(outcome, record, record.action.msgId);
   switch (outcome.status) {
     case "answered":
-      return "Answer sent";
+    case "already":
+    case "off":
+      return FIXED_MESSAGE[outcome.status];
     case "closed":
       return `Not sent; the question is closed, likely answered elsewhere: ${outcome.reason}`;
     case "resolved":
@@ -255,16 +263,14 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "retired":
     case "released":
       return opMessageOf(outcome);
-    case "already":
-      return "Already done by this confirmation";
+    case "plan-approved":
+      return `Plan approval recorded for ${outcome.task}`;
     case "moved":
       return movedMessage(outcome);
     case "gone":
       return `Nothing to act on: ${outcome.reason}`;
     case "refused":
       return `Refused (${outcome.reason})${"detail" in outcome && outcome.detail !== undefined ? `: ${outcome.detail}` : ""}`;
-    case "off":
-      return "The factory's console-action route is not mounted; run the item's command on the terminal";
     case "unreachable":
       return `The factory could not be reached, try again: ${outcome.detail}`;
   }
