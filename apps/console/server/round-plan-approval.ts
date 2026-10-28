@@ -22,7 +22,7 @@ export interface PlanApprovalDeps {
   client: OwnerActionClient;
 }
 
-export interface ApprovedPlan {
+interface ApprovedPlan {
   actionId: string;
   record: object;
 }

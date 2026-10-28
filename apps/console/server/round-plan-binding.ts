@@ -41,7 +41,7 @@ export const PlanBindings = z
   .max(MAX_BINDINGS)
   .refine((bindings) => new Set(bindings.map((binding) => binding.questionId)).size === bindings.length, "a question binds one plan approval");
 
-export type PlanBinding = z.infer<typeof PlanBinding>;
+type PlanBinding = z.infer<typeof PlanBinding>;
 
 interface BoundQuestion {
   id: string;
