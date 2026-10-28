@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { stringify } from "yaml";
 import { describe, expect, it } from "vitest";
 import { fixedProfile } from "./profile-fixtures.test-helpers.js";
-import { EXPLAIN_REPO_DEFAULT_TYPE, loadProfiles, profileFor, UnknownProfileError } from "./profile-load.js";
+import { EXPLAIN_REPO_DEFAULT_TYPE, loadProfiles, loadTypeProfiles, profileFor, UnknownProfileError } from "./profile-load.js";
 
 function writeTypes(files: Record<string, unknown>): string {
   const dir = mkdtempSync(join(tmpdir(), "profiles-"));
@@ -69,7 +69,7 @@ describe("a profile's runtime band by audience", () => {
   it("runs a profile that names no audience kind as assigned, in the 600 s band", () => {
     const dir = writeTypes({ "repo-tour.yaml": unbandedProfile() });
 
-    const profile = profileFor(loadProfiles(dir), "repo-tour");
+    const profile = loadTypeProfiles(dir).get("repo-tour")!;
 
     expect(profile.audience.kind).toBe("assigned");
     expect(profile.runtime).toEqual({ targetS: 600, minS: 480, maxS: 720, splitAboveS: 900 });
@@ -78,7 +78,7 @@ describe("a profile's runtime band by audience", () => {
   it("caps a public profile with no band of its own at 360 s, splitting past it", () => {
     const dir = writeTypes({ "repo-tour.yaml": unbandedProfile("public") });
 
-    const { runtime } = profileFor(loadProfiles(dir), "repo-tour");
+    const { runtime } = loadTypeProfiles(dir).get("repo-tour")!;
 
     expect(runtime).toEqual({ targetS: 240, minS: 120, maxS: 360, splitAboveS: 360 });
   });
@@ -87,7 +87,7 @@ describe("a profile's runtime band by audience", () => {
     const band = { targetS: 420, minS: 300, maxS: 480, splitAboveS: 600 };
     const dir = writeTypes({ "repo-tour.yaml": { ...unbandedProfile("public"), runtime: band } });
 
-    const { runtime } = profileFor(loadProfiles(dir), "repo-tour");
+    const { runtime } = loadTypeProfiles(dir).get("repo-tour")!;
 
     expect(runtime).toEqual(band);
   });
