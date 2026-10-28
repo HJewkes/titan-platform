@@ -87,6 +87,16 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.prs", () => (repo ? { repo } : {}), opts));
   verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
+  registerVisualDeltaVerb(verb, verbs);
+}
+
+/** TP-4320's calibration read: the delta the evidence step would measure, before a repo's threshold goes `on`. */
+function registerVisualDeltaVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("visual-delta", "print as JSON the visual delta the merge evidence step would measure for --repo's PR --pr under its shepherd.visualThreshold, with a count of shots the decoder refused as an unsupported format; read-only, no step and no record")
+    .requiredOption("--repo <owner/repo>", "the PR's repo")
+    .requiredOption("--pr <n>", "the PR number", parsePositiveInt)
+    .option("--head <sha>", "the 40-character head to measure; when the PR is no longer at it, its files read as unread and nothing is measured")
+    .action((opts: ShepherdOpts & { repo: string; pr: number; head?: string }) => runShepherd(verbs, "shepherd.visual-delta", () => ({ repo: opts.repo, pr: opts.pr, head: opts.head }), opts));
 }
 
 function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {

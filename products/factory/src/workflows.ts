@@ -75,6 +75,7 @@ import { portReads, prSnapshot } from "./workflows/pr-snapshot.js";
 import { pushSignal } from "./shepherd/push-signal.js";
 import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suite-host.js";
 import type { ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
+import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
 import { DEFAULT_PACKAGER_PROFILE, type VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
 import { DEFAULT_DIAGNOSIS_PROFILE, readLogTail, type DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
@@ -156,6 +157,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   thawAlert?: ThawAlertPorts;
   /** Which repos order overlapping merges behind a conflicted PR's reservation; absent means `merge-order.json`. */
   mergeOrderRules?: MergeOrderRules;
+  /** `shepherd.visualThreshold` for `shepherd visual-delta`; absent means the review wiring's, and with neither that command refuses. */
+  visualThreshold?: (repo: string) => VisualThreshold | undefined;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -197,7 +200,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const review = deps.review && withHoldAdversary({ ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) }, deps.review);
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }) };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold };
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
@@ -317,7 +320,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
   const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
-  const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), ...overrides, seats });
+  const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), visualThreshold: visualThresholdOf(config), ...overrides, seats });
   return withAutoresearch(Object.assign(routes, { config }), config.get().autoresearch);
 }
 

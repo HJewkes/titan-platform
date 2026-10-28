@@ -35,14 +35,15 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
   it("keeps the evidence comment under 60,000 characters when a PR regenerates hundreds of snapshots, counting what it leaves out", async () => {
     const long = "x".repeat(400);
     const shot = (i: number) => `ui/visual/stories.spec.ts-snapshots/${long}-${i}--default-chromium-linux.png`;
-    const added = Array.from({ length: 400 }, (_, i) => ({ path: shot(i), status: "added" }));
-    const reports = Array.from({ length: 400 }, (_, i) => ({ path: `ui/api/${long}-${i}.api.md`, status: "modified" }));
+    // 100 of each is past both caps and, uncapped, well over the limit; 400 each ran past vitest's timeout on CI.
+    const added = Array.from({ length: 100 }, (_, i) => ({ path: shot(i), status: "added" }));
+    const reports = Array.from({ length: 100 }, (_, i) => ({ path: `ui/api/${long}-${i}.api.md`, status: "modified" }));
     const files = [...added, { path: shot(999), status: "removed" }, ...reports];
 
     const { record } = await evidence(world(files), THRESHOLD);
 
     expect(evidenceComment(record).length).toBeLessThan(60_000);
-    expect(record.visualDelta?.omitted).toEqual({ snapshots: 361, api: 380 });
+    expect(record.visualDelta?.omitted).toEqual({ snapshots: 61, api: 80 });
     expect(record.visualDelta?.snapshots[0]?.status).toBe("removed");
   });
 

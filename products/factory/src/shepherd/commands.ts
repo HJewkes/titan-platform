@@ -14,7 +14,7 @@ import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
-import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
+import { prsCommand } from "./prs-command.js";
 import { kindMove, testOnlyHint, type KindMove } from "./register-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
@@ -34,6 +34,7 @@ import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
+import { visualDeltaCommand } from "./visual-delta-command.js";
 import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
@@ -351,19 +352,6 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
-/** Answers from the snapshot alone: a host with none wired refuses rather than reading GitHub per call. */
-const prsCommand = defineCommand<{ repo?: string }, PrRow[], FactoryContext>({
-  name: "shepherd.prs",
-  description: "Every open PR of each seat repo (or of --repo) from Shepherd's snapshot, plus the PRs Shepherd merged in the last 24 h, with head, base, run and cached CI; no GitHub call while the list is under a minute old",
-  args: z.object({ repo: RepoArg.optional() }),
-  result: z.custom<PrRow[]>(),
-  async run({ repo }, ctx) {
-    const services = servicesOf(ctx);
-    if (!services.snapshot) throw coded("shepherd prs reads the PR snapshot, and this host was opened without one", EXIT.UNAVAILABLE);
-    return shepherdPrs(hostPrsSources(ctx.host, services, services.snapshot), repo);
-  },
-});
-
 /** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
 export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
@@ -384,6 +372,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.resync": resyncCommand,
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
+  "shepherd.visual-delta": visualDeltaCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

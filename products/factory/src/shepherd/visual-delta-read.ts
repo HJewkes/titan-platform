@@ -7,20 +7,9 @@ import { measurePairs, type MeasureTarget, type Pair, type PairMeasure } from ".
 import { DEFAULT_PIXEL_TOLERANCE, componentOf } from "./visual-delta.js";
 import { caseFoldedMatcher, visualMatches } from "./visual-gate.js";
 
-/** `shepherd.visualThreshold` for one repo. */
-export interface VisualThreshold {
-  mode: "off" | "shadow" | "on";
-  maxChangedShare?: number;
-  pixelTolerance?: number;
-  snapshotPaths: string[];
-  apiPaths: string[];
-  tokenPaths: string[];
-  harnessPaths: string[];
-  maxSnapshots?: number;
-  maxBytes?: number;
-  maxPixels?: number;
-  maxTotalPixels?: number;
-}
+import type { VisualThreshold } from "./visual-threshold.js";
+
+export type { VisualThreshold } from "./visual-threshold.js";
 
 const DEFAULT_MAX_CHANGED_SHARE = 0.01;
 

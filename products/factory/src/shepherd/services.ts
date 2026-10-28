@@ -12,6 +12,7 @@ import type { ReviewSlots } from "./review-slots.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
+import type { VisualThreshold } from "./visual-threshold.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -45,6 +46,8 @@ export interface ShepherdServices extends SnapshotServices {
   roster?: { rows(): Promise<readonly AgentRow[]> };
   /** Merge-order reservations and the waits the merge guard read last; absent means `shepherd order` refuses and status shows neither. */
   mergeOrder?: MergeOrderServices;
+  /** `shepherd.visualThreshold` for a repo, which `shepherd visual-delta` measures under; absent means that command refuses. */
+  visualThreshold?: (repo: string) => VisualThreshold | undefined;
 }
 
 export interface MergeOrderServices {
