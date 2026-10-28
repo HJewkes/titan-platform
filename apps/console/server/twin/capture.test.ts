@@ -64,7 +64,7 @@ describe("a twin capture", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const failure = await captureTwin({ html, routes: [{ name: "fonts", hash: "#/" }], viewports: SMALL, outDir }).then(() => undefined, (error: unknown) => error);
 
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain(`asked the network for ${stylesheet}`);
+    expect(String(failure)).toContain(`asked the network for ${stylesheet}`);
   });
 });
 
