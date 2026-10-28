@@ -11,6 +11,8 @@ import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue"
 import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
+import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
+import { liveAgentNames, oneRowPerRound, sectionOf, type InboxSection } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
 import { missedNoticeRows } from "./round-notice-gaps.js";
@@ -31,8 +33,6 @@ type InboxAction =
   | { kind: "open"; route: string }
   | { kind: "terminal"; command?: string; reason: string };
 
-type InboxSection = "blocking" | "planning";
-
 export interface InboxItem extends OwnerItem {
   section: InboxSection;
   hold?: { class: string; reason: string };
@@ -42,6 +42,8 @@ export interface InboxItem extends OwnerItem {
   /** Every other gate on the item's PR at its live head; only a hitl item joined to a pinned live row has one. */
   gates?: GateStrip;
   evidence: string | undefined;
+  /** Set on a round's one row when it asks more than one question; the round page holds them. */
+  questionCount?: number;
 }
 
 interface InboxList {
@@ -219,8 +221,6 @@ function evidenceOf(item: OwnerItem, row: WatchRow | undefined): string | undefi
   return undefined;
 }
 
-const sectionOf = (item: OwnerItem): InboxSection => (item.lens.startsWith("blocking-") || item.lens === "stuck" ? "blocking" : "planning");
-
 const rowOfRun = (gateId: string, rows: ReadonlyMap<string, WatchRow>): WatchRow | undefined => {
   const runId = gateParts(gateId)?.runId;
   return runId === undefined ? undefined : rows.get(runId.toLowerCase());
@@ -237,11 +237,17 @@ function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchR
   return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
 }
 
-function inboxItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>, strips: ReadonlyMap<string, GateStrip>): InboxItem {
+interface Joins {
+  rows: ReadonlyMap<string, WatchRow>;
+  strips: ReadonlyMap<string, GateStrip>;
+  liveAgents: ReadonlySet<string> | undefined;
+}
+
+function inboxItem(item: OwnerItem, { rows, strips, liveAgents }: Joins): InboxItem {
   const row = rowOfItem(item, rows);
   const evidence = evidenceOf(item, row);
   const gates = row === undefined ? undefined : strips.get(row.runId);
-  return { ...item, section: sectionOf(item), ...actionFor(item, row, evidence), evidence, ...(gates !== undefined && { gates }) };
+  return { ...item, section: sectionOf(item, { row, liveAgents }), ...actionFor(item, row, evidence), evidence, ...(gates !== undefined && { gates }) };
 }
 
 /** Blocking before planning, newest first inside each; the id breaks a tie so a poll never reshuffles. */
@@ -253,9 +259,10 @@ function byInboxOrder(a: InboxItem, b: InboxItem): number {
 
 const byRunId = (rows: readonly WatchRow[]): Map<string, WatchRow> => new Map(rows.map((row) => [row.runId.toLowerCase(), row]));
 
-export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], strips: ReadonlyMap<string, GateStrip> = new Map()): InboxItem[] {
-  const byRun = byRunId(rows);
-  return order.map((item) => inboxItem(item, byRun, strips)).sort(byInboxOrder);
+/** `liveAgents` absent means the roster was not read, so no deposit or chat asker counts as live. */
+export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], strips: ReadonlyMap<string, GateStrip> = new Map(), liveAgents?: ReadonlySet<string>): InboxItem[] {
+  const joins = { rows: byRunId(rows), strips, liveAgents };
+  return oneRowPerRound(order.map((item) => inboxItem(item, joins))).sort(byInboxOrder);
 }
 
 /** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
@@ -277,12 +284,26 @@ async function readOrGap<T>(label: string, read: () => Promise<T>, fallback: T):
   }
 }
 
-async function readOwnerQueue({ shepherd, ...sources }: InboxSources, strips?: GateStripReader): Promise<{ list: InboxList; live: Read<WatchRow[]> }> {
-  const [approvals, live] = await Promise.all([readFlow(sources), readOrGap("shepherd", () => shepherd.list("active"), [])]);
+type RosterRead = Read<AgentRosterSnapshot | undefined> | undefined;
+
+interface OwnerQueueRead {
+  list: InboxList;
+  live: Read<WatchRow[]>;
+  roster: RosterRead;
+}
+
+/** The roster names the live askers a deposit or chat item waits on; unread, every such item reads as non-blocking. */
+async function readOwnerQueue({ shepherd, agents, ...sources }: InboxSources, strips?: GateStripReader): Promise<OwnerQueueRead> {
+  const [approvals, live, roster] = await Promise.all([
+    readFlow(sources),
+    readOrGap("shepherd", () => shepherd.list("active"), []),
+    agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
+  ]);
   const order = approvals.flow.order;
   const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
-  const list = { items: inboxItems(order, live.value, gates), gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt };
-  return { list, live };
+  const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
+  const items = inboxItems(order, live.value, gates, liveAgents);
+  return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
 }
 
 export async function readInbox(sources: InboxSources): Promise<InboxList> {
@@ -292,11 +313,10 @@ export async function readInbox(sources: InboxSources): Promise<InboxList> {
 const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
 
 /** A Shepherd that just failed the active read already has its gap line, so the finished read is skipped, not doubled. */
-async function readDerived({ shepherd, agents, rounds, now = Date.now }: InboxSources, live: Read<WatchRow[]>): Promise<Read<DerivedRow[]>> {
+async function readDerived({ shepherd, rounds, now = Date.now }: InboxSources, { live, roster }: Omit<OwnerQueueRead, "list">): Promise<Read<DerivedRow[]>> {
   const at = now();
-  const [finished, roster, missed] = await Promise.all([
+  const [finished, missed] = await Promise.all([
     live.gaps.length > 0 ? NOT_READ : readOrGap("shepherd finished", () => shepherd.list("finished"), []),
-    agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
     readOrGap("round notices", () => missedNoticeRows(rounds.dir, at), []),
   ]);
   const blocked = roster?.value === undefined ? [] : blockedAgentRows(roster.value);
@@ -311,8 +331,8 @@ async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<Rou
 }
 
 async function readInboxView(sources: InboxSources, strips: GateStripReader): Promise<InboxView> {
-  const [{ list, live }, nudges] = await Promise.all([readOwnerQueue(sources, strips), readNudges(sources)]);
-  const derived = await readDerived(sources, live);
+  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(sources, strips), readNudges(sources)]);
+  const derived = await readDerived(sources, reads);
   return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
 }
 

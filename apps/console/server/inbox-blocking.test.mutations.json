@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a Morning line or task blocks when its lens says blocking",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "    default:\n      return false;",
+      "replace": "    default:\n      return true;",
+      "kills": [
+        "sources that never block lists a Morning line and an active-work task as planning even when asked as blocking"
+      ]
+    },
+    {
+      "name": "a gate blocks though its run waits on another gate",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "return pinnedLive(row) && row.pendingGate?.gateId.toLowerCase() === gateId.toLowerCase();",
+      "replace": "return pinnedLive(row);",
+      "kills": [
+        "a hitl gate in the inbox is planning when its live run waits on another gate"
+      ]
+    },
+    {
+      "name": "a gate on a closed PR blocks",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "return gateBlocks(source.ref, facts.row);",
+      "replace": "return facts.row === undefined || gateBlocks(source.ref, facts.row);",
+      "kills": [
+        "a hitl gate in the inbox is planning when its PR is closed and Shepherd holds no live row for it"
+      ]
+    },
+    {
+      "name": "each question of a round keeps its own row",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "if (questions[0] !== item) return [];",
+      "replace": "if (questions.length < 0) return [];",
+      "kills": [
+        "a multi-question round in the inbox is one blocking row carrying its question count and no per-question options"
+      ]
+    },
+    {
+      "name": "a close-pr op blocks while its asker is live",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "return CLEANUP_OPS.has(op.kind) ? false : undefined;",
+      "replace": "return undefined;",
+      "kills": [
+        "a deposit or chat ask in the inbox blocks on a merge op only at the live run's head, and never for a cleanup op"
+      ]
+    }
+  ]
+}

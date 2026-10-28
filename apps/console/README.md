@@ -905,6 +905,15 @@ consumed with no merge), a gate whose row's stall reason reads "replay diverged"
 Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
 behind look the same in the item.
 
+The **Blocking** section holds only items whose answer unblocks running work, as one rule per source
+(`server/inbox-blocking.ts`, TP-4352). A hitl gate blocks when its live Shepherd row is pending on that gate at a PR head
+and is not replay-diverged. A deposit with a `resolve-gate`, `merge-at-head` or `release-hold` op blocks when that live
+row sits at the op's head; a `close-pr` or `retire-agent` op never blocks; any other deposit, and an agent-chat ask,
+blocks while its asker is live in the broker's roster (an unread roster makes none of them live). An open round
+blocks. Morning (frozen, decision 530) and active-work tasks never block. Everything else is listed under Planning. A
+round of several questions is one row with id `round:<round id>` and a `questionCount`; its round page holds the
+questions.
+
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
 `owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
