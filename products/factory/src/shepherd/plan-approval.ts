@@ -17,12 +17,13 @@ export const CiPolicyScopeSchema = z.strictObject({
     .max(20)
     .refine((files) => new Set(files.map((file) => file.path)).size === files.length, "each pinned path appears once"),
 });
+export type CiPolicyScope = z.infer<typeof CiPolicyScopeSchema>;
 
 /** What the owner approved for a skill or visual PR: exact paths, compared as written. */
 export const PathScopeSchema = z.strictObject({ paths: z.array(bounded).min(1).max(200) });
 
 /** One owner answer as a reader gets it back; the scope's shape follows the gate, one of the merge-guard rows a plan may name. */
-const PlanApprovalSchema =z.discriminatedUnion("gate", [
+export const PlanApprovalSchema = z.discriminatedUnion("gate", [
   z.strictObject({ gate: z.literal("ci-policy"), scope: CiPolicyScopeSchema, round: bounded }),
   z.strictObject({ gate: z.enum(["skill", "visual"]), scope: PathScopeSchema, round: bounded }),
 ]);

@@ -11,6 +11,7 @@ import { headWaits } from "./freeze-wait.js";
 import { decideAutoMerge, MERGE_BY_REVIEWER_RULE, type MergeEvidence } from "./merge-facts.js";
 import { shownPaths, type VisualBaselines } from "./visual-gate.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
+import type { PlanApproval } from "./plan-approval.js";
 import { proofOnBase, type ProofOnBase } from "./proof-base.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
@@ -65,9 +66,14 @@ export interface EffectivePolicy {
   featureBase?: true;
   /** The seat's `release-merge` grant: a Version Packages PR may merge on its preflight; absent, the release waits for the owner. */
   release?: "grant";
+  /**
+   * The owner's plan approvals this run claimed, attached by each `sh-policy` read and never stored or taken from a run
+   * param: `EffectivePolicySchema` refuses the key, so only the store's console-written rows reach the guard.
+   */
+  approved?: PlanApproval[];
 }
 
-/** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
+/** An `EffectivePolicy` read back from a run param or the store; unknown keys, `approved` among them, are refused. */
 export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject({
   merge: z.enum(MERGE_ORDER),
   mergeMethod: z.enum(["merge", "squash", "rebase"] satisfies MergeMethod[]),
@@ -129,7 +135,8 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
 /**
  * `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a
  * feature base, release grant or visual baselines, never loosen any. Baselines clear visual heads, so they survive only
- * when both sides carry the same ones; a run stored before the field has none and keeps the glob gate.
+ * when both sides carry the same ones; a run stored before the field has none and keeps the glob gate. Plan approvals
+ * clear guard rows, so they follow the same rule.
  */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
@@ -139,6 +146,7 @@ export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy)
   if (!other.featureBase) delete stricter.featureBase;
   if (other.release !== "grant") delete stricter.release;
   if (!isDeepStrictEqual(trusted.visualBaselines, other.visualBaselines)) delete stricter.visualBaselines;
+  if (!isDeepStrictEqual(trusted.approved, other.approved)) delete stricter.approved;
   return stricter;
 }
 
@@ -166,7 +174,7 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) {
-        return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths, effective.visualBaselines);
+        return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths, effective.visualBaselines, effective.approved);
       }
       return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}${skillNote(target?.headSha, verdictFor)}` };
     },
