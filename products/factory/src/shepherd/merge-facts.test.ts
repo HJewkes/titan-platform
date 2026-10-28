@@ -808,6 +808,12 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
     expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, lines: [{ side: "-", n: 2, text: "  contents: write" }, { side: "+", n: 2, text: "  contents: read" }], omitted: 0 }]);
   });
 
+  it("records the head blob of every changed path, .github/ or not, null for one absent at head", async () => {
+    const evidence = await collect(seeded(), WEAKENED);
+
+    expect(evidence.record.headBlobs).toEqual({ [CI]: "b2", "src/a.ts": null });
+  });
+
   it("reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters", async () => {
     const fake = manyFiles(300);
     const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
@@ -815,7 +821,8 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
     const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
 
     expect(port.getFile).toHaveBeenCalledTimes(20);
-    expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read"]);
+    expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read", "the head blobs of the changed files are unread: 300 changed files, more than the 20 a plan approval pins"]);
+    expect(evidence.record).not.toHaveProperty("headBlobs");
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
     expect(evidence.record.ciPolicyChanges?.reduce((sum, change) => sum + change.lines.length, 0)).toBe(120);
     expect(evidenceComment(evidence.record).length).toBeLessThan(60_000);
@@ -829,6 +836,7 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
 
     expect(port.getFile).not.toHaveBeenCalled();
     expect(evidence.record).not.toHaveProperty("ciPolicyChanges");
+    expect(evidence.record).not.toHaveProperty("headBlobs");
   });
 
   it("still gates when a file read fails, naming the unread file in unreadFacts and not the error's text", async () => {
@@ -836,7 +844,8 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
 
     const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
 
-    expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`]);
+    expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`, "the head blobs of the changed files are unread: HTTP 502"]);
+    expect(evidence.record).not.toHaveProperty("headBlobs");
     expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
     expect(evidence.record.decision.reason).toContain(CI);
     expect(evidence.record.decision.reason).not.toContain("/internal");
