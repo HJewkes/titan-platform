@@ -142,8 +142,14 @@ function expanded(name: string, keys: readonly string[]): boolean {
   return initials.includes(letters.toLowerCase());
 }
 
-/** A letter-and-number marker ("Q1") heard as its number: "question one". */
-const numberHeard = (name: string, spoken: string): boolean => /^\p{Lu}\d+$/u.test(name) && spokenValues(spoken).has(Number(name.slice(1)));
+const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+
+/** A letter-and-number marker ("Q1") heard as its number, "question one", or as its place in a list, "first". */
+function numberHeard(name: string, spoken: string): boolean {
+  if (!/^\p{Lu}\d+$/u.test(name)) return false;
+  const n = Number(name.slice(1));
+  return spokenValues(spoken).has(n) || wordsOf(spoken).includes(ORDINALS[n - 1] ?? "");
+}
 
 /** Heard as a word, as letters ("Q A"), or run together across words, as a compound read apart ("sort gate") is. */
 function nameHeard(name: string, spoken: string): boolean {
