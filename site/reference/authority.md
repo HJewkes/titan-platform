@@ -72,7 +72,7 @@ safe label of 1 to 200 characters such as a host or an item id, never fetched co
 
 ## The table (version 1.0.0)
 
-45 allow, 6 gate and 66 deny rows: one unconditional row per pair, plus the five conditional
+51 allow, 6 gate and 67 deny rows: one unconditional row per pair, plus the five conditional
 allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
@@ -89,6 +89,7 @@ the enforcing code should record.
 | `hardware-stop` | allow | allow | allow | allow | allow | allow | deny |
 | `destructive-remote` | allow | deny | deny | deny | deny | deny | deny |
 | `destructive-local` | allow | deny | allow | allow | allow | allow | deny |
+| `agent-retire` | allow | allow | allow | allow | allow | allow | deny |
 | `destructive-foreign` | allow | deny | deny | deny | deny | deny | deny |
 | `spawn` | allow | allow | allow T | deny | deny | allow | deny |
 | `spend-over-cap` | allow | deny | allow | allow | allow | allow | deny |
@@ -219,6 +220,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440, widened in TP-2951), and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392 (carve-out in TP-2440, widened in TP-2951), the `decider` class with the `answer-question` rows in TP-713, and the `agent-retire` rows in TP-3622 (RET-OR by owner decision 532 of 2026-10-24). The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.

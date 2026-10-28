@@ -1,3 +1,4 @@
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import type { Logger } from "@titan-design/daemon";
 import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
@@ -40,6 +41,8 @@ export interface ShepherdServices extends SnapshotServices {
   visualDelivery?: VisualDeliveryWatch;
   /** Where `shepherd thaw` alerts, by the main CI watch's red-event route; absent means each thaw only logs its alert. */
   thawAlert?: ThawAlertPorts;
+  /** agent-chat's roster, which a retire-agent op's read-back reads; absent means that read-back answers unavailable. */
+  roster?: { rows(): Promise<readonly AgentRow[]> };
   /** Merge-order reservations and the waits the merge guard read last; absent means `shepherd order` refuses and status shows neither. */
   mergeOrder?: MergeOrderServices;
 }

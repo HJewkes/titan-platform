@@ -12,7 +12,7 @@ const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "close-pr": "destructive-remote",
   "factory-config-set": "authority-config",
   "deploy-pause-clear": "release",
-  "retire-agent": "destructive-local",
+  "retire-agent": "agent-retire",
 });
 
 /** The console's tap as the table sees it: always owner-remote, never tainted, whatever the depositing agent was. */

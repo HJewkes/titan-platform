@@ -7,6 +7,7 @@ export type InboxReady = Extract<Prepared, { status: "ready" }>;
 /** A gate, hold or op read-back, g10 included; only a gate's carries `gateId`, only a g10 hold's `confirmLabel`, only an op's `proposal`. */
 type RepoReadBack = Extract<InboxReady["readBack"], { repo: string }>;
 type OpReadBack = Extract<RepoReadBack, { proposal: string }>;
+type AgentReadBack = Extract<InboxReady["readBack"], { agent: string }>;
 /** A deploy-pause-clear's read-back: the failure pause it clears, and no PR. */
 type PauseReadBack = Extract<InboxReady["readBack"], { pausedAt: string }>;
 /** An agent's permission prompt or endorsement, read back from the broker's own queue row. */
@@ -15,7 +16,7 @@ type EndorseReadBack = Extract<InboxReady["readBack"], { kind: "endorse" }>;
 
 const secondsSince = (at: string, now: number = Date.now()): number => Math.max(0, Math.round((now - Date.parse(at)) / 1000));
 
-/** What an inbox tap will do, as `inbox.prepare` read it back: a PR's live head and gate, a deploy pause, or an agent's question. */
+/** What an inbox tap will do, as `inbox.prepare` read it back: a PR's live head and gate, an agent to retire, a deploy pause, or an agent's question. */
 export function InboxReadBack({ prepared }: { prepared: InboxReady }): ReactNode {
   const { readBack } = prepared;
   return (
@@ -30,6 +31,7 @@ export function InboxReadBack({ prepared }: { prepared: InboxReady }): ReactNode
 function ReadBackFacts({ prepared }: { prepared: InboxReady }): ReactNode {
   const { readBack } = prepared;
   if ("repo" in readBack) return <PrFacts readBack={readBack} readAt={prepared.readAt} />;
+  if ("agent" in readBack) return <AgentFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("pausedAt" in readBack) return <PauseFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("kind" in readBack) return readBack.kind === "permission" ? <PermissionFacts readBack={readBack} /> : <EndorseFacts readBack={readBack} />;
   return (
@@ -77,6 +79,19 @@ function OpFacts({ readBack }: { readBack: OpReadBack }): ReactNode {
   );
 }
 
+/** A retire-agent op's agent as agent-chat's roster reads it now, then the depositing agent's words. */
+function AgentFacts({ readBack, readAt }: { readBack: AgentReadBack; readAt: string }): ReactNode {
+  const spawnedBy = readBack.spawnedBy === null ? "" : `, spawned by ${readBack.spawnedBy}`;
+  return (
+    <>
+      <Typography variant="body2">{`${readBack.agent} (id ${readBack.agentId.slice(0, 8)}), ${readBack.state}, profile ${readBack.profile}${spawnedBy}`}</Typography>
+      <Typography variant="mono">{`cwd ${readBack.cwd}, read ${secondsSince(readAt)} s ago`}</Typography>
+      <Typography variant="caption" color="secondary">{`Authority ${readBack.authority}`}</Typography>
+      <Proposal readBack={readBack} />
+    </>
+  );
+}
+
 /** The tool and its input as the broker's row holds them; the description is the asking agent's own words. */
 function PermissionFacts({ readBack }: { readBack: PermissionReadBack }): ReactNode {
   return (
@@ -106,6 +121,6 @@ function EndorseFacts({ readBack }: { readBack: EndorseReadBack }): ReactNode {
 }
 
 /** The depositing agent's words, labelled as theirs and never as the factory's facts. */
-function Proposal({ readBack }: { readBack: OpReadBack | PauseReadBack }): ReactNode {
+function Proposal({ readBack }: { readBack: OpReadBack | AgentReadBack | PauseReadBack }): ReactNode {
   return <Typography variant="caption" color="secondary" testID="inbox-readback-proposal">{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}</Typography>;
 }

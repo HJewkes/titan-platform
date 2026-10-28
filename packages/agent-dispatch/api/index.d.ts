@@ -467,14 +467,20 @@ declare function listAgents(agentChatBinPath: string, timeoutMs: number, options
  * marked incomplete, so a caller can refuse to prove independence instead of failing the read.
  */
 declare function listAgentLineage(agentChatBinPath: string, timeoutMs: number): Promise<AgentLineage>;
+interface RetireOptions {
+    force?: boolean;
+    /**
+     * Who the broker's `agent_retired` event names as the actor. The CLI reads
+     * it from `AGENT_CHAT_NAME`; absent, the broker records `human`.
+     */
+    caller?: string;
+}
 /**
  * Release the agent's isolation, end its process and free its name. `force`
  * discards uncommitted or unmerged work its worktree holds. Rejects with
  * `DispatchError` when the broker refuses.
  */
-declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: {
-    force?: boolean;
-}): Promise<RetireResult>;
+declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: RetireOptions): Promise<RetireResult>;
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
 
@@ -551,4 +557,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };

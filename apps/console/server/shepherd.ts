@@ -49,7 +49,7 @@ const released = z.object({ runId: z.string(), held: z.object({ reason: z.string
 
 /**
  * The factory's `owner-op.preview`, pinned to the fields the read-back shows: a PR op's PR, where `head` is there only while
- * the PR is open, or a deploy-pause-clear's failure pause as `/health` reads it.
+ * the PR is open, a retire-agent's agent, or a deploy-pause-clear's failure pause as `/health` reads it.
  */
 const opPreview = z
   .object({
@@ -67,6 +67,19 @@ const opPreview = z
         behind: z.boolean(),
         mergeableState: z.string(),
         shepherd: z.object({ runId: z.string(), held: z.boolean(), holdReason: z.string().nullable(), ownerHold: z.string().nullable() }).passthrough().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    /** For a retire-agent op: the agent holding the name now, as agent-chat's roster reads, and the live run that would stop it. */
+    agent: z
+      .object({
+        name: z.string(),
+        holder: z
+          .object({ agentId: z.string(), state: z.string(), presence: z.string(), status: z.string(), profile: z.string(), cwd: z.string(), spawnedBy: z.string().nullable() })
+          .passthrough()
+          .optional(),
+        exited: z.boolean(),
+        liveRun: z.string().nullable(),
       })
       .passthrough()
       .optional(),
