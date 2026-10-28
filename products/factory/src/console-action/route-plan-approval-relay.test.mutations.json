@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a skill or visual plan-approval action reads extra fields, a decided marker included",
+      "file": "products/factory/src/console-action/record.ts",
+      "find": "z.strictObject({ ...planApprovalFields, gate: z.enum([\"skill\", \"visual\"]), scope: PathScopeSchema }),",
+      "replace": "z.looseObject({ ...planApprovalFields, gate: z.enum([\"skill\", \"visual\"]), scope: PathScopeSchema }),",
+      "kills": [
+        "POST /owner/console-action plan-approval, relayed refuses a record marked decided with 422 record, as TP-3637 refuses a decided waive-proof, and no registration claims an approval"
+      ]
+    }
+  ]
+}
