@@ -10,12 +10,12 @@ const ROUND = "backlog-ship-r2";
 const NOW = Date.parse("2026-10-02T00:00:00.000Z");
 const OTHER_HEAD = "f".repeat(40);
 const runOf = (pr: number): string => `00000000-0000-4000-8000-0000000000${pr}`;
-const gateIdOf = (pr: number): string => `gate:${runOf(pr)}/approve-merge`;
+const gateIdOf = (pr: number, step = "approve-merge"): string => `gate:${runOf(pr)}/${step}`;
 
-function gate(pr: number): OwnerItem {
-  const ref = `${runOf(pr)}/approve-merge`;
+function gate(pr: number, step = "approve-merge"): OwnerItem {
+  const ref = `${runOf(pr)}/${step}`;
   return {
-    id: gateIdOf(pr),
+    id: gateIdOf(pr, step),
     sources: [{ system: "hitl", ref }],
     kind: "approve",
     door: "two-way",
@@ -31,7 +31,7 @@ function gate(pr: number): OwnerItem {
 }
 
 /** Shepherd names the repo as GitHub spells it, so the fold must not depend on case. */
-function row(pr: number, headSha: string): WatchRow {
+function row(pr: number, headSha: string, step = "approve-merge"): WatchRow {
   return {
     repo: "Acme/Widgets",
     pr,
@@ -42,7 +42,7 @@ function row(pr: number, headSha: string): WatchRow {
     headSha,
     phaseSince: "2026-10-01T00:00:00.000Z",
     nextAction: "owner: resolve approve-merge",
-    pendingGate: { gateId: `${runOf(pr)}/approve-merge`, stepId: "approve-merge", since: "2026-10-01T00:00:00.000Z" },
+    pendingGate: { gateId: `${runOf(pr)}/${step}`, stepId: step, since: "2026-10-01T00:00:00.000Z" },
     held: null,
     stalled: null,
   };
@@ -79,10 +79,10 @@ describe("a round only review-schema 0.3 reads, in the inbox (TP-4356)", () => {
   });
 
   it("folds each PR gate at the head the round pins into the round's row", async () => {
-    const { items } = await inbox(BACKLOG_PRS.map(gate), BACKLOG_PRS.map((pr) => row(pr, pinnedHead(pr))));
+    const { items } = await inbox(BACKLOG_PRS.map((pr) => gate(pr)), BACKLOG_PRS.map((pr) => row(pr, pinnedHead(pr))));
 
     expect(items.map((item) => item.id)).toEqual([`round:${ROUND}`]);
-    expect(roundRow(items)?.foldedGates).toEqual(BACKLOG_PRS.map(gateIdOf));
+    expect(roundRow(items)?.foldedGates).toEqual(BACKLOG_PRS.map((pr) => gateIdOf(pr)));
   });
 
   it("keeps a PR gate at a head other than the round's pin as its own row", async () => {
@@ -92,5 +92,14 @@ describe("a round only review-schema 0.3 reads, in the inbox (TP-4356)", () => {
 
     expect(items.map((item) => item.id).sort()).toEqual([gateIdOf(moved), `round:${ROUND}`]);
     expect(roundRow(items)?.foldedGates).toEqual([gateIdOf(pinned)]);
+  });
+
+  it("keeps a gate the round's answer cannot settle, such as an sh-sent-back gate at the pinned head, as its own row", async () => {
+    const [pr] = BACKLOG_PRS;
+
+    const { items } = await inbox([gate(pr, "sh-sent-back")], [row(pr, pinnedHead(pr), "sh-sent-back")]);
+
+    expect(items.map((item) => item.id).sort()).toEqual([gateIdOf(pr, "sh-sent-back"), `round:${ROUND}`]);
+    expect(roundRow(items)?.foldedGates).toBeUndefined();
   });
 });
