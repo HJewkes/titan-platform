@@ -75,10 +75,10 @@ describe("repair hints for rows whose value says too little", () => {
     expect(hintFor(script, "Q-F16")).toMatch(/^the first identifier the voice says is "GitHub" in h2, after \d+ % of the words \(needs 40 %\)/);
   });
 
-  it("Q-V10 names each undeclared heteronym with the declarations that would settle it", () => {
+  it("Q-V10 names each undeclared heteronym, its place and the declarations that would settle it", () => {
     const script = tour(withBeat("w2", { spoken: "The desk server will read each scan, so nothing prints early." }));
 
-    expect(hintFor(script, "Q-V10")).toMatch(/; w2 "read" \(write \[read\]\(=\w+\) or \[read\]\(=\w+\)\)/);
+    expect(hintFor(script, "Q-V10")).toMatch(/; w2 "read" \(word 5; write \[read\]\(=\w+\) or \[read\]\(=\w+\)\)/);
   });
 
   it("Q-V13 names each over-long headline and the line budget", () => {

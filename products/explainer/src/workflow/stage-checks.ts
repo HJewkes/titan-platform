@@ -6,6 +6,7 @@ import { cueResolverFromWords } from "../cues.js";
 import type { JudgeConfig, JudgeHarness } from "../eval-harness.js";
 import { failedChecks, runL0, type L0Check, type L0Result } from "../eval-l0.js";
 import { emphasisGateVerdict } from "../emphasis-gate.js";
+import { heteronymPlaces } from "../lint-heteronyms.js";
 import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { beatCues, ScriptSchema, type ScriptV1 } from "../script-schema.js";
@@ -72,6 +73,14 @@ function l0With(input: CheckInput): readonly L0Check[] {
 
 const l0Draft = (input: CheckInput): L0Result[] =>
   runL0(script(input, "draft"), undefined, l0With(input), undefined, parseSpine(text(input, "spine")));
+
+/** The l0 gate, whose detail names each undeclared heteronym and its place, since the beat alone does not say which word. */
+function l0Gate(input: CheckInput): Verdict {
+  const rows = errorRows(l0Draft(input));
+  const verdict = rowsVerdict(rows);
+  if (!rows.some((row) => row.check_id === "Q-V10" && !row.pass)) return verdict;
+  return { ...verdict, detail: `${verdict.detail}; Q-V10: ${heteronymPlaces(script(input, "draft").beats).join("; ")}` };
+}
 
 const paceVerdict = (name: string) => (input: CheckInput): Verdict => {
   const draft = script(input, name);
@@ -172,7 +181,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
   gather: [],
   audition: [],
   script: [
-    { name: "l0", gate: true, reads: ["draft", "spine"], run: (input) => rowsVerdict(errorRows(l0Draft(input))) },
+    { name: "l0", gate: true, reads: ["draft", "spine"], run: l0Gate },
     { name: "l0-warnings", gate: false, reads: ["draft", "spine"], run: (input) => rowsVerdict(warningRows(l0Draft(input))) },
     { name: "pace", gate: true, reads: ["draft"], run: paceVerdict("draft") },
     { name: "cues-present", gate: true, reads: ["draft", "spine"], run: cuesPresent },

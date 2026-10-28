@@ -51,7 +51,7 @@ const declarations = (word: string, readings: readonly string[]): string =>
 
 function heteronymHint(script: ScriptV1): string {
   const words = script.beats.flatMap((beat) =>
-    unsettledHeteronyms(beat.spoken).map(({ word, readings }) => `${beat.id} "${word}" (write ${declarations(word, readings)})`),
+    unsettledHeteronyms(beat.spoken).map(({ word, readings, position }) => `${beat.id} "${word}" (${position === undefined ? "" : `word ${position}; `}write ${declarations(word, readings)})`),
   );
   return `undeclared heteronyms: ${words.join("; ")}`;
 }

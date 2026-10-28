@@ -19,12 +19,36 @@ function readingNames(table: HeteronymTable, form: string): string[] {
   return Object.keys(entry?.readings ?? {});
 }
 
-/** Each heteronym occurrence with neither a `[w](=reading)` naming a reading the table knows nor a `[w](/phonemes/)` override. */
-export function unsettledHeteronyms(spoken: string, table: HeteronymTable = englishHeteronyms): { word: string; readings: string[] }[] {
-  return checkReadings(spoken, textTokens(spoken), table)
-    .filter(({ word, declared, status }) => (declared === null ? status === "warn" : !readingNames(table, word.toLowerCase()).includes(declared)))
-    .map(({ word }) => ({ word, readings: readingNames(table, word.toLowerCase()) }));
+/** One unsettled occurrence: the word, the readings that would settle it, and its one-based place among the line's words. */
+export interface UnsettledHeteronym {
+  word: string;
+  readings: string[];
+  /** Absent for a declaration whose word the line does not say. */
+  position?: number;
 }
+
+function positionOf(tokens: readonly PhonemeToken[], word: string, occurrence: number): number | undefined {
+  const form = word.toLowerCase();
+  const index = tokens.map(({ text }) => text.toLowerCase()).flatMap((text, i) => (text === form ? [i] : []))[occurrence - 1];
+  return index === undefined ? undefined : index + 1;
+}
+
+/** Each heteronym occurrence with neither a `[w](=reading)` naming a reading the table knows nor a `[w](/phonemes/)` override. */
+export function unsettledHeteronyms(spoken: string, table: HeteronymTable = englishHeteronyms): UnsettledHeteronym[] {
+  const tokens = textTokens(spoken);
+  return checkReadings(spoken, tokens, table)
+    .filter(({ word, declared, status }) => (declared === null ? status === "warn" : !readingNames(table, word.toLowerCase()).includes(declared)))
+    .map(({ word, occurrence }) => {
+      const position = positionOf(tokens, word, occurrence);
+      return { word, readings: readingNames(table, word.toLowerCase()), ...(position === undefined ? {} : { position }) };
+    });
+}
+
+/** Where each unsettled heteronym is, as `w3 "minutes" (word 12)`, so a failing row names the word, not just its beat. */
+export const heteronymPlaces = (beats: readonly Pick<ScriptBeat, "id" | "spoken">[]): string[] =>
+  beats.flatMap((beat) =>
+    unsettledHeteronyms(beat.spoken).map(({ word, position }) => `${beat.id} "${word}"${position === undefined ? "" : ` (word ${position})`}`),
+  );
 
 const unsettledBeats = (beats: readonly ScriptBeat[], table: HeteronymTable): string[] =>
   beats.filter((beat) => unsettledHeteronyms(beat.spoken, table).length > 0).map((beat) => beat.id);

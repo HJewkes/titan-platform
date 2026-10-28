@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a parsed script reply skips the heteronym declarations",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "  declareScriptReadings({ ...script, structure: plan.structure,",
+      "replace": "  ({ ...script, structure: plan.structure,",
+      "kills": [
+        "the script stage's parsed reply arrives with the readings its context decides already declared"
+      ]
+    },
+    {
+      "name": "Q-V10 places an undeclared heteronym one word early",
+      "file": "products/explainer/src/lint-heteronyms.ts",
+      "find": "index === undefined ? undefined : index + 1",
+      "replace": "index === undefined ? undefined : index",
+      "kills": [
+        "declaring heteronym readings from context declares only the occurrence its context decides and leaves Q-V10 naming the other by place"
+      ]
+    }
+  ]
+}

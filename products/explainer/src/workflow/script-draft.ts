@@ -4,6 +4,7 @@ import type { L0Result } from "../eval-l0.js";
 import { loadBeatSpecs } from "../beat-load.js";
 import type { BeatSpec } from "../beat-schema.js";
 import { GUIDE_PLAN_STRUCTURE, guidePlan } from "../guide-plan.js";
+import { declareScriptReadings } from "../heteronym-readings.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
 import type { GatheredFact } from "../lint-claims.js";
 import { LANES_CHAPTER, type CoverageManifest } from "../lint-coverage.js";
@@ -109,7 +110,9 @@ export interface Checked {
   dropped?: string[];
 }
 
-const planned = (script: ScriptV1, plan: ScriptPlan): ScriptV1 => ({ ...script, structure: plan.structure, ...(plan.profile ? { profile: plan.profile } : {}) });
+// Every parsed reply, draft or repair, gets the heteronym readings its context decides, so no call is spent on them.
+const planned = (script: ScriptV1, plan: ScriptPlan): ScriptV1 =>
+  declareScriptReadings({ ...script, structure: plan.structure, ...(plan.profile ? { profile: plan.profile } : {}) });
 
 /**
  * The reply is checked here rather than through the CLI's `--json-schema`: that flag refuses the tuple keywords
