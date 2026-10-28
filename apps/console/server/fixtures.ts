@@ -73,6 +73,52 @@ const LOOPS = [
   { ref: "2031-03-04-1500-relay-retry#1", text: "Finish OR-12 once the backoff numbers are in", kind: "task", target_ref: "OR-12", session_file: "2031-03-04-1500-relay-retry.md", opened_at: "2031-03-04T16:20:00Z", age_days: 0 },
 ];
 
+type BoardLoopRow = Record<string, unknown>;
+
+function boardLoop(id: string, title: string, initiative: string, status: string, tier: string | null, tierRank: number | null, rest: BoardLoopRow = {}): BoardLoopRow {
+  const base = { ownerSeat: null, doneWhen: null, lastMotion: null, daysSinceMotion: null, emphasis: null, tasks: { ids: [], open: 0, done: 0 }, prsOpen: [], blockers: { ownerGated: [], other: [] }, treeNode: null, source: "ledger", sessionRef: null };
+  return { id, title, initiative, status, tier, tierRank, tierSetBy: tier === null ? null : "proposal", ...base, ...rest };
+}
+
+const motion = (date: string, ref: string, days: number) => ({ lastMotion: { date, ref }, daysSinceMotion: days });
+const emphasis = (score: number, distinctDays: number) => ({ emphasis: { score, distinctDays, lastRaised: "2031-03-03" } });
+
+/** Tier S lists loop-a first and its title sorts first, while loop-b ranks first, so an order that ignored rank would show. */
+const BOARD_LOOPS = [
+  boardLoop("loop-a", "Relays retry a dropped handshake with backoff", "orbit-relay", "ACTIVE", "S", 2, { ownerSeat: "seat-k", doneWhen: "A restarted relay is back within a minute", ...motion("2031-03-04", "OR-12 backoff spike", 0), ...emphasis(42, 5), tasks: { ids: ["OR-12"], open: 1, done: 0 }, prsOpen: ["or#41"], treeNode: "N1" }),
+  boardLoop("loop-b", "Station queue depth is visible", "orbit-relay", "STALLED", "S", 1, { ownerSeat: "seat-k", ...motion("2031-02-27", "OR-14 filed", 5), ...emphasis(18, 3), tasks: { ids: ["OR-14"], open: 1, done: 0 }, blockers: { ownerGated: ["Pick the depth threshold"], other: [] }, treeNode: "N2" }),
+  boardLoop("loop-c", "The battery chapters read as one", "lantern-docs", "LOST", "A", 1, { doneWhen: "LD-3 merged and the chapter builds", ...motion("2031-02-20", "LD-3 last touched", 12), ...emphasis(9, 2), tasks: { ids: ["LD-3"], open: 1, done: 0 }, treeNode: "N4" }),
+  boardLoop("loop-d", "A cone chart backs the firing calculator", "kiln-tools", "MISSING", "B", 1, { ...motion("2031-02-11", "owner ask only", 21), ...emphasis(3, 1), treeNode: "N6" }),
+  boardLoop("loop-e", "The radio chapter has an outline", "lantern-docs", "ACTIVE", "C", 1, { ownerSeat: "seat-m", ...motion("2031-03-03", "outline draft", 1), treeNode: "N5" }),
+  boardLoop("loop-f", "Station clocks stop drifting", "orbit-relay", "DONE", "parked", 1, { ...motion("2031-02-27", "clock skew note", 5), treeNode: "N1" }),
+  boardLoop("2031-03-04-1500-relay-retry#1", "Finish OR-12 once the backoff numbers are in", "orbit-relay", "ACTIVE", null, null, { ...motion("2031-03-04", "session wrap", 0), tasks: { ids: ["OR-12"], open: 1, done: 0 }, source: "session", sessionRef: "2031-03-04-1500-relay-retry#1" }),
+  boardLoop("loop-g", "Seed trays arrive before the spring beds", "garden-plan", "STALLED", null, null, { ...motion("2031-01-18", "GP-2 filed", 45), tasks: { ids: ["GP-2"], open: 1, done: 0 } }),
+];
+
+const churn = (closed14d: number, openNow: number, doneWhenMoved: string, highChurnNoProgress = false) => ({ closed14d, openNow, doneWhenMoved, highChurnNoProgress });
+
+const BOARD_NODES = [
+  { id: "N1", title: "Handshake retry", goal: "G1", dependsOn: [], state: "done", doneWhen: "Retries survive a relay restart", loops: ["loop-a", "loop-f"], churn: churn(4, 1, "yes") },
+  { id: "N2", title: "Queue depth", goal: "G1", dependsOn: ["N1"], state: "in progress", doneWhen: "Depth is reported per station", loops: ["loop-b"], churn: churn(1, 1, "partly") },
+  { id: "N3", title: "Backoff tuning", goal: "G1", dependsOn: ["N2"], state: "not started", doneWhen: "Backoff is set from measured depth", loops: [], churn: churn(0, 0, "no") },
+  { id: "N4", title: "Battery chapters", goal: "G2", dependsOn: [], state: "in progress", doneWhen: "One battery chapter builds", loops: ["loop-c"], churn: churn(6, 3, "no", true) },
+  { id: "N5", title: "Radio chapter", goal: "G2", dependsOn: ["N4"], state: "not started", doneWhen: "The radio chapter has a reviewed outline", loops: ["loop-e"], churn: churn(0, 1, "no") },
+  { id: "N6", title: "Print run", goal: "G2", dependsOn: ["N4", "N5"], state: "not started", doneWhen: "The handbook goes to print", loops: ["loop-d"], churn: churn(0, 1, "no") },
+];
+
+const LOOP_BOARD = {
+  ledger: { path: "sources/open-loops.yml", mtime: "2031-03-04T16:30:00.000Z" },
+  loops: BOARD_LOOPS,
+  tree: { goals: [{ id: "G1", title: "Durable relay" }, { id: "G2", title: "Field handbook" }], nodes: BOARD_NODES },
+  warnings: ["row 9: no id, skipped"],
+};
+
+/** The board, or a tier move; the move is stateless, answered at the head of its tier, and the board never changes. */
+function loopAnswer(command: string, args: Args) {
+  if (command === "loop.board") return LOOP_BOARD;
+  return { id: args.id, tier: args.tier === "unsorted" ? null : args.tier, tierRank: args.tier === "unsorted" ? null : 1 };
+}
+
 const NOTES = [
   { id: "orbit-relay:notes:2031-03-03-backoff-ceiling.md", slug: "orbit-relay", filename: "2031-03-03-backoff-ceiling.md", path: "/synthetic/orbit-relay/sources/notes/2031-03-03-backoff-ceiling.md", kind: "decision", title: "Cap the backoff at thirty seconds", created: "2031-03-03", mtime: "2031-03-03T11:00:00.000Z" },
   { id: "orbit-relay:notes:2031-02-27-station-clock-skew.md", slug: "orbit-relay", filename: "2031-02-27-station-clock-skew.md", path: "/synthetic/orbit-relay/sources/notes/2031-02-27-station-clock-skew.md", kind: "gotcha", title: "Station clocks drift by minutes", created: "2031-02-27", mtime: "2031-02-27T14:30:00.000Z" },
@@ -172,6 +218,9 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
       return readSource(args);
     case "search":
       return search(args);
+    case "loop.board":
+    case "loop.tier":
+      return loopAnswer(command, args);
     default:
       throw new Error(`The fixture has no answer for ${command}`);
   }
@@ -179,5 +228,6 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
 
 /** The fixture as an in-process source, for a test that needs no socket. */
 export function fixtureActiveWork(options: FixtureOptions = {}): ActiveWork {
-  return { read: async (command, args = {}) => fixtureAnswer(command, args, options) as never };
+  const answer = async (command: string, args: Args = {}) => fixtureAnswer(command, args, options) as never;
+  return { read: answer, write: answer };
 }

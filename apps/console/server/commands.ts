@@ -16,7 +16,7 @@ import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
-import { readCommand } from "./owner-guard.js";
+import { ownerWriteCommand, ownerWriteRefusal, readCommand, type ConsoleContext } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
@@ -34,6 +34,7 @@ import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
+import { loopBoardResult, loopTierCommand, readLoopBoard } from "./work-loops.js";
 
 const upstreamHealth = z.object({
   id: z.enum(UPSTREAM_IDS),
@@ -116,6 +117,14 @@ function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
       result: initiativeResult,
       run: ({ slug }) => readInitiative(activeWork, slug, work),
     }),
+    "work.loops": readCommand({
+      name: "work.loops",
+      description: "The platform's open-loops board from active-work's loop.board: each loop's advisory tier, status, seat and motion, and the tech tree; unavailable on a daemon older than active-work 0.23",
+      args: z.object({}),
+      result: loopBoardResult,
+      run: async (_args, ctx: ConsoleContext) => ({ ...(await readLoopBoard(activeWork, work)), tierWritesOff: ownerWriteRefusal(ctx) }),
+    }),
+    "work.loop-tier": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),
   };
 }
 

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "work.loop-tier is registered as a read",
+      "file": "apps/console/server/commands.ts",
+      "find": "\"work.loop-tier\": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),",
+      "replace": "\"work.loop-tier\": readCommand(loopTierCommand(activeWork)),",
+      "kills": [
+        "classes fail closed classes every console command at its definition: inbox.deposit and config.report deposits, rounds.answer-rec, rounds.reveal, rounds.submit, inbox.act, videos.edit, videos.note and work.loop-tier owner-writes, the rest reads"
+      ]
+    }
+  ]
+}

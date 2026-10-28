@@ -266,7 +266,7 @@ const RECORD_REF = /^(note|source):([^/]+)\/(.+)$/;
 const SEARCH_LIMIT = 50;
 
 /** With personal initiatives excluded, a slug the inventory cannot vouch for, or a hit with no initiative, is dropped. */
-async function keepsSlug(activeWork: ActiveWork, options: WorkOptions): Promise<(slug: string | null) => boolean> {
+export async function keepsSlug(activeWork: ActiveWork, options: WorkOptions): Promise<(slug: string | null) => boolean> {
   if (!options.excludePersonal) return () => true;
   const inventory = await activeWork.read("inventory");
   const bySlug = new Map(inventory.initiatives.map((entry) => [entry.slug, entry]));

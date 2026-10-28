@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "work.loop-tier is registered as a read",
+      "file": "apps/console/server/commands.ts",
+      "find": "\"work.loop-tier\": ownerWriteCommand({ ...loopTierCommand(activeWork), ownerWrite: true }),",
+      "replace": "\"work.loop-tier\": readCommand(loopTierCommand(activeWork)),",
+      "kills": [
+        "work.loop-tier refuses on loopback because it is an owner write"
+      ]
+    },
+    {
+      "name": "an old daemon reads as an empty board",
+      "file": "apps/console/server/work-loops.ts",
+      "find": "if (isUnknownCommand(error)) return { fetchedAt, board: null, unavailable: OLD_DAEMON };",
+      "replace": "if (isUnknownCommand(error)) return { fetchedAt, board: { ledger: null, loops: [], tree: null, warnings: [] }, unavailable: null };",
+      "kills": [
+        "work.loops reports an old active-work daemon as unavailable, not as an empty board"
+      ]
+    }
+  ]
+}
