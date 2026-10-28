@@ -2,6 +2,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { buildPlanRound, type PlanAsk } from "@titan-design/owner-queue";
 import { fileRound } from "./round-file.js";
 import { approvedPlans } from "./round-plan-approval.js";
@@ -18,6 +19,7 @@ const ASKS: PlanAsk[] = [
 ];
 const ROUND_ID = "plan-example-tp-1-r1";
 const ASKER = { seat: "sample-seat", initiative: "sample-initiative" };
+const RecordedAction = z.object({ action: z.unknown() });
 
 let root: string;
 
@@ -66,7 +68,7 @@ describe("a plan round built by owner-queue", () => {
     const approved = approvedPlans(ROUND_ID, manifest, feedbackPicking(manifest, (options) => options[0]!));
     const revised = approvedPlans(ROUND_ID, manifest, feedbackPicking(manifest, (options) => options[1]!));
 
-    expect(approved.map(({ record }) => (record as { action: unknown }).action)).toEqual([
+    expect(approved.map(({ record }) => RecordedAction.parse(record).action)).toEqual([
       { kind: "plan-approval", task: PLAN_TASK, repo: PLAN_REPO, round: ROUND_ID, gate: "ci-policy", scope: CI_SCOPE },
       { kind: "plan-approval", task: PLAN_TASK, repo: PLAN_REPO, round: ROUND_ID, gate: "skill", scope: SKILL_SCOPE },
     ]);
