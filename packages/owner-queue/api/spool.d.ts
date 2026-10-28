@@ -210,6 +210,7 @@ declare const ownerItemDepositSchema: z.ZodObject<{
     initiative: z.ZodOptional<z.ZodString>;
     personal: z.ZodDefault<z.ZodBoolean>;
     unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    unblocksNow: z.ZodOptional<z.ZodString>;
     audience: z.ZodOptional<z.ZodEnum<{
         owner: "owner";
         operator: "operator";
@@ -417,6 +418,7 @@ declare const ownerItemSchema: z.ZodObject<{
     }>;
     stuckKind: z.ZodOptional<z.ZodString>;
     unblocks: z.ZodArray<z.ZodString>;
+    unblocksNow: z.ZodOptional<z.ZodString>;
     audience: z.ZodOptional<z.ZodEnum<{
         owner: "owner";
         operator: "operator";

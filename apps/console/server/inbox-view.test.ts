@@ -136,6 +136,7 @@ async function writeImpostorDeposit(): Promise<string> {
     context: "",
     keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`],
     command: "titan-factory shepherd waiting",
+    unblocksNow: "the queue's next gate",
   });
   return depositItemId(ASKER, "queue-1");
 }

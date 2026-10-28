@@ -1,7 +1,8 @@
 /**
  * Which inbox items block running work, as one rule per source (TP-4352). An item is blocking only when data it already
- * carries shows something live waits on the answer: a hitl gate its live run is pending on at a PR head, a deposit or
- * agent-chat question whose asker is live (or whose op names a live head), or an open round. Morning is frozen
+ * carries shows something live waits on the answer: a hitl gate its live run is pending on at a PR head, a deposit that
+ * states what it unblocks and whose asker is live (or whose op names a live head), an agent-chat question whose asker is
+ * live, or an open round. Morning is frozen
  * (decision 530) and an active-work task waits on nobody, so neither is ever blocking. A source the console cannot read
  * a fact for stays non-blocking rather than guessing. Across items, a PR keeps one row, its newest ask, and a blocking
  * item past four days is marked aged so the page lists it apart, never hidden.
@@ -65,9 +66,12 @@ const askerLive = (item: OwnerItem, liveAgents: ReadonlySet<string> | undefined)
   return asker !== undefined && liveAgents?.has(asker) === true;
 };
 
+/** TP-4353: an ask that cannot say in one line what it unblocks right now is planning, whatever else it carries. */
+const statesWhatItUnblocks = (item: OwnerItem): boolean => item.unblocksNow !== undefined;
+
 /** A personal deposit waits on the owner's own life, not on running work. */
 function depositBlocks(item: OwnerItem, { row, liveAgents }: BlockingFacts): boolean {
-  if (item.personal) return false;
+  if (item.personal || !statesWhatItUnblocks(item)) return false;
   const byOp = item.op === undefined ? undefined : opBlocks(item.op, row);
   return byOp ?? askerLive(item, liveAgents);
 }

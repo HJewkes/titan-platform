@@ -49,7 +49,7 @@ function row(overrides: Partial<WatchRow> = {}): WatchRow {
 
 const gate = item(`gate:${GATE}`, { sources: [{ system: "hitl", ref: GATE }], kind: "approve", lens: "blocking-merge" });
 const deposit = (asker: string, op?: OwnerOp): OwnerItem =>
-  item(`deposit:${asker}-${op?.kind ?? "none"}`, { sources: [{ system: "deposit", ref: `${asker}/d-1` }], kind: "do", asker, ...(op && { op }) });
+  item(`deposit:${asker}-${op?.kind ?? "none"}`, { sources: [{ system: "deposit", ref: `${asker}/d-1` }], kind: "do", asker, unblocksNow: "the seat's next step", ...(op && { op }) });
 const question = (roundId: string, questionId: string): OwnerItem =>
   item(`round:${roundId}/${questionId}`, { sources: [{ system: "round", ref: `${roundId}#${questionId}` }], kind: "review", lens: "planning", keys: [`ask:${roundId}/${questionId}`], options: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
 
