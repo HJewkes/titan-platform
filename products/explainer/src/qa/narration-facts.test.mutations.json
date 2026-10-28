@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a list marker is never heard by its place",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "|| wordsOf(spoken).includes(ORDINALS[n - 1] ?? \"\")",
+      "replace": "",
+      "kills": [
+        "narration carries on-screen facts hears a list marker by its place, so Q1 opened with 'first' is said and Q3 left unplaced is not"
+      ]
+    }
+  ]
+}
