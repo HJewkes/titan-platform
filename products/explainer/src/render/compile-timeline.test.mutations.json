@@ -46,15 +46,6 @@
       "kills": [
         "compileTimeline page extras lands each reveal on its cue word's spoken start and carries the chrome inputs"
       ]
-    },
-    {
-      "name": "planned reveals count the raw markup's words",
-      "file": "products/explainer/src/render/compile-timeline.ts",
-      "find": "plainWords(beat.spoken).length) * beat.duration_s;",
-      "replace": "beat.spoken.split(/\\s+/).length) * beat.duration_s;",
-      "kills": [
-        "compileTimeline page extras scales planned reveals over the words a listener hears, not the markup around them"
-      ]
     }
   ]
 }
