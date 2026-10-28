@@ -3,6 +3,7 @@ import { DEFAULT_OPTIONS, type Finding } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
 import { BEAT_SLOTS } from "../beat-slots.js";
 import { isMonotonicScale } from "../chart-integrity.js";
+import { parseTimeline } from "../composition/timeline.js";
 import { failedGates } from "../workflow/stage-checks.js";
 import { contrastRatio, contrastReport, inPageCovers, markGround } from "./contrast-check.js";
 import { CONTRAST } from "./gate-profile.js";
@@ -71,7 +72,7 @@ const FIXTURES = new URL("../composition/fixtures/", import.meta.url);
 function sequentialCharts() {
   return readdirSync(FIXTURES)
     .filter((name) => name.endsWith(".timeline.json"))
-    .flatMap((name) => (JSON.parse(readFileSync(new URL(name, FIXTURES), "utf8")) as { beats: { id: string; kind: string; slots?: unknown }[] }).beats
+    .flatMap((name) => parseTimeline(JSON.parse(readFileSync(new URL(name, FIXTURES), "utf8"))).beats
       .filter((beat) => beat.kind === "chart")
       .map((beat) => ({ at: `${name} ${beat.id}`, slots: BEAT_SLOTS.chart.parse(beat.slots) }))
       .filter(({ slots }) => slots.scale?.kind === "sequential"));
