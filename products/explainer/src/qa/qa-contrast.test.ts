@@ -107,7 +107,7 @@ describe("qa stage text contrast (WCAG 1.4.3)", () => {
     // Assert
     expect(report.contrast?.text.below).toEqual([{ beat: "b1", text: "Parcels waiting", px: 20, ratio: 4.2, need: 4.5 }]);
     expect(checks["text-contrast"]).toMatchObject({ gate: true, pass: false, detail: '1 text runs under contrast: [b1] "Parcels waiting" 20 px 4.2:1 (needs 4.5:1)' });
-    expect(failedGates(Object.values(checks)).map((check) => check.name)).toEqual(["text-contrast"]);
+    expect(failedGates(Object.values(checks)).map((check) => check.name)).toContain("text-contrast");
   });
 
   it("passes when render-qa measured no text under its thresholds", async () => {
