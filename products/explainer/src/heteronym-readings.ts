@@ -12,10 +12,15 @@ interface Token {
   bare: boolean;
 }
 
-/** What a rule reads around one bare occurrence: its spelling, its neighbours, and whether a pause follows it. */
+/**
+ * What a rule reads around one bare occurrence: its spelling and its neighbours within the clause. A pause before the
+ * token clears `prev`, so an earlier sentence's last word never reads as this one's determiner.
+ */
 interface Context {
   form: string;
   prev?: string;
+  /** Whether `prev` opens its clause, as a modal does in a question ("Can projects ship?"). */
+  prevLeads: boolean;
   next?: string;
   pause: boolean;
 }
@@ -24,43 +29,54 @@ type Rule = (context: Context) => string | undefined;
 
 const words = (list: string): ReadonlySet<string> => new Set(list.split(" "));
 
-// The time unit heads its phrase, so a pause or a function word follows it; the adjective modifies the noun after it.
+// Each rule names a reading only for a (prev, form, next) pattern the grammar allows one reading in, and falls through
+// to undefined otherwise: a wrong declaration passes Q-V10 unheard, a bare word fails it.
+
+// A counted "minute" is the time unit once a pause or a function word ends its phrase; "a minute longer", "a minute
+// each" and "a minute detail" are all open, so a determiner alone decides nothing.
+const COUNTS_TIME = words("a an one the this that each every per last next first final same another more");
 const AFTER_TIME = words("later ago earlier or and of to in for before after from on at by with per then when while is was has had left");
-// "more", "less" and "so" also count time ("one more minute"), so they decide nothing.
-const INTENSIFIERS = words("very too most quite rather extremely");
+// Only before the adjective: "very" also precedes the noun ("the very minute"), so it is left out.
+const INTENSIFIERS = words("too quite rather extremely most");
 
 /** "minutes" is always the time unit: the adjective does not inflect. */
 const minute: Rule = ({ form, prev = "", next = "", pause }) => {
   if (form === "minutes") return "time";
   if (INTENSIFIERS.has(prev)) return "tiny";
-  if (pause || AFTER_TIME.has(next)) return "time";
-  return prev === "a" || prev === "an" ? "tiny" : undefined;
+  return COUNTS_TIME.has(prev) && (pause || AFTER_TIME.has(next)) ? "time" : undefined;
 };
 
 // Closed-class words only: the g2p tagger was measured reading "daily use" and "live" as verbs. Determiners that can
-// stand alone as a subject ("this", "each", "some") are left out: "This records the scan" is a verb.
-const NOUN_BEFORE = words("a an the its their our your my every no of in for");
-const VERB_BEFORE = words("can cannot could will would shall should may might must do does did don't doesn't didn't won't can't");
-const SUBJECTS = words("i we you they");
+// stand alone as a subject ("this", "each", "some") and "in" ("sign in records") are left out.
+const NOUN_BEFORE = words("a an the its their our your my every no of for");
+// Plain "do" inverts in questions ("why do records matter?"), so only its negations, which precede the verb, count.
+const MODALS = words("can cannot could will would shall should may might must don't doesn't didn't won't can't");
+const SUBJECTS = words("i we they");
 const S_SUBJECTS = words("he she it");
+// An infinitive's object opens with one of these ("to use the scanner"); "to use across" and "to present levels" may be
+// the preposition, so they stay open.
+const OBJECT_START = words("a an the this that these those its their our your my his her them it us me each every some all any");
 
-// "to" before a pause is a preposition ("put to use."), so only "to" with words after it marks an infinitive, and
-// never before an -s form ("writes to records of"), which an infinitive cannot take.
-const infinitive = ({ form, prev, pause }: Context): boolean => prev === "to" && !pause && !form.endsWith("s");
+const baseForm = (form: string): boolean => !form.endsWith("s");
+
+/** A modal mid-clause before a base form: "couriers can use". A leading modal asks a question whose subject follows. */
+const afterModal = ({ form, prev = "", prevLeads }: Context): boolean => MODALS.has(prev) && !prevLeads && baseForm(form);
+
+const infinitive = ({ form, prev, next = "", pause }: Context): boolean =>
+  prev === "to" && !pause && baseForm(form) && OBJECT_START.has(next);
+
+const afterSubject = ({ form, prev = "" }: Context): boolean => (baseForm(form) ? SUBJECTS : S_SUBJECTS).has(prev);
 
 const nounOrVerb: Rule = (context) => {
-  const prev = context.prev ?? "";
-  if (NOUN_BEFORE.has(prev)) return "noun";
-  const subjects = context.form.endsWith("s") ? S_SUBJECTS : SUBJECTS;
-  return VERB_BEFORE.has(prev) || subjects.has(prev) || infinitive(context) ? "verb" : undefined;
+  if (NOUN_BEFORE.has(context.prev ?? "")) return "noun";
+  return afterModal(context) || afterSubject(context) || infinitive(context) ? "verb" : undefined;
 };
 
 const PERFECT_OR_PASSIVE = words("has have had having is are was were be been being");
 
 const read: Rule = (context) => {
-  const prev = context.prev ?? "";
-  if (PERFECT_OR_PASSIVE.has(prev)) return "past";
-  return VERB_BEFORE.has(prev) || infinitive(context) ? "present" : undefined;
+  if (PERFECT_OR_PASSIVE.has(context.prev ?? "")) return "past";
+  return afterModal(context) || infinitive(context) ? "present" : undefined;
 };
 
 const OWN_RULES: Readonly<Record<string, Rule>> = { minute, read };
@@ -80,10 +96,18 @@ function tokensOf(spoken: string): Token[] {
   }));
 }
 
+/** Whether a pause, or the line's edge, separates tokens i and i + 1. */
+function breakAfter(spoken: string, tokens: readonly Token[], i: number): boolean {
+  const [token, after] = [tokens[i], tokens[i + 1]];
+  return token === undefined || after === undefined || PAUSE.test(spoken.slice(token.end, after.start));
+}
+
 function contextAt(spoken: string, tokens: readonly Token[], i: number): Context {
-  const [before, token, after] = [tokens[i - 1], tokens[i]!, tokens[i + 1]];
-  const pause = after === undefined || PAUSE.test(spoken.slice(token.end, after.start));
-  return { form: token.text.toLowerCase(), prev: before?.text.toLowerCase(), next: after?.text.toLowerCase(), pause };
+  const [token, after] = [tokens[i]!, tokens[i + 1]];
+  const prev = breakAfter(spoken, tokens, i - 1) ? undefined : tokens[i - 1]!.text.toLowerCase();
+  const prevLeads = prev === undefined || breakAfter(spoken, tokens, i - 2);
+  const form = token.text.toLowerCase();
+  return { form, prev, prevLeads, next: after?.text.toLowerCase(), pause: breakAfter(spoken, tokens, i) };
 }
 
 function tableWordOf(form: string, table: HeteronymTable): string | undefined {
