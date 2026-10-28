@@ -21,6 +21,9 @@ export type Outcome =
   /** A deploy-pause-clear tap removed the failure pause it named; a manual hold, never cleared by the op, may still stand. */
   | { outcome: "pause-cleared"; clearedPause: string; stillHeld: string | null }
   | { outcome: "already"; clearedPause: string }
+  /** A plan-approval tap recorded the owner's plan-time answer; `claimedRun` is the one live run of the task it bound to, or null until a registration claims it. */
+  | { outcome: "plan-approved"; task: string; gate: string; claimedRun: string | null }
+  | { outcome: "already"; task: string }
   | { outcome: "moved"; currentHead: string | undefined }
   /** The name now belongs to a different agent than the one the owner confirmed. */
   | { outcome: "moved"; currentAgentId: string }
@@ -60,6 +63,7 @@ export function statusOf(outcome: Outcome): Status {
     case "retired":
     case "pr-closed":
     case "pause-cleared":
+    case "plan-approved":
     case "already":
       return 200;
     case "moved":

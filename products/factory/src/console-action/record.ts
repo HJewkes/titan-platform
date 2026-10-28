@@ -4,6 +4,7 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { ownerOpSchema, type OwnerOp } from "@titan-design/owner-queue";
 import { z } from "zod";
+import { CiPolicyScopeSchema, PathScopeSchema } from "../shepherd/plan-approval.js";
 import { refused, type Outcome } from "./outcome.js";
 
 export const MAX_ACTION_RECORD_BYTES = 64 * 1024;
@@ -29,16 +30,23 @@ const ReleaseActionSchema = z.strictObject({
   pr: z.number().int().positive(),
   headSha: hex(40),
 });
+/** The owner's plan-time answer; no actor field, so the row's actor is always the console's owner-remote. */
+const planApprovalFields = { kind: z.literal("plan-approval"), task: z.string().min(1).max(256), repo: z.string().min(1).max(256), round: z.string().min(1).max(512) };
+const PlanApprovalActionSchema = z.discriminatedUnion("gate", [
+  z.strictObject({ ...planApprovalFields, gate: z.literal("ci-policy"), scope: CiPolicyScopeSchema }),
+  z.strictObject({ ...planApprovalFields, gate: z.enum(["skill", "visual"]), scope: PathScopeSchema }),
+]);
 /** The console writes the rest of the record (read-back, digest, session, peer class); the factory reads only the action. */
-const ActionRecord = z.looseObject({ action: z.discriminatedUnion("kind", [GateActionSchema, ReleaseActionSchema]) });
+const ActionRecord = z.looseObject({ action: z.discriminatedUnion("kind", [GateActionSchema, ReleaseActionSchema, PlanApprovalActionSchema]) });
 /** A record names an action or an op, never both, so one record can never be read two ways. */
 const OpRecord = z.looseObject({ op: ownerOpSchema, action: z.never().optional() });
 
 export type GateAction = z.infer<typeof GateActionSchema>;
 export type ReleaseAction = z.infer<typeof ReleaseActionSchema>;
+export type PlanApprovalAction = z.infer<typeof PlanApprovalActionSchema>;
 
 /** One record as read: the action its bytes name and the sha256 of those exact bytes. */
-export interface Read<A = GateAction | ReleaseAction> {
+export interface Read<A = GateAction | ReleaseAction | PlanApprovalAction> {
   action: A;
   confirmEvent: string;
 }
@@ -73,7 +81,7 @@ function parseRecord(bytes: Uint8Array, name: string): Read | OpRead | Outcome {
   const op = OpRecord.safeParse(json);
   if (op.success) return { op: op.data.op, confirmEvent };
   if (typeof json === "object" && json !== null && Object.hasOwn(json, "op")) return refused("record", `${name} names no owner op the factory reads`);
-  return refused("record", `${name} does not read as a resolve-gate or owner-release action record`);
+  return refused("record", `${name} does not read as a resolve-gate, owner-release or plan-approval action record`);
 }
 
 function jsonOf(bytes: Uint8Array): unknown {

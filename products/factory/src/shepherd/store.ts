@@ -3,6 +3,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { repairStopTable, type RepairStopTable } from "./repair-stop.js";
 import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
+import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
 import { registrationOf } from "./registration-of.js";
@@ -104,14 +105,17 @@ export class ShepherdStore implements HoldLookup {
     if (input.pr === undefined && input.branch === undefined) throw new Error("a shepherd registration needs a pr or a branch");
     const kind = KindSchema.parse(input.kind ?? "unknown");
     const at = this.stamp();
-    this.db
-      .prepare(
-        `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
-    writeRegistrationFacts(this.db, input.runId, input);
-    writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO shepherd_registration (repo, pr, branch, run_id, task, implementer, reviewer, policy, kind, slice, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
+      writeRegistrationFacts(this.db, input.runId, input);
+      writeRegistrant(this.db, input.runId, input.registrant, input.implementer);
+      claimPlanApprovals(this.db, input.runId, input.task, input.repo);
+    })();
     return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
@@ -175,6 +179,7 @@ export class ShepherdStore implements HoldLookup {
       repointParkSettled(this.db, runId, newRunId);
       repointRunRows(this.db, runId, newRunId);
       repointMergeBaseException(this.db, runId, newRunId);
+      repointPlanApprovals(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
     move();
@@ -251,6 +256,9 @@ export class ShepherdStore implements HoldLookup {
 
   /** The owner's fix-proof waivers, which only the `waive-proof` answer to `sh-sent-back` writes. */
   readonly proofWaivers = (): ProofWaivers => proofWaiverTable(this.db, () => this.stamp());
+
+  /** The owner's plan-time answers, which only the console's plan-approval action writes; a registration claims its task's unclaimed ones. */
+  readonly planApprovals = (): PlanApprovals => planApprovalTable(this.db, () => this.stamp());
 
   /** Planners' leave for a run's fix rounds to merge the base branch; read where a fix round's brief is built. */
   readonly mergeBaseExceptions = (): MergeBaseExceptions => mergeBaseExceptionTable(this.db, () => this.stamp());
