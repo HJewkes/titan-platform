@@ -1,101 +1,94 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { runL0 } from "./eval-l0.js";
 import { declareReadings, declareScriptReadings } from "./heteronym-readings.js";
-import { unsettledHeteronyms } from "./lint-heteronyms.js";
-import { checked, type ScriptPlan } from "./workflow/script-draft.js";
-import { tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
+import { heteronymCheck, unsettledHeteronyms } from "./lint-heteronyms.js";
+import { loadRuleRegistry } from "./rules.js";
+import type { ScriptV1 } from "./script-schema.js";
+import { parseSpine } from "./spine-schema.js";
+import { checked, failingErrors, failureList, repairPrompt, repairRounds, type ScriptPlan } from "./workflow/script-draft.js";
+import { GOOD_BEATS, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 // Synthetic parcel-desk lines; none quotes a real script.
-const DECIDED = [
-  ["a time unit after a number", "The desk run took about 18 minutes.", "The desk run took about 18 [minutes](=time)."],
-  ["an adjective after an intensifier", "The label shows quite minute print.", "The label shows quite [minute](=tiny) print."],
-  ["a time unit before a pause", "Wait a minute, then rescan.", "Wait a [minute](=time), then rescan."],
-  ["a time unit counted by more", "Give it one more minute to settle.", "Give it one more [minute](=time) to settle."],
-  ["a noun after a determiner", "The desk logs the use of the scanner.", "The desk logs the [use](=noun) of the scanner."],
-  ["a verb after a modal", "Couriers can use the scanner.", "Couriers can [use](=verb) the scanner."],
-  ["a verb after a negated do", "Couriers don't use the old scanner.", "Couriers don't [use](=verb) the old scanner."],
-  ["a verb after a subject", "We record each scan.", "We [record](=verb) each scan."],
-  ["an -s verb after its subject", "It records each scan.", "It [records](=verb) each scan."],
-  ["an infinitive with an object", "Couriers need to use the scanner.", "Couriers need to [use](=verb) the scanner."],
-  ["a past read after a passive", "The label was read twice.", "The label was [read](=past) twice."],
-  ["a present read after a modal", "Couriers can read the label.", "Couriers can [read](=present) the label."],
+const COUNTED = [
+  ["digits before minutes", "The desk run took about 18 minutes.", "The desk run took about 18 [minutes](=time)."],
+  ["a spelled number before minute", "Give it one minute to settle.", "Give it one [minute](=time) to settle."],
+  ["a spelled decimal before minutes", "The run took eighteen point eight three minutes.", "The run took eighteen point eight three [minutes](=time)."],
+  ["a hyphenated number before minutes", "The queue clears in twenty-five minutes.", "The queue clears in twenty-five [minutes](=time)."],
 ] as const;
 
-// Contexts one neighbour does not settle: each must stay bare so Q-V10 still asks for it.
-const UNDECIDED = [
-  ["a minute whose next word is open class", "Every minute counts at the desk."],
-  ["a minute before a comparative", "Each scan takes a minute longer now."],
-  ["a minute before a determiner", "It saves a minute each day."],
-  ["a minute before an adverb", "The scan ran a minute too long."],
-  ["a minute before a noun", "The scan shows a minute detail on the label."],
+// No numeral counts these, so the sentence's meaning decides; each stays bare for Q-V10 and the L0 repair.
+const OPEN = [
+  ["a minute detail", "The scan shows a minute detail on the label."],
+  ["every minute counts", "Every minute counts at the desk."],
   ["the very minute", "The label printed at the very minute the scan landed."],
-  ["a predicate minute", "The change is minute."],
-  ["a minute opening the line", "Minute by minute the queue grows."],
-  ["a noun after an adjective", "The scanner allows two hours of daily use."],
-  ["a to before a pause", "The desk puts the scanner to use."],
-  ["a to before a preposition", "The desk puts it to use across every depot."],
-  ["a to before a noun", "Stock stays close to present levels."],
-  ["an -s form after to", "The hook writes to records of each scan."],
-  ["a determiner standing as the subject", "This records the scan time."],
-  ["a pronoun each before an -s form", "Each records its own scan."],
-  ["a subject after do in a question", "So why do records matter?"],
-  ["a subject after a leading modal", "Can projects ship late?"],
-  ["a base-form subject after a leading modal", "Can record labels ship late?"],
-  ["a subject after a leading will", "Will records stay open?"],
-  ["a subject after a modal in a wh-question", "Why can't records sync?"],
-  ["a base-form subject after do", "Why do record labels matter?"],
-  ["an imperative after a sentence break", "Sign in. Record each parcel."],
-  ["an imperative after a question", "What is it for? Use the scanner."],
-  ["an imperative opening the line", "Use the scanner daily."],
-  ["an -s form after an object pronoun", "The desk shows you records of the scan."],
+  ["a numeral ending its phrase before minutes", "The desk took 18, minutes before the van left."],
 ] as const;
 
-describe("declaring heteronym readings from context", () => {
-  it.each(DECIDED)("declares %s", (_name, bare, declared) => {
-    // Catches: a context rule that reads the wrong neighbour or names a reading the table does not have.
+// The positive control's own heteronyms declared, so Q-V10 fails on w2's line alone.
+const withLine = (spoken: string): ScriptV1 =>
+  tour(GOOD_BEATS.map(([id, chapter, fn, line, extra]): BeatSpec => [id, chapter, fn, id === "w2" ? spoken : line.replace(/\brefuses\b/g, "[refuses](=verb)").replace(/\brow\b/g, "[row](=line)"), extra]));
+const w2 = (script: ScriptV1 | undefined): string | undefined => script?.beats.find((beat) => beat.id === "w2")?.spoken;
+
+const PLAN: ScriptPlan = { structure: "goal-walk", leads: [], specs: new Map() };
+const q10 = (script: ScriptV1) => failingErrors(runL0(script, undefined, [heteronymCheck]));
+const lint = { spine: parseSpine(readFileSync(new URL("../fixtures/spike/pipeline-explainer/spine.md", import.meta.url), "utf8")), g2p: { tokens: () => [] } };
+
+describe("declaring a counted minute", () => {
+  it.each(COUNTED)("declares %s as time", (_name, bare, declared) => {
+    // Catches: a numeral the rule does not recognise, leaving a minute whose reading the count settles to a model call.
     const result = declareReadings(bare);
 
     expect(result).toBe(declared);
     expect(unsettledHeteronyms(result)).toEqual([]);
   });
 
-  it.each(UNDECIDED)("leaves %s bare, so Q-V10 still fails it", (_name, bare) => {
-    // Catches: a rule guessing a reading its context does not decide.
-    expect(declareReadings(bare)).toBe(bare);
+  it.each(OPEN)("leaves %s bare, so Q-V10 still fails it", (_name, bare) => {
+    // Catches: the rule guessing a reading no numeral decides.
+    const script = declareScriptReadings(withLine(bare));
+
+    expect(w2(script)).toBe(bare);
+    expect(q10(script).map((row) => [row.check_id, row.detail_beats])).toEqual([["Q-V10", ["w2"]]]);
   });
 
   it("keeps an existing declaration and a phoneme override as written", () => {
-    const spoken = "Couriers [read](=present) the [minute](/mˈɪnət/) log.";
+    const spoken = "Wait 2 [minutes](=time), then read the 3 [minute](/mˈɪnət/) log.";
 
     expect(declareReadings(spoken)).toBe(spoken);
-  });
-
-  it("declares only the occurrence its context decides and leaves Q-V10 naming the other by place", () => {
-    const spoken = "Every minute counts, so the desk logs each minute.";
-
-    const result = declareReadings(spoken);
-
-    expect(result).toBe("Every minute counts, so the desk logs each [minute](=time).");
-    expect(unsettledHeteronyms(result)).toEqual([{ word: "minute", readings: ["time", "tiny"], position: 2 }]);
-  });
-
-  it("declares across every beat of a script", () => {
-    const script = tour(withBeat("w2", { spoken: "The desk run took about 18 minutes." }));
-
-    const w2 = declareScriptReadings(script).beats.find((beat) => beat.id === "w2");
-
-    expect(w2?.spoken).toBe("The desk run took about 18 [minutes](=time).");
   });
 });
 
 describe("the script stage's parsed reply", () => {
-  it("arrives with the readings its context decides already declared", () => {
+  it("arrives with each counted minute already declared", () => {
     // Catches: the draft and repair replies reaching L0 without the declarations, so a model call is spent on them.
-    const reply = tour(withBeat("w2", { spoken: "The desk run took about 18 minutes." }));
-    const plan: ScriptPlan = { structure: "goal-walk", leads: [], specs: new Map() };
+    const reply = withLine("The desk run took about 18 minutes.");
 
-    const result = checked({ ok: true, output: JSON.stringify(reply) }, plan);
+    const result = checked({ ok: true, output: JSON.stringify(reply) }, PLAN);
 
     expect(result.error).toBeUndefined();
-    expect(result.script?.beats.find((beat) => beat.id === "w2")?.spoken).toBe("The desk run took about 18 [minutes](=time).");
+    expect(w2(result.script)).toBe("The desk run took about 18 [minutes](=time).");
+  });
+});
+
+describe("the L0 repair of an undeclared heteronym", () => {
+  it("names the word, its place and readings to the model, and keeps a reply that declares it", async () => {
+    // Catches: Q-V10's details never reaching the repair prompt, or a model's declaration not passing Q-V10.
+    const start = withLine("Every minute counts at the desk.");
+    const fixed = withLine("Every [minute](=time) counts at the desk.");
+    const prompts: string[] = [];
+    const call = async (prompt: string) => (prompts.push(prompt), { ok: true, output: JSON.stringify(fixed) });
+
+    const repaired = await repairRounds(call, { script: start, stamps: [] }, {
+      rounds: 1,
+      failing: q10,
+      prompt: (script, rows) => repairPrompt("", script, failureList(rows, loadRuleRegistry(), script, lint)),
+      read: (outcome) => checked(outcome, PLAN),
+      settle: (script) => ({ script, stamps: [] }),
+    });
+
+    expect(prompts[0]).toContain('w2 "minute" (word 2; write [minute](=time) or [minute](=tiny))');
+    expect(prompts[0]).toContain("the reading its sentence means");
+    expect(repaired.after).toBe(0);
+    expect(w2(repaired.script)).toBe("Every [minute](=time) counts at the desk.");
   });
 });

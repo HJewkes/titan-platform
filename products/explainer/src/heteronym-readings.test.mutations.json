@@ -7,7 +7,7 @@
       "find": "  declareScriptReadings({ ...script, structure: plan.structure,",
       "replace": "  ({ ...script, structure: plan.structure,",
       "kills": [
-        "the script stage's parsed reply arrives with the readings its context decides already declared"
+        "the script stage's parsed reply arrives with each counted minute already declared"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "index === undefined ? undefined : index + 1",
       "replace": "index === undefined ? undefined : index",
       "kills": [
-        "declaring heteronym readings from context declares only the occurrence its context decides and leaves Q-V10 naming the other by place"
+        "the L0 repair of an undeclared heteronym names the word, its place and readings to the model, and keeps a reply that declares it"
       ]
     }
   ]
