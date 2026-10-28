@@ -56,6 +56,16 @@ describe("a twin capture", { timeout: BROWSER_TIMEOUT_MS }, () => {
 
     await expect(capture).rejects.toThrow("asked the network for http://127.0.0.1:9/frame.png");
   });
+
+  it("fails when a page asks Google Fonts for a face, as react-ui ships its own", async () => {
+    const stylesheet = "https://fonts.googleapis.com/css2?family=Inter";
+    const html = page(`<link rel="stylesheet" href="${stylesheet}"><p>steady</p>`);
+
+    const failure = await captureTwin({ html, routes: [{ name: "fonts", hash: "#/" }], viewports: SMALL, outDir }).then(() => undefined, (error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(`asked the network for ${stylesheet}`);
+  });
 });
 
 describe("the console's twin", { timeout: BROWSER_TIMEOUT_MS }, () => {

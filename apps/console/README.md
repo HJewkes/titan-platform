@@ -1116,7 +1116,7 @@ What holds a frame still:
 | --- | --- |
 | Data | `server/twin/answers.ts` answers the broker, sessions, Shepherd, inbox, reviews, theater and task reads by hand. Each `answer()` is typed by the command's own args and result from `ConsoleCommands`, so a fixture that drifts fails `pnpm typecheck`. Work and rounds reads are the real commands over `server/fixtures.ts` and `fixtures/rounds`, recorded in process. |
 | The clock | `Date` is frozen at 2031-03-05 12:00:30 UTC (`server/twin/clock.ts`) and `Math.random` is seeded; the server-side reads take the same clock. The second shot runs one second later, so a page that prints the clock fails. Ages to the minute do not move. |
-| Fonts | react-ui imports its web fonts from Google Fonts, which the twin refuses, so text is set in the system sans. Frames are stable on one machine; another machine's sans may differ. |
+| Fonts | react-ui ships Inter, Nunito Sans, Space Grotesk and JetBrains Mono, and the build inlines them, so the twin needs no network and refuses any request, a font one included. Text from a react-ui component that sets no font family (table cells, links, tabs, avatar initials) is still set in the system sans, so another machine's sans may differ there. |
 | Motion and media | Reduced motion, animations stopped at the shot, the caret hidden, and a video's native controls hidden (their loading spinner never stops). |
 | Locale and layout | UTC, `en-US`, device scale 1, dark colour scheme. Round fixtures are read from a copy with pinned mtimes. |
 

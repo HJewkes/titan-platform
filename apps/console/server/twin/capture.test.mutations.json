@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a Google Fonts request is let fail quietly",
+      "file": "apps/console/server/twin/capture.ts",
+      "find": "errors.push(new Error(`asked the network for ${route.request().url()}`));",
+      "replace": "if (!route.request().url().startsWith(\"https://fonts.googleapis.com/\")) errors.push(new Error(`asked the network for ${route.request().url()}`));",
+      "kills": [
+        "a twin capture fails when a page asks Google Fonts for a face, as react-ui ships its own"
+      ]
+    }
+  ]
+}
