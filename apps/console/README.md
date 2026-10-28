@@ -665,6 +665,11 @@ verbatim: `task`, `repo`, `gate`, and `scope`. For `ci-policy` the scope is
 null for a file absent at head. For `skill` or `visual` it is `{paths}`. A round whose entry names no
 pick-one, or an option the question lacks, is refused.
 
+- **Shown before it is approved.** The round page draws each binding beside its question: the
+  approve option, the gate, task and repo, then the CI-policy keys and each pinned file (its blob
+  prefix, or "absent at head"), or the skill or visual paths. The approve pick records exactly
+  what the page showed.
+
 - **The owner's submit only.** Once `rounds.submit` writes the answer, each question answered with
   its `approve` option writes one `plan-approval` action record (`round` is the round id) into the
   inbox actions dir. It is posted to the factory's `/owner/console-action`, which writes the row as
