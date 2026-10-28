@@ -58,11 +58,7 @@ export interface PlanApprovals {
   forTask(task: string, repo: string): PlanApproval[];
 }
 
-interface ApprovalRow {
-  gate: string;
-  scope: string;
-  round: string;
-}
+const ApprovalRow = z.object({ gate: z.string(), scope: z.string(), round: z.string() });
 
 export function planApprovalTable(db: Db, stamp: () => string): PlanApprovals {
   return {
@@ -75,15 +71,16 @@ export function planApprovalTable(db: Db, stamp: () => string): PlanApprovals {
     },
     forTask: (task, repo) => {
       const select = "SELECT gate, scope, round FROM shepherd_plan_approval WHERE task = ? AND repo = ? AND actor = ? ORDER BY answered_at, rowid";
-      const rows = db.prepare(select).all(task, repo.toLowerCase(), CONSOLE_ACTOR) as ApprovalRow[];
-      return rows.flatMap((row) => parsedRow(row));
+      return db.prepare(select).all(task, repo.toLowerCase(), CONSOLE_ACTOR).flatMap((row) => parsedRow(row));
     },
   };
 }
 
-function parsedRow(row: ApprovalRow): PlanApproval[] {
+function parsedRow(raw: unknown): PlanApproval[] {
+  const row = ApprovalRow.safeParse(raw);
+  if (!row.success) return [];
   try {
-    const parsed = PlanApprovalSchema.safeParse({ gate: row.gate, scope: JSON.parse(row.scope), round: row.round });
+    const parsed = PlanApprovalSchema.safeParse({ ...row.data, scope: JSON.parse(row.data.scope) });
     return parsed.success ? [parsed.data] : [];
   } catch {
     return [];
