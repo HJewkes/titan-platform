@@ -87,7 +87,7 @@ const roundOf = (item: OwnerItem): string | undefined => {
 
 /** A round's questions as one row: the first question stands for it, and its per-question options stay on the round page. */
 function roundRow<T extends OwnerItem>(roundId: string, questions: readonly T[]): T & { questionCount: number } {
-  const [first] = questions as [T, ...T[]];
+  const first = questions[0]!;
   const row: T = { ...first };
   delete row.options;
   delete row.recommended;
