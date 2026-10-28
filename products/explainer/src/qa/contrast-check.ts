@@ -22,7 +22,7 @@ export const ContrastReportSchema = z.object({
   /** What could not be computed from colours and how it was judged instead. */
   fallbacks: z.array(z.string()),
 });
-export type ContrastReport = z.infer<typeof ContrastReportSchema>;
+type ContrastReport = z.infer<typeof ContrastReportSchema>;
 type ChartMark = z.infer<typeof MarkSchema>;
 
 const linear = (channel: number): number => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
@@ -42,7 +42,7 @@ export function contrastRatio(a: string, b: string): number {
  * Each drawn chart kind's unscaled mark colour and the ground it sits on, as the stage CSS paints them: a bar fills
  * `.ex-bar-track` (examples.css), a line chart's column stands on the frame (beats.css `.beat-graph-bar`).
  */
-export const CHART_MARK_TOKENS = {
+const CHART_MARK_TOKENS = {
   bar: { mark: "text-secondary", ground: "surface-raised" },
   line: { mark: "dataviz-categorical-0", ground: "background-base" },
 } as const satisfies Record<string, { mark: keyof typeof semanticColorsDark; ground: keyof typeof semanticColorsDark }>;
@@ -66,7 +66,7 @@ function beatMarks(id: string, slots: ChartSlots): ChartMark[] {
 }
 
 /** Every drawn chart mark with its ratio; a chart kind the page does not draw is named as a fallback instead. */
-export function chartMarks(beats: readonly TimelineBeat[], fallbacks: string[]): ChartMark[] {
+function chartMarks(beats: readonly TimelineBeat[], fallbacks: string[]): ChartMark[] {
   return beats.flatMap((beat) => {
     if (beat.kind !== "chart") return [];
     const slots = BEAT_SLOTS.chart.safeParse(beat.slots);
@@ -77,7 +77,7 @@ export function chartMarks(beats: readonly TimelineBeat[], fallbacks: string[]):
 }
 
 /** render-qa's measured text runs re-judged by WCAG's size rule; a run under the large-text size needs the text ratio. */
-export function textBelow(held: readonly HeldFinding[], thresholds: ContrastThresholds): ContrastReport["text"]["below"] {
+function textBelow(held: readonly HeldFinding[], thresholds: ContrastThresholds): ContrastReport["text"]["below"] {
   return held.flatMap(({ kind, beat, finding }) => {
     if (kind !== "low-contrast" || finding.ratio === undefined || finding.px === undefined) return [];
     const need = finding.px >= thresholds.largeTextPx ? thresholds.largeText : thresholds.text;
