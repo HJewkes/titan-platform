@@ -18,8 +18,8 @@
     {
       "name": "the visual threshold refuses mode on, so nothing can decide on it",
       "file": "products/factory/src/config.ts",
-      "find": "mode: z.enum([\"off\", \"shadow\", \"on\"]),",
-      "replace": "mode: z.enum([\"off\", \"shadow\"]),",
+      "find": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\", \"on\"]),",
+      "replace": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\"]),",
       "kills": ["loadConfig keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for"]
     },
     {
