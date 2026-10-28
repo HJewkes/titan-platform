@@ -49,16 +49,46 @@ const runtimeText = ({ type, runtime }: TypeProfile): string => `${type} runs ${
 
 const cutText = (cut: TypeProfile["cuts"][number]): string => `, or ${cut.runtimeS[0]}-${cut.runtimeS[1]} s as cut ${cut.id}`;
 
+interface Episode {
+  chapters: string[];
+  seconds: number;
+}
+
+/** The draft's chapters in play order, packed into episodes of at most `maxS` each; a longer chapter is an episode alone. */
+function episodes(draft: Draft, maxS: number): Episode[] {
+  const packed: Episode[] = [];
+  for (const chapter of new Set(draft.beats.map((beat) => beat.chapter))) {
+    const seconds = chapterSeconds(draft, chapter);
+    const last = packed.at(-1);
+    if (last && last.seconds + seconds <= maxS) packed[packed.length - 1] = { chapters: [...last.chapters, chapter], seconds: last.seconds + seconds };
+    else packed.push({ chapters: [chapter], seconds });
+  }
+  return packed;
+}
+
+const episodeText = ({ chapters, seconds }: Episode, i: number, maxS: number): string =>
+  `episode ${i + 1}: ${chapters.join(", ")} (${seconds} s${seconds > maxS ? `, so split ${chapters[0]} by section` : ""})`;
+
 /**
- * The draft's summed plannedS against the profile's [minS, maxS]. A profile cut's band also passes: the script stage
- * is not told which cut a run is (pr-overview's decision brief runs 45-90 s, under the profile's floor).
+ * Past the profile's split line the runtime fault names where to split, by chapter, so an over-long plan becomes
+ * episodes rather than a trim nobody sees (decision 551 caps a public video at 6 min and splits it past that).
+ */
+function splitText(draft: Draft, { maxS, splitAboveS }: TypeProfile["runtime"]): string {
+  if (plannedTotal(draft) <= splitAboveS) return "";
+  const parts = episodes(draft, maxS).map((episode, i) => episodeText(episode, i, maxS));
+  return `; past ${splitAboveS} s it splits into episodes at chapter breaks, not a trim: ${parts.join("; ")}`;
+}
+
+/**
+ * The draft's summed plannedS against the profile's resolved [minS, maxS]. A profile cut's band also passes: the script
+ * stage is not told which cut a run is (pr-overview's decision brief runs 45-90 s, under the profile's floor).
  */
 export function draftRuntime(draft: Draft): { pass: boolean; detail: string } {
   const profile = profileFor(loadProfiles(), draft.profile);
   const total = plannedTotal(draft);
   const bands: [number, number][] = [[profile.runtime.minS, profile.runtime.maxS], ...profile.cuts.map((cut) => cut.runtimeS)];
   const pass = bands.some(([min, max]) => total >= min && total <= max);
-  return { pass, detail: `the beats plan ${total} s; ${runtimeText(profile)}${profile.cuts.map(cutText).join("")}` };
+  return { pass, detail: `the beats plan ${total} s; ${runtimeText(profile)}${profile.cuts.map(cutText).join("")}${splitText(draft, profile.runtime)}` };
 }
 
 /** The draft's word budgets as a gate verdict: each beat or block over its cap, as words/cap. */
