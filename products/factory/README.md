@@ -84,13 +84,15 @@ or a helper path.
 
 Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
 coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
-gate classes, and owner decision 529 (2026-10-22, TP-4048) a fourth, each only on evidence the command
+gate classes, owner decision 529 (2026-10-22, TP-4048) a fourth, and owner decision 551 (2026-10-28,
+TP-4285) a main-ci-timeout acknowledgement, each only on evidence the command
 reads fresh through the GitHub port at resolve time:
 
 | Gate and answer | Evidence the command reads |
 |---|---|
 | `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
 | `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every judged check passing (the base branch's required contexts when it has them, else every Actions run) |
+| `main-ci-timeout`: `acknowledged` (owner decision 551, TP-4285) | the same read, but only against the base branch's required contexts: a base with none is no evidence, as for Shepherd's own clear of the gate |
 | `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed |
 | `sh-sent-back`: exactly `{"decision":"await-new-head"}` | the PR the gate names is open and its head is the head the gate's prompt asks about |
 

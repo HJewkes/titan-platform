@@ -472,7 +472,8 @@ is green on every required context (TP-4319). It cancels the gate with a reason 
 `main green: ` and names the green commit, the merge base and each required run; the run records
 that reason as the gate's answer and goes on to cleanup, and a gate-cancel event on the run keeps the
 same text. While that tip is red or still running, does not contain the merge, or the base has no
-required contexts, the gate stays open. A coordinator may also abandon a gate
+required contexts, the gate stays open. A coordinator may acknowledge the same gate on the same
+read before the sweep reaches it (owner decision 551, TP-4285). A coordinator may also abandon a gate
 whose pull request is merged or closed (only on a fresh read of that state), and answer an
 `sh-sent-back` gate `await-new-head` while its pull request is open at the gate's own head.
 The same check supersedes a gate
@@ -1850,6 +1851,7 @@ closed is skipped.
 | `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved and merged as is | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate with exactly `{"decision":"retry"}` (recorded with its agent name), and abandon it only once the PR is merged or closed |
 | `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}`. On a `NO_REPRO` send-back the owner may also answer `{"decision":"waive-proof","headSha":"…"}`, never recommended and owner-only: the waiver is stored for that run and head, the next round reviews the head, and its MERGE withholds the merge-on-green grant, so it reaches only the owner's `approve-merge`. A new head is gated again. A coordinator may answer exactly `{"decision":"await-new-head"}` while the PR is open at the gate's head, and `abandon` once the PR is merged or closed (owner decision 529); a coordinator never gives `waive-proof` |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
+| `main-ci-timeout` | no completed main CI run contains the merge within the wait | `{"decision":"acknowledged","mergeSha":"…"}`. A coordinator may acknowledge it once the base branch's tip contains the merge sha and is green on every required context; a base with no required contexts is no evidence (owner decision 551). The gone sweep clears it on the same read |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 
