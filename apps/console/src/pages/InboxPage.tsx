@@ -145,8 +145,25 @@ function BlockingSection({ items, quiet, gapped }: { items: readonly InboxItem[]
   return (
     <Section testID="inbox-blocking">
       <SectionHeader title={`Blocking (${items.length})`} subtitle="Newest first" />
-      <SectionContent>{items.length === 0 ? empty : <InboxRows items={items} />}</SectionContent>
+      <SectionContent>{items.length === 0 ? empty : <BlockingRows items={items} />}</SectionContent>
     </Section>
+  );
+}
+
+/** Aged blockers still block, so they stay open on the page, listed after the fresh ones under their own heading. */
+function BlockingRows({ items }: { items: readonly InboxItem[] }): ReactNode {
+  const aged = items.filter((item) => item.aged === true);
+  const fresh = items.filter((item) => item.aged !== true);
+  return (
+    <VStack gap={4}>
+      {fresh.length > 0 ? <InboxRows items={fresh} /> : null}
+      {aged.length > 0 ? (
+        <VStack gap={3} testID="inbox-blocking-aged">
+          <Typography variant="subtitle2" color="secondary">{`Older than 4 days (${aged.length})`}</Typography>
+          <InboxRows items={aged} />
+        </VStack>
+      ) : null}
+    </VStack>
   );
 }
 

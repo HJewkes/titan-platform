@@ -12,7 +12,7 @@ import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
-import { liveAgentNames, oneRowPerRound, sectionOf, type InboxSection } from "./inbox-blocking.js";
+import { liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
 import { missedNoticeRows } from "./round-notice-gaps.js";
@@ -44,6 +44,8 @@ export interface InboxItem extends OwnerItem {
   evidence: string | undefined;
   /** Set on a round's one row when it asks more than one question; the round page holds them. */
   questionCount?: number;
+  /** A blocking item open past four days: listed under "Older than 4 days", still blocking. */
+  aged?: true;
 }
 
 interface InboxList {
@@ -237,17 +239,26 @@ function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchR
   return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
 }
 
+interface ItemFacts {
+  strips?: ReadonlyMap<string, GateStrip>;
+  /** Absent means the roster was not read, so no deposit or chat asker counts as live. */
+  liveAgents?: ReadonlySet<string>;
+  now?: number;
+}
+
 interface Joins {
   rows: ReadonlyMap<string, WatchRow>;
   strips: ReadonlyMap<string, GateStrip>;
   liveAgents: ReadonlySet<string> | undefined;
+  now: number;
 }
 
-function inboxItem(item: OwnerItem, { rows, strips, liveAgents }: Joins): InboxItem {
+function inboxItem(item: OwnerItem, { rows, strips, liveAgents, now }: Joins): Placed<InboxItem> {
   const row = rowOfItem(item, rows);
   const evidence = evidenceOf(item, row);
   const gates = row === undefined ? undefined : strips.get(row.runId);
-  return { ...item, section: sectionOf(item, { row, liveAgents }), ...actionFor(item, row, evidence), evidence, ...(gates !== undefined && { gates }) };
+  const placed = { ...item, section: sectionOf(item, { row, liveAgents, now }), ...actionFor(item, row, evidence), evidence, ...(gates !== undefined && { gates }) };
+  return { item: placed, pin: pinOf(item, row) };
 }
 
 /** Blocking before planning, newest first inside each; the id breaks a tie so a poll never reshuffles. */
@@ -259,10 +270,9 @@ function byInboxOrder(a: InboxItem, b: InboxItem): number {
 
 const byRunId = (rows: readonly WatchRow[]): Map<string, WatchRow> => new Map(rows.map((row) => [row.runId.toLowerCase(), row]));
 
-/** `liveAgents` absent means the roster was not read, so no deposit or chat asker counts as live. */
-export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], strips: ReadonlyMap<string, GateStrip> = new Map(), liveAgents?: ReadonlySet<string>): InboxItem[] {
-  const joins = { rows: byRunId(rows), strips, liveAgents };
-  return oneRowPerRound(order.map((item) => inboxItem(item, joins))).sort(byInboxOrder);
+export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], { strips = new Map(), liveAgents, now = Date.now() }: ItemFacts = {}): InboxItem[] {
+  const joins = { rows: byRunId(rows), strips, liveAgents, now };
+  return markAged(oneRowPerRound(onePerPr(order.map((item) => inboxItem(item, joins)))), now).sort(byInboxOrder);
 }
 
 /** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */
@@ -293,7 +303,7 @@ interface OwnerQueueRead {
 }
 
 /** The roster names the live askers a deposit or chat item waits on; unread, every such item reads as non-blocking. */
-async function readOwnerQueue({ shepherd, agents, ...sources }: InboxSources, strips?: GateStripReader): Promise<OwnerQueueRead> {
+async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: InboxSources, strips?: GateStripReader): Promise<OwnerQueueRead> {
   const [approvals, live, roster] = await Promise.all([
     readFlow(sources),
     readOrGap("shepherd", () => shepherd.list("active"), []),
@@ -302,7 +312,7 @@ async function readOwnerQueue({ shepherd, agents, ...sources }: InboxSources, st
   const order = approvals.flow.order;
   const gates = strips === undefined ? new Map<string, GateStrip>() : await strips.readMany(joinedRows(order, live.value));
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const items = inboxItems(order, live.value, gates, liveAgents);
+  const items = inboxItems(order, live.value, { strips: gates, liveAgents, now: now() });
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
 }
 

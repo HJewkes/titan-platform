@@ -914,6 +914,13 @@ blocks. Morning (frozen, decision 530) and active-work tasks never block. Everyt
 round of several questions is one row with id `round:<round id>` and a `questionCount`; its round page holds the
 questions.
 
+Four more rules trim what still blocks. A PR keeps one blocking row: an item asking about a PR (its live row's, its
+op's, or its `pr:` key's; a round pins none) yields to any newer blocking item about the same PR, so a Planning item
+never demotes a live blocker. An sh-sent-back gate clears on the implementer's next head, so it blocks only when a
+deposit whose op itself blocks asks the owner to act on its PR. A `personal`
+deposit and an agent-chat `approve` over a day old never block. A blocking item open past four days carries
+`aged: true`; the page lists it under "Older than 4 days" inside Blocking, after the fresh ones, never hidden.
+
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
 `owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
