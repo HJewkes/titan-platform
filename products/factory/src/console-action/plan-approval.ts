@@ -11,7 +11,8 @@ import type { PlanApprovalAction, Read } from "./record.js";
  * with several no run does, since the owner's answer cannot say which PR it meant.
  */
 export function recordPlanApproval({ action, confirmEvent }: Read<PlanApprovalAction>, store: ShepherdStore, host: FactoryHost): Outcome {
-  const live = store.all().filter((registration) => registration.repo === action.repo.toLowerCase() && registration.task === action.task && LIVE.has(host.runtime.status(registration.runId)?.status ?? ""));
+  const repo = action.repo.toLowerCase();
+  const live = store.all().filter((registration) => registration.repo === repo && registration.task === action.task && LIVE.has(host.runtime.status(registration.runId)?.status ?? ""));
   const claimedRun = live.length === 1 ? live[0]!.runId : null;
   const wrote = store.planApprovals().record(action, consoleResolver(confirmEvent), claimedRun ?? undefined);
   return wrote ? { outcome: "plan-approved", task: action.task, gate: action.gate, claimedRun } : { outcome: "already", task: action.task };

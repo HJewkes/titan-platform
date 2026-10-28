@@ -97,9 +97,9 @@ describe("binding a plan approval to one run", () => {
     store.register({ ...REGISTRATION, pr: 2, runId: "run-2", task: "example/TP-2" });
 
     store.update("run-1", { ...REGISTRATION, task: "example/TP-3" });
-    store.update("run-2", { ...REGISTRATION, pr: 2 });
+    store.update("run-2", REGISTRATION);
     approve(store, SKILL, "action:2");
-    store.update("run-2", { ...REGISTRATION, pr: 2 });
+    store.update("run-2", REGISTRATION);
 
     expect(store.planApprovals().forRun("run-1", "example/TP-3", REPO)).toEqual([]);
     expect(store.planApprovals().forRun("run-2", TASK, REPO)).toEqual([]);
