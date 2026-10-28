@@ -1913,6 +1913,19 @@ allows a merge; it only gates one:
 The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
 review. A coordinator never resolves any of these gates.
 
+**Plan approvals (TP-4284, owner decision 551).** The owner decides WHAT at plan time, and
+Shepherd records that answer as a `shepherd_plan_approval` row for a task and repo. The only
+write is a `plan-approval` console action record, recorded as the console's owner-remote, the
+same binding as the `waive-proof` tap. No CLI, MCP or port path writes it, and a read ignores
+any row another actor wrote. The scope follows the gate: a `ci-policy` approval names the
+CI-policy keys the owner was told the PR weakens and pins each file the PR changes to its git
+blob sha at head (`null` when the file is absent at head). A `skill` or `visual` approval names
+exact paths. Each approval is claimed by exactly one run. A registration claims its task's
+unclaimed approvals when it is created. A console write claims the approval for the task's one
+live registration, and leaves it unclaimed when there are none or several. Re-registering a run
+under another task never claims, so a PR cannot borrow another PR's approval. No merge guard row
+honours an approval yet; every row still gates as described above.
+
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
 a replay finds it instead of posting again. It leads with a readable summary: a one-line outcome (merged, gated or refused, with the reason and the short head sha), a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record follows inside a collapsed `Machine evidence` block, unchanged:
