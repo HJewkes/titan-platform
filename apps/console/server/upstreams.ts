@@ -173,6 +173,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
       roundsDir: config.roundsDir,
       shepherd,
       answer: factoryGateAnswer(config.factoryPort),
+      ...(config.inboxActions === true && { planApproval: { actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) } }),
       ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
       subscriptionsDir: subscriptionsDirOf(config.stateDir),
       logger,

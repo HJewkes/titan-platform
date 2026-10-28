@@ -126,6 +126,17 @@ describe("POST /owner/console-action plan-approval", () => {
     expect(runs.map((runId) => w.store().planApprovals().forRun(runId, TASK, REPO))).toEqual([[], []]);
   });
 
+  it("refuses a relayed record marked decided with 422 record, as TP-3637 refuses a decided waive-proof, and writes no approval", async () => {
+    const w = await world();
+    const runId = await liveRegistration(w, 1);
+    writeApproval(w, { ...SKILL, provenance: "decided" });
+
+    const answer = await post(w.server);
+
+    expect(answer).toMatchObject([422, { outcome: "refused", reason: "record" }]);
+    expect(w.store().planApprovals().forRun(runId, TASK, REPO)).toEqual([]);
+  });
+
   it("refuses a record in the old line-entry shape with 422 record and writes no approval", async () => {
     const w = await world();
     const runId = await liveRegistration(w, 1);

@@ -9,6 +9,9 @@
  * result is kept in `<round>/answer.json`, written once, with one record per PR when the round has several; while the factory is unreachable nothing
  * is written, and `sweep` retries such rounds when the console starts.
  *
+ * A plan round's approval goes the same way (`round-plan-approval.ts`): only the owner's fresh submit writes its action record,
+ * and the sweep reposts only a record already written.
+ *
  * The other tells the seat that filed a round, every seat subscribed to it, or else tp-operator, that the owner
  * answered it (`round-asker.ts`). It runs for every answered round, whether or not gate answers are on.
  */
@@ -21,6 +24,7 @@ import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Questio
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
 import { isVisualAccept, roundAnswers, sameHead, samePr } from "./round-gate-cover.js";
 import { notifyRound } from "./round-asker.js";
+import { approvedPlans, postPlanApprovals, writePlanApprovals, type PlanApprovalDeps } from "./round-plan-approval.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { markOperatorSince } from "./round-subscriptions.js";
 import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readCapped } from "./rounds.js";
@@ -59,6 +63,8 @@ export interface ListenerDeps {
   roundsDir: string;
   shepherd: Pick<ShepherdSource, "list">;
   answer: GateAnswerClient;
+  /** Absent, a plan round's approval is recorded nowhere. */
+  planApproval?: PlanApprovalDeps;
   /** Absent, no seat is told of an answer. */
   notify?: SeatNotifier;
   /** `rounds subscribe`'s store; absent, only the asker is told and an unclaimed answer goes nowhere. */
@@ -111,7 +117,10 @@ type RoundRead = { manifest: Manifest; invalid?: undefined } | { manifest?: unde
 /** A round.json that is there but fails the strict facade is `invalid`, with the first issue as its reason. */
 async function readRound(file: string): Promise<RoundRead> {
   const bytes = await readFileCapped(file);
-  if (bytes === undefined) return {};
+  return bytes === undefined ? {} : roundOf(bytes);
+}
+
+function roundOf(bytes: Buffer): RoundRead {
   try {
     const parsed = RoundSchema.safeParse(JSON.parse(bytes.toString("utf8")));
     return parsed.success ? { manifest: parsed.data } : { invalid: parsed.error.issues[0]?.message ?? "invalid" };
@@ -254,6 +263,22 @@ async function answerRound(deps: ListenerDeps, roundId: string): Promise<void> {
   if (first !== undefined) await writeOnce(path.join(dir, ANSWER_FILE), fileOf(first, answered));
 }
 
+/** Approvals only from the round.json bytes the owner's feedback names, so an edit after the answer approves nothing. */
+async function planApprovalsOf(deps: ListenerDeps, roundId: string): Promise<ReturnType<typeof approvedPlans>> {
+  const dir = path.join(deps.roundsDir, roundId);
+  const [bytes, feedback] = await Promise.all([readFileCapped(path.join(dir, ROUND_FILE)), readJson(path.join(dir, FEEDBACK_FILE), FeedbackSchema)]);
+  if (!bytes || !feedback || sha256(bytes) !== feedback.manifestSha256) return [];
+  const { manifest } = roundOf(bytes);
+  return manifest ? approvedPlans(roundId, manifest, feedback) : [];
+}
+
+async function approvePlans(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
+  if (deps.planApproval === undefined) return;
+  const plans = await planApprovalsOf(deps, roundId);
+  if (live) await writePlanApprovals(deps.planApproval, plans);
+  await postPlanApprovals(deps.planApproval, plans, (deps.now ?? (() => new Date()))());
+}
+
 async function tellSeats(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
   if (deps.notify === undefined) return;
   const { roundsDir, subscriptionsDir, notify } = deps;
@@ -269,6 +294,7 @@ async function tellSeats(deps: ListenerDeps, roundId: string, live: boolean): Pr
 /** A failure here must never fail the submit that already wrote the owner's answer; the sweep retries it. */
 async function attempt(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
   if (deps.enabled) await answerRound(deps, roundId).catch(() => undefined);
+  await approvePlans(deps, roundId, live).catch(() => undefined);
   await tellSeats(deps, roundId, live);
 }
 
@@ -279,7 +305,7 @@ export function createRoundListeners(deps: ListenerDeps): RoundListeners {
       await attempt(deps, roundId, true);
     },
     async sweep() {
-      if (!deps.enabled && deps.notify === undefined) return;
+      if (!deps.enabled && deps.notify === undefined && deps.planApproval === undefined) return;
       // Before the first sweep, so the answers already on disk stay older than the operator watermark.
       if (deps.subscriptionsDir !== undefined) await markOperatorSince(deps.subscriptionsDir, (deps.now ?? (() => new Date()))()).catch(() => undefined);
       const entries = await readdir(deps.roundsDir).catch(() => []);

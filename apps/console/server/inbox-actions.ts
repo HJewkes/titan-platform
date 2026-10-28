@@ -255,6 +255,8 @@ function messageOf(outcome: Outcome, record: ActionRecord): string {
     case "retired":
     case "released":
       return opMessageOf(outcome);
+    case "plan-approved":
+      return `Plan approval recorded for ${outcome.task}`;
     case "already":
       return "Already done by this confirmation";
     case "moved":
