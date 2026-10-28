@@ -4,29 +4,21 @@
     {
       "name": "a newer ask about the same PR no longer replaces the older row",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "if (group.some((other) => newer(other, item))) return true;",
-      "replace": "if (group.length < 0) return true;",
+      "find": "best === undefined || newer(item, best) ? item : best",
+      "replace": "best === undefined ? item : best",
       "kills": [
-        "one row per PR keeps only the newest ask about a PR blocking, so a later deposit replaces the gate it restates",
-        "an sh-sent-back gate is the implementer's to clear unless an owner op on its PR asks the owner to act"
+        "one row per PR keeps only the newest ask about a PR blocking, so a later deposit replaces the gate it restates"
       ]
     },
     {
-      "name": "an sh-sent-back gate with no owner op still blocks",
+      "name": "an sh-sent-back gate blocks with no blocking owner op",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "return isSentBack(item) && !group.some(isOwnerOp);",
-      "replace": "return false;",
+      "find": "asksOwner || !isSentBack(item)",
+      "replace": "true",
       "kills": [
-        "an sh-sent-back gate is the implementer's to clear unless an owner op on its PR asks the owner to act"
-      ]
-    },
-    {
-      "name": "a personal deposit blocks while its asker is live",
-      "file": "apps/console/server/inbox-blocking.ts",
-      "find": "  if (item.personal) return false;\n",
-      "replace": "",
-      "kills": [
-        "a personal deposit is planning even when its asker is live"
+        "an sh-sent-back gate is the implementer's to clear unless an owner op on its PR asks the owner to act",
+        "an sh-sent-back gate stays the implementer's beside an owner op that does not block, such as a close-pr cleanup",
+        "an sh-sent-back gate does not take its PR's one blocking row with it when it is the newest ask"
       ]
     },
     {
@@ -46,6 +38,16 @@
       "kills": [
         "a blocking item past four days stays blocking, marked aged and listed after the fresh blockers",
         "a blocking item past four days keeps a coordinator's merge-at-head ask on a live PR visible as aged blocking, over the older gate it restates"
+      ]
+    },
+    {
+      "name": "a Planning item about a PR demotes its live blocker",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "if (pin === undefined || item.section !== \"blocking\") continue;",
+      "replace": "if (pin === undefined) continue;",
+      "kills": [
+        "one row per PR never lets a newer ask that does not block itself demote a live gate on the same PR",
+        "a deposit or chat ask in the inbox blocks on a merge op only at the live run's head, and never for a cleanup op"
       ]
     }
   ]

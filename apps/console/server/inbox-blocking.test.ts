@@ -115,12 +115,12 @@ describe("a deposit or chat ask in the inbox", () => {
   });
 
   it("blocks on a merge op only at the live run's head, and never for a cleanup op", () => {
-    const merge = (headSha: string, pr: number): OwnerOp => ({ kind: "merge-at-head", repo: REPO, pr, headSha });
-    const atHead = { ...deposit(GONE, merge(HEAD, 7)), id: "deposit:at-head" };
-    const stale = { ...deposit(LIVE, merge(OLD_HEAD, 8)), id: "deposit:stale-head" };
-    const close = deposit(LIVE, { kind: "close-pr", repo: REPO, pr: 9, headSha: HEAD });
+    const merge = (headSha: string): OwnerOp => ({ kind: "merge-at-head", repo: REPO, pr: 7, headSha });
+    const atHead = { ...deposit(GONE, merge(HEAD)), id: "deposit:at-head" };
+    const stale = { ...deposit(LIVE, merge(OLD_HEAD)), id: "deposit:stale-head" };
+    const close = deposit(LIVE, { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD });
 
-    const items = inboxItems([atHead, stale, close], [row(), row({ runId: "33333333-0000-4000-8000-000000000003", pr: 8 })], { liveAgents: LIVE_AGENTS });
+    const items = inboxItems([atHead, stale, close], [row()], { liveAgents: LIVE_AGENTS });
 
     expect(sectionsOf(items)).toEqual({ "deposit:at-head": "blocking", "deposit:stale-head": "planning", "deposit:live-seat-close-pr": "planning" });
   });
@@ -143,6 +143,16 @@ describe("one row per PR", () => {
 
     expect(sectionsOf(items)).toEqual({ [gate.id]: "planning", "deposit:merge-7": "blocking" });
   });
+
+  it("never lets a newer ask that does not block itself demote a live gate on the same PR", () => {
+    const olderGate = { ...gate, openedAt: ago(48 * HOUR) };
+    const staleMerge = { ...deposit(LIVE, { kind: "merge-at-head", repo: REPO, pr: 7, headSha: OLD_HEAD }), openedAt: ago(HOUR) };
+    const close = { ...deposit(LIVE, { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD }), openedAt: ago(HOUR) };
+
+    const items = inboxItems([olderGate, staleMerge, close], [row()], { liveAgents: LIVE_AGENTS, now: NOW });
+
+    expect(sectionsOf(items)).toEqual({ [gate.id]: "blocking", "deposit:live-seat-merge-at-head": "planning", "deposit:live-seat-close-pr": "planning" });
+  });
 });
 
 describe("an sh-sent-back gate", () => {
@@ -153,6 +163,24 @@ describe("an sh-sent-back gate", () => {
     const items = inboxItems([alone, asked, mergeAsk(ago(2 * HOUR), 8)], [sentBackRow(RUN, 7), sentBackRow(RUN_B, 8)], { liveAgents: LIVE_AGENTS, now: NOW });
 
     expect(sectionsOf(items)).toEqual({ [alone.id]: "planning", [asked.id]: "blocking", "deposit:merge-8": "planning" });
+  });
+
+  it("stays the implementer's beside an owner op that does not block, such as a close-pr cleanup", () => {
+    const gateItem = sentBack(RUN, ago(HOUR));
+    const close = { ...deposit(LIVE, { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD }), openedAt: ago(2 * HOUR) };
+
+    const items = inboxItems([gateItem, close], [sentBackRow(RUN, 7)], { liveAgents: LIVE_AGENTS, now: NOW });
+
+    expect(sectionsOf(items)).toEqual({ [gateItem.id]: "planning", "deposit:live-seat-close-pr": "planning" });
+  });
+
+  it("does not take its PR's one blocking row with it when it is the newest ask", () => {
+    const olderAsk = item("chat:pr-7", { asker: LIVE, keys: [`pr:${REPO}#7`], openedAt: ago(2 * HOUR) });
+    const gateItem = sentBack(RUN, ago(HOUR));
+
+    const items = inboxItems([olderAsk, gateItem], [sentBackRow(RUN, 7)], { liveAgents: LIVE_AGENTS, now: NOW });
+
+    expect(sectionsOf(items)).toEqual({ "chat:pr-7": "blocking", [gateItem.id]: "planning" });
   });
 });
 

@@ -152,23 +152,25 @@ const isOwnerOp = (item: OwnerItem): boolean => item.sources[0]!.system === "dep
 const newer = (a: OwnerItem, b: OwnerItem): boolean => a.openedAt > b.openedAt || (a.openedAt === b.openedAt && a.id > b.id);
 
 /**
- * R1: a PR keeps one row, its newest ask, since a later ask about the same PR restates or replaces the earlier one.
- * R2: an sh-sent-back gate clears on the implementer's next head, so it blocks only beside a deposit asking the owner to act.
+ * R2: an sh-sent-back gate clears on the implementer's next head, so it blocks only beside a blocking deposit op.
+ * R1: a PR keeps one blocking row, its newest ask, since a later ask about the same PR restates or replaces the earlier
+ * one. Both read only items still blocking, so a Planning item never demotes a live blocker, and R2 runs first so a
+ * gate it demotes never takes the PR's one row with it.
  */
-function superseded(item: Sectioned, group: readonly Sectioned[]): boolean {
-  if (group.some((other) => newer(other, item))) return true;
-  return isSentBack(item) && !group.some(isOwnerOp);
+function keeperOf(blocking: readonly Sectioned[]): Sectioned | undefined {
+  const asksOwner = blocking.some(isOwnerOp);
+  const eligible = blocking.filter((item) => asksOwner || !isSentBack(item));
+  return eligible.reduce<Sectioned | undefined>((best, item) => (best === undefined || newer(item, best) ? item : best), undefined);
 }
 
 export function onePerPr<T extends Sectioned>(placed: readonly Placed<T>[]): T[] {
   const byPr = new Map<string, T[]>();
   for (const { item, pin } of placed) {
-    if (pin === undefined) continue;
-    const group = byPr.get(pin);
-    if (group === undefined) byPr.set(pin, [item]);
-    else group.push(item);
+    if (pin === undefined || item.section !== "blocking") continue;
+    byPr.set(pin, [...(byPr.get(pin) ?? []), item]);
   }
-  return placed.map(({ item, pin }) => (pin !== undefined && item.section === "blocking" && superseded(item, byPr.get(pin)!) ? { ...item, section: "planning" } : item));
+  const keepers = new Set([...byPr.values()].map(keeperOf));
+  return placed.map(({ item, pin }) => (pin !== undefined && item.section === "blocking" && !keepers.has(item) ? { ...item, section: "planning" } : item));
 }
 
 /** R5: a blocking item past four days is marked aged, so the page lists it in its own subsection. */
