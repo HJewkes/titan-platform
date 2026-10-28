@@ -48,6 +48,9 @@ export interface QaGate {
  */
 export const CAPTIONS_GATE = false;
 
+/** Whether the photosensitive flash check (WCAG 2.3.1 Level A) fails the qa stage; reported until the owner commits to WCAG 2.2 AA. */
+export const FLASH_GATE = false;
+
 const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
 
 /** Parses `gate-profile.yaml`; a kind render-qa does not know, or a type no profile defines, fails the load. */

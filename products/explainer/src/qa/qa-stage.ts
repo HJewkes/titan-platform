@@ -74,7 +74,7 @@ function storedIfLarge(input: QaInput, outputs: Record<string, string>, name: st
   return outputs[name];
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "flash">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -107,6 +107,7 @@ async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, i
     timing,
     mediaScan: mediaScanByBeat(await engine.mediaScan(mp4), timeline),
     captions: captionReport(vttText(input), json(input, need(input, "words"))),
+    flash: await engine.flashScan(mp4),
   };
 }
 
