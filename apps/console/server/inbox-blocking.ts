@@ -3,7 +3,8 @@
  * carries shows something live waits on the answer: a hitl gate its live run is pending on at a PR head, a deposit or
  * agent-chat question whose asker is live (or whose op names a live head), or an open round. Morning is frozen
  * (decision 530) and an active-work task waits on nobody, so neither is ever blocking. A source the console cannot read
- * a fact for stays non-blocking rather than guessing.
+ * a fact for stays non-blocking rather than guessing. Across items, a PR keeps one row, its newest ask, and a blocking
+ * item past four days is marked aged so the page lists it apart, never hidden.
  */
 import { LIVE_HISTORY_STATES, type AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import type { OwnerItem, OwnerOp } from "@titan-design/owner-queue";
@@ -18,7 +19,16 @@ interface BlockingFacts {
   row: WatchRow | undefined;
   /** Names of agents the broker sees live; undefined when the roster was not read, so no asker can be called live. */
   liveAgents: ReadonlySet<string> | undefined;
+  now: number;
 }
+
+const DAY = 24 * 60 * 60_000;
+/** A permission or endorse prompt a day old has timed out or been relayed, so its agent no longer waits on the tap. */
+const CHAT_APPROVAL_STALE_MS = DAY;
+/** Past this a blocking item is listed under "Older than 4 days": still blocking, never hidden. */
+export const AGED_AFTER_MS = 4 * DAY;
+
+const ageOf = (item: OwnerItem, now: number): number => now - Date.parse(item.openedAt);
 
 const REPLAY_DIVERGED = /^replay diverged/;
 /** Closing a PR or retiring an agent tidies up; nothing running waits on it. */
@@ -54,7 +64,9 @@ const askerLive = (item: OwnerItem, liveAgents: ReadonlySet<string> | undefined)
   return asker !== undefined && liveAgents?.has(asker) === true;
 };
 
+/** A personal deposit waits on the owner's own life, not on running work. */
 function depositBlocks(item: OwnerItem, { row, liveAgents }: BlockingFacts): boolean {
+  if (item.personal) return false;
   const byOp = item.op === undefined ? undefined : opBlocks(item.op, row);
   return byOp ?? askerLive(item, liveAgents);
 }
@@ -67,7 +79,7 @@ function blocks(item: OwnerItem, facts: BlockingFacts): boolean {
     case "deposit":
       return depositBlocks(item, facts);
     case "agent-chat":
-      return askerLive(item, facts.liveAgents);
+      return askerLive(item, facts.liveAgents) && !(item.kind === "approve" && ageOf(item, facts.now) > CHAT_APPROVAL_STALE_MS);
     default:
       return false;
   }
@@ -110,4 +122,56 @@ export function oneRowPerRound<T extends OwnerItem>(items: readonly T[]): (T | (
     if (questions[0] !== item) return [];
     return [questions.length === 1 ? item : roundRow(roundId, questions)];
   });
+}
+
+const prRef = (repo: string, pr: number): string => `${repo.toLowerCase()}#${pr}`;
+const PR_KEY = /^pr:(.+#\d+)(@[0-9a-f]+)?$/i;
+
+/** The one PR an item asks about: its live row's, its op's, or its `pr:` key's. A round asks about many, so it pins none. */
+export function pinOf(item: OwnerItem, row: WatchRow | undefined): string | undefined {
+  if (item.sources[0]!.system === "round") return undefined;
+  if (row?.pr != null) return prRef(row.repo, row.pr);
+  const { op } = item;
+  if (op !== undefined && "repo" in op) return prRef(op.repo, op.pr);
+  const key = item.keys.map((each) => PR_KEY.exec(each)).find((match) => match !== null);
+  return key == null ? undefined : key[1]!.toLowerCase();
+}
+
+interface Sectioned extends OwnerItem {
+  section: InboxSection;
+}
+
+export interface Placed<T extends Sectioned> {
+  item: T;
+  pin: string | undefined;
+}
+
+const SENT_BACK = /\/sh-sent-back(:\d+)?$/;
+const isSentBack = ({ sources: [source] }: OwnerItem): boolean => source!.system === "hitl" && SENT_BACK.test(source!.ref);
+const isOwnerOp = (item: OwnerItem): boolean => item.sources[0]!.system === "deposit" && item.op !== undefined;
+const newer = (a: OwnerItem, b: OwnerItem): boolean => a.openedAt > b.openedAt || (a.openedAt === b.openedAt && a.id > b.id);
+
+/**
+ * R1: a PR keeps one row, its newest ask, since a later ask about the same PR restates or replaces the earlier one.
+ * R2: an sh-sent-back gate clears on the implementer's next head, so it blocks only beside a deposit asking the owner to act.
+ */
+function superseded(item: Sectioned, group: readonly Sectioned[]): boolean {
+  if (group.some((other) => newer(other, item))) return true;
+  return isSentBack(item) && !group.some(isOwnerOp);
+}
+
+export function onePerPr<T extends Sectioned>(placed: readonly Placed<T>[]): T[] {
+  const byPr = new Map<string, T[]>();
+  for (const { item, pin } of placed) {
+    if (pin === undefined) continue;
+    const group = byPr.get(pin);
+    if (group === undefined) byPr.set(pin, [item]);
+    else group.push(item);
+  }
+  return placed.map(({ item, pin }) => (pin !== undefined && item.section === "blocking" && superseded(item, byPr.get(pin)!) ? { ...item, section: "planning" } : item));
+}
+
+/** R5: a blocking item past four days is marked aged, so the page lists it in its own subsection. */
+export function markAged<T extends Sectioned>(items: readonly T[], now: number): (T & { aged?: true })[] {
+  return items.map((item) => (item.section === "blocking" && ageOf(item, now) > AGED_AFTER_MS ? { ...item, aged: true } : item));
 }
