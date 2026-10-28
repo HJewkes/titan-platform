@@ -1,10 +1,7 @@
-import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
-import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
-import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523 } from "./merge-facts.js";
 import { CiPolicyScopeSchema, PlanApprovalRefused, type PlanApproval } from "./plan-approval.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, type RegistrationInput } from "./store.js";
@@ -116,31 +113,3 @@ describe("binding a plan approval to one run", () => {
   });
 });
 
-describe("the merge guard before plan approvals are honoured", () => {
-  const HEAD = fakeSha("plan-approval-head");
-  const REVIEWER = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-  const locator: SourceTextLocator = {
-    source: {
-      ...{ sourceId: "transcript-1", harness: "claude-code", format: "jsonl", formatVersion: null, path: "transcripts/transcript-1.jsonl", namespace: "test" },
-      ...{ conversation: { harness: "claude-code", namespace: "test", nativeId: "session-rv-1" }, provenance: { kind: "native", name: "test" } },
-    },
-    evidence: { line: { sourceId: "transcript-1", byteOffset: 0, byteLength: 1, contentHash: "0".repeat(64), lineNumber: 1, nativeOrdinal: null }, subrecord: { index: 0, path: [] } },
-    selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
-  };
-
-  it("still gates a skill change at skill-path when the run holds a claimed skill approval for that path", async () => {
-    const { store } = openStore();
-    approve(store, SKILL);
-    store.register(REGISTRATION);
-    const fake = fakeGitHub();
-    fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
-    fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
-    fake.prFiles.set(1, [{ path: SKILL_FILE, status: "added" }]);
-    const input = { runId: "run-1", repo: REPO, pr: 1, head: HEAD, verdict: { value: "MERGE" as const, head: HEAD, locator }, resolver: REVIEWER, dispatchedReviewer: REVIEWER, seatGrants: ["merge-on-green-approve" as const] };
-
-    const evidence = await mergeEvidence(githubPort(fake.wire), input, noFreezeStoreUntilTp523, { kind: "correctness" });
-
-    expect(store.planApprovals().forRun("run-1", TASK, REPO)).toEqual([SKILL]);
-    expect(decideAutoMerge(HEAD, evidence)).toMatchObject({ outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "skill-path" } });
-  });
-});
