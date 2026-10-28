@@ -15,6 +15,7 @@ import { cueGate, type CueGateResult } from "./cue-gate.js";
 import type { QaEngine } from "./qa-engine.js";
 import { leadLineBeats } from "./qa-lead-lines.js";
 import { measuredFindings } from "./qa-measured.js";
+import { narrationFactsReport } from "./narration-facts.js";
 import { INLINE_MAX_BYTES, mediaScanByBeat, qaReport, qaSummary, type QaReport } from "./qa-report.js";
 import { timelineFromArtifact, timelineS, type QaTimeline } from "./qa-timeline.js";
 import type { QaGate } from "./gate-profile.js";
@@ -74,7 +75,7 @@ function storedIfLarge(input: QaInput, outputs: Record<string, string>, name: st
   return outputs[name];
 }
 
-type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions">;
+type Measured = Pick<QaReport, "sweep" | "framediff" | "probe" | "measured" | "timing" | "mediaScan" | "captions" | "narrationFacts">;
 
 /** What the timing gates read of the script: the beats it declares held, by `heldS` or the held speech band. */
 const HeldScriptSchema = z.object({ beats: z.array(z.object({ id: z.string(), band: z.string().optional(), heldS: z.number().optional() })) });
@@ -107,6 +108,7 @@ async function measure(input: QaInput, engine: QaEngine, timeline: QaTimeline, i
     timing,
     mediaScan: mediaScanByBeat(await engine.mediaScan(mp4), timeline),
     captions: captionReport(vttText(input), json(input, need(input, "words"))),
+    narrationFacts: narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(" ")),
   };
 }
 
