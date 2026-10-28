@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any answer to a bound question approves, whatever its pick",
+      "file": "apps/console/server/round-plan-approval.ts",
+      "find": "if (answer?.pick !== approve) return [];",
+      "replace": "if (answer === undefined) return [];",
+      "kills": [
+        "a plan round's approval answer writes nothing for a pick other than the approve option"
+      ]
+    },
+    {
+      "name": "the sweep writes a record from a feedback.json no owner submit wrote",
+      "file": "apps/console/server/listeners.ts",
+      "find": "if (live) await writePlanApprovals(",
+      "replace": "await writePlanApprovals(",
+      "kills": [
+        "a plan round's approval answer refuses a relayed or decided answer no owner submit wrote: the sweep writes and posts nothing"
+      ]
+    },
+    {
+      "name": "the approval is not bound to the round.json bytes the owner answered",
+      "file": "apps/console/server/listeners.ts",
+      "find": "if (!bytes || !feedback || sha256(bytes) !== feedback.manifestSha256) return [];",
+      "replace": "if (!bytes || !feedback) return [];",
+      "kills": [
+        "a plan round's approval answer writes nothing when round.json changed after the owner answered"
+      ]
+    },
+    {
+      "name": "a settled record is posted again",
+      "file": "apps/console/server/round-plan-approval.ts",
+      "find": "if (!(await present(file)) || (await present(outcomeFile(file)))) continue;",
+      "replace": "if (!(await present(file))) continue;",
+      "kills": [
+        "a plan round's approval answer refuses a replayed answer and a second answer to the same round: still one record and one row",
+        "a plan round's approval answer reposts a record the owner's submit wrote while the factory was down, once, from the sweep"
+      ]
+    },
+    {
+      "name": "the factory's plan-approved answer is not read",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "if (outcome === \"plan-approved\" && task",
+      "replace": "if (outcome === \"plan-approval\" && task",
+      "kills": [
+        "a plan round's approval answer writes one ci-policy plan-approval record with the round id and posts it once to the console-action route",
+        "a plan round's approval answer refuses a replayed answer and a second answer to the same round: still one record and one row",
+        "a plan round's approval answer reposts a record the owner's submit wrote while the factory was down, once, from the sweep"
+      ]
+    }
+  ]
+}

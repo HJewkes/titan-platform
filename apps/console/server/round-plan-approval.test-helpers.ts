@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
+import { factoryOwnerAction, type OwnerActionClient } from "./owner-action.js";
 
 export const PLAN_ROUND = "plan-orbit-r1";
 export const PLAN_TASK = "example/TP-1";
@@ -90,31 +91,47 @@ export interface FakeFactory {
   posts: string[];
   /** The plan-approval actions the fake recorded, one per distinct record, as the factory keys rows on the record's sha256. */
   rows: unknown[];
+  /** True answers 503, which the console reads as unreachable. */
   down: boolean;
+  close: () => Promise<void>;
 }
 
 const postedRecord = z.object({ action: z.looseObject({ task: z.string(), gate: z.string() }) });
 
-/** Stands in for the factory's console-action route: it reads the record the id names and writes one row per distinct record. */
-export function fakeFactory(actionsDir: string): FakeFactory {
+/**
+ * Stands in for the factory's console-action route over loopback HTTP, answering in the route's body shapes: it reads the
+ * record the id names and writes one row per distinct record.
+ */
+export async function fakeFactory(actionsDir: string): Promise<FakeFactory> {
   const seen = new Set<string>();
+  const answer = async (actionId: string): Promise<[number, object]> => {
+    fake.posts.push(actionId);
+    if (fake.down) return [503, { error: "factory down" }];
+    const bytes = await readFile(path.join(actionsDir, `${actionId}.json`));
+    const confirmEvent = createHash("sha256").update(bytes).digest("hex");
+    const { action } = postedRecord.parse(JSON.parse(bytes.toString("utf8")));
+    if (seen.has(confirmEvent)) return [200, { outcome: "already", task: action.task }];
+    seen.add(confirmEvent);
+    fake.rows.push(action);
+    return [200, { outcome: "plan-approved", task: action.task, gate: action.gate, claimedRun: null }];
+  };
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      const { actionId } = z.object({ actionId: z.string() }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      void answer(actionId).then(([status, body]) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body)));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("the fake factory has no port");
   const fake: FakeFactory = {
+    client: factoryOwnerAction(address.port),
     posts: [],
     rows: [],
     down: false,
-    client: {
-      async post(actionId): Promise<ActionOutcome | Unreachable> {
-        fake.posts.push(actionId);
-        if (fake.down) return { status: "unreachable", detail: "factory down" };
-        const bytes = await readFile(path.join(actionsDir, `${actionId}.json`));
-        const confirmEvent = createHash("sha256").update(bytes).digest("hex");
-        const { action } = postedRecord.parse(JSON.parse(bytes.toString("utf8")));
-        if (seen.has(confirmEvent)) return { status: "already", task: action.task };
-        seen.add(confirmEvent);
-        fake.rows.push(action);
-        return { status: "plan-approved", task: action.task, gate: action.gate, claimedRun: null };
-      },
-    },
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
   return fake;
 }

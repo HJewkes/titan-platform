@@ -20,10 +20,11 @@ let factory: FakeFactory;
 
 beforeEach(async () => {
   world = await planWorld();
-  factory = fakeFactory(world.actionsDir);
+  factory = await fakeFactory(world.actionsDir);
 });
 
 afterEach(async () => {
+  await factory.close();
   await world.remove();
 });
 
