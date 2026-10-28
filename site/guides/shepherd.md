@@ -1913,6 +1913,23 @@ allows a merge; it only gates one:
 The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
 review. A coordinator never resolves any of these gates.
 
+**Plan approvals (TP-4284, owner decision 551).** The owner decides WHAT at plan time, so a
+merge guard row the plan approved does not ask again at merge. An approval is a
+`shepherd_plan_approval` row for a task and repo, with a gate (`ci-policy`, `skill` or
+`visual`), a scope (exact `paths`, `ciPolicyKeys`, and `entries` written `+<line>` or
+`-<line>`) and the plan round. The only write is a `plan-approval` console action record,
+recorded as the console's owner-remote, the same binding as the `waive-proof` tap. No CLI, MCP
+or port path writes it, and the guard ignores a row that any other actor wrote. Each `sh-policy`
+read attaches the task's approvals as `EffectivePolicy.approved`, so an approval given after
+registration counts at the next decision. A run param or stored policy cannot carry them. The
+`skill-path`, glob `visual-path` and `ci-policy-weakened` rows allow only when one approval of
+that gate holds every fact the row triggered on at the head. For `ci-policy-weakened` those
+facts are every weakened key, every changed `.github/` path and every changed line. A line that
+only gained or lost a trailing comma does not count as a change. If a line was left off the card
+or a file read closed, the row still gates. The allow reason names the plan round.
+`ci-policy-malformed`, `github-path`, `files-unread` and the visual-delta threshold gate never
+clear on an approval.
+
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
 a replay finds it instead of posting again. It leads with a readable summary: a one-line outcome (merged, gated or refused, with the reason and the short head sha), a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record follows inside a collapsed `Machine evidence` block, unchanged:
