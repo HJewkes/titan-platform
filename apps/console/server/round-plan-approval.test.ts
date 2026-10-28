@@ -2,12 +2,15 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
-import { invokeCommand } from "@titan-design/registry";
+import { EXIT, invokeCommand } from "@titan-design/registry";
 import { createRoundListeners, type RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { settledListeners } from "./round-fixtures.js";
 import { APPROVE, CI_SCOPE, REVISE, PLAN_REPO, PLAN_ROUND, PLAN_TASK, SKILL_SCOPE, fakeFactory, planBindings, planRound, planWorld, plantFeedback, recordFiles, type FakeFactory, type PlanWorld } from "./round-plan-approval.test-helpers.js";
-import { roundsSubmitCommands } from "./rounds-submit.js";
+import { NUDGE_AFTER_MS, roundNudges } from "./round-nudge.js";
+import { roundsAnswerRecCommands } from "./round-rec-answer.js";
+import { readQueueRounds } from "./rounds.js";
+import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { RoundSchema } from "./round-schema.js";
 import type { ShepherdSource } from "./shepherd.js";
 
@@ -46,6 +49,17 @@ async function submit(answers: { questionId: string; pick: string }[], inner: Ro
   await settling.settled();
   return outcome;
 }
+
+/** The one tap that answers every question with its recommendation, through the same submit pipeline and listener. */
+async function answerRec() {
+  const settling = settledListeners(listeners());
+  const command = roundsAnswerRecCommands({ dir: world.roundsDir }, submitPipeline({ dir: world.roundsDir }, undefined, settling))["rounds.answer-rec"];
+  const outcome = await invokeCommand(command, { id: PLAN_ROUND, manifestSha256: world.manifestSha256 }, OWNER);
+  await settling.settled();
+  return outcome;
+}
+
+const PAGE_ONLY = 'question "ci" records a plan approval, answered on the round page where its scope shows';
 
 const outcomeOf = async (file: string) => JSON.parse(await readFile(path.join(world.actionsDir, file.replace(/\.json$/, ".outcome.json")), "utf8"));
 
@@ -124,5 +138,23 @@ describe("a plan round's approval answer", () => {
     const noQuestion = { ...planRound(), planApprovals: [{ ...ci, questionId: "missing" }] };
 
     expect([RoundSchema.safeParse(planRound()).success, RoundSchema.safeParse(badOption).success, RoundSchema.safeParse(noQuestion).success]).toEqual([true, false, false]);
+  });
+});
+
+describe("a plan round's one-tap answer", () => {
+  it("is not offered by the nudge, though every bound question recommends its approve option", async () => {
+    const [nudge] = await roundNudges(world.roundsDir, (await readQueueRounds({ dir: world.roundsDir })).rounds, Date.now() + NUDGE_AFTER_MS + 60_000);
+
+    expect(nudge).toMatchObject({ roundId: PLAN_ROUND, oneTap: false, withoutTap: PAGE_ONLY });
+  });
+
+  it("is refused by rounds.answer-rec, which writes no feedback, no plan-approval record and posts nothing", async () => {
+    const { envelope, exitCode } = await answerRec();
+
+    expect(envelope).toMatchObject({ ok: false, error: `no one-tap answer: ${PAGE_ONLY}` });
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(await readFile(path.join(world.roundsDir, PLAN_ROUND, "feedback.json")).then(() => true, () => false)).toBe(false);
+    expect(await recordFiles(world.actionsDir)).toEqual([]);
+    expect(factory.posts).toEqual([]);
   });
 });
