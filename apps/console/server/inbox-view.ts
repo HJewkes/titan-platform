@@ -239,7 +239,7 @@ function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchR
   return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
 }
 
-export interface ItemFacts {
+interface ItemFacts {
   strips?: ReadonlyMap<string, GateStrip>;
   /** Absent means the roster was not read, so no deposit or chat asker counts as live. */
   liveAgents?: ReadonlySet<string>;

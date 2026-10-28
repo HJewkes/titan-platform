@@ -26,7 +26,7 @@ const DAY = 24 * 60 * 60_000;
 /** A permission or endorse prompt a day old has timed out or been relayed, so its agent no longer waits on the tap. */
 const CHAT_APPROVAL_STALE_MS = DAY;
 /** Past this a blocking item is listed under "Older than 4 days": still blocking, never hidden. */
-export const AGED_AFTER_MS = 4 * DAY;
+const AGED_AFTER_MS = 4 * DAY;
 
 const ageOf = (item: OwnerItem, now: number): number => now - Date.parse(item.openedAt);
 
