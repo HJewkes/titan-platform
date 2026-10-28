@@ -1923,8 +1923,26 @@ blob sha at head (`null` when the file is absent at head). A `skill` or `visual`
 exact paths. Each approval is claimed by exactly one run. A registration claims its task's
 unclaimed approvals when it is created. A console write claims the approval for the task's one
 live registration, and leaves it unclaimed when there are none or several. Re-registering a run
-under another task never claims, so a PR cannot borrow another PR's approval. No merge guard row
-honours an approval yet; every row still gates as described above.
+under another task never claims, so a PR cannot borrow another PR's approval.
+
+Each `sh-policy` read before a merge decision re-reads the approvals the run claimed, and three
+guard rows honour them. Each row clears only when one approval of its gate covers the head:
+
+- `skill-path` clears when a `skill` approval names every changed skill path.
+- `visual-path` (the glob row) clears when a `visual` approval names every changed path that
+  matches the seat's `visualPaths`.
+- `ci-policy-weakened` clears when a `ci-policy` approval holds the reviewer's weakened keys and
+  pins every path the PR changes at head, rename sources included, to the blob it has there. On
+  a weakened line the evidence step reads each changed path's blob at head into the record's
+  `headBlobs`, up to 20 paths. A failed read or more paths leaves the field out, and a record
+  without it never clears. A pinned path the PR does not change is ignored.
+
+The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
+to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in
+front of the owner. A PR that mixes code with an approved policy edit still gates. The visual
+threshold, `files-unread`, `github-path` and `ci-policy-malformed` rows never consult
+approvals. An allow that rests on an approval names its plan round. A gate the run holds an
+approval of that gate for says "unplanned change".
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
