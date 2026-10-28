@@ -129,13 +129,14 @@ describe("loadConfig", () => {
     expect(() => load({ ui: rule })).toThrow(/visualThreshold/);
   });
 
-  it("refuses a visual threshold mode of on, and caps the measuring work config can ask for", () => {
+  it("keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for", () => {
     const rule = { mode: "shadow", snapshotPaths: [], apiPaths: [], tokenPaths: [], harnessPaths: [] };
     const load = (more: object) => loadConfig(configPath(xdg({ shepherd: { visualThreshold: { "acme/ui": { ...rule, ...more } } } })));
     const mi = 1024 * 1024;
 
     expect(load({ maxSnapshots: 200, maxBytes: 20 * mi, maxPixels: 32 * mi, maxTotalPixels: 256 * mi }).shepherd?.visualThreshold?.["acme/ui"]?.maxTotalPixels).toBe(256 * mi);
-    expect(() => load({ mode: "on" })).toThrow(/mode/);
+    expect(load({ mode: "on" }).shepherd?.visualThreshold?.["acme/ui"]?.mode).toBe("on");
+    expect(() => load({ mode: "enforce" })).toThrow(/mode/);
     expect(() => load({ maxBytes: 20 * mi + 1 })).toThrow(/maxBytes/);
     expect(() => load({ maxSnapshots: 201 })).toThrow(/maxSnapshots/);
     expect(() => load({ maxPixels: 32 * mi + 1 })).toThrow(/maxPixels/);

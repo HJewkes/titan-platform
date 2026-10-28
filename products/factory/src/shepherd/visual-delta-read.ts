@@ -1,6 +1,6 @@
 // The evidence step's read of a PR's visual delta (TP-4320): every snapshot it changes, measured from the merge base to
 // the head under fixed caps (visual-delta-measure.ts), and the public API, token and harness paths it touches.
-// Recorded only; nothing decides on it yet.
+// Under mode `on` the merge decides on it (visual-threshold-gate.ts); under `shadow` it is recorded only.
 import type { GitHubPort, PrFile } from "@titan-design/github";
 import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
 import { measurePairs, type MeasureTarget, type Pair, type PairMeasure } from "./visual-delta-measure.js";
@@ -9,7 +9,7 @@ import { caseFoldedMatcher, visualMatches } from "./visual-gate.js";
 
 /** `shepherd.visualThreshold` for one repo. */
 export interface VisualThreshold {
-  mode: "off" | "shadow";
+  mode: "off" | "shadow" | "on";
   maxChangedShare?: number;
   pixelTolerance?: number;
   snapshotPaths: string[];
