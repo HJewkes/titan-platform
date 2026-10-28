@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, type Server } from "node:http";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -98,6 +98,20 @@ export interface FakeFactory {
 
 const postedRecord = z.object({ action: z.looseObject({ task: z.string(), gate: z.string() }) });
 
+/** A loopback server that answers each posted `{actionId}` with `answer`'s status and body. */
+async function listening(answer: (actionId: string) => Promise<[number, object]>): Promise<Server> {
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      const { actionId } = z.object({ actionId: z.string() }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      void answer(actionId).then(([status, body]) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body)));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return server;
+}
+
 /**
  * Stands in for the factory's console-action route over loopback HTTP, answering in the route's body shapes: it reads the
  * record the id names and writes one row per distinct record.
@@ -115,15 +129,7 @@ export async function fakeFactory(actionsDir: string): Promise<FakeFactory> {
     fake.rows.push(action);
     return [200, { outcome: "plan-approved", task: action.task, gate: action.gate, claimedRun: null }];
   };
-  const server = createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => {
-      const { actionId } = z.object({ actionId: z.string() }).parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      void answer(actionId).then(([status, body]) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body)));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const server = await listening(answer);
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("the fake factory has no port");
   const fake: FakeFactory = {
