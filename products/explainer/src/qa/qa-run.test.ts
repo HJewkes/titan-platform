@@ -29,7 +29,7 @@ describe("explainer run through the qa stage", () => {
       ["picture-change", true, true], ["picture-change-warn", false, true], ["static-window", true, true], ["cue-onset", true, true], ["reading-hold", true, true],
       ["headline-label-words", true, true], ["narration-shared-run", true, true], ["words-per-frame", true, true],
       ["direction-gates", false, false], ["black-frames", false, true], ["silence-2s", false, true], ["frozen-frames", false, true],
-      ["captions-complete", false, true], ["captions-words", false, true], ["captions-lines", false, true], ["captions-cps", false, true], ["captions-onset", false, true], ["photosensitive-flash", false, true],
+      ["captions-complete", false, true], ["captions-words", false, true], ["captions-lines", false, true], ["captions-cps", false, true], ["captions-onset", false, true], ["narration-facts", false, true], ["photosensitive-flash", false, true],
     ]);
     const report = QaReportSchema.parse(JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", failed.outputs.qa!), "utf8")));
     expect(report.timeline).toBe("timeline");
@@ -43,7 +43,7 @@ describe("explainer run through the qa stage", () => {
     const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender(), { qaEngine: qa }));
 
     expect(result.status, result.error).toBe("completed");
-    expect(row(result, "qa")).toMatchObject({ checks: "23 pass, 0 gate fail, 1 reported fail" });
+    expect(row(result, "qa")).toMatchObject({ checks: "24 pass, 0 gate fail, 1 reported fail" });
     expect(qa.opened.map(({ url }) => url)).toEqual([expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/\?timeline=qa-timeline\.json$/)]);
   });
 });

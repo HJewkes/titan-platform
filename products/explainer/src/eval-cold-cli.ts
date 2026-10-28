@@ -49,6 +49,10 @@ interface Prepared {
   series: SeriesVideo[];
 }
 
+/** A script/v1 beat's on-screen assertion by id; a spike script has no such field, so its run asks no assertion question. */
+const assertionsOf = (raw: unknown, format: ScriptFormat): Record<string, string> =>
+  format === "v1" ? Object.fromEntries(ScriptSchema.parse(raw).beats.map((beat) => [beat.id, beat.visual.assertion])) : {};
+
 function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const raw = readJson(file);
   const { beats, glossary } = paceInput(raw, flags.format, flags.timing ? readTiming(readJson(flags.timing)) : undefined);
@@ -59,7 +63,7 @@ function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const bench = benchLayout(flags.bench);
   const scriptSha = freezeScript(bench, raw, flags.parent ?? null);
   const record = { configId: flags.config, scriptSha, parentSha: flags.parent ?? null, rulesSha: rulesSha(registry), evalId: COLD_EVAL_ID };
-  const input = { scriptSha, beats, glossary, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
+  const input = { scriptSha, beats, glossary, assertions: assertionsOf(raw, flags.format), rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
   const readerGaps = flags.labels ? LabelsSchema.parse(readJson(flags.labels)).items : null;
   const series = seriesFromScripts((flags.series ?? []).map((path) => ScriptSchema.parse(readJson(path))));
   return { bench, record, input, runs, readerGaps, series };

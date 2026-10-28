@@ -2,6 +2,7 @@ import { countByKind, type Held, type HeldFinding, type MediaInterval, type Medi
 import { z } from "zod";
 import { CaptionReportSchema } from "./caption-check.js";
 import { FlashReportSchema } from "./flash-scan.js";
+import { NarrationFactsReportSchema } from "./narration-facts.js";
 import type { QaTimeline } from "./qa-timeline.js";
 import { TIMING_GATES } from "./timing-gates.js";
 
@@ -94,6 +95,8 @@ export const QaReportSchema = z.object({
   mediaScan: MediaScanSchema,
   /** The caption track against words.json (`caption-check.ts`); absent in a qa.json from before the check. */
   captions: CaptionReportSchema.optional(),
+  /** On-screen numbers and headline names the narration never says (`narration-facts.ts`); absent before the check. */
+  narrationFacts: NarrationFactsReportSchema.optional(),
   /** General and red flashes per second of the MP4 (`flash-scan.ts`); absent in a qa.json from before the check. */
   flash: FlashReportSchema.optional(),
   notes: z.array(z.string()),

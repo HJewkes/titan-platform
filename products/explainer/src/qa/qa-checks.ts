@@ -75,6 +75,15 @@ export const captionVerdict = (rule: CaptionRule) => (input: QaCheckInput): Verd
   return { pass: found.length === 0, detail: found.length === 0 ? `${captions.cues} cues, no ${rule} finding` : `${found.length} caption ${rule}: ${shown}` };
 };
 
+/** On-screen facts the narration never says: none passes; a qa.json from before the check fails, as a missing gate does. */
+export function narrationFactsVerdict(input: QaCheckInput): Verdict {
+  const { narrationFacts } = report(input);
+  if (narrationFacts === undefined) return { pass: false, detail: "qa.json has no narrationFacts report" };
+  const { beats, findings } = narrationFacts;
+  const shown = findings.slice(0, DETAIL_FINDINGS).map(({ beat, kind, fact }) => `[${beat}] ${kind} "${fact}"`).join("; ");
+  return { pass: findings.length === 0, detail: findings.length === 0 ? `${beats} beats, every on-screen fact narrated` : `${findings.length} unspoken: ${shown}` };
+}
+
 function flashDetail(label: string, { maxPerS, windows }: FlashReport["general"]): string {
   const shown = windows.slice(0, DETAIL_FINDINGS).map(({ startS, endS }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s`).join(", ");
   return `${label} ${maxPerS}/s${windows.length > 0 ? ` over ${MAX_FLASHES_PER_S} at ${shown}` : ""}`;

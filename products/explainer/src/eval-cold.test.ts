@@ -301,6 +301,26 @@ describe("the streamed cold-viewer probe", () => {
     expect(chapter).toMatchObject({ undefined_items: 2, undefined_per_minute: 20, undefined_terms: 1, undefined_terms_per_minute: 10 });
   });
 
+  it("asks whether the words carry each beat's on-screen assertion, keeping an unheard one out of undefined items", async () => {
+    const beats = buildPaceBeats([source("a1-1", "ch1", "Each parcel waits at the dock until the sorter takes it.", [], 6)]);
+    const viewer = fakeViewer({ notStated: true });
+
+    const result = await runCold({ ...input(viewer.harness), beats, assertions: { "a1-1": "Parcels wait an hour at the dock" } });
+
+    const [chapter] = result.chapters;
+    expect(viewer.calls[0]).toContain('The screen says "Parcels wait an hour at the dock". Which spoken words tell a listener this');
+    expect(chapter!.scores.map((s) => [s.kind, s.item, s.score, s.void_reason])).toEqual([["assertion", "Parcels wait an hour at the dock", 0, "not stated"]]);
+    expect(chapter!.undefined_items).toBe(0);
+  });
+
+  it("scores an assertion the narration carries on its spoken quotes, as a what-why item is", async () => {
+    const beats = buildPaceBeats([source("a1-1", "ch1", "Each parcel waits at the dock until the sorter takes it.", [], 6)]);
+
+    const result = await runCold({ ...input(fakeViewer().harness), beats, assertions: { "a1-1": "Parcels wait at the dock" } });
+
+    expect(result.chapters[0]!.scores).toMatchObject([{ kind: "assertion", score: 2, void_reason: null }]);
+  });
+
   it("poses spoken terms in their chapter and counts an unexplained one as an undefined item", async () => {
     const beats = buildPaceBeats([
       source("d1-1", "ch1", "Each parcel waits at the dock overnight.", ["card:parcel"], 6),
