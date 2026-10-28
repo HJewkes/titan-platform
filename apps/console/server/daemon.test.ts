@@ -256,10 +256,49 @@ describe("login-link and token rotate", () => {
     expect(createLoginLink(lanConfig()) === createLoginLink(lanConfig())).toBe(false);
   });
 
-  it("falls back to the bound address when there is no LAN name, and refuses when there is neither", () => {
-    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "192.0.2.1" })).origin).toBe("https://192.0.2.1:7500");
-    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "2001:db8::a" })).origin).toBe("https://[2001:db8::a]:7500");
-    expect(() => createLoginLink({ ...lanConfig(), lanNames: [] })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
+  /** A certificate of its own, so the suite's pair for `lan-box` stays as it is. */
+  async function certFor(names: readonly string[]): Promise<ConsoleConfig["lanTls"]> {
+    const certDir = await mkdtemp(path.join(dir, "cert-"));
+    const own = writeSelfSignedCert(certDir, names);
+    return { certFile: own.certFile, keyFile: own.keyFile };
+  }
+
+  it("names the certificate's FQDN when the LAN names are the bare hostname defaults", async () => {
+    const lanTls = await certFor(["box.example.ts.net"]);
+
+    const url = new URL(createLoginLink({ ...lanConfig(), lanNames: ["box", "box.local"], lanTls }));
+
+    expect(url.origin).toBe("https://box.example.ts.net:7500");
+  });
+
+  it("names the first LAN name the certificate covers, skipping one it does not", async () => {
+    const lanTls = await certFor(["box.example.ts.net", "alt.example.ts.net"]);
+
+    const url = new URL(createLoginLink({ ...lanConfig(), lanNames: ["box", "alt.example.ts.net", "box.example.ts.net"], lanTls }));
+
+    expect(url.origin).toBe("https://alt.example.ts.net:7500");
+  });
+
+  it("finds the one certificate under the state dir's tls/ when TITAN_CONSOLE_TLS_CERT is unset", async () => {
+    const tlsDir = path.join(config.stateDir, "tls");
+    await mkdir(tlsDir, { recursive: true });
+    writeSelfSignedCert(tlsDir, ["box.example.ts.net"]);
+
+    const url = new URL(createLoginLink({ ...lanConfig(), lanNames: ["box"], lanTls: null }));
+
+    expect(url.origin).toBe("https://box.example.ts.net:7500");
+  });
+
+  it("refuses with no certificate to read, rather than print a name nothing covers", () => {
+    expect(() => createLoginLink({ ...lanConfig(), lanNames: ["box"], lanTls: null })).toThrow(/TITAN_CONSOLE_TLS_CERT/);
+  });
+
+  it("falls back to the bound address the certificate covers, and refuses when it covers none", async () => {
+    const lanTls = await certFor(["192.0.2.1", "2001:db8::a"]);
+
+    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "192.0.2.1", lanTls })).origin).toBe("https://192.0.2.1:7500");
+    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "2001:db8::a", lanTls })).origin).toBe("https://[2001:db8::a]:7500");
+    expect(() => createLoginLink({ ...lanConfig(), lanNames: ["box"], lanHost: "192.0.2.9", lanTls })).toThrow(/covers none of TITAN_CONSOLE_LAN_NAMES/);
   });
 
   it("refuses an ephemeral port, which no link could name", () => {
@@ -669,6 +708,20 @@ describe.skipIf(process.platform !== "linux")("the console's LAN listener under 
 
     expect([own.status, foreign.status, portless.status]).toEqual([200, 403, 403]);
     expect([foreign.body, portless.body].some((body) => body.includes("console shell"))).toBe(false);
+  });
+
+  it("answers every listed name the certificate covers, and 403 to a covered name that is not listed", async () => {
+    const certDir = path.join(dir, "fqdn-cert");
+    await mkdir(certDir);
+    pair = writeSelfSignedCert(certDir, ["box.example.ts.net", NAME, "spare.example.ts.net"]);
+    await startLan(silentLogger, { lanNames: ["box.example.ts.net", NAME], lanTls: { certFile: pair.certFile, keyFile: pair.keyFile } });
+    const credential = await signIn();
+
+    const statuses = await Promise.all(
+      ["box.example.ts.net", NAME, "spare.example.ts.net"].map(async (host) => (await sendLan(port, "GET", "/", { host: `${host}:${port}`, accept: "text/html", ...credential })).status),
+    );
+
+    expect(statuses).toEqual([200, 200, 403]);
   });
 
   it("answers 401 to the old bearer after token rotate, and 200 to the new one", async () => {

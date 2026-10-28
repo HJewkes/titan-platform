@@ -18,6 +18,7 @@ import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { relayUpstreams, startEventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
+import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ClassedCommand } from "./owner-guard.js";
@@ -149,13 +150,13 @@ export function lanOrigin(config: ConsoleConfig, port: number): string {
 }
 
 /**
- * A one-time, ten-minute login link. Minting needs only the token file, never the running daemon,
- * so run it with the same TITAN_CONSOLE_* settings as the service. A daemon that restarts after
- * minting refuses the link.
+ * A one-time, ten-minute login link. Minting needs only the token file and the certificate, never
+ * the running daemon, so run it with the same TITAN_CONSOLE_* settings as the service. A daemon
+ * that restarts after minting refuses the link.
  */
 export function createLoginLink(config: ConsoleConfig, now: number = Date.now()): string {
   if (config.port === 0) throw new Error("TITAN_CONSOLE_PORT is 0, so there is no fixed port to put in a login link");
-  const origin = lanOrigin(config, config.port);
+  const origin = `https://${linkHost(config)}:${config.port}`;
   const code = mintLoginCode(ensureLanToken(config), now);
   return `${origin}${LOGIN_PATH}?code=${encodeURIComponent(code)}`;
 }
