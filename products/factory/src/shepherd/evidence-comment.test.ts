@@ -107,7 +107,7 @@ describe("the evidence comment's Visual diff section", () => {
   });
 
   it("says a malformed delta reads as unmeasured, and shows nothing without one", () => {
-    const malformed = { ...delta("on"), snapshots: "not a list" } as unknown as VisualDelta;
+    const malformed = partialFake<VisualDelta>({ policy: delta("on").policy, mergeBase: MERGE_BASE });
 
     expect(evidenceComment(record(malformed))).toContain("**Visual diff**: the recorded delta is malformed, so it reads as unmeasured.");
     expect(evidenceComment(record())).not.toContain("Visual diff");

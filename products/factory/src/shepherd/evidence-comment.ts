@@ -124,7 +124,10 @@ function overCell(shot: Shot, maxChangedShare: number): string {
 function snapshotTable({ snapshots, policy, omitted }: VisualDelta): string[] {
   if (snapshots.length === 0) return ["No snapshot changed."];
   const shown = snapshots.slice(0, SHOWN_SNAPSHOTS).sort((a, b) => a.component.localeCompare(b.component) || (b.share ?? 0) - (a.share ?? 0));
-  const rows = shown.map((shot, i) => `| ${shown[i - 1]?.component === shot.component ? "" : cell(shot.component)} | \`${cell(shot.path)}\` | ${cell(changeCell(shot))} | ${overCell(shot, policy.maxChangedShare)} |`);
+  const rows = shown.map((shot, i) => {
+    const component = shown[i - 1]?.component === shot.component ? "" : cell(shot.component);
+    return `| ${component} | \`${cell(shot.path)}\` | ${cell(changeCell(shot))} | ${overCell(shot, policy.maxChangedShare)} |`;
+  });
   const left = snapshots.length - shown.length + (omitted?.snapshots ?? 0);
   const table = ["| Component | Snapshot | Change | Over? |", "| --- | --- | --- | --- |", ...rows, ...(left > 0 ? ["", `and ${left} more snapshots`] : [])];
   return snapshots.length <= LONG_PATH_LIST ? table : [`<details><summary>${snapshots.length + (omitted?.snapshots ?? 0)} snapshots</summary>`, "", ...table, "", "</details>"];
@@ -133,8 +136,8 @@ function snapshotTable({ snapshots, policy, omitted }: VisualDelta): string[] {
 function sensitiveLines(delta: VisualDelta): string[] {
   const kinds = [["Public API", "api"], ["Tokens", "tokens"], ["Visual harness", "harness"]] as const;
   return kinds.map(([label, key]) => {
-    const more = delta.omitted?.[key] ?? 0;
-    const named = [...delta[key].slice(0, SHOWN_SENSITIVE).map((path) => `\`${cell(path)}\``), ...(delta[key].length > SHOWN_SENSITIVE || more > 0 ? [`and ${Math.max(0, delta[key].length - SHOWN_SENSITIVE) + more} more`] : [])];
+    const more = Math.max(0, delta[key].length - SHOWN_SENSITIVE) + (delta.omitted?.[key] ?? 0);
+    const named = [...delta[key].slice(0, SHOWN_SENSITIVE).map((path) => `\`${cell(path)}\``), ...(more > 0 ? [`and ${more} more`] : [])];
     return `- ${label}: ${named.length === 0 ? "none changed" : named.join(", ")}`;
   });
 }
@@ -151,6 +154,11 @@ function visualDiffSection(delta: VisualDelta | undefined): string[] {
   return ["", head, "", ...snapshotTable(delta), "", ...sensitiveLines(delta), ...shadow];
 }
 
+function carriedLine({ carry }: EvidenceRecord): string[] {
+  if (!carry) return [];
+  return ["", `Carried the MERGE reviewed at \`${carry.fromHead}\` by ${carry.rule ?? "tree-equal"} (merge-tree \`${carry.mergeTree}\`) to a head whose tree is \`${carry.headTree}\`.`];
+}
+
 /** Names no actor: a merge someone else made is still a true "Merged" line. */
 function mergedLine(merged: { mergeSha: string | null } | undefined): string[] {
   if (!merged) return [];
@@ -165,7 +173,6 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
   const { decision } = record;
   const gated = gatedPaths(decision);
   const reason = gated ? ruleInWords(decision.rule) : decision.reason;
-  const carried = record.carry ? [``, `Carried the MERGE reviewed at \`${record.carry.fromHead}\` by ${record.carry.rule ?? "tree-equal"} (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.`] : [];
   const rule = decision.outcome === "allow" ? [] : ["", `Rule: ${ruleInWords(decision.rule)} (${decision.rule.table}/${decision.rule.rowId}).`];
   const proof = record.proofUnverified === undefined ? [] : ["", `Fix-proof unverified at this head: ${record.proofUnverified}.`];
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
@@ -174,7 +181,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
     "",
     `**Shepherd ${OUTCOME_WORD[decision.outcome]}** at \`${shortSha(record.head)}\`: ${reason}`,
     ...mergedLine(merged),
-    ...carried,
+    ...carriedLine(record),
     "",
     ...checksTable(record),
     ...visualDiffSection(record.visualDelta),

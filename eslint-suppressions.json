@@ -1106,11 +1106,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/evidence-comment.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/exit-notice.ts": {
     "titan/max-line-length": {
       "count": 2
