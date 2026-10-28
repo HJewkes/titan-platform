@@ -68,10 +68,7 @@ export interface ConsoleConfig {
   ownerWrites: boolean;
   /** The owner-inbox spool `inbox.deposit` files into; `TITAN_CONSOLE_INBOX_DIR` overrides. */
   inboxDir: string;
-  /**
-   * Automation askers the five-open-asks cap skips, from `TITAN_CONSOLE_CAP_EXEMPT_ASKERS` (a comma list of exact names,
-   * never a pattern). Optional so a config built by hand exempts {@link DEFAULT_CAP_EXEMPT_ASKERS}; `resolveConfig` always sets it.
-   */
+  /** Exact asker names the five-ask cap skips, from `TITAN_CONSOLE_CAP_EXEMPT_ASKERS`; absent in a hand-built config means the defaults. */
   capExemptAskers?: string[];
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
@@ -163,7 +160,6 @@ export function resolveConfig(
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
     ...lanOptionsFrom(env, home, stateDir, machine),
     ...dataDirsFrom(env, home, platform, stateDir),
-    capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ...ownerOptionsFrom(env, home),
     configStore: configStoreFrom(env, home, platform),
     ...surfaceRootsFrom(env, home),
@@ -197,8 +193,9 @@ function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Pla
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers"> {
   return {
+    capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
