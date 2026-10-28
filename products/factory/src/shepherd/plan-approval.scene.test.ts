@@ -120,7 +120,7 @@ async function gatedAt(run: ReturnType<typeof plannedRun>, rowId: string): Promi
   expect(run.approveMerge()?.prompt).toContain(`Policy shepherd-merge-guard/${rowId}:`);
 }
 
-const CI_POLICY: PlanApproval = { gate: "ci-policy", scope: { paths: [MERGE_LINT], ciPolicyKeys: ["other"], entries: ['+    "entry-b"'] }, round: ROUND };
+const CI_POLICY: PlanApproval = { gate: "ci-policy", scope: { paths: [MERGE_LINT], ciPolicyKeys: ["other"], entries: [{ path: MERGE_LINT, side: "+", n: 4, text: '    "entry-b"' }] }, round: ROUND };
 const ciRow = (approve: Row["approve"]): Row => ({ files: [{ path: MERGE_LINT, status: "modified" }], policy: AUTO, reviewerLines: "CI-policy: weakened other\n", approve });
 
 describe("a PR whose only guard row is ci-policy-weakened, a merge-lint entry", () => {
@@ -129,7 +129,7 @@ describe("a PR whose only guard row is ci-policy-weakened, a merge-lint entry", 
   });
 
   it("gates at the same head when the approved entry differs", async () => {
-    await gatedAt(plannedRun(ciRow(byConsole({ ...CI_POLICY, scope: { ...CI_POLICY.scope, entries: ['+    "entry-c"'] } }))), "ci-policy-weakened");
+    await gatedAt(plannedRun(ciRow(byConsole({ ...CI_POLICY, scope: { ...CI_POLICY.scope, entries: [{ path: MERGE_LINT, side: "+", n: 4, text: '    "entry-c"' }] } }))), "ci-policy-weakened");
   });
 
   it("gates at the same head under an agent-written approval of the same scope", async () => {

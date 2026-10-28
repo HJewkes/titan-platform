@@ -9,11 +9,15 @@ export type PlanApprovalGate = (typeof PLAN_APPROVAL_GATES)[number];
 
 const bounded = z.string().min(1).max(512);
 
-/** What the owner approved: exact paths, CI-policy keys, and changed CI-policy lines written `+<line>` or `-<line>`. */
+/** One changed CI-policy line as the card's positional diff shows it: its file, side, 1-based line number there and text. */
+export const PlanApprovalEntrySchema = z.strictObject({ path: bounded, side: z.enum(["-", "+"]), n: z.number().int().positive(), text: z.string().max(512) });
+export type PlanApprovalEntry = z.infer<typeof PlanApprovalEntrySchema>;
+
+/** What the owner approved: exact paths, CI-policy keys, and each changed CI-policy line at its place. */
 export const PlanApprovalScopeSchema = z.strictObject({
   paths: z.array(bounded).max(200),
   ciPolicyKeys: z.array(z.enum(CI_POLICY_KEYS)).max(CI_POLICY_KEYS.length).optional(),
-  entries: z.array(z.string().regex(/^[+-]/).max(512)).max(200).optional(),
+  entries: z.array(PlanApprovalEntrySchema).max(200).optional(),
 });
 export type PlanApprovalScope = z.infer<typeof PlanApprovalScopeSchema>;
 

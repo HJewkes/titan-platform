@@ -1916,8 +1916,8 @@ review. A coordinator never resolves any of these gates.
 **Plan approvals (TP-4284, owner decision 551).** The owner decides WHAT at plan time, so a
 merge guard row the plan approved does not ask again at merge. An approval is a
 `shepherd_plan_approval` row for a task and repo, with a gate (`ci-policy`, `skill` or
-`visual`), a scope (exact `paths`, `ciPolicyKeys`, and `entries` written `+<line>` or
-`-<line>`) and the plan round. The only write is a `plan-approval` console action record,
+`visual`), a scope (exact `paths`, `ciPolicyKeys`, and `entries`, each one changed line as
+`{path, side, n, text}`) and the plan round. The only write is a `plan-approval` console action record,
 recorded as the console's owner-remote, the same binding as the `waive-proof` tap. No CLI, MCP
 or port path writes it, and the guard ignores a row that any other actor wrote. Each `sh-policy`
 read attaches the task's approvals as `EffectivePolicy.approved`, so an approval given after
@@ -1925,9 +1925,11 @@ registration counts at the next decision. A run param or stored policy cannot ca
 `skill-path`, glob `visual-path` and `ci-policy-weakened` rows allow only when one approval of
 that gate holds every fact the row triggered on at the head. For `ci-policy-weakened` those
 facts are every weakened key, every changed `.github/` path and every changed line of the card's
-positional diff, each matched exactly, indentation included. The only exemption is a removed and
-an added line at the same position of one file that differ only by a trailing comma, so a moved,
-re-indented or cross-file line always needs its own entry. If a line was left off the card, cut
+positional diff, each matched by its own entry: same file, side, line number and text,
+indentation included. One entry never covers a copy of its line in another job or file. The
+only exemption is a JSON line that came back at the same line number with only a trailing comma
+added, with an added line after it, so appending one array entry needs only that entry. In YAML
+a trailing comma changes the value, so it always needs an entry. If a line was left off the card, cut
 at its width, or a file read closed, the row still gates. The allow reason names the plan round.
 `ci-policy-malformed`, `github-path`, `files-unread` and the visual-delta threshold gate never
 clear on an approval.
