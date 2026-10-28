@@ -17,6 +17,8 @@ const ArgsSchema = z
     ref: NextStepSchema.shape.ref,
     due: NextStepSchema.shape.due,
     id: NextStepSchema.shape.id.optional(),
+    origin: NextStepSchema.shape.origin,
+    seat: NextStepSchema.shape.seat,
   })
   .superRefine((value, ctx) => {
     if (value.kind !== 'prose' && value.ref === undefined) {
@@ -34,6 +36,8 @@ const ResultSchema = z.object({
   kind: z.enum(['task', 'pr', 'prose']),
   target_ref: z.string().optional(),
   due: z.string().optional(),
+  origin: z.enum(['handoff', 'teleport', 'wrap']).optional(),
+  seat: z.string().optional(),
   session_file: z.string(),
   path: z.string(),
   opened_at: z.string(),
@@ -53,6 +57,8 @@ function toStep(args: Args): NextStep {
     kind: args.kind,
     ...(args.ref !== undefined ? { ref: args.ref } : {}),
     ...(args.due !== undefined ? { due: args.due } : {}),
+    ...(args.origin !== undefined ? { origin: args.origin } : {}),
+    ...(args.seat !== undefined ? { seat: args.seat } : {}),
   };
 }
 
@@ -91,9 +97,19 @@ export default defineCommand<Args, Result>({
         long: '--id',
         description: 'Short id for the loop (default: derived from --text)',
       },
+      origin: {
+        long: '--origin',
+        description:
+          "'handoff' | 'teleport' | 'wrap': where the loop was filed. A seat handing off or " +
+          'teleporting files each live loop with its origin, so the loop board shows it',
+      },
+      seat: {
+        long: '--seat',
+        description: "The owning seat; that seat's later handoffs and teleports count as motion",
+      },
     },
     usage:
-      'active-work loop open <slug> --text <text> [--kind prose|task|pr] [--ref <task-id|pr>] [--due <iso>] [--id <id>]',
+      'active-work loop open <slug> --text <text> [--kind prose|task|pr] [--ref <task-id|pr>] [--due <iso>] [--id <id>] [--origin handoff|teleport|wrap] [--seat <name>]',
   },
   async run(args, ctx) {
     assertValidSlug(args.slug);
@@ -108,6 +124,8 @@ export default defineCommand<Args, Result>({
         kind: step.kind,
         ...(step.ref !== undefined ? { target_ref: step.ref } : {}),
         ...(step.due !== undefined ? { due: step.due } : {}),
+        ...(step.origin !== undefined ? { origin: step.origin } : {}),
+        ...(step.seat !== undefined ? { seat: step.seat } : {}),
         session_file: entry.sessionFile,
         path: entry.path,
         opened_at: entry.at,

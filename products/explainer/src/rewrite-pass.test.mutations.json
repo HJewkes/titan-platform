@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rewrite round reverts no beat for the word budget",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "joinReverts(errors, gainedBudget(script, merged.beats, merged.rewritten), ",
+      "replace": "joinReverts(errors, ",
+      "kills": [
+        "rewriteScript guard and revert reverts a beat whose rewrite takes it over its word cap, and keeps the rest of the round"
+      ]
+    },
+    {
+      "name": "a block over its cap reverts every rewritten beat in it",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": " && wordsAt(after, i) > wordsAt(script.beats, i)",
+      "replace": "",
+      "kills": [
+        "rewriteScript guard and revert reverts the beats that grew a profile block past its cap, and not the one that shrank"
+      ]
+    },
+    {
+      "name": "a rewrite round no longer reverts a beat that breaks the template fill",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": "gainedBudget(script, merged.beats, merged.rewritten), gainedFill(script, merged.beats, merged.rewritten));",
+      "replace": "gainedBudget(script, merged.beats, merged.rewritten));",
+      "kills": [
+        "rewriteScript guard and revert reverts a beat whose appended label gives its 5-row list a sixth row the template fill refuses"
+      ]
+    }
+  ]
+}

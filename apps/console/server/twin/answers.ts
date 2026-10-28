@@ -3,6 +3,7 @@
 import type { ServedCommands } from "../../src/data/rpc.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_PRE_S3A_SUMMARY, AR_RUN_SUMMARY } from "./autoresearch.js";
 import { TWIN_NOW } from "./clock.js";
+import { TWIN_VIDEO_EDITS, TWIN_VIDEO_PROPS } from "./video-props.js";
 
 type Served = ServedCommands;
 export type TwinCommand = keyof Served & string;
@@ -83,6 +84,23 @@ const SESSIONS = [
 
 type InboxItem = Served["inbox.list"]["result"]["items"][number];
 
+type Strip = Extract<Served["gates.strip"]["result"], { status: "ok" }>["strip"];
+
+/** A PR with CI green but a g10 review hold short of its MERGE: the case the strip exists to make visible. */
+function strip(repo: string, pr: number, head: string): Strip {
+  const reason = "g10-review: opus review at head";
+  return {
+    repo, pr, head, phase: "awaiting-merge", pendingGate: "approve-merge",
+    ci: { factory: { verdict: "green", headSha: head, atHead: true }, checks: [{ name: "build", state: "pass" }, { name: "test", state: "pass" }, { name: "preview", state: "fail" }] },
+    verdicts: [{ stepId: "sh-await-verdict:1", reviewer: "relay-reviewer", verdict: "MERGE", headSha: "4d2c9e7a1b3f5d6e8a0c2b4d6f8e0a1c3b5d7f90", atHead: false }],
+    holds: [{ key: "hold:g10-review", holdClass: "g10-review", reason, actor: "shepherd", merges: { present: 0, needed: 1 } }],
+    otherGates: [],
+    unmet: [{ key: "hold:g10-review", label: "held: g10-review (0/1 MERGE) by shepherd" }],
+  };
+}
+
+const TILES_HEAD = "89abcdef0123456789abcdef0123456789abcdef";
+
 function inboxItem(id: string, overrides: Partial<InboxItem> & Pick<InboxItem, "action">): InboxItem {
   return {
     id, sources: [{ system: "hitl", ref: `run-${id}/approve-merge` }], kind: "approve", door: "one-way", summary: `Summary of ${id}`, context: "", keys: [],
@@ -96,6 +114,7 @@ const INBOX_ITEMS = [
     summary: "Merge orbit/relay#12", openedAt: at(2 * HOUR), evidence: "#/shepherd/orbit%2Frelay%2312",
     options: [{ id: "merge", label: "merge" }, { id: "hold", label: "hold" }], recommended: { optionId: "merge", by: "relay-reviewer" },
     action: { kind: "resolve-gate", gateId: "run-12/approve-merge", runId: "run-12", stepId: "approve-merge", repo: "orbit/relay", pr: 12, headSha: HEAD, decision: "merge" },
+    gates: strip("orbit/relay", 12, HEAD),
   }),
   inboxItem("ask-6", { sources: [{ system: "agent-chat", ref: "msg-6" }], kind: "decide", lens: "blocking-agent", summary: "Which port should the depth probe listen on?", openedAt: at(40 * MINUTE), action: { kind: "answer-chat", msgId: "msg-6" } }),
   inboxItem("round-ship", { sources: [{ system: "round", ref: "ship-tile-r1" }], kind: "review", summary: "Ship tile frames", openedAt: at(5 * HOUR), evidence: "#/rounds/ship-tile-r1", action: { kind: "open-round", roundId: "ship-tile-r1" } }),
@@ -291,6 +310,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
   answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED, nudges: INBOX_NUDGES }),
   answer("shepherd.list", { state: "active" }, WATCHED),
+  answer("gates.strip", { repo: "example/tiles", pr: 1 }, { status: "ok", strip: strip("example/tiles", 1, TILES_HEAD) }),
   answer("shepherd.waiting", {}, { owner: [{ gateId: "run-12/approve-merge", stepId: "approve-merge", repo: "orbit/relay", pr: 12, task: "orbit-relay/OR-12", since: at(2 * HOUR), ageHours: 2 }], seat: [] }),
   answer("shepherd.timeline", { repo: "orbit/relay", pr: 12 }, { row: WATCHED[0]!, entries: TIMELINE_ENTRIES }),
   answer("autoresearch.runs", {}, [AR_RUN_SUMMARY, AR_RUN_PRE_S3A_SUMMARY]),
@@ -309,6 +329,8 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   }),
   answer("videos.list", {}, { videos: [...FEED_VIDEOS], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
+  answer("videos.props", { videoId: VIDEO.id }, TWIN_VIDEO_PROPS),
+  answer("videos.edits", { videoId: VIDEO.id }, TWIN_VIDEO_EDITS),
   answer("config.surfaces", {}, CONFIG_SURFACES),
   answer("config.drift", {}, CONFIG_DRIFT),
   answer("config.hosts", {}, CONFIG_HOSTS),

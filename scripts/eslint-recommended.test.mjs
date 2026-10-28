@@ -98,3 +98,68 @@ describe("the root lint config with the Activity Events API ban", () => {
     expect(result.status).toBe(0);
   });
 });
+
+describe("the root lint config with the wall-clock motion ban", () => {
+  const CLOCK_FIXTURE = join(REPO, "scripts", "fixtures", "wall-clock");
+
+  function lintClockFixture(file) {
+    return spawnSync(process.execPath, [ESLINT_BIN, "--config", join(REPO, "eslint.config.js"), "--format", "json", file], {
+      cwd: CLOCK_FIXTURE,
+      encoding: "utf8",
+    });
+  }
+
+  it("fails a Date.now() in explainer beat code", () => {
+    const result = lintClockFixture("products/explainer/src/beat-clock.ts");
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", message: expect.stringContaining("`Date.now`") })]);
+  });
+
+  it("fails a Date.now() in the explainer composition page", () => {
+    const result = lintClockFixture("products/explainer/src/composition/page-clock.ts");
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "titan/no-wall-clock-motion", message: expect.stringContaining("`Date.now`") })]);
+  });
+
+  it("passes a Date.now() in explainer code outside the beat and motion paths", () => {
+    const result = lintClockFixture("products/explainer/src/report-clock.ts");
+
+    expect(result.status).toBe(0);
+  });
+});
+
+describe("the root lint config with the bare gray-matter import ban", () => {
+  const MATTER_FIXTURE = join(REPO, "scripts", "fixtures", "gray-matter");
+
+  function lintMatterFixture(file) {
+    return spawnSync(process.execPath, [ESLINT_BIN, "--config", join(REPO, "eslint.config.js"), "--format", "json", file], {
+      cwd: MATTER_FIXTURE,
+      encoding: "utf8",
+    });
+  }
+
+  it("fails a bare gray-matter import in active-work source", () => {
+    const result = lintMatterFixture("products/active-work/src/bare-import.ts");
+
+    expect(result.status).toBe(1);
+    const [{ messages }] = JSON.parse(result.stdout);
+    expect(messages).toEqual([expect.objectContaining({ ruleId: "no-restricted-imports", message: expect.stringContaining("gray-matter-io.ts") })]);
+  });
+
+  it("passes the gray-matter wrapper itself", () => {
+    const result = lintMatterFixture("products/active-work/src/utils/gray-matter-io.ts");
+
+    expect(result.stdout).toContain('"errorCount":0');
+    expect(result.status).toBe(0);
+  });
+
+  it("does not apply outside active-work", () => {
+    const result = lintMatterFixture("products/other/src/bare-import.ts");
+
+    expect(result.status).toBe(0);
+  });
+});

@@ -1,0 +1,35 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the legacy full list is exported as a caller choice",
+      "file": "packages/worktree/src/git.ts",
+      "find": "  if (value === undefined || value === LEGACY_GIT_PROTOCOL_PIN) return undefined",
+      "replace": "  if (value === undefined) return undefined",
+      "kills": [
+        "gitChildEnv leaves the protocol list unset when the caller exported only the legacy full list"
+      ]
+    },
+    {
+      "name": "gitChildEnv drops the ext pair",
+      "file": "packages/worktree/src/git.ts",
+      "find": "  return pinnedGitEnv(out, protocols);",
+      "replace": "  return { ...out, GIT_ALLOW_PROTOCOL: protocols };",
+      "kills": [
+        "gitChildEnv drops the dispatcher identity variables and disables credential prompts",
+        "gitChildEnv drops the prefixes a caller names instead of the defaults",
+        "gitChildEnv leaves the protocol list unset when the caller exported only the legacy full list",
+        "gitChildEnv keeps the caller's config pairs and appends the ext pair last"
+      ]
+    },
+    {
+      "name": "the ext pair overwrites the caller's first pair",
+      "file": "packages/worktree/src/git.ts",
+      "find": "    [`GIT_CONFIG_KEY_${count}`]: EXT_NEVER_KEY,",
+      "replace": "    GIT_CONFIG_KEY_0: EXT_NEVER_KEY,",
+      "kills": [
+        "gitChildEnv keeps the caller's config pairs and appends the ext pair last"
+      ]
+    }
+  ]
+}

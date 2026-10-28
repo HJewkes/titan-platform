@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "step resolves every path component again instead of reading its memo",
+      "file": "packages/code-graph/src/git-tree-source.ts",
+      "find": "    let resolved = this.canonical.get(key);\n    if (resolved === undefined) {",
+      "replace": "    let resolved = this.canonical.get(key);\n    if (resolved === undefined || hops >= 0) {",
+      "kills": [
+        "gitTreeSource on link chains, dot-dot targets and file order resolves each tracked link once per hop budget when nested targets name it repeatedly"
+      ]
+    }
+  ]
+}

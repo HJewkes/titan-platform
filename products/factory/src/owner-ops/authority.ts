@@ -1,7 +1,7 @@
 import { DEFAULT_TABLE, evaluate, type ActionClass, type Decision, type PolicyTable } from "@titan-design/authority";
 import type { OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 
-/** The authority action each op is, as data: a kind with no row of its own sits under a class that denies owner-remote. */
+/** The authority action each op is, as data. */
 const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "resolve-gate": "merge",
   "release-hold": "human-verb",
@@ -9,7 +9,7 @@ const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "close-pr": "pr-close",
   "factory-config-set": "fleet-config",
   "deploy-pause-clear": "deploy-resume",
-  "retire-agent": "destructive-local",
+  "retire-agent": "agent-retire",
 });
 
 /** The console's tap as the table sees it: always owner-remote, never tainted, whatever the depositing agent was. */

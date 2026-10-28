@@ -1,12 +1,14 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
+import { refusedInProcess } from "./cli-agent-env.js";
 import { deployCheckoutFor } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
+import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import { gitBehind } from "./deploy-behind.js";
 import { deployBlockOf, deploySummary, withGitBehind, type DeployHealth } from "./deploy-health.js";
@@ -19,6 +21,7 @@ import { probeServe } from "./serve-probe.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/commands.js";
 import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
+import { writesPort } from "./shepherd/port-access.js";
 import { inferIdentity } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import type { ReviewSlots } from "./shepherd/review-slots.js";
@@ -31,7 +34,8 @@ interface ShepherdOpts extends TimelineView, StatusFilter {
   deploy?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
+type SliceOpts = { slice?: string | false; lastSlice?: true };
+type RegisterOpts = ShepherdOpts & SliceOpts & { branch?: string; head?: string; base?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 export function registerShepherd(program: Command, verbs: Verbs): void {
@@ -45,10 +49,13 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerRunVerbs(verb, verbs);
   registerHoldVerbs(verb, verbs);
   registerRepairStopVerbs(verb, verbs);
+  registerMergeBaseVerbs(verb, verbs);
   registerRepoFreezeVerbs(verb, verbs);
+  registerOrderVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
+  registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
@@ -66,6 +73,7 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .option("--kind <kind>", "correctness, security, feature, refactor, test-only (the PR changes only tests) or unknown")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
     .option("--no-slice", "clear a slice kept from an earlier registration")
+    .option("--last-slice", "this PR is its task's last slice, as a 'Last slice: yes' body line says; under taskClose last-slice-only its merge closes the task")
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
@@ -79,6 +87,16 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.prs", () => (repo ? { repo } : {}), opts));
   verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
+  registerVisualDeltaVerb(verb, verbs);
+}
+
+/** TP-4320's calibration read: the delta the evidence step would measure, before a repo's threshold goes `on`. */
+function registerVisualDeltaVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("visual-delta", "print as JSON the visual delta the merge evidence step would measure for --repo's PR --pr under its shepherd.visualThreshold, with a count of shots the decoder refused as an unsupported format; read-only, no step and no record")
+    .requiredOption("--repo <owner/repo>", "the PR's repo")
+    .requiredOption("--pr <n>", "the PR number", parsePositiveInt)
+    .option("--head <sha>", "the 40-character head to measure; when the PR is no longer at it, its files read as unread and nothing is measured")
+    .action((opts: ShepherdOpts & { repo: string; pr: number; head?: string }) => runShepherd(verbs, "shepherd.visual-delta", () => ({ repo: opts.repo, pr: opts.pr, head: opts.head }), opts));
 }
 
 function registerHoldVerbs(verb: VerbOf, verbs: Verbs): void {
@@ -109,6 +127,16 @@ function registerRepairStopVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.repair-stop", () => ({ action: "list", ...(repo && { repo }) }), opts));
 }
 
+/** A planner's leave for a run's fix rounds to merge the base, when the fix needs code that landed there (TP-4242). */
+function registerMergeBaseVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("allow-merge-base <ref>", "let owner/repo#N's fix rounds merge the base branch: their briefs name who allowed it and why in place of the line that forbids it; a repeat replaces the reason")
+    .requiredOption("--reason <text>", "why the fix needs the base, e.g. the PR on main it depends on")
+    .action((ref: string, opts: ShepherdOpts & { reason: string }) =>
+      runShepherd(verbs, "shepherd.merge-base", () => ({ action: "allow", ...parsePrRef(ref), reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("revoke-merge-base <ref>", "drop owner/repo#N's merge-base exception, so its fix rounds are told not to merge the base again")
+    .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.merge-base", () => ({ action: "revoke", ...parsePrRef(ref) }), opts));
+}
+
 /** A coordinator's pause on a whole repo's merges, apart from the main-red freeze, which only `thaw` lifts by hand. */
 function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("freeze <repo>", "freeze owner/repo so no Shepherd run merges into it until unfreeze; runs keep reviewing, and a repeat replaces the reason")
@@ -117,13 +145,32 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
       runShepherd(verbs, "shepherd.freeze", () => ({ action: "freeze", repo, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
   verb("unfreeze <repo>", "lift the freeze on owner/repo, so waiting runs merge on their next step; a red main's freeze stays")
     .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
-  verb("freezes", "every repo freeze: repo, reason, who set it and since when")
+  verb("freezes", "every repo freeze: repo, reason, who set it and since when; then each open red-main episode with its red sha, fix task, fixer and fix PR")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
   verb("thaw <repo>", "thaw owner/repo's red-main freeze by hand while it is still red at --red-sha; records who and why, and alerts the repo's red seat")
     .requiredOption("--red-sha <sha>", "the full red sha of the episode being thawed")
     .requiredOption("--reason <text>", "why main may thaw without a green")
     .action((repo: string, opts: ShepherdOpts & { redSha: string; reason: string }) =>
       runShepherd(verbs, "shepherd.thaw", () => ({ repo, redSha: opts.redSha, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
+  verb("fix-pr <repo> <pr>", "mark registered PR <pr> as the fix of owner/repo's open red-main freeze, so its merge passes the freeze while other PRs stay held; records who marked it")
+    .option("--episode <n>", "the red-main episode the mark is for; refused when it is not the open one", parsePositiveInt)
+    .action((repo: string, pr: string, opts: ShepherdOpts & { episode?: number }) =>
+      runShepherd(verbs, "shepherd.fix-pr", () => ({ repo, pr: parsePositiveInt(pr), episode: opts.episode, actor: callerOf(verbs.io.env) }), opts));
+}
+
+/** A conflicted PR's merge-order reservation, read, and ended by hand only as break-glass. */
+function registerOrderVerbs(verb: VerbOf, verbs: Verbs): void {
+  verb("order [repo] [ref]", "every merge-order reservation, or only owner/repo's; `order clear owner/repo#N --reason <text>` ends one by hand, logged with the caller")
+    .option("--reason <text>", "with clear: why the reservation is ended by hand")
+    .action((what: string | undefined, ref: string | undefined, opts: ShepherdOpts & { reason?: string }) =>
+      runShepherd(verbs, "shepherd.order", () => orderArgs(what, ref, opts.reason, verbs), opts));
+}
+
+/** `order clear <ref>` is the break-glass write; any other first word is the repo to list. */
+function orderArgs(what: string | undefined, ref: string | undefined, reason: string | undefined, verbs: Verbs): object {
+  if (what !== "clear") return what === undefined ? { action: "list" } : { action: "list", repo: what };
+  if (ref === undefined) throw new Error("order clear needs owner/repo#N");
+  return { action: "clear", ...parsePrRef(ref), reason, actor: callerOf(verbs.io.env) };
 }
 
 function registerRefVerbs(verb: VerbOf, verbs: Verbs): void {
@@ -144,13 +191,13 @@ const PR_VERBS = [
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, head, base, reviewer, kind, slice } = opts;
+  const { branch, head, base, reviewer, kind, slice, lastSlice } = opts;
   const parsed = parseTarget(target);
   const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   // Not `callerOf`: only an agent-chat name can be messaged, so a terminal registration records no registrant.
   const registrant = io.env.AGENT_CHAT_NAME || undefined;
-  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  return { ...parsed, branch, head, base, task, implementer, registrant, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, lastSlice, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
@@ -169,14 +216,15 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
+  if (writesPort(name, args) && refusedInProcess(verbs, probe, opts.port, name.replace("shepherd.", "shepherd "))) return;
   const envelope = await localEnvelope(verbs, name, args);
   if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, tail));
 }
 
-/** Serve's block counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. */
+/** A block without `originLag` counts only asked deploys; git says how far main has really moved, and an unreadable git alarms. Serve's own reading is not counted twice. */
 async function checkedDeploy(verbs: Verbs, block: DeployHealth | null): Promise<DeployHealth | null> {
-  if (block === null) return null;
+  if (block === null || block.originLag !== undefined) return block;
   const probe = verbs.deps.deployBehind ?? gitBehind(deployCheckoutFor(verbs.io.env));
   return withGitBehind(block, await probe(block.runningSha), Date.now());
 }

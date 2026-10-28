@@ -1,9 +1,11 @@
+import { noReproProceedOf } from "@titan-design/review-panel";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { fixProofRoute, fixProofStanding, fixProofVerdict, type FixProofReadSchema } from "./fix-proof.js";
+import { proofBaseOf } from "./fix-proof-base.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { ProofStanding } from "./take-verdict.js";
 
@@ -73,14 +75,16 @@ async function proofWaivedAt(ctx: WorkflowContext, head: string): Promise<boolea
 }
 
 /**
- * The head's proof standing, or the NO_REPRO that ends its review before any reviewer starts. A test-only head that proceeds can
+ * The head's proof standing, or the NO_REPRO that ends its review before any reviewer starts. A head that proceeds on its NO_REPRO can
  * still come back as the panel's NO_REPRO, so its waiver is read too.
  */
 export async function proofStandingAt(ctx: WorkflowContext, head: string, proof: z.infer<typeof FixProofReadSchema>): Promise<{ ended: Verdict } | { standing: ProofStanding }> {
   const noRepro = fixProofVerdict(proof, head);
   const unverified = fixProofStanding(proof, head);
-  const testOnlyProceed = noRepro !== undefined && unverified?.unverified === "no-repro-test-only";
+  const proceeds = noRepro !== undefined && noReproProceedOf(unverified?.unverified) !== undefined;
   const waived = noRepro !== undefined && (await proofWaivedAt(ctx, head));
-  if (noRepro && !testOnlyProceed && !waived) return { ended: noRepro };
-  return { standing: waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {} };
+  if (noRepro && !proceeds && !waived) return { ended: noRepro };
+  const proofBase = proofBaseOf(proof, head);
+  const standing: ProofStanding = waived ? { waivedAt: head } : unverified ? { ...unverified, ...(typeof proof.reason === "string" && { reason: proof.reason }) } : {};
+  return { standing: { ...standing, ...(proofBase !== undefined && { proofBase }) } };
 }

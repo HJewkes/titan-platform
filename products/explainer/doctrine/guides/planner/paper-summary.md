@@ -1,6 +1,6 @@
 # Planner guide: paper-summary
 
-<!-- Generated from doctrine/types/paper-summary.yaml (profile 0.3.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/paper-summary.yaml (profile 0.3.1) by `explainer guide types`. Do not edit. -->
 
 One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us.
 
@@ -140,3 +140,4 @@ A question, a model run live to answer it, the reading, and what it means. (vide
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.

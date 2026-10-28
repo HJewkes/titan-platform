@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "word cap off by one",
+      "file": "products/explainer/src/render/captions.ts",
+      "find": "line.length >= MAX_WORDS",
+      "replace": "line.length > MAX_WORDS",
+      "kills": [
+        "captions breaks nine short words into a cue of eight and a cue of one"
+      ]
+    },
+    {
+      "name": "char cap off by one",
+      "file": "products/explainer/src/render/captions.ts",
+      "find": "text.length > MAX_CHARS",
+      "replace": "text.length >= MAX_CHARS",
+      "kills": [
+        "captions keeps a line of exactly 42 characters together"
+      ]
+    },
+    {
+      "name": "cue end ignores the next cue's start",
+      "file": "products/explainer/src/render/captions.ts",
+      "find": "Math.min(line.at(-1)!.endS + TAIL_S, next)",
+      "replace": "line.at(-1)!.endS + TAIL_S",
+      "kills": [
+        "captions holds a cue 0.3 s past its last word unless the next cue starts sooner"
+      ]
+    }
+  ]
+}

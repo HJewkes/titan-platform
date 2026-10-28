@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the loop connection keeps its autocheckpoint",
+      "file": "products/active-work/src/session-index/checkpoint.ts",
+      "find": "  db.pragma('wal_autocheckpoint = 0');\n",
+      "replace": "",
+      "kills": [
+        "index checkpoints run off the event loop the loop connection neither autocheckpoints nor syncs each commit"
+      ]
+    },
+    {
+      "name": "the loop connection still syncs each commit",
+      "file": "products/active-work/src/session-index/checkpoint.ts",
+      "find": "  db.pragma('synchronous = NORMAL');\n",
+      "replace": "",
+      "kills": [
+        "index checkpoints run off the event loop the loop connection neither autocheckpoints nor syncs each commit"
+      ]
+    },
+    {
+      "name": "the worker never checkpoints",
+      "file": "products/active-work/src/session-index/checkpoint.ts",
+      "find": "  db.pragma('wal_checkpoint(PASSIVE)');\n}",
+      "replace": "}",
+      "kills": [
+        "index checkpoints run off the event loop a pass never stalls the loop for a second while each checkpoint takes 1.5 s"
+      ]
+    },
+    {
+      "name": "a failed worker leaves the connection without checkpoints",
+      "file": "products/active-work/src/session-index/checkpoint.ts",
+      "find": "    if (db.open) db.pragma(`wal_autocheckpoint = ${SQLITE_AUTOCHECKPOINT_PAGES}`);\n",
+      "replace": "",
+      "kills": [
+        "index checkpoints run off the event loop a worker that fails hands checkpointing back to the connection"
+      ]
+    }
+  ]
+}

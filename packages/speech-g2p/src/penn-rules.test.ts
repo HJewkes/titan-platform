@@ -80,4 +80,52 @@ describe("punctTag", () => {
     expect(punctTag(tok("'"), tok("agents", ""))).toBe("POS");
     expect(punctTag(tok("'", ""), tok("n", ""))).toBe("''");
   });
+
+  it.each([
+    ["\t", "_SP"],
+    ["(", "-LRB-"],
+    ["[", "-LRB-"],
+    ["{", "-LRB-"],
+    [")", "-RRB-"],
+    ["]", "-RRB-"],
+    ["}", "-RRB-"],
+    ["$", "$"],
+    ["#", "#"],
+    ["¥", "$"],
+    ["“", "``"],
+    ["‘", "``"],
+    ["”", "''"],
+    ["’", "''"],
+    [".", "."],
+    ["?!", "."],
+    ["...", "."],
+    [",", ","],
+    [":", ":"],
+    [";", ":"],
+    ["—", ":"],
+    ["–", ":"],
+    ["…", ":"],
+    ["--", ":"],
+    ["…;", ":"],
+    ["%", "NN"],
+    ["&", "CC"],
+    ["*", "NFP"],
+    ["@", "NFP"],
+    ["?:", "NFP"],
+  ])("tags %j as %s whatever its neighbours", (text, expected) => {
+    expect(punctTag(tok(text, ""), tok("x", ""))).toBe(expected);
+    expect(punctTag(tok(text), undefined)).toBe(expected);
+  });
+
+  it("opens a straight quote at the start and after a spaced token", () => {
+    expect(punctTag(tok("'", ""), undefined)).toBe("``");
+    expect(punctTag(tok('"', ""), tok("x"))).toBe("``");
+    expect(punctTag(tok("'", ""), tok("agents"))).toBe("``");
+  });
+
+  it("tags a hyphen spaced on either side as a colon", () => {
+    expect(punctTag(tok("-"), tok("x", ""))).toBe(":");
+    expect(punctTag(tok("-", ""), tok("x"))).toBe(":");
+    expect(punctTag(tok("-", ""), undefined)).toBe("HYPH");
+  });
 });

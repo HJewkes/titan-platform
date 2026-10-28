@@ -114,6 +114,65 @@ describe("rewriteScript guard and revert", () => {
     expect(spokenOf(out, "k2")).toContain("at the counter");
   });
 
+  // k3 speaks 20 words and its rewrite 26, in a concept beat at 2.8 w/s: 8 s caps it at 22 words, 10 s at 28.
+  it("reverts a beat whose rewrite takes it over its word cap, and keeps the rest of the round", async () => {
+    const script = choppy({ k3: { plannedS: 8 } });
+
+    const { script: out, report } = await rewrite(script, fakeRewriter(), { rounds: 1 });
+
+    expect(report.rounds[0]!.reverted).toEqual([{ beat: "k3", rows: ["word-budget"] }]);
+    expect(spokenOf(out, "k3")).toBe(BEATS.k3![1].before);
+    expect(spokenOf(out, "k2")).toContain("at the counter");
+  });
+
+  // Synthetic counter rows; the list slot schema holds five, so a sixth appended label leaves no row for it.
+  it("reverts a beat whose appended label gives its 5-row list a sixth row the template fill refuses", async () => {
+    // Arrange
+    const rows = ["desk · Parcels in", "desk · Parcels out", "desk · Holds", "desk · Returns", "desk · Couriers"];
+    const draft = choppy();
+    const script = { ...draft, beats: draft.beats.map((beat) => (beat.id === "k3" ? { ...beat, visual: { ...beat.visual, beat: "list", labels: rows } } : beat)) };
+    const addsRow: Rewriter = (id, prompt) => {
+      const reply = compliant(id, prompt)!;
+      return id === "k3" ? { ...reply, labels_added: ["desk · Night shift"] } : reply;
+    };
+
+    // Act
+    const { script: out, report } = await rewrite(script, fakeRewriter(addsRow), { rounds: 1 });
+
+    // Assert
+    expect(report.rounds[0]!.reverted).toEqual([{ beat: "k3", rows: ["template-fill"] }]);
+    expect(labelsOf(out, "k3")).toEqual(rows);
+    expect(spokenOf(out, "k2")).toContain("at the counter");
+  });
+
+  it("keeps a rewrite that grows a beat within its word cap", async () => {
+    const script = choppy({ k3: { plannedS: 10 } });
+
+    const { script: out, report } = await rewrite(script, fakeRewriter(), { rounds: 1 });
+
+    expect(report.rounds[0]!.reverted).toEqual([]);
+    expect(spokenOf(out, "k3")).toBe(BEATS.k3![1].after);
+  });
+
+  // The goals block caps at 70 words (25 s at 2.8 w/s); ch4's three beats speak 68, and the compliant c1 and c2 add 6.
+  it("reverts the beats that grew a profile block past its cap, and not the one that shrank", async () => {
+    const draft = choppy();
+    const asBlock = (chapter: string): string => (chapter === "ch4" ? "goals" : chapter);
+    const script: ScriptV1 = {
+      ...draft,
+      profile: "daily-overview",
+      chapters: draft.chapters.map((chapter) => ({ ...chapter, id: asBlock(chapter.id) })),
+      beats: draft.beats.map((beat) => ({ ...beat, chapter: asBlock(beat.chapter) })),
+    };
+    const shortC3 = BEATS.c3![1].before.replace("first, then", "then");
+    const shrinksC3: Rewriter = (id, prompt) => (id === "c3" ? { id, spoken: shortC3, labels_added: [] } : compliant(id, prompt));
+
+    const { script: out, report } = await rewrite(script, fakeRewriter(shrinksC3), { rounds: 1 });
+
+    expect(report.rounds[0]!.reverted).toEqual([{ beat: "c1", rows: ["word-budget"] }, { beat: "c2", rows: ["word-budget"] }]);
+    expect(spokenOf(out, "c1")).toBe(spokenOf(spellAll(script), "c1"));
+  });
+
   it("reports a skipped beat as missing and leaves it as written", async () => {
     const skipsH1: Rewriter = (id, prompt) => (id === "h1" ? undefined : compliant(id, prompt));
 
@@ -222,8 +281,10 @@ describe("rewriteScript with a speech verdict", () => {
   it("keeps a vetted long sentence that the plain cap would refuse", async () => {
     const longH1: Rewriter = (id, prompt) => (id === "h1" ? { id, spoken: LONG, labels_added: [] } : compliant(id, prompt));
 
-    const plain = await rewrite(choppy(), fakeRewriter(longH1), { rounds: 1 });
-    const vetted = await rewriteScript(choppy(), { harness: fakeRewriter(longH1).harness, judge: sonnet, rounds: 1, speechClean: () => true });
+    // LONG is 34 words, so h1 gets the seconds to speak it.
+    const roomy = (): ScriptV1 => choppy({ h1: { plannedS: 13 } });
+    const plain = await rewrite(roomy(), fakeRewriter(longH1), { rounds: 1 });
+    const vetted = await rewriteScript(roomy(), { harness: fakeRewriter(longH1).harness, judge: sonnet, rounds: 1, speechClean: () => true });
 
     expect(plain.report.rounds[0]!.rejected.map((r) => r.beat)).toEqual(["h1"]);
     expect(spokenOf(vetted.script, "h1")).toBe(LONG);
@@ -338,7 +399,10 @@ describe("rewriteScript keeps or reverts each chapter", () => {
     const w2 = "The desk reads both. The ledger keeps a row per parcel, and that row names the dock and the courier in parcelRows that will carry it.";
     const longerC2 = "That order matters to the desk. It reads the scan and checks the row in the ledger before it prints the label, so the courier and the dock can trust it.";
 
-    const { script: out, report } = await rewrite(nearBand({ w2 }), fakeRewriter(answering({ c2: longerC2 })), { rounds: 1 });
+    const script = { ...nearBand({ w2 }) };
+    script.beats = script.beats.map((beat) => (beat.id === "c2" ? { ...beat, plannedS: 12 } : beat));
+
+    const { script: out, report } = await rewrite(script, fakeRewriter(answering({ c2: longerC2 })), { rounds: 1 });
 
     expect(report.rounds[0]!.reverted).toEqual([]);
     expect(report.rounds[0]!.chapters).toEqual([

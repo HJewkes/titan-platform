@@ -1,6 +1,6 @@
 # Planner guide: daily-overview
 
-<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.5.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/daily-overview.yaml (profile 0.5.2) by `explainer guide types`. Do not edit. -->
 
 What the factory got done against its goals: each lane and what it moved, the ships that mattered most, the side quests, the stats, then what slows us down and what to change.
 
@@ -21,7 +21,7 @@ Macro: goal-walk. The chapters play in this order every time; they are the viewe
 - **lanes** (60-90 s): Each lane in turn: a lead beat, then one continuation beat per named thread, labelled by lane, and the count of the rest. Beats: list, chart, kanban-flow.
 - **ships** (25-45 s): The two or three most consequential ships, each described with a diagram or chart. Beats: compare, arch-map, chart, claim-card.
 - **side-quests** (8-15 s): The side quests, named as side quests. Beats: list, fact-flash.
-- **stats** (12-20 s): Spend, its split, merges, cost per merge and the trend against the prior days. Beats: stat, chart, metrics-panel.
+- **stats** (12-20 s): Spend, its split, merges, cost per merge and the trend against the prior days. Beats: stat, chart.
 - **reflection** (15-30 s): What slows us down, the top priorities, and proposed changes to how we work. Beats: list, claim-card.
 - **ask** (5-10 s): What the owner does next, then the button to the digest. Beats: button; must include button.
 
@@ -87,7 +87,6 @@ The board as it stands, the moves replayed column by column, then the decisions 
 - **arch-map** (explain, 10-40 s): The system's parts and how they connect; the map later beats return to.
 - **claim-card** (explain, 4-14 s): One claim, stated plainly, with its source.
 - **fact-flash** (evidence, 3-9 s): One to four quick facts at speed.
-- **metrics-panel** (evidence, 6-18 s): A small table: measure, today, target.
 - **button** (close, 3-8 s): The one action to take next.
 
 ## Rules for the plan stage
@@ -95,3 +94,4 @@ The board as it stands, the moves replayed column by column, then the decisions 
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.

@@ -100,6 +100,16 @@ describe("panelFacts", () => {
     expect(intentPlan(read, panelPolicyFor()).class).toBe("g10");
   });
 
+  it("plans the adversary for a rename out of tool-guard, which the panel classes by its old path", async () => {
+    const renamed: PrFile = { path: "src/x.ts", previousPath: "packages/tool-guard/src/x.ts", status: "renamed", additions: 5, deletions: 5 };
+    const read = await panelFacts(depsWith({ kind: "correctness" }, [renamed, source("src/x.test.ts", 1)]), target, "run-1");
+
+    const planned = intentPlan(read, panelPolicyFor());
+
+    expect(planned.touches).toContain("security");
+    expect(shapes(planned)).toContain("adversary:reviewer");
+  });
+
   it("marks the size unread when GitHub truncates the file list, which the port refuses to read", async () => {
     const read = await panelFacts(depsWith({ kind: "correctness" }, "truncated"), target, "run-1");
 

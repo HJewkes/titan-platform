@@ -3,10 +3,12 @@ import {
   DEFAULT_MIN_CONFIDENCE,
   DecideInputSchema,
   decideJsonSchemas,
+  minConfidenceFor,
   validate,
   type DecideInput,
   type DecideReply,
 } from "./contract.js";
+import { categoryPolicy, decidePolicyFrom, parseRoutingPolicy } from "./policy.js";
 
 const INPUT: DecideInput = {
   question: "Should the retry loop back off exponentially?",
@@ -61,6 +63,14 @@ describe("validate", () => {
     const result = validate(replyWith({ confidence: 0.92 }), INPUT, policy);
 
     expect(result.ok && result.reply.escalate).toBe(true);
+  });
+
+  it("reads the tech_design row's threshold for a 'Tech Design' input", () => {
+    const policy = decidePolicyFrom(parseRoutingPolicy({ categories: [{ category: "tech_design", minConfidence: 0.95 }] }));
+
+    const result = validate(replyWith({ confidence: 0.92 }), { ...INPUT, category: "Tech Design" }, policy);
+
+    expect(result.ok && result.reply.escalateReason).toContain("threshold 0.95");
   });
 
   it("keeps the model's own escalation reason when forcing escalation", () => {
@@ -167,5 +177,40 @@ describe("decideJsonSchemas", () => {
 
   it("parses the fixture input through the zod schema unchanged", () => {
     expect(DecideInputSchema.parse(INPUT)).toEqual(INPUT);
+  });
+});
+
+describe("minConfidenceFor", () => {
+  it.each(["Tech Design", "tech-design", "TECH_DESIGN"])("reads the tech_design row for %j", (category) => {
+    expect(minConfidenceFor(category, { categories: { tech_design: { minConfidence: 0.95 } } })).toBe(0.95);
+  });
+
+  it("matches a record key written in another spelling", () => {
+    expect(minConfidenceFor("tech_design", { categories: { "Tech Design": { minConfidence: 0.95 } } })).toBe(0.95);
+  });
+
+  it("takes the strictest threshold when two spellings share a key", () => {
+    const policy = { categories: { tech_design: { minConfidence: 0.85 }, "Tech-Design": { minConfidence: 0.97 } } };
+
+    expect(minConfidenceFor("tech design", policy)).toBe(0.97);
+  });
+
+  it("falls back to the default when the matching row sets no threshold", () => {
+    expect(minConfidenceFor("Tech Design", { categories: { tech_design: {} } })).toBe(DEFAULT_MIN_CONFIDENCE);
+  });
+
+  it("agrees with categoryPolicy for every category of a routing policy", () => {
+    const routing = parseRoutingPolicy({
+      categories: [
+        { category: "Tech Design", minConfidence: 0.95 },
+        { category: "tech_design", minConfidence: 0.6 },
+        { category: "??", minConfidence: 0.9 },
+      ],
+    });
+    const policy = decidePolicyFrom(routing);
+
+    for (const category of ["tech design", "??", "naming", "  "]) {
+      expect(minConfidenceFor(category, policy)).toBe(categoryPolicy(routing, category).minConfidence);
+    }
   });
 });

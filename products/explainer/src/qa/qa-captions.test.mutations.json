@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "caption checks gate the qa stage",
+      "file": "products/explainer/src/qa/gate-profile.ts",
+      "find": "export const CAPTIONS_GATE = false;",
+      "replace": "export const CAPTIONS_GATE = true;",
+      "kills": [
+        "qa stage captions reports a render with no VTT under captions-complete, and never fails the stage",
+        "qa stage captions reports a cue late against its first word under captions-onset, as a reported check"
+      ]
+    },
+    {
+      "name": "qa never reads the render's vtt",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "captions: captionReport(vttText(input),",
+      "replace": "captions: captionReport(undefined,",
+      "kills": [
+        "qa stage captions passes every caption check on a track that matches words.json",
+        "qa stage captions reports a cue late against its first word under captions-onset, as a reported check"
+      ]
+    },
+    {
+      "name": "a caption check reads every rule's findings",
+      "file": "products/explainer/src/qa/qa-checks.ts",
+      "find": "captions.findings.filter((finding) => finding.rule === rule)",
+      "replace": "captions.findings.filter(() => true)",
+      "kills": [
+        "qa stage captions reports a cue late against its first word under captions-onset, as a reported check"
+      ]
+    }
+  ]
+}

@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Chip, EmptyState, HStack, Heading, Link, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Button, ButtonText, Chip, EmptyState, HStack, Heading, Link, Pill, Spinner, Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { ScrubMarkers } from "./ScrubMarkers.js";
+import { BeatEditEntry, type NoteEditRequest } from "./TheaterBeatEditor.js";
 import { TheaterComment, formatAt, type NoteAbout } from "./TheaterComment.js";
 import { VERDICT_LABELS, VideoBadges } from "./TheaterFeed.js";
 import type { VideoRow } from "./theater-feed.js";
+import { beatAt } from "./slot-form.js";
 
 type Note = ConsoleCommands["videos.notes"]["result"]["notes"][number];
 type Seek = (seconds: number) => void;
+type BeatSpans = readonly { id: string; startS: number; endS: number }[];
+/** Turns a note into a draft edit of the beat under it. */
+type EditNote = (note: Note) => void;
 const NOTE_FILTERS = ["all", "content", "video"] as const;
 type NoteFilter = (typeof NOTE_FILTERS)[number];
 
@@ -26,20 +31,29 @@ export function startTimeOf(query: string | undefined): number | null {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
-/** One video with its captions and the owner's notes; `?t=` opens it paused at that time. */
+/** `edit=1` beside `t=`: open the beat editor on the beat under that time. */
+function editTimeOf(query: string | undefined): number | null {
+  return new URLSearchParams(query ?? "").get("edit") === "1" ? startTimeOf(query) : null;
+}
+
+/** One video with its captions and the owner's notes; `?t=` opens it paused at that time, `&edit=1` with that beat open. */
 export function TheaterPlayer({ id, query }: { id: string; query?: string | undefined }): ReactNode {
   const list = useQuery("videos.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading video" />;
   if (list.data === undefined) return <Framed title={id}><Alert status="error" message={`Could not load videos: ${list.error.message}`} /></Framed>;
   const video = list.data.videos.find((row) => row.id === id);
   if (video === undefined) return <Framed title={id}><Alert status="error" message="No video with this id is under the configured roots." /></Framed>;
-  return <Player video={video} start={startTimeOf(query)} />;
+  return <Player video={video} start={startTimeOf(query)} editAt={editTimeOf(query)} />;
 }
 
-function Player({ video, start }: { video: VideoRow; start: number | null }): ReactNode {
+function Player({ video, start, editAt }: { video: VideoRow; start: number | null; editAt: number | null }): ReactNode {
   const ref = useRef<HTMLVideoElement>(null);
   const seek = usePendingSeek(ref, start);
   const duration = useDuration(ref);
+  const props = useQuery("videos.props", { videoId: video.id });
+  const [noteEdit, setNoteEdit] = useState<NoteEditRequest | null>(null);
+  const editNote = useCallback((note: Note) => setNoteEdit((last) => ({ noteId: note.id, atS: note.atS, seq: (last?.seq ?? 0) + 1 })), []);
+  const beats = props.data?.props?.beats ?? [];
   const media = `/media/videos/${encodeURIComponent(video.id)}`;
   return (
     <Framed title={video.title}>
@@ -50,9 +64,12 @@ function Player({ video, start }: { video: VideoRow; start: number | null }): Re
       <video ref={ref} src={media} controls playsInline preload="metadata" className="block h-auto w-full max-w-3xl rounded bg-black" data-testid="theater-video">
         {video.captions ? <track kind="captions" src={`${media}/captions`} srcLang="en" label="Captions" default /> : null}
       </video>
-      <NoteMarkers videoId={video.id} duration={duration} seek={seek} />
+      <NoteMarkers videoId={video.id} beats={beats} duration={duration} seek={seek} />
+      <BeatEditEntry videoId={video.id} videoRef={ref} seek={seek} read={props.data} openAt={editAt} fromNote={noteEdit} />
       <TheaterComment videoId={video.id} videoRef={ref} />
-      <NotesList videoId={video.id} seek={seek} />
+      <NotesList videoId={video.id} seek={seek} beats={beats} onEdit={editNote} />
+      {/* The comment bar is fixed over a phone's last 8rem, so the page ends with that much room under the last note. */}
+      <div aria-hidden className="h-32 md:hidden" />
     </Framed>
   );
 }
@@ -99,9 +116,9 @@ function useDuration(ref: RefObject<HTMLVideoElement | null>): number {
   return duration;
 }
 
-function NoteMarkers({ videoId, duration, seek }: { videoId: string; duration: number; seek: Seek }): ReactNode {
+function NoteMarkers({ videoId, beats, duration, seek }: { videoId: string; beats: readonly { id: string; startS: number }[]; duration: number; seek: Seek }): ReactNode {
   const notes = useQuery("videos.notes", { videoId });
-  return notes.data === undefined ? null : <ScrubMarkers notes={notes.data.notes} duration={duration} seek={seek} />;
+  return <ScrubMarkers notes={notes.data?.notes ?? []} beats={beats} duration={duration} seek={seek} />;
 }
 
 function Framed({ title, children }: { title: string; children: ReactNode }): ReactNode {
@@ -135,7 +152,7 @@ function NoteFilterChips({ filter, onFilter }: { filter: NoteFilter; onFilter: (
   );
 }
 
-function NotesList({ videoId, seek }: { videoId: string; seek: Seek }): ReactNode {
+function NotesList({ videoId, seek, beats, onEdit }: { videoId: string; seek: Seek; beats: BeatSpans; onEdit: EditNote }): ReactNode {
   const notes = useQuery("videos.notes", { videoId });
   const [filter, setFilter] = useState<NoteFilter>("all");
   if (notes.status === "loading") return <Spinner size="sm" label="Loading notes" />;
@@ -147,13 +164,26 @@ function NotesList({ videoId, seek }: { videoId: string; seek: Seek }): ReactNod
         <Alert key={gap} status="warning" message={gap} />
       ))}
       {notes.data.notes.length === 0 ? null : <NoteFilterChips filter={filter} onFilter={setFilter} />}
-      {sorted.length === 0 ? <EmptyState title={filter === "all" ? "No notes on this video yet" : "No notes of this kind"} /> : sorted.map((note) => <NoteRow key={note.id} note={note} seek={seek} />)}
+      {sorted.length === 0 ? <EmptyState title={filter === "all" ? "No notes on this video yet" : "No notes of this kind"} /> : sorted.map((note) => <NoteRow key={note.id} note={note} seek={seek} onEdit={editable(note, beats) ? onEdit : null} />)}
     </VStack>
   );
 }
 
+/** A comment on the render now on disk, over a template beat; an earlier render's times may not match this cut's beats. */
+function editable(note: Note, beats: BeatSpans): boolean {
+  return note.current && note.kind === "comment" && beatAt(beats, note.atS) !== null;
+}
+
+function TurnIntoEdit({ note, onEdit }: { note: Note; onEdit: EditNote }): ReactNode {
+  return (
+    <Button size="sm" variant="outline" onPress={() => onEdit(note)} className="max-w-full" testID={`theater-note-edit-${note.id}`}>
+      <ButtonText>Turn into edit</ButtonText>
+    </Button>
+  );
+}
+
 /** A note on an earlier render is kept for history but dimmed, since its time may no longer match the cut. */
-function NoteRow({ note, seek }: { note: Note; seek: Seek }): ReactNode {
+function NoteRow({ note, seek, onEdit }: { note: Note; seek: Seek; onEdit: EditNote | null }): ReactNode {
   return (
     <HStack gap={2} align="center" wrap className={note.current ? undefined : "opacity-60"} testID={`theater-note-${note.id}`}>
       <Link color="primary" onPress={() => seek(note.atS)}>
@@ -176,6 +206,7 @@ function NoteRow({ note, seek }: { note: Note; seek: Seek }): ReactNode {
           earlier render
         </Typography>
       )}
+      {onEdit === null ? null : <TurnIntoEdit note={note} onEdit={onEdit} />}
     </HStack>
   );
 }

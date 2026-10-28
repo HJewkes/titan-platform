@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a line that names no base binds to whatever base is asked",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "(candidate.run.status !== \"completed\" || base === binding.baseRef)",
+      "replace": "(candidate.run.status !== \"completed\" || base === undefined || base === binding.baseRef)",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing after a retarget on a review read that stalled into an error on the parent, until a line on main is read"
+      ]
+    },
+    {
+      "name": "proofBaseOf ignores the base the read was bound to",
+      "file": "products/factory/src/shepherd/fix-proof-base.ts",
+      "find": "  if (typeof read.boundBase === \"string\") return read.boundBase;\n",
+      "replace": "",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges nothing after a retarget on a review read that stalled into an error on the parent, until a line on main is read",
+        "a PR reviewed on its own base, never retargeted, under decision 303 (TP-4259) merges on green with a read that stalled into an error, recording the base it was bound to and taking no re-read"
+      ]
+    },
+    {
+      "name": "an untrusted re-read clears on the base it was bound to, not the one it judged",
+      "file": "products/factory/src/shepherd/proof-base.ts",
+      "find": "  if (judged === base) return {};",
+      "replace": "  if (judged === base || (proof.kind === \"untrusted\" && proof.boundBase === base)) return {};",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner on an untrusted re-read bound to main whose newest run is the parent's line"
+      ]
+    },
+    {
+      "name": "an unverified re-read that names the decided base still gates",
+      "file": "products/factory/src/shepherd/proof-base.ts",
+      "find": "  if (gated.standing.waivedAt !== undefined || proof.kind === \"skipped\") return {};",
+      "replace": "  if (gated.standing.waivedAt !== undefined || proof.kind === \"skipped\") return {};\n  if (gated.standing.unverified !== undefined) return { unproven: \"unverified\" };",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges into main once read there when the line on main is an error, its trust left to decision 303",
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) merges into main once read there when the PR changes the fix-proof harness and its line on main is untrusted, its trust left to decision 303"
+      ]
+    },
+    {
+      "name": "a gate that cannot be read reads as skipped, which clears the base guard",
+      "file": "products/factory/src/shepherd/fix-proof.ts",
+      "find": "if (\"unreadable\" in gate) return { kind: \"error\", reason: gate.unreadable };",
+      "replace": "if (\"unreadable\" in gate) return { kind: \"skipped\", reason: gate.unreadable };",
+      "kills": [
+        "a stacked PR whose fix-proof was refused on the parent branch, retargeted to main with the same head (TP-4259) asks the owner instead of merging when the re-read on main cannot read the fix/ PR's head branch, never reading it as skipped"
+      ]
+    }
+  ]
+}

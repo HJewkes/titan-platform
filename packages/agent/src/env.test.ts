@@ -35,6 +35,13 @@ describe("prepareEnv", () => {
     });
   }
 
+  // Kills the mutant that removes CLAUDE_CODE_REMOTE from CLAUDE_CODE_PASSTHROUGH_VARS.
+  it("keeps CLAUDE_CODE_REMOTE so a headless child skips subagent warmup, still dropping unlisted CLAUDE_CODE_* keys", () => {
+    const out = prepareEnv({ ...OAUTH, CLAUDE_CODE_REMOTE: "true", CLAUDE_CODE_EXECPATH: "/usr/bin/claude" });
+    expect(out.CLAUDE_CODE_REMOTE).toBe("true");
+    expect("CLAUDE_CODE_EXECPATH" in out).toBe(false);
+  });
+
   it("keeps the API key when the caller opts into API-key billing", () => {
     const out = prepareEnv({ ANTHROPIC_API_KEY: "sk-ant" }, { allowApiKeyBilling: true });
     expect(out.ANTHROPIC_API_KEY).toBe("sk-ant");

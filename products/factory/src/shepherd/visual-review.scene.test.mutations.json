@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "mergeVerdict leaves the run's baselines off the evidence request",
+      "file": "products/factory/src/shepherd/take-verdict.ts",
+      "find": ", ...(visualBaselines && { visualBaselines }) };",
+      "replace": " };",
+      "kills": [
+        "a glob-matched PR on a seat with visual baselines records the clearance in the evidence comment, so it matches the merge"
+      ]
+    },
+    {
+      "name": "the land decision passes no baselines to decideAutoMerge",
+      "file": "products/factory/src/shepherd/policy.ts",
+      "find": "effective.visualPaths, effective.visualBaselines);",
+      "replace": "effective.visualPaths);",
+      "kills": [
+        "a glob-matched PR on a seat with visual baselines merges with no approve-merge gate when it changes no baseline and the visual check is green"
+      ]
+    },
+    {
+      "name": "a changed baseline file no longer gates",
+      "file": "products/factory/src/shepherd/visual-gate.ts",
+      "find": "  return paths.filter(caseFoldedMatcher(globs));\n",
+      "replace": "  return [];\n",
+      "kills": [
+        "a glob-matched PR on a seat with visual baselines opens one visual-path gate naming the baseline when the head also changes a baseline PNG"
+      ]
+    },
+    {
+      "name": "the evidence comment leaves out the Visual diff section",
+      "file": "products/factory/src/shepherd/evidence-comment.ts",
+      "find": "    ...visualDiffSection(record.visualDelta),\n",
+      "replace": "",
+      "kills": [
+        "a seat with visual baselines under visualThreshold on merges a snapshot change below the threshold with no approve-merge gate, and the comment shows the max share",
+        "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the component when a snapshot changes above the threshold",
+        "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the API report when the public API changes"
+      ]
+    },
+    {
+      "name": "a snapshot over the threshold gives no reason naming its component",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "(shot.share ?? 1) > policy.maxChangedShare) return [",
+      "replace": "false) return [",
+      "kills": [
+        "a seat with visual baselines under visualThreshold on opens one visual-path gate naming the component when a snapshot changes above the threshold"
+      ]
+    }
+  ]
+}

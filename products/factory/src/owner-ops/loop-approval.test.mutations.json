@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the approval sweep never compares GitHub's head to the approved head",
+      "file": "products/factory/src/owner-ops/loop-approval.ts",
+      "find": "  if (pull.headSha !== answer.headSha) return { void: `the PR moved to a new head ${short(pull.headSha)} after you approved ${short(answer.headSha)}` };\n",
+      "replace": "",
+      "kills": ["merge-at-head waiting out a g10 hold: a void on a new head voids the approval, tells the owner once, lifts nothing and merges nothing"]
+    },
+    {
+      "name": "the approval sweep keeps an approval the loop closed FIX_FIRST on",
+      "file": "products/factory/src/owner-ops/loop-approval.ts",
+      "find": "  if (loop.state === \"fix-first\") return { void: `the adversary loop closed without a MERGE at ${short(answer.headSha)} (${loop.stepId} said FIX_FIRST)` };\n",
+      "replace": "",
+      "kills": ["merge-at-head waiting out a g10 hold: a void on a non-MERGE close of the loop voids the approval and tells the owner why"]
+    },
+    {
+      "name": "loopAt counts a release written before the owner tapped",
+      "file": "products/factory/src/owner-ops/loop-approval.ts",
+      "find": "  if (Date.parse(completedAt) <= Date.parse(approvedAt)) return false;\n",
+      "replace": "",
+      "kills": ["loopAt reads the adversary loop at one head ignores a release written before the owner tapped"]
+    },
+    {
+      "name": "loopAt takes a single-MERGE g10-review release as the adversary loop's MERGE",
+      "file": "products/factory/src/owner-ops/loop-approval.ts",
+      "find": "  if ((holdClass === \"g10-adversary\") !== (result.rule === TWO_MERGE_RULE)) return false;\n",
+      "replace": "",
+      "kills": ["loopAt reads the adversary loop at one head never takes a single-MERGE release as the adversary loop's MERGE, nor a two-MERGE release as a review's"]
+    },
+    {
+      "name": "the approval sweep lifts a hold escalated to another g10 class after the tap",
+      "file": "products/factory/src/owner-ops/loop-approval.ts",
+      "find": "  if (holdNow !== undefined && holdNow !== waitsOut.holdClass) return { void: `the hold changed from ${waitsOut.holdClass} to ${holdNow} after you approved` };\n",
+      "replace": "",
+      "kills": ["merge-at-head waiting out a g10 hold: a void on a hold escalated to another g10 class after the tap voids the approval and lifts nothing"]
+    }
+  ]
+}

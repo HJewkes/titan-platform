@@ -5,6 +5,10 @@ import type { NarrativeStructure } from "./structure-schema.js";
 
 /** The share of planned time by which the stake must be voiced. */
 export const STAKE_BY_SHARE = 0.15;
+/** RW-15: viewers leave in the first seconds whatever the runtime, so the stake also lands by 30 s of planned time. */
+const STAKE_BY_S = 30;
+/** RW-16: every runtime sheds viewers fastest in its last tenth, so no beat there may bring a new fact. */
+const LATE_FACTS_SHARE = 0.9;
 /** The share of HOW beats that must walk the running example. */
 export const THREAD_SHARE = 0.5;
 export const MAX_DEMO_STEPS = 8;
@@ -64,18 +68,41 @@ export function stakeFunctions(structure: string | undefined): readonly ScriptBe
   return structures.get(structure)?.stakeFunctions ?? ["STAKE"];
 }
 
-function stakeVoiced(script: ScriptV1): L0Result {
+const plannedTotal = (script: ScriptV1): number => script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
+
+/** Whether a carrier beat starting before `byS` seconds voices the stake; the early carriers name the failure. */
+function stakeVoicedBy(check_id: string, script: ScriptV1, byS: number): L0Result {
   const stake = script.video.stake;
-  if (isTodo(stake)) return verdict("Q-W1", "tagged", [], 1);
-  const total = script.beats.reduce((sum, beat) => sum + beat.plannedS, 0);
+  if (isTodo(stake)) return verdict(check_id, "tagged", [], 1);
   const starts = startTimes(script);
   const carriers = stakeFunctions(script.structure);
-  const early = script.beats.filter((beat) => carriers.includes(beat.function) && (starts.get(beat.id) ?? 0) < total * STAKE_BY_SHARE);
+  const early = script.beats.filter((beat) => carriers.includes(beat.function) && (starts.get(beat.id) ?? 0) < byS);
   const voiced = early.some((beat) => {
     const spoken = norm(beat.spoken);
     return (/\byou\b/.test(spoken) || spoken.includes(norm(stake.who))) && NUMBER.test(spoken);
   });
-  return voiced ? verdict("Q-W1", "tagged", []) : verdict("Q-W1", "tagged", early.map((beat) => beat.id), early.length ? 0 : 1);
+  return voiced ? verdict(check_id, "tagged", []) : verdict(check_id, "tagged", early.map((beat) => beat.id), early.length ? 0 : 1);
+}
+
+const stakeVoiced = (script: ScriptV1): L0Result => stakeVoicedBy("Q-W1", script, plannedTotal(script) * STAKE_BY_SHARE);
+
+/** RW-15's tighter half of Q-W1, a warning beside it: in a long video 15 % is well past the first 30 s. */
+function stakeBy30s(script: ScriptV1): L0Result {
+  const row = stakeVoicedBy("Q-W1:stake-30s", script, Math.min(plannedTotal(script) * STAKE_BY_SHARE, STAKE_BY_S));
+  return { ...row, severity: "warning" };
+}
+
+/** RW-16, beside Q-F11: a beat starting in the last tenth cites a fact no earlier beat cited. The close's button is exempt. */
+function lateNewFacts(script: ScriptV1): L0Result {
+  const starts = startTimes(script);
+  const lateFrom = plannedTotal(script) * LATE_FACTS_SHARE;
+  const cited = new Set<string>();
+  const late = script.beats.filter((beat) => {
+    const brings = beat.fact_ids.some((id) => !cited.has(id));
+    beat.fact_ids.forEach((id) => cited.add(id));
+    return brings && beat.function !== "CLOSE" && (starts.get(beat.id) ?? 0) >= lateFrom;
+  });
+  return { ...verdict("Q-F11:late-facts", "tagged", late.map((beat) => beat.id)), severity: "warning" };
 }
 
 function whyForElements(script: ScriptV1): L0Result {
@@ -215,5 +242,7 @@ const SCRIPT_RULES = [
   limitsBeforeClose,
 ];
 
-/** The why, value and thread rules (Q-W*, Q-F3, Q-F12, Q-F13), one row each. */
-export const whyCheck: L0Check = (input) => [...SCRIPT_RULES.map((rule) => rule(input.script)), invariantCap(input.script), demoSteps(input)];
+/** The why, value and thread rules (Q-W*, Q-F3, Q-F12, Q-F13) and the retention rows (RW-15, RW-16), one row each. */
+export const whyCheck: L0Check = (input) => [
+  ...SCRIPT_RULES.map((rule) => rule(input.script)), invariantCap(input.script), demoSteps(input), stakeBy30s(input.script), lateNewFacts(input.script),
+];

@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a success status satisfies an unpinned context whatever its run says",
+      "file": "packages/github/src/ci-verdict.ts",
+      "find": "  if (!run && state === null) return { kind: \"pending\", text: name };",
+      "replace": "  if (state === \"success\") return null;\n  if (!run && state === null) return { kind: \"pending\", text: name };",
+      "kills": [
+        "ciVerdict fails closed on a required context is red when a success status sits beside a failed Actions run of an unpinned context (TP-2485)",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together reads run unfinished beside status success as the table says",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together reads run failed beside status success as the table says",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together is pending with a success status beside a queued run",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together is pending with a success status beside a bogus run",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together is red with a success status when the newest run failed after an older success"
+      ]
+    },
+    {
+      "name": "a successful run hides a red commit status",
+      "file": "packages/github/src/ci-verdict.ts",
+      "find": "  if (state === null || state === \"success\") return null;",
+      "replace": "  if (state === null || state !== \"pending\") return null;",
+      "kills": [
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together reads run success beside status error as the table says",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together is red with a successful run beside a failure status",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together is red with a successful run beside a bogus status"
+      ]
+    },
+    {
+      "name": "red outranks pending inside one unpinned context",
+      "file": "packages/github/src/ci-verdict.ts",
+      "find": "findings.find((finding) => finding.kind === \"pending\") ?? findings[0]",
+      "replace": "findings.find((finding) => finding.kind === \"bad\") ?? findings[0]",
+      "kills": [
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together reads run failed beside status pending as the table says",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together reads run unfinished beside status error as the table says",
+        "ciVerdict judges an unpinned context on its Actions run and its commit status together is pending with an unknown status state beside an unfinished run"
+      ]
+    },
+    {
+      "name": "the status names a red context before the run",
+      "file": "packages/github/src/ci-verdict.ts",
+      "find": "[run ? judge(name, run) : null, judgeStatus(name, state)]",
+      "replace": "[judgeStatus(name, state), run ? judge(name, run) : null]",
+      "kills": ["ciVerdict judges an unpinned context on its Actions run and its commit status together reads run failed beside status error as the table says"]
+    }
+  ]
+}

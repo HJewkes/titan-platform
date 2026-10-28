@@ -52,6 +52,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_AGENT_CHAT_BIN` | `agent-chat` on the service's `PATH` | the agent-chat CLI that tells a seat its decision round was answered (`agent-chat debug send`); a send that fails is retried when the console next starts |
+| `TITAN_CONSOLE_EXPLAINER_BIN` | `explainer` on the service's `PATH` | the explainer CLI the theater's beat editor reads through (`explainer props`, `explainer edit check`); not found, the editor shows a gap line instead; a relative path gets its own "must be an absolute path" gap |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
@@ -388,8 +389,11 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   instead of a shell `command`. The op is a pointer, not authority. A `resolve-gate` or
   `release-hold` op maps onto the live Shepherd row's own gate or hold action, at the row's head,
   and a hold of another class offers nothing. A kind on `CONSOLE_OPS` (today `merge-at-head`,
-  `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes from the
-  factory. Any other kind stays on the terminal until its factory effect lands. A `close-pr` tap
+  `retire-agent`, `close-pr` and `deploy-pause-clear`) becomes an `owner-op` tap whose read-back comes
+  from the factory. Any other kind stays on the terminal until its factory effect lands. A
+  `retire-agent` op is offered only as a plain retire. The agent must still hold the name under the
+  op's `agentId`, its session must have exited, and it must work on no live Shepherd run. A
+  `force: true` op always stays on the terminal. A `close-pr` tap
   closes the PR only at the head the owner was shown and keeps its branch, so reopening it is one
   click on GitHub. A `deploy-pause-clear` tap ("Clear deploy pause") reads back the failure pause a
   rolled-back deploy left: when, over which target, and why. Clearing it lets the deploy pacer resume,
@@ -397,6 +401,16 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   the deposit names (`pausedAt` and `target`) and no deployer is running. The op is posted as
   deposited and never re-pinned to a newer pause. A manual hold (`service pause --set`) is never
   cleared by this tap; the read-back says when one will keep deploys held.
+
+  A `merge-at-head` on a PR whose live Shepherd row holds a g10 hold offers two taps (TP-4003).
+  "Merge without both MERGEs" (or "without a MERGE" for `g10-review`) is the forced merge past the
+  hold. "Approve; merge when the loop closes" prepares and acts with `waitFor: "adversary-loop"`:
+  the owner's approval stands at the head and g10 hold shown, the run stays held, and once the
+  adversary loop closes MERGE at that head the factory lifts the hold as the owner and answers the
+  run's approve-merge, so Shepherd merges by itself. Only a g10 release Shepherd writes after the tap
+  counts, and for a `g10-adversary` hold only one under the two-MERGE rule. A new head, a hold
+  escalated to another g10 class, a non-MERGE close or 24 hours voids the approval, and the factory
+  files an inbox item, "Merge approval voided", saying why.
 
   ```sh
   titan-console inbox file '{"depositId":"merge-7","asker":"my-agent","kind":"do","door":"one-way","summary":"Hand-merge example/repo#7","context":"","keys":[],"op":{"kind":"merge-at-head","repo":"example/repo","pr":7,"headSha":"<40-hex head>"}}'
@@ -499,9 +513,9 @@ no message and no record, and the console's start-up sweep retries it.
 
 The message is fixed text: the round id, the `feedback.json` path, why this seat is told, and
 whether the answer carries free text (a question comment, an option note, a written answer, or
-general text). Nothing the filing seat wrote is relayed. Notices still carry human provenance:
-`round-notice-transport.ts` sends them through `agent-chat debug send`, which delivers from the
-human seat, until an agent-chat console wake source (CC-1507) replaces that one seam.
+general text). Nothing the filing seat wrote is relayed. `round-notice-transport.ts` sends notices through
+`agent-chat debug send --source console` (CC-1507): they arrive from the human seat, labelled
+`wake_source="console"`, without `human-endorsed` provenance.
 
 ```sh
 titan-console rounds subscribe <round-id|unit-glob|owner/repo#N>... [--seat <name>] [--json]
@@ -715,7 +729,7 @@ video shows) or about the video itself (how the system made it: what works, what
 
 The notice is fixed text naming the video id, the time and the note id, sent through the same
 `agent-chat` transport as round notices (`round-notice-transport.ts`), which delivers it from the
-human seat. Agents write video file names, folders and sidecars, so the notice carries none of
+human seat labelled `wake_source="console"`. Agents write video file names, folders and sidecars, so the notice carries none of
 them and never the comment's text; the seat reads the note with `videos.notes <videoId>`. Delivery is best effort: the note is stored
 either way, `routedTo: { seat, delivered }` says whether the send went through, and nothing retries
 a failed send. Verdicts are not routed (`routedTo: null`).
@@ -730,6 +744,47 @@ about the content written after its latest `ship` verdict, in file order (a comm
 is video-coord's, never open): `openNotes(notes, currentSha)` in
 `server/video-notes.ts`. A Ship on an earlier render closes nothing. Re-rendering the video makes
 every earlier note an earlier-render note: it stays in the file as history and is never open again.
+
+### Beat editor
+
+On a paused explainer render, **Edit this beat** opens the template beat under the playhead (the
+beat whose `[startS, endS)` holds it) with a form generated from its slot JSON Schema, and seeks the
+player to the beat's `stillS`, so the still is the render itself. Beat starts are ticks on the strip
+under the video. All four commands run the installed explainer CLI with a fixed argv, no shell and a 20 s
+timeout; the console never imports explainer. The child gets only `PATH`, `HOME`, `USER`, the
+locale, `TMPDIR`, the `XDG_*` dirs and `EXPLAINER_*` variables, never the daemon's `TITAN_CONSOLE_*`
+settings. A props answer is kept per render sha for 10 minutes, so reopening a video does not run
+the CLI again; a failed read is not kept.
+
+- **`videos.props`** (read) `{ videoId }` runs `explainer props --mp4-sha <the render's sha256> --json`
+  and returns `{ mp4Sha, props, gaps }`. `props` is null with one gap line when the CLI is missing,
+  the render was not made by `explainer run`, or the CLI fails (its exit code and first stderr line).
+- **`videos.edit-check`** (read) `{ videoId, runId, scriptSha, beats }` builds an
+  `explainer.slot-edit/v1` over the current render and pipes it to `explainer edit check -`, a dry run
+  that writes nothing. It returns `{ verdict: { ok, problems, diff }, gaps }`; a draft over 64 KB is
+  refused. The form shows each problem at the field it names and the diff as before and after.
+
+- **`videos.edit`** (owner-write) `{ videoId, runId, scriptSha, beats, fromNote? }` builds the same
+  slot-edit over the current render and pipes it to `explainer edit apply - --start --json`, which
+  stores the edited script, writes the edit's ledger row and launches the linked run from resolve,
+  detached, so the request never waits on a render. It returns `{ saved: { editId, scriptSha, started },
+  problems, gaps }`; `saved` is null with explainer's problems when it refuses the edit, such as a
+  second save of a started edit. `fromNote` is the id of a note on this video, refused (65) otherwise.
+  It is refused like `videos.note` on loopback, with a bearer and while `TITAN_CONSOLE_OWNER_WRITES`
+  is off.
+- **`videos.edits`** (read) `{ videoId }` runs `explainer edit list --mp4-sha <the render's sha256>
+  --json` and returns `{ edits, gaps }`: each saved edit's beats, the note it cites and its run status.
+
+Save stays visible but disabled with `saveBack.reason` until explainer reports that the render reads
+edits (TP-2992 S3). Once it does, Save is on while the draft changes a field and the latest check
+found no problem. The draft is one per video (TP-4021 Q-O1): edits to several beats collect until one
+"Save and render" sends them as one edit, one script and one run. "Turn into edit" on a comment made
+on the current render opens the beat under the note's time with the note cited in the draft; the
+note itself is not changed. The editor lists the video's saved edits with their run status and reads
+them again every 5 s while a run is going. Export replaces the mp4 in place when the run finishes,
+so the theater then plays the new render, its earlier notes read as on an earlier render, and the
+pre-edit render stays only in explainer's artifact store. An explainer that does not report the
+run's script sha gets a gap line and no draft check or save (TP-4263).
 
 ### Video metadata
 
@@ -856,17 +911,21 @@ A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are o
 `hold-release` of a `g10-review` or `g10-adversary` hold; any other item, a hold of another class included, answers
 `no-action` with its reason.
 
-Each gate step's tap gives one decision, held as data in `inbox-view.ts` and mirrored by the factory's
-`CONSOLE_STEPS`: `merge` on approve-merge, and `await-new-head` on sh-sent-back. The sent-back tap reads "Wait for
-new head": the run waits for the implementer's next pushed head, and nothing merges. It never offers `abandon` or
-`waive-proof`, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
+Each gate step's decisions are held as data in `inbox-view.ts` and mirrored by the factory's `CONSOLE_STEPS`:
+`merge` on approve-merge, and `await-new-head` then `waive-proof` on sh-sent-back. The first is the item's tap; a
+later one is a second, outline-styled tap, offered only when the gate's options list it. The sent-back tap reads
+"Wait for new head": the run waits for the implementer's next pushed head, and nothing merges. On a fix-proof
+send-back (NO_REPRO, or a fixer's exit from a fix-proof wake) the gate also lists `waive-proof`, and the item gets a
+second tap, "Waive fix-proof": it skips the fix-proof requirement for the shown head only, so Shepherd reviews that
+head. It merges nothing; the merge still needs the owner's Approve merge tap, and a new push asks again. `abandon` is
+never offered, and a sent-back gate whose options lack `await-new-head` stays on the terminal. The factory refuses a
 record asking any other decision, or one the gate's own schema does not offer, as 403 `class`.
 
-1. `inbox.prepare({ itemId })` is a read. It re-reads the inbox and returns the read-back (repo, PR, title, head,
+1. `inbox.prepare({ itemId, decision? })` is a read; `decision` picks a second tap the item offers. It re-reads the inbox and returns the read-back (repo, PR, title, head,
    gate id or hold, and the effect in one sentence) with a `confirm` digest. The digest is the sha256 of the item
    id, its action, its hold, the read-back and the read time. The console keeps it for five minutes and accepts no confirm it did
    not issue.
-2. `inbox.act({ itemId, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
+2. `inbox.act({ itemId, decision?, confirm })` is an owner-write, so the owner admission in "Who may run a command" runs first.
    It reads the inbox again and refuses, before anything is written or posted, when the digest no longer matches.
    It then writes `$TITAN_CONSOLE_STATE/owner-actions/<confirm>.json` once (O_EXCL, 0600, in a 0700 dir). The
    record holds the item, its action and read-back, the confirm, the session's `issuedAt` and the peer class,
@@ -877,18 +936,20 @@ the record's sha256 as the confirm event. The console pins the route's answers i
 
 | Factory answer | Owner sees |
 | --- | --- |
-| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged") / "Hold released", plus any hold left |
+| 200 `resolved` / `released` (with `stillHeld`) | "Merge approved" (a sent-back wait: "Waiting for the implementer's next pushed head; nothing merged"; a waiver: "Fix-proof waived at this head; nothing merged. Shepherd reviews it, and the merge waits for your Approve merge") / "Hold released", plus any hold left |
 | 200 `accepted` (with `runId`) | "Merge queued": a `merge-at-head` op started a land run that merges at the pinned head |
+| 200 `approved` (with `runId`) | "Merge approved": a `merge-at-head` that waits for the adversary loop left the owner's approval on the held Shepherd run |
+| 200 `retired` (with `name`, `caveats`) | "Retired `name`", plus agent-chat's caveats: a `retire-agent` op ran a plain retire |
 | 200 `pr-closed` (with `closedHead`) | "PR closed at `abc1234`; its branch is kept": a `close-pr` op closed the PR at the pinned head |
 | 200 `pause-cleared` (with `clearedPause`, `stillHeld`) | "Deploy pause cleared; the deploy pacer may deploy within about a minute", or that deploys stay held by hand, with the hold's reason |
 | 200 `already` | "Already done by this confirmation": a replay reposts the same record bytes |
-| 409 `moved` | "PR moved to `abc1234`, read again"; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
+| 409 `moved` | "PR moved to `abc1234`, read again"; with `currentAgentId`, the name is now a different agent; for a deploy pause (with `currentPause`), "A deploy pause from `<time>` stands instead and is kept, read again" |
 | 409 `refused` `deploying` | the reason: a deployer holds the deploy lock, so tap again once it ends |
 | 410 `gone`, 403 or 422 `refused` | the reason |
 | 404 | the route is not mounted: the factory has no `consoleAnswers.actionsDir` |
 | 5xx, a redirect, no answer | unreachable; the tap may be retried with the same confirm |
 
-After a landed tap on a PR (`resolved`, `released`, `accepted`, `pr-closed` or `already`), `inbox.act` reads the PR
+After a landed tap on a PR (`resolved`, `released`, `accepted`, `approved`, `pr-closed` or `already`), `inbox.act` reads the PR
 again and answers `next`: `merged` or `closed` from GitHub through `owner-op.preview`, `new-review` when the head moved or the active
 Shepherd row is in `review`, `pending` with the row's phase and next action, or `unknown` when the read fails. The
 sheet shows it as "Now: …" under the outcome.
@@ -905,8 +966,25 @@ id, summary, asker, context, the asker's options and recommendation. `inbox.act`
 retry sends the words first written. The console posts `{ msgId, text, channel: "dashboard" }` to the agent-chat
 broker's `POST /api/answer` on loopback, with the 0600 `ui.token` re-read per call, and never follows a redirect.
 The broker arbitrates, so a question answered first elsewhere comes back `closed` and logs nothing. A refused
-token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried. An approval or permission
-prompt never reaches this path: `inbox.list` gives it a terminal action.
+token mode, a redirect, a 5xx or no answer is unreachable, and the tap may be retried.
+
+An agent's permission prompt or endorsement is an `approve-chat` tap (`server/inbox-approve-chat.ts`). The factory
+folds both, and `needs-grant` / `ready-to-merge` notices too, into one `approve` kind without the row's meta, so
+`inbox.list` gives every agent-chat `approve` item `{ kind: "approve-chat", msgId }` and `inbox.prepare` re-reads the
+broker's own `GET /api/queue` row by msg id. Only an `approval_request` row (read-back: tool name, input preview,
+description; verdicts `allow` or `deny`) or an `endorse_request` row (read-back: the exact stored text and its
+recipient; verdict `endorse`) offers a tap. Any other row, or none, answers `no-action` with the reason that it is
+answered at its own session. The digest covers the row, so a text that changes between prepare and act refuses the
+confirm. `inbox.act` takes `verdict`, checked against the read-back's kind, and refuses any `text`. The record keeps
+the verdict and the read-back, and the console posts from them (`server/broker-verdict.ts`) to the broker's
+`POST /api/queue/:msgId/permission` or `/endorse` on loopback, with the 0600 `ui.token` re-read per call,
+`X-Owner-Channel: console`, and no redirect followed. An endorse sends the read-back's text and recipient byte for
+byte. A replay of a settled confirm answers from the outcome it settled and never reaches the broker. A prompt
+decided first elsewhere comes back `closed`. A refusal, including the 404 of a broker that has not deployed the
+verdict routes yet, names the terminal command: `agent-chat approve <id> allow|deny` or `agent-chat endorse <id>`.
+On the page the row's Approve opens the sheet, and the read-back sets its confirming taps in place of Confirm: Allow
+and Deny under a permission prompt's tool, input preview and description, or Endorse under the recipient and the
+stored text, shown in a whitespace-preserving block. Each sends `inbox.act` with only the `verdict` added.
 
 An `owner-op` tap (`server/inbox-op.ts`) takes its read-back from the factory's `owner-op.preview` on loopback,
 never from the deposit: GitHub's live head, title, base, behind and mergeable state, the Shepherd hold, and the

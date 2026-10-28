@@ -757,6 +757,66 @@
       ]
     },
     {
+      "id": "RET-OT",
+      "action": "agent-retire",
+      "actor": "owner-terminal",
+      "verdict": "allow",
+      "evidence": []
+    },
+    {
+      "id": "RET-OR",
+      "action": "agent-retire",
+      "actor": "owner-remote",
+      "verdict": "allow",
+      "condition": "Owner decision of 2026-10-24 (decision 532, TP-3622): plain retire only, never --force: the agent's session has exited and it works on no live Shepherd run, both re-read at tap time under the confirmed agent id.",
+      "evidence": [
+        "E-prin"
+      ]
+    },
+    {
+      "id": "RET-CO",
+      "action": "agent-retire",
+      "actor": "coordinator",
+      "verdict": "allow",
+      "condition": "Inside its own checkout.",
+      "evidence": [
+        "E-dec"
+      ]
+    },
+    {
+      "id": "RET-WK",
+      "action": "agent-retire",
+      "actor": "worker",
+      "verdict": "allow",
+      "condition": "Inside its own worktree.",
+      "evidence": []
+    },
+    {
+      "id": "RET-HD",
+      "action": "agent-retire",
+      "actor": "headless",
+      "verdict": "allow",
+      "condition": "Inside its own worktree.",
+      "evidence": []
+    },
+    {
+      "id": "RET-AU",
+      "action": "agent-retire",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Inside its own workspace.",
+      "evidence": []
+    },
+    {
+      "id": "RET-DC",
+      "action": "agent-retire",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "DSX-OT",
       "action": "destructive-foreign",
       "actor": "owner-terminal",

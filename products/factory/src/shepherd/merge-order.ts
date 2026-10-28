@@ -3,8 +3,10 @@ import { compileGlobs } from "@titan-design/fix-proof";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
+import { appendEvent } from "./events.js";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
+import type { Registration } from "./store.js";
 
 /**
  * A conflicted PR's reservation of the paths it changes, so an overlapping PR waits at its merge until the conflicted
@@ -52,6 +54,13 @@ const fromRow = (row: z.infer<typeof Row>): Reservation => ({
 /** A paused, parked or finished run no longer drives its PR, so its reservation stops blocking, as the train judges its holder. */
 const DRIVING: ReadonlySet<WorkflowStatus> = new Set(["running", "cancelling"]);
 
+/** Who ended a reservation and why: the run itself when it ends, or a seat's break-glass `shepherd order clear`. */
+interface OrderRelease {
+  at: string;
+  actor?: string;
+  reason?: string;
+}
+
 export class MergeOrder {
   private readonly runs: WorkflowRunStore;
 
@@ -59,19 +68,41 @@ export class MergeOrder {
     this.runs = new WorkflowRunStore(db);
   }
 
-  /** A repeat for the same run replaces its row. */
+  /** A repeat for the same run replaces its row; each write is logged as an `order-reserve` event in the same transaction. */
   reserve(reservation: Reservation): void {
     const { repo, runId, pr, headSha, baseSha, paths, ahead, since, reason } = reservation;
-    this.db.prepare("INSERT OR REPLACE INTO shepherd_merge_order (repo, run_id, pr, head_sha, base_sha, paths, ahead, since, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(repo.toLowerCase(), runId, pr, headSha, baseSha, JSON.stringify(paths), JSON.stringify(ahead), since, reason);
+    this.db.transaction(() => {
+      this.db.prepare("INSERT OR REPLACE INTO shepherd_merge_order (repo, run_id, pr, head_sha, base_sha, paths, ahead, since, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(repo.toLowerCase(), runId, pr, headSha, baseSha, JSON.stringify(paths), JSON.stringify(ahead), since, reason);
+      appendEvent(this.db, { runId, repo, pr, kind: "order-reserve", reason: `${reason}: ${paths.length} path(s), ${ahead.length} run(s) merging ahead`, at: since, headSha });
+    })();
   }
 
   /** False, writing nothing, when the run held no reservation. */
-  release(repo: RepoSlug, runId: string): boolean {
-    return this.db.prepare("DELETE FROM shepherd_merge_order WHERE repo = ? AND run_id = ?").run(repo.toLowerCase(), runId).changes > 0;
+  release(repo: RepoSlug, runId: string, by: OrderRelease): boolean {
+    return this.drop(repo, runId, undefined, (own) => ({ kind: "order-release", reason: by.reason ?? "the run ended", at: by.at, actor: by.actor, headSha: own.headSha }));
+  }
+
+  /** Ends the reservation taken at `since` once, logging `order-expired`; false when it is gone or was taken again since. */
+  expire(repo: RepoSlug, runId: string, since: string, at: string): boolean {
+    return this.drop(repo, runId, since, (own) => ({ kind: "order-expired", reason: `unlanded past its TTL; reserved ${own.since}`, at, headSha: own.headSha }));
+  }
+
+  private drop(repo: RepoSlug, runId: string, since: string | undefined, event: (own: Reservation) => Omit<Parameters<typeof appendEvent>[1], "repo">): boolean {
+    const own = this.list(repo).find((reservation) => reservation.runId === runId && (since === undefined || reservation.since === since));
+    if (own === undefined) return false;
+    return this.db.transaction(() => {
+      const gone = this.db.prepare("DELETE FROM shepherd_merge_order WHERE repo = ? AND run_id = ? AND since = ?").run(repo.toLowerCase(), runId, own.since).changes > 0;
+      if (gone) appendEvent(this.db, { repo, runId, pr: own.pr, ...event(own) });
+      return gone;
+    })();
   }
 
   list(repo: RepoSlug): Reservation[] {
     return z.array(Row).parse(this.db.prepare("SELECT * FROM shepherd_merge_order WHERE repo = ? ORDER BY since, run_id").all(repo.toLowerCase())).map(fromRow);
+  }
+
+  listAll(): Reservation[] {
+    return z.array(Row).parse(this.db.prepare("SELECT * FROM shepherd_merge_order ORDER BY repo, since, run_id").all()).map(fromRow);
   }
 
   isDriving(runId: string): boolean {
@@ -83,6 +114,28 @@ export class MergeOrder {
   driving(): WorkflowRun[] {
     return this.runs.listByStatus(["running"]);
   }
+
+  /** Logs the wait a merge step's guard just started reading, so `shepherd timeline` shows what the merge waits on. */
+  noteWait(runId: string, wait: OrderWait, at: string, headSha: string | undefined): void {
+    appendEvent(this.db, { runId, repo: wait.repo, pr: wait.pr, kind: "order-wait", reason: wait.reason, at, headSha });
+  }
+}
+
+/** The registration facts that say a person holds a run. */
+export interface RunHolds {
+  byRun(runId: string): Pick<Registration, "held" | "holdSatisfied" | "ownerHold"> | undefined;
+}
+
+/** An owner hold, or a hold no reviewer has satisfied; a satisfied hold lets the run merge at that head, so it still drives. */
+const registrationHeld = (registration: ReturnType<RunHolds["byRun"]>): boolean => registration?.held === true && (registration.ownerHold !== null || registration.holdSatisfied === null);
+
+/**
+ * Driving, and not held by its registration. A held reserver waits on a person, so its reservation stops ordering peers
+ * while the hold lasts instead of until its TTL (TP-4133). Only the registration is read, never the merge guard, which
+ * reads this predicate.
+ */
+export function orderDriving(order: MergeOrder, holds: RunHolds): (runId: string) => boolean {
+  return (runId) => order.isDriving(runId) && !registrationHeld(holds.byRun(runId));
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge fails closed. */
@@ -162,3 +215,14 @@ export function blockers(self: OrderSelf, reservations: readonly Reservation[], 
     .map((reservation) => ({ reservation, shared: self.unread ? [] : overlapping(self.repo, self.paths, reservation.paths, rule) }))
     .filter((blocker) => self.unread === true || blocker.shared.length > 0);
 }
+
+/** The merge-order wait a run's merge step read last; kept in serve's memory, for `shepherd status` and `shepherd order`. */
+export interface OrderWait {
+  repo: string;
+  pr: number;
+  behind: number;
+  reason: string;
+}
+
+/** Keyed by run id; a merge step that reads no blocker drops its run's entry. */
+export type OrderWaits = Map<string, OrderWait>;

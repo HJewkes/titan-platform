@@ -10,6 +10,7 @@ import type { PackageRegistry } from "../shepherd/release.js";
 import type { SeatBook } from "../shepherd/seats.js";
 import type { SpawnGate } from "../shepherd/spawn-gate.js";
 import { shepherdStoreRef } from "../shepherd/store.js";
+import type { VisualThreshold } from "../shepherd/visual-delta-read.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
@@ -43,6 +44,8 @@ export interface FixtureOptions {
   snapshot?: boolean;
   /** The spawn gate whose reviewer reading `/health` reports; absent means no gate. */
   spawnGate?: SpawnGate;
+  /** Every repo's `shepherd.visualThreshold`; absent means none, so `shepherd visual-delta` refuses. */
+  visualThreshold?: VisualThreshold;
 }
 
 /** A fake GitHub whose checks pass on every head, and the factory routes over it on a fake clock. */
@@ -64,6 +67,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     ...(options.prFiles && { prFiles: options.prFiles }),
     ...(options.snapshot && { snapshot: prSnapshot(port, { now: () => clock }) }),
     ...(options.spawnGate && { spawnGate: options.spawnGate }),
+    ...(options.visualThreshold && { visualThreshold: () => options.visualThreshold }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
 }

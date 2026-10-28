@@ -29,7 +29,7 @@ describe("fix-proof-run.sh", () => {
     Object.fromEntries(readFileSync(file, "utf8").trimEnd().split("\n").map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
 
   describe("judge", () => {
-    const judge = () => sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")]);
+    const judge = (env = {}) => sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], env);
 
     it("prints the skipped line when the merge base has bin.js but no judge.js", () => {
       writeFileSync(path.join(dist, "bin.js"), echoArgs);
@@ -52,11 +52,11 @@ describe("fix-proof-run.sh", () => {
       expect(parseResultLine(result.stdout.trim()).ok).toBe(true);
     });
 
-    it("runs the merge-base judge.js on the repo and the three report files", () => {
+    it("runs the merge-base judge.js on the repo and the three report files, naming no base to a judge that predates the flag", () => {
       writeFileSync(path.join(dist, "bin.js"), echoArgs);
       writeFileSync(path.join(dist, "judge.js"), echoArgs);
 
-      const result = judge();
+      const result = judge({ BASE_REF: "main" });
 
       const reports = path.join(tmp, "reports");
       expect(result.stdout.trim()).toBe(
@@ -75,6 +75,16 @@ describe("fix-proof-run.sh", () => {
       expect(result.stdout.trim()).toMatch(new RegExp(` --mutants-report ${path.join(tmp, "reports")}/mutants\\.report$`));
     });
 
+    it("names the PR's base to a merge-base judge that reads it, as a plain ref", () => {
+      writeFileSync(path.join(dist, "bin.js"), echoArgs);
+      writeFileSync(path.join(dist, "judge.js"), echoArgs);
+      writeFileSync(path.join(dist, "chunk-ABC.js"), 'var flags = ["base-ref"];\n');
+
+      const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { BASE_REF: "ma in" });
+
+      expect(result.stdout.trim()).toMatch(/ --base-ref ma\?in$/);
+    });
+
     describe("with a refusal from the merge-base step", () => {
       const refusal = "fix-proof runs only against the default branch: base parent is not main";
       beforeEach(() => {
@@ -82,23 +92,26 @@ describe("fix-proof-run.sh", () => {
         writeFileSync(path.join(dist, "judge.js"), `console.log('fix-proof/v1 {"verdict":"reproduces"}');\n`);
       });
 
-      it("prints one error line naming the stacked base and never runs the runner's judge.js", () => {
-        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: refusal });
+      const refused = (env) => sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: refusal, ...env });
+
+      it("prints one refused line naming the stacked base and the default branch, and never runs the runner's judge.js", () => {
+        const result = refused({ FIX_PROOF_REFUSED_BASE: "feat/parent", FIX_PROOF_REFUSED_DEFAULT: "main" });
 
         expect(result.status).toBe(0);
         expect(result.stdout).not.toContain("reproduces\"}");
         expect(result.stdout.split("\n").filter(Boolean)).toHaveLength(1);
         const parsed = parseResultLine(result.stdout.trim());
         expect(parsed.ok).toBe(true);
-        expect(parsed.result).toMatchObject({ head, mergeBase: base, verdict: "error", error: refusal });
+        expect(parsed.result).toEqual(expect.objectContaining({ head, mergeBase: base, verdict: "refused", base: "feat/parent", defaultBranch: "main" }));
+        expect(parsed.result).not.toHaveProperty("error");
       });
 
-      it("keeps the line valid JSON when the reason holds a quote or a backslash", () => {
-        const result = sh(["judge", runner, path.join(tmp, "repo"), base, head, path.join(tmp, "reports")], { FIX_PROOF_REFUSED: 'base a"b\\c is not main' });
+      it("keeps the line valid when a ref holds a quote or a backslash, or is missing", () => {
+        const result = refused({ FIX_PROOF_REFUSED_BASE: 'a"b\\c', FIX_PROOF_REFUSED_DEFAULT: "" });
 
         const parsed = parseResultLine(result.stdout.trim());
         expect(parsed.ok).toBe(true);
-        expect(parsed.result.error).toBe("base abc is not main");
+        expect(parsed.result).toMatchObject({ base: "a?b?c", defaultBranch: "<none>" });
       });
 
       it("runs the runner's judge.js when the refusal output is empty", () => {
@@ -146,7 +159,7 @@ describe("fix-proof-run.sh", () => {
       const result = mergeBase(shas.parent, { BASE_REF: "parent", DEFAULT_BRANCH: "main" });
 
       expect(result.status).toBe(0);
-      expect(readOutputs(outputFile())).toEqual({ refused: "fix-proof runs only against the default branch: base parent is not main" });
+      expect(readOutputs(outputFile())).toEqual({ refused: "fix-proof runs only against the default branch: base parent is not main", refused_base: "parent", refused_default: "main" });
       expect(output()).not.toMatch(/[0-9a-f]{40}/);
     });
 
@@ -164,21 +177,22 @@ describe("fix-proof-run.sh", () => {
     ])("refuses when the payload lacks %s", (_, env) => {
       mergeBase(shas.main, env);
 
-      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
+      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused", "refused_base", "refused_default"]);
     });
 
     it("refuses a base ref that would add a line to GITHUB_OUTPUT", () => {
+      const forged = `main?sha?${"d".repeat(40)}`;
       mergeBase(shas.main, { BASE_REF: `main\nsha=${"d".repeat(40)}`, DEFAULT_BRANCH: `main\nsha=${"d".repeat(40)}` });
 
-      expect(output().trimEnd().split("\n")).toHaveLength(1);
-      expect(readOutputs(outputFile())).toEqual({ refused: `fix-proof runs only against the default branch: base main?sha?${"d".repeat(40)} is not main?sha?${"d".repeat(40)}` });
+      expect(output().trimEnd().split("\n")).toHaveLength(3);
+      expect(readOutputs(outputFile())).toEqual({ refused: `fix-proof runs only against the default branch: base ${forged} is not ${forged}`, refused_base: forged, refused_default: forged });
     });
 
     it("refuses a stacked base whose name holds a newline without letting it write a sha", () => {
       mergeBase(shas.parent, { BASE_REF: `parent\nsha=${shas.parent}`, DEFAULT_BRANCH: "main" });
 
-      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused"]);
-      expect(output().trimEnd().split("\n")).toHaveLength(1);
+      expect(Object.keys(readOutputs(outputFile()))).toEqual(["refused", "refused_base", "refused_default"]);
+      expect(output().trimEnd().split("\n")).toHaveLength(3);
     });
   });
 
@@ -528,6 +542,43 @@ describe("fix-proof workflow", () => {
     expect(guarded.map(([id]) => id).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
   });
 
+  describe("on a pull_request edit (TP-4259)", () => {
+    /** Evaluates the workflow's own expression for one event; the expressions here use only these operators and functions. */
+    const evaluate = (expression, event) => {
+      const js = expression.replace(/^\$\{\{|\}\}$/g, "").replace(/([!=])=/g, "$1==");
+      const format = (template, ...args) => args.reduce((out, arg, i) => out.replace(`{${i}}`, String(arg)), template);
+      const github = { event, head_ref: "feat/x", repository: "acme/gizmos", ref: "refs/pull/7/merge", run_id: 99 };
+      return new Function("github", "format", "cancelled", `return (${js});`)(github, format, () => false);
+    };
+    const pr = { head: { repo: { full_name: "acme/gizmos" } } };
+    const event = (action, changes) => ({ action, pull_request: pr, ...(changes && { changes }) });
+    const runs = (e) => Object.entries(workflow.jobs).filter(([, job]) => Boolean(evaluate(job.if, e))).map(([id]) => id).sort();
+    const ALL = ["fix-proof", "fix-proof-base", "fix-proof-head", "fix-proof-mutants"];
+
+    it("listens for edits, so a same-head retarget starts a run", () => {
+      expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "edited"]);
+    });
+
+    it("runs every job on a base change, in the PR's own concurrency group", () => {
+      const retarget = event("edited", { base: { ref: { from: "feat/parent" } } });
+
+      expect(runs(retarget)).toEqual(ALL);
+      expect(evaluate(workflow.concurrency.group, retarget)).toBe("fix-proof-refs/pull/7/merge");
+    });
+
+    it("skips every job on any other edit, in a group of its own so it cancels no run in progress", () => {
+      const retitle = event("edited", { title: { from: "old" } });
+
+      expect(runs(retitle)).toEqual([]);
+      expect(evaluate(workflow.concurrency.group, retitle)).toBe("fix-proof-edit-99");
+    });
+
+    it("runs every job on a push, as before", () => {
+      expect(runs(event("synchronize"))).toEqual(ALL);
+      expect(evaluate(workflow.concurrency.group, event("synchronize"))).toBe("fix-proof-refs/pull/7/merge");
+    });
+  });
+
   it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
     const caches = (job) => job.steps.some((step) => Object.keys(step.with ?? {}).some((key) => /cache/.test(key)) || /cache/.test(step.uses ?? ""));
 
@@ -557,7 +608,7 @@ describe("fix-proof workflow", () => {
 
   it("the judge job has no cache and installs only from the runner tree", () => {
     expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
-    expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}");
+    expect(judge.if).toBe("${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base) }}");
     expect(judge.steps.some((step) => step.with !== undefined && "cache" in step.with)).toBe(false);
     expect(judge.steps.every((step) => step["working-directory"] === undefined || step["working-directory"] === "runner")).toBe(true);
     const setup = judge.steps.filter((step) => /^(pnpm\/action-setup|actions\/setup-node)@/.test(step.uses ?? ""));
@@ -594,6 +645,68 @@ describe("fix-proof workflow", () => {
     expect(runnerSteps.length).toBeGreaterThan(3);
     expect(runnerSteps.every((step) => step.if === "steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'")).toBe(true);
     expect(runnerSteps.at(-1).run).toMatch(/fix-proof-run\.sh exec mutants /);
+  });
+
+  describe("Chromium for browser tests (TP-3656)", () => {
+    const ci = parse(readFileSync(path.join(import.meta.dirname, "../.github/workflows/ci.yml"), "utf8"));
+    const installCommand = /pnpm --filter @titan-design\/frame-capture exec playwright-core install .*$/m;
+    const ciInstall = Object.values(ci.jobs).flatMap((job) => job.steps).find((step) => installCommand.test(step.run ?? ""));
+    const EXEC_JOBS = ["fix-proof-base", "fix-proof-head", "fix-proof-mutants"];
+    const installIndex = (steps) => steps.findIndex((step) => installCommand.test(step.run ?? ""));
+    const execIndex = (steps) => steps.findIndex((step) => /fix-proof-run\.sh exec /.test(step.run ?? ""));
+
+    it.each(EXEC_JOBS)("%s installs Chromium with ci.yml's command before it runs its side", (id) => {
+      const steps = workflow.jobs[id].steps;
+
+      const install = installIndex(steps);
+
+      expect(install).toBeGreaterThan(-1);
+      expect(install).toBeLessThan(execIndex(steps));
+      expect(steps[install].run.match(installCommand)[0]).toBe(ciInstall.run.match(installCommand)[0]);
+    });
+
+    it.each(["fix-proof-base", "fix-proof-mutants"])("%s keeps the browser where the sandbox, with HOME at the tree, still finds it", async (id) => {
+      const { sandboxEnv } = await import("../packages/fix-proof/src/sandbox.ts");
+      const browsers = workflow.jobs[id].env?.PLAYWRIGHT_BROWSERS_PATH;
+
+      const env = sandboxEnv("/tmp/tree", { ...workflow.jobs[id].env, HOME: "/home/runner", PATH: "/usr/bin" });
+
+      expect(browsers).toMatch(/^\/opt\//);
+      expect(env.PLAYWRIGHT_BROWSERS_PATH).toBe(browsers);
+      expect(env.HOME).toBe("/tmp/tree");
+    });
+
+    it("the head job restores ci.yml's Chromium cache and never saves one", () => {
+      const ciRestore = Object.values(ci.jobs).flatMap((job) => job.steps).find((step) => step.name === "Restore the Chromium cache");
+      const steps = workflow.jobs["fix-proof-head"].steps;
+
+      const restore = steps.find((step) => step.uses?.startsWith("actions/cache/restore@"));
+
+      expect(restore.with).toEqual(ciRestore.with);
+      expect(workflow.jobs["fix-proof-head"].env?.PLAYWRIGHT_BROWSERS_PATH).toBeUndefined();
+      expect(steps.some((step) => step.uses?.startsWith("actions/cache/save@"))).toBe(false);
+    });
+
+    it.each(EXEC_JOBS)("%s installs no browser, and fails no step, on a merge base without frame-capture", (id) => {
+      const steps = workflow.jobs[id].steps;
+      const first = steps.slice(0, execIndex(steps)).find((step) => /playwright/.test(step.run ?? ""));
+      const tree = mkdtempSync(path.join(tmpdir(), "fix-proof-chromium-"));
+      mkdirSync(path.join(tree, "runner"));
+      const output = path.join(tree, "github-output");
+      writeFileSync(output, "");
+
+      const result = spawnSync("bash", ["-e", "-c", first.run], {
+        cwd: path.join(tree, first["working-directory"] ?? ""),
+        encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: tree, GITHUB_OUTPUT: output },
+      });
+      const written = readFileSync(output, "utf8");
+      rmSync(tree, { recursive: true, force: true });
+
+      expect([result.status, result.stdout.trim(), written]).toEqual([0, "no frame-capture at the merge base", ""]);
+      const later = steps.slice(steps.indexOf(first) + 1, execIndex(steps)).filter((step) => /playwright|cache/.test(`${step.run ?? ""}${step.uses ?? ""}`));
+      expect(later.every((step) => step.if.includes("steps.playwright.outputs.version != ''"))).toBe(true);
+    });
   });
 
   it("runs the script from the workflow's own commit, not from the PR head checkout", () => {
@@ -644,6 +757,9 @@ describe("fix-proof workflow", () => {
 
       expect(step.if).toBe("${{ !cancelled() }}");
       expect(step.env.FIX_PROOF_REFUSED).toBe("${{ steps.merge-base.outputs.refused }}");
+      expect(step.env.FIX_PROOF_REFUSED_BASE).toBe("${{ steps.merge-base.outputs.refused_base }}");
+      expect(step.env.FIX_PROOF_REFUSED_DEFAULT).toBe("${{ steps.merge-base.outputs.refused_default }}");
+      expect(step.env.BASE_REF).toBe("${{ github.event.pull_request.base.ref }}");
       expect(step.env.MERGE_BASE).toBe(
         "${{ steps.merge-base.outputs.refused && github.event.pull_request.base.sha || steps.merge-base.outputs.sha }}",
       );
@@ -695,7 +811,7 @@ describe("fix-proof workflow", () => {
         const { status, output } = runStep(id, { BASE_SHA: shas.main, HEAD_SHA: shas.feature, BASE_REF: "parent-branch" });
 
         expect(status).toBe(0);
-        expect(output).toBe("refused=fix-proof runs only against the default branch: base parent-branch is not main\n");
+        expect(output).toBe("refused=fix-proof runs only against the default branch: base parent-branch is not main\nrefused_base=parent-branch\nrefused_default=main\n");
       });
 
       it.each(jobs)("%s keeps an option-shaped base away from git, so it cannot pass the head off as the merge base", (id) => {

@@ -35,6 +35,7 @@ graph TD
     locator["locator"]
     openaiAccount["openai-account"]
     ownerProof["owner-proof"]
+    reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
     testKit["test-kit"]
@@ -72,6 +73,7 @@ graph TD
     ownerQueue["owner-queue"]
     pm["pm"]
     queueMirror["queue-mirror"]
+    renderQa["render-qa"]
     reviewPanel["review-panel"]
     reviewWorkflow["review-workflow"]
     sessionAnalytics["session-analytics"]
@@ -104,11 +106,13 @@ graph TD
   agent --> agentProtocol
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
+  autoresearch --> fixProof
   autoresearch --> rpcClient
   autoresearch --> workflow
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> evidence
+  codeGraph --> fixProof
   codeGraph --> retrieval
   codeGraph --> storeSqlite
   codeRead --> codeGraph
@@ -139,8 +143,10 @@ graph TD
   reactApp --> rpcClient
   reactApp --> rpcProtocol
   registry --> rpcProtocol
+  renderQa --> frameCapture
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewBurden --> fixProof
   reviewPanel --> evidence
   reviewPanel --> fixProof
   reviewPanel --> sessionRead
@@ -171,11 +177,13 @@ graph TD
   styleChecker --> styleProfile
   throughput --> evidence
   toolGuard --> authority
+  toolGuard --> fixProof
   workflow --> agent
   workflow --> agentProtocol
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  activeWork --> agentDispatch
   activeWork --> agentProtocol
   activeWork --> clusterPkg
   activeWork --> daemon
@@ -196,6 +204,7 @@ graph TD
   corpusQuery --> storeSqlite
   corpusQuery --> workflow
   evals --> agent
+  evals --> appPaths
   evals --> authority
   evals --> evidence
   evals --> fixProof
@@ -207,16 +216,19 @@ graph TD
   evals --> storeSqlite
   evals --> workflow
   explainer --> agent
+  explainer --> agentDispatch
   explainer --> agentProtocol
   explainer --> appPaths
   explainer --> codeGraph
   explainer --> codeRead
   explainer --> evidence
+  explainer --> frameCapture
   explainer --> github
   explainer --> graphLayout
   explainer --> hitl
   explainer --> ownerQueue
   explainer --> pm
+  explainer --> renderQa
   explainer --> sessionRead
   explainer --> speechG2p
   explainer --> speechStt
@@ -253,6 +265,7 @@ graph TD
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
+  sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
   sessionMiner --> pm
@@ -263,6 +276,7 @@ graph TD
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
   sessionMiner --> throughput
+  sessionMiner --> workflow
   titan --> daemon
   titan --> health
   codewatch --> codeRead
@@ -275,6 +289,7 @@ graph TD
   console --> coordinator
   console --> daemon
   console --> decider
+  console --> fixProof
   console --> github
   console --> ownerQueue
   console --> pm
@@ -349,7 +364,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->fifteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->seventeen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

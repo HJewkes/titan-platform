@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ArConfigSchema } from "./autoresearch/config.js";
 import { ReconcilerConfigSchema, reconcilerDeprecations } from "./reconciler/config.js";
 import { isRepoKey } from "./shepherd/seats.js";
+import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -114,6 +115,28 @@ export const FlakyChecksSchema = z.strictObject({
   checks: z.array(z.string().min(1)).min(1),
   /** Below the ci-wait route's own 45 minute timeout, which the wait, the rerun and the settle all run inside. */
   waitSeconds: z.number().int().min(0).max(900),
+});
+
+const MI = 1024 * 1024;
+
+/**
+ * One repo's visual-diff threshold (TP-4320). Absent, or `off`, records nothing; `shadow` records the delta on the merge
+ * evidence, and nothing decides on it; `on` also decides the merge on it. `maxChangedShare` defaults to 0.01 of the content box and `pixelTolerance` to 0.1.
+ * The caps bound the measuring work per evidence step, so each has a ceiling config cannot raise: `maxSnapshots` pairs,
+ * `maxBytes` per blob, `maxPixels` per decoded image and `maxTotalPixels` decoded over the step.
+ */
+const VisualThresholdSchema = z.strictObject({
+  mode: z.enum(["off", "shadow", "on"]),
+  maxChangedShare: z.number().min(0).max(1).optional(),
+  pixelTolerance: z.number().min(0).max(1).optional(),
+  snapshotPaths: z.array(z.string().min(1)),
+  apiPaths: z.array(z.string().min(1)),
+  tokenPaths: z.array(z.string().min(1)),
+  harnessPaths: z.array(z.string().min(1)),
+  maxSnapshots: z.number().int().positive().max(200).optional(),
+  maxBytes: z.number().int().positive().max(20 * MI).optional(),
+  maxPixels: z.number().int().positive().max(32 * MI).optional(),
+  maxTotalPixels: z.number().int().positive().max(256 * MI).optional(),
 });
 
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
@@ -228,15 +251,30 @@ export const FactoryConfigSchema = z.object({
         .optional(),
       deployAlarm: DeployAlarmConfigSchema.optional(),
       gateNotify: GateNotifyConfigSchema.optional(),
+      /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
+      seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
       /**
        * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
+       * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275).
        */
       gateReset: z
-        .strictObject({ twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(), heldRepair: z.enum(["off", "on"]).optional(), noReproProceed: z.enum(["off", "on"]).optional() })
+        .strictObject({
+          twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
+          heldRepair: z.enum(["off", "on"]).optional(),
+          noReproProceed: z.enum(["off", "on"]).optional(),
+          nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
+        })
         .optional(),
+      /**
+       * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
+       * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
+       * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
+       */
+      taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
@@ -246,6 +284,8 @@ export const FactoryConfigSchema = z.object({
       consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
+      /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */
+      visualThreshold: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), VisualThresholdSchema).optional(),
       /**
        * Off when absent. `shadow` or `on` asks the owner, at a head whose only red check is its seat's `visualBaselines.check`,
        * whether CI's regenerated set is the one to commit, before any fixer is woken. Only `on` lets that set carry a later head.
@@ -312,7 +352,7 @@ function parseJson(path: string, text: string): unknown {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`invalid config ${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 

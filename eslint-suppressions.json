@@ -35,11 +35,6 @@
       "count": 1
     }
   },
-  "packages/agent-dispatch/src/dispatch.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "packages/agent-dispatch/src/exec.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -274,9 +269,6 @@
   "packages/github/src/fake.ts": {
     "titan/max-function-lines": {
       "count": 1
-    },
-    "titan/max-line-length": {
-      "count": 2
     },
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -1114,11 +1106,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/evidence-comment.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/exit-notice.ts": {
     "titan/max-line-length": {
       "count": 2
@@ -1302,7 +1289,7 @@
   },
   "products/factory/src/shepherd/post-merge.ts": {
     "titan/max-line-length": {
-      "count": 7
+      "count": 6
     }
   },
   "products/factory/src/shepherd/pr-params.ts": {
@@ -1362,7 +1349,7 @@
   },
   "products/factory/src/shepherd/review-panel-step.ts": {
     "titan/max-line-length": {
-      "count": 4
+      "count": 3
     }
   },
   "products/factory/src/shepherd/review-request.ts": {
@@ -1507,7 +1494,7 @@
   },
   "products/factory/src/shepherd/wake-brief.ts": {
     "titan/max-line-length": {
-      "count": 2
+      "count": 1
     }
   },
   "products/factory/src/shepherd/wake.ts": {

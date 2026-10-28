@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
+import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
 import { headGateAsks } from "./shepherd/stale-gates.js";
 
@@ -120,13 +121,32 @@ export interface LandGate {
 }
 
 /**
- * A land approve-merge gate: its prompt names the PR, the head and the policy rule, and its schema pins the same head.
- * A conflict or any other approve-merge gate does not read as one.
+ * A land approve-merge gate: its prompt's first line names the PR, the head and the policy rule, and its schema pins the
+ * same head. Land puts a skill-diff link and the reviewer's owner brief on later lines (TP-4141), which never change what
+ * the gate asks. A conflict or any other approve-merge gate does not read as one.
  */
 export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): LandGate | undefined {
-  const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt) : null;
+  const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt.split("\n", 1)[0]!) : null;
   if (!match || pinnedHead(gate.schema) !== match[3]) return undefined;
   return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}`, reason: match[6]! };
+}
+
+const MERGE_GUARD = "shepherd-merge-guard/";
+
+/**
+ * The D21 row of a land gate the remote paths refuse, named in their refusal; undefined for any other gate. It reads the
+ * marker land writes for each fact that holds (owner-at-head.ts), whatever the rule. A multi-line gate with no marker was
+ * opened before markers existed, and main kept every such gate off the remote paths; it stays off them. A one-line gate
+ * with no marker is read by its rule, the only fact it carries.
+ */
+export function ownerAtHeadRow(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
+  const land = landGate(gate);
+  if (land === undefined) return undefined;
+  const marked = ownerAtHeadRowsIn(gate.prompt);
+  if (marked !== undefined) return marked[0];
+  if (gate.prompt.includes("\n")) return "pre-marker";
+  const row = land.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : "";
+  return isOwnerAtHeadRow(row) ? row : undefined;
 }
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
@@ -136,9 +156,20 @@ export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
 
 const MAIN_PROMPT = /^Main CI on (\S+) at merge ([0-9a-f]{40}) \(PR #(\d+)\) /;
 
+export interface MainMerge {
+  repo: string;
+  mergeSha: string;
+  pr: number;
+}
+
 /** A main-red or main-frozen gate about one merge, whose brief points at that merge's main CI. */
-export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): { repo: string; mergeSha: string; pr: number } | undefined {
-  const match = Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? MAIN_PROMPT.exec(gate.prompt) : null;
+export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): MainMerge | undefined {
+  return Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? mainMergeOf(gate) : undefined;
+}
+
+/** The merge a post-merge gate asks about, whatever its step, when its prompt and brief both name it. */
+export function mainMergeOf(gate: Pick<GateRecord, "prompt" | "evidenceRef">): MainMerge | undefined {
+  const match = MAIN_PROMPT.exec(gate.prompt);
   if (!match || gate.evidenceRef !== `$ gh run list -R ${match[1]} -c ${match[2]}`) return undefined;
   return { repo: match[1]!, mergeSha: match[2]!, pr: Number(match[3]) };
 }

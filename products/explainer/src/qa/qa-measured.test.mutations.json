@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "qa registers no motion-happened check",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"motion-happened\", gate: true, reads: [\"qa\"], run: measuredVerdict(\"motion-happened\") },\n",
+      "replace": "",
+      "kills": [
+        "qa stage motion-happened fails a beat whose frame at t and t + 0.5 are identical, reporting it by beat when no table holds its elements",
+        "qa stage motion-happened passes when every beat moves before its settled sample"
+      ]
+    },
+    {
+      "name": "qa registers no clipped-text check",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "    { name: \"clipped-text\", gate: true, reads: [\"qa\"], run: measuredVerdict(\"clipped-text\") },\n",
+      "replace": "",
+      "kills": [
+        "qa stage clipped-text fails the X3 b20 headline whose third line its band cuts, anchored on the cells the headline sits on",
+        "qa stage clipped-text passes the same headline when its band holds all three lines"
+      ]
+    },
+    {
+      "name": "content-fill floor drops to a third of the 60 % gate",
+      "file": "products/explainer/src/content-fill.ts",
+      "find": "if (fill >= minFill) return [];",
+      "replace": "if (fill >= minFill / 3) return [];",
+      "kills": [
+        "qa stage content-fill fails on a beat drawn at a third of its scale"
+      ]
+    },
+    {
+      "name": "findings ignore the occupancy table's cells",
+      "file": "products/explainer/src/occupancy-checks.ts",
+      "find": "  if (fromTable.length > 0) return fromTable;\n",
+      "replace": "",
+      "kills": [
+        "qa stage clipped-text fails the X3 b20 headline whose third line its band cuts, anchored on the cells the headline sits on"
+      ]
+    },
+    {
+      "name": "qa occupancy tables ignore the layers' declared anchors",
+      "file": "products/explainer/src/qa/qa-measured.ts",
+      "find": "layouts: layerLayouts(timeline), marks",
+      "replace": "layouts: [], marks",
+      "kills": [
+        "qa stage motion-happened reports a still custom-layer beat by the anchors its layer declares"
+      ]
+    }
+  ]
+}

@@ -31,6 +31,12 @@ part is `.` or `..`. A branch or ref follows git's ref-name rules and has no `?`
 relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value throws
 `GitHubInputError` naming the field, and `gh` never runs.
 
+`getFile` decodes a file as UTF-8 text. `fileBytes` returns its bytes undecoded, for binary
+content such as a PNG snapshot. A file past the contents API's 1 MB inline limit is read through
+`git/blobs/{sha}`, and a decoded length that differs from the size GitHub reported throws. Pass
+`{ maxBytes }` to bound the download: a file whose contents entry reports a larger size, or no
+numeric size, throws `BlobTooLargeError` before the blob is read.
+
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run; a run with no start is ordered by id
@@ -69,9 +75,9 @@ with the same ETag cache, 304 rules and next-page guard. The client, `octokitCli
 - `@octokit/plugin-retry` retries 5xx answers on GET and HEAD only, so a write that may have
   landed is never sent twice.
 - Errors carry the status and a redacted message, with no body and no token.
-- It has the same rate-floor guard as `restCaller`, and its GraphQL deadline only:
+- It has the same rate-floor guard and deadlines as `restCaller`:
   - Every call first acquires `sharedRateBudget`, or the client's `budget`, so below `RATE_FLOOR` remaining, calls spread over the time left.
-  - A GraphQL call fails after `GRAPHQL_TIMEOUT_MS` (30 s). `restCaller` also kills a core REST call's `gh` and fails it after `CORE_TIMEOUT_MS` (60 s); a timed-out read is not retried. The Octokit core lane has no deadline yet.
+  - A REST call fails after `CORE_TIMEOUT_MS` (60 s) and a GraphQL call after `GRAPHQL_TIMEOUT_MS` (30 s); a timed-out call is not retried. The deadline spans the call's retries and throttle waits.
 
 `client.budget()` reports the last `x-ratelimit-*` window per lane (`rest`, `graphql`), and the
 cooldowns the throttle is still waiting out. `createCheckRun` posts as the App on its own
@@ -118,7 +124,11 @@ inline) or an address inside a URL or ssh remote. GitHub's own squash text is re
 in a commit whose subject ends `(#<n>)`, the one place GitHub writes it: there a `---------`
 line followed only by trailers is dropped and a `* <subject>` header standing alone loses its
 star, so an author's lists and rules pass through everywhere else. An empty PR body omits
-`## Summary`, and an empty title leaves the subject as `(#<pr>)`. The same input always gives
+`## Summary`, and an empty title leaves the subject as `(#<pr>)`. CI skip tokens (`[skip ci]`,
+`[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`, any case or inner spacing) become
+`(skip ci)` and so on, and `skip-checks: true` becomes `skip-checks= true`, everywhere, code
+included, because GitHub reads the raw message and would skip main CI; `defangCiSkip(text)`
+is the same rewrite on its own. The same input always gives
 byte-identical output, and formatting its own output again (as title and body) changes
 nothing: only the exact Changes and Refs tail it would write is cut from the PR body, so an
 author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads the same

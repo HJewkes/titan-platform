@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the render gate passes no lead-line set",
+      "file": "products/explainer/src/render/qa-gate.ts",
+      "find": ", { lead: leadLines(timeline) }",
+      "replace": "",
+      "kills": [
+        "render QA gate lead lines holds late-fill on a verdict card unless the timeline hints its lead line"
+      ]
+    },
+    {
+      "name": "the lead-line set takes every beat",
+      "file": "products/explainer/src/render/qa-gate.ts",
+      "find": "beats.filter((beat) => beat.hints?.qaLeadLine)",
+      "replace": "beats.filter(() => true)",
+      "kills": [
+        "render QA gate lead lines holds late-fill on a verdict card unless the timeline hints its lead line"
+      ]
+    }
+  ]
+}

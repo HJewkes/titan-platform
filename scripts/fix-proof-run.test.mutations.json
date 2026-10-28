@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a refused line naming no default branch fails to parse",
+      "file": "packages/fix-proof/src/result-line.ts",
+      "find": "const SHOWN_REF = /^(?:[A-Za-z0-9._/+?-]+|<none>)$/;",
+      "replace": "const SHOWN_REF = /^[A-Za-z0-9._/+?-]+$/;",
+      "kills": ["fix-proof-run.sh judge with a refusal from the merge-base step keeps the line valid when a ref holds a quote or a backslash, or is missing"]
+    },
+    {
+      "name": "the sandbox drops the job's browser path, so base-side browser tests find none",
+      "file": "packages/fix-proof/src/sandbox.ts",
+      "find": "env.PLAYWRIGHT_BROWSERS_PATH = parent.PLAYWRIGHT_BROWSERS_PATH;",
+      "replace": "delete env.PLAYWRIGHT_BROWSERS_PATH;",
+      "kills": [
+        "fix-proof workflow Chromium for browser tests (TP-3656) fix-proof-base keeps the browser where the sandbox, with HOME at the tree, still finds it",
+        "fix-proof workflow Chromium for browser tests (TP-3656) fix-proof-mutants keeps the browser where the sandbox, with HOME at the tree, still finds it"
+      ]
+    }
+  ]
+}

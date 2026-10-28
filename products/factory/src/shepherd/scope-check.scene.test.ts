@@ -130,7 +130,7 @@ async function fixRoundRun(modes: Modes, script: Script) {
   const stepIds = () => results().map((result) => result.stepId);
   await vi.waitFor(() => expect(fake.pr(1).merged || stepIds().includes(`sh-review-panel:${H2}`) || resumes.length > 1).toBe(true), { timeout: 10_000 });
   const resultOf = (stepId: string): unknown => results().find((result) => result.stepId === stepId)?.data?.result;
-  return { resultOf, stepIds: stepIds(), resumes, merged: fake.pr(1).merged };
+  return { resultOf, stepIds: stepIds(), resumes, merged: () => fake.pr(1).merged };
 }
 
 const ON = { scopedRereview: "on", scopeCheck: "on" } as const;
@@ -145,7 +145,7 @@ describe("the scope check on a scoped fix round's FIX_FIRST", () => {
     expect(w.resumes).toHaveLength(1);
     expect(w.resumes[0]).toContain(REFUSAL_SENTENCES.scope_untagged);
     expect(w.resultOf(`sh-scope-check:${H2}`)).toMatchObject({ kind: "checked", mode: "on", untagged: 1, repeated: 0 });
-    expect(w.merged).toBe(true);
+    await vi.waitFor(() => expect(w.merged()).toBe(true), { timeout: 10_000 });
   });
 
   it("on: the same item tagged Important: with its Class: gets no correction", async () => {

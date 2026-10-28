@@ -1,27 +1,42 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, workflowOwnershipMigration, type WorkflowEvent, type WorkflowRun } from "@titan-design/workflow";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
-import type { BeatWorker } from "../build/beat-worker.js";
+import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
+import { beatWorkerFor } from "../build/claude-print-worker.js";
 import type { L0Check } from "../eval-l0.js";
-import { loadProfiles, profileFor } from "../profile-load.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
 import { artifactMigration, ArtifactStore } from "./artifacts.js";
-import { runBridgeFile, spawnExec, type BridgeExec, type BridgeFile } from "./bridge.js";
+import { linkEditRun } from "./edit-ledger.js";
+import { editOf, editPins } from "./edit-run.js";
+import { runBridgeFile, type BridgeFile } from "./bridge.js";
 import type { HarnessFor, RunnerFor } from "./model-stages.js";
-import { RunPlanSchema, stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
-import { CACHED_STAGES, OPTIONAL_STAGES, RUN_INPUTS, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
+import { checkPins, findBase, inputArtifacts, neededInputs, reusedFromBase, startsFresh } from "./host-plan.js";
+import { stageRoute, VIDEO_WORKFLOW, VIDEO_WORKFLOW_VERSION, videoWorkflow, type RunPlan, type StageDeps } from "./pipeline.js";
+import { CACHED_STAGES, type CachedStage, STAGES, StageRecordSchema, StopSchema, type StageName, type StageRecord } from "./records.js";
 import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type RunReport } from "./report.js";
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
+import type { MediaExec } from "./sheets-stage.js";
+import type { QaEngine } from "../qa/qa-engine.js";
+import type { RenderEngine } from "../render/render-stage.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 import { STAGE_VERSIONS, stageSpec, storeVariants, VariantSchema } from "./stage-spec.js";
+import { planOf, runsOfVideo, runVideoRef, videoIdOf, videoRef } from "./video-runs.js";
 import { childRoutes, childStepIds, stageWorkflow } from "./stage-workflows.js";
 import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
+
+// Repairs only when the host passes a repairer: the installed beat-builder profile predates TP-2608's TSX variant.
+function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
+  const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : {};
+  const worker = beatWorkerFor(host.beatWorker);
+  return { ...(worker ? { worker } : {}), ...repairer };
+}
 
 export interface RunHost {
   /** Run state, the artifact store, run directories and the bridge host file `bridge.json`. */
@@ -35,16 +50,24 @@ export interface RunHost {
   evalChecks?: readonly L0Check[];
   /** Runs the reported `listener-questions` check on the script stage, on the run's judge; off by default since it spends. */
   listener?: { threshold?: number };
-  /** Runs a bridged command; tests pass a fake. */
-  exec?: BridgeExec;
+  /** The render stage's page build and capture; the composition page and Chromium by default, tests pass a fake. */
+  renderEngine?: RenderEngine;
   /** The tts stage's engine; speech-tts Kokoro by default, tests pass a fake. */
   ttsEngine?: () => Promise<TtsEngine>;
   /** The style packs a render variant may pick; the shipped `doctrine/style-packs` by default. */
   stylePacks?: () => ReadonlyMap<string, StylePack>;
   /** The gather stage's outside world; tests pass a fake gh, task list, call graph and clone. */
   gather?: GatherDeps;
-  /** Builds the resolve stage's custom layers; absent, custom beats are left unbuilt with a note. */
-  beatWorker?: BeatWorker;
+  /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
+  media?: MediaExec;
+  /** The qa stage's browser and ffprobe; real Chromium by default, tests pass a fake. */
+  qaEngine?: QaEngine;
+  /** The qa stage's timing thresholds in place of the type profile's; tests of the run's plumbing pass lax ones. */
+  qaTiming?: TimingProfile;
+  /** Builds the resolve stage's custom layers: claude-print when absent and a `claude` binary exists; `null` for none. */
+  beatWorker?: BeatWorker | null;
+  /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
+  layerRepairer?: LayerRepairer;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;
@@ -78,6 +101,8 @@ export interface RunRequest {
   gather?: GatherRequest;
   /** The folder export links into, in place of the bridge's `theater.dir`. */
   theater?: string;
+  /** An edit id from `explainer edit apply`: the run needs its base, pins the base's custom layers and links into the ledger. */
+  edit?: string;
 }
 
 export interface RunOutcome {
@@ -101,63 +126,13 @@ export function openState(dataDir: string): Db {
   return db;
 }
 
-const planOf = (run: WorkflowRun): RunPlan => RunPlanSchema.parse(JSON.parse(run.params.plan ?? "{}"));
-
-function latestRun(store: WorkflowRunStore): WorkflowRun | undefined {
-  const runs = store.listByStatus(["completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
-  return runs.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-}
-
 /** Every record the run holds, a failed stage's included, so a resume can start where it broke off. */
 function allRecords(dataDir: string, run: WorkflowRun): StageRecord[] {
   const failed = STAGES.map((stage) => readJson(runPaths(dataDir, run.id).failed(stage), StageRecordSchema)).filter((r) => r !== undefined);
   return [...stageRecords(run), ...failed];
 }
 
-function inputArtifacts(request: RunRequest, store: ArtifactStore): Record<string, string> {
-  const files: Record<(typeof RUN_INPUTS)[number], string | undefined> = { spine: request.spine, facts: request.facts };
-  const given = Object.entries(files).filter((entry): entry is [string, string] => entry[1] !== undefined);
-  return Object.fromEntries(given.map(([name, file]) => [name, store.putText(readFileSync(file, "utf8"), name, { runId: "input", stage: "input" })]));
-}
-
-function reusedFromBase(base: WorkflowRun, from: StageName): { reused: StageRecord[]; artifacts: Record<string, string> } {
-  const records = stageRecords(base);
-  const before = STAGES.slice(0, STAGES.indexOf(from));
-  const reused = before.map((stage) => {
-    const found = records.find((record) => record.stage === stage);
-    if (!found && OPTIONAL_STAGES.includes(stage)) return undefined;
-    if (!found) throw new Error(`base run ${base.id} has no completed ${stage} stage; start from ${stage} or earlier`);
-    return found;
-  }).filter((record) => record !== undefined);
-  // A record the base itself reused already has its outputs in the base plan, under any pin; folding it again would undo the pin.
-  const ran = reused.filter((record) => !record.reusedFrom);
-  const artifacts = ran.reduce<Record<string, string>>((acc, record) => ({ ...acc, ...record.outputs }), { ...planOf(base).artifacts });
-  return { reused, artifacts };
-}
-
-function checkPins(pins: Record<string, string>, store: ArtifactStore): Record<string, string> {
-  for (const sha of Object.values(pins)) store.path(sha);
-  return pins;
-}
-
-/** A run from `audition` or `script` starts from its input files; a later start needs a base run or pins. */
-const startsFresh = (from: StageName): boolean => STAGES.indexOf(from) <= STAGES.indexOf("script");
-
-/** True when the profile's audition writes the spine, so a run through the audition needs none given. */
-const auditionWritesSpine = (profile: string | undefined): boolean =>
-  profile !== undefined && profileFor(loadProfiles(), profile).spine?.from === "audition-pick";
-
-/** The input files a run reads: facts for the audition, spine and facts once it reaches the script. */
-function neededInputs(from: StageName, to: StageName, profile: string | undefined): string[] {
-  const reachesScript = startsFresh(from) && STAGES.indexOf(to) >= STAGES.indexOf("script");
-  const needed = new Set([...(from === "audition" ? ["facts"] : []), ...(reachesScript ? RUN_INPUTS : [])]);
-  // A run from gather makes its own facts.
-  if (from === "gather") needed.delete("facts");
-  if (STAGES.indexOf(from) <= STAGES.indexOf("audition") && auditionWritesSpine(profile)) needed.delete("spine");
-  return [...needed];
-}
-
-function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
+function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: string): RunPlan {
   const from = request.from ?? "script";
   const to = request.to ?? "export";
   if (STAGES.indexOf(to) < STAGES.indexOf(from)) throw new Error(`--to ${to} comes before --from ${from}`);
@@ -174,36 +149,19 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore): RunPlan {
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
   const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
   const fromBase = base ? reusedFromBase(base, from) : { reused: [], artifacts: {} };
-  const artifacts = { ...fromBase.artifacts, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };
+  const fromEdit = request.edit ? editPins(dataDir, request.edit, base) : {};
+  const artifacts = { ...fromBase.artifacts, ...fromEdit, ...inputArtifacts(request, store), ...checkPins(request.pins ?? {}, store) };
   const missing = neededInputs(from, to, profile).filter((name) => artifacts[name] === undefined);
   if (missing.length > 0) throw new Error(`this run needs ${missing.map((m) => `--${m}`).join(" and ")}`);
   const videoId = request.video ?? (base ? videoIdOf(runs, base) : undefined);
-  return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings };
+  return { from, to, ...(base ? { baseRunId: base.id } : {}), ...(videoId ? { videoId } : {}), artifacts, reused: fromBase.reused, ...settings, ...(request.edit ? { edit: request.edit } : {}) };
 }
-
-/** A run's video: its plan's, else its base run's, else (the first run of a video) its own id. */
-function videoIdOf(runs: WorkflowRunStore, run: WorkflowRun, seen = new Set<string>()): string {
-  const plan = planOf(run);
-  if (plan.videoId) return plan.videoId;
-  const base = plan.baseRunId && !seen.has(plan.baseRunId) ? runs.get(plan.baseRunId) : undefined;
-  return base ? videoIdOf(runs, base, seen.add(run.id)) : run.id;
-}
-
-function findBase(runs: WorkflowRunStore, id: string | undefined, from: StageName): WorkflowRun {
-  const base = id ? runs.get(id) : latestRun(runs);
-  if (base?.workflowName === VIDEO_WORKFLOW) return base;
-  throw new Error(id ? `no ${VIDEO_WORKFLOW} run ${id}` : `no earlier ${VIDEO_WORKFLOW} run to start --from ${from} on; pass --base`);
-}
-
-const videoRuns = (runs: WorkflowRunStore): WorkflowRun[] =>
-  runs.listByStatus(["running", "paused", "recovery_required", "completed", "failed", "cancelled"]).filter((run) => run.workflowName === VIDEO_WORKFLOW);
 
 /** Every other run of the same video, oldest first: the video's cost is the sum over them (owner answer Q2 B). */
 function linkedRuns(dataDir: string, runs: WorkflowRunStore, run: WorkflowRun): { videoId: string; linked: LinkedRun[] } {
   const videoId = videoIdOf(runs, run);
-  const linked = videoRuns(runs)
-    .filter((other) => other.id !== run.id && videoIdOf(runs, other) === videoId)
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+  const linked = runsOfVideo(runs, videoId)
+    .filter((other) => other.id !== run.id)
     .map((other) => ({ runId: other.id, usd: ownUsd(allRecords(dataDir, other)) }));
   return { videoId, linked };
 }
@@ -221,7 +179,8 @@ export function writeReport(runId: string, host: Pick<RunHost, "dataDir">): { re
     const failed = failedStage ? readJson(paths.failed(failedStage), StageRecordSchema) : undefined;
     const stop = readJson(paths.stop, StopSchema);
     const { videoId, linked } = linkedRuns(host.dataDir, runs, run);
-    const report = buildReport({ run, from: plan.from, to: plan.to, budgetUsd: plan.budgetUsd, records: stageRecords(run), ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), videoId, linked });
+    const extra = { ...(failed ? { failed } : {}), ...(stop ? { stop } : {}), ...(plan.edit ? { edit: editOf(host.dataDir, plan.edit) } : {}) };
+    const report = buildReport({ run, from: plan.from, to: plan.to, budgetUsd: plan.budgetUsd, records: stageRecords(run), videoId, linked, ...extra });
     writeJson(paths.reportJson, report);
     writeText(paths.reportMd, renderReport(report));
     return { report, reportPath: paths.reportMd };
@@ -241,8 +200,13 @@ export interface Runtime {
   runtime: WorkflowRuntime;
   store: ArtifactStore;
   cache: CacheDeps;
-  bridge: () => BridgeFile;
+  /** `builder`: the beat worker's, which keys the resolve stage; absent, custom beats are left unbuilt with a note. */
+  bridge: () => BridgeFile; builder?: BeatWorker["builder"];
 }
+
+const stageExtras = (host: RunHost): Pick<StageDeps, "stylePacks" | "reflection"> => ({
+  ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
+});
 
 /** A runtime with one `explainer.<stage>` workflow per cached stage, and the parent `explainer-video` when a plan is given. */
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
@@ -252,16 +216,17 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
+  const runners = layerRunners(host);
   const children = childRoutes({
-    dataDir: host.dataDir, store, bridge, exec: host.exec ?? spawnExec, now, ...listenerJudge(host, plan), ...(host.beatWorker ? { worker: host.beatWorker } : {}),
+    dataDir: host.dataDir, store, now, ...listenerJudge(host, plan), ...runners,
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
+    ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.qaTiming ? { qaTiming: host.qaTiming } : {}),
+    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
   });
-  const builder = host.beatWorker ? { builder: host.beatWorker.builder } : {};
-  const stage = {
-    dataDir: host.dataDir, store, bridge, cache, now, ...builder,
-    ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}), ...(host.reflection ? { reflection: host.reflection } : {}),
-  };
+  const builder = runners.worker ? { builder: runners.worker.builder } : {};
+  const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);
+  const stage = { dataDir: host.dataDir, store, bridge, cache, now, video, ...builder, ...stageExtras(host) };
   const routes = plan ? [...children, stageRoute({ ...stage, plan })] : children;
   const runner = routedRunner(routes);
   for (const stage of CACHED_STAGES) runner.assertRoutes(childWorkflow(stage), childStepIds(stage));
@@ -271,7 +236,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   late.runtime = runtime;
   for (const stage of CACHED_STAGES) runtime.register(childWorkflow(stage), stageWorkflow(), { version: STAGE_VERSIONS[stage] });
   if (plan) runtime.register(VIDEO_WORKFLOW, videoWorkflow(plan, host.dataDir), { version: VIDEO_WORKFLOW_VERSION });
-  return { runtime, store, cache, bridge };
+  return { runtime, store, cache, bridge, ...builder };
 }
 
 async function settle(runtime: WorkflowRuntime, runId: string, host: RunHost): Promise<WorkflowRun> {
@@ -293,9 +258,10 @@ function outcome(run: WorkflowRun, host: RunHost): RunOutcome {
 export async function runVideo(request: RunRequest, host: RunHost): Promise<RunOutcome> {
   const db = openState(host.dataDir);
   try {
-    const plan = buildPlan(request, db, new ArtifactStore(host.dataDir, db));
+    const plan = buildPlan(request, db, new ArtifactStore(host.dataDir, db), host.dataDir);
     const { runtime } = newRuntime(db, host, plan);
     const runId = runtime.start(VIDEO_WORKFLOW, { plan: JSON.stringify(plan) });
+    if (plan.edit) linkEditRun(host.dataDir, plan.edit, runId);
     const run = await settle(runtime, runId, host);
     return outcome(run, host);
   } finally {
@@ -351,6 +317,8 @@ export interface StageRequest {
   judge?: JudgeConfig;
   rounds?: number;
   profile?: string;
+  /** The video whose runs the sheets stage's sidecar lists; absent, the child run alone. */
+  video?: string;
 }
 
 /** `explainer stage`: one stage as its own child run, through the stage cache, with no parent run. */
@@ -363,11 +331,12 @@ export async function runOneStage(request: StageRequest, host: RunHost): Promise
     const settings = {
       scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL, judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
       ...(request.profile ? { profile: request.profile } : {}),
+      ...(request.video ? { video: () => videoRef(new WorkflowRunStore(db), request.video!) } : {}),
     };
     const spec = stageSpec({
       stage: request.stage, artifacts: checkPins(request.inputs, rt.store), settings, sample: request.sample ?? 0,
       remainingUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, bridge: rt.bridge, ...(host.stylePacks ? { stylePacks: host.stylePacks } : {}),
-      ...(host.beatWorker ? { builder: host.beatWorker.builder } : {}),
+      ...(rt.builder ? { builder: rt.builder } : {}),
       ...(variantSha ? { variant: { sha: variantSha, value: VariantSchema.parse(JSON.parse(rt.store.readText(variantSha))) } } : {}),
     });
     return await runStageCached(rt.cache, spec);

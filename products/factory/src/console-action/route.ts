@@ -3,8 +3,9 @@ import type { GitHubPort } from "@titan-design/github";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import { ownerOpsLedger } from "../owner-ops/ledger.js";
+import { doneResults, ownerOpsLedger } from "../owner-ops/ledger.js";
 import type { PauseClearPorts } from "../owner-ops/pause-clear.js";
+import type { AgentChatRetirePort } from "../owner-ops/retire-agent.js";
 import { standingAnswers, type StandingAnswers } from "../owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "../resolve-proof.js";
 import type { FreezeStoreRef } from "../shepherd/freeze.js";
@@ -37,6 +38,8 @@ interface ConsoleActionDeps {
   actionsDir: string;
   /** Serve's state directory, which holds the owner-ops ledger. */
   stateDir: string;
+  /** The agent-chat CLI a retire-agent op runs through; absent, such an op answers 503. */
+  agentChat?: AgentChatRetirePort;
   /** The deployer's state directory and its lock and pause-file ports, which a deploy-pause-clear reads and writes. */
   deploy: { stateDir: string; ports: PauseClearPorts };
   now: () => number;
@@ -79,12 +82,12 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps,
 type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
 
 async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
-  const { host, port, store, freeze, deploy, now } = deps;
+  const { host, port, store, freeze, deploy, now, agentChat, stateDir } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
-  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now });
+  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, done: (id) => doneResults(stateDir, id) });
   const { action, confirmEvent } = read;
-  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get()) : resolveGate({ action, confirmEvent }, port, host);
+  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host);
 }
 
 function failure(status: Status, message: string): Answer {

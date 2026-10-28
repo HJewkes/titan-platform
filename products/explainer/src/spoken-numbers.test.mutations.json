@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-V12 reports digits as a warning again",
+      "file": "products/explainer/src/spoken-numbers.ts",
+      "find": "pass: beats.length === 0, beats })]",
+      "replace": "pass: beats.length === 0, beats, severity: \"warning\" })]",
+      "kills": ["Q-V12 spoken digits lists a beat that holds a digit"]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
+import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -20,7 +21,8 @@ const Y = 2310;
 const Z = 2311;
 const CAPABILITY = "products/explainer/CAPABILITY.md";
 const FILES: Readonly<Record<number, string[]>> = { [X]: [CAPABILITY, "products/explainer/README.md"], [Y]: [CAPABILITY, "products/explainer/README.md"], [Z]: [CAPABILITY] };
-const ORDER = (enabled: boolean): MergeOrderRules => () => ({ enabled, ttlMinutes: 10_000, ignore: [".changeset/**"] });
+/** Out of reach of the fake clock, which every run's polls advance, so no wait here ends on the TTL. */
+const ORDER = (enabled: boolean, ttlMinutes = 1e9): MergeOrderRules => () => ({ enabled, ttlMinutes, ignore: [".changeset/**"] });
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const locator = partialFake<SourceTextLocator>({});
@@ -50,6 +52,10 @@ interface Loop {
   duringWake: () => Promise<void>;
   /** Runs before Z's review; the scenario holds Z there until X's conflict is under way. */
   beforeZReview: () => Promise<void>;
+  /** Moves the clock every run reads, as a long fix round would. */
+  advance: (ms: number) => void;
+  /** Every seat message, as `seat: text`. */
+  told: string[];
 }
 
 const merges: ShepherdPhases["review"] = (ctx, request) =>
@@ -99,7 +105,7 @@ function fixerWake(loop: () => Loop, absorbed: Set<number>): ShepherdPhases["wak
   };
 }
 
-function loopWorld(enabled: boolean): Loop {
+function loopWorld(enabled: boolean, ttlMinutes?: number): Loop {
   const absorbed = new Set<number>();
   const late: { loop?: Loop } = {};
   const merged: number[] = [];
@@ -113,12 +119,15 @@ function loopWorld(enabled: boolean): Loop {
   };
   const store = shepherdStoreRef();
   const port = landingPort(fake);
-  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: tick, holdPollMs: 1, registry: async () => "trusted" as const, mergeOrderRules: ORDER(enabled), park: async () => ({ lines: [] }) });
+  const told: string[] = [];
+  const exitNotice = { seatFor: () => "demo-seat", lastReport: async () => undefined, send: async (seat: string, text: string) => void told.push(`${seat}: ${text}`) };
+  const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: tick, holdPollMs: 1, registry: async () => "trusted" as const, mergeOrderRules: ORDER(enabled, ttlMinutes), park: async () => ({ lines: [] }), exitNotice });
   const review: ShepherdPhases["review"] = async (ctx, request) => (request.pr === Z && (await late.loop!.beforeZReview()), merges(ctx, request));
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake: fixerWake(() => late.loop!, absorbed) })], routes, gatePollMs: 5 });
   hosts.push(host);
   const noop = async () => undefined;
-  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop });
+  const advance = (ms: number) => void (clock += ms);
+  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop, advance, told });
 }
 
 function shepherd(loop: Loop, pr: number): string {
@@ -132,6 +141,8 @@ const currentStep = (loop: Loop, pr: number): string | null | undefined => loop.
 const results = (loop: Loop, pr: number, family: string): unknown[] =>
   Object.entries(loop.host.runtime.status(loop.runs.get(pr)!)!.stepResults).filter(([id]) => id.startsWith(family)).map(([, step]) => (step.data as { result?: unknown } | undefined)?.result);
 
+const orderEvents = (loop: Loop, runId: string): string[] => loop.store.eventsOf(runId).map((event) => event.kind).filter((kind) => kind.startsWith("order-"));
+
 async function finish(loop: Loop, ...prs: number[]): Promise<void> {
   await Promise.all(prs.map((pr) => loop.host.runtime.wait(loop.runs.get(pr)!)));
 }
@@ -143,11 +154,19 @@ function heldInMerge(loop: Loop, pr: number): string {
   return runId;
 }
 
-/** R stands in for a conflicted run that reserved while `ahead` was merging, so it waits on `ahead` and holds the rest. */
-function reserveAhead(loop: Loop, r: string, ahead: string): void {
-  const since = "2026-10-23T10:00:00.000Z";
+/**
+ * R stands in for an unheld conflicted run that reserved Y's paths while `ahead` was merging, so it waits on `ahead` and
+ * holds the rest. It is a bare running run that never merges Y; a held one would order nothing (TP-4133).
+ */
+function reserveAhead(loop: Loop, ahead: string): string {
+  const since = "2026-10-23T09:59:00.000Z";
+  const r = "run-r-stand-in";
+  new WorkflowRunStore(loop.host.db).create({ id: r, workflowName: "stand-in", params: { repo: REPO }, status: "running", currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: since, completedAt: null, error: null });
   loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths: [CAPABILITY], ahead: [ahead], since, reason: "R waits on X" });
+  return r;
 }
+
+const endReservation = (loop: Loop, r: string): void => void loop.order.release(REPO, r, { at: "2026-10-23T10:00:00.000Z" });
 
 /** X conflicts at its current head with nothing merged, until its fixer pushes. */
 function dirtyUntilPushed(loop: Loop): void {
@@ -243,45 +262,78 @@ describe("TP-4098 slice C: the #2301 loop", () => {
 
   it("never counts a run held behind a live reservation as merging ahead, so three runs never wait in a ring", async () => {
     const loop = loopWorld(true);
-    const r = heldInMerge(loop, Y);
     const x = heldInMerge(loop, X);
-    await vi.waitFor(() => expect([currentStep(loop, Y), currentStep(loop, X)]).toEqual([expect.stringMatching(/^merge:/), expect.stringMatching(/^merge:/)]), WAIT);
-    reserveAhead(loop, r, x);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^merge:/), WAIT);
+    const r = reserveAhead(loop, x);
     shepherd(loop, Z);
     await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
 
     dirtyUntilPushed(loop);
     loop.store.release(x);
     await finish(loop, X);
-    loop.store.release(r);
-    await finish(loop, Y, Z);
+    endReservation(loop, r);
+    await finish(loop, Z);
 
     expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
-    expect(loop.merged).toEqual([X, Y, Z]);
+    expect(loop.merged).toEqual([X, Z]);
   });
 
   it("stops waiting on a run it let merge first once that run is held behind a live reservation", async () => {
     const loop = loopWorld(true);
-    loop.fake.prFiles.set(Y, [{ path: "products/other/README.md", status: "modified" }]);
-    const r = heldInMerge(loop, Y);
     const z = heldInMerge(loop, Z);
-    await vi.waitFor(() => expect([currentStep(loop, Y), currentStep(loop, Z)]).toEqual([expect.stringMatching(/^merge:/), expect.stringMatching(/^merge:/)]), WAIT);
+    await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
     dirtyUntilPushed(loop);
     const x = shepherd(loop, X);
     await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
 
-    reserveAhead(loop, r, x);
+    const r = reserveAhead(loop, x);
     await finish(loop, X);
-    loop.store.release(r);
+    endReservation(loop, r);
     loop.store.release(z);
-    await finish(loop, Y, Z);
+    await finish(loop, Z);
 
     expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
-    expect(loop.merged).toEqual([X, Y, Z]);
+    expect(loop.merged).toEqual([X, Z]);
+  });
+
+  it("never waits behind an earlier overlapping reservation whose run a person holds (TP-4133)", async () => {
+    const loop = loopWorld(true);
+    const r = reserveAhead(loop, "run-none");
+    loop.store.register({ repo: REPO, pr: Y, runId: r, task: `demo/${Y}`, implementer: `impl-${Y}`, policy: AUTO_POLICY });
+    loop.store.hold(r, "g10-adversary: policy touch");
+    dirtyUntilPushed(loop);
+
+    shepherd(loop, X);
+    await finish(loop, X);
+
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [], moved: false }]);
+    expect(loop.merged).toEqual([X]);
+  });
+
+  it("stops waiting on a run it let merge first once that run leaves its merge step unmerged", async () => {
+    const loop = loopWorld(true);
+    const zAtWake: (string | undefined)[] = [];
+    await afterY(loop);
+    const z = heldInMerge(loop, Z);
+    loop.duringWake = async () => void zAtWake.push(loop.host.runtime.status(z)?.status);
+    await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
+    shepherd(loop, X);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
+
+    const red = fakeSha("loop-z-red");
+    loop.fake.onGetPr = ((greenRuns) => (pr, reads) => (greenRuns(pr, reads), pr.headSha === red && loop.fake.setRuns(red, [successRun("validate", 3, undefined, "failure")])))(loop.fake.onGetPr!);
+    loop.fake.pushHead(Z, red);
+    await finish(loop, X);
+    loop.host.runtime.cancel(z, "ended in this test");
+
+    expect(zAtWake).toEqual(["running"]);
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
+    expect(loop.merged).toEqual([Y, X]);
   });
 
   it("releases the reservation when its run lands", async () => {
@@ -296,5 +348,20 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     expect(during).toEqual([[x]]);
     expect(loop.merged).toEqual([Y, X]);
     expect(loop.order.list(REPO)).toEqual([]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release"]);
+  });
+
+  it("logs the expiry once and tells the seat once when the reservation outlives its TTL", async () => {
+    const loop = loopWorld(true, 60);
+    loop.duringWake = async () => loop.advance(2 * 60 * 60_000);
+    await afterY(loop);
+
+    const x = shepherd(loop, X);
+    await finish(loop, X);
+
+    expect(loop.merged).toEqual([Y, X]);
+    expect(results(loop, X, "sh-order-expire")).toEqual([{ expired: true, ttlMinutes: 60 }]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-expired"]);
+    expect(loop.told).toEqual([expect.stringMatching(/^demo-seat: Shepherd: hjewkes\/titan-platform#2301 .*merge order: its reservation passed the 60 min TTL/)]);
   });
 });

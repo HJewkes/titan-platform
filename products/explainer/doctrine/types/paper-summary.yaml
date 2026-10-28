@@ -3,7 +3,7 @@
 # owner ask per video (owner Q4 B). Simulations are TypeScript only (owner Q3 A).
 schema: type-profile/v1
 type: paper-summary
-version: 0.3.0
+version: 0.3.1
 family: review-paper
 intent: "One finding: a concrete example, the key idea, how it was shown, how far to trust it, and what it changes for us."
 audience: { default: owner-internal, allow: [owner-internal, public-youtube] }

@@ -3,14 +3,17 @@ import { canonicalSha } from "./eval-store.js";
 import { EvidenceSchema, evalVersion, readRubric, voidReason } from "./eval-evidence.js";
 import { judgeLabel, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { sumSpend, type CanaryResult } from "./eval-judge.js";
-import { agreedTerms, bareKey, bareListItems, listedLabels, spokenTerms } from "./eval-cold-terms.js";
+import { agreedTerms, bareKey, bareListItems } from "./eval-cold-terms.js";
+import {
+  assertionText, coldQuestions, invariantText, isTerm, ODD_ONE_OUT_MIN_ITEMS, oddOneOutText, termText, whatWhyText, type ColdQuestion, type ScoredKind,
+} from "./eval-cold-questions.js";
 import type { PaceBeat } from "./pace-items.js";
+
+export { COLD_QUESTION_TEXT, coldQuestions, ODD_ONE_OUT_MIN_ITEMS, type ColdQuestion } from "./eval-cold-questions.js";
 
 export const COLD_EVAL_ID = "L1-cold";
 /** The viewer's whole memory of earlier chapters; anything longer would let the transcript leak forward. */
 export const MAX_SUMMARY_LINES = 3;
-/** A list this long is where a different kind of thing can hide among its neighbours. */
-export const ODD_ONE_OUT_MIN_ITEMS = 3;
 /** Viewer runs that name the spoken terms they cannot define; as with odd-one-out picks, two of three must agree. */
 export const TERM_RUNS = 3;
 export const TERM_QUORUM = 2;
@@ -18,46 +21,6 @@ export const COLD_TERMS_EVAL_ID = "L1-cold-terms";
 export const COLD_TERMS_RUBRIC = "l1-cold-terms.md";
 /** The rubric for spoken-term questions, asked in a call of their own so their stricter bar cannot reach item labels. */
 export const COLD_SPOKEN_RUBRIC = "l1-cold-spoken.md";
-
-type ScoredKind = "what-why" | "invariant" | "spoken-term" | "viewer-term";
-const isTerm = (q: { kind: string }): boolean => q.kind === "spoken-term" || q.kind === "viewer-term";
-
-export type ColdQuestion =
-  | { kind: ScoredKind; beat: string; item: string; text: string }
-  | { kind: "odd-one-out"; beat: string; items: string[]; text: string };
-
-const whatWhyText = (item: string): string => `What is "${item}", and why is it there?`;
-// A spoken term is asked what it means, under its own rubric, held to the readers' bar: a sentence that only uses it
-// leaves it undefined. Item labels keep the looser bar; asked beside the stricter one, v4's ch9 went from 0 to 22 a minute.
-const termText = (term: string): string => `What does "${term}" mean here, and why is it there?`;
-const invariantText = (item: string): string => `"${item}" must always hold. What keeps it, or how does it break today?`;
-/** What the viewer was asked for each scored kind; an inv item is asked both what-why and invariant. */
-export const COLD_QUESTION_TEXT: Readonly<Record<ScoredKind, (item: string) => string>> = {
-  "what-why": whatWhyText,
-  invariant: invariantText,
-  "spoken-term": termText,
-  "viewer-term": termText,
-};
-const oddOneOutText = (items: readonly string[]): string =>
-  `Of ${items.map((i) => `"${i}"`).join(", ")}: which item is a different kind of thing, if any?`;
-
-/**
- * Every question comes from the item track, or from a term spoken before any label shows it (see `spokenTerms`), so a
- * script cannot pass on questions written to suit it. `glossary` is the script's own declared term list.
- */
-export function coldQuestions(beats: readonly PaceBeat[], glossary: readonly string[] = [], viewerTerms: readonly string[] = []): ColdQuestion[] {
-  const terms = spokenTerms(beats, glossary, viewerTerms);
-  return beats.flatMap((beat): ColdQuestion[] => {
-    const listed = listedLabels(beat);
-    const heard = terms.filter((t) => t.beat === beat.id);
-    return [
-      ...beat.newItems.map((i) => ({ kind: "what-why" as const, beat: beat.id, item: i.label, text: whatWhyText(i.label) })),
-      ...beat.newItems.filter((i) => i.kind === "inv").map((i) => ({ kind: "invariant" as const, beat: beat.id, item: i.label, text: invariantText(i.label) })),
-      ...heard.map((t) => ({ kind: t.viewer ? ("viewer-term" as const) : ("spoken-term" as const), beat: beat.id, item: t.term, text: termText(t.term) })),
-      ...(listed.length >= ODD_ONE_OUT_MIN_ITEMS ? [{ kind: "odd-one-out" as const, beat: beat.id, items: listed, text: oddOneOutText(listed) }] : []),
-    ];
-  });
-}
 
 export interface ColdChapterBeats {
   chapter: string;
@@ -163,6 +126,8 @@ export interface ColdInput {
   glossary?: readonly string[];
   /** The viewers' agreed undefined terms (`coldTerms`), asked like the glossary but counted in their own column. */
   viewerTerms?: readonly string[];
+  /** Each beat's on-screen assertion by beat id (script/v1 `visual.assertion`); each is asked whether the words carry it. */
+  assertions?: Readonly<Record<string, string>>;
 }
 
 export interface ColdScore extends ColdGrade {
@@ -211,7 +176,7 @@ const BARE: ColdGrade = { score: 0, void_reason: "named only in a list" };
 
 export const coldEvalVersion = (input: Pick<ColdInput, "rubric" | "judge">): string =>
   evalVersion(COLD_EVAL_ID, input.rubric, input.judge, {
-    questions: [whatWhyText("<item>"), termText("<term>"), invariantText("<item>"), oddOneOutText(["<a>", "<b>", "<c>"])],
+    questions: [whatWhyText("<item>"), termText("<term>"), invariantText("<item>"), oddOneOutText(["<a>", "<b>", "<c>"]), assertionText("<assertion>")],
     canary: "relay-<nonce>",
     max_summary_lines: MAX_SUMMARY_LINES,
     odd_one_out_min_items: ODD_ONE_OUT_MIN_ITEMS,
@@ -271,7 +236,7 @@ function gradeChapter(chapter: ColdChapterBeats, calls: readonly ChapterCall[], 
   const graded = calls.map((call) => gradeCall(chapter, call));
   const scores = graded.flatMap((g) => g.scores);
   const minutes = chapter.beats.reduce((sum, b) => sum + b.durationS, 0) / 60;
-  const undefinedItems = scores.filter((s) => s.kind !== "invariant" && s.kind !== "viewer-term" && s.score === 0).length;
+  const undefinedItems = scores.filter((s) => s.kind !== "invariant" && s.kind !== "viewer-term" && s.kind !== "assertion" && s.score === 0).length;
   const undefinedTerms = scores.filter((s) => s.kind === "viewer-term" && s.score === 0).length;
   const perMinute = (n: number): number => (minutes > 0 ? n / minutes : 0);
   return {
@@ -320,7 +285,7 @@ export async function runCold(input: ColdInput): Promise<ColdResult> {
   const chapters: ColdChapter[] = [];
   const replies: ColdReply[] = [];
   const spokenRubric = readRubric(COLD_SPOKEN_RUBRIC);
-  const questions = coldQuestions(input.beats, input.glossary, input.viewerTerms);
+  const questions = coldQuestions(input.beats, input.glossary, input.viewerTerms, input.assertions);
   let summary = "";
   for (const chapter of chaptersOf(input.beats)) {
     const calls = await askChapter({ input, chapter, summary, questions }, spokenRubric);

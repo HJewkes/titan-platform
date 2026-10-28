@@ -40,7 +40,7 @@ describe("factory registry", () => {
   it("surfaces the factory, shepherd, needs and autoresearch commands as MCP tools, with no prefix doubling and no resolve tool", () => {
     const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
-    const shepherd = ["freeze", "ghBudget", "ghRead", "hold", "list", "merge", "prs", "register", "release", "repair-stop", "resync", "review", "status", "thaw", "timeline", "waiting"].map((verb) => `shepherd__${verb}`);
+    const shepherd = ["fix-pr", "freeze", "ghBudget", "ghRead", "hold", "list", "merge", "merge-base", "order", "prs", "register", "release", "repair-stop", "resync", "review", "status", "thaw", "timeline", "visual-delta", "waiting", "watch"].map((verb) => `shepherd__${verb}`);
     const autoresearch = ["autoresearch__add-idea", "autoresearch__diff", "autoresearch__milestone", "autoresearch__run", "autoresearch__runs", "autoresearch__start"];
     expect(tools.map((tool) => tool.name).sort()).toEqual([...autoresearch, "factory__gates", "factory__gates-review", "factory__land", "factory__status", "needs__count", "needs__list", "owner-op__preview", ...shepherd]);
   });

@@ -5,7 +5,8 @@ import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { AutoPassedSchema, autoPassField } from "./auto-pass.js";
 import { heldView, holdWait, waitsOnHold } from "./hold-view.js";
-import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import type { ShepherdEvent } from "./events.js";
+import { TIMELINE_EVENT_KINDS, ciTimeoutEntry, numberedTimeouts } from "./ci-timeout-entry.js";
 import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { ciWaitHead } from "../workflows/ci-wait-head.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
@@ -122,7 +123,7 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("event"),
-    event: z.enum(EVENT_KINDS),
+    event: z.enum(TIMELINE_EVENT_KINDS),
     reason: z.string().nullable(),
     actor: z.string().nullable(),
     at: z.string(),
@@ -315,12 +316,13 @@ export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], 
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
   const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
-  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  return numberedTimeouts([...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry));
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
   const payload = (result.data as { result?: unknown } | undefined)?.result;
   const ci = stepPhase(result.stepId) === "ci" ? CiSnapshotResult.safeParse(payload) : undefined;
+  if (ci?.success && ci.data.timedOut) return ciTimeoutEntry(result, ci.data.headSha, ci.data.timedOut);
   if (ci?.success) return { kind: "ci", stepId: result.stepId, headSha: ci.data.headSha, conclusion: ci.data.verdict, runUrl: null };
   const recorded = recordedEntry(result.stepId, payload);
   if (recorded !== undefined) return recorded;

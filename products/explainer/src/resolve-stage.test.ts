@@ -61,7 +61,7 @@ describe("resolve stage", () => {
     const { s, outcome } = stageThenChecks({ script: json(choppy()) });
 
     const resolved = ResolvedSchema.parse(JSON.parse(s.store.readText(outcome.outputs.resolved!)));
-    expect(s.writes).toEqual(["resolved"]);
+    expect(s.writes).toEqual(["resolved", "generated-slots"]);
     expect(resolved.profile).toBe("repo-tour");
     expect(resolved.beats.map((beat) => beat.beat)).toEqual(Array(12).fill("stat"));
     expect(resolved.budgets.filter((row) => row.scope === "beat")).toHaveLength(12);
@@ -84,10 +84,11 @@ describe("resolve stage", () => {
 });
 
 describe("emphasis-target gate on the resolve stage", () => {
-  it("is skipped with a note until the template fill supplies slots", () => {
-    const { checks } = stageThenChecks({ script: json(cuedOnFigures("held")) });
+  it("runs on the slots resolve stored when no pin supplies them", () => {
+    const { checks } = stageThenChecks({ script: json(cuedOnFigures("figures-1")) });
 
-    expect(checks.notes).toEqual(["check emphasis-target skipped: no slots artifact"]);
+    expect(checks.notes).toEqual(["check sim-check skipped: no sim-traces artifact"]);
+    expect(checks.checks.find((check) => check.name === "emphasis-target")).toMatchObject({ gate: true, pass: true });
   });
 
   it("resolves a cue against the beat spec the resolver chose for the beat", () => {

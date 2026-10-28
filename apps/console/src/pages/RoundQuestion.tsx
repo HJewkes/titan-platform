@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
+import { MergeGates } from "./GateStrip.js";
 import { OptionCard, hasOptionCards, type OptionNoting } from "./OptionCard.js";
 import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -237,7 +238,7 @@ function PickOne({ question, answer, onChoose, onRevise, noting, choices, frameO
   );
 }
 
-/** A question's sign-off, merge binding, and its recommendation: sent by the server, or revealed on demand (TP-3774). */
+/** A question's sign-off, merge binding with its live gate strip, and its recommendation: sent by the server, or revealed on demand (TP-3774). */
 export function QuestionFacts({ question, answer }: { question: Question; answer?: QuestionAnswer }): ReactNode {
   const shown = useRecommendation(question, answer);
   useRevealTracking(question, answer, shown.visible);
@@ -248,6 +249,7 @@ export function QuestionFacts({ question, answer }: { question: Question; answer
       <QuestionFrameLinks question={question} />
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
+      {merge ? <MergeGates repo={merge.repo} pr={merge.pr} headSha={merge.headSha} /> : null}
       <RevealControl question={question} shown={shown} />
       <RecommendationBox question={question} answer={answer} shown={shown} />
     </VStack>

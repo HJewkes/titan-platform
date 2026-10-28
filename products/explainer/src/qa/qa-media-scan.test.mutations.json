@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "black-frames gates the stage",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"black-frames\", gate: false,",
+      "replace": "{ name: \"black-frames\", gate: true,",
+      "kills": [
+        "qa stage media scan reports black-frames naming the beats, and never fails the stage"
+      ]
+    },
+    {
+      "name": "silence-2s gates the stage",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"silence-2s\", gate: false,",
+      "replace": "{ name: \"silence-2s\", gate: true,",
+      "kills": [
+        "qa stage media scan reports silence-2s naming the beats, and never fails the stage"
+      ]
+    },
+    {
+      "name": "frozen-frames gates the stage",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "{ name: \"frozen-frames\", gate: false,",
+      "replace": "{ name: \"frozen-frames\", gate: true,",
+      "kills": [
+        "qa stage media scan reports frozen-frames naming the beats, and never fails the stage"
+      ]
+    },
+    {
+      "name": "a stretch names beats that start after it ends",
+      "file": "products/explainer/src/qa/qa-report.ts",
+      "find": "beat.startS < endS && ",
+      "replace": "",
+      "kills": [
+        "qa stage media scan records each scanned stretch in qa.json with the beats it overlaps",
+        "qa stage media scan reports black-frames naming the beats, and never fails the stage"
+      ]
+    },
+    {
+      "name": "qa records an empty scan whatever the engine found",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "mediaScan: mediaScanByBeat(await engine.mediaScan(mp4), timeline),",
+      "replace": "mediaScan: mediaScanByBeat({ black: [], silence: [], freeze: [] }, timeline),",
+      "kills": [
+        "qa stage media scan records each scanned stretch in qa.json with the beats it overlaps",
+        "qa stage media scan reports black-frames naming the beats, and never fails the stage",
+        "qa stage media scan reports silence-2s naming the beats, and never fails the stage",
+        "qa stage media scan reports frozen-frames naming the beats, and never fails the stage"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the config accepts seat-waives before its resolver path exists",
+      "file": "products/factory/src/config.ts",
+      "find": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\"]).optional(),",
+      "replace": "nonSourceNoRepro: z.enum([\"keep-owner\", \"record-fact\", \"seat-waives\"]).optional(),",
+      "kills": ["loadConfig reads the non-source NO_REPRO key, and rejects seat-waives until its resolver path exists"]
+    },
+    {
+      "name": "a misspelt visual threshold key is stripped instead of refused",
+      "file": "products/factory/src/config.ts",
+      "find": "const VisualThresholdSchema = z.strictObject({",
+      "replace": "const VisualThresholdSchema = z.object({",
+      "kills": ["loadConfig keeps each repo's visual threshold, and refuses a misspelt key, a share above 1 or a repo that is not owner/name"]
+    },
+    {
+      "name": "the visual threshold refuses mode on, so nothing can decide on it",
+      "file": "products/factory/src/config.ts",
+      "find": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\", \"on\"]),",
+      "replace": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\"]),",
+      "kills": ["loadConfig keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for"]
+    },
+    {
+      "name": "the visual threshold's maxBytes has no ceiling",
+      "file": "products/factory/src/config.ts",
+      "find": "maxBytes: z.number().int().positive().max(20 * MI).optional(),",
+      "replace": "maxBytes: z.number().int().positive().optional(),",
+      "kills": ["loadConfig keeps a visual threshold mode of on, refuses an unknown mode, and caps the measuring work config can ask for"]
+    }
+  ]
+}

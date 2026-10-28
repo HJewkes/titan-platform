@@ -1,6 +1,6 @@
 # Planner guide: repo-argument
 
-<!-- Generated from doctrine/types/repo-argument.yaml (profile 0.2.0) by `explainer guide types`. Do not edit. -->
+<!-- Generated from doctrine/types/repo-argument.yaml (profile 0.2.1) by `explainer guide types`. Do not edit. -->
 
 One idea from the repo lands and sticks for a senior engineer on a first watch: why it matters, how it works, and the one thing to take away.
 
@@ -150,3 +150,4 @@ One rung of a countdown: its rank, then and, but, therefore, so the item is a sm
 - **owner-FB2.1**: Keep a ledger of every item the video names, each with a kind and the beat that defines it, and define an item before using it.
 - **owner-FB4.1**: A list holds one kind of item.
 - **owner-FB6.1**: Seat each invariant in an architecture row that keeps it.
+- **talks-ST11**: Plan each visual beat's headline first, as a short claim the picture proves: who or what does something, never a topic label. Write the narration after it, to back that claim.

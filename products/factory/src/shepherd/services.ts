@@ -1,15 +1,18 @@
+import type { AgentRow } from "@titan-design/agent-dispatch";
 import type { Logger } from "@titan-design/daemon";
 import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import type { ReadTimer } from "./bounded.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import type { GhGateway } from "./gh-gateway-port.js";
+import type { MergeOrder, MergeOrderRules, OrderWaits, RunHolds } from "./merge-order.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { SeatBook } from "./seats.js";
 import type { ReviewSlots } from "./review-slots.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
+import type { VisualThreshold } from "./visual-threshold.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -39,6 +42,20 @@ export interface ShepherdServices extends SnapshotServices {
   visualDelivery?: VisualDeliveryWatch;
   /** Where `shepherd thaw` alerts, by the main CI watch's red-event route; absent means each thaw only logs its alert. */
   thawAlert?: ThawAlertPorts;
+  /** agent-chat's roster, which a retire-agent op's read-back reads; absent means that read-back answers unavailable. */
+  roster?: { rows(): Promise<readonly AgentRow[]> };
+  /** Merge-order reservations and the waits the merge guard read last; absent means `shepherd order` refuses and status shows neither. */
+  mergeOrder?: MergeOrderServices;
+  /** `shepherd.visualThreshold` for a repo, which `shepherd visual-delta` measures under; absent means that command refuses. */
+  visualThreshold?: (repo: string) => VisualThreshold | undefined;
+}
+
+export interface MergeOrderServices {
+  order: () => MergeOrder;
+  holds: () => RunHolds;
+  rules: MergeOrderRules;
+  waits: OrderWaits;
+  now: () => number;
 }
 
 /** The main CI watch's ports, described by shape here so this file stays a leaf. */

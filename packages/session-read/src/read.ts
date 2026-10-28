@@ -15,6 +15,10 @@ export interface ReadOptions {
   subagentId?: string | null;
   /** Session id for lines that carry none; defaults to the filename stem. */
   fallbackSessionId?: string | null;
+  /** Emit `tool_input` and `tool_result` spans. Default true. */
+  toolSpans?: boolean;
+  /** Emit `context_block` audit rows. Default true. */
+  contextBlocks?: boolean;
 }
 
 /** A malformed JSON line aborts the transcript so the caller can quarantine it. */
@@ -49,7 +53,8 @@ export async function* readTranscriptEvents(
   const fallback = options.fallbackSessionId === undefined ? path.basename(filePath, ".jsonl") : options.fallbackSessionId;
   const initialTs = start > 0 ? await lastTimestampBefore(filePath, start) : "";
   const pending: SessionEvent[] = [];
-  const reader = new LineReader((event) => pending.push(event), fallback, options.subagentId ?? null, initialTs);
+  const policy = { toolSpans: options.toolSpans ?? true, contextBlocks: options.contextBlocks ?? true };
+  const reader = new LineReader((event) => pending.push(event), fallback, options.subagentId ?? null, initialTs, policy);
   let offset = start;
   for await (const line of readJsonLines(filePath, start)) {
     const trimmed = line.text.trim();

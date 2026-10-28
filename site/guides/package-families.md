@@ -136,6 +136,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`review-panel`](/reference/review-panel): the review-panel types, the reviewer ports a
   caller satisfies, and `classifyPr`, which picks a pull request's review class from its
   signals.
+- [`review-burden`](/reference/review-burden): a pure 0 to 100 review-burden score from diff
+  facts with every part shown, the one-way door facts a revert cannot undo, and the parser for
+  the author's merge-danger footer.
 - [`review-workflow`](/reference/review-workflow): PR review as a resumable workflow over
   ports; its types, step ids, outcome union, failure classes and the retry policy as data.
 - `tool-guard` (private, unpublished): classifies a Claude Code tool call into the guarded
@@ -166,6 +169,9 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`frame-capture`](/reference/frame-capture): renders any page that publishes the
   `__titanMotion` protocol (`seek`, `ready`, `duration`) to PNG frames under a virtual clock,
   in parallel chunks, and encodes them with ffmpeg. It knows nothing of beats or React.
+- `render-qa` (private): the render QA gate. It seeks a `__titanMotion` page to cue moments, measures the DOM
+  for overlaps, off-frame, small or low-contrast text and the frame rules, and holds a finding only when it
+  persists. Pages mark their intent with `data-qa-*` attributes.
 
 ## Speech
 

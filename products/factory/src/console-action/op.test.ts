@@ -1,3 +1,4 @@
+import { DEFAULT_TABLE } from "@titan-design/authority";
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
 import { opAuthority } from "../owner-ops/authority.js";
@@ -42,9 +43,12 @@ describe("actOnOp", () => {
     const effect = vi.fn<OpEffect<undefined>>();
     const ledger = memoryLedger();
 
-    const outcome = await act({ kind: "retire-agent", name: "impl-a", agentId: "agent-1", force: true }, effect, ledger);
+    const table = { ...DEFAULT_TABLE, rules: DEFAULT_TABLE.rules.map((rule) => (rule.id === "RET-OR" ? { ...rule, verdict: "deny" as const } : rule)) };
+    const op: OwnerOp = { kind: "retire-agent", name: "impl-a", agentId: "agent-1", force: true };
 
-    expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("DSL-OR denies destructive-local by owner-remote") });
+    const outcome = await actOnOp("act-1", { op, confirmEvent: CONFIRM }, { effects: { [op.kind]: effect }, ledger, now: () => 0, table }, CONTEXT);
+
+    expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("RET-OR denies agent-retire by owner-remote") });
     expect(effect).not.toHaveBeenCalled();
     expect(ledger.entries).toEqual([]);
   });
@@ -58,6 +62,15 @@ describe("actOnOp", () => {
 
     expect(outcome).toEqual(answer);
     expect(ledger.entries.map((entry) => entry.phase)).toEqual(["started", "done"]);
+  });
+
+  // Kills: mapping retire-agent back onto destructive-local, whose DSL-OR row denies every console retire.
+  it("admits a retire-agent op under RET-OR and runs its effect", async () => {
+    const answer: Outcome = { outcome: "retired", name: "item-42", caveats: [] };
+
+    const outcome = await act({ kind: "retire-agent", name: "item-42", agentId: "9e3faa6c", force: false }, async () => answer);
+
+    expect(outcome).toEqual(answer);
   });
 
   it("refuses with class an admitted op whose kind has no effect yet", async () => {

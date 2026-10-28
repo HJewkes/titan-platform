@@ -26,6 +26,7 @@ const FULL_PATHS = new Set([
   "eslint.typed.config.js",
   "scripts/vitest-tmpdir.mjs",
   "scripts/vitest-wait-budget.mjs",
+  "scripts/vitest-file-watchdog.mjs",
   "scripts/wait-budget.mjs",
   "products/factory/src/test-support/vitest-setup.ts",
   "scripts/test-affected.mjs",
@@ -155,10 +156,16 @@ export function scopeForEvent(env, readChanged, loadWorkspace) {
   }
 }
 
-export function vitestArgs(scope) {
-  const args = ["run", "--passWithNoTests"];
+// On CI a hang must fail and name its file (TP-4287). hanging-process lists the handles that keep vitest from exiting
+// after its last file; the watchdog names a file whose worker never yields. Locally they are noise.
+export const CI_REPORTERS = ["default", "hanging-process", "./scripts/vitest-file-watchdog.mjs"];
+
+export function vitestArgs(scope, env = {}) {
+  const reporters = env.CI ? CI_REPORTERS.map((reporter) => `--reporter=${reporter}`) : [];
+  const args = ["run", "--passWithNoTests", ...reporters];
   if (scope.mode !== "scoped") return args;
-  return [...args, "--project", "threads", "--project", "repo", "--project", "forks", ...scope.dirs];
+  const projects = ["threads", "repo", "forks", "active-work", "active-work-forks"];
+  return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 
 function describeScope(scope) {
@@ -174,7 +181,7 @@ function main() {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
   if (!process.argv.includes("--run") || scope.mode === "none") return;
   const vitest = join(ROOT, "node_modules", "vitest", "vitest.mjs");
-  const result = spawnSync(process.execPath, [vitest, ...vitestArgs(scope)], { cwd: ROOT, stdio: "inherit" });
+  const result = spawnSync(process.execPath, [vitest, ...vitestArgs(scope, process.env)], { cwd: ROOT, stdio: "inherit" });
   process.exitCode = result.status ?? 1;
 }
 

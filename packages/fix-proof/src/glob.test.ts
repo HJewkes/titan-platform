@@ -1,5 +1,13 @@
+import { LINEAR_WORK_LIMIT, callMeter, countCalls, linearWork } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { compileGlobs, expandBraces } from "./glob.js";
+
+/** The primitives brace expansion reads and builds with; their calls count its work on any machine (TP-4262). */
+const EXPANSION_WORK = [[Array.prototype, "push"], [String.prototype, "split"], [RegExp.prototype, "exec"]] as const;
+/** Refusing past the cap took 530 and 608 calls (257 alternatives built); building the whole product takes far more. */
+const REFUSAL_CALLS = 2_000;
+/** A glob refused for its size or group count is refused unread: no counted call at all. */
+const UNREAD_CALLS = 10;
 
 describe("compileGlobs", () => {
   const isTest = compileGlobs(["**/*.{test,spec}.{ts,tsx,mts,js,mjs}"]);
@@ -29,18 +37,18 @@ describe("compileGlobs", () => {
 
   it("rejects a huge brace product before building it", () => {
     const alternatives = (count: number): string => `{${Array.from({ length: count }, (_, i) => `a${i}`).join(",")}}`;
-    const started = performance.now();
-    expect(() => expandBraces(`${alternatives(4096)}${alternatives(256)}`)).toThrow(Error);
-    expect(() => expandBraces(`${alternatives(30)}${alternatives(30)}`)).toThrow(/256/);
-    expect(performance.now() - started).toBeLessThan(50);
+    const calls = countCalls(EXPANSION_WORK, () => {
+      expect(() => expandBraces(`${alternatives(4096)}${alternatives(256)}`)).toThrow(Error);
+      expect(() => expandBraces(alternatives(64).repeat(3))).toThrow(/256/);
+    }, REFUSAL_CALLS);
+    expect(calls).toBeLessThanOrEqual(REFUSAL_CALLS);
   });
 
   it("rejects nested groups early", () => {
     const inner = `{${Array.from({ length: 8 }, (_, i) => `b${i}`).join(",")}}`;
     const glob = `{${Array.from({ length: 8 }, (_, i) => `a${i}${inner}`).join(",")}}${inner}`;
-    const started = performance.now();
-    expect(() => expandBraces(glob)).toThrow(/256/);
-    expect(performance.now() - started).toBeLessThan(50);
+    const calls = countCalls(EXPANSION_WORK, () => expect(() => expandBraces(glob)).toThrow(/256/), REFUSAL_CALLS);
+    expect(calls).toBeLessThanOrEqual(REFUSAL_CALLS);
   });
 
   it("expands nested and empty alternatives", () => {
@@ -53,13 +61,93 @@ describe("compileGlobs", () => {
     ["20000 single-choice groups", "{a}".repeat(20000)],
     ["a 2KB glob", "a".repeat(2048)],
   ])("rejects %s before expanding", (_name, glob) => {
-    const started = performance.now();
-    expect(() => expandBraces(glob)).toThrow(Error);
-    expect(() => compileGlobs([glob])).toThrow(Error);
-    expect(performance.now() - started).toBeLessThan(50);
+    const calls = countCalls(EXPANSION_WORK, () => {
+      expect(() => expandBraces(glob)).toThrow(Error);
+      expect(() => compileGlobs([glob])).toThrow(Error);
+    }, UNREAD_CALLS);
+    expect(calls).toBeLessThanOrEqual(UNREAD_CALLS);
   });
 
   it("accepts 32 brace groups", () => {
     expect(expandBraces("{a}".repeat(32))).toEqual(["a".repeat(32)]);
+  });
+});
+
+// The backtracking compiler this replaced, kept as the oracle for what each glob means.
+function referenceRegExp(glob: string): RegExp {
+  let source = "";
+  for (let index = 0; index < glob.length; index += 1) {
+    if (glob.startsWith("**/", index)) {
+      source += "(?:[^/]+/)*";
+      index += 2;
+    } else if (glob.startsWith("**", index)) {
+      source += ".*";
+      index += 1;
+    } else {
+      const char = glob.charAt(index);
+      source += char === "*" ? "[^/]*" : char === "?" ? "[^/]" : char.replace(/[.+^$()|[\]\\{}]/, "\\$&");
+    }
+  }
+  return new RegExp(`^${source}$`);
+}
+
+function seededRandom(seed: number): (below: number) => number {
+  let state = seed;
+  return (below) => {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    return (state >>> 16) % below;
+  };
+}
+
+describe("compileGlobs on hostile globs", () => {
+  it.each([
+    ["d/ and 20 stars", `d/${"*".repeat(20)}x`, (n: number) => `d/${"a".repeat(n)}`],
+    ["12 globstar segments", `${"**/".repeat(12)}x`, (n: number) => `${"a/".repeat(n)}b`],
+    ["10 globstar-a runs", "**a".repeat(10), (n: number) => `${"a".repeat(n)}b`],
+    ["10 star-a runs", `d/${"*a".repeat(10)}`, (n: number) => `d/${"a".repeat(n)}b`],
+    ["alternating globstar and star segments", `${"**/*/".repeat(8)}x`, (n: number) => `${"a/".repeat(n)}b`],
+  ])("rejects a non-matching path in steps linear in its length for %s", (_name, glob, path) => {
+    const matches = compileGlobs([glob]);
+    const results: boolean[] = [];
+    // The NFA reads each character once through charAt; a backtracking RegExp reads none through it, and fails at size 1.
+    const steps = callMeter([[String.prototype, "charAt"]]);
+    try {
+      const { ratio } = linearWork((n) => {
+        const input = path(n);
+        return () => void results.push(matches(input));
+      }, { from: 1, to: 1024, meter: steps.calls });
+      expect(ratio).toBeLessThan(LINEAR_WORK_LIMIT);
+    } finally {
+      steps.restore();
+    }
+    expect(results.every((matched) => !matched)).toBe(true);
+  });
+
+  it.each([
+    ["d/**x", ["d/x", "d/a/b/x", "d/ax"], ["d/a/b", "e/x"]],
+    ["**/**/a", ["a", "b/a", "b/c/a"], ["ba", "b/", "/a"]],
+    ["a/**/*.ts", ["a/x.ts", "a/b/c/x.ts", "a/.ts"], ["a.ts", "b/x.ts", "a/x.tsx"]],
+    ["a?c", ["abc", "a.c"], ["a/c", "ac", "abbc"]],
+  ])("matches %s like the backtracking compiler did", (glob, hits, misses) => {
+    const matches = compileGlobs([glob]);
+    expect(hits.map(matches)).toEqual(hits.map(() => true));
+    expect(misses.map(matches)).toEqual(misses.map(() => false));
+  });
+
+  it("agrees with the backtracking compiler on 300 random globs over every path up to 5 characters", () => {
+    const random = seededRandom(1756);
+    const pieces = ["a", "b", "/", ".", "*", "?", "**", "**/"];
+    const paths = [""];
+    for (let index = 0; index < paths.length && paths.length < 364; index += 1) {
+      paths.push(...["a", "b", "/"].map((char) => `${paths[index]}${char}`));
+    }
+    const disagreements: string[] = [];
+    for (let round = 0; round < 300; round += 1) {
+      const glob = Array.from({ length: 1 + random(6) }, () => pieces[random(pieces.length)]).join("");
+      const matches = compileGlobs([glob]);
+      const reference = referenceRegExp(glob);
+      disagreements.push(...paths.filter((path) => matches(path) !== reference.test(path)).map((path) => `${glob} ${path}`));
+    }
+    expect(disagreements).toEqual([]);
   });
 });

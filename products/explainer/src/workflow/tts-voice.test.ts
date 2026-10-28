@@ -44,15 +44,36 @@ describe("tts stage spec", () => {
 });
 
 describe("bridge host file after the tts port", () => {
-  it("refuses a host file that still bridges tts, saying what to move", () => {
+  it("refuses a host file that still bridges tts, saying what to drop", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "explainer-bridge-"));
     const stale = { schema: "explainer-bridge/v1", workdir: dir, theater: { dir, stem: "demo", files: {} }, stages: { tts: { outputs: {}, commands: [{ argv: ["t"] }] } } };
     writeFileSync(path.join(dir, "bridge.json"), JSON.stringify(stale));
 
     try {
-      expect(() => readBridgeFile(dir)).toThrow(/still has a "tts" block.*start of "render"/);
+      expect(() => readBridgeFile(dir)).toThrow(/still has a "tts" block.*delete it, and drop any sample builder/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("sheets stage spec", () => {
+  const sheetsSpec = (params?: Variant["params"]) => {
+    const variant = params ? { sha: "b".repeat(64), value: { schema: "explainer.variant/v1" as const, stage: "sheets" as const, name: "v", params } } : undefined;
+    const settings = { ...SETTINGS, video: () => ({ id: "vid", runIds: ["r1", "r2"] }) };
+    return stageSpec({ stage: "sheets", artifacts: { mp4: "a".repeat(64), script: "c".repeat(64), qa: "d".repeat(64) }, settings, sample: 0, remainingUsd: 1, bridge: BRIDGE, ...(variant ? { variant } : {}) });
+  };
+
+  it("reads the MP4, the script and any optional input given, and keys on the video's runs, take and status", () => {
+    const spec = sheetsSpec();
+
+    expect(spec.inputs).toEqual({ mp4: "a".repeat(64), script: "c".repeat(64), qa: "d".repeat(64) });
+    expect(spec.config.video).toEqual({ id: "vid", runIds: ["r1", "r2"] });
+    expect(spec.config.sheets).toMatchObject({ take: "v1", status: "review", stem: "demo" });
+    expect(sheetsSpec({ take: "v2", status: "draft" }).config.sheets).toMatchObject({ take: "v2", status: "draft" });
+  });
+
+  it("refuses a sheets variant param other than take and status", () => {
+    expect(() => sheetsSpec({ workers: 4 })).toThrow(/workers/);
   });
 });

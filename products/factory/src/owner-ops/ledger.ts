@@ -54,6 +54,12 @@ export function ownerOpsLedger(stateDir: string): OwnerOpsLedger {
   };
 }
 
+/** Every `done` result the ledger holds for one action id, oldest first; a missing ledger holds none. */
+export async function doneResults(stateDir: string, actionId: string): Promise<object[]> {
+  const lines = await ownerOpsLedger(stateDir).read(actionId);
+  return lines.flatMap((line) => (line.phase === "done" && line.result !== undefined ? [line.result] : []));
+}
+
 /** A torn last line from a crash mid-append is skipped, not fatal: the lines before it are whole. */
 function entryOf(line: string, actionId: string): LedgerLine[] {
   try {

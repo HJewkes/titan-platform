@@ -78,6 +78,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   canonical PR merge key.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.
+- `promptLine(text, { lineBreak })` is the one cleaner for author- or agent-written text bound
+  for an owner prompt, terminal or decisions file: it drops ANSI escape sequences, C0 and C1
+  controls and every format character (bidi overrides, embeddings, marks and isolates,
+  zero-width and tag characters), turns a tab into a space and each line break (CR, LF, CRLF,
+  NEL, U+2028, U+2029) into `lineBreak`, a space by default. Split on `PROMPT_LINE_BREAK` first
+  to keep the text's own lines.
 - `recheck(open, answered)` re-checks open items against answers already given and returns
   `{ open, dropped, flags }`, sorted so input order never changes it. An item is dropped as
   `gone-elsewhere`, with a `cite` of the newest settling answer, when an answer sharing its

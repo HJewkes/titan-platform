@@ -28,7 +28,9 @@ This package is the pure core of that gate. It adds three primitives:
 - `classifyReports` compares the base and head vitest JSON reports per test and returns a
   verdict: `reproduced`, `unproven`, `vacuous`, `no-tests` or `error`.
 - `formatResultLine` and `parseResultLine` encode that verdict as one `fix-proof/v1 <json>`
-  log line of at most 4 KB, for a CI job to print and Shepherd to read.
+  log line of at most 4 KB, for a CI job to print and Shepherd to read. A line may name the
+  `base` branch it judged. `fix-proof-run.sh` prints a `refused` line, with `base`,
+  `defaultBranch` and no count or test, for a PR whose base is not the default branch.
 - `provedByMutants(result)` is true when a `vacuous` result's `mutants` verdict is `killed`,
   its `uncovered` list is present and empty, `deletedTests` is empty, and every selected test ran and passed at head (a test head
   skips on purpose is not counted; see [Classification](#classification)). Shepherd's gate and the reviewer brief read
@@ -319,6 +321,65 @@ judge adds `mutants: { verdict, results: [{ spec, name, outcome, failed? }], err
 
 Carried files count as test material on path alone. A fix placed in a carried file that
 production code imports would pass as test-only.
+
+## Head mode (generated mutants)
+
+Mutation specs prove a named test. Head mode answers a different question for generated
+mutants: did any test notice the change at all? A function whose body can return at once with
+no test failing is covered but not tested. The library entry point is `execHeadMutants`; there
+is no CLI subcommand, and nothing in it computes a score.
+
+```ts
+import { execHeadMutants, type HeadMutation } from "@titan-design/fix-proof";
+
+const mutations: HeadMutation[] = [
+  { name: "body-delete:add", file: "packages/a/src/lib.ts",
+    find: "export function add(a: number, b: number): number {",
+    replace: "export function add(a: number, b: number): number { if (true as boolean) return undefined as never;" },
+];
+const report = await execHeadMutants({ repo: ".", head: "HEAD", mutations });
+// report.runs[0].outcome === "caught" when a test asserts on add's result
+```
+
+- **`HeadMutation`** is `Omit<Mutation, "kills">`. `checkMutation` takes it, so a generated
+  mutation keeps the spec format's 400-character caps and target refusals, checked against head.
+- **The run.** A detached worktree at head is installed and built once. Mutations are grouped by
+  owning package, and each package's suite is every file under it matching the head config's
+  `tests` globs. One baseline runs the union of suites; a test that does not pass there is
+  ignored in every run. Each mutation is written, its package rebuilt, its suite run and its
+  text restored. Each package is rebuilt once more after its last mutation: M + P rebuilds for
+  M mutations over P packages. Each vitest report is cut to the failing baseline-passing tests
+  at once (at most 50 listed per run).
+- **Outcomes** (`classifyHeadRun`):
+  - `survived`: built and loaded, and no baseline-passing test failed.
+  - `caught`: some baseline-passing test failed on an `AssertionError`.
+  - `caught-error`: tests failed, none on an `AssertionError` (a `TypeError` on `undefined`).
+    The change was noticed, but it is not kill credit.
+  - `load-error`: a suite file with a baseline-passing test failed to load, ran no test, or is
+    missing from the report, or a failure reads as a new API.
+  - `timeout`: some failure is vitest's test timeout. vitest 4's JSON report words it as the
+    runner's `Error: STACK_TRACE_ERROR` placeholder stack, which is read as a timeout too.
+- **Budget.** `budgetMs` defaults to 13 minutes. Mutations not run when it passes are listed in
+  `unrun` and never classified. A mutation whose `find` is not exactly once at head, or whose
+  package has no test file, is a run with `error` and no outcome; the others still run.
+- **Safety.** The call never throws: a failure is `report.error`. The caller's checkout is never
+  written, and the worktree and temp dir are removed afterwards. `sandboxUser` runs every build
+  and vitest call after the install inside the same sandbox as the mutants side.
+
+## Linear globs
+
+`compileGlobs` matches in time linear in the path. For a package with its own glob dialect,
+`LinearRegExp` (also `@titan-design/fix-proof/linear-regexp`, which imports nothing) is a RegExp
+whose `test` simulates its source as an NFA: build the regex source as before and construct a
+`LinearRegExp` in place of `new RegExp`. It accepts literals, escapes, `.`, classes, groups, `|`,
+`*`, `+`, `?`, `^` and `$` under the `i` and `s` flags, and throws a SyntaxError on anything else
+(lookaround, backreferences, `{n,m}`, `\b`) and on the `g` and `y` flags. `exec` reports the whole
+input as the match, which is what an anchored glob matches. review-panel, autoresearch, code-graph,
+tool-guard, factory and the console build their globs this way (TP-4223).
+
+`linearRegExpSteps()` is the running count of NFA steps every `LinearRegExp` has simulated in the
+process. Pass it as test-kit `linearWork`'s `meter` to assert a matcher's work grows linearly
+without timing it; a matcher that falls back to a native RegExp counts no steps and fails (TP-4262).
 
 ## What it deliberately does not do
 

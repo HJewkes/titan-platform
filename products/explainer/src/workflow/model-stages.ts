@@ -11,6 +11,7 @@ import { paceRows } from "../lint-pace.js";
 import { fromScriptV1 } from "../pace-items.js";
 import { rewriteScript, spellScript } from "../rewrite-pass.js";
 import { parseScript } from "../script-load.js";
+import { fillRows } from "../script-fill.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { parseSpine, type SpineV1 } from "../spine-schema.js";
 import { unknownWordsRow, type Tokens } from "../unknown-words.js";
@@ -19,7 +20,8 @@ import type { ArtifactStore, Provenance } from "./artifacts.js";
 import { loadRuleRegistry } from "../rules.js";
 import { chunkedScript, isChunked } from "./script-chunks.js";
 import {
-  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, scriptPlan, sharedSections, wholeScript,
+  checked, draftScript, failingErrors, failureList, promptSections, REPLY_RULES, repairPrompt, repairRounds, retimeRepaired, scriptPlan, sharedSections,
+  wholeScript,
   type Call, type Lint, type Repaired, type ScriptPlan, type Written,
 } from "./script-draft.js";
 import { StageFailure } from "./stage-failure.js";
@@ -89,7 +91,7 @@ export const MAX_REPAIR_ROUNDS = 2;
  * kept only when it parses and fails fewer rows, so a round never makes the script worse.
  */
 async function repairScript(call: Call, prompt: string, plan: ScriptPlan, draft: Stamped, lint: Lint): Promise<Repair | undefined> {
-  const failing = (script: ScriptV1) => failingErrors(lint.rows(script));
+  const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];
   if (failing(draft.script).length === 0) return undefined;
   const rules = loadRuleRegistry();
   const repaired = await repairRounds(call, draft, {
@@ -119,14 +121,15 @@ async function wholeDraft(call: Call, prompt: string, plan: ScriptPlan, lint: Li
   if (!draft.script) throw new StageFailure(`script: ${draft.error}`, draft.usage, retries);
   const stamped = stampLedgerTerms(draft.script, lint.spine, lint.rows);
   const repair = await repairScript(call, prompt, plan, stamped, lint);
+  const retimed = retimeRepaired(repair?.script ?? stamped.script, draft.retimed);
   return {
-    script: repair?.script ?? stamped.script,
+    script: retimed.script,
     stamps: repair?.stamps ?? stamped.stamps,
     usage: repair ? addUsage(draft.usage, repair.usage) : draft.usage,
     retries,
     stripped: repair?.stripped ?? draft.stripped ?? [],
-    checks: repair ? [repair.check] : [],
-    notes: repair?.dropped ?? draft.dropped ?? [],
+    checks: [...(repair ? [repair.check] : []), ...retimed.checks],
+    notes: [...(repair?.dropped ?? draft.dropped ?? []), ...retimed.notes],
   };
 }
 

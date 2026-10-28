@@ -1,8 +1,10 @@
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
-import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
+import type { CiPolicyFileChange } from "./ci-policy-changes.js";
+import { isGithubPath, withCiPolicyRead } from "./ci-policy-read.js";
 import { errorClass } from "./error-class.js";
 import { grantWithheldField, withGrantWithheld, type GrantWithheldField } from "./grant-withheld.js";
 import { CI_POLICY_MALFORMED_REASON, CI_POLICY_WEAKENED_PREFIX, GITHUB_PATH_REASON_PREFIX, SKILL_REASON_PREFIX, VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
@@ -12,8 +14,14 @@ import type { ShepherdStoreRef } from "./store.js";
 import { skillPathsIn } from "./skill-paths.js";
 import { baselineCheckGreen, changedBaselines, shownPaths, visualClearance, visualMatches, type VisualBaselines, type VisualPolicy } from "./visual-gate.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
-import { ownerHoldOf, riskFactsOf, riskTier, type RiskTier } from "./risk-tier.js";
+import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
+import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
+import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
+import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
+
+export { isGithubPath };
+export type { EvidenceRecord };
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 
@@ -72,35 +80,8 @@ export interface MergeEvidenceInput extends GrantWithheldField {
   ciPolicy?: CiPolicy;
   /** The head's unverified fix-proof standing and read reason; recorded, never gated on (decision 303). */
   proofUnverified?: string;
-}
-
-export interface EvidenceCheckRun {
-  name: string;
-  id: number;
-  appId: number | null;
-  conclusion: string | null;
-}
-
-/** What `allowEvidence` stores in `merge-policy`, whole. The PR comment carries the same record with `verdictLocator` reduced to a `LocatorReference`. */
-export interface EvidenceRecord {
-  runId: string;
-  repo: RepoSlug;
-  pr: number;
-  head: string;
-  baseRef: string;
-  testMergeSha: string | null;
-  checkRuns: EvidenceCheckRun[];
-  verdictLocator: SourceTextLocator;
-  reviewer: AgentIdentity;
-  decision: GateDecision;
-  /** The `mergeable_state` the decision judged, after any re-reads. */
-  mergeableState: string;
-  /** Set when the verdict was reviewed at another head and carried here: both heads and both trees. */
-  carry?: CarryFact;
-  ciPolicy?: CiPolicy;
-  proofUnverified?: string;
-  /** The head's risk tier and why (TP-3734 r1); shadow only, so nothing decides on it yet. */
-  riskTier?: RiskTier;
+  /** The base branch the head's fix-proof line says it judged, when the line names one. */
+  proofBase?: string;
 }
 
 /** The facts observed at one head, and the record of what they decided there. */
@@ -117,6 +98,7 @@ export interface MergeEvidence extends GrantWithheldField {
   changedFilesUnread?: string;
   /** The reviewer's CI-policy line, kept beside the facts because authority reads no reviewer text. */
   ciPolicy?: CiPolicy;
+  visualDelta?: VisualDelta;
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
@@ -129,6 +111,7 @@ export interface DecidableEvidence extends GrantWithheldField {
   unreadFacts?: string[];
   changedFilesUnread?: string;
   ciPolicy?: CiPolicy;
+  visualDelta?: VisualDelta;
 }
 
 /** Every row the merge guard gates on; the owner section words each one (why-asked.ts), as do the evidence comment and the decision class. */
@@ -148,12 +131,6 @@ export function isUnsettledGate(decision: GateDecision): boolean {
 
 function authorityRule(ruleId: string | null): PolicyRule {
   return { table: "authority", rowId: ruleId ?? "none", version: AUTHORITY_VERSION };
-}
-
-/** Folds case and trailing dots or spaces, which some filesystems ignore, so `.GitHub.` is still `.github`. */
-export function isGithubPath(path: string): boolean {
-  const first = path.split("/")[0] ?? "";
-  return first.toLowerCase().replace(/[ .]+$/, "") === ".github";
 }
 
 /** Names the facts read at their closed value, so the owner sees why a gate fell back; an allow is left as it is. */
@@ -186,7 +163,8 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${visualClearance(evidence.merge.changedPaths, evidence.head, visual)}` };
+    const clearance = visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta));
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${clearance}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
@@ -201,22 +179,26 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
   const skills = skillPathsIn(evidence.merge.changedPaths);
   if (skills.length > 0) return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };
+  const deltaGate = visualDeltaGate(evidence.visualDelta);
+  if (deltaGate !== undefined) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${deltaGate}` };
   if (visualPaths === undefined) return undefined;
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
   const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
-  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate);
+  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);
 }
 
 /**
- * A changed baseline is a rendered diff the owner reviews; none, with the baseline check green at the head, clears the glob
- * gate. A list of only blank globs, or a blank check name, can show no rendered diff, so it keeps the glob gate.
+ * A changed baseline is a rendered diff the owner reviews, unless a visual threshold `on` measured it at or below the
+ * threshold; none left, with the baseline check green at the head, clears the glob gate. A list of only blank globs, or a
+ * blank check name, can show no rendered diff, so it keeps the glob gate.
  */
-function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: GateDecision): GateDecision | undefined {
+function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: GateDecision, delta: VisualDelta | undefined): GateDecision | undefined {
   const changed = changedBaselines(merge.changedPaths, baselines);
   if (changed === undefined) return globGate;
-  if (changed.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(changed)}` };
+  const uncleared = unclearedBaselines(changed, delta);
+  if (uncleared.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(uncleared)}` };
   return baselineCheckGreen(merge, baselines.check, ALLOWED_CHECK_APPS) ? undefined : globGate;
 }
 
@@ -279,6 +261,9 @@ interface Observed {
   unreadFacts?: string[];
   changedFilesUnread?: string;
   changedLines?: number;
+  ciPolicyChanges?: CiPolicyFileChange[];
+  /** The pinned changed files with their statuses, or why they could not be read. */
+  prFiles: PrFile[] | string;
 }
 
 interface KindRead {
@@ -336,38 +321,36 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
-  const unreadFacts = [bypassable.unread, unread].filter((fact) => fact !== undefined);
+  const read = await withCiPolicyRead(port, input, { baseRef: pr.baseRef, paths: paths.paths, unread: [bypassable.unread, unread] });
   const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
-  return { pr, merge, runs, ...unknown, ...(unreadFacts.length > 0 && { unreadFacts }), ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+  return { pr, merge, runs, prFiles: paths.unread ?? paths.files, ...unknown, ...read, ...(paths.changedLines !== undefined && { changedLines: paths.changedLines }) };
+}
+
+/** What the evidence step reads beyond its input: the App `shepherd/review` counts from, and the repo's `shepherd.visualThreshold`. */
+interface EvidenceReads {
+  reviewAppId?: number;
+  threshold?: VisualThreshold;
+}
+
+/** Off, or no threshold for the repo, reads nothing, so a repo that never opted in pays no blob reads. */
+async function visualDeltaOf(port: GitHubPort, input: MergeEvidenceInput, { pr, prFiles }: Observed, threshold: VisualThreshold | undefined): Promise<{ visualDelta: VisualDelta } | undefined> {
+  if (threshold === undefined || threshold.mode === "off") return undefined;
+  return { visualDelta: await readVisualDelta(port, { repo: input.repo, head: input.head, baseRef: pr.baseRef }, prFiles, threshold) };
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
-export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reviewAppId?: number): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread, changedLines } = await collectMergeFacts(port, input, isFrozen, kind, clock, reviewAppId);
+export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock, reads: EvidenceReads = {}): Promise<MergeEvidence & { commentId: number }> {
+  const observed = await collectMergeFacts(port, input, isFrozen, kind, clock, reads.reviewAppId);
+  const { pr, merge, requiredChecksUnknown, unreadFacts, changedFilesUnread } = observed;
   const mergeableState = pr.mergeableState;
   const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
   const ciPolicy = input.ciPolicy && { ciPolicy: input.ciPolicy };
-  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input) };
+  const visual = await visualDeltaOf(port, input, observed, reads.threshold);
+  const decidable: DecidableEvidence = { head: input.head, merge, record: input, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input) };
   const decision = decideAutoMerge(input.head, decidable, input.visualPaths, input.visualBaselines);
   const visualPaths = input.visualPaths && { visualPaths: input.visualPaths };
-  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
-  const record: EvidenceRecord = {
-    runId: input.runId,
-    repo: input.repo,
-    pr: input.pr,
-    head: input.head,
-    baseRef: pr.baseRef,
-    testMergeSha: pr.mergeSha,
-    checkRuns: runs.map((run) => ({ name: run.name, id: run.id, appId: run.appId, conclusion: run.conclusion })),
-    verdictLocator: input.verdict.locator,
-    reviewer: input.resolver,
-    decision,
-    mergeableState,
-    ...(merge.carry && { carry: merge.carry }),
-    ...ciPolicy,
-    ...(input.proofUnverified !== undefined && { proofUnverified: input.proofUnverified }),
-    riskTier: riskTier(risk),
-  };
+  const risk = riskFactsOf({ paths: merge.changedPaths, changedLines: observed.changedLines, unread: changedFilesUnread, ...ciPolicy, ...visualPaths, ownerHold: kind?.ownerHold ?? kind?.unread });
+  const record = evidenceRecord(input, observed, decision, { ...ciPolicy, riskTier: riskTier(risk), ...visual });
   const comment = await port.upsertComment(input.repo, input.pr, evidenceMarker(input.head), evidenceComment(record));
-  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...grantWithheldField(input), commentId: comment.id };
+  return { head: input.head, merge, record, mergeableState, ...unknown, ...ciPolicy, ...visual, ...grantWithheldField(input), commentId: comment.id };
 }

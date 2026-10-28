@@ -187,8 +187,11 @@ export function nextPage(link: string | undefined): string | null {
   return next.slice(API_ORIGIN.length);
 }
 
+/** Fields ride in the URL, not as `-f`/`-X`, so the call is a plain read that a gh shim can tell from a write. */
 function getArgs(path: string, fields: Fields): string[] {
-  return ["-X", "GET", path, ...fieldArgs(fields)];
+  const query = Object.entries(fields).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+  if (query.length === 0) return [path];
+  return [`${path}${path.includes("?") ? "&" : "?"}${query.join("&")}`];
 }
 
 function fieldArgs(fields: Fields): string[] {

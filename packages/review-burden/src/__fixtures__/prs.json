@@ -1,0 +1,237 @@
+[
+  {
+    "id": "small cli fix in a single-package repo (#9101)",
+    "lines": { "additions": 30, "deletions": 3, "files": 3 },
+    "input": {
+      "body": "Quiets the status command when no session is live. Does not change the wire format.",
+      "files": [
+        { "path": "src/cli/status.ts", "status": "modified", "additions": 8, "deletions": 2 },
+        { "path": "src/cli/status.test.ts", "status": "modified", "additions": 20, "deletions": 1 },
+        { "path": ".changeset/quiet-owls.md", "status": "added", "additions": 2, "deletions": 0 }
+      ]
+    },
+    "changesetBumps": ["patch"],
+    "door": "two-way",
+    "expected": {
+      "total": 18,
+      "parts": { "size": 3, "spread": 0, "tests": 0, "tier": 0, "api": 0, "migration": 0, "deps": 0, "rationale": 10, "contract": 5 }
+    }
+  },
+  {
+    "id": "relay feature across three units with a help golden (#9102)",
+    "lines": { "additions": 1439, "deletions": 5, "files": 17 },
+    "input": {
+      "body": "Adds a relay server.\n\n## Notes for review\n\nNo wire protocol change.",
+      "files": [
+        { "path": "src/relay/server.ts", "status": "added", "additions": 210, "deletions": 2 },
+        { "path": "src/relay/routes.ts", "status": "added", "additions": 140, "deletions": 0 },
+        { "path": "src/relay/auth.ts", "status": "added", "additions": 95, "deletions": 1 },
+        { "path": "src/relay/index.ts", "status": "added", "additions": 12, "deletions": 0 },
+        { "path": "src/relay/config.ts", "status": "added", "additions": 6, "deletions": 0 },
+        { "path": "src/cli/relay.ts", "status": "added", "additions": 120, "deletions": 1 },
+        { "path": "src/cli/help.ts", "status": "modified", "additions": 18, "deletions": 1 },
+        { "path": "src/store/relay-log.ts", "status": "added", "additions": 160, "deletions": 0 },
+        { "path": "src/store/schema.ts", "status": "modified", "additions": 25, "deletions": 0 },
+        { "path": "src/store/index.ts", "status": "modified", "additions": 4, "deletions": 0 },
+        { "path": "src/relay/server.test.ts", "status": "added", "additions": 220, "deletions": 0 },
+        { "path": "src/relay/routes.test.ts", "status": "added", "additions": 150, "deletions": 0 },
+        { "path": "src/relay/auth.test.ts", "status": "added", "additions": 90, "deletions": 0 },
+        { "path": "src/cli/relay.test.ts", "status": "added", "additions": 110, "deletions": 0 },
+        { "path": "src/store/relay-log.test.ts", "status": "added", "additions": 60, "deletions": 0 },
+        { "path": "test/golden/help.txt", "status": "modified", "additions": 16, "deletions": 0 },
+        { "path": ".changeset/brave-relay.md", "status": "added", "additions": 3, "deletions": 0 }
+      ]
+    },
+    "changesetBumps": ["minor"],
+    "door": "two-way",
+    "expected": {
+      "total": 74,
+      "parts": { "size": 30, "spread": 19, "tests": 0, "tier": 0, "api": 10, "migration": 0, "deps": 0, "rationale": 10, "contract": 5 }
+    }
+  },
+  {
+    "id": "scheduler rework with a migration and new dependencies (#9103)",
+    "lines": { "additions": 1479, "deletions": 42, "files": 19 },
+    "input": {
+      "body": "Reworks the sync scheduler.\n\n## Behaviour changes to know about\n\nSessions now carry an owner column.",
+      "files": [
+        { "path": "src/commands/sync.ts", "status": "modified", "additions": 240, "deletions": 12 },
+        { "path": "src/commands/status.ts", "status": "modified", "additions": 60, "deletions": 8 },
+        { "path": "src/daemon/scheduler.ts", "status": "modified", "additions": 180, "deletions": 6 },
+        { "path": "src/daemon/queue.ts", "status": "modified", "additions": 150, "deletions": 4 },
+        { "path": "src/daemon/index.ts", "status": "modified", "additions": 10, "deletions": 0 },
+        { "path": "src/store/sessions.ts", "status": "modified", "additions": 130, "deletions": 5 },
+        { "path": "src/store/migrations/0007-session-owner.sql", "status": "added", "additions": 24, "deletions": 0 },
+        { "path": "src/store/index.ts", "status": "modified", "additions": 6, "deletions": 2 },
+        { "path": "src/lib/clock.ts", "status": "added", "additions": 40, "deletions": 0 },
+        { "path": "src/lib/retry.ts", "status": "modified", "additions": 55, "deletions": 3 },
+        { "path": "package.json", "status": "modified", "additions": 3, "deletions": 1 },
+        { "path": "src/commands/sync.test.ts", "status": "modified", "additions": 200, "deletions": 0 },
+        { "path": "src/daemon/scheduler.test.ts", "status": "modified", "additions": 140, "deletions": 0 },
+        { "path": "src/daemon/queue.test.ts", "status": "modified", "additions": 90, "deletions": 0 },
+        { "path": "src/store/sessions.test.ts", "status": "modified", "additions": 70, "deletions": 0 },
+        { "path": "src/lib/retry.test.ts", "status": "modified", "additions": 40, "deletions": 0 },
+        { "path": "src/lib/clock.test.ts", "status": "added", "additions": 15, "deletions": 0 },
+        { "path": "test/__fixtures__/sync-plan.json", "status": "added", "additions": 5, "deletions": 0 },
+        { "path": "pnpm-lock.yaml", "status": "modified", "additions": 21, "deletions": 1 }
+      ],
+      "packageJsons": [
+        {
+          "path": "package.json",
+          "base": { "name": "example-tasks", "dependencies": { "zod": "^3.23.0" }, "devDependencies": { "vitest": "^2.1.0" } },
+          "head": {
+            "name": "example-tasks",
+            "dependencies": { "zod": "^3.23.0", "p-retry": "^6.2.0" },
+            "devDependencies": { "vitest": "^2.1.0", "fake-clock": "^1.0.0" }
+          }
+        }
+      ]
+    },
+    "changesetBumps": ["minor"],
+    "door": "one-way",
+    "expected": {
+      "total": 87,
+      "parts": { "size": 30, "spread": 20, "tests": 0, "tier": 0, "api": 0, "migration": 15, "deps": 7, "rationale": 10, "contract": 5 }
+    }
+  },
+  {
+    "id": "board view with thin tests and a contract-less footer (#9104)",
+    "lines": { "additions": 860, "deletions": 40, "files": 15 },
+    "input": {
+      "body": "Adds the board view.\n\n## Descoped\n\nDrag and drop.\n\n---\n<!-- merge-danger:v1 -->\n**Merge danger**\n- Door: two-way\n- Blast radius: the web board and its API routes only.\n- Rollback: revert this PR.\n- Contract: none",
+      "files": [
+        { "path": "src/web/board.ts", "status": "added", "additions": 200, "deletions": 10 },
+        { "path": "src/web/card.ts", "status": "modified", "additions": 120, "deletions": 5 },
+        { "path": "src/web/filters.ts", "status": "modified", "additions": 90, "deletions": 8 },
+        { "path": "src/web/layout.ts", "status": "modified", "additions": 60, "deletions": 4 },
+        { "path": "src/web/theme.ts", "status": "modified", "additions": 30, "deletions": 2 },
+        { "path": "src/api/board-routes.ts", "status": "added", "additions": 110, "deletions": 6 },
+        { "path": "src/api/serialize.ts", "status": "modified", "additions": 70, "deletions": 3 },
+        { "path": "src/api/errors.ts", "status": "modified", "additions": 24, "deletions": 2 },
+        { "path": "src/api/types.ts", "status": "modified", "additions": 18, "deletions": 0 },
+        { "path": "src/index.ts", "status": "modified", "additions": 12, "deletions": 0 },
+        { "path": "src/web/board.test.ts", "status": "added", "additions": 60, "deletions": 0 },
+        { "path": "src/api/board-routes.test.ts", "status": "added", "additions": 40, "deletions": 0 },
+        { "path": "src/api/serialize.test.ts", "status": "modified", "additions": 15, "deletions": 0 },
+        { "path": "src/web/__fixtures__/board.json", "status": "added", "additions": 5, "deletions": 0 },
+        { "path": "CHANGELOG.md", "status": "modified", "additions": 6, "deletions": 0 }
+      ]
+    },
+    "changesetBumps": [],
+    "door": "two-way",
+    "expected": {
+      "total": 74,
+      "parts": { "size": 30, "spread": 19, "tests": 10, "tier": 0, "api": 10, "migration": 0, "deps": 0, "rationale": 0, "contract": 5 }
+    }
+  },
+  {
+    "id": "new tier-1 package and its first consumer (#9105)",
+    "lines": { "additions": 1124, "deletions": 3, "files": 41 },
+    "input": {
+      "body": "Adds the ledger-kit package and wires the console to it.\n\n## Outside the console app\n\nOne line in the tier map.",
+      "config": { "generatedGlobs": ["site/.vitepress/reference-sidebar.json"] },
+      "tiers": { "0": ["packages/base-kit"], "1": ["packages/ledger-kit"], "2": [], "product": ["products/console-app"] },
+      "files": [
+        { "path": "packages/ledger-kit/package.json", "status": "added", "additions": 40, "deletions": 0 },
+        { "path": "packages/ledger-kit/tsconfig.json", "status": "added", "additions": 8, "deletions": 0 },
+        { "path": "packages/ledger-kit/tsup.config.ts", "status": "added", "additions": 8, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/index.ts", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/ledger.ts", "status": "added", "additions": 120, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/entry.ts", "status": "added", "additions": 70, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/balance.ts", "status": "added", "additions": 60, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/format.ts", "status": "added", "additions": 40, "deletions": 0 },
+        { "path": "products/console-app/src/ledger-view.ts", "status": "added", "additions": 80, "deletions": 0 },
+        { "path": "products/console-app/src/routes.ts", "status": "modified", "additions": 12, "deletions": 1 },
+        { "path": "products/console-app/package.json", "status": "modified", "additions": 2, "deletions": 0 },
+        { "path": ".codewatch/check.json", "status": "modified", "additions": 1, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/ledger.test.ts", "status": "added", "additions": 150, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/entry.test.ts", "status": "added", "additions": 90, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/balance.test.ts", "status": "added", "additions": 80, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/format.test.ts", "status": "added", "additions": 40, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/ledger.test.mutations.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/entry.test.mutations.json", "status": "added", "additions": 15, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/balance.test.mutations.json", "status": "added", "additions": 12, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-01.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-02.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-03.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-04.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-05.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-06.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-07.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-08.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-09.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-10.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-11.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/entries-12.json", "status": "added", "additions": 7, "deletions": 0 },
+        { "path": "packages/ledger-kit/src/__fixtures__/accounts.json", "status": "added", "additions": 12, "deletions": 0 },
+        { "path": "packages/ledger-kit/README.md", "status": "added", "additions": 60, "deletions": 0 },
+        { "path": "packages/ledger-kit/CAPABILITY.md", "status": "added", "additions": 5, "deletions": 0 },
+        { "path": ".changeset/ledger-kit.md", "status": "added", "additions": 5, "deletions": 0 },
+        { "path": "pnpm-lock.yaml", "status": "modified", "additions": 30, "deletions": 1 },
+        { "path": "CAPABILITIES.md", "status": "modified", "additions": 4, "deletions": 0 },
+        { "path": "site/reference/ledger-kit.md", "status": "added", "additions": 50, "deletions": 0 },
+        { "path": "site/reference/index.md", "status": "modified", "additions": 1, "deletions": 0 },
+        { "path": "site/.vitepress/reference-sidebar.json", "status": "modified", "additions": 4, "deletions": 0 },
+        { "path": "README.md", "status": "modified", "additions": 1, "deletions": 1 }
+      ],
+      "packageJsons": [
+        {
+          "path": "packages/ledger-kit/package.json",
+          "head": {
+            "name": "@example/ledger-kit",
+            "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+            "dependencies": { "@example/base-kit": "workspace:^", "zod": "^3.23.0" },
+            "devDependencies": { "tsup": "^8.3.0" }
+          }
+        },
+        {
+          "path": "products/console-app/package.json",
+          "base": { "name": "@example/console-app", "dependencies": { "hono": "^4.6.0" } },
+          "head": { "name": "@example/console-app", "dependencies": { "hono": "^4.6.0", "@example/ledger-kit": "workspace:^" } }
+        }
+      ]
+    },
+    "changesetBumps": ["minor"],
+    "door": "two-way",
+    "expected": {
+      "total": 91,
+      "parts": { "size": 30, "spread": 20, "tests": 0, "tier": 6, "api": 10, "migration": 0, "deps": 10, "rationale": 10, "contract": 5 }
+    }
+  },
+  {
+    "id": "one tier-2 package with strong tests and an index change (#9106)",
+    "lines": { "additions": 1689, "deletions": 15, "files": 20 },
+    "input": {
+      "body": "Adds ranking to the triage board.\n\n## Why this shape\n\nRanking stays pure so the queue can replay it.",
+      "tiers": { "0": ["packages/base-kit"], "1": [], "2": ["packages/triage-board"], "product": [] },
+      "files": [
+        { "path": "packages/triage-board/src/index.ts", "status": "modified", "additions": 30, "deletions": 2 },
+        { "path": "packages/triage-board/src/board.ts", "status": "modified", "additions": 300, "deletions": 5 },
+        { "path": "packages/triage-board/src/queue.ts", "status": "added", "additions": 200, "deletions": 3 },
+        { "path": "packages/triage-board/src/rank.ts", "status": "added", "additions": 150, "deletions": 2 },
+        { "path": "packages/triage-board/src/render.ts", "status": "modified", "additions": 120, "deletions": 3 },
+        { "path": "packages/triage-board/src/board.test.ts", "status": "modified", "additions": 250, "deletions": 0 },
+        { "path": "packages/triage-board/src/queue.test.ts", "status": "added", "additions": 180, "deletions": 0 },
+        { "path": "packages/triage-board/src/rank.test.ts", "status": "added", "additions": 150, "deletions": 0 },
+        { "path": "packages/triage-board/src/render.test.ts", "status": "modified", "additions": 100, "deletions": 0 },
+        { "path": "packages/triage-board/src/board.test.mutations.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-01.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-02.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-03.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-04.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-05.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-06.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/queue-07.json", "status": "added", "additions": 20, "deletions": 0 },
+        { "path": "packages/triage-board/src/__fixtures__/ranked.json", "status": "added", "additions": 25, "deletions": 0 },
+        { "path": ".changeset/ranked-board.md", "status": "added", "additions": 4, "deletions": 0 },
+        { "path": "site/reference/triage-board.md", "status": "modified", "additions": 20, "deletions": 0 }
+      ]
+    },
+    "changesetBumps": ["minor"],
+    "door": "two-way",
+    "expected": {
+      "total": 62,
+      "parts": { "size": 30, "spread": 4, "tests": 0, "tier": 3, "api": 10, "migration": 0, "deps": 0, "rationale": 10, "contract": 5 }
+    }
+  }
+]

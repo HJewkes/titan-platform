@@ -86,7 +86,7 @@ export function mayBeWritten(ctx: ClassifyContext, path: string): boolean {
 /** The readings of `path`, null once the line wrote it untracked or left more than `MAX_WRITTEN_READINGS`. */
 function trackedReadings(ctx: ClassifyContext, path: string): string[] | null {
   if (ctx.scriptReadings) return ctx.scriptReadings(path);
-  const text = diskText(ctx, path);
+  const text = ctx.readScript(path);
   return text === null ? [] : [text];
 }
 
@@ -177,13 +177,4 @@ function written(cmd: SimpleCommand): string | null {
   const readings = SPLICING_SHELLS.map((shell) => commandOutput(cmd.name, cmd.args, cmd.redirects, shell));
   if (readings.some((r) => r === null)) return null;
   return [...new Set(readings)].join("\n");
-}
-
-function diskText(ctx: ClassifyContext, path: string): string | null {
-  try {
-    return ctx.readScript(path);
-  } catch (error) {
-    if (error instanceof UnreadableScriptError) throw error;
-    return null;
-  }
 }

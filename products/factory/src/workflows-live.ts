@@ -5,6 +5,7 @@ import { DEFAULT_ADVERSARY_PROFILE } from "./shepherd/review-panel-plan.js";
 import type { ReviewWiring } from "./shepherd/review.js";
 import type { AgentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import type { SpawnLimits } from "./shepherd/spawn-gate.js";
+import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 
 /** The parts of the route wiring that read a live config row per use instead of once at start. */
 
@@ -91,4 +92,9 @@ export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef
   };
   const fixed = Object.fromEntries(Object.entries(startup).filter(([key]) => !(key in reads)));
   return () => ({ ...fixed, ...Object.fromEntries(Object.entries(reads).flatMap(([key, read]) => { const value = read(); return value === undefined ? [] : [[key, value]]; })) });
+}
+
+/** Read through the live config at each evidence step, so a threshold edit applies at the next head without a restart; repo keys match in any case. */
+export function visualThresholdOf(config: ConfigRef): (repo: string) => VisualThreshold | undefined {
+  return (repo) => Object.entries(config.get().shepherd?.visualThreshold ?? {}).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1];
 }

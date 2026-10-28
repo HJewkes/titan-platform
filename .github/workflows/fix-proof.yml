@@ -6,14 +6,19 @@ name: fix-proof
 # and test one side and pass encoded reports on as job outputs. fix-proof, the check run Shepherd reads, runs only code built from the
 # merge base: it decodes those reports and prints the one result line. A head process cannot write into another job's
 # VM, outputs or log.
+#
+# `edited` is for a base change alone: GitHub retargets a stacked PR onto main with the same head, so without it the
+# head's only run is the refusal on its old base (TP-4259). Every job skips any other edit, and that edit takes a
+# concurrency group of its own, so a title edit cancels no run in progress.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
 
 concurrency:
-  group: fix-proof-${{ github.ref }}
+  group: ${{ github.event.action == 'edited' && !github.event.changes.base && format('fix-proof-edit-{0}', github.run_id) || format('fix-proof-{0}', github.ref) }}
   cancel-in-progress: true
 
 # onnxruntime-node would otherwise fetch CUDA binaries on install; no job uses them.
@@ -27,9 +32,12 @@ jobs:
   fix-proof-base:
     # The Version Packages PR only bumps versions and changelogs, so it has no fix to prove. Every job skips, the judge
     # included, so no judge prints an error verdict from reports that never came. A fork's branch of that name still runs.
-    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The sandbox runs vitest with HOME=<tree> and cannot read the runner's home, so the browser lives outside it.
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
     outputs:
       report: ${{ steps.emit.outputs.report }}
       rerun: ${{ steps.emit.outputs.rerun }}
@@ -87,6 +95,14 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
+      # Uncached, as the pnpm store is: frame-capture's tests drive a real headless Chromium, as in ci.yml.
+      - name: Install Chromium for frame-capture
+        if: steps.merge-base.outputs.sha != ''
+        working-directory: runner
+        run: |
+          if [ ! -f packages/frame-capture/package.json ]; then echo "no frame-capture at the merge base"; exit 0; fi
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 "$PLAYWRIGHT_BROWSERS_PATH"
+          pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
       # The runner builds the merge base before it overlays any head file, then runs the head's tests on it twice.
       - name: Run the base side
         if: steps.merge-base.outputs.sha != ''
@@ -101,7 +117,7 @@ jobs:
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit base "$RUNNER_TEMP/fix-proof-out"
 
   fix-proof-head:
-    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -147,6 +163,30 @@ jobs:
           cd "$RUNNER_TEMP/runner"
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
+      # The head side runs unsandboxed with the runner's HOME, so it shares ci.yml's Chromium cache; only main saves it.
+      - name: Read the playwright-core version
+        id: playwright
+        if: steps.merge-base.outputs.sha != ''
+        run: |
+          cd "$RUNNER_TEMP/runner"
+          if [ ! -f packages/frame-capture/package.json ]; then echo "no frame-capture at the merge base"; exit 0; fi
+          version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "could not read the playwright-core version (got '$version')" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore the Chromium cache
+        if: steps.merge-base.outputs.sha != '' && steps.playwright.outputs.version != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium for frame-capture
+        if: steps.merge-base.outputs.sha != '' && steps.playwright.outputs.version != ''
+        run: |
+          cd "$RUNNER_TEMP/runner"
+          pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
       # Head install, build and vitest run here, and nothing this job does can reach the judge but its report output.
       - name: Run the head side
         if: steps.merge-base.outputs.sha != ''
@@ -164,9 +204,11 @@ jobs:
   # applies each mutation a *.mutations.json spec declares to the merge base, with the head's tests overlaid, and the
   # judge requires those tests to fail under it. Laid out and sandboxed like fix-proof-base, since head tests run here.
   fix-proof-mutants:
-    if: github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository
+    if: (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
     outputs:
       report: ${{ steps.emit.outputs.report }}
     steps:
@@ -223,6 +265,13 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
+      - name: Install Chromium for frame-capture
+        if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
+        working-directory: runner
+        run: |
+          if [ ! -f packages/frame-capture/package.json ]; then echo "no frame-capture at the merge base"; exit 0; fi
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 "$PLAYWRIGHT_BROWSERS_PATH"
+          pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
       # Fails the job on a spec the runner refused, source diff or not, since the judge never reads a source diff's specs.
       - name: Run the mutants side
         if: steps.merge-base.outputs.sha != '' && steps.specs.outputs.present == 'true'
@@ -240,7 +289,7 @@ jobs:
   # comes from the merge-base tree in runner/; the head checkout in src/ is only read by git, never built or run.
   fix-proof:
     needs: [fix-proof-base, fix-proof-head, fix-proof-mutants]
-    if: ${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) }}
+    if: ${{ !cancelled() && (github.head_ref != 'changeset-release/main' || github.event.pull_request.head.repo.full_name != github.repository) && (github.event.action != 'edited' || github.event.changes.base) }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -307,4 +356,8 @@ jobs:
           MERGE_BASE: ${{ steps.merge-base.outputs.refused && github.event.pull_request.base.sha || steps.merge-base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           FIX_PROOF_REFUSED: ${{ steps.merge-base.outputs.refused }}
+          FIX_PROOF_REFUSED_BASE: ${{ steps.merge-base.outputs.refused_base }}
+          FIX_PROOF_REFUSED_DEFAULT: ${{ steps.merge-base.outputs.refused_default }}
+          # The line names the base it judged, so a run GitHub lists on a later base is not read as that base's proof.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh judge "$GITHUB_WORKSPACE/runner" "$GITHUB_WORKSPACE/src" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-reports"

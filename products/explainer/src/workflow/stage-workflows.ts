@@ -1,16 +1,15 @@
 import path from "node:path";
 import { codeRecordRoute, codeStep, type StepRoute, type WorkflowFn } from "@titan-design/workflow";
 import { z } from "zod";
-import type { BeatWorker } from "../build/beat-worker.js";
+import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { L0_CHECKS, type L0Check } from "../eval-l0.js";
 import { runResolveStage } from "../resolve-stage.js";
 import type { ArtifactStore } from "./artifacts.js";
 import { runAuditionStage } from "./audition-stage.js";
 import { runGatherStage } from "./gather-stage.js";
-import { runBridgeStage, type BridgeExec, type BridgeFile } from "./bridge.js";
 import { buildCustomLayers, LAYER_STEP_IDS, layerRoutes } from "./layer-build.js";
 import { runEvalStage, runRewriteStage, runScriptStage, StageFailure, type HarnessFor, type ModelStageInput, type RunnerFor } from "./model-stages.js";
-import { addUsage, isBridgeStage, NO_USAGE, StageRecordSchema, stepUsage, type CachedStage, type StageName, type StageOutcome, type StageRecord } from "./records.js";
+import { addUsage, NO_USAGE, StageRecordSchema, stepUsage, type CachedStage, type StageName, type StageOutcome, type StageRecord } from "./records.js";
 import type { GatherDeps } from "./run-gather.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { BODY_STEP, CHECKS_STEP } from "./stage-cache.js";
@@ -18,12 +17,15 @@ import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from ".
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 import { kokoroEngine } from "./tts-engine.js";
 import { runTtsStage, type TtsEngine } from "./tts-stage.js";
+import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
+import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
+import { runQaStage } from "../qa/qa-stage.js";
+import { defaultRenderEngine, runRenderStage, type RenderEngine } from "../render/render-stage.js";
+import type { TimingProfile } from "../qa/timing-gates.js";
 
 interface BodyDeps {
   dataDir: string;
   store: ArtifactStore;
-  bridge: () => BridgeFile;
-  exec: BridgeExec;
   runnerFor?: RunnerFor;
   harnessFor?: HarnessFor;
   /** The L0 checks the script, rewrite and eval stages run; all of them by default. */
@@ -33,6 +35,14 @@ interface BodyDeps {
   ttsEngine?: () => Promise<TtsEngine>;
   /** The gather stage's outside world; gh, the transcript roots, the task list and git by default. */
   gather?: GatherDeps;
+  /** The sheets stage's ffprobe and ffmpeg; the host's own by default. */
+  media?: MediaExec;
+  /** The qa stage's browser and ffprobe; real Chromium and the host's ffprobe by default. */
+  qaEngine?: QaEngine;
+  /** The render stage's page build and capture; the composition page and Chromium by default. */
+  renderEngine?: RenderEngine;
+  /** The qa stage's timing thresholds in place of the spec's; the type profile's by default. */
+  qaTiming?: TimingProfile;
 }
 
 /** One `explainer.<stage>` run: the stage body on the spec it was started with, resolve's custom-layer builds, then the stage's checks over its artifacts. */
@@ -50,11 +60,7 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     return runGatherStage(config.gather, input, deps.dataDir, deps.gather);
   }
   if (stage === "audition") return runAuditionBody(config, input, deps);
-  if (stage === "script") {
-    const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
-    if (!config.model) throw new Error("script stage spec has no model");
-    return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
-  }
+  if (stage === "script") return runScriptBody(config, input, deps);
   if (stage === "rewrite") {
     if (!config.judge || config.rounds === undefined) throw new Error("rewrite stage spec has no judge or rounds");
     return runRewriteStage(input, { judge: config.judge, rounds: config.rounds, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) });
@@ -68,10 +74,16 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
     return runEvalStage(input, { judge: config.judge, ...(deps.harnessFor ? { harnessFor: deps.harnessFor } : {}) }, deps.evalChecks);
   }
   if (stage === "tts") return runTtsBody(config, input, deps);
-  return runBridgeStage({
-    stage, artifacts: input.artifacts, runId: input.from.runId, store: deps.store, file: deps.bridge(), exec: deps.exec,
-    logDir: runPaths(deps.dataDir, input.from.runId).logs, vars: config.vars ?? {},
-  });
+  if (stage === "sheets") return runSheetsBody(config, input, deps);
+  if (stage === "qa") return runQaBody(config, input, deps);
+  if (!config.render) throw new Error("render stage spec has no render settings");
+  return runRenderStage({ ...input, store: deps.store }, config.render, deps.renderEngine ?? defaultRenderEngine());
+}
+
+function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  const seams = { ...(deps.runnerFor ? { runnerFor: deps.runnerFor } : {}), ...(deps.evalChecks ? { l0Checks: deps.evalChecks } : {}), ...(deps.signal ? { signal: deps.signal } : {}) };
+  if (!config.model) throw new Error("script stage spec has no model");
+  return runScriptStage(input, { model: config.model, ...(config.profile ? { profile: config.profile.type } : {}), ...seams });
 }
 
 function runAuditionBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -86,10 +98,23 @@ function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: B
   return runTtsStage({ ...input, store: deps.store }, { voice: config.voice, rates: config.rates }, { engine: deps.ttsEngine ?? kokoroEngine, takesDir });
 }
 
+function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.sheets) throw new Error("sheets stage spec has no sidecar settings");
+  const { take, status, stem } = config.sheets;
+  const settings = { take, status, stem, ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
+  return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia());
+}
+
+function runQaBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+  if (!config.qa) throw new Error("qa stage spec has no gate profile");
+  const settings = { ...config.qa, ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
+  return runQaStage({ ...input, store: deps.store }, settings, deps.qaEngine ?? chromiumQaEngine(deps.media));
+}
+
 export function stageRecord(stage: StageName, startedAt: Date, endedAt: Date, outcome: StageOutcome): StageRecord {
   return {
     stage,
-    bridged: isBridgeStage(stage),
+    bridged: false,
     startedAt: startedAt.toISOString(),
     endedAt: endedAt.toISOString(),
     wallMs: endedAt.getTime() - startedAt.getTime(),
@@ -156,6 +181,6 @@ export function checksRoute(deps: Pick<BodyDeps, "dataDir" | "store" | "evalChec
 export const childStepIds = (stage: CachedStage): string[] => [`${BODY_STEP}:${stage}`, `${CHECKS_STEP}:${stage}`, ...(stage === "resolve" ? LAYER_STEP_IDS : [])];
 
 /** Every route a child stage run dispatches to: its body, its checks, and resolve's custom-layer builds. */
-export function childRoutes(deps: BodyDeps & { judge?: CheckJudge; worker?: BeatWorker }): StepRoute[] {
+export function childRoutes(deps: BodyDeps & { judge?: CheckJudge; worker?: BeatWorker; repairer?: LayerRepairer }): StepRoute[] {
   return [bodyRoute(deps), checksRoute(deps), ...layerRoutes(deps)];
 }

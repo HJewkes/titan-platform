@@ -4,14 +4,16 @@
  * subscription matches the round follows (`round-subscriptions.ts`), and a round with neither goes to tp-operator.
  * Once `rounds.submit` has written `feedback.json`, for a decision, design or Ship round alike, the round listener
  * messages each of them and keeps `<round>/notified-<seat>.json`, written once, so a seat hears once per answer. A failed
- * send writes nothing and `sweep` retries it at start. A TP-3729 `notified.json` still counts for the seat it names.
+ * send writes nothing and `sweep` retries it at start; a retry that fails too is kept for the inbox (`round-notice-gaps.ts`).
+ * A TP-3729 `notified.json` still counts for the seat it names.
  *
  * The notice is fixed text built from the round id, the feedback path and whether the answer carries free text. The
- * transport (`round-notice-transport.ts`) delivers it from the human seat, so nothing the filing seat wrote (prompts,
- * option labels) is ever relayed under that provenance.
+ * transport (`round-notice-transport.ts`) delivers it from the human seat, labelled `wake_source=console`, so nothing
+ * the filing seat wrote (prompts, option labels) is ever relayed as if the owner sent it.
  */
 import path from "node:path";
 import { z } from "zod";
+import { clearNoticeFailure, recordNoticeFailure } from "./round-notice-gaps.js";
 import { SEAT_NAME, type SeatNotifier } from "./round-notice-transport.js";
 import { UNCLAIMED_SEAT, listSubscriptions, operatorSince, targetMatches, type RoundFacts } from "./round-subscriptions.js";
 import { FEEDBACK_FILE, ROUND_FILE, parseManifest } from "./rounds.js";
@@ -128,20 +130,32 @@ interface NoticeFailure {
   reason: string;
 }
 
+async function sendNotice(deps: NoticeDeps, roundId: string, feedback: StateFile, { seat, reason }: Recipient): Promise<void> {
+  const dir = path.join(deps.roundsDir, roundId);
+  await deps.notify(seat, answerNotice(roundId, path.join(dir, FEEDBACK_FILE), reason, carriesFreeText(feedback)));
+  await writeJsonOnce(notifiedFile(dir, seat), { schema: NOTIFIED_SCHEMA_ID, seat, reason, at: deps.now.toISOString() });
+  await clearNoticeFailure(dir, seat);
+}
+
+/** Only the sweep's failure is kept: a live send that fails is retried there, and only a failed retry needs the owner. */
+async function noteFailure(deps: NoticeDeps, roundId: string, seat: string, error: string): Promise<void> {
+  if (!deps.live) await recordNoticeFailure(path.join(deps.roundsDir, roundId), { round: roundId, seat, error, at: deps.now.toISOString() });
+}
+
 /** Messages each seat that has not yet heard of this round's answer; a round with no answer yet is left alone. */
 export async function notifyRound(deps: NoticeDeps, roundId: string): Promise<NoticeFailure[]> {
   const dir = path.join(deps.roundsDir, roundId);
-  const feedbackPath = path.join(dir, FEEDBACK_FILE);
-  const feedback = await readStateFile(feedbackPath);
+  const feedback = await readStateFile(path.join(dir, FEEDBACK_FILE));
   if (feedback === undefined) return [];
   const failures: NoticeFailure[] = [];
-  for (const { seat, reason } of await recipientsOf(deps, roundId, feedback.modifiedAt)) {
-    if (await wasNotified(dir, seat)) continue;
+  for (const recipient of await recipientsOf(deps, roundId, feedback.modifiedAt)) {
+    if (await wasNotified(dir, recipient.seat)) continue;
     try {
-      await deps.notify(seat, answerNotice(roundId, feedbackPath, reason, carriesFreeText(feedback)));
-      await writeJsonOnce(notifiedFile(dir, seat), { schema: NOTIFIED_SCHEMA_ID, seat, reason, at: deps.now.toISOString() });
+      await sendNotice(deps, roundId, feedback, recipient);
     } catch (error) {
-      failures.push({ seat, reason: error instanceof Error ? error.message : String(error) });
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push({ seat: recipient.seat, reason });
+      await noteFailure(deps, roundId, recipient.seat, reason);
     }
   }
   return failures;

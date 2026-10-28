@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "narration facts gate the qa stage",
+      "file": "products/explainer/src/qa/gate-profile.ts",
+      "find": "export const NARRATION_FACTS_GATE = false;",
+      "replace": "export const NARRATION_FACTS_GATE = true;",
+      "kills": [
+        "qa stage narration facts passes when the narration says the headline's number in words",
+        "qa stage narration facts reports a headline number the narration never says, and never fails the stage"
+      ]
+    },
+    {
+      "name": "qa reads no narration for the facts report",
+      "file": "products/explainer/src/qa/qa-stage.ts",
+      "find": "narrationFactsReport(probed, (beat) => (words.get(beat)?.words ?? []).map((w) => w.word).join(\" \"))",
+      "replace": "narrationFactsReport(probed, () => \"\")",
+      "kills": [
+        "qa stage narration facts passes when the narration says the headline's number in words"
+      ]
+    },
+    {
+      "name": "the narration-facts check passes whatever it finds",
+      "file": "products/explainer/src/qa/qa-checks.ts",
+      "find": "return { pass: findings.length === 0, detail: findings.length === 0 ? `${beats} beats",
+      "replace": "return { pass: true, detail: findings.length === 0 ? `${beats} beats",
+      "kills": [
+        "qa stage narration facts reports a headline number the narration never says, and never fails the stage"
+      ]
+    }
+  ]
+}

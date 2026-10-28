@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the swap leaves the old shm at the path for the new file to open",
+      "file": "products/active-work/src/session-index/rebuild.ts",
+      "find": "  await fs.rm(`${livePath}-shm`, { force: true });\n",
+      "replace": "",
+      "kills": [
+        "openLiveGraph after a miner rebuild swap closing the swapped-out handle leaves the new file's WAL and shm to a writer still using them",
+        "openLiveGraph after a miner rebuild swap following the swap leaves the new file's WAL and shm to a writer still using them"
+      ]
+    }
+  ]
+}

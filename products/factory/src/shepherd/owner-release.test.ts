@@ -7,7 +7,7 @@ import { runCli, type CliDeps } from "../cli.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { createFactoryRegistry } from "../registry.js";
 import { H1, REPO } from "../test-support/land.js";
-import { fakeOwnerHelper } from "../test-support/owner-edges.js";
+import { fakeOwnerHelper, fakeOwnerSigner } from "../test-support/owner-edges.js";
 import { callCommand, shepherdFixture } from "../test-support/shepherd.js";
 import { SHEPHERD_COMMAND_MAP } from "./commands.js";
 import { ownerRelease } from "./owner-release.js";
@@ -49,7 +49,7 @@ describe("ownerRelease", () => {
   it("lifts the owner-asked hold for an owner-terminal resolver at the PR's head, recording who", async () => {
     const w = world(OWNER);
 
-    const after = await ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, OWNER_TERMINAL);
+    const after = await ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, OWNER_TERMINAL, w.host.batches);
 
     expect(after).toMatchObject({ held: false, ownerHold: null });
     expect(releases(w).map((event) => [event.reason, event.actor, event.headSha])).toEqual([[OWNER, "owner-terminal:owner", H1]]);
@@ -58,7 +58,7 @@ describe("ownerRelease", () => {
   it("refuses a coordinator resolver with exit 77, writing nothing", async () => {
     const w = world(OWNER);
 
-    const refused = ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, COORDINATOR);
+    const refused = ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, COORDINATOR, w.host.batches);
 
     await expect(refused).rejects.toMatchObject({ code: 77, message: expect.stringContaining("coordinator tc-synthetic is refused") });
     expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OWNER });
@@ -68,7 +68,7 @@ describe("ownerRelease", () => {
   it("refuses a head the PR is not at, exit 65, and keeps the hold", async () => {
     const w = world(OWNER);
 
-    const refused = ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H2 }, OWNER_TERMINAL);
+    const refused = ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H2 }, OWNER_TERMINAL, w.host.batches);
 
     await expect(refused).rejects.toMatchObject({ code: 65, message: expect.stringContaining(`is at ${H1}, not ${H2}`) });
     expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OWNER });
@@ -78,7 +78,7 @@ describe("ownerRelease", () => {
   it("refuses a run with no owner-asked hold, exit 65, and leaves its other hold alone", async () => {
     const w = world(G10);
 
-    const refused = ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, OWNER_TERMINAL);
+    const refused = ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, OWNER_TERMINAL, w.host.batches);
 
     await expect(refused).rejects.toMatchObject({ code: 65, message: expect.stringContaining("holds no owner-asked hold") });
     expect(w.store().byRun("run-1")).toMatchObject({ held: true, holdReason: G10 });
@@ -88,7 +88,7 @@ describe("ownerRelease", () => {
   it("lifts the owner's hold only, so a seat's hold placed with it still gates", async () => {
     const w = world(OWNER, G10);
 
-    const after = await ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, OWNER_TERMINAL);
+    const after = await ownerRelease(w.store(), w.port, { repo: REPO, pr: 1, head: H1 }, OWNER_TERMINAL, w.host.batches);
 
     expect(after).toMatchObject({ held: true, holdReason: G10, ownerHold: null });
   });
@@ -110,26 +110,41 @@ describe("titan-factory shepherd owner-release", () => {
 
   it("refuses an agent's shell when the owner does not confirm presence, exit 77, writing nothing", async () => {
     const w = world(OWNER);
-    const { reasons } = fakeOwnerHelper(undefined);
+    const { reasons } = fakeOwnerSigner({ cancel: true });
 
     const { code, err } = await ownerReleaseCli(w, AGENT_SHELL);
 
     expect(code).toBe(77);
-    expect(err).toContain("tc-synthetic, a shell agent-chat launched, is refused");
+    expect(err).toContain("owner presence was not confirmed, so tc-synthetic, a shell agent-chat launched, is refused");
     expect(reasons).toEqual([`release the owner-asked hold on ${REPO}#1 at ${H1}`]);
     expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OWNER });
     expect(releases(w)).toEqual([]);
   });
 
-  it("releases from an agent-chat shell once the owner confirms presence, recording the proof", async () => {
+  it("refuses an agent's shell whose helper proves presence with a bare UUID only, writing nothing", async () => {
     const w = world(OWNER);
     fakeOwnerHelper(PROOF);
+
+    const { code, err } = await ownerReleaseCli(w, AGENT_SHELL);
+
+    expect(code).toBe(77);
+    expect(err).toContain("no owner signing key could be read");
+    expect(w.store().byRun("run-1")?.ownerHold).toMatchObject({ reason: OWNER });
+    expect(releases(w)).toEqual([]);
+  });
+
+  it("releases from an agent-chat shell once the owner signs the hold release, recording the spent record", async () => {
+    const w = world(OWNER);
+    fakeOwnerSigner();
 
     const { code, out } = await ownerReleaseCli(w, AGENT_SHELL);
 
     expect(code).toBe(0);
     expect(out).toContain(`released the owner-asked hold on ${REPO}#1 at ${H1} as owner-terminal`);
-    expect(releases(w).map((event) => event.actor)).toEqual([`owner-terminal:${userInfo().username} proof ${PROOF}`]);
+    const actors = releases(w).map((event) => event.actor ?? "");
+    expect(actors).toEqual([expect.stringMatching(new RegExp(`^owner-terminal:${userInfo().username} proof gate-batch:[0-9a-f-]{36}$`))]);
+    const batchId = actors[0]!.split("gate-batch:")[1]!;
+    expect(hosts.at(-1)!.batches.get(batchId)?.items).toMatchObject([{ gate: "hold:run-1", headSha: H1, outcome: "resolved" }]);
   });
 
   it("releases from the owner's own terminal without asking for presence", async () => {
@@ -155,7 +170,7 @@ describe("titan-factory shepherd owner-release", () => {
 
   it("refuses a run with no owner-asked hold before it asks the owner anything", async () => {
     const w = world(G10);
-    const { reasons } = fakeOwnerHelper(PROOF);
+    const { reasons } = fakeOwnerSigner();
 
     const { code, err } = await ownerReleaseCli(w, AGENT_SHELL);
 

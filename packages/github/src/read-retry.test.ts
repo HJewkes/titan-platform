@@ -77,7 +77,7 @@ describe("gh read retry", () => {
   it("a persistent 500 ends with the error named, after three attempts and under ten seconds of waiting", async () => {
     const gh = wireOf({ "repos/octo/demo": [answer(500, "", "gh: HTTP 500")] });
 
-    await expect(gh.wire.getDefaultBranch(REPO)).rejects.toThrow(/gh api -i -X GET failed \(1\): gh: HTTP 500/);
+    await expect(gh.wire.getDefaultBranch(REPO)).rejects.toThrow(/gh api -i repos\/octo\/demo failed \(1\): gh: HTTP 500/);
     expect(gh.calls).toHaveLength(3);
     expect(gh.slept.reduce((sum, ms) => sum + ms, 0)).toBeLessThan(10_000);
   });

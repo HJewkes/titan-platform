@@ -55,6 +55,12 @@ describe("visual paths count only files that can render", () => {
     expect(decision.reason).not.toContain("README.md");
   });
 
+  it("merges a PR whose only files under a visual glob are vitest type tests (td#936)", async () => {
+    const decision = await decisionFor(["packages/ui/src/components/ui/shim.test-d.ts", "packages/ui/src/components/ui/Card.spec-d.tsx"]);
+
+    expect(decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+  });
+
   it("still gates a PR with no changed files as visual", async () => {
     const decision = await decisionFor([]);
 

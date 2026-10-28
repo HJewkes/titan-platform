@@ -74,5 +74,20 @@ failure into an `error` result line. In CI each side is its own job and the judg
 Shepherd reads, runs merge-base code alone. A head test that detects the base and fails on purpose
 can still fake `reproduces`; that is test content, left to review.
 
+## Head mode (generated mutants)
+
+`execHeadMutants({ repo, head, mutations, budgetMs?, sandboxUser?, exec? })` runs generated
+mutations (`HeadMutation`, a `Mutation` with no `kills`) against head, for callers such as
+code-graph's body-delete audit. It adds a detached worktree at head, installs and builds once,
+groups the mutations by owning package, and runs one baseline over the union of those
+packages' test files (the head config's `tests` globs under each package). Each mutation is
+checked with `checkMutation(..., "head")`, written, rebuilt and run against its own package's
+suite, then its text is restored; each package is rebuilt once more after its last mutation,
+so M mutations over P packages cost M + P rebuilds. `classifyHeadRun` reads each run against
+the tests that passed in the baseline: `survived`, `caught` (an AssertionError), `caught-error`
+(failures, none an AssertionError), `load-error` or `timeout`. Mutations left when the budget
+(default 13 minutes) runs out are listed in `unrun`, never classified. The call never throws
+and never writes the caller's checkout. It computes no score, and there is no CLI subcommand.
+
 Tier 0 of the titan-platform DAG, with no dependencies. Tracked by TP-541 (TP-538 S1) and TP-542 (S2).
 Full reference: `site/reference/fix-proof.md`.

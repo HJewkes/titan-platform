@@ -6,7 +6,7 @@ import { DAILY_FIXTURE, DAY, fakeCli, fakeGh, fixtureTasks, REPO } from "../pres
 import { fakeAuditionModel } from "../audition-fakes.test-helpers.js";
 import { DEFAULT_LANES_FILE } from "../lanes-schema.js";
 import { runRunCli } from "./run-cli.js";
-import { fakeBridge, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
@@ -15,7 +15,7 @@ function cli(model: Parameters<typeof fakeHost>[1] = fakeScriptModel(), gatherOv
   const out: string[] = [];
   const err: string[] = [];
   const gather = { gh: fakeGh(), listTasks: async () => fixtureTasks(), lanesFile: DEFAULT_LANES_FILE, cli: fakeCli(), ...gatherOverrides };
-  const host = fakeHost(fx, model, fakeBridge());
+  const host = fakeHost(fx, model, fakeRender());
   const run = (...argv: string[]) => runRunCli(["run", ...argv, "--data-dir", fx.dataDir], { host, gather, out: (t) => out.push(t), err: (t) => err.push(t) });
   return { run, out, err };
 }

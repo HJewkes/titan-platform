@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the panel plans no tests member for a non-source head",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "if (noReproProceedOf(standing.unverified) !== undefined) return { testOnlyProof: true };",
+      "replace": "if (standing.unverified === \"no-repro-test-only\") return { testOnlyProof: true };",
+      "kills": [
+        "proofPlanFields for a head proceeding on its NO_REPRO plans a tests member for a no-repro-non-source standing",
+        "proofPlanFields for a head proceeding on its NO_REPRO plans a tests member for a workflow-only head proceeding on its unproved CI read (TP-4275)"
+      ]
+    }
+  ]
+}

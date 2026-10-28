@@ -3,7 +3,7 @@ import type { GateResolver } from "@titan-design/hitl";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "deploying";
+type RefusalCode = "record" | "record-unreadable" | "class" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying";
 export type Outcome =
   | { outcome: "resolved"; gateId: string }
   | { outcome: "already"; gateId: string }
@@ -11,6 +11,10 @@ export type Outcome =
   | { outcome: "already"; runId: string }
   /** A merge-at-head tap started (or found) the land run its standing answer waits on. */
   | { outcome: "accepted"; runId: string }
+  /** A merge-at-head tap that waits out a g10 hold left the owner's approval standing on the PR's Shepherd run. */
+  | { outcome: "approved"; runId: string }
+  | { outcome: "retired"; name: string; caveats: string[] }
+  | { outcome: "already"; name: string }
   /** A close-pr tap closed the PR at the confirmed head, leaving its branch in place. */
   | { outcome: "pr-closed"; closedHead: string }
   | { outcome: "already"; closedHead: string }
@@ -18,6 +22,8 @@ export type Outcome =
   | { outcome: "pause-cleared"; clearedPause: string; stillHeld: string | null }
   | { outcome: "already"; clearedPause: string }
   | { outcome: "moved"; currentHead: string | undefined }
+  /** The name now belongs to a different agent than the one the owner confirmed. */
+  | { outcome: "moved"; currentAgentId: string }
   /** A newer failure pause than the one the record names stands, and stays. */
   | { outcome: "moved"; currentPause: string }
   | { outcome: "gone"; reason: string }
@@ -50,6 +56,8 @@ export function statusOf(outcome: Outcome): Status {
     case "resolved":
     case "released":
     case "accepted":
+    case "approved":
+    case "retired":
     case "pr-closed":
     case "pause-cleared":
     case "already":
@@ -65,7 +73,7 @@ export function statusOf(outcome: Outcome): Status {
 
 /** A running deployer is a conflict that passes, so a later tap may land; a record or class fault never will. */
 function refusalStatus(reason: RefusalCode): Status {
-  if (reason === "github-unreadable") return 503;
+  if (reason === "github-unreadable" || reason === "agent-chat-unavailable") return 503;
   if (reason === "deploying") return 409;
   return reason === "class" || reason === "resolver" ? 403 : 422;
 }

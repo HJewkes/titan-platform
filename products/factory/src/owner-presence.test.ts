@@ -3,12 +3,16 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { confirmOwner, defaultHelperPath, helperSearchOrder, ownerKeyId, ROOT_HELPER_PATH, signStatement, type ConfirmOptions, type HelperRunner, type StatPort } from "./owner-presence.js";
+import * as ownerPresence from "./owner-presence.js";
+import { defaultHelperPath, helperSearchOrder, ownerKeyId, ROOT_HELPER_PATH, signStatement, type ConfirmOptions, type HelperRunner, type StatPort } from "./owner-presence.js";
 import { keyIdOf } from "./presence-proof.js";
 import { useOwnerPresenceEdge } from "./test-support/owner-edges.js";
 
 const helperPath = "/synthetic/owner-presence";
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
+/** A minimal DER SEQUENCE of two INTEGERs, the shape signStatement accepts. */
+const SIGNATURE = "MAYCAQECAQE";
+const STATEMENT = new TextEncoder().encode("statement");
 const OWNER = 501;
 const FILE = 0o100755;
 const DIR = 0o040755;
@@ -22,83 +26,60 @@ function fakeStat(overrides: Record<string, Entry | undefined> = {}): StatPort {
   return (path) => entries[path];
 }
 
-/** confirmOwner through `edge`, the only override it takes. */
-function confirm(reason: string, edge: ConfirmOptions): Promise<string | undefined> {
+/** signStatement through `edge`, the OS edge production callers reach it by. */
+function signThrough(reason: string, edge: ConfirmOptions): Promise<string | undefined> {
   useOwnerPresenceEdge(edge);
-  return confirmOwner(reason);
+  return signStatement(STATEMENT, reason);
 }
 
 async function confirmWith(stat: StatPort, helperPaths: readonly string[] = [helperPath]) {
   const runs: string[] = [];
   const reports: string[] = [];
-  const run: HelperRunner = async (file) => (runs.push(file), PROOF);
-  const proof = await confirm("resolve gate", { run, stat, getuid: () => OWNER, helperPaths, report: (line) => reports.push(line) });
+  const run: HelperRunner = async (file) => (runs.push(file), SIGNATURE);
+  const proof = await signThrough("resolve gate", { run, stat, getuid: () => OWNER, helperPaths, report: (line) => reports.push(line) });
   return { proof, runs, reports };
 }
 
-describe("confirmOwner", () => {
-  it("returns the proof the helper prints on success", async () => {
-    const run: HelperRunner = async () => `${PROOF}\n`;
-    expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBe(PROOF);
+describe("owner presence has no bare-UUID mode", () => {
+  it("exports no confirmOwner", () => {
+    expect(Object.keys(ownerPresence)).not.toContain("confirmOwner");
   });
 
-  it.each([["a word", "proof-1234"], ["an uppercase UUID", PROOF.toUpperCase()], ["a UUID and more", `${PROOF} ok`], ["a non-v4 UUID", PROOF.replace("-4c3a-", "-1c3a-")]])(
-    "refuses %s as a proof",
-    async (_name, printed) => {
-      const run: HelperRunner = async () => `${printed}\n`;
-      expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
-    },
-  );
+  it("never runs the helper with the reason alone, which would print a bare proof id", async () => {
+    const seen: string[][] = [];
+    const run: HelperRunner = async (_file, args) => (seen.push([...args]), args[0] === "pubkey" ? "3f9a0c1d2e4b5a67" : PROOF);
+    const edge = { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] };
+    expect([await ownerKeyId(edge), await signThrough("resolve gate", edge)]).toEqual(["3f9a0c1d2e4b5a67", undefined]);
+    expect(seen).toEqual([["pubkey", "--id"], ["sign", "--", "resolve gate"]]);
+  });
 
   it("runs the helper from native/build beside this package, whatever the environment says", async () => {
     const build = defaultHelperPath();
     const files: string[] = [];
-    const run: HelperRunner = async (file) => (files.push(file), PROOF);
+    const run: HelperRunner = async (file) => (files.push(file), SIGNATURE);
     const stat: StatPort = (path) => (path === ROOT_HELPER_PATH ? undefined : { uid: OWNER, mode: path === build ? FILE : DIR });
     process.env.OWNER_PRESENCE_HELPER = "/synthetic/stub";
     try {
-      await confirm("resolve gate", { run, stat, getuid: () => OWNER });
+      await signThrough("resolve gate", { run, stat, getuid: () => OWNER });
     } finally {
       delete process.env.OWNER_PRESENCE_HELPER;
     }
     expect(files).toEqual([build]);
     expect(build).toMatch(/products\/factory\/native\/build\/owner-presence$/);
   });
-
-  it("returns undefined when the owner cancels", async () => {
-    const run: HelperRunner = async () => {
-      throw Object.assign(new Error("Command failed"), { code: 1 });
-    };
-    expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
-  });
-
-  it("returns undefined when the helper succeeds but prints no proof", async () => {
-    const run: HelperRunner = async () => "\n";
-    expect(await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] })).toBeUndefined();
-  });
-
-  it("escapes control characters in the reason", async () => {
-    const seen: string[][] = [];
-    const run: HelperRunner = async (_file, args) => {
-      seen.push([...args]);
-      return PROOF;
-    };
-    await confirm("approve\x1b[2J‮ and\\more", { run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] });
-    expect(seen).toEqual([["approve\\x1b[2J\\u202E and\\\\more"]]);
-  });
 });
 
-describe("confirmOwner checks the helper path before each run", () => {
+describe("owner presence checks the helper path before each run", () => {
   it("runs a helper the owner owns on a path nobody else can write", async () => {
     const { proof, runs, reports } = await confirmWith(fakeStat());
-    expect(proof).toBe(PROOF);
+    expect(proof).toBe(SIGNATURE);
     expect(runs).toEqual([helperPath]);
     expect(reports).toEqual([]);
   });
 
   it("runs a root-owned helper", async () => {
     const { proof } = await confirmWith(fakeStat({ "/synthetic": { uid: 0, mode: DIR }, [helperPath]: { uid: 0, mode: FILE } }));
-    expect(proof).toBe(PROOF);
+    expect(proof).toBe(SIGNATURE);
   });
 
   it.each([
@@ -119,8 +100,8 @@ describe("confirmOwner checks the helper path before each run", () => {
 
   it("refuses when there is no OS user id to compare owners against", async () => {
     const runs: string[] = [];
-    const run: HelperRunner = async (file) => (runs.push(file), PROOF);
-    const proof = await confirm("resolve gate", { run, stat: fakeStat(), getuid: () => undefined, helperPaths: [helperPath], report: () => {} });
+    const run: HelperRunner = async (file) => (runs.push(file), SIGNATURE);
+    const proof = await signThrough("resolve gate", { run, stat: fakeStat(), getuid: () => undefined, helperPaths: [helperPath], report: () => {} });
     expect(proof).toBeUndefined();
     expect(runs).toEqual([]);
   });
@@ -168,18 +149,18 @@ describe("confirmOwner checks the helper path before each run", () => {
   });
 });
 
-describe("confirmOwner with the real lstat", () => {
+describe("owner presence with the real lstat", () => {
   it("reports a missing helper as absent and an unreadable parent as a named errno", async () => {
     const root = mkdtempSync(join(tmpdir(), "owner-presence-"));
     try {
       const locked = join(root, "locked");
       mkdirSync(locked, { mode: 0o700 });
       writeFileSync(join(locked, "helper"), "");
-      const run: HelperRunner = async () => PROOF;
+      const run: HelperRunner = async () => SIGNATURE;
       const reports: string[] = [];
-      const absent = await confirm("r", { run, getuid: () => 0, helperPaths: [join(root, "missing")], report: (l) => reports.push(l) });
+      const absent = await signThrough("r", { run, getuid: () => 0, helperPaths: [join(root, "missing")], report: (l) => reports.push(l) });
       chmodSync(locked, 0o000);
-      const denied = await confirm("r", { run, getuid: () => 0, helperPaths: [join(locked, "helper")], report: (l) => reports.push(l) });
+      const denied = await signThrough("r", { run, getuid: () => 0, helperPaths: [join(locked, "helper")], report: (l) => reports.push(l) });
       expect([absent, denied]).toEqual([undefined, undefined]);
       expect(reports[0]).toBe(`owner presence refused: no helper at ${join(root, "missing")}\n`);
       expect(reports[1]).toMatch(/failed with (EACCES|EPERM)\n$/);
@@ -209,6 +190,13 @@ describe("signStatement", () => {
     const run: HelperRunner = async (file, args, input) => (calls.push({ args: [...args], input }), enclave(file, args, input));
     await signStatement(statement, "--resolve\x1b[2J", options(run));
     expect(calls).toEqual([{ args: ["sign", "--", "--resolve\\x1b[2J"], input: statement }]);
+  });
+
+  it("escapes control, format and backslash characters in the reason", async () => {
+    const seen: string[][] = [];
+    const run: HelperRunner = async (file, args, input) => (seen.push([...args]), enclave(file, args, input));
+    await signStatement(statement, "approve\x1b[2J‮ and\\more", options(run));
+    expect(seen).toEqual([["sign", "--", "approve\\x1b[2J\\u202E and\\\\more"]]);
   });
 
   it.each([

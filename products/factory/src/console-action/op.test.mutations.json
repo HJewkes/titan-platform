@@ -11,12 +11,12 @@
       ]
     },
     {
-      "name": "retire-agent maps to a class owner-remote may run",
+      "name": "retire-agent maps back onto destructive-local",
       "file": "products/factory/src/owner-ops/authority.ts",
-      "find": "\"retire-agent\": \"destructive-local\",",
-      "replace": "\"retire-agent\": \"spawn\",",
+      "find": "\"retire-agent\": \"agent-retire\",",
+      "replace": "\"retire-agent\": \"destructive-local\",",
       "kills": [
-        "actOnOp refuses with class an op the authority table denies owner-remote, running no effect and logging nothing"
+        "actOnOp admits a retire-agent op under RET-OR and runs its effect"
       ]
     }
   ]

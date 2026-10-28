@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the launcher waits for stderr to close, however long a grandchild holds it",
+      "file": "packages/agent-surface/src/run-agent.ts",
+      "find": "    setTimeout(finish, STDERR_FLUSH_MS);",
+      "replace": "    void STDERR_FLUSH_MS;",
+      "kills": [
+        "the launcher keeping the stderr tail of a headless claude exits while a grandchild still holds claude's stderr"
+      ]
+    }
+  ]
+}

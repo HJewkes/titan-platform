@@ -35,6 +35,12 @@ function lockPath() {
   return join(root, "nested", "dag-check.lock");
 }
 
+/** The attempt's error message if it fails before any poll delay could run, else "still waiting". */
+function failsBeforeAPoll(attempt) {
+  const nextTurn = new Promise((resolve) => setImmediate(() => resolve("still waiting")));
+  return Promise.race([attempt.then(() => "acquired", (err) => err.message), nextTurn]);
+}
+
 function deadPid() {
   return spawnSync(process.execPath, ["-e", ""]).pid;
 }
@@ -234,14 +240,12 @@ describe("the dag-check hold log", () => {
     const lockDir = lockPath();
     seedHolds(lockDir, [100, 120, 140]);
     seedTicketsAhead(lockDir, 5);
-    const started = Date.now();
 
-    const attempt = acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} });
+    const outcome = await failsBeforeAPoll(acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} }));
 
-    await expect(attempt).rejects.toThrow(
+    expect(outcome).toBe(
       "dag-check lock: 5 ahead, about 10 min at the median hold of 120 s; exit 75. CI's dag-check job runs dag:check and dead:check on the PR.",
     );
-    expect(Date.now() - started).toBeLessThan(1000);
     expect(readdirSync(`${lockDir}.queue`)).toHaveLength(5);
   }, 2000);
 
@@ -261,14 +265,12 @@ describe("the dag-check hold log", () => {
     const lockDir = lockPath();
     seedHolds(lockDir, [600, 600, 600]);
     tryAcquire(lockDir);
-    const started = Date.now();
 
-    const attempt = acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} });
+    const outcome = await failsBeforeAPoll(acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} }));
 
-    await expect(attempt).rejects.toThrow(
+    expect(outcome).toBe(
       "dag-check lock: the holder and 0 ahead, about 10 min at the median hold of 600 s; exit 75. CI's dag-check job runs dag:check and dead:check on the PR.",
     );
-    expect(Date.now() - started).toBeLessThan(1000);
   }, 2000);
 
   it("acquires behind a long median when no one holds the lock", async () => {

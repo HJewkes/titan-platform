@@ -161,6 +161,30 @@ describe("console agent-chat binary", () => {
   });
 });
 
+describe("console explainer binary", () => {
+  const machine = (...executables: string[]): Machine => ({ hostname: () => "box", addresses: () => [], isExecutable: (file) => executables.includes(file) });
+  const PATH = ["/opt/none/bin", "/opt/video/bin"].join(path.delimiter);
+
+  it("resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given", () => {
+    expect(resolveConfig({ PATH }, HOME, "linux", machine("/opt/video/bin/explainer")).explainerBin).toBe("/opt/video/bin/explainer");
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "/srv/video/explainer" }, HOME, "linux", machine()).explainerBin).toBe("/srv/video/explainer");
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "~/bin/explainer" }, HOME, "linux", machine()).explainerBin).toBe(path.join(HOME, "bin", "explainer"));
+  });
+
+  it("leaves the binary unset when the name is not on PATH, with no start-up warning of its own", () => {
+    const missing = resolveConfig({ PATH }, HOME, "linux", machine("/opt/video/bin/other"));
+
+    expect(missing.explainerBin).toBeUndefined();
+    expect(missing.startupWarnings).toEqual([expect.stringContaining(AGENT_CHAT_NOT_FOUND)]);
+  });
+
+  it("keeps a relative path as given, so the props panel's gap names it", () => {
+    const relative = resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "bin/explainer" }, HOME, "linux", machine("/opt/video/bin/explainer"));
+
+    expect(relative.explainerBin).toBe("bin/explainer");
+  });
+});
+
 describe("console LAN config", () => {
   const LAN_IP = "192.0.2.10";
   const machine: Machine = { hostname: () => "Lan-Box", addresses: () => [LAN_IP, "2001:db8::a"] };

@@ -11,6 +11,7 @@ export {
   type FixProofConfig,
 } from "./config.js";
 export { compileGlobs, expandBraces } from "./glob.js";
+export { LinearRegExp, linearRegExpSteps } from "./linear-regexp.js";
 export {
   planFixProof,
   testOnlyOf,
@@ -28,6 +29,7 @@ export {
   MAX_MUTATIONS,
   MAX_SPEC_BYTES,
   parseMutationSpec,
+  type HeadMutation,
   type Mutation,
   type MutationCheck,
   type MutationSpec,
@@ -74,6 +76,20 @@ export { spawnExec, type Exec, type ExecOptions, type ExecResult } from "./exec.
 export { DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_COMMAND, errorLine, run, type RunOptions } from "./run.js";
 export { execSide, SIDE_REPORTS, type ExecSideOptions, type Side } from "./side.js";
 export { DEFAULT_MUTANTS_BUDGET_MS, execMutants, MUTANTS_REPORT, type ExecMutantsOptions } from "./mutant-side.js";
+export {
+  execHeadMutants,
+  MAX_HEAD_FAILURES,
+  type ExecHeadMutantsOptions,
+  type HeadMutantRun,
+  type HeadMutantsReport,
+} from "./head-side.js";
+export {
+  classifyHeadRun,
+  HEAD_OUTCOMES,
+  type HeadFailure,
+  type HeadOutcome,
+  type ReducedHeadRun,
+} from "./head-classify.js";
 export { DEFAULT_JUDGE_BUDGET_MS, judge, type JudgeOptions, type JudgeReports } from "./judge.js";
 export {
   decodeMutantsReport,

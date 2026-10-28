@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { countCalls } from "@titan-design/test-kit";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { gitTreeSource } from "./git-tree-source.js";
 import { readSnapshot, type Snapshot } from "./incremental.test-helpers.js";
@@ -197,6 +198,8 @@ describe("gitTreeSource where today's disk links over a tracked dir", () => {
 const CHAIN_LINKS = 45;
 // nest/k -> k+1/../k+1/../k+1: without a memo per link, resolving nest/1 takes 3^NEST_DEPTH steps.
 const NEST_DEPTH = 25;
+/** A link target is split once per follow: nest/1 took 106 with the memo, and 3^NEST_DEPTH would never end without it. */
+const NEST_SPLITS = 500;
 // The barrel splits t.ts's inbound weight three ways, so its utilization sums thirds in file order.
 const ORDERED: Record<string, string> = {
   "x.ts": "export const x = 1;\n",
@@ -262,11 +265,10 @@ describe("gitTreeSource on link chains, dot-dot targets and file order", () => {
 
   it("resolves each tracked link once per hop budget when nested targets name it repeatedly", () => {
     const host = gitTreeSource(repo, "HEAD").fileSystem;
-    const started = performance.now();
 
-    host.fileExistsSync(at("nest/1/x.txt"));
+    const splits = countCalls([[String.prototype, "split"]], () => host.fileExistsSync(at("nest/1/x.txt")), NEST_SPLITS);
 
-    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(splits).toBeLessThanOrEqual(NEST_SPLITS);
   });
 
   it("indexes files in the same order as a checkout, so float metrics match byte for byte", async () => {

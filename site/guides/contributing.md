@@ -4,7 +4,9 @@
 
 ```
 packages/     the shared tiers, published to npm as @titan-design/<name>
-products/     apps composed from the tiers (private)
+products/     products composed from the tiers (private)
+apps/         workspace apps: codewatch and console (private)
+deploy/       deployable stacks: deploy/hub, the Matrix hub
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
 scripts/      new-package.mjs, dag-check.sh, gen-docs-reference.mjs
 site/         this documentation site (VitePress)
