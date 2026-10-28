@@ -6,7 +6,7 @@ const MAX_HEAD_BLOBS = 20;
 
 const UNREAD_PREFIX = "the head blobs of the changed files are unread: ";
 
-export type HeadBlobsRead = { headBlobs: Record<string, string | null> } | { unread: string };
+type HeadBlobsRead = { headBlobs: Record<string, string | null> } | { unread: string };
 
 /**
  * Each changed path's git blob sha at `head`, null where the file is absent there (a deletion or rename source). Any
