@@ -8,6 +8,7 @@
  */
 import { LIVE_HISTORY_STATES, type AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import type { OwnerItem, OwnerOp } from "@titan-design/owner-queue";
+import { pinKey, roundAnswers } from "./round-gate-cover.js";
 import type { ShepherdSource } from "./shepherd.js";
 
 type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
@@ -144,6 +145,48 @@ interface Sectioned extends OwnerItem {
 export interface Placed<T extends Sectioned> {
   item: T;
   pin: string | undefined;
+  /** A hitl gate's `pr:<repo>#<n>@<head>` at its live row's head, the key a merge-bound round question pins. */
+  head?: string;
+}
+
+/**
+ * The head a hitl gate could fold at, in `prKey`'s form: only the live row's pending gate, and only on a step a round's
+ * answer posts to (`round-gate-cover.ts`). Any other gate on the run, an sh-sent-back one included, keeps its own row.
+ */
+export function gateHeadOf(item: OwnerItem, row: WatchRow | undefined): string | undefined {
+  const source = item.sources[0]!;
+  if (source.system !== "hitl" || row?.pr == null || row.headSha == null) return undefined;
+  const gate = row.pendingGate;
+  if (!roundAnswers(gate) || gate.gateId.toLowerCase() !== source.ref.toLowerCase()) return undefined;
+  return pinKey(row.repo, row.pr, row.headSha);
+}
+
+function coveringRounds(placed: readonly Placed<Sectioned>[]): Map<string, string> {
+  const rounds = new Map<string, string>();
+  for (const { item } of placed) {
+    const roundId = roundOf(item);
+    if (roundId !== undefined) for (const key of item.keys) if (key.startsWith("pr:")) rounds.set(key.toLowerCase(), roundId);
+  }
+  return rounds;
+}
+
+/**
+ * TP-4356: an open round whose merge-bound question pins a PR head answers that head's approve-merge or visual accept
+ * gate, so the gate folds into the round's row and the row lists it in `foldedGates`. A gate at any other head is not
+ * what the round reviewed, and any other step is not the round's to settle: each keeps its own row.
+ */
+export function foldCoveredGates<T extends Sectioned>(placed: readonly Placed<T>[]): Placed<T & { foldedGates?: string[] }>[] {
+  const covering = coveringRounds(placed);
+  const folded = new Map<string, string[]>();
+  const kept = placed.filter(({ item, head }) => {
+    const roundId = head === undefined ? undefined : covering.get(head);
+    if (roundId !== undefined) folded.set(roundId, [...(folded.get(roundId) ?? []), item.id]);
+    return roundId === undefined;
+  });
+  return kept.map((each) => {
+    const gates = folded.get(roundOf(each.item) ?? "");
+    return gates === undefined ? each : { ...each, item: { ...each.item, foldedGates: gates } };
+  });
 }
 
 const SENT_BACK = /\/sh-sent-back(:\d+)?$/;

@@ -12,7 +12,7 @@ import { readRoster, type AgentsSource } from "./agents.js";
 import { readFlow, type ApprovalsSources } from "./approvals.js";
 import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
-import { liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
+import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { readCommand } from "./owner-guard.js";
 import { missedNoticeRows } from "./round-notice-gaps.js";
@@ -44,6 +44,8 @@ export interface InboxItem extends OwnerItem {
   evidence: string | undefined;
   /** Set on a round's one row when it asks more than one question; the round page holds them. */
   questionCount?: number;
+  /** The gates a round's row stands for: each at the PR head one of its merge-bound questions pins. */
+  foldedGates?: string[];
   /** A blocking item open past four days: listed under "Older than 4 days", still blocking. */
   aged?: true;
 }
@@ -258,7 +260,8 @@ function inboxItem(item: OwnerItem, { rows, strips, liveAgents, now }: Joins): P
   const evidence = evidenceOf(item, row);
   const gates = row === undefined ? undefined : strips.get(row.runId);
   const placed = { ...item, section: sectionOf(item, { row, liveAgents, now }), ...actionFor(item, row, evidence), evidence, ...(gates !== undefined && { gates }) };
-  return { item: placed, pin: pinOf(item, row) };
+  const head = gateHeadOf(item, row);
+  return { item: placed, pin: pinOf(item, row), ...(head !== undefined && { head }) };
 }
 
 /** Blocking before planning, newest first inside each; the id breaks a tie so a poll never reshuffles. */
@@ -272,7 +275,7 @@ const byRunId = (rows: readonly WatchRow[]): Map<string, WatchRow> => new Map(ro
 
 export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], { strips = new Map(), liveAgents, now = Date.now() }: ItemFacts = {}): InboxItem[] {
   const joins = { rows: byRunId(rows), strips, liveAgents, now };
-  return markAged(oneRowPerRound(onePerPr(order.map((item) => inboxItem(item, joins)))), now).sort(byInboxOrder);
+  return markAged(oneRowPerRound(onePerPr(foldCoveredGates(order.map((item) => inboxItem(item, joins))))), now).sort(byInboxOrder);
 }
 
 /** Only the rows a hitl item joins get a strip, so a run nobody is asked about costs no reads. */

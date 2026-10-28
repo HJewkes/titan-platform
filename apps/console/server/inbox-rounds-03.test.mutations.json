@@ -1,0 +1,55 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "owner-queue parses the 0.3 round unprojected, so the round is a gap again",
+      "file": "apps/console/server/approval-items.ts",
+      "find": "ManifestSchema.safeParse(manifestFor01(round.manifest))",
+      "replace": "ManifestSchema.safeParse(round.manifest)",
+      "kills": [
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) is one blocking row with its question count and no unreadable-round gap",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a gate the round's answer cannot settle, such as an sh-sent-back gate at the pinned head, as its own row"
+      ]
+    },
+    {
+      "name": "a gate folds into the round covering its PR at any head",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "const roundId = head === undefined ? undefined : covering.get(head);",
+      "replace": "const roundId = head === undefined ? undefined : [...covering].find(([key]) => key.startsWith(head.slice(0, head.indexOf(\"@\"))))?.[1];",
+      "kills": [
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
+      ]
+    },
+    {
+      "name": "a pin key keeps the repo as Shepherd spells it",
+      "file": "apps/console/server/round-gate-cover.ts",
+      "find": "`pr:${repo}#${pr}@${headSha}`.toLowerCase();",
+      "replace": "`pr:${repo}#${pr}@${headSha}`;",
+      "kills": [
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
+      ]
+    },
+    {
+      "name": "any hitl gate at the pinned head folds, whatever its step",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "if (!roundAnswers(gate) || gate.gateId.toLowerCase() !== source.ref.toLowerCase()) return undefined;",
+      "replace": "if (gate === null) return undefined;",
+      "kills": [
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a gate the round's answer cannot settle, such as an sh-sent-back gate at the pinned head, as its own row"
+      ]
+    },
+    {
+      "name": "the round's row does not list the gates folded into it",
+      "file": "apps/console/server/inbox-blocking.ts",
+      "find": "{ ...each, item: { ...each.item, foldedGates: gates } }",
+      "replace": "each",
+      "kills": [
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
+      ]
+    }
+  ]
+}
