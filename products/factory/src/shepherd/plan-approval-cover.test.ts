@@ -20,7 +20,7 @@ describe("a CI-policy plan approval's cover", () => {
   });
 
   it("does not cover a weakened key the owner was not told about", () => {
-    expect(ciPolicyCovers(SCOPE, { ...FACTS, keys: ["other", "required-checks"] })).toBe(false);
+    expect(ciPolicyCovers(SCOPE, { ...FACTS, keys: ["other", "required-check"] })).toBe(false);
   });
 
   it("does not cover a rename whose source is not pinned as absent", () => {
