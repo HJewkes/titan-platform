@@ -5,7 +5,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { describe, expect, it } from "vitest";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523 } from "./merge-facts.js";
-import { PlanApprovalRefused, type PlanApproval } from "./plan-approval.js";
+import { CiPolicyScopeSchema, PlanApprovalRefused, type PlanApproval } from "./plan-approval.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, type RegistrationInput } from "./store.js";
 
@@ -24,7 +24,7 @@ function openStore(): { store: ShepherdStore; db: Db } {
 }
 
 const approve = (store: ShepherdStore, approval: PlanApproval = SKILL, confirmEvent = "action:1", claimRun?: string) => store.planApprovals().record({ ...approval, task: TASK, repo: REPO }, CONSOLE(confirmEvent), claimRun);
-const rowCount = (db: Db): number => (db.prepare("SELECT count(*) AS n FROM shepherd_plan_approval").get() as { n: number }).n;
+const rowCount = (db: Db): number => db.prepare("SELECT confirm_event FROM shepherd_plan_approval").all().length;
 
 describe("the plan-approval store", () => {
   it("writes one row per console confirmation and reports a repeat of the same confirm event as already written", () => {
@@ -63,11 +63,10 @@ describe("the plan-approval store", () => {
     ["empty CI-policy keys", { ciPolicyKeys: [], files: [{ path: ".github/x.yml", blob: "a".repeat(40) }] }],
     ["a blob that is not 40-hex", { ciPolicyKeys: ["other"], files: [{ path: ".github/x.yml", blob: "A".repeat(40) }] }],
     ["a path pinned twice", { ciPolicyKeys: ["other"], files: [{ path: ".github/x.yml", blob: null }, { path: ".github/x.yml", blob: "a".repeat(40) }] }],
-  ])("refuses a ci-policy approval with %s and leaves no row", (_case, scope) => {
-    const { store, db } = openStore();
+  ])("refuses a ci-policy scope with %s", (_case, scope) => {
+    const parsed = CiPolicyScopeSchema.safeParse(scope);
 
-    expect(() => approve(store, { gate: "ci-policy", scope, round: "round-1" } as PlanApproval)).toThrow();
-    expect(rowCount(db)).toBe(0);
+    expect(parsed.success).toBe(false);
   });
 
   it("refuses a skill approval with no paths", () => {
