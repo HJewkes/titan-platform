@@ -63,9 +63,10 @@ function renderPlanAsk(ask: PlanAsk, input: PlanRoundInput, questionId: string, 
     questionIds: [questionId],
   };
   const question: QuestionInput = { id: questionId, kind: "pick-one", prompt, options: [approve, revise], signsOff: prompt };
-  const { title: _title, context: _context, ...gated } = ask;
-  return { question, section, binding: { questionId, approve, task, repo, ...structuredClone(gated) } };
+  return { question, section, binding: { questionId, approve, task, repo, ...structuredClone(gateScope(ask)) } };
 }
+
+const gateScope = (ask: PlanAsk): PlanGateScope => (ask.gate === "ci-policy" ? { gate: ask.gate, scope: ask.scope } : { gate: ask.gate, scope: ask.scope });
 
 /**
  * Turns one PR's predicted WHAT gates into a questions-only round@2 round.json whose `planApprovals` bind each question's

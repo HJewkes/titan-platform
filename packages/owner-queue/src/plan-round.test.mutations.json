@@ -13,8 +13,8 @@
     {
       "name": "the copied scope keeps only the first pinned file",
       "file": "packages/owner-queue/src/plan-round.ts",
-      "find": "...structuredClone(gated) } };",
-      "replace": "...structuredClone(gated), ...(\"files\" in gated.scope && { scope: { ...gated.scope, files: gated.scope.files.slice(0, 1) } }) } };",
+      "find": "? { gate: ask.gate, scope: ask.scope } :",
+      "replace": "? { gate: ask.gate, scope: { ...ask.scope, files: ask.scope.files.slice(0, 1) } } :",
       "kills": [
         "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope"
       ]

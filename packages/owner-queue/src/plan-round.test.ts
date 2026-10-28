@@ -50,7 +50,7 @@ describe("buildPlanRound", () => {
   });
 
   it("throws on an empty ask list, and returns a manifest review-schema's RoundSchema accepts", () => {
-    const { planApprovals: _bindings, ...manifest } = buildPlanRound(input([CI_ASK, SKILL_ASK]));
+    const manifest = Object.fromEntries(Object.entries(buildPlanRound(input([CI_ASK, SKILL_ASK]))).filter(([key]) => key !== "planApprovals"));
 
     expect(() => buildPlanRound(input([]))).toThrow("at least one ask");
     expect(RoundSchema.safeParse(manifest).success).toBe(true);
