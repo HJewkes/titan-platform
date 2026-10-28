@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartFrameProblems, isMonotonicScale, lightness } from "./chart-integrity.js";
+import { chartFrameProblems, colourOnlySeries, isMonotonicScale, lightness } from "./chart-integrity.js";
 import { resolveScript, visual } from "./resolve-fixtures.test-helpers.js";
 import { resolveConfig, runResolveStage } from "./resolve-stage.js";
 import { sha256 } from "./workflow/artifacts.js";
@@ -12,8 +12,8 @@ const JET = ["#0000ff", "#00ffff", "#ffff00", "#ff0000"];
 const RED_BLUE = ["#b2182b", "#f7f7f7", "#2166ac"];
 const bars = (frame: Record<string, unknown> = {}) => ({ kind: "bar", series: SERIES, ...frame });
 
-/** The resolve body over an in-memory store with one chart beat pinned to `slots`, then the chart-integrity gate. */
-function chartGate(slots: Record<string, unknown>) {
+/** The resolve body over an in-memory store with one chart beat pinned to `slots`, then the named resolve check. */
+function chartGate(slots: Record<string, unknown>, name = "chart-integrity") {
   const script = JSON.stringify(resolveScript([["b1", "WHAT", { visual: visual({ beat: "chart" }) }]]));
   const texts = { script, slots: JSON.stringify({ b1: slots }) };
   const bySha = new Map(Object.values(texts).map((text) => [sha256(text), text]));
@@ -21,7 +21,7 @@ function chartGate(slots: Record<string, unknown>) {
   const inputs = Object.fromEntries(Object.entries(texts).map(([name, text]) => [name, sha256(text)]));
   const outcome = runResolveStage({ artifacts: inputs, store, from: { runId: "r", stage: "resolve" }, remainingUsd: 1 }, resolveConfig());
   const checks = runStageChecks("resolve", { artifacts: { ...inputs, ...outcome.outputs }, store, l0Checks: [] });
-  return checks.checks.find((check) => check.name === "chart-integrity");
+  return checks.checks.find((check) => check.name === name);
 }
 
 describe("bar charts start at zero and draw no broken axis (CH-11, CH-13)", () => {
@@ -123,5 +123,40 @@ describe("resolve gates on chart integrity", () => {
 
     // Assert
     expect(check).toEqual({ name: "chart-integrity", gate: true, pass: true, detail: "1 chart beats read true" });
+  });
+});
+
+describe("series are never told apart by colour alone (CH-20, WCAG 1.4.1)", () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `series-${i + 1}`, label: `Desk ${i + 1}`, points: [{ x: 1, y: i }] }));
+
+  it("flags a replot of several series keyed only by a legend, whatever their count", () => {
+    // Arrange
+    const frames = [{ kind: "line", series: lines(2), legend: true }, { kind: "line", series: lines(7), legend: true }];
+
+    // Act
+    const flagged = frames.map((frame) => colourOnlySeries("replot", frame));
+
+    // Assert
+    expect(flagged).toEqual([true, true]);
+  });
+
+  it("passes labelled series, a lone series, and a chart whose points carry axis labels", () => {
+    // Arrange / Act
+    const flagged = [
+      colourOnlySeries("replot", { kind: "line", series: lines(3) }),
+      colourOnlySeries("replot", { kind: "line", series: lines(1), legend: true }),
+      colourOnlySeries("chart", bars({ legend: true, scale: { kind: "sequential", colours: BLUES } })),
+    ];
+
+    // Assert
+    expect(flagged).toEqual([false, false, false]);
+  });
+
+  it("reports the colour-only lint at resolve without gating", () => {
+    // Arrange / Act
+    const check = chartGate(bars({ legend: true }), "colour-only-series");
+
+    // Assert
+    expect(check).toEqual({ name: "colour-only-series", gate: false, pass: true, detail: "no chart tells its series apart by colour alone" });
   });
 });

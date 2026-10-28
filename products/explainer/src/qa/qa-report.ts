@@ -1,6 +1,7 @@
 import { countByKind, type Held, type HeldFinding, type MediaInterval, type MediaScan } from "@titan-design/render-qa";
 import { z } from "zod";
 import { CaptionReportSchema } from "./caption-check.js";
+import { ContrastReportSchema } from "./contrast-check.js";
 import { NarrationFactsReportSchema } from "./narration-facts.js";
 import type { QaTimeline } from "./qa-timeline.js";
 import { TIMING_GATES } from "./timing-gates.js";
@@ -96,6 +97,8 @@ export const QaReportSchema = z.object({
   captions: CaptionReportSchema.optional(),
   /** On-screen numbers and headline names the narration never says (`narration-facts.ts`); absent before the check. */
   narrationFacts: NarrationFactsReportSchema.optional(),
+  /** Text and chart marks under the gate profile's contrast thresholds (`contrast-check.ts`); absent before the check. */
+  contrast: ContrastReportSchema.optional(),
   notes: z.array(z.string()),
 });
 export type QaReport = z.infer<typeof QaReportSchema>;

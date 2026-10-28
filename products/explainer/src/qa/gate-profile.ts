@@ -49,6 +49,16 @@ export interface QaGate {
 export const CAPTIONS_GATE = false;
 /** Whether an on-screen fact the narration never says fails the qa stage (WCAG 1.2.5 AA); waits on the same answer. */
 export const NARRATION_FACTS_GATE = false;
+/** Whether text or chart marks under the contrast thresholds, or series told apart by colour alone, fail; same answer. */
+export const CONTRAST_GATE = false;
+
+/**
+ * WCAG 2.2 AA contrast (content standards CH-19, CH-20): 4.5:1 for text (1.4.3), 3:1 for large text, and 3:1 for a
+ * chart mark against the ground it sits on (1.4.11). Large is 18 pt, 24 CSS px; render-qa reads no font weight, so 14 pt
+ * bold text is held to the normal-text ratio, the stricter of the two.
+ */
+export const CONTRAST = { text: 4.5, largeText: 3, largeTextPx: 24, nonText: 3 } as const;
+export type ContrastThresholds = typeof CONTRAST;
 
 const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
 
