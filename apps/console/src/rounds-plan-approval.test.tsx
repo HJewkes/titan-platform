@@ -35,7 +35,7 @@ async function renderPlanRound(): Promise<void> {
 const linesIn = (questionId: string): string[] =>
   within(within(screen.getByTestId(`round-question-${questionId}`)).getByTestId(`plan-approval-scope-${questionId}`))
     .getAllByText(/./)
-    .map((line) => line.textContent ?? "");
+    .map((line) => line.textContent);
 
 describe("a plan round's approval scope on the round page", () => {
   it("shows the owner each bound question's gate, task, repo, CI-policy keys and pinned files beside the question", async () => {
