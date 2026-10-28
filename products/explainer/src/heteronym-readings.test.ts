@@ -6,7 +6,7 @@ import { heteronymCheck, unsettledHeteronyms } from "./lint-heteronyms.js";
 import { loadRuleRegistry } from "./rules.js";
 import type { ScriptV1 } from "./script-schema.js";
 import { parseSpine } from "./spine-schema.js";
-import { checked, failingErrors, failureList, repairPrompt, repairRounds, type ScriptPlan } from "./workflow/script-draft.js";
+import { checked, failingErrors, type Call, failureList, repairPrompt, repairRounds, type ScriptPlan } from "./workflow/script-draft.js";
 import { GOOD_BEATS, tour, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
 
 // Synthetic parcel-desk lines; none quotes a real script.
@@ -76,7 +76,7 @@ describe("the L0 repair of an undeclared heteronym", () => {
     const start = withLine("Every minute counts at the desk.");
     const fixed = withLine("Every [minute](=time) counts at the desk.");
     const prompts: string[] = [];
-    const call = async (prompt: string) => (prompts.push(prompt), { ok: true, output: JSON.stringify(fixed) });
+    const call: Call = async (prompt) => (prompts.push(prompt), { ok: true, output: JSON.stringify(fixed) });
 
     const repaired = await repairRounds(call, { script: start, stamps: [] }, {
       rounds: 1,
