@@ -56,7 +56,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
-| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. Set it to the tailnet name: the certificate must cover every name, so the defaults fail start. A port, an IP or a loopback name is refused |
+| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; login links name the first one the certificate covers. Set it to the tailnet name: the certificate must cover every name, so the defaults fail start. A port, an IP or a loopback name is refused |
 | `TITAN_CONSOLE_TLS_CERT` | none | PEM certificate the LAN listener serves, such as the `.crt` from `tailscale cert`. Required with `TITAN_CONSOLE_HOST`; set with `_KEY` or not at all |
 | `TITAN_CONSOLE_TLS_KEY` | none | Its PEM key; refused unless it is this user's and mode 0600. Both files are re-read within a minute of a change |
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
@@ -104,13 +104,15 @@ Then every route, the page and `/health` included, needs a session cookie or
 `Authorization: Bearer <secret>`, and answers 401 without one. `/mcp` is never served there.
 
 ```sh
-titan-console login-link     # prints https://<first LAN name>:7500/auth/login?code=...
+titan-console login-link     # prints https://<first name the cert covers>:7500/auth/login?code=...
 titan-console token rotate   # rewrites lan.token at 0600; every session and link ends
 ```
 
 - **`login-link`** mints a code from the token file, so it needs no running daemon. It works
   once and for ten minutes, and a daemon that restarts after minting refuses it. Run it with
-  the same `TITAN_CONSOLE_PORT`, `_STATE`, `_TOKEN` and `_LAN_NAMES` as the service. The link
+  the same `TITAN_CONSOLE_PORT`, `_STATE` and `_TOKEN` as the service. It reads the certificate
+  (`TITAN_CONSOLE_TLS_CERT`, else the one `.crt` under `<state>/tls`) and names the first of
+  `_LAN_NAMES` it covers, else the certificate's own name, never a name it does not cover. The link
   is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
   nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
   code as JSON, and that sets a Secure, HttpOnly, SameSite=Strict cookie that lasts 30 days.

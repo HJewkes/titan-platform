@@ -19,6 +19,7 @@ import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
 import { ANSWER_FILE, ANSWER_SCHEMA_ID } from "./round-answer.js";
+import { isVisualAccept, roundAnswers, sameHead, samePr } from "./round-gate-cover.js";
 import { notifyRound } from "./round-asker.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { markOperatorSince } from "./round-subscriptions.js";
@@ -26,8 +27,6 @@ import { FEEDBACK_FILE, MAX_ROUND_BYTES, OPEN_FLAGS, ROUND_FILE, ROUND_ID, readC
 import type { ShepherdSource } from "./shepherd.js";
 
 const PACKET_FILE = "packet.json";
-const APPROVE_MERGE = /(^|\/)approve-merge(:\d+)?$/;
-const VISUAL_ACCEPT = /(^|\/)sh-visual-accept(:\d+)?$/;
 
 const packetHead = z.looseObject({ headTree: z.string().regex(/^[0-9a-f]{40}$/) });
 
@@ -177,17 +176,13 @@ async function bindGate(shepherd: ListenerDeps["shepherd"], answer: RoundAnswer)
   } catch (error) {
     return { outcome: { status: "unreachable", detail: error instanceof Error ? error.message : String(error) } };
   }
-  const row = rows.find((candidate) => candidate.repo === merge.repo && candidate.pr === merge.pr);
+  const row = rows.find((candidate) => samePr(candidate, merge));
   if (!row) return { outcome: { status: "gone", reason: `no shepherd row for ${merge.repo}#${merge.pr}` } };
-  if (row.headSha !== merge.headSha) return { outcome: { status: "moved", currentHead: row.headSha } };
+  if (!sameHead(row.headSha, merge.headSha)) return { outcome: { status: "moved", currentHead: row.headSha } };
   const gate = row.pendingGate;
-  if (!gate) return { outcome: { status: "gone", reason: "no pending approve-merge or visual accept gate" } };
-  const isGate = (pattern: RegExp): boolean => pattern.test(gate.stepId) || pattern.test(gate.gateId);
-  if (!(isGate(APPROVE_MERGE) || isGate(VISUAL_ACCEPT))) {
-    return { outcome: { status: "gone", reason: "no pending approve-merge or visual accept gate" } };
-  }
+  if (!roundAnswers(gate)) return { outcome: { status: "gone", reason: "no pending approve-merge or visual accept gate" } };
   // Decided here, where the gate is known: Ship on the accept gate must never post `merge`.
-  const choice: AnswerChoice = answer.verdict === "send-back" ? "send-back" : isGate(VISUAL_ACCEPT) ? "accept-set" : "merge";
+  const choice: AnswerChoice = answer.verdict === "send-back" ? "send-back" : isVisualAccept(gate) ? "accept-set" : "merge";
   const { roundId, tree, packetSha } = answer;
   return { request: { runId: row.runId, gateId: gate.gateId, headSha: merge.headSha, tree, packetSha, roundId, choice } };
 }

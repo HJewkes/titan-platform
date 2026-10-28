@@ -12,7 +12,7 @@ import {
   type Feedback as OwnerQueueFeedback,
   type Manifest as OwnerQueueManifest,
 } from "@titan-design/review-schema";
-import type { Feedback } from "./round-schema.js";
+import type { Feedback, Manifest } from "./round-schema.js";
 import type { QueueRound, Withdrawal } from "./rounds.js";
 
 interface QueueItems {
@@ -46,12 +46,42 @@ function openItems(round: QueueRound, manifest: OwnerQueueManifest, items: Queue
   }
 }
 
+/** The question, recommendation and section fields `fromRoundQuestions` reads; 0.1 knows each of them. */
+const QUESTION_KEYS_01 = ["id", "prompt", "required", "scope", "page", "kind", "options", "revisionOption", "signsOff", "merge", "min", "max"];
+const RECOMMENDATION_KEYS_01 = ["answer", "rationale", "confidence", "by"];
+const SECTION_KEYS_01 = ["id", "title", "deciding", "changed", "context", "kind", "questionIds"];
+
+const only = (value: object, keys: readonly string[]): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(value).filter(([key]) => keys.includes(key)));
+
+function questionFor01(question: Manifest["questions"][number]): Record<string, unknown> {
+  const kept = only(question, QUESTION_KEYS_01);
+  const recommendation = "recommendation" in question ? question.recommendation : undefined;
+  return recommendation === undefined ? kept : { ...kept, recommendation: only(recommendation, RECOMMENDATION_KEYS_01) };
+}
+
 /**
- * The console reads rounds with review-schema 0.3 and owner-queue still with 0.1, so a round only 0.3 accepts
- * is a gap until TP-3232 installs 0.3 in both.
+ * A 0.3 round, already validated by the console's strict reader, projected onto the 0.1 shape owner-queue parses:
+ * only what its queue items read is kept, and the frames go, since no item shows one (TP-4356). TP-3232 deletes this.
  */
+function manifestFor01({ schema, unit, round, storybookUrl, context, widths, recommendations, questions, sections }: Manifest): Record<string, unknown> {
+  return {
+    schema,
+    unit,
+    round,
+    storybookUrl,
+    widths,
+    recommendations,
+    variants: [],
+    questions: questions.map(questionFor01),
+    sections: sections.map((section) => only(section, SECTION_KEYS_01)),
+    ...(context !== undefined && { context }),
+  };
+}
+
+/** A round the projection still leaves outside 0.1 is a gap until TP-3232 installs 0.3 in owner-queue too. */
 function ownerQueueManifest(round: QueueRound, items: QueueItems): OwnerQueueManifest | undefined {
-  const result = ManifestSchema.safeParse(round.manifest);
+  const result = ManifestSchema.safeParse(manifestFor01(round.manifest));
   if (!result.success) items.gaps.push(`${round.id}: needs review-schema 0.3 in owner-queue (TP-3232)`);
   return result.data;
 }
