@@ -2,47 +2,51 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a Morning line or task blocks when its lens says blocking",
+      "name": "a newer ask about the same PR no longer replaces the older row",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "    default:\n      return false;",
-      "replace": "    default:\n      return true;",
+      "find": "best === undefined || newer(item, best) ? item : best",
+      "replace": "best === undefined ? item : best",
       "kills": [
-        "sources that never block lists a Morning line and an active-work task as planning even when asked as blocking"
+        "one row per PR keeps only the newest ask about a PR blocking, so a later deposit replaces the gate it restates"
       ]
     },
     {
-      "name": "a gate blocks though its run waits on another gate",
+      "name": "an sh-sent-back gate blocks with no blocking owner op",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "return pinnedLive(row) && row.pendingGate?.gateId.toLowerCase() === gateId.toLowerCase();",
-      "replace": "return pinnedLive(row);",
+      "find": "asksOwner || !isSentBack(item)",
+      "replace": "true",
       "kills": [
-        "a hitl gate in the inbox is planning when its live run waits on another gate"
+        "an sh-sent-back gate is the implementer's to clear unless an owner op on its PR asks the owner to act",
+        "an sh-sent-back gate stays the implementer's beside an owner op that does not block, such as a close-pr cleanup",
+        "an sh-sent-back gate does not take its PR's one blocking row with it when it is the newest ask"
       ]
     },
     {
-      "name": "a gate on a closed PR blocks",
+      "name": "a chat approval keeps blocking for four days, not one",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "return gateBlocks(source.ref, facts.row);",
-      "replace": "return facts.row === undefined || gateBlocks(source.ref, facts.row);",
+      "find": "ageOf(item, facts.now) > CHAT_APPROVAL_STALE_MS",
+      "replace": "ageOf(item, facts.now) > AGED_AFTER_MS",
       "kills": [
-        "a hitl gate in the inbox is planning when its PR is closed and Shepherd holds no live row for it"
+        "an agent-chat approval stops blocking a day after it was asked, since its prompt has timed out or been relayed"
       ]
     },
     {
-      "name": "each question of a round keeps its own row",
+      "name": "no blocking item is ever marked aged",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "if (questions[0] !== item) return [];",
-      "replace": "if (questions.length < 0) return [];",
+      "find": "item.section === \"blocking\" && ageOf(item, now) > AGED_AFTER_MS",
+      "replace": "item.section === \"blocking\" && ageOf(item, now) < 0",
       "kills": [
-        "a multi-question round in the inbox is one blocking row carrying its question count and no per-question options"
+        "a blocking item past four days stays blocking, marked aged and listed after the fresh blockers",
+        "a blocking item past four days keeps a coordinator's merge-at-head ask on a live PR visible as aged blocking, over the older gate it restates"
       ]
     },
     {
-      "name": "a close-pr op blocks while its asker is live",
+      "name": "a Planning item about a PR demotes its live blocker",
       "file": "apps/console/server/inbox-blocking.ts",
-      "find": "return CLEANUP_OPS.has(op.kind) ? false : undefined;",
-      "replace": "return undefined;",
+      "find": "if (pin === undefined || item.section !== \"blocking\") continue;",
+      "replace": "if (pin === undefined) continue;",
       "kills": [
+        "one row per PR never lets a newer ask that does not block itself demote a live gate on the same PR",
         "a deposit or chat ask in the inbox blocks on a merge op only at the live run's head, and never for a cleanup op"
       ]
     }

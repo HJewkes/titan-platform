@@ -2,13 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "narration facts gate the qa stage",
+      "name": "narration facts reported again, not gated",
       "file": "products/explainer/src/qa/gate-profile.ts",
-      "find": "export const NARRATION_FACTS_GATE = false;",
-      "replace": "export const NARRATION_FACTS_GATE = true;",
+      "find": "export const NARRATION_FACTS_GATE = true;",
+      "replace": "export const NARRATION_FACTS_GATE = false;",
       "kills": [
         "qa stage narration facts passes when the narration says the headline's number in words",
-        "qa stage narration facts reports a headline number the narration never says, and never fails the stage"
+        "qa stage narration facts fails the stage on a headline number the narration never says"
       ]
     },
     {
@@ -26,7 +26,7 @@
       "find": "return { pass: findings.length === 0, detail: findings.length === 0 ? `${beats} beats",
       "replace": "return { pass: true, detail: findings.length === 0 ? `${beats} beats",
       "kills": [
-        "qa stage narration facts reports a headline number the narration never says, and never fails the stage"
+        "qa stage narration facts fails the stage on a headline number the narration never says"
       ]
     }
   ]

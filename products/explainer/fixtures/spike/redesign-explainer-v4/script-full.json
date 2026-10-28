@@ -4475,7 +4475,7 @@
    "function": "WHAT",
    "mode": "explain",
    "band": "takeaways",
-   "spoken": "Under a, CI holds by construction; under b, for each batch's final tree only. Unanswered, b applies where that rule is off; other repos wait.",
+   "spoken": "On that first question: under a, CI holds by construction; under b, for each batch's final tree only. Unanswered, b applies where that rule is off; other repos wait.",
    "fact_ids": [
     "R52"
    ],

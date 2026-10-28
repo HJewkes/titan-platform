@@ -2,13 +2,13 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the flash check gates the stage",
+      "name": "the flash check reported again, not gated",
       "file": "products/explainer/src/qa/gate-profile.ts",
-      "find": "export const FLASH_GATE = false;",
-      "replace": "export const FLASH_GATE = true;",
+      "find": "export const FLASH_GATE = true;",
+      "replace": "export const FLASH_GATE = false;",
       "kills": [
-        "qa stage photosensitive flash reports a general flash above three a second, and never fails the stage",
-        "qa stage photosensitive flash reports a red flash above three a second, and never fails the stage"
+        "qa stage photosensitive flash fails the stage on a general flash above three a second",
+        "qa stage photosensitive flash fails the stage on a red flash above three a second"
       ]
     },
     {
@@ -18,8 +18,8 @@
       "replace": "",
       "kills": [
         "qa stage photosensitive flash records the flash scan in qa.json",
-        "qa stage photosensitive flash reports a general flash above three a second, and never fails the stage",
-        "qa stage photosensitive flash reports a red flash above three a second, and never fails the stage"
+        "qa stage photosensitive flash fails the stage on a general flash above three a second",
+        "qa stage photosensitive flash fails the stage on a red flash above three a second"
       ]
     },
     {
@@ -28,7 +28,7 @@
       "find": "flash.general.windows.length === 0 && flash.red.windows.length === 0",
       "replace": "flash.general.windows.length === 0",
       "kills": [
-        "qa stage photosensitive flash reports a red flash above three a second, and never fails the stage"
+        "qa stage photosensitive flash fails the stage on a red flash above three a second"
       ]
     }
   ]

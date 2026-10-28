@@ -206,6 +206,14 @@ describe("the inbox page", () => {
     expect(within(await screen.findByTestId("inbox-row-round:rd-7")).getByText("4 questions")).toBeTruthy();
   });
 
+  it("lists aged blockers under Older than 4 days inside Blocking, after the fresh ones", async () => {
+    renderInbox(inboxAnswer({ items: [GATE, { ...DEPOSIT, aged: true }] }));
+    const aged = await screen.findByTestId("inbox-blocking-aged");
+    expect(within(aged).getByText("Older than 4 days (1)")).toBeTruthy();
+    expect(within(aged).getByTestId("inbox-row-dep-1")).toBeTruthy();
+    expect(rowIds("inbox-blocking")).toEqual(["inbox-row-gate-1", "inbox-row-dep-1"]);
+  });
+
   it("badges a gate under shepherd-release as a release", async () => {
     renderInbox(inboxAnswer({ items: [item("rel-1", { sources: [{ system: "hitl", ref: "run-rel/approve-merge" }], keys: ["recipe:shepherd-release/version-packages"] })] }));
     expect(within(await screen.findByTestId("inbox-row-rel-1")).getByText("release")).toBeTruthy();

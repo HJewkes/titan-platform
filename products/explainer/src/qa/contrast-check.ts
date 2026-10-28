@@ -54,6 +54,12 @@ const CHART_MARK_TOKENS: Partial<Record<ChartSlots["kind"], MarkTokens>> = {
   line: { mark: "dataviz-categorical-0", ground: "background-base" },
 };
 
+/** The colour a drawn chart kind's marks sit on; undefined for a kind the page does not draw. */
+export function markGround(kind: ChartSlots["kind"]): string | undefined {
+  const tokens = CHART_MARK_TOKENS[kind];
+  return tokens && semanticColorsDark[tokens.ground];
+}
+
 interface TimelineBeat {
   id: string;
   kind: string;

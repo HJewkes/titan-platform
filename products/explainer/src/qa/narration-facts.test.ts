@@ -95,6 +95,17 @@ describe("narration carries on-screen facts", () => {
 
     expect(found).toEqual([]);
   });
+
+  it("hears a list marker by its place, so Q1 opened with 'first' is said and Q3 left unplaced is not", () => {
+    // Arrange
+    const texts = [headline("Q1: which desk sorts"), headline("Q3: when lanes close")];
+
+    // Act
+    const found = facts(texts, "first, which desk sorts; then when the lanes close");
+
+    // Assert
+    expect(found).toEqual(["name:Q3"]);
+  });
 });
 
 describe("narration facts report", () => {
