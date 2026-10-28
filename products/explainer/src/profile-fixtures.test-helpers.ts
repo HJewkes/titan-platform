@@ -45,7 +45,7 @@ export const fixedProfile = (overrides: Partial<TypeProfile> = {}): TypeProfile 
   version: "0.1.0",
   family: "review-repo",
   intent: "Tour a repo.",
-  audience: { default: "owner-internal", allow: ["owner-internal"] },
+  audience: { default: "owner-internal", allow: ["owner-internal"], kind: "assigned" },
   inputs: { adapters: [], preconditions: [] },
   runtime: { targetS: 600, minS: 480, maxS: 720, splitAboveS: 900 },
   structure: { order: "fixed", macro: "scqa-c4", blocks: [block("open"), block("map"), block("close")], systems: [] },
