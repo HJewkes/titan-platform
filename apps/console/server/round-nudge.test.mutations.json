@@ -36,6 +36,15 @@
       "kills": [
         "the round age nudge states no recommendation for an after-answer round, in the inbox or the digest, yet its one tap still answers through rounds.submit"
       ]
+    },
+    {
+      "name": "the one tap answers a round whose questions record plan approvals",
+      "file": "apps/console/server/round-nudge.ts",
+      "find": "  if (bound !== undefined) return `question \"${bound.questionId}\" records a plan approval, answered on the round page where its scope shows`;\n",
+      "replace": "",
+      "kills": [
+        "rounds.answer-rec is refused for a round whose question records a plan approval, offered no tap by the nudge, and writes nothing"
+      ]
     }
   ]
 }

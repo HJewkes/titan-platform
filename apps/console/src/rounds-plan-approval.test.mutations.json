@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the round page provides no plan approvals",
+      "file": "apps/console/src/pages/RoundDetailPage.tsx",
+      "find": "<PlanApprovalsProvider manifest={round.manifest}>",
+      "replace": "<PlanApprovalsProvider manifest={{ ...round.manifest, planApprovals: [] }}>",
+      "kills": [
+        "a plan round's approval scope on the round page shows the owner each bound question's gate, task, repo, CI-policy keys and pinned files beside the question",
+        "a plan round's approval scope on the round page shows a skill question's exact paths"
+      ]
+    },
+    {
+      "name": "a question's facts leave out its plan approval scope",
+      "file": "apps/console/src/pages/RoundQuestion.tsx",
+      "find": "<PlanApprovalScope questionId={question.id} />",
+      "replace": "{null}",
+      "kills": [
+        "a plan round's approval scope on the round page shows the owner each bound question's gate, task, repo, CI-policy keys and pinned files beside the question",
+        "a plan round's approval scope on the round page shows a skill question's exact paths"
+      ]
+    },
+    {
+      "name": "the CI-policy keys are not shown",
+      "file": "apps/console/src/pages/PlanApprovalScope.tsx",
+      "find": "return [keys, ...binding.scope.files",
+      "replace": "return [...binding.scope.files",
+      "kills": [
+        "a plan round's approval scope on the round page shows the owner each bound question's gate, task, repo, CI-policy keys and pinned files beside the question"
+      ]
+    },
+    {
+      "name": "a file absent at head reads as pinned content",
+      "file": "apps/console/src/pages/PlanApprovalScope.tsx",
+      "find": "blob === null ? \"absent at head\" : `content ${blob.slice(0, 12)}`",
+      "replace": "`content ${(blob ?? \"\").slice(0, 12)}`",
+      "kills": [
+        "a plan round's approval scope on the round page shows the owner each bound question's gate, task, repo, CI-policy keys and pinned files beside the question"
+      ]
+    }
+  ]
+}
