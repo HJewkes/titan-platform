@@ -201,6 +201,11 @@ describe("the inbox page", () => {
     expect(within(screen.getByTestId("inbox-row-held-1")).getByText("owner-asked: wait for the demo")).toBeTruthy();
   });
 
+  it("shows a multi-question round's one row with its question count", async () => {
+    renderInbox(inboxAnswer({ items: [{ ...ROUND, id: "round:rd-7", questionCount: 4 }] }));
+    expect(within(await screen.findByTestId("inbox-row-round:rd-7")).getByText("4 questions")).toBeTruthy();
+  });
+
   it("badges a gate under shepherd-release as a release", async () => {
     renderInbox(inboxAnswer({ items: [item("rel-1", { sources: [{ system: "hitl", ref: "run-rel/approve-merge" }], keys: ["recipe:shepherd-release/version-packages"] })] }));
     expect(within(await screen.findByTestId("inbox-row-rel-1")).getByText("release")).toBeTruthy();

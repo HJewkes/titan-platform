@@ -23,6 +23,8 @@ const RUN_G10 = "33333333-0000-4000-8000-000000000003";
 const RUN_GONE = "44444444-0000-4000-8000-000000000004";
 
 const TOKEN = "synthetic-token";
+/** The asker the fixtures' deposit and chat ask wait on, live in the broker so they stay blocking. */
+const LIVE_ASKER = { name: ASKER, workingOn: "EX-2: waiting on the owner", cwd: "/synthetic/asker", status: "available", idleMs: 0, registeredAt: 1_000 };
 const MINUTE = 60_000;
 
 let dir: string;
@@ -33,7 +35,7 @@ let handle: DaemonHandle | undefined;
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-view-"));
   await writeFile(path.join(dir, "ui.token"), TOKEN, { mode: 0o600 });
-  broker = await startFakeBroker({ token: TOKEN, sessions: [], items: [] });
+  broker = await startFakeBroker({ token: TOKEN, sessions: [LIVE_ASKER], items: [] });
 });
 
 afterEach(async () => {
@@ -198,9 +200,9 @@ describe("inbox.list on a fixture factory", () => {
       [`gate:${RUN_PLAIN}/approve-merge`, "blocking", "resolve-gate"],
       ["chat:msg-7", "blocking", "answer-chat"],
       ["round:ship-r1/ship", "blocking", "open-round"],
-      ["morning:m-1", "blocking", "open"],
-      [`gate:${RUN_GONE}/approve-merge`, "blocking", "terminal"],
       ["task:EX-9", "planning", "open"],
+      ["morning:m-1", "planning", "open"],
+      [`gate:${RUN_GONE}/approve-merge`, "planning", "terminal"],
     ]);
     expect(byId(list, `gate:${RUN_G10}/approve-merge`)).toMatchObject({ hold: { class: "g10-review" }, action: { holdClass: "g10-review", pr: 3, headSha: HEAD }, then: { kind: "resolve-gate" } });
     expect(byId(list, `gate:${RUN_PLAIN}/approve-merge`)?.action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, runId: RUN_PLAIN, stepId: "approve-merge", repo: REPO, pr: 1, headSha: HEAD, decision: "merge" });

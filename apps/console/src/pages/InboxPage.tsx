@@ -234,6 +234,7 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
               <BadgeText>{badge.label}</BadgeText>
             </Badge>
             <Typography variant="caption" color="secondary">{ageOf(item.openedAt)}</Typography>
+            {item.questionCount !== undefined ? <Pill variant="subtle" size="xs">{`${item.questionCount} questions`}</Pill> : null}
             {recommendation !== undefined ? <Pill variant="subtle" size="xs">{`Recommend: ${recommendation}`}</Pill> : null}
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
