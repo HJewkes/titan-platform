@@ -9,10 +9,12 @@
  *
  * `supersedes` (TP-3990) is the console's own field, not review-schema's: the ids of earlier rounds this one replaces,
  * which `round-supersede.ts` withdraws while they are still open. It is lifted off before the strict parse, so the
- * vendored copy stays byte-for-byte the release and survives TP-3232's swap.
+ * vendored copy stays byte-for-byte the release and survives TP-3232's swap. `planApprovals` (TP-4357) is lifted the same
+ * way: the plan-approval entries a plan round's answer records (`round-plan-binding.ts`).
  */
 import { z } from "zod";
 import * as reviewSchema from "./review-schema-0.3/index.js";
+import { PlanBindings, planBindingProblems } from "./round-plan-binding.js";
 
 export const BLIND_AB_REFUSED = "a blind-ab round is answered in the review harness";
 /** A round directory's name: no dot, no slash. */
@@ -30,13 +32,18 @@ const ContractRound = reviewSchema.RoundSchema.transform((manifest, ctx) => {
 
 const Supersedes = z.array(z.string().regex(ROUND_ID, "a round id is a plain name")).min(1).max(MAX_SUPERSEDES);
 
-export const RoundSchema = z.looseObject({ supersedes: Supersedes.optional() }).transform(({ supersedes, ...rest }, ctx) => {
+export const RoundSchema = z.looseObject({ supersedes: Supersedes.optional(), planApprovals: PlanBindings.optional() }).transform(({ supersedes, planApprovals, ...rest }, ctx) => {
   const parsed = ContractRound.safeParse(rest);
   if (!parsed.success) {
     ctx.issues.push(...parsed.error.issues.map((issue) => ({ ...issue, input: undefined })));
     return z.NEVER;
   }
-  return { ...parsed.data, ...(supersedes !== undefined && { supersedes }) };
+  const problems = planBindingProblems(planApprovals ?? [], parsed.data.questions);
+  if (problems.length > 0) {
+    ctx.issues.push(...problems.map((message) => ({ code: "custom" as const, path: ["planApprovals"], message, input: undefined })));
+    return z.NEVER;
+  }
+  return { ...parsed.data, ...(supersedes !== undefined && { supersedes }), ...(planApprovals !== undefined && { planApprovals }) };
 });
 
 const notBlindAb = (answer: { pairs?: unknown }): boolean => answer.pairs === undefined;

@@ -17,7 +17,7 @@ import { factoryOwnerAction } from "./owner-action.js";
 import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
-import { shepherdReader } from "./shepherd.js";
+import { shepherdReader, type ShepherdSource } from "./shepherd.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
@@ -153,6 +153,19 @@ function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" 
   };
 }
 
+function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Logger): ConsoleSources["listeners"] {
+  return createRoundListeners({
+    enabled: config.gateAnswers,
+    roundsDir: config.roundsDir,
+    shepherd,
+    answer: factoryGateAnswer(config.factoryPort),
+    ...(config.inboxActions === true && { planApproval: { actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) } }),
+    ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
+    subscriptionsDir: subscriptionsDirOf(config.stateDir),
+    logger,
+  });
+}
+
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
   const activeWork = activeWorkClient(config.activeWorkPort);
   const shepherd = shepherdReader(config.factoryPort);
@@ -168,15 +181,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
-    listeners: createRoundListeners({
-      enabled: config.gateAnswers,
-      roundsDir: config.roundsDir,
-      shepherd,
-      answer: factoryGateAnswer(config.factoryPort),
-      ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
-      subscriptionsDir: subscriptionsDirOf(config.stateDir),
-      logger,
-    }),
+    listeners: listenersOf(config, shepherd, logger),
     ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
