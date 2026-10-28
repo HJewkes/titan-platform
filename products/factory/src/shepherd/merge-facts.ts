@@ -189,7 +189,9 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   const asVisual = visualPaths === undefined ? "" : ", so the PR counts as visual";
   if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
   const skills = skillPathsIn(evidence.merge.changedPaths);
-  if (skills.length > 0 && !honour.coversPaths("skill", skills)) return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}${honour.unplanned("skill")}` };
+  if (skills.length > 0 && !honour.coversPaths("skill", skills)) {
+    return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}${honour.unplanned("skill")}` };
+  }
   const deltaGate = visualDeltaGate(evidence.visualDelta);
   if (deltaGate !== undefined) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${deltaGate}` };
   if (visualPaths === undefined) return undefined;

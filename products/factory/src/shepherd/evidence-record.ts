@@ -61,7 +61,12 @@ const proofFields = (input: RecordInput): Pick<EvidenceRecord, "proofUnverified"
   ...(input.proofBase !== undefined && { proofBase: input.proofBase }),
 });
 
-export function evidenceRecord(input: RecordInput, { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved, decision: GateDecision, { ciPolicy, riskTier, visualDelta }: RecordExtras): EvidenceRecord {
+export function evidenceRecord(
+  input: RecordInput,
+  { pr, merge, runs, ciPolicyChanges, headBlobs }: RecordObserved,
+  decision: GateDecision,
+  { ciPolicy, riskTier, visualDelta }: RecordExtras,
+): EvidenceRecord {
   return {
     runId: input.runId,
     repo: input.repo,
