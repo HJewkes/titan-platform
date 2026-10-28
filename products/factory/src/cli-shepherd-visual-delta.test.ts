@@ -10,7 +10,6 @@ import { EXIT, runCli } from "./cli.js";
 import { REPO } from "./test-support/land.js";
 import { shepherdFixture, type ShepherdFixture } from "./test-support/shepherd.js";
 import { THRESHOLD, card } from "./shepherd/visual-delta-read.test-helpers.js";
-import type { VisualDeltaReport } from "./shepherd/visual-delta-command.js";
 
 const HEAD = fakeSha("calibration-head");
 const MERGE_BASE = fakeSha("calibration-merge-base");
@@ -69,14 +68,11 @@ describe("titan-factory shepherd visual-delta with no serve answering, in an age
     const result = await visualDelta(fixture);
 
     expect(result.code).toBe(EXIT.OK);
-    const report = JSON.parse(result.out) as VisualDeltaReport;
-    expect(report).toMatchObject({ repo: REPO, pr: 1, head: HEAD, unsupportedFormat: 1, visualDelta: { mergeBase: MERGE_BASE, api: ["ui/api/index.api.md"] } });
-    expect(report.visualDelta.snapshots).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: GREY, status: "unmeasured", reason: "head: unsupported PNG format" }),
-        expect.objectContaining({ path: CHANGED, status: "changed", share: expect.any(Number) }),
-      ]),
-    );
+    const snapshots = expect.arrayContaining([
+      expect.objectContaining({ path: GREY, status: "unmeasured", reason: "head: unsupported PNG format" }),
+      expect.objectContaining({ path: CHANGED, status: "changed", share: expect.any(Number) }),
+    ]);
+    expect(JSON.parse(result.out)).toMatchObject({ repo: REPO, pr: 1, head: HEAD, unsupportedFormat: 1, visualDelta: { mergeBase: MERGE_BASE, api: ["ui/api/index.api.md"], snapshots } });
   });
 
   it("writes nothing to GitHub: no comment, merge, ref or branch update", async () => {
@@ -94,8 +90,7 @@ describe("titan-factory shepherd visual-delta with no serve answering, in an age
 
     const result = await visualDelta(fixture, ["--head", fakeSha("older-head")]);
 
-    const report = JSON.parse(result.out) as VisualDeltaReport;
-    expect(report).toMatchObject({ unsupportedFormat: 0, visualDelta: { snapshots: [], unread: expect.stringContaining(`the PR is at ${HEAD}`) } });
+    expect(JSON.parse(result.out)).toMatchObject({ unsupportedFormat: 0, visualDelta: { snapshots: [], unread: expect.stringContaining(`the PR is at ${HEAD}`) } });
   });
 
   it("refuses a repo with no shepherd.visualThreshold, as there are no snapshot paths to measure", async () => {
