@@ -150,7 +150,13 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
  * shows no baseline changed and its check passed there. An owner's plan approval clears the skill, visual-glob and
  * weakened CI-policy rows only when one approval holds every fact that row triggered on at this head (owner decision 551).
  */
-export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[], visualBaselines?: VisualBaselines, approved?: readonly PlanApproval[]): GateDecision {
+export function decideAutoMerge(
+  headSha: string,
+  evidence: DecidableEvidence | undefined,
+  visualPaths?: readonly string[],
+  visualBaselines?: VisualBaselines,
+  approved?: readonly PlanApproval[],
+): GateDecision {
   return withUnreadFacts(decideOnFacts(headSha, evidence, { visualPaths, visualBaselines }, planHonour(approved)), evidence);
 }
 
@@ -218,7 +224,8 @@ function ciPolicyGate(evidence: DecidableEvidence, honour: PlanHonour): GateDeci
   if (ciPolicy?.kind === "malformed") return { outcome: "gate", rule: guardRule("ci-policy-malformed"), reason: CI_POLICY_MALFORMED_REASON };
   if (ciPolicy?.kind === "weakened") {
     const facts = { keys: ciPolicy.keys, githubPaths: github, changes: evidence.record.ciPolicyChanges, unreadFacts: evidence.unreadFacts };
-    return honour.covers("ci-policy", ciPolicyInScope(facts)) ? undefined : { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}` };
+    const weakened: GateDecision = { outcome: "gate", rule: guardRule("ci-policy-weakened"), reason: `${CI_POLICY_WEAKENED_PREFIX}${shownPaths(ciPolicy.keys)}` };
+    return honour.covers("ci-policy", ciPolicyInScope(facts)) ? undefined : weakened;
   }
   if (ciPolicy?.kind === "unchanged") return undefined;
   if (github.length === 0) return undefined;

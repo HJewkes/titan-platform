@@ -21,7 +21,7 @@ export type PlanApprovalScope = z.infer<typeof PlanApprovalScopeSchema>;
 export const PlanApprovalSchema = z.strictObject({ gate: z.enum(PLAN_APPROVAL_GATES), scope: PlanApprovalScopeSchema, round: bounded });
 export type PlanApproval = z.infer<typeof PlanApprovalSchema>;
 
-export interface PlanApprovalInput extends PlanApproval {
+interface PlanApprovalInput extends PlanApproval {
   task: string;
   repo: string;
 }

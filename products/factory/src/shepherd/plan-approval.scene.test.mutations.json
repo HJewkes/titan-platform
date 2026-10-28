@@ -40,8 +40,8 @@
     {
       "name": "a weakened CI-policy line gates whatever the plan approved",
       "file": "products/factory/src/shepherd/merge-facts.ts",
-      "find": "return honour.covers(\"ci-policy\", ciPolicyInScope(facts)) ? undefined :",
-      "replace": "return false ? undefined :",
+      "find": "return honour.covers(\"ci-policy\", ciPolicyInScope(facts)) ? undefined : weakened;",
+      "replace": "return weakened;",
       "kills": ["a PR whose only guard row is ci-policy-weakened, a merge-lint entry merges with no owner gate under a console-written approval of that path, key and entry"]
     }
   ]
