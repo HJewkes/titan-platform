@@ -7,9 +7,9 @@
       "find": "ManifestSchema.safeParse(manifestFor01(round.manifest))",
       "replace": "ManifestSchema.safeParse(round.manifest)",
       "kills": [
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > is one blocking row with its question count and no unreadable-round gap",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > folds each PR gate at the head the round pins into the round's row",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > keeps a PR gate at a head other than the round's pin as its own row"
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) is one blocking row with its question count and no unreadable-round gap",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
       ]
     },
     {
@@ -18,8 +18,8 @@
       "find": "    return roundId === undefined;\n",
       "replace": "    return true;\n",
       "kills": [
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > folds each PR gate at the head the round pins into the round's row",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > keeps a PR gate at a head other than the round's pin as its own row"
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
       ]
     },
     {
@@ -28,7 +28,7 @@
       "find": "const roundId = head === undefined ? undefined : covering.get(head);",
       "replace": "const roundId = head === undefined ? undefined : [...covering].find(([key]) => key.startsWith(head.slice(0, head.indexOf(\"@\"))))?.[1];",
       "kills": [
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > keeps a PR gate at a head other than the round's pin as its own row"
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
       ]
     },
     {
@@ -37,8 +37,8 @@
       "find": "return `pr:${row.repo}#${row.pr}@${row.headSha}`.toLowerCase();",
       "replace": "return `pr:${row.repo}#${row.pr}@${row.headSha}`;",
       "kills": [
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > folds each PR gate at the head the round pins into the round's row",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > keeps a PR gate at a head other than the round's pin as its own row"
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
       ]
     },
     {
@@ -47,8 +47,8 @@
       "find": "{ ...each, item: { ...each.item, foldedGates: gates } }",
       "replace": "each",
       "kills": [
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > folds each PR gate at the head the round pins into the round's row",
-        "a round only review-schema 0.3 reads, in the inbox (TP-4356) > keeps a PR gate at a head other than the round's pin as its own row"
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) folds each PR gate at the head the round pins into the round's row",
+        "a round only review-schema 0.3 reads, in the inbox (TP-4356) keeps a PR gate at a head other than the round's pin as its own row"
       ]
     }
   ]
