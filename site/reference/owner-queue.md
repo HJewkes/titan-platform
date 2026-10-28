@@ -56,8 +56,10 @@ const list = rank(mergeByKeys([gate, ask]));
 Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
 holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
 `recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
-`personal`, `unblocks`, `expiresAt`, `audience`, plus `depositId`. `asker` and `depositId` are
-required; `keys` and `unblocks` default to empty and `personal` to false.
+`personal`, `unblocks`, `unblocksNow`, `expiresAt`, `audience`, plus `depositId`. `asker` and
+`depositId` are required; `keys` and `unblocks` default to empty and `personal` to false.
+`unblocksNow` is optional: one trimmed line of at most 200 characters on what the answer
+unblocks right now. The console lists a deposit without it as planning, never blocking.
 
 `audience` is `"owner"` or `"operator"` and says which reader the item is for; an item with
 none is the owner's. It selects a view and grants no authority. `forAudience(items, audience)`

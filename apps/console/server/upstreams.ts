@@ -8,7 +8,7 @@ import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
 import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
-import type { ConsoleConfig } from "./config.js";
+import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
@@ -141,7 +141,7 @@ function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
 /** The sources that read dirs on this machine, which other processes write. */
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
-    inbox: { dir: config.inboxDir },
+    inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
     rounds: {
       dir: config.roundsDir,
       lineage: shipLineageReader(),

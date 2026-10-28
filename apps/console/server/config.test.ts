@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { AGENT_CHAT_NOT_FOUND, DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
+import { AGENT_CHAT_NOT_FOUND, DEFAULT_CAP_EXEMPT_ASKERS, DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
 import { seatNotifier } from "./round-notice-transport.js";
 
 const HOME = "/srv/tester";
@@ -94,6 +94,12 @@ describe("console config", () => {
     expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "" }, HOME).decisionsFile).toBeNull();
     expect(resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "~/d.md" }, HOME).decisionsFile).toBe(path.join(HOME, "d.md"));
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
+  });
+
+  it("exempts titan-factory from the ask cap unless TITAN_CONSOLE_CAP_EXEMPT_ASKERS names the list, and an empty one exempts nobody", () => {
+    expect(resolveConfig({}, HOME).capExemptAskers).toEqual([...DEFAULT_CAP_EXEMPT_ASKERS]);
+    expect(resolveConfig({ TITAN_CONSOLE_CAP_EXEMPT_ASKERS: " deploy-bot , titan-factory ," }, HOME).capExemptAskers).toEqual(["deploy-bot", "titan-factory"]);
+    expect(resolveConfig({ TITAN_CONSOLE_CAP_EXEMPT_ASKERS: "" }, HOME).capExemptAskers).toEqual([]);
   });
 
   it("reads no autonomy tree unless one is named, and materializes into titan-coordinator's config dir", () => {

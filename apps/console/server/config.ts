@@ -68,6 +68,8 @@ export interface ConsoleConfig {
   ownerWrites: boolean;
   /** The owner-inbox spool `inbox.deposit` files into; `TITAN_CONSOLE_INBOX_DIR` overrides. */
   inboxDir: string;
+  /** Exact asker names the five-ask cap skips, from `TITAN_CONSOLE_CAP_EXEMPT_ASKERS`; absent in a hand-built config means the defaults. */
+  capExemptAskers?: string[];
   /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
   roundsDir: string;
   /**
@@ -191,8 +193,9 @@ function dataDirsFrom(env: NodeJS.ProcessEnv, home: string, platform: NodeJS.Pla
 }
 
 /** The settings only the owner turns on or points; none is ever read from a request. */
-function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots"> {
+function ownerOptionsFrom(env: NodeJS.ProcessEnv, home: string): Pick<ConsoleConfig, "ownerWrites" | "decisionsFile" | "gateAnswers" | "inboxActions" | "videoRoots" | "capExemptAskers"> {
   return {
+    capExemptAskers: capExemptAskersFrom(env.TITAN_CONSOLE_CAP_EXEMPT_ASKERS),
     ownerWrites: flagFrom("TITAN_CONSOLE_OWNER_WRITES", env.TITAN_CONSOLE_OWNER_WRITES),
     videoRoots: videoRootsFrom(env.TITAN_CONSOLE_VIDEO_ROOTS, home),
     decisionsFile: decisionsFileFrom(env.TITAN_CONSOLE_DECISIONS_FILE, home),
@@ -361,6 +364,15 @@ function lanNamesFrom(raw: string | undefined, machine: Machine): string[] {
 }
 
 /** `TITAN_CONSOLE_SEATS` is `seat=prefix` pairs separated by commas, e.g. `titan-coord=tpc`. */
+/** titan-factory files the deploy and planner alarms, which collapse by alarm key rather than wait on the cap. */
+export const DEFAULT_CAP_EXEMPT_ASKERS: readonly string[] = ["titan-factory"];
+
+/** An unset variable keeps the defaults; an empty one exempts nobody. */
+function capExemptAskersFrom(raw: string | undefined): string[] {
+  if (raw === undefined) return [...DEFAULT_CAP_EXEMPT_ASKERS];
+  return raw.split(",").map((name) => name.trim()).filter((name) => name !== "");
+}
+
 function seatPrefixesFrom(raw: string | undefined): SeatPrefix[] {
   if (raw === undefined || raw.trim() === "") return [];
   return raw.split(",").map((pair) => {

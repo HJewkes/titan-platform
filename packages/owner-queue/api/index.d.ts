@@ -138,6 +138,7 @@ declare const ownerCardSchema: zod.ZodObject<{
     }>;
     stuckKind: zod.ZodOptional<zod.ZodString>;
     unblocks: zod.ZodArray<zod.ZodString>;
+    unblocksNow: zod.ZodOptional<zod.ZodString>;
     audience: zod.ZodOptional<zod.ZodEnum<{
         owner: "owner";
         operator: "operator";
@@ -721,6 +722,7 @@ declare const ownerItemDepositSchema: z.ZodObject<{
     initiative: z.ZodOptional<z.ZodString>;
     personal: z.ZodDefault<z.ZodBoolean>;
     unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    unblocksNow: z.ZodOptional<z.ZodString>;
     audience: z.ZodOptional<z.ZodEnum<{
         owner: "owner";
         operator: "operator";
@@ -928,6 +930,7 @@ declare const ownerItemSchema: z.ZodObject<{
     }>;
     stuckKind: z.ZodOptional<z.ZodString>;
     unblocks: z.ZodArray<z.ZodString>;
+    unblocksNow: z.ZodOptional<z.ZodString>;
     audience: z.ZodOptional<z.ZodEnum<{
         owner: "owner";
         operator: "operator";

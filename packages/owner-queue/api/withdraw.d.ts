@@ -244,6 +244,7 @@ declare const ownerItemSchema: z.ZodObject<{
     }>;
     stuckKind: z.ZodOptional<z.ZodString>;
     unblocks: z.ZodArray<z.ZodString>;
+    unblocksNow: z.ZodOptional<z.ZodString>;
     audience: z.ZodOptional<z.ZodEnum<{
         owner: "owner";
         operator: "operator";

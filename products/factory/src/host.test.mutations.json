@@ -4,8 +4,8 @@
     {
       "name": "the host never applies the registrant migration",
       "file": "products/factory/src/workflows.ts",
-      "find": "registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45)];",
-      "replace": "gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45)];",
+      "find": "registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46)];",
+      "replace": "gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46)];",
       "kills": [
         "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it"
       ]
@@ -13,7 +13,16 @@
     {
       "name": "the host never applies the order-wait event kind migration",
       "file": "products/factory/src/workflows.ts",
-      "find": ", orderWaitKindMigration(45)];",
+      "find": ", orderWaitKindMigration(45), planApprovalMigration(46)];",
+      "replace": ", planApprovalMigration(46)];",
+      "kills": [
+        "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it"
+      ]
+    },
+    {
+      "name": "the host never applies the plan-approval migration",
+      "file": "products/factory/src/workflows.ts",
+      "find": ", planApprovalMigration(46)];",
       "replace": "];",
       "kills": [
         "gate resolver migration a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it"

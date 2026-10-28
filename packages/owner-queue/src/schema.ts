@@ -105,6 +105,8 @@ export const ownerItemSchema = z.object({
   lens: z.enum(LENSES),
   stuckKind: z.string().optional(),
   unblocks: z.array(z.string().min(1)),
+  /** The asker's one line on what the answer unblocks right now; a deposit without it is planning, not blocking. */
+  unblocksNow: z.string().trim().min(1).max(200).regex(/^[^\n]*$/, "one line").optional(),
   /** Which reader the item is for; absent means the owner. Selects a view, grants no authority. */
   audience: z.enum(AUDIENCES).optional(),
   route: z.object({ target: z.enum(ROUTE_TARGETS), reason: z.string(), shadow: z.boolean() }).optional(),
