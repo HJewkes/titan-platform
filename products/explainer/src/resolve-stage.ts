@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { loadBeatSpecs } from "./beat-load.js";
+import { exposedElements } from "./build/layer-elements.js";
 import { COMPONENT_MATURITIES, SPEECH_BANDS, type BeatSpec } from "./beat-schema.js";
 import type { EmphasisGateInput } from "./emphasis-gate.js";
 import { canonicalJson } from "./eval-store.js";
@@ -211,10 +212,32 @@ export function fillAtResolve(input: Pick<CheckInput, "artifacts" | "store">): F
   return templateFill(script, ResolvedSchema.parse(readJson(input, "resolved")), readCode(input), pinned);
 }
 
+const TreeEntriesSchema = z.object({ entries: z.array(z.object({ path: z.string(), sha: z.string() })) });
+const LayersIndexSchema = z.object({ layers: z.array(z.object({ beat: z.string(), module: z.string(), elements: z.array(z.string()) })) });
+
+/**
+ * The ids each custom beat's built layer exposes, from the stored `custom-layers` tree; a custom beat the tree has no
+ * layer for exposes none. With no tree, render draws custom beats from their beat spec, so none are listed.
+ */
+function layerElements(input: Pick<CheckInput, "artifacts" | "store">, custom: readonly string[]): Record<string, string[]> | undefined {
+  const sha = input.artifacts["custom-layers"];
+  if (sha === undefined || custom.length === 0) return undefined;
+  const files = new Map(TreeEntriesSchema.parse(JSON.parse(input.store.readText(sha))).entries.map((entry) => [entry.path, entry.sha]));
+  const index = files.get("layers.json");
+  if (index === undefined) throw new Error("the custom-layers tree has no layers.json");
+  const layers = new Map(LayersIndexSchema.parse(JSON.parse(input.store.readText(index))).layers.map((layer) => [layer.beat, layer]));
+  const source = (module: string): string => (files.has(module) ? input.store.readText(files.get(module)!) : "");
+  return Object.fromEntries(custom.map((beat) => {
+    const layer = layers.get(beat);
+    return [beat, layer === undefined ? [] : exposedElements({ module: source(layer.module), elements: layer.elements })];
+  }));
+}
+
 /**
  * What the emphasis-target gate reads at resolve: the script's cues on the beat specs the template fill drew, a
- * fallback's included, the filled slots with the owner's overrides laid on, and the element boxes once a `layout`
- * artifact exists. A refused fill throws, failing the gate beside the template-fill gate that names the beats.
+ * fallback's included, the filled slots with the owner's overrides laid on, each built custom layer's exposed ids, and
+ * the element boxes once a `layout` artifact exists. A refused fill throws, failing the gate beside the template-fill
+ * gate that names the beats.
  */
 export function readEmphasisInput(input: CheckInput): EmphasisGateInput {
   const filled = fillAtResolve(input);
@@ -223,10 +246,13 @@ export function readEmphasisInput(input: CheckInput): EmphasisGateInput {
   const resolved = ResolvedSchema.parse(readJson(input, "resolved"));
   const drawn = new Map(filled.beats.map((beat) => [beat.id, beat.spec]));
   const chosen = new Map(resolved.beats.map((beat) => [beat.id, beat.beat]));
-  const beats = keptBeats(script.beats, resolved).map(({ id, visual }) => ({ id, visual: { ...visual, beat: drawn.get(id) ?? chosen.get(id) ?? visual.beat } }));
+  const kept = keptBeats(script.beats, resolved);
+  const beats = kept.map(({ id, visual }) => ({ id, visual: { ...visual, beat: drawn.get(id) ?? chosen.get(id) ?? visual.beat } }));
   const slots = Object.fromEntries(filled.beats.map((beat) => [beat.id, beat.slots]));
+  const cued = new Set(kept.filter((beat) => beat.visual.cues.length > 0).map((beat) => beat.id));
+  const layers = layerElements(input, filled.custom.filter((id) => cued.has(id)));
   const layout = input.artifacts.layout === undefined ? undefined : LayoutSchema.parse(readJson(input, "layout"));
-  return { beats, specs: loadBeatSpecs(), slots, ...(layout ? { layout } : {}) };
+  return { beats, specs: loadBeatSpecs(), slots, ...(layers ? { layers } : {}), ...(layout ? { layout } : {}) };
 }
 
 const fallbackLine = (beat: FilledScript["beats"][number]): string => `${beat.id} ${beat.fallback!.from} → ${beat.spec} (${beat.fallback!.reason})`;

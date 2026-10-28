@@ -214,6 +214,44 @@ describe("the compile gate on custom-layer builds", () => {
     expect(retry.calls).toEqual(["b1"]);
   });
 
+  it("rebuilds once a layer that exposes no element for a cue target, telling the rebuild which, and stores the rebuild", async () => {
+    // Arrange
+    fx = fixture();
+    const cued = { visual: visual({ layer: "custom", anchors: ["B2:E5"], cues: [{ action: "V6", target: "lanes-1", atCue: "desk" }] }), fact_ids: ["F-1"] };
+    const packets: string[] = [];
+    const worker: BeatWorker = {
+      builder: BUILDER,
+      build: async ({ json }): Promise<LayerBuild> => {
+        packets.push(json);
+        const id = packets.length === 1 ? "lane" : "lanes-1";
+        return { module: `export default () => <div id="${id}" />;\n`, anchors: ["B2:E5"], elements: [id], usage: { usd: 0.01, inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, calls: 1 } };
+      },
+    };
+
+    // Act
+    const record = await runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", cued]]) }, host(worker));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    expect(JSON.parse(packets[1]!).rebuild).toMatch(/did not expose cue targets lanes-1: /);
+    expect(record.usage).toMatchObject({ usd: 0.02 });
+    expect(record.checks.find((check) => check.name === "emphasis-target")).toMatchObject({ pass: true });
+  });
+
+  it("fails the beat naming the cue targets its layer still does not expose after one rebuild", async () => {
+    // Arrange
+    fx = fixture();
+    const cued = { visual: visual({ layer: "custom", anchors: ["B2:E5"], cues: [{ action: "V6", target: "lanes-1", atCue: "desk" }] }), fact_ids: ["F-1"] };
+    const { calls, worker } = countingWorker();
+
+    // Act
+    const run = runOneStage({ stage: "resolve", inputs: inputs([["b1", "WHAT", cued]]) }, host(worker));
+
+    // Assert
+    await expect(run).rejects.toThrow("custom layers not built: b1 (needs repair: the layer exposes no element for cue targets lanes-1 after one rebuild)");
+    expect(calls).toEqual(["b1", "b1"]);
+  });
+
   it("refuses a build that imports a module outside the allowlist", async () => {
     fx = fixture();
     const reader = countingWorker(undefined, BUILDER, () => `import { readFileSync } from "node:fs";\nexport const Layer = () => readFileSync("ledger");\n`);

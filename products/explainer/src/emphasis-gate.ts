@@ -20,6 +20,8 @@ export interface EmphasisGateInput {
   beats: readonly Pick<ScriptBeat, "id" | "visual">[];
   specs: ReadonlyMap<string, BeatSpec>;
   slots: Readonly<Record<string, unknown>>;
+  /** The element ids each built custom layer exposes, by beat id: a beat listed here is held to its layer, not a beat spec. */
+  layers?: Readonly<Record<string, readonly string[]>>;
   layout?: EmphasisLayout;
   marks?: EmphasisMarks;
 }
@@ -72,6 +74,13 @@ function cueFailures(input: EmphasisGateInput, beat: string, spec: BeatSpec, slo
   };
 }
 
+function layerCueFailures(input: EmphasisGateInput, beat: string, exposed: readonly string[], fail: Fail) {
+  return (cue: Cue, i: number): EmphasisFailure[] => {
+    if (exposed.includes(cue.target)) return placement(input, beat, i, cue.target, fail);
+    return [fail(i, cue.target, "no-element", `${cue.target} is not an element the custom layer exposes (it exposes ${exposed.join(", ") || "none"})`)];
+  };
+}
+
 /**
  * The emphasis-target gate: every emphasis cue resolves to exactly one element of its beat, that element is on the
  * frame once laid out, and, given its marks, the step changes it on screen. How the element is emphasised stays with
@@ -81,17 +90,32 @@ export function emphasisTargetGate(input: EmphasisGateInput): EmphasisFailure[] 
   return input.beats.flatMap((beat) => {
     const fail: Fail = (cue, target, problem, detail) => ({ beat: beat.id, cue, target, problem, detail });
     if (beat.visual.cues.length === 0) return [];
+    const layer = input.layers?.[beat.id];
+    if (layer !== undefined) return beat.visual.cues.flatMap(layerCueFailures(input, beat.id, layer, fail));
     const found = beatSlots(input, beat);
     if ("problem" in found) return beat.visual.cues.map((cue, i) => fail(i, cue.target, found.problem, found.detail));
     return beat.visual.cues.flatMap(cueFailures(input, beat.id, found.spec, found.slots, fail));
   });
 }
 
-/** The gate as a stage check's verdict: pass with no failure, else the first few by beat and cue. */
+const FIXES: Record<EmphasisProblem, string> = {
+  "no-beat-spec": "name the beat's beat spec in visual.beat",
+  "bad-slots": "give the beat slots its beat spec parses",
+  "no-element": "point each cue at an element its beat draws, or make the beat draw it: a beat that falls back draws its fallback's elements, and a custom layer only the ids it exposes",
+  ambiguous: "rename the target so it names one element",
+  "off-frame": "keep the target's element inside the frame",
+  unchanged: "make the step change its target on screen",
+};
+
+const failureLine = (f: EmphasisFailure): string => `${f.beat}#${f.cue} ${f.target} ${f.problem} (${f.detail})`;
+
+/** The repair for each kind of failure the gate found, once each. */
+const gateHint = (failures: readonly EmphasisFailure[]): string => [...new Set(failures.map((f) => f.problem))].map((problem) => FIXES[problem]).join("; ");
+
+/** The gate as a stage check's verdict: pass with no failure, else every failing cue by beat, cue, target and reason, and the repair. */
 export function emphasisGateVerdict(input: EmphasisGateInput): { pass: boolean; detail: string } {
   const failures = emphasisTargetGate(input);
   const total = input.beats.reduce((sum, beat) => sum + beat.visual.cues.length, 0);
-  const shown = failures.slice(0, 5).map((f) => `${f.beat}#${f.cue} ${f.problem}`);
-  const more = failures.length > 5 ? ` and ${failures.length - 5} more` : "";
-  return { pass: failures.length === 0, detail: `${failures.length} of ${total} emphasis cues fail${failures.length ? `: ${shown.join(", ")}${more}` : ""}` };
+  const listed = failures.length ? `: ${failures.map(failureLine).join("; ")}. Hint: ${gateHint(failures)}` : "";
+  return { pass: failures.length === 0, detail: `${failures.length} of ${total} emphasis cues fail${listed}` };
 }
