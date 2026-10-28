@@ -184,6 +184,13 @@
 /* A legend only comes with seven or more series, so its bars pack tighter to leave the legend room. */
 .ex-bars:has(~ .ex-chart-legend) { gap: 8px; }
 .ex-bars:has(~ .ex-chart-legend) .ex-bar-row { height: 56px; }
+/* Ten or more rows: a shorter row and track keep twelve rows, and their legend, inside the stage box. */
+.ex-bars[data-dense] { gap: 6px; }
+.ex-bars[data-dense] .ex-bar-row { height: 44px; line-height: 1; }
+.ex-bars[data-dense] .ex-bar-track { height: 32px; }
+.ex-bars[data-dense]:has(~ .ex-chart-legend) { gap: 4px; }
+.ex-bars[data-dense]:has(~ .ex-chart-legend) .ex-bar-row { height: 40px; }
+.ex-bars[data-dense]:has(~ .ex-chart-legend) .ex-bar-track { height: 28px; }
 .ex-chart-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 36px; margin: 0; padding: 0; list-style: none; font-size: var(--beat-label); }
 .ex-chart-legend-entry { display: flex; align-items: center; gap: 12px; }
 .ex-chart-legend-swatch { width: 24px; height: 24px; border-radius: 6px; background: var(--color-text-secondary); }

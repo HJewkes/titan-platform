@@ -915,6 +915,8 @@ new stage key.
   A line chart of more than 7 points closes its column gap and gives its plot 320 px, since its labels wrap to two
   lines; a legend takes another 120 px from the plot. So a line chart of up to 12 points fits its stage box, with or
   without a legend (TP-4338).
+  A bar chart of more than 9 rows packs to 44 px rows on a 6 px gap, and with a legend to 40 px rows on 4 px, so a
+  bar chart of up to 12 rows fits its stage box, with or without a legend (TP-4343).
 - **Owner overrides** (`slot-overrides.ts`, TP-4021). A template beat's `visual.slots` holds top-level slot fields
   that replace the generated values whole (an array is one field), and `visual.tune` holds tuning constants, carried
   untouched until page kinds declare a tune schema. `withSlotOverrides` lays them over the generated slots, so they

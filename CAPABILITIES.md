@@ -661,9 +661,10 @@ Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `write-read-back`: `WriteRetriesExhaustedError`
+- `file-bytes`: `BlobTooLargeError`
 - `force-pushes`: `ForcePushesTruncated`
 - `backstop-read`: `BackstopTruncated`, `graphqlPoints`, `readBackstopSnapshot`, `snapshotRequests`
-- `checks`: `isPassing`, `isPassingConclusion`, `isSucceeded`
+- `checks`: `isPassing`, `isPassingConclusion`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>

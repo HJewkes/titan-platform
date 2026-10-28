@@ -22,6 +22,8 @@ interface BarRow {
 
 const GROW_EACH_S = 0.12;
 const GROW_S = 0.6;
+/** Past this many rows the 64 px row and 14 px gap run taller than the stage box, so rows pack tighter. */
+const DENSE_AFTER_ROWS = 9;
 
 const growStart = (growAtS: number, index: number): number => growAtS + index * GROW_EACH_S;
 
@@ -62,7 +64,7 @@ export function BarChartFrame({ rows, growAtS, frame = NO_FRAME }: { rows: reado
   const axis = { floor: frame.floor, max: Math.max(frame.floor, ...rows.map((r) => Math.max(r.value, r.cap ?? 0))) };
   return (
     <>
-      <ul className="ex-bars">
+      <ul className="ex-bars" data-dense={rows.length > DENSE_AFTER_ROWS || undefined}>
         {rows.map((row, i) => <Bar key={row.id} row={row} i={i} t={t} axis={axis} growAtS={growAtS} />)}
       </ul>
       <AxisOrigin {...frame} />

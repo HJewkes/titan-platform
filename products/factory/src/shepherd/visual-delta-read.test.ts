@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { evidenceComment } from "./evidence-comment.js";
 import { MergeEvidenceSchema, VisualDeltaSchema } from "./review-schemas.js";
-import { SHOT, THRESHOLD, changedShot, evidence, world } from "./visual-delta-read.test-helpers.js";
+import { MERGE_BASE, SHOT, THRESHOLD, changedShot, evidence, world } from "./visual-delta-read.test-helpers.js";
 
 describe("the merge evidence under shepherd.visualThreshold shadow", () => {
-  it("records a changed snapshot as not measured yet, reading no blob and no merge base", async () => {
+  it("measures a changed snapshot's share from the merge base to the head", async () => {
     const fake = changedShot();
 
     const { record } = await evidence(fake, THRESHOLD);
 
-    expect(record.visualDelta?.snapshots).toEqual([{ path: SHOT, component: "card", status: "unmeasured", reason: "not measured yet" }]);
-    expect(record.visualDelta?.mergeBase).toBeNull();
+    expect(record.visualDelta?.snapshots).toEqual([{ path: SHOT, component: "card", status: "changed", share: 0.01 }]);
+    expect(record.visualDelta?.mergeBase).toBe(MERGE_BASE);
     expect(record.visualDelta?.policy).toEqual({ mode: "shadow", maxChangedShare: 0.01, pixelTolerance: 0.1 });
-    expect(fake.calls.filter((call) => call === "getContentBytes" || call === "compareFiles")).toEqual([]);
+    expect(fake.calls.filter((call) => call === "getContentBytes" || call === "compareFiles")).toEqual(["compareFiles", "getContentBytes", "getContentBytes"]);
   });
 
   it("records nothing when the repo's mode is off or the repo has no threshold", async () => {
@@ -58,7 +58,7 @@ describe("the merge evidence under shepherd.visualThreshold shadow", () => {
     const [shadow, none] = [await evidence(changedShot(), THRESHOLD), await evidence(changedShot())];
 
     expect(shadow.record.decision).toEqual(none.record.decision);
-    expect(MergeEvidenceSchema.parse(shadow).record.visualDelta?.snapshots[0]?.reason).toBe("not measured yet");
+    expect(MergeEvidenceSchema.parse(shadow).record.visualDelta?.snapshots[0]?.share).toBe(0.01);
   });
 });
 

@@ -1,8 +1,9 @@
-// The evidence step's read of a PR's visual delta (TP-4320): the snapshots it changes, and the public API, token and
-// harness paths it touches. Recorded only; nothing decides on it yet. No blob is read here: every snapshot pair records
-// as not measured until a bounded decoder measures it, so no byte the PR supplies reaches a decoder from this step.
-import type { PrFile } from "@titan-design/github";
+// The evidence step's read of a PR's visual delta (TP-4320): every snapshot it changes, measured from the merge base to
+// the head under fixed caps (visual-delta-measure.ts), and the public API, token and harness paths it touches.
+// Recorded only; nothing decides on it yet.
+import type { GitHubPort, PrFile } from "@titan-design/github";
 import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
+import { measurePairs, type MeasureTarget, type Pair, type PairMeasure } from "./visual-delta-measure.js";
 import { DEFAULT_PIXEL_TOLERANCE, componentOf } from "./visual-delta.js";
 import { caseFoldedMatcher, visualMatches } from "./visual-gate.js";
 
@@ -22,7 +23,6 @@ export interface VisualThreshold {
 }
 
 const DEFAULT_MAX_CHANGED_SHARE = 0.01;
-const NOT_MEASURED = "not measured yet";
 
 type SnapshotStatus = "changed" | "added" | "removed" | "unmeasured";
 
@@ -37,7 +37,7 @@ interface SnapshotDelta {
 /** What the evidence step records; `policy` is the config that judged this head, so a later config change is not retroactive. */
 export interface VisualDelta {
   policy: { mode: VisualThreshold["mode"]; maxChangedShare: number; pixelTolerance: number };
-  /** Null until a measured pair needs it. */
+  /** Null when no pair needed it, or it could not be read. */
   mergeBase: string | null;
   snapshots: SnapshotDelta[];
   api: string[];
@@ -52,20 +52,27 @@ export interface VisualDelta {
 const delta = (path: string, status: SnapshotStatus, more: Partial<SnapshotDelta> = {}): SnapshotDelta => ({ path, component: componentOf(path), status, ...more });
 
 /** A snapshot renamed out of the snapshot paths no longer has a head render, so it reads as removed; one renamed in has no base render, so it reads as added. */
-function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => boolean): SnapshotDelta[] {
-  const sorted: SnapshotDelta[] = [];
+interface Sorted {
+  listed: SnapshotDelta[];
+  pairs: Pair[];
+}
+
+function sortSnapshots(files: readonly PrFile[], isSnapshot: (path: string) => boolean): Sorted {
+  const sorted: Sorted = { listed: [], pairs: [] };
   for (const file of files) {
     const from = file.previousPath !== undefined && isSnapshot(file.previousPath) ? file.previousPath : undefined;
     if (!isSnapshot(file.path)) {
-      if (from !== undefined) sorted.push(delta(from, "removed"));
+      if (from !== undefined) sorted.listed.push(delta(from, "removed"));
       continue;
     }
-    if (file.status === "added" || (file.previousPath !== undefined && from === undefined)) sorted.push(delta(file.path, "added"));
-    else if (file.status === "removed") sorted.push(delta(file.path, "removed"));
-    else sorted.push(delta(file.path, "unmeasured", { reason: NOT_MEASURED }));
+    if (file.status === "added" || (file.previousPath !== undefined && from === undefined)) sorted.listed.push(delta(file.path, "added"));
+    else if (file.status === "removed") sorted.listed.push(delta(file.path, "removed"));
+    else sorted.pairs.push({ path: file.path, basePath: from ?? file.path });
   }
   return sorted;
 }
+
+const measuredDelta = (pair: PairMeasure): SnapshotDelta => ("share" in pair ? delta(pair.path, "changed", { share: pair.share }) : delta(pair.path, "unmeasured", { reason: pair.reason }));
 
 /** Both sides of every rename, once each, so moving a public API report or token file away still counts as changing it. */
 const bothSides = (files: readonly PrFile[]): string[] => [...new Set(files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath])))];
@@ -105,19 +112,21 @@ function checked(visualDelta: VisualDelta): VisualDelta {
 }
 
 /**
- * Reads the PR's visual delta from its pinned file list; `files` is a string when that list could not be read. Token
- * paths skip tests and docs, as a test under a token directory paints nothing; API reports are markdown and harness
- * specs are tests, so those two lists match every path.
+ * Reads the PR's visual delta at `target.head` from its pinned file list; `files` is a string when that list could not
+ * be read. Token paths skip tests and docs, as a test under a token directory paints nothing; API reports are markdown
+ * and harness specs are tests, so those two lists match every path.
  */
-export function readVisualDelta(files: readonly PrFile[] | string, threshold: VisualThreshold): VisualDelta {
+export async function readVisualDelta(port: GitHubPort, target: MeasureTarget, files: readonly PrFile[] | string, threshold: VisualThreshold): Promise<VisualDelta> {
   const policy = { mode: threshold.mode, maxChangedShare: threshold.maxChangedShare ?? DEFAULT_MAX_CHANGED_SHARE, pixelTolerance: threshold.pixelTolerance ?? DEFAULT_PIXEL_TOLERANCE };
   if (typeof files === "string") return checked({ policy, mergeBase: null, snapshots: [], api: [], tokens: [], harness: [], unread: clip(files) });
   const paths = bothSides(files);
+  const { listed, pairs } = sortSnapshots(files, caseFoldedMatcher(threshold.snapshotPaths));
+  const { mergeBase, measured } = await measurePairs(port, target, pairs, { ...threshold, pixelTolerance: policy.pixelTolerance });
   const lists = {
-    snapshots: sortSnapshots(files, caseFoldedMatcher(threshold.snapshotPaths)),
+    snapshots: [...measured.map(measuredDelta), ...listed],
     api: paths.filter(caseFoldedMatcher(threshold.apiPaths)),
     tokens: visualMatches(paths, threshold.tokenPaths),
     harness: paths.filter(caseFoldedMatcher(threshold.harnessPaths)),
   };
-  return checked({ policy, mergeBase: null, ...bounded(lists) });
+  return checked({ policy, mergeBase, ...bounded(lists) });
 }

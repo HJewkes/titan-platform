@@ -74,6 +74,11 @@ export function checkPositiveInt(field: string, value: number): number {
   return value;
 }
 
+/** An absent cap stays absent; a present one must be a positive safe integer. */
+export function checkMaxBytes(maxBytes: number | undefined): number | undefined {
+  return maxBytes === undefined ? undefined : checkPositiveInt("maxBytes", maxBytes);
+}
+
 export function checkPath(path: string): string {
   const bad = path.length === 0 || path.startsWith("/") || PATH_FORBIDDEN.test(path) || hasControl(path) || path.split("/").some((part) => part === ".." || part === "." || part === "");
   if (bad) throw new GitHubInputError("path", path, "expected a relative path with no ., .. or empty segment, and no ?, # or %");

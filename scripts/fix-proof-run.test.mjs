@@ -647,6 +647,68 @@ describe("fix-proof workflow", () => {
     expect(runnerSteps.at(-1).run).toMatch(/fix-proof-run\.sh exec mutants /);
   });
 
+  describe("Chromium for browser tests (TP-3656)", () => {
+    const ci = parse(readFileSync(path.join(import.meta.dirname, "../.github/workflows/ci.yml"), "utf8"));
+    const installCommand = /pnpm --filter @titan-design\/frame-capture exec playwright-core install .*$/m;
+    const ciInstall = Object.values(ci.jobs).flatMap((job) => job.steps).find((step) => installCommand.test(step.run ?? ""));
+    const EXEC_JOBS = ["fix-proof-base", "fix-proof-head", "fix-proof-mutants"];
+    const installIndex = (steps) => steps.findIndex((step) => installCommand.test(step.run ?? ""));
+    const execIndex = (steps) => steps.findIndex((step) => /fix-proof-run\.sh exec /.test(step.run ?? ""));
+
+    it.each(EXEC_JOBS)("%s installs Chromium with ci.yml's command before it runs its side", (id) => {
+      const steps = workflow.jobs[id].steps;
+
+      const install = installIndex(steps);
+
+      expect(install).toBeGreaterThan(-1);
+      expect(install).toBeLessThan(execIndex(steps));
+      expect(steps[install].run.match(installCommand)[0]).toBe(ciInstall.run.match(installCommand)[0]);
+    });
+
+    it.each(["fix-proof-base", "fix-proof-mutants"])("%s keeps the browser where the sandbox, with HOME at the tree, still finds it", async (id) => {
+      const { sandboxEnv } = await import("../packages/fix-proof/src/sandbox.ts");
+      const browsers = workflow.jobs[id].env?.PLAYWRIGHT_BROWSERS_PATH;
+
+      const env = sandboxEnv("/tmp/tree", { ...workflow.jobs[id].env, HOME: "/home/runner", PATH: "/usr/bin" });
+
+      expect(browsers).toMatch(/^\/opt\//);
+      expect(env.PLAYWRIGHT_BROWSERS_PATH).toBe(browsers);
+      expect(env.HOME).toBe("/tmp/tree");
+    });
+
+    it("the head job restores ci.yml's Chromium cache and never saves one", () => {
+      const ciRestore = Object.values(ci.jobs).flatMap((job) => job.steps).find((step) => step.name === "Restore the Chromium cache");
+      const steps = workflow.jobs["fix-proof-head"].steps;
+
+      const restore = steps.find((step) => step.uses?.startsWith("actions/cache/restore@"));
+
+      expect(restore.with).toEqual(ciRestore.with);
+      expect(workflow.jobs["fix-proof-head"].env?.PLAYWRIGHT_BROWSERS_PATH).toBeUndefined();
+      expect(steps.some((step) => step.uses?.startsWith("actions/cache/save@"))).toBe(false);
+    });
+
+    it.each(EXEC_JOBS)("%s installs no browser, and fails no step, on a merge base without frame-capture", (id) => {
+      const steps = workflow.jobs[id].steps;
+      const first = steps.slice(0, execIndex(steps)).find((step) => /playwright/.test(step.run ?? ""));
+      const tree = mkdtempSync(path.join(tmpdir(), "fix-proof-chromium-"));
+      mkdirSync(path.join(tree, "runner"));
+      const output = path.join(tree, "github-output");
+      writeFileSync(output, "");
+
+      const result = spawnSync("bash", ["-e", "-c", first.run], {
+        cwd: path.join(tree, first["working-directory"] ?? ""),
+        encoding: "utf8",
+        env: { ...process.env, RUNNER_TEMP: tree, GITHUB_OUTPUT: output },
+      });
+      const written = readFileSync(output, "utf8");
+      rmSync(tree, { recursive: true, force: true });
+
+      expect([result.status, result.stdout.trim(), written]).toEqual([0, "no frame-capture at the merge base", ""]);
+      const later = steps.slice(steps.indexOf(first) + 1, execIndex(steps)).filter((step) => /playwright|cache/.test(`${step.run ?? ""}${step.uses ?? ""}`));
+      expect(later.every((step) => step.if.includes("steps.playwright.outputs.version != ''"))).toBe(true);
+    });
+  });
+
   it("runs the script from the workflow's own commit, not from the PR head checkout", () => {
     expect(text).toContain("ref: ${{ github.sha }}");
     expect(text).toMatch(/bash \.fix-proof-workflow\/scripts\/fix-proof-run\.sh /);

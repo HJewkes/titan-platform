@@ -52,6 +52,14 @@ describe("a chart drawn from its frame slots", () => {
     assert.doesNotMatch(html, /ex-axis-origin|ex-chart-legend|background:#/);
   });
 
+  test("a bar chart of ten or more rows packs its rows dense, and nine rows keep the full row", () => {
+    const depots = (count: number) => Array.from({ length: count }, (_, i) => ({ id: `depot-${i + 1}`, label: `Depot ${i + 1}`, value: 30 + 10 * i }));
+
+    const dense = (count: number) => /class="ex-bars" data-dense="true"/.test(drawChart({ kind: "bar", series: depots(count) }));
+
+    assert.deepEqual([9, 10, 12].map(dense), [false, true, true]);
+  });
+
   test("a broken axis draws the break mark at the origin", () => {
     const html = drawChart({ kind: "line", baseline: 30, axisBreak: true });
 

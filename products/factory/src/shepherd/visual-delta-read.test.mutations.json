@@ -16,11 +16,14 @@
       "kills": ["the merge evidence under shepherd.visualThreshold shadow keeps the evidence comment under 60,000 characters when a PR regenerates hundreds of snapshots, counting what it leaves out"]
     },
     {
-      "name": "token paths count a test file under the token directory",
+      "name": "a measured pair records without its share",
       "file": "products/factory/src/shepherd/visual-delta-read.ts",
-      "find": "tokens: visualMatches(paths, threshold.tokenPaths),",
-      "replace": "tokens: paths.filter(caseFoldedMatcher(threshold.tokenPaths)),",
-      "kills": ["the merge evidence under shepherd.visualThreshold shadow matches the public API, token and harness paths, a token test aside"]
+      "find": "delta(pair.path, \"changed\", { share: pair.share })",
+      "replace": "delta(pair.path, \"changed\")",
+      "kills": [
+        "the merge evidence under shepherd.visualThreshold shadow measures a changed snapshot's share from the merge base to the head",
+        "the merge evidence under shepherd.visualThreshold shadow leaves the decision as it is without the threshold, and keeps a record the evidence schema reads"
+      ]
     },
     {
       "name": "the schema leaves the snapshot list unbounded",

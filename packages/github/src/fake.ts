@@ -130,7 +130,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => record("getContent", getContent(fake, path, ref)),
-    getContentBytes: async (_repo, path, ref) => record("getContentBytes", fakeContentBytes(fake, path, ref)),
+    getContentBytes: async (_repo, path, ref, maxBytes) => record("getContentBytes", fakeContentBytes(fake, path, ref, maxBytes)),
     putContent: async (_repo, request) => record("putContent", putContent(fake, request, nextSha)),
     listPrs: async (_repo, headBranch) => record("listPrs", [...prs.values()].filter((pr) => pr.headRef === headBranch).map((pr) => ({ ...pr }))),
     listOpenPrs: async () => record("listOpenPrs", [...prs.values()].filter((pr) => pr.state === "open").map((pr) => ({ ...pr }))),

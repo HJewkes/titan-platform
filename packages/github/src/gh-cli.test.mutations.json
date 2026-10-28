@@ -4,7 +4,7 @@
     {
       "name": "the REST wire refuses every file bytes read",
       "file": "packages/github/src/gh-cli.ts",
-      "find": "    getContentBytes: (repo, path, ref) => readContentBytes(api, repo, path, ref),",
+      "find": "    getContentBytes: (repo, path, ref, maxBytes) => readContentBytes(api, repo, path, ref, maxBytes),",
       "replace": "    getContentBytes: async () => { throw new Error(\"unsupported\"); },",
       "kills": ["gh api adapter, REST only drives every port method with argv that never names graphql or pr view, but for listReviewComments and listForcePushes"]
     }

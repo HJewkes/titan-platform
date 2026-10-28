@@ -33,7 +33,9 @@ relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value thro
 
 `getFile` decodes a file as UTF-8 text. `fileBytes` returns its bytes undecoded, for binary
 content such as a PNG snapshot. A file past the contents API's 1 MB inline limit is read through
-`git/blobs/{sha}`, and a decoded length that differs from the size GitHub reported throws.
+`git/blobs/{sha}`, and a decoded length that differs from the size GitHub reported throws. Pass
+`{ maxBytes }` to bound the download: a file whose contents entry reports a larger size, or no
+numeric size, throws `BlobTooLargeError` before the blob is read.
 
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
