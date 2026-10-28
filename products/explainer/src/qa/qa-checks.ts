@@ -75,8 +75,10 @@ export const captionVerdict = (rule: CaptionRule) => (input: QaCheckInput): Verd
   return { pass: found.length === 0, detail: found.length === 0 ? `${captions.cues} cues, no ${rule} finding` : `${found.length} caption ${rule}: ${shown}` };
 };
 
-const flashDetail = (label: string, { maxPerS, windows }: FlashReport["general"]): string =>
-  `${label} ${maxPerS}/s${windows.length > 0 ? ` over ${MAX_FLASHES_PER_S} at ${windows.slice(0, DETAIL_FINDINGS).map(({ startS, endS }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s`).join(", ")}` : ""}`;
+function flashDetail(label: string, { maxPerS, windows }: FlashReport["general"]): string {
+  const shown = windows.slice(0, DETAIL_FINDINGS).map(({ startS, endS }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s`).join(", ");
+  return `${label} ${maxPerS}/s${windows.length > 0 ? ` over ${MAX_FLASHES_PER_S} at ${shown}` : ""}`;
+}
 
 /** WCAG 2.3.1: more than three general or red flashes in any one second fails; a qa.json from before the scan fails. */
 export function flashVerdict(input: QaCheckInput): Verdict {

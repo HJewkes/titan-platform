@@ -10,7 +10,7 @@ import { z } from "zod";
  * 341x256 field at 1024x768, as a share of the frame. That share is counted over the whole safe area, not within one
  * 10-degree field, so spread flashes over-report; the scaling blurs patterns finer than about 12 px at 1920 wide.
  */
-export const FLASH_METHOD = "every frame at 160x90, title-safe 90 %, small area 2.78 % of frame, trailing 1 s";
+const FLASH_METHOD = "every frame at 160x90, title-safe 90 %, small area 2.78 % of frame, trailing 1 s";
 
 const FLASH_WIDTH = 160;
 const FLASH_HEIGHT = 90;
@@ -143,7 +143,7 @@ function summarise(perFrame: readonly number[], fps: number): FlashKind {
 }
 
 /** Decode arguments: every frame of `video`, area-scaled to the scan size, as raw 8-bit RGB on stdout. */
-export function flashScanArgs(video: string): string[] {
+function flashScanArgs(video: string): string[] {
   return ["-v", "error", "-i", video, "-vf", `scale=${FLASH_WIDTH}:${FLASH_HEIGHT}:flags=area,format=rgb24`, "-f", "rawvideo", "-"];
 }
 
