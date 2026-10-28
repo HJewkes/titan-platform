@@ -144,6 +144,41 @@ interface Sectioned extends OwnerItem {
 export interface Placed<T extends Sectioned> {
   item: T;
   pin: string | undefined;
+  /** A hitl gate's `pr:<repo>#<n>@<head>` at its live row's head, the key a merge-bound round question pins. */
+  head?: string;
+}
+
+/** The pinned head a hitl gate's live row is at, in `prKey`'s form; any other item, or an unpinned row, has none. */
+export function gateHeadOf(item: OwnerItem, row: WatchRow | undefined): string | undefined {
+  if (item.sources[0]!.system !== "hitl" || row?.pr == null || row.headSha == null) return undefined;
+  return `pr:${row.repo}#${row.pr}@${row.headSha}`.toLowerCase();
+}
+
+function coveringRounds(placed: readonly Placed<Sectioned>[]): Map<string, string> {
+  const rounds = new Map<string, string>();
+  for (const { item } of placed) {
+    const roundId = roundOf(item);
+    if (roundId !== undefined) for (const key of item.keys) if (key.startsWith("pr:")) rounds.set(key.toLowerCase(), roundId);
+  }
+  return rounds;
+}
+
+/**
+ * TP-4356: an open round whose merge-bound question pins a PR head answers that head's gate, so the gate folds into the
+ * round's row and the row lists it in `foldedGates`. A gate at any other head is not what the round reviewed: its own row.
+ */
+export function foldCoveredGates<T extends Sectioned>(placed: readonly Placed<T>[]): Placed<T & { foldedGates?: string[] }>[] {
+  const covering = coveringRounds(placed);
+  const folded = new Map<string, string[]>();
+  const kept = placed.filter(({ item, head }) => {
+    const roundId = head === undefined ? undefined : covering.get(head);
+    if (roundId !== undefined) folded.set(roundId, [...(folded.get(roundId) ?? []), item.id]);
+    return roundId === undefined;
+  });
+  return kept.map((each) => {
+    const gates = folded.get(roundOf(each.item) ?? "");
+    return gates === undefined ? each : { ...each, item: { ...each.item, foldedGates: gates } };
+  });
 }
 
 const SENT_BACK = /\/sh-sent-back(:\d+)?$/;
