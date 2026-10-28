@@ -14,14 +14,15 @@ const UNSUPPORTED_FORMAT = ": unsupported PNG format";
 const VisualDeltaArgs = z.object({ repo: RepoArg, pr: PrArg, head: z.string().regex(HEAD, "must be 40 lowercase hex characters").optional() });
 type VisualDeltaArgs = z.infer<typeof VisualDeltaArgs>;
 
-export interface VisualDeltaReport {
+/** An alias, not an interface: the command map's declarations inline it, so it needs no export. */
+type VisualDeltaReport = {
   repo: string;
   pr: number;
   head: string;
   /** Shots the decoder refused as an unsupported format; any at all means S3b's accepted set must widen before mode `on`. */
   unsupportedFormat: number;
   visualDelta: VisualDelta;
-}
+};
 
 const unsupportedOf = ({ snapshots }: VisualDelta): number => snapshots.filter((shot) => shot.status === "unmeasured" && shot.reason?.endsWith(UNSUPPORTED_FORMAT) === true).length;
 
