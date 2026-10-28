@@ -1,7 +1,7 @@
 import type { L0Result } from "./eval-l0.js";
 import { beatClaims, claimFindings, findingLine, type GatheredFact } from "./lint-claims.js";
 import type { CoverageManifest } from "./lint-coverage.js";
-import { boundaryLinks, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
+import { boundaryLinks, connectiveShare, firstIdentifier, MAX_CONNECTIVE_SHARE, MIN_LINKED, MIN_PLAIN_SHARE, PIVOT_FORM, thesisDefects, type Overuse } from "./lint-flow.js";
 import { ASSERTION_MAX_WORDS, assertionDefects, HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES, headlineLines, overlongHeadlines } from "./lint-headline.js";
 import { unsettledHeteronyms } from "./lint-heteronyms.js";
 import { spokenDigitsHint, spokenTokenHint } from "./lint-spoken-tokens.js";
@@ -28,15 +28,22 @@ function connectorEdits({ word, linked, beats, counts }: Overuse): string[] {
   });
 }
 
+function tallied({ counts, linked }: Overuse): string {
+  const words = [...counts].sort((a, b) => b[1] - a[1]).map(([word, count]) => `${word} x${count}`);
+  const others = linked - [...counts.values()].reduce((sum, count) => sum + count, 0);
+  return others ? `${words.join(", ")}; ${others} by a reference or a shared word` : words.join(", ");
+}
+
 function overuseHint(overused: Overuse): string {
   const { word, count, linked, beats } = overused;
-  return `"${word}" opens ${count} of ${linked} linked beats, past the ${percent(MAX_CONNECTIVE_SHARE)} one connective may carry: ${beats.join(", ")}. The check counts a beat's connector_in before its spoken words, so ${connectorEdits(overused).join(", ")}`;
+  return `connective variety fails at ${percent(connectiveShare(overused))} (at most ${percent(MAX_CONNECTIVE_SHARE)}): "${word}" opens ${count} of ${linked} linked beats, past the ${percent(MAX_CONNECTIVE_SHARE)} one connective may carry: ${beats.join(", ")} (connectives: ${tallied(overused)}). The check counts a beat's connector_in before its spoken words, so ${connectorEdits(overused).join(", ")}, or another connective that keeps the same logical link to the beat before; vary the connective, never drop the link`;
 }
 
 function linkHint(script: ScriptV1): string {
   const { ratio, unlinked, overused } = boundaryLinks(script.beats);
-  const parts = [`${percent(ratio)} of in-chapter boundaries link (needs ${percent(MIN_LINKED)}); unlinked: ${listed(unlinked)}`];
-  if (overused) parts.push(overuseHint(overused));
+  const rate = `${percent(ratio)} of in-chapter boundaries link (needs ${percent(MIN_LINKED)})`;
+  const parts = [ratio >= MIN_LINKED ? `link rate passes: ${rate}` : `link rate fails: ${rate}; unlinked: ${listed(unlinked)}; open each on a connective, a "this" or "that" back-reference, or a word the beat before ends on`];
+  parts.push(overused ? overuseHint(overused) : "connective variety passes");
   return parts.join("; ");
 }
 
@@ -99,11 +106,24 @@ const HINTS: Readonly<Record<string, Hint>> = {
   "Q-D7": assertionHint,
   "Q-E17": (script, row, _facts, spine) => (spine ? ledgerHint(script, row.detail_beats, spine) : undefined),
   "Q-E20": claimsHint,
+  "map:hand-framing": (_script, row) =>
+    `${listed(row.detail_beats)} draw a hand-made map (visual.layout_source "hand") with no "our-framing" chip; add the "our-framing" chip to each, since the viewer must know the map is our framing and not the code graph`,
 };
 
 /** The check ids with a repair hint of their own. */
 export const HINTED_CHECKS: ReadonlySet<string> = new Set(Object.keys(HINTS));
 
-/** What a failing row measured, in words a repair can act on, for the rows whose value and beats alone say too little. */
-export const repairHint = (row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1, coverage?: CoverageManifest): string | undefined =>
-  HINTS[row.check_id]?.(script, row, facts, spine, coverage);
+const tokensOf = (text: string): Set<string> => new Set(text.split(/[\s,;:()"']+/).map((token) => token.replace(/\.$/, "")));
+
+// A hint that re-reads the script can miss every beat the row names; the repair still needs to know where to look.
+function namingRowBeats(found: string, row: L0Result): string | undefined {
+  const tokens = tokensOf(found);
+  if (!row.detail_beats.length || row.detail_beats.some((id) => tokens.has(id))) return found || undefined;
+  return found ? `${found}; failing beats: ${listed(row.detail_beats)}` : `failing beats: ${listed(row.detail_beats)}`;
+}
+
+/** What a failing row measured, in words a repair can act on, naming every beat or item the row names. */
+export function repairHint(row: L0Result, script: ScriptV1, facts?: readonly GatheredFact[], spine?: SpineV1, coverage?: CoverageManifest): string | undefined {
+  const hint = HINTS[row.check_id];
+  return hint ? namingRowBeats(hint(script, row, facts, spine, coverage)?.trim() ?? "", row) : undefined;
+}

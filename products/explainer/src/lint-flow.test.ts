@@ -41,6 +41,16 @@ describe("Q-F1 beat links", () => {
 
     expect(flow(beats).get("Q-F1")).toMatchObject({ value: 1, pass: false });
   });
+
+  // Mutation: reporting the link rate on a variety failure brings back value 1 against 0.7 with no beats.
+  it("reports the connective share against its cap, and the beats it opens, when only variety fails", () => {
+    const therefore = (id: string) => withBeat(id, { extra: { connector_in: "therefore" } }).find((spec) => spec[0] === id)!;
+    const beats = GOOD_BEATS.map((spec) => (["w2", "w3", "k2", "k3"].includes(spec[0]) ? therefore(spec[0]) : spec));
+
+    const row = flow(beats).get("Q-F1");
+
+    expect(row).toMatchObject({ value: 0.571, threshold: 0.4, pass: false, detail_beats: ["w2", "w3", "k2", "k3"] });
+  });
 });
 
 describe("Q-F2 chapter hand-offs", () => {
