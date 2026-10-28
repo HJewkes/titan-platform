@@ -1189,6 +1189,25 @@ close it. A new snapshot directory that neither `snapshotPaths` nor the seat's
 `visual_baselines` lists fails open the same way. Before you turn a repo `on`, give every exported component a snapshot, or
 accept the gap for that repo.
 
+**Calibration.** Before you turn a repo `on`, measure its recent snapshot PRs with
+`shepherd visual-delta`:
+
+```sh
+titan-factory shepherd visual-delta --repo owner/design --pr 123 [--head <sha>]
+```
+
+It runs the evidence step's read under the repo's key, whatever the mode, and prints
+JSON. The output holds `repo`, `pr`, the measured `head`, `visualDelta` (the same record
+the evidence step stores) and `unsupportedFormat`, which counts the shots the decoder
+refused as `unsupported PNG format`. If that count is above zero, the repo's renderer
+writes a PNG outside 8-bit RGB or RGBA, and the decoder must accept that format before the
+repo goes `on`. The count covers the snapshot rows the record keeps; unmeasured shots sort
+first, so it is short only when more than 40 shots go unmeasured. A `--head` the PR is no
+longer at reads as unread and measures nothing. The command is read-only: it runs no step,
+posts no comment and stores no record. Like `shepherd status`, it asks `titan-factory
+serve` when one answers and otherwise runs here, in an agent shell too. A repo with no key
+exits 66.
+
 ### Feature base {#feature-base}
 
 A pull request merges only into its repo's default branch unless its seat says otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's

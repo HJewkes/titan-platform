@@ -34,6 +34,7 @@ import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
+import { visualDeltaCommand } from "./visual-delta-command.js";
 import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
@@ -384,6 +385,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.resync": resyncCommand,
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
+  "shepherd.visual-delta": visualDeltaCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;
