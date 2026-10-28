@@ -345,9 +345,9 @@ const round = buildPlanRound({
 ```
 
 - **One question per ask.** Each ask is a pick-one in its own section. Its options are
-  `Approve this <gate> change for <task> as pinned below` and `Revise: send the plan back for
-  <task>`. The labels name the gate and the task, and pass the same normaliser as review
-  rounds, so no label is shared or reads as a blanket sign-off.
+  `Approve this <gate> change for <task> as pinned below` and
+  `Revise: send the plan back for <task>`. The labels name the gate and the task, and pass
+  the same normaliser as review rounds, so no label is shared or reads as a blanket sign-off.
 - **Bindings.** `planApprovals[i]` is `{ questionId, approve, task, repo, gate, scope }`, with
   `approve` the question's first option and `scope` a copy of the ask's. The console records
   exactly that entry when the owner picks `approve`; a Revise pick records nothing.

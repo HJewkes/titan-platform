@@ -573,6 +573,63 @@ declare function fromRoundQuestions(manifest: ManifestInput, roundId: string, co
  */
 declare function answeredFromFeedback(feedback: FeedbackInput, manifest: ManifestInput, context: AnsweredContext): OwnerItem[];
 
+type PlanGate = "ci-policy" | "skill" | "visual";
+/** A ci-policy approval pins each file the PR changes by its git blob sha; null means the file is absent at head. */
+interface CiPolicyPlanScope {
+    ciPolicyKeys: string[];
+    files: {
+        path: string;
+        blob: string | null;
+    }[];
+}
+/** A skill or visual approval pins exact paths, not content. */
+interface PathPlanScope {
+    paths: string[];
+}
+type PlanGateScope = {
+    gate: "ci-policy";
+    scope: CiPolicyPlanScope;
+} | {
+    gate: "skill" | "visual";
+    scope: PathPlanScope;
+};
+/** `title` heads the question's section and `context` is what the owner reads beside the pinned scope. */
+type PlanAsk = PlanGateScope & {
+    title: string;
+    context: string;
+};
+/** One `planApprovals` entry: the owner's pick of `approve` on `questionId` records this task, repo, gate and scope. */
+type PlanApproval = {
+    questionId: string;
+    approve: string;
+    task: string;
+    repo: string;
+} & PlanGateScope;
+interface PlanRoundInput {
+    unit: string;
+    round: number;
+    /** A loopback Storybook URL; round@2 requires one even for a questions-only round. Default http://127.0.0.1:6006/. */
+    storybookUrl?: string;
+    /** Ids of earlier rounds this one replaces. */
+    supersedes?: string[];
+    task: string;
+    repo: string;
+    asks: readonly PlanAsk[];
+}
+/** The round.json the console files: a round@2 manifest plus the console's own `supersedes` and `planApprovals` fields. */
+type PlanRound = ManifestInput & {
+    supersedes?: string[];
+    planApprovals: PlanApproval[];
+};
+/**
+ * Turns one PR's predicted WHAT gates into a questions-only round@2 round.json whose `planApprovals` bind each question's
+ * approve option to the plan-approval entry the console records (TP-4357). The planner does not recommend its own approval,
+ * so no question carries a recommendation. Pure: no I/O and no clock.
+ *
+ * Throws when `asks` is empty or `storybookUrl` is not loopback, and parses the manifest with RoundSchema before returning.
+ */
+declare function buildPlanRound(input: PlanRoundInput): PlanRound;
+
 declare const STALE_RULES: readonly ["pr-merged", "head-moved", "task-done", "asker-retired"];
 type StaleRule = (typeof STALE_RULES)[number];
 /** An asker's declared `onNoAnswer` meaning "wait for the owner": nothing was done in their absence. */
@@ -609,7 +666,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
