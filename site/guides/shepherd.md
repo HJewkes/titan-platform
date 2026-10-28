@@ -1108,6 +1108,83 @@ The run re-reads its registration's policy before every merge decision and keeps
 stricter of the two. A later `register` can tighten a running pull request's policy. It
 cannot loosen it.
 
+### Visual threshold {#visual-threshold}
+
+`shepherd.visualThreshold` in the factory config replaces "any changed baseline gates" with
+a measured diff. Each repo has its own key (`owner/name`, matched in any case):
+
+```jsonc
+"visualThreshold": {
+  "owner/design": {
+    "mode": "shadow",
+    "maxChangedShare": 0.01,
+    "pixelTolerance": 0.1,
+    "snapshotPaths": ["packages/ui/specimen/baseline/**/*-chromium-linux.png"],
+    "apiPaths": ["packages/ui/api/*.api.md"],
+    "tokenPaths": ["packages/ui/src/theme/tokens/**"],
+    "harnessPaths": ["packages/ui/playwright*.config.ts"]
+  }
+}
+```
+
+The merge evidence step reads the key live at every head and records the result on the
+evidence record as `visualDelta`. The record also stores the mode, threshold and tolerance
+that judged the head, so a later config change applies from the next evidence read and
+never to a head already decided.
+
+**Modes.**
+
+- `off`, or a repo with no key: nothing is measured and the decision is unchanged.
+- `shadow`: the delta is measured and shown in the evidence comment, together with a
+  `Shadow:` line saying whether `on` would clear the head or what it would gate on. The
+  merge decision is exactly the one without the key.
+- `on`: the delta decides, as described below.
+
+**Metric.** For every changed file that matches `snapshotPaths`, Shepherd reads the PNG at
+the merge base and at the head from GitHub, decodes both, and counts the pixels that
+differ by more than `pixelTolerance` (pixelmatch, antialiasing ignored). The share is the
+count divided by the content box: the box, over both images, of pixels that differ from
+the frame's corner colour. A viewport shot of a small story is therefore not diluted by its
+empty frame. Images of different sizes have a share of 1. The component shown is the story
+name before `--`, or for a specimen the spec stem plus the snapshot name. This relies on
+the repo's visual check failing on any drift, so that the head's committed PNG is the
+head's real render.
+
+**Rules under `on`.** At a head, the merge gates for the owner when any of these holds,
+and the reason lists every cause:
+
+- a changed path that matches `apiPaths` gates on `visual-path` with `(public API)`, one
+  that matches `tokenPaths` with `(token)`, and one that matches `harnessPaths` with
+  `(visual harness)`. These hold whether or not a seat glob matched;
+- a snapshot whose share is above `maxChangedShare` gates, and the reason names the
+  component, the snapshot and the share;
+- a removed snapshot gates, and so does one Shepherd could not measure (unreadable, over a
+  cap, or a PNG the bounded decoder does not accept). Both fail closed;
+- a changed baseline that is not a measured snapshot still gates as in
+  [Visual baselines](#visual-baselines), and so does a head whose baseline check is not green.
+
+An added snapshot does not gate by itself, since no existing render changed. A new
+component is caught by its API report.
+
+A head that clears says so in its evidence comment, for example `visual files … changed 1
+snapshot, max 0.4% (≤ 1.0%), no public API, token or harness change, and visual passed at
+<head>`. A stored `visualDelta` that does not parse gates in every mode.
+
+**Caps.** Each one is checked before the work and fails closed: `maxSnapshots` (default 80,
+at most 200) changed snapshots per head, past which every snapshot is unmeasured;
+`maxBytes` (default 5 MiB, at most 20 MiB) per blob, read against the size GitHub reports
+before the download; `maxPixels` (default 16 Mi, at most 32 Mi) per decoded image; and
+`maxTotalPixels` (default 128 Mi, at most 256 Mi) decoded over the whole step. The evidence
+comment shows at most 20 snapshot rows and 10 paths per list. The machine evidence keeps 40
+snapshots and 20 paths per list, and counts the rest.
+
+**Coverage gap.** The threshold measures only what a snapshot covers. A rendering change
+to a component with no story or specimen changes no snapshot, so under `on` it merges on a
+green check with no owner look. The API, token and harness rules narrow that gap but do not
+close it. A new snapshot directory that neither `snapshotPaths` nor the seat's
+`visual_baselines` lists fails open the same way. Before you turn a repo `on`, give every exported component a snapshot, or
+accept the gap for that repo.
+
 ### Feature base {#feature-base}
 
 A pull request merges only into its repo's default branch unless its seat says otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's

@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
+import { oneLine } from "../gate-brief.js";
 import type { EvidenceRecord } from "./merge-facts.js";
+import { VISUAL_DELTA_CAPS, VisualDeltaSchema } from "./review-schemas.js";
+import type { VisualDelta } from "./visual-delta-read.js";
+import { percent, wouldDecide } from "./visual-threshold-gate.js";
 
 export const VISUAL_REASON_PREFIX = "the owner decides visual changes: ";
 export const SKILL_REASON_PREFIX = "the owner reviews repo skill changes: ";
@@ -61,6 +65,10 @@ const GUARD_RULE_WORDS: Record<string, string> = {
 };
 
 const LONG_PATH_LIST = 5;
+/** Rows and paths past these stay in the machine evidence, so the comment stays under GitHub's 65,536-character limit. */
+const SHOWN_SNAPSHOTS = 20;
+const SHOWN_SENSITIVE = 10;
+const MAX_SHADOW_LINE = 2_000;
 
 function ruleInWords(rule: PolicyRule): string {
   return (rule.table === "shepherd-merge-guard" ? GUARD_RULE_WORDS[rule.rowId] : undefined) ?? `${rule.table}/${rule.rowId}`;
@@ -95,6 +103,54 @@ function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }
 
+type Shot = VisualDelta["snapshots"][number];
+
+/** A PR names its own snapshot paths, so a cell is flattened and its pipes escaped to keep the table whole. */
+const cell = (text: string): string => oneLine(text, VISUAL_DELTA_CAPS.text).replaceAll("|", "\\|");
+
+function changeCell(shot: Shot): string {
+  if (shot.status === "changed") return shot.share === undefined ? "no share recorded" : percent(shot.share);
+  return shot.status === "unmeasured" ? `unmeasured: ${shot.reason ?? "no reason recorded"}` : shot.status;
+}
+
+/** Matches the `on` decision: a changed shot with no share is over, and a removed or unmeasured one fails closed. */
+function overCell(shot: Shot, maxChangedShare: number): string {
+  if (shot.status === "added") return "no";
+  if (shot.status === "changed") return (shot.share ?? 1) > maxChangedShare ? "yes" : "no";
+  return "fails closed";
+}
+
+/** The largest change in each component leads its group, so each group's first row is its maximum. */
+function snapshotTable({ snapshots, policy, omitted }: VisualDelta): string[] {
+  if (snapshots.length === 0) return ["No snapshot changed."];
+  const shown = snapshots.slice(0, SHOWN_SNAPSHOTS).sort((a, b) => a.component.localeCompare(b.component) || (b.share ?? 0) - (a.share ?? 0));
+  const rows = shown.map((shot, i) => `| ${shown[i - 1]?.component === shot.component ? "" : cell(shot.component)} | \`${cell(shot.path)}\` | ${cell(changeCell(shot))} | ${overCell(shot, policy.maxChangedShare)} |`);
+  const left = snapshots.length - shown.length + (omitted?.snapshots ?? 0);
+  const table = ["| Component | Snapshot | Change | Over? |", "| --- | --- | --- | --- |", ...rows, ...(left > 0 ? ["", `and ${left} more snapshots`] : [])];
+  return snapshots.length <= LONG_PATH_LIST ? table : [`<details><summary>${snapshots.length + (omitted?.snapshots ?? 0)} snapshots</summary>`, "", ...table, "", "</details>"];
+}
+
+function sensitiveLines(delta: VisualDelta): string[] {
+  const kinds = [["Public API", "api"], ["Tokens", "tokens"], ["Visual harness", "harness"]] as const;
+  return kinds.map(([label, key]) => {
+    const more = delta.omitted?.[key] ?? 0;
+    const named = [...delta[key].slice(0, SHOWN_SENSITIVE).map((path) => `\`${cell(path)}\``), ...(delta[key].length > SHOWN_SENSITIVE || more > 0 ? [`and ${Math.max(0, delta[key].length - SHOWN_SENSITIVE) + more} more`] : [])];
+    return `- ${label}: ${named.length === 0 ? "none changed" : named.join(", ")}`;
+  });
+}
+
+/** TP-4320 §6: what the visual threshold measured at this head, and in shadow what `on` would have made of it. */
+function visualDiffSection(delta: VisualDelta | undefined): string[] {
+  if (delta === undefined) return [];
+  if (!VisualDeltaSchema.safeParse(delta).success) return ["", "**Visual diff**: the recorded delta is malformed, so it reads as unmeasured."];
+  const { mode, maxChangedShare, pixelTolerance } = delta.policy;
+  const base = delta.mergeBase === null ? "no merge base read" : `merge base \`${shortSha(delta.mergeBase)}\``;
+  const head = `**Visual diff** (${mode}): threshold ${percent(maxChangedShare)} of the content box, pixel tolerance ${pixelTolerance}, ${base}.`;
+  const shadow = mode === "shadow" ? ["", `Shadow: under "on" this head's visual delta would ${oneLine(wouldDecide(delta), MAX_SHADOW_LINE)}.`] : [];
+  if (delta.unread !== undefined) return ["", head, "", `The changed files could not be read: ${oneLine(delta.unread, VISUAL_DELTA_CAPS.text)}.`, ...shadow];
+  return ["", head, "", ...snapshotTable(delta), "", ...sensitiveLines(delta), ...shadow];
+}
+
 /** Names no actor: a merge someone else made is still a true "Merged" line. */
 function mergedLine(merged: { mergeSha: string | null } | undefined): string[] {
   if (!merged) return [];
@@ -121,6 +177,7 @@ export function evidenceComment(record: EvidenceRecord, merged?: { mergeSha: str
     ...carried,
     "",
     ...checksTable(record),
+    ...visualDiffSection(record.visualDelta),
     ...rule,
     ...proof,
     ...pathsSection(decision),
