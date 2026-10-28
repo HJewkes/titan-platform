@@ -37,6 +37,15 @@
       "kills": [
         "qa stage chart-mark contrast (WCAG 1.4.11) reports a bar whose scale colour sits under 3:1 on its track, and never fails the stage"
       ]
+    },
+    {
+      "name": "bars are judged against a light grey instead of their dark track",
+      "file": "products/explainer/src/qa/contrast-check.ts",
+      "find": "bar: { mark: \"text-secondary\", ground: \"surface-raised\" },",
+      "replace": "bar: { mark: \"text-secondary\", ground: \"text-secondary\" },",
+      "kills": [
+        "fixture sequential chart scales (WCAG 1.4.11) clear 3:1 against their chart's ground at every stop, lightness still ordered"
+      ]
     }
   ]
 }
