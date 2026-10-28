@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the binding's approve is the Revise label",
+      "file": "packages/owner-queue/src/plan-round.ts",
+      "find": "binding: { questionId, approve, task, repo,",
+      "replace": "binding: { questionId, approve: revise, task, repo,",
+      "kills": [
+        "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope"
+      ]
+    },
+    {
+      "name": "the copied scope keeps only the first pinned file",
+      "file": "packages/owner-queue/src/plan-round.ts",
+      "find": "? { gate: ask.gate, scope: ask.scope } :",
+      "replace": "? { gate: ask.gate, scope: { ...ask.scope, files: ask.scope.files.slice(0, 1) } } :",
+      "kills": [
+        "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope"
+      ]
+    },
+    {
+      "name": "the binding names the next question",
+      "file": "packages/owner-queue/src/plan-round.ts",
+      "find": "binding: { questionId, approve, task, repo,",
+      "replace": "binding: { questionId: questionId.replace(/\\d+$/, (n) => String(Number(n) + 1)), approve, task, repo,",
+      "kills": [
+        "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope",
+        "buildPlanRound asks ci-policy, skill and visual in three questions and three sections, with no option label shared"
+      ]
+    },
+    {
+      "name": "the approve label drops the task name",
+      "file": "packages/owner-queue/src/plan-round.ts",
+      "find": "change for ${task} as pinned below`, \"Approve\"",
+      "replace": "change as pinned below`, \"Approve\"",
+      "kills": [
+        "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope"
+      ]
+    },
+    {
+      "name": "the approve label bypasses field()",
+      "file": "packages/owner-queue/src/plan-round.ts",
+      "find": "const approve = field(`Approve this ${ask.gate} change for ${task} as pinned below`, \"Approve\", questionId, used);",
+      "replace": "const approve = `Approve this ${ask.gate} change for ${task} as pinned below`;",
+      "kills": [
+        "buildPlanRound gives a blank title and context their fallback, and appends the question id to a blanket title and a repeated label"
+      ]
+    }
+  ]
+}

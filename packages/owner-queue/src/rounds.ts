@@ -163,7 +163,7 @@ function batch(asks: Ask[], max: number): Ask[][] {
  * sign-off in a prompt or option and an option shared by two pick-ones, so blank text takes
  * the fallback and the question id is appended until the text is none of those.
  */
-function field(text: string, fallback: string, questionId: string, used = new Set<string>()): string {
+export function field(text: string, fallback: string, questionId: string, used = new Set<string>()): string {
   let shown = text.trim() === "" ? fallback : text.trim();
   while (used.has(shown) || isBlanketSignOff(shown)) shown = `${shown} (${questionId})`;
   used.add(shown);
