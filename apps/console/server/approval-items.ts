@@ -74,8 +74,8 @@ function manifestFor01({ schema, unit, round, storybookUrl, context, widths, rec
     recommendations,
     variants: [],
     questions: questions.map(questionFor01),
+    sections: sections.map((section) => only(section, SECTION_KEYS_01)),
     ...(context !== undefined && { context }),
-    ...(sections !== undefined && { sections: sections.map((section) => only(section, SECTION_KEYS_01)) }),
   };
 }
 
