@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a snapshot exactly at the threshold gates",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "(shot.share ?? 1) > policy.maxChangedShare",
+      "replace": "(shot.share ?? 1) >= policy.maxChangedShare",
+      "kills": ["the merge decision under visual threshold mode on merges a snapshot measured exactly at the threshold with the visual check green, saying what it measured"]
+    },
+    {
+      "name": "a removed snapshot does not gate under on",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "    if (shot.status === \"removed\") return [`${shot.path} removed`];\n",
+      "replace": "",
+      "kills": ["the merge decision under visual threshold mode on gates a removed snapshot, even where the seat's globs do not match it"]
+    },
+    {
+      "name": "the decision ignores the recorded mode, so shadow decides as on",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "return delta.policy.mode === \"on\" ? { on: delta } : {};",
+      "replace": "return { on: delta };",
+      "kills": ["the merge decision without visual threshold mode on keeps today's decision under shadow for a snapshot measured at 0.004"]
+    },
+    {
+      "name": "an unmeasured snapshot does not gate under on",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "    if (shot.status === \"unmeasured\") return [`${shot.path} unmeasured: ${shot.reason ?? \"no reason recorded\"}`];\n",
+      "replace": "",
+      "kills": ["the merge decision under visual threshold mode on gates an unmeasured snapshot, naming why it could not be measured"]
+    },
+    {
+      "name": "public API, token and harness paths do not gate under on",
+      "file": "products/factory/src/shepherd/visual-threshold-gate.ts",
+      "find": "const reasons = [...sensitiveReasons(on), ...snapshotReasons(on)];",
+      "replace": "const reasons = [...snapshotReasons(on)];",
+      "kills": ["the merge decision under visual threshold mode on gates a public API change that no seat glob matches"]
+    }
+  ]
+}

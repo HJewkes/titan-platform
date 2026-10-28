@@ -18,6 +18,7 @@ import { ownerHoldOf, riskFactsOf, riskTier } from "./risk-tier.js";
 import type { CarryResult } from "./tree-carry.js";
 import { evidenceRecord, type EvidenceRecord } from "./evidence-record.js";
 import { readVisualDelta, type VisualDelta, type VisualThreshold } from "./visual-delta-read.js";
+import { thresholdClearance, unclearedBaselines, visualDeltaGate } from "./visual-threshold-gate.js";
 
 export { isGithubPath };
 export type { EvidenceRecord };
@@ -162,7 +163,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
-    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${visualClearance(evidence.merge.changedPaths, evidence.head, visual)}` };
+    return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}${visualClearance(evidence.merge.changedPaths, evidence.head, visual, thresholdClearance(evidence.visualDelta))}` };
   }
   const reason = decision.verdict === "allow" ? `${decision.ruleId} allows, but only ${AUTO_MERGE_RULES.join(" and ")} merge without the owner` : decision.reason;
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason: withGrantWithheld(reason, evidence) };
@@ -177,22 +178,26 @@ function changedFilesGate(evidence: DecidableEvidence, { visualPaths, visualBase
   if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
   const skills = skillPathsIn(evidence.merge.changedPaths);
   if (skills.length > 0) return { outcome: "gate", rule: guardRule("skill-path"), reason: `${SKILL_REASON_PREFIX}${shownPaths(skills)}` };
+  const deltaGate = visualDeltaGate(evidence.visualDelta);
+  if (deltaGate !== undefined) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${deltaGate}` };
   if (visualPaths === undefined) return undefined;
   if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
   const globGate: GateDecision = { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(visual)}` };
-  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate);
+  return visualBaselines === undefined ? globGate : baselineGate(evidence.merge, visualBaselines, globGate, evidence.visualDelta);
 }
 
 /**
- * A changed baseline is a rendered diff the owner reviews; none, with the baseline check green at the head, clears the glob
- * gate. A list of only blank globs, or a blank check name, can show no rendered diff, so it keeps the glob gate.
+ * A changed baseline is a rendered diff the owner reviews, unless a visual threshold `on` measured it at or below the
+ * threshold; none left, with the baseline check green at the head, clears the glob gate. A list of only blank globs, or a
+ * blank check name, can show no rendered diff, so it keeps the glob gate.
  */
-function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: GateDecision): GateDecision | undefined {
+function baselineGate(merge: MergeFacts, baselines: VisualBaselines, globGate: GateDecision, delta: VisualDelta | undefined): GateDecision | undefined {
   const changed = changedBaselines(merge.changedPaths, baselines);
   if (changed === undefined) return globGate;
-  if (changed.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(changed)}` };
+  const uncleared = unclearedBaselines(changed, delta);
+  if (uncleared.length > 0) return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shownPaths(uncleared)}` };
   return baselineCheckGreen(merge, baselines.check, ALLOWED_CHECK_APPS) ? undefined : globGate;
 }
 
