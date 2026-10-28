@@ -207,6 +207,16 @@ are not live yet keeps its prompt enforcement as the fallback until the code lan
 `qrule-live-mismatch` when a Q-rule's L0 status moves; the pull request that implements the Q-rule
 also flips the craft rule's `live`.
 
+## Register rows (Q-V11)
+
+Each `register:*` row's band lives in `src/lint-register.ts`. A new row needs a measured gap
+against human explainers and must be independent of the rows already there. Noun density
+(TP-4321) failed that test. Our scripts run at about 1.5x the human rate, but on the
+script-tells corpus a 430-per-1k cap flags 19 of our 20 scripts, and the contractions or
+second-person floors already flag 18 of those. Across the corpus its rank correlation is -0.65
+with contractions and -0.52 with "you". It is the same "involved register" gap seen from the
+noun side, so the contractions and "you" rows carry it, and it has no row of its own.
+
 ## Stages
 
 Take stages from the doctrines' own tags: `[outline]` is `plan`; `[script]` is `script`;

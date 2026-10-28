@@ -36,6 +36,15 @@
       "kills": [
         "register metrics on hand-counted text does not count \"never\" or \"no\" inside a clause, or words that start with them"
       ]
+    },
+    {
+      "name": "the neg-synthetic band caps at 25 per 1k",
+      "file": "products/explainer/src/lint-register.ts",
+      "find": "\"neg-synthetic\": { max: 2.5 },",
+      "replace": "\"neg-synthetic\": { max: 25 },",
+      "kills": [
+        "Q-V11 register rows warns on one \"no X\" negation in a 157-word script and passes the same script without it"
+      ]
     }
   ]
 }

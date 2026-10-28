@@ -21,7 +21,7 @@ describe("why, value and thread lints", () => {
   it("reports one row per rule, so a pass is recorded too", () => {
     const ids = rows(goodScript()).map((row) => row.check_id);
 
-    expect(ids).toEqual(["Q-W1", "Q-W2", "Q-W3", "Q-W4", "Q-W5", "Q-W6", "Q-W8", "Q-W9", "Q-W10", "Q-F3", "Q-F12", "Q-W6:invariant-cap", "Q-F13"]);
+    expect(ids).toEqual(["Q-W1", "Q-W2", "Q-W3", "Q-W4", "Q-W5", "Q-W6", "Q-W8", "Q-W9", "Q-W10", "Q-F3", "Q-F12", "Q-W6:invariant-cap", "Q-F13", "Q-W1:stake-30s", "Q-F11:late-facts"]);
   });
 
   it("finds that only one of five body chapters in a pass-A-like script leads with why", () => {
@@ -54,6 +54,56 @@ describe("why, value and thread lints", () => {
     const late = { ...good, beats: [...good.beats.filter((b) => b.id !== "b2"), ...good.beats.filter((b) => b.id === "b2")] };
 
     expect(rowFor(late, "Q-W1")).toMatchObject({ pass: false, detail_beats: [], value: 1 });
+  });
+
+  describe("the stake by min(15 percent, 30 s)", () => {
+    const withTimes = (seconds: (id: string) => number): ScriptV1 => {
+      const good = goodScript();
+      return { ...good, beats: good.beats.map((beat) => ({ ...beat, plannedS: seconds(beat.id) })) };
+    };
+
+    it("warns on a 300 s script whose stake starts at 30 s, though it lands inside 15 percent", () => {
+      const long = withTimes(() => 30);
+
+      expect(rowFor(long, "Q-W1")?.pass).toBe(true);
+      expect(rowFor(long, "Q-W1:stake-30s")).toMatchObject({ severity: "warning", pass: false, value: 1, detail_beats: [] });
+    });
+
+    it("passes the same script once the stake starts at 20 s", () => {
+      const row = rowFor(withTimes((id) => (id === "b1" ? 20 : 30)), "Q-W1:stake-30s");
+
+      expect(row).toMatchObject({ severity: "warning", pass: true });
+    });
+
+    it("warns on a 110 s script whose stake starts at 20 s, past its 15 percent though inside 30 s", () => {
+      const row = rowFor(withTimes((id) => (id === "b1" ? 20 : 10)), "Q-W1:stake-30s");
+
+      expect(row).toMatchObject({ pass: false, value: 1 });
+    });
+  });
+
+  describe("no new facts in the last tenth", () => {
+    it("warns on a beat starting at 90 percent that cites a fact no earlier beat cited", () => {
+      const row = rowFor(withBeat(goodScript(), "b10", { function: "VERDICT", fact_ids: ["F8"] }), "Q-F11:late-facts");
+
+      expect(row).toMatchObject({ severity: "warning", pass: false, value: 1, detail_beats: ["b10"] });
+    });
+
+    it("passes a late beat that cites only facts already cited", () => {
+      const row = rowFor(withBeat(goodScript(), "b10", { function: "VERDICT", fact_ids: ["F5"] }), "Q-F11:late-facts");
+
+      expect(row).toMatchObject({ pass: true, value: 0 });
+    });
+
+    it("passes the close's button when it cites a new fact", () => {
+      expect(rowFor(withBeat(goodScript(), "b10", { fact_ids: ["F8"] }), "Q-F11:late-facts")).toMatchObject({ pass: true });
+    });
+
+    it("passes a new fact in a beat that starts before 90 percent", () => {
+      const row = rowFor(withBeat(goodScript(), "b9", { fact_ids: ["F8"] }), "Q-F11:late-facts");
+
+      expect(row).toMatchObject({ pass: true });
+    });
   });
 
   describe("a structure that declares its stake-carrying functions", () => {

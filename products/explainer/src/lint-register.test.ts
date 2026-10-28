@@ -103,6 +103,17 @@ describe("register metrics on hand-counted text", () => {
     expect(measure("lets", "Let's go. Let us see. Lets run.")).toBeCloseTo(428.571, 3);
   });
 
+  it('counts a verbless "no X" and neither or nor, but not "no longer", "no one" or a word that starts with no', () => {
+    // "no file", "no model", "neither" and "nor" over 22 words.
+    const spoken = "It runs with no file and no model call, neither slow nor loud. No longer late, no one waits, and nobody knows.";
+
+    expect(measure("neg-synthetic", spoken)).toBeCloseTo(181.818, 3);
+  });
+
+  it("counts downtoners as whole words only", () => {
+    expect(measure("downtoners", "It only nearly works, almost. Merely onlyness.")).toBeCloseTo(571.429, 3);
+  });
+
   it("measures sentence length mean and population CV", () => {
     const spoken = "One two three. One two three four five six seven eight nine. Go.";
 
@@ -138,7 +149,7 @@ const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] =
       numbers: 39.21568627450981, "second-person": 19.607843137254903, we: 0, "sentence-mean": 10.2,
       "sentence-cv": 0.19996154955265827, contractions: 58.8235294117647, triads: 19.607843137254903,
       "colon-reveals": 19.607843137254903, "not-x-tails": 1, semicolons: 19.607843137254903, lets: 19.607843137254903,
-      phrases: 0,
+      phrases: 0, "neg-synthetic": 0, downtoners: 0,
     },
   },
   {
@@ -155,7 +166,7 @@ const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] =
       numbers: 25.31645569620253, "second-person": 37.9746835443038, we: 37.9746835443038, "sentence-mean": 11.285714285714286,
       "sentence-cv": 0.38394306045830634, contractions: 37.9746835443038, triads: 0, "colon-reveals": 12.658227848101266,
       "not-x-tails": 1, semicolons: 25.31645569620253, lets: 12.658227848101266,
-      phrases: 12.658227848101266,
+      phrases: 12.658227848101266, "neg-synthetic": 0, downtoners: 0,
     },
   },
   {
@@ -173,7 +184,7 @@ const PARITY: { spoken: string[]; expected: Record<RegisterMetric, number> }[] =
       numbers: 58.8235294117647, "second-person": 23.529411764705884, we: 23.529411764705884, "sentence-mean": 10.625,
       "sentence-cv": 0.36735282343519987, contractions: 70.58823529411765, triads: 11.764705882352942,
       "colon-reveals": 11.764705882352942, "not-x-tails": 1, semicolons: 0, lets: 11.764705882352942,
-      phrases: 0,
+      phrases: 0, "neg-synthetic": 0, downtoners: 0,
     },
   },
 ];
@@ -245,6 +256,22 @@ describe("Q-V11 register rows", () => {
     expect(stock).toMatchObject({ severity: "warning", pass: false, threshold: 0.58 });
     expect(stock?.value).toBeCloseTo(6.369, 3);
     expect(plain).toMatchObject({ value: 0, pass: true });
+  });
+
+  it('warns on one "no X" negation in a 157-word script and passes the same script without it', () => {
+    const negated = rows(...filler(15), "The desk prints with no ledger row.").get("register:neg-synthetic");
+    const plain = rows(...filler(15), "The desk prints without a ledger row.").get("register:neg-synthetic");
+
+    expect(negated).toMatchObject({ severity: "warning", pass: false, threshold: 2.5 });
+    expect(negated?.value).toBeCloseTo(6.369, 3);
+    expect(plain).toMatchObject({ value: 0, pass: true });
+  });
+
+  it("reports a downtoner rate over its band but never warns on it", () => {
+    const row = rows(...filler(16), "It only waits here.").get("register:downtoners");
+
+    expect(row).toMatchObject({ severity: "warning", pass: true, threshold: 3.6 });
+    expect(row?.value).toBeCloseTo(6.098, 3);
   });
 
   it("reports the share of beats that end on their shortest sentence against chance, and never warns", () => {

@@ -24,6 +24,9 @@ const COLON_REVEAL = /(?<!\d):\s+[^.!?:\n]{1,60}[.!?]/gi;
 const NOT_X_TAIL = /[,;:]\s+(?:not|never|no) (?:by |the |a |an |its |their |from |as )?[\w'’-]+(?: [\w'’-]+){0,4}\s*[.!?]/gi;
 const SEMICOLON = /;/g;
 const LETS = /\blet['’]?s\b|\blet us\b/gi;
+// TP-4306's regexes as written, which agree with the Biber tagger at P 0.90 / R 0.89 and P 1.00 / R 1.00.
+const NEG_SYNTHETIC = /\bno\s+(?!longer\b|one\b|matter\b|doubt\b|more\b|less\b|way\b)[A-Za-z]|\b(?:neither|nor)\b/gi;
+const DOWNTONER = /\b(?:almost|barely|hardly|merely|mildly|nearly|only|partially|partly|practically|scarcely|slightly|somewhat)\b/gi;
 
 /** Below this many spoken words a script's rates are too coarse to judge: its rows report but never warn. */
 export const MIN_REGISTER_WORDS = 150;
@@ -111,7 +114,7 @@ function sentenceCv(s: SpokenText): number | undefined {
 
 export const REGISTER_METRICS = [
   "numbers", "second-person", "we", "sentence-mean", "sentence-cv", "contractions",
-  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets", "phrases",
+  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets", "phrases", "neg-synthetic", "downtoners",
 ] as const;
 export type RegisterMetric = (typeof REGISTER_METRICS)[number];
 
@@ -129,6 +132,8 @@ export const REGISTER_MEASURES: Record<RegisterMetric, (s: SpokenText) => number
   semicolons: per1k(SEMICOLON),
   lets: per1k(LETS),
   phrases: (s) => (1000 * phraseSpans(s.text).length) / Math.max(s.words.length, 1),
+  "neg-synthetic": per1k(NEG_SYNTHETIC),
+  downtoners: per1k(DOWNTONER),
 };
 
 export interface Band {
@@ -140,7 +145,7 @@ export interface Band {
  * Human-creator explainer scripts, per script, P25 to P90 (TP-3765 synthesis; `phrases` from TP-4305's measure on the
  * same scripts). Rates are per 1k words except the sentence shape and "not-x-tails", which counts per script. Devices
  * the research caps without a floor (triads, colon reveals, tails, semicolons, let's, phrases) have no min, so a
- * script is never told to add one.
+ * script is never told to add one. `neg-synthetic` and `downtoners` cap at the human-punct P90 of TP-4306's corpus.
  */
 export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   numbers: { min: 11.92, max: 25.62 },
@@ -155,7 +160,12 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   semicolons: { max: 0.6 },
   lets: { max: 3.21 },
   phrases: { max: 0.58 },
+  "neg-synthetic": { max: 2.5 },
+  downtoners: { max: 3.6 },
 };
+
+/** Rows reported against their band but never warned on: downtoners' length-matched effect is unconfirmed (TP-4306). */
+const REPORTED_ONLY_METRICS: ReadonlySet<RegisterMetric> = new Set(["downtoners"]);
 
 /** A beat may speak one number; the rest belong on screen (TP-3813). A beat over this is "crowded". */
 export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
@@ -186,7 +196,7 @@ const below = (value: number, band: Band): boolean => band.min !== undefined && 
 function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
   const band = REGISTER_BANDS[metric];
   const value = REGISTER_MEASURES[metric](s);
-  const judged = value !== undefined && s.words.length >= MIN_REGISTER_WORDS;
+  const judged = value !== undefined && s.words.length >= MIN_REGISTER_WORDS && !REPORTED_ONLY_METRICS.has(metric);
   const pass = !judged || (!below(value, band) && value <= band.max);
   const threshold = value !== undefined && below(value, band) ? (band.min ?? band.max) : band.max;
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });

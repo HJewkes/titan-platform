@@ -89,15 +89,15 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V10"], scope: chapter }
   - id: Q-V11
-    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails (and "never X", "no X"), semicolons, "let''s" and the over-represented phrases of doctrine/voice-phrases.json, and at most one number mention in a beat'
+    rule: 'Spoken register sits in the human-explainer band: number mentions, "you", "we", sentence length mean and spread, contractions, triads, colon reveals, "Y, not X" tails (and "never X", "no X"), semicolons, "let''s", the over-represented phrases of doctrine/voice-phrases.json, verbless "no X" negation and downtoners, and at most one number mention in a beat'
     fields: [beats.spoken]
     related: [Q-V5, Q-V7, Q-V9]
     owner_support: none
-    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists."
+    note: "Tracking, one warning row a metric (TP-3810). Bands are human-creator P25 to P90 from the TP-3765 script-tells research and live in src/lint-register.ts, never in a prompt. A script under 150 spoken words reports values without warning. register:shortest-last (TP-4308) is reported only, against chance, until a beat-level human band exists. register:neg-synthetic and register:downtoners (TP-4321) cap at the human P90 of the TP-4306 register research; downtoners is reported only until a second corpus confirms it. Noun density has no row: on that corpus it flags the scripts the contractions and second-person floors already flag."
     l0:
       severity: warning
       status: implemented
-      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:phrases", "register:numbers-per-beat", "register:shortest-last"]
+      checks: ["register:numbers", "register:second-person", "register:we", "register:sentence-mean", "register:sentence-cv", "register:contractions", "register:triads", "register:colon-reveals", "register:not-x-tails", "register:semicolons", "register:lets", "register:phrases", "register:neg-synthetic", "register:downtoners", "register:numbers-per-beat", "register:shortest-last"]
 
   - id: Q-V12
     rule: "Spoken lines carry numbers as words, never digits, so the voice and the word timings agree on what is said"
@@ -126,6 +126,7 @@ rules:
     aliases: [X2, TC1]
     related: [P1]
     owner_support: none
+    note: "Q-W1:stake-30s (TP-4333, RW-15) is a warning row beside it: the stake by min(15 %, 30 s) of planned time, so a long video still lands it in its first 30 s."
     l0: { severity: error, status: implemented, checks: ["Q-W1"] }
     judge: { layer: L1, status: pending, owner: SQ7 }
   - id: Q-W2
@@ -272,6 +273,7 @@ rules:
     aliases: [X15, TC16]
     related: ["CT R10"]
     owner_support: none
+    note: "Q-F11:late-facts (TP-4333, RW-16) is a warning row beside it: no beat starting in the last 10 % of planned time cites a fact no earlier beat cited, except the close's button."
     l0: { severity: error, status: implemented, checks: ["Q-F11"] }
   - id: Q-F12
     rule: "simplifications voiced once; limits before the close"
