@@ -62,7 +62,6 @@ export const CONTRAST_GATE = false;
 export const CONTRAST = { text: 4.5, largeText: 3, largeTextPx: 24, nonText: 3 } as const;
 export type ContrastThresholds = typeof CONTRAST;
 
-
 const GATE_PROFILE_FILE = join("qa", "gate-profile.yaml");
 
 /** Parses `gate-profile.yaml`; a kind render-qa does not know, or a type no profile defines, fails the load. */
