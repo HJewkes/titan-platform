@@ -11,6 +11,7 @@ import { draftBudgets } from "./script-budget.js";
 import { draftFillRefusals, TEMPLATE_FILL_ID } from "./script-fill.js";
 import { ScriptSchema, type ScriptBeat, type ScriptChapter, type ScriptV1 } from "./script-schema.js";
 import { spellSpokenNumbers } from "./spoken-numbers.js";
+import { declareReadings } from "./heteronym-readings.js";
 
 export interface RewriteDeps {
   harness: JudgeHarness;
@@ -189,8 +190,9 @@ function mergeReplies(script: ScriptV1, plan: RegisterEditPlan, replies: readonl
 
 function applyReply(beat: ScriptBeat, reply: ReplyBeat, merged: Merged, deps: RewriteDeps): ScriptBeat {
   const labelsAdded = reply.labels_added.map((label) => label.trim()).filter(Boolean);
-  // Spelled before the guard so its cap, the speech-vet and L0 all judge the words the voice will read.
-  const spoken = spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken;
+  // Spelled and declared before the guard so its cap, the speech-vet and L0 all judge the words the voice will read,
+  // and a reply that drops a `[w](=reading)` its context decides is not reverted for Q-V10.
+  const spoken = declareReadings(spellSpokenNumbers({ spoken: reply.spoken, visual: beat.visual }).spoken);
   if (spoken === beat.spoken && labelsAdded.length === 0) return beat;
   const options: BeatGuardOptions = { ...(deps.guard ? { guard: deps.guard } : {}), ...(deps.speechClean ? { speechClean: deps.speechClean } : {}) };
   const rejections = guardBeat(beat, { spoken, labelsAdded }, options);

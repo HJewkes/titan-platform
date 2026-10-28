@@ -40,6 +40,15 @@
       "kills": [
         "rewrite stage checks gates on a rewritten beat over the word cap resolve holds it to"
       ]
+    },
+    {
+      "name": "the l0 gate detail stops naming Q-V10's words",
+      "file": "products/explainer/src/workflow/stage-checks.ts",
+      "find": "if (!rows.some((row) => row.check_id === \"Q-V10\" && !row.pass)) return verdict;",
+      "replace": "return verdict;",
+      "kills": [
+        "script stage checks names each undeclared heteronym and its place in the l0 gate detail"
+      ]
     }
   ]
 }

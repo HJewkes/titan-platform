@@ -114,6 +114,21 @@ describe("rewriteScript guard and revert", () => {
     expect(spokenOf(out, "k2")).toContain("at the counter");
   });
 
+  it("re-declares a reading the rewrite dropped, so the beat is kept rather than reverted for Q-V10", async () => {
+    // Catches: a rewrite reply judged with its `[w](=reading)` markup dropped, which turns Q-V10 red and reverts the beat.
+    const draft = choppy();
+    const declared = { ...draft, beats: draft.beats.map((beat) => (beat.id === "w1" ? { ...beat, spoken: beat.spoken.replace("a minute", "in 2 [minutes](=time)") } : beat)) };
+    const dropsDeclaration: Rewriter = (id, prompt) => {
+      const reply = compliant(id, prompt)!;
+      return id === "w1" ? { ...reply, spoken: reply.spoken.replace("a minute", "in 2 minutes") } : reply;
+    };
+
+    const { script: out, report } = await rewrite(declared, fakeRewriter(dropsDeclaration), { rounds: 1 });
+
+    expect(spokenOf(out, "w1")).toContain("in two [minutes](=time) to the desk server");
+    expect(report.rounds[0]!.reverted.map((entry) => entry.beat)).not.toContain("w1");
+  });
+
   // k3 speaks 20 words and its rewrite 26, in a concept beat at 2.8 w/s: 8 s caps it at 22 words, 10 s at 28.
   it("reverts a beat whose rewrite takes it over its word cap, and keeps the rest of the round", async () => {
     const script = choppy({ k3: { plannedS: 8 } });

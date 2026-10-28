@@ -32,8 +32,8 @@
     {
       "name": "planned reveals skip the planned-seconds scale",
       "file": "products/explainer/src/render/compile-timeline.ts",
-      "find": "beat.spoken.split(/\\s+/).length) * beat.duration_s;",
-      "replace": "beat.spoken.split(/\\s+/).length);",
+      "find": "plainWords(beat.spoken).length) * beat.duration_s;",
+      "replace": "plainWords(beat.spoken).length);",
       "kills": [
         "compileTimeline page extras lands reveals at planned-word times scaled to the planned seconds when there are no words"
       ]

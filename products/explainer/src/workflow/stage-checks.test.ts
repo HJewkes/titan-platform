@@ -6,6 +6,7 @@ import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import type { ScriptV1 } from "../script-schema.js";
 import { voiceCheck } from "../lint-voice.js";
 import { claimsCheck } from "../lint-claims.js";
+import { heteronymCheck } from "../lint-heteronyms.js";
 import { spellScript } from "../rewrite-pass.js";
 import { sha256 } from "./artifacts.js";
 import { l0Check, SPINE } from "./run-fakes.test-helpers.js";
@@ -53,6 +54,15 @@ describe("script stage checks", () => {
     expect(verdict(run, "l0")).toMatchObject({ gate: true, pass: false, detail: expect.stringContaining("fake-l0") });
     expect(verdict(run, "l0-warnings")).toMatchObject({ gate: false, pass: false, detail: expect.stringContaining("fake-warn (warning)") });
     expect(failedGates(run.checks).map((check) => check.name)).toEqual(["l0"]);
+  });
+
+  it("names each undeclared heteronym and its place in the l0 gate detail", () => {
+    // Catches: a Q-V10 failure that names only "Q-V10", so the reader cannot tell which word stopped the run.
+    const draft = choppy({ h2: { spoken: "Every minute counts at the desk." } });
+
+    const run = runStageChecks("script", input({ draft: json(draft), spine: SPINE }, [heteronymCheck]));
+
+    expect(verdict(run, "l0")).toMatchObject({ gate: true, pass: false, detail: expect.stringMatching(/; Q-V10: .*h2 "minute" \(word 2\)/) });
   });
 
   it("passes l0 when only a warning row fails", () => {

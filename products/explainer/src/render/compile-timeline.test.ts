@@ -178,6 +178,17 @@ describe("compileTimeline page extras", () => {
     expect(second?.atS).toBeCloseTo((5 / 6) * 5, 9);
   });
 
+  it("scales planned reveals over the words a listener hears, not the markup around them", () => {
+    // Catches: the planned denominator counting a phoneme override's inner space as a word, landing every reveal early.
+    const raw = rawBoard();
+    raw.beats[1]!.spoken = "[First](/fˈɜːst ɹ/) row, then the second row.";
+    const extras = listExtras([{ target: "rows-1", atCue: "then" }]);
+
+    const timeline = compileTimeline(StoryboardSchema.parse(raw), undefined, { extras });
+
+    expect(timeline.beats[1]?.reveals?.[0]?.atS).toBeCloseTo((2 / 6) * 5, 9);
+  });
+
   it("refuses a reveal whose cue is never spoken, naming the beat, voiced or not", () => {
     const extras = listExtras([{ target: "rows-1", atCue: "zebra" }]);
 
