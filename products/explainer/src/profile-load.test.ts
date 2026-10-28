@@ -64,7 +64,7 @@ describe("loadProfiles", () => {
 function unbandedProfile(kind?: "public" | "assigned"): Record<string, unknown> {
   const { audience, ...written }: Partial<TypeProfile> = fixedProfile();
   delete written.runtime;
-  return { ...written, audience: { default: audience!.default, allow: audience!.allow, ...(kind ? { kind } : {}) } };
+  return { ...written, audience: { default: audience.default, allow: audience.allow, ...(kind ? { kind } : {}) } };
 }
 
 describe("a profile's runtime band by audience", () => {
