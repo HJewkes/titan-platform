@@ -1,5 +1,6 @@
 import type { CaptionRule } from "./caption-check.js";
 import type { Check } from "../workflow/records.js";
+import { MAX_FLASHES_PER_S, type FlashReport } from "./flash-scan.js";
 import { QaReportSchema, qaSummary, type MediaScanReport, type QaReport } from "./qa-report.js";
 import { TIMING_GATES, type TimingGate } from "./timing-gates.js";
 
@@ -81,4 +82,17 @@ export function narrationFactsVerdict(input: QaCheckInput): Verdict {
   const { beats, findings } = narrationFacts;
   const shown = findings.slice(0, DETAIL_FINDINGS).map(({ beat, kind, fact }) => `[${beat}] ${kind} "${fact}"`).join("; ");
   return { pass: findings.length === 0, detail: findings.length === 0 ? `${beats} beats, every on-screen fact narrated` : `${findings.length} unspoken: ${shown}` };
+}
+
+function flashDetail(label: string, { maxPerS, windows }: FlashReport["general"]): string {
+  const shown = windows.slice(0, DETAIL_FINDINGS).map(({ startS, endS }) => `${startS.toFixed(2)}-${endS.toFixed(2)} s`).join(", ");
+  return `${label} ${maxPerS}/s${windows.length > 0 ? ` over ${MAX_FLASHES_PER_S} at ${shown}` : ""}`;
+}
+
+/** WCAG 2.3.1: more than three general or red flashes in any one second fails; a qa.json from before the scan fails. */
+export function flashVerdict(input: QaCheckInput): Verdict {
+  const { flash } = report(input);
+  if (flash === undefined) return { pass: false, detail: "qa.json has no flash scan" };
+  const pass = flash.general.windows.length === 0 && flash.red.windows.length === 0;
+  return { pass, detail: `${flashDetail("general", flash.general)}; ${flashDetail("red", flash.red)} (${flash.method})` };
 }

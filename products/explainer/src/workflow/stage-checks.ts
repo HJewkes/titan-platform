@@ -21,8 +21,8 @@ import { listenerQuestionsCheck } from "../listener-check.js";
 import { readTiming } from "../timing.js";
 import { resolvedVarietyVerdict } from "../resolve-variety.js";
 import { unknownWords } from "../unknown-words.js";
-import { CAPTIONS_GATE, NARRATION_FACTS_GATE } from "../qa/gate-profile.js";
-import { captionVerdict, directionVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, narrationFactsVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
+import { CAPTIONS_GATE, FLASH_GATE, NARRATION_FACTS_GATE } from "../qa/gate-profile.js";
+import { captionVerdict, directionVerdict, flashVerdict, heldErrorsVerdict, measuredVerdict, mediaScanVerdict, mp4DurationVerdict, narrationFactsVerdict, timingVerdict, timingWarnVerdict } from "../qa/qa-checks.js";
 import { assertDurationAgreement } from "../render/duration-check.js";
 import { RenderManifestSchema } from "../render/render-manifest.js";
 import { doctrineG2p } from "./voice-g2p.js";
@@ -228,6 +228,7 @@ export const STAGE_CHECKS: Record<CachedStage, readonly StageCheck[]> = {
     { name: "captions-cps", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("cps") },
     { name: "captions-onset", gate: CAPTIONS_GATE, reads: ["qa"], run: captionVerdict("onset") },
     { name: "narration-facts", gate: NARRATION_FACTS_GATE, reads: ["qa"], run: narrationFactsVerdict },
+    { name: "photosensitive-flash", gate: FLASH_GATE, reads: ["qa"], run: flashVerdict },
   ],
   sheets: [],
 };

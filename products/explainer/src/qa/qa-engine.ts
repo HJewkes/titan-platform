@@ -14,7 +14,9 @@ import {
   type ProbeAt,
   type ProbedMoment,
 } from "@titan-design/render-qa";
+import { RENDER_FPS } from "../render/render-video.js";
 import { ffmpegMedia, type MediaExec } from "../workflow/sheets-stage.js";
+import { flashScan, type FlashReport } from "./flash-scan.js";
 
 /** One page the qa stage inspects: seek-and-inspect, the DOM probe, crops of held errors, then close. */
 export interface QaPage {
@@ -33,6 +35,8 @@ export interface QaEngine {
   frameDiffs(mp4: string): Promise<number[]>;
   /** Black, silent (2 s and more) and frozen stretches of the MP4 (render-qa's `mediaScan`). */
   mediaScan(mp4: string): Promise<MediaScan>;
+  /** General and red flashes per second of the MP4 (WCAG 2.3.1, `flash-scan.ts`). */
+  flashScan(mp4: string): Promise<FlashReport>;
 }
 
 /** Real Chromium through frame-capture and render-qa, and the host's ffprobe and ffmpeg. */
@@ -56,5 +60,6 @@ export function chromiumQaEngine(media: Pick<MediaExec, "durationS"> = ffmpegMed
     durationS: (mp4) => media.durationS(mp4),
     frameDiffs: (mp4) => frameDiffs(mp4),
     mediaScan: (mp4) => mediaScan(mp4),
+    flashScan: (mp4) => flashScan(mp4, RENDER_FPS),
   };
 }
