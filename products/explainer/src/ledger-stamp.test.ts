@@ -162,9 +162,9 @@ describe("Q-E17 on a ledger item named too early, or a pin the ledger does not l
     expect(q17(script, spineOf(LEDGER)).pass).toBe(true);
   });
 
-  it("gives no hint without a spine", () => {
+  it("names only the failing beat without a spine", () => {
     const script = tour(withSpoken("w1", "So PR 101 sends every scan to the desk server.", { ...pinned("Times out") }));
 
-    expect(repairHint(q17(script, spineOf(LEDGER)), script)).toBeUndefined();
+    expect(repairHint(q17(script, spineOf(LEDGER)), script)).toBe("failing beats: w1");
   });
 });

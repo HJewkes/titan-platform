@@ -71,9 +71,15 @@ export function boundaryLinks(beats: readonly ScriptBeat[]): BoundaryLinks {
   return { ratio, unlinked, ...(overused ? { overused } : {}) };
 }
 
+/** An over-used connective's share of the linked boundaries. */
+export const connectiveShare = ({ count, linked }: Overuse): number => count / linked;
+
+// A row whose link rate passes reports the connective share it failed on, so its value and threshold are the failing measure's.
 function boundaryRow(beats: readonly ScriptBeat[]): L0Result {
   const { ratio, unlinked, overused } = boundaryLinks(beats);
-  return ruleRow("Q-F1", { value: ratio, threshold: MIN_LINKED, pass: ratio >= MIN_LINKED && !overused, beats: unlinked });
+  const failing = [...unlinked, ...(overused?.beats ?? [])];
+  if (ratio >= MIN_LINKED && overused) return ruleRow("Q-F1", { value: connectiveShare(overused), threshold: MAX_CONNECTIVE_SHARE, pass: false, beats: failing });
+  return ruleRow("Q-F1", { value: ratio, threshold: MIN_LINKED, pass: ratio >= MIN_LINKED && !overused, beats: failing });
 }
 
 /** Q-F2: a chapter ends on a turn or a question that the next chapter's open picks up. */

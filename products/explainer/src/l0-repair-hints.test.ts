@@ -61,6 +61,29 @@ describe("repair hints for rows whose value says too little", () => {
     expect(runL0(tour(edited), undefined, [flowCheck]).find((r) => r.check_id === "Q-F1")?.pass).toBe(true);
   });
 
+  // Mutation: dropping the passing link rate or the connective tally leaves the repair guessing which half failed.
+  it("Q-F1 says the link rate passes and variety fails, with each value, the connective tally, and to keep the link", () => {
+    const therefore = (id: string) => withBeat(id, { extra: { connector_in: "therefore" } }).find((spec) => spec[0] === id)!;
+    const beats = GOOD_BEATS.map((spec) => (["w2", "w3", "k2", "k3"].includes(spec[0]) ? therefore(spec[0]) : spec));
+
+    const hint = hintFor(tour(beats), "Q-F1")!;
+
+    expect(hint).toMatch(/^link rate passes: 100 % of in-chapter boundaries link \(needs 70 %\); connective variety fails at 57 % \(at most 40 %\)/);
+    expect(hint).toContain("(connectives: therefore x4; 3 by a reference or a shared word)");
+    expect(hint).toContain("vary the connective, never drop the link");
+  });
+
+  it("Q-F1 says the link rate fails and variety passes, naming the unlinked beats", () => {
+    const swap: Record<string, string> = { w2: "Here is the desk server.", w3: "Parcels weigh little.", k2: "Vans park outside." };
+    const beats = GOOD_BEATS.map(([id, chapter, fn, text, extra]): BeatSpec => [id, chapter, fn, swap[id] ?? text, extra]);
+
+    const hint = hintFor(tour(beats), "Q-F1");
+
+    expect(hint).toBe(
+      'link rate fails: 57 % of in-chapter boundaries link (needs 70 %); unlinked: w2, w3, k2; open each on a connective, a "this" or "that" back-reference, or a word the beat before ends on; connective variety passes',
+    );
+  });
+
   it("Q-F3 quotes the anchor and lists the HOW beats that never name it", () => {
     const script = tour(GOOD_BEATS, { running_example: { scenario: "Parcel P-7 arrives late", anchor: "parcel p-7" } });
 
