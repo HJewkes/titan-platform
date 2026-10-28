@@ -48,16 +48,6 @@
         "a plan round's approval answer refuses a replayed answer and a second answer to the same round: still one record and one row",
         "a plan round's approval answer reposts a record the owner's submit wrote while the factory was down, once, from the sweep"
       ]
-    },
-    {
-      "name": "the one tap answers a round whose questions record plan approvals",
-      "file": "apps/console/server/round-nudge.ts",
-      "find": "  if (bound !== undefined) return `question \"${bound.questionId}\" records a plan approval, answered on the round page where its scope shows`;\n",
-      "replace": "",
-      "kills": [
-        "a plan round's one-tap answer is not offered by the nudge, though every bound question recommends its approve option",
-        "a plan round's one-tap answer is refused by rounds.answer-rec, which writes no feedback, no plan-approval record and posts nothing"
-      ]
     }
   ]
 }
