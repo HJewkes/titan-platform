@@ -29,8 +29,8 @@ describe("explainer run through the qa stage", () => {
       ["picture-change", true, true], ["picture-change-warn", false, true], ["static-window", true, true], ["cue-onset", true, true], ["reading-hold", true, true],
       ["headline-label-words", true, true], ["narration-shared-run", true, true], ["words-per-frame", true, true],
       ["direction-gates", false, false], ["black-frames", false, true], ["silence-2s", false, true], ["frozen-frames", false, true],
-      ["captions-complete", false, true], ["captions-words", false, true], ["captions-lines", false, true], ["captions-cps", false, true], ["captions-onset", false, true], ["narration-facts", false, true], ["photosensitive-flash", false, true],
-      ["text-contrast", false, true], ["chart-mark-contrast", false, true],
+      ["captions-complete", false, true], ["captions-words", false, true], ["captions-lines", false, true], ["captions-cps", false, true], ["captions-onset", false, true], ["narration-facts", true, true], ["photosensitive-flash", true, true],
+      ["text-contrast", true, true], ["chart-mark-contrast", true, true],
     ]);
     const report = QaReportSchema.parse(JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", failed.outputs.qa!), "utf8")));
     expect(report.timeline).toBe("timeline");

@@ -18,14 +18,14 @@ describe("qa stage narration facts", () => {
   it("passes when the narration says the headline's number in words", async () => {
     const { checks } = await headlined("40% of parcels wait");
 
-    expect(checks["narration-facts"]).toMatchObject({ gate: false, pass: true, detail: "1 beats, every on-screen fact narrated" });
+    expect(checks["narration-facts"]).toMatchObject({ gate: true, pass: true, detail: "1 beats, every on-screen fact narrated" });
   });
 
-  it("reports a headline number the narration never says, and never fails the stage", async () => {
+  it("fails the stage on a headline number the narration never says", async () => {
     const { report, checks } = await headlined("60% of parcels wait");
 
-    expect(checks["narration-facts"]).toMatchObject({ gate: false, pass: false, detail: '1 unspoken: [b1] number "60%"' });
-    expect(failedGates(Object.values(checks))).toEqual([]);
+    expect(checks["narration-facts"]).toMatchObject({ gate: true, pass: false, detail: '1 unspoken: [b1] number "60%"' });
+    expect(failedGates(Object.values(checks)).map((check) => check.name)).toEqual(["narration-facts"]);
     expect(report.narrationFacts?.findings).toEqual([{ beat: "b1", kind: "number", fact: "60%", shown: "60% of parcels wait" }]);
   });
 });
