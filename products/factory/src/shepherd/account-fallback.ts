@@ -1,13 +1,13 @@
 import { DispatchError } from "@titan-design/agent-dispatch";
 
 /** The code agent-chat refuses a spawn with when the account it would bill is at its five_hour ceiling (CC-1078). */
-export const ACCOUNT_LIMIT_CODE = "reviewer_account_limit";
+const ACCOUNT_LIMIT_CODE = "reviewer_account_limit";
 
 const CODE_TRAILER = /\n\s*code: (\S+) retryable: (?:true|false)$/;
 const MAX_CAUSE_DEPTH = 4;
 
 /** True only for the broker's coded account-limit refusal, found on the error or a cause it wraps; a pool, name or load refusal is not one. */
-export function isAccountLimitRefusal(error: unknown): boolean {
+function isAccountLimitRefusal(error: unknown): boolean {
   let at = error;
   for (let depth = 0; depth <= MAX_CAUSE_DEPTH && at instanceof Error; depth++, at = at.cause) {
     if (at instanceof DispatchError && CODE_TRAILER.exec(at.message.trim())?.[1] === ACCOUNT_LIMIT_CODE) return true;
