@@ -15,7 +15,7 @@ export interface RescoreInput {
   partial: boolean;
 }
 
-export type Rescore =
+type Rescore =
   | { kind: "stale"; reason: string }
   | { kind: "failed"; costUsd: number }
   | { kind: "scored"; card: ScoreCard; tsValid: boolean; costUsd: number };

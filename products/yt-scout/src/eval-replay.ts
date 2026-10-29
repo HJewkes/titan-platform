@@ -9,7 +9,7 @@ export interface ReplayOptions extends Omit<RescoreInput, "title" | "transcriptP
   maxCostUsd: number;
 }
 
-export interface ReplaySummary {
+interface ReplaySummary {
   model: string;
   cases: number;
   replayed: number;

@@ -60,7 +60,7 @@ export function referenceTotal(c: EvalCase): number | undefined {
   return out.card ? totalOf(out.card) : undefined;
 }
 
-export interface FlagInput {
+interface FlagInput {
   id: string;
   transcriptPath: string;
   cardPath: string;

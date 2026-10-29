@@ -13,7 +13,7 @@ import { loadWatchlist } from "./watchlist.js";
 type Write = (line: string) => void;
 
 /** Exit code for a flag that cannot be recorded. */
-export const EXIT_FLAG = 3;
+const EXIT_FLAG = 3;
 
 const GOLD_TOTAL_VERDICTS: Verdict[] = ["over", "under", "miss"];
 const WEEK_MS = 7 * 24 * 3600 * 1000;

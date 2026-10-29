@@ -32,7 +32,7 @@ interface ScoreVideoInput {
   durationSeconds?: number;
 }
 
-export interface StoredCard extends ScoreCard {
+interface StoredCard extends ScoreCard {
   id: string;
   title: string;
   total: number;

@@ -8,9 +8,9 @@ import { totalOf } from "./score-card.js";
 import { transcriptForScoring } from "./score.js";
 import { writeCase } from "./step-rows.js";
 
-export const AUDIT_SAMPLE = 5;
+const AUDIT_SAMPLE = 5;
 /** A difference this large in total files a case even when both totals fall on the same side. */
-export const AUDIT_TOTAL_GAP = 3;
+const AUDIT_TOTAL_GAP = 3;
 
 const RowSchema = z.looseObject({ step: z.string(), outcome: z.string(), video_id: z.string(), started_at: z.string(), output_path: z.string().nullable() });
 
@@ -46,12 +46,12 @@ export function disagrees(original: number, audited: number, thresholdTotal: num
   return Math.abs(original - audited) >= AUDIT_TOTAL_GAP || original >= thresholdTotal !== audited >= thresholdTotal;
 }
 
-export interface AuditOptions extends Omit<RescoreInput, "title" | "transcriptPath" | "partial"> {
+interface AuditOptions extends Omit<RescoreInput, "title" | "transcriptPath" | "partial"> {
   thresholdTotal: number;
   casesDir: string;
 }
 
-export interface AuditReport {
+interface AuditReport {
   sampled: number;
   filed: string[];
   stale: number;
