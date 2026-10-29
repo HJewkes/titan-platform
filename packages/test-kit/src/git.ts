@@ -109,7 +109,9 @@ function initRepo(dir: string, bare: boolean): void {
 
 function buildTemplate(files: SeedFiles): Template {
   const dir = fs.mkdtempSync(path.join(rootDir(), "t-"));
-  const [local, repo, origin] = ["local", "repo", "origin"].map((name) => path.join(dir, name)) as [string, string, string];
+  const local = path.join(dir, "local");
+  const repo = path.join(dir, "repo");
+  const origin = path.join(dir, "origin");
   initRepo(repo, false);
   initRepo(origin, true);
   const git = gitIn(repo);
