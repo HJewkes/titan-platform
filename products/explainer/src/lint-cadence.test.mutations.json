@@ -36,6 +36,15 @@
       "kills": [
         "Q-D17 on a claim-card, a kind that takes no cue the repair hint offers a move the claim-card kind can take"
       ]
+    },
+    {
+      "name": "Q-D18 hint offers a hold on a beat Q-D17 fails",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": " && (longestCueGapS(beat) ?? Infinity) <= failS);",
+      "replace": ");",
+      "kills": [
+        "Q-D18 held beats the held-beat hint never names a beat Q-D17 fails"
+      ]
     }
   ]
 }
