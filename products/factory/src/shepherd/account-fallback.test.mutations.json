@@ -28,8 +28,8 @@
     {
       "name": "a reviewer spawn passes no fallback accounts",
       "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
-      "find": "fallbackConfigDirs: options.fallbackConfigDirs?.() ?? []",
-      "replace": "fallbackConfigDirs: []",
+      "find": "const fallbackConfigDirs = options.fallbackConfigDirs?.() ?? [];",
+      "replace": "const fallbackConfigDirs: string[] = [];",
       "kills": ["the account-limit fallback (TP-4507) a reviewer refused at the account limit spawns on the first fallback config dir"]
     },
     {
