@@ -138,10 +138,11 @@ stays out of the repo.
   `burstMax` is gone and fails the load. Every deferral names the rule that refused. When the
   gate admits a review, any asker within the first N of the queue goes, where N is the free
   review slots the load check also allows. A queued ask whose PR moved to a new head, merged or
-  closed, by the open list another poll already read, leaves the queue. A deferred review asks again on its
-  busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
-  machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
-  of recording `none`.
+  closed, by the open list another poll already read, leaves the queue and its review step ends
+  with no reviewer. Reviews queue once and never ask again on their own: the gate starts them
+  from the queue's front when one is queued, when a review ends, and on a one-minute tick while
+  any waits. A review still queued after the 3 hour machine-hold ceiling gives up, so a
+  saturated machine reaches the owner instead of waiting without end.
   A reviewer also waits while `shepherd.review.maxConcurrent` (3) reviewers run, while the
   filesystem holding review checkouts has under `shepherd.review.minFreeBytes` (5 GiB) free, or
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
