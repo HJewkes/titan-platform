@@ -1,7 +1,7 @@
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
 import type { CiPolicy, CiPolicyKey } from "@titan-design/session-read";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
-import { afterEach, expect, vi } from "vitest";
+import { expect, onTestFinished, vi } from "vitest";
 import { gitBlobId } from "../approved-set.js";
 import type { ReadVerdictText } from "../console-action/owner-evidence.js";
 import { defineWorkflow } from "../definition.js";
@@ -45,9 +45,6 @@ const liveGate = defineWorkflow({
   },
 });
 
-const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
-
 export const evidenceStep = (completedAt: string, result: object, iteration: number): StepResult => ({ stepId: `sh-merge-evidence:${H}`, iteration, agentId: null, signal: null, completedAt, data: { result } });
 
 /** Stores `content` at `ref:path` under its real git blob sha, as GitHub answers it. */
@@ -59,7 +56,8 @@ export async function gateOn(opened: object, steps: StepResult[], rule = CI_WEAK
   fake.compares.set(`main...${H}`, { mergeBaseSha: MERGE_BASE, files: [] });
   fake.addPr({ headSha: H });
   const stored = openFactoryHost({ dbPath: ":memory:", workflows: [liveGate], routes: [], gatePollMs: 5 });
-  hosts.push(stored);
+  // Per test: under isolate:false this module loads once per worker, so a top-level afterEach would close only the first importing file's hosts.
+  onTestFinished(() => stored.close());
   const withSteps = (run: WorkflowRun | undefined) => run && { ...run, stepResults: { ...run.stepResults, ...Object.fromEntries(steps.map((step) => [`${step.stepId}:${step.iteration}`, step])) } };
   const host: FactoryHost = { ...stored, runs: Object.assign(Object.create(stored.runs), { get: (id: string) => withSteps(stored.runs.get(id)) }) };
   const runId = stored.runtime.start("live-merge-gate", { rule, evidence: JSON.stringify(opened) });
