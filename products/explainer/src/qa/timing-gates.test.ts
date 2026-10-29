@@ -203,6 +203,19 @@ describe("words-per-frame", () => {
     expect(gate).toMatchObject({ value: n, pass, beats: pass ? [] : ["b1"] });
   });
 
+  it("frame chrome does not count toward words per frame", () => {
+    // Arrange
+    const chrome = (cls: string, words: number) => ({ ...text(many(words)), cls, element: `span.${cls}` });
+    const probed = [moment(1, [many(15)])];
+    probed[0]!.texts.push(chrome("xp-chapter", 4), chrome("xp-chapter-count", 3), chrome("xp-chip-kind", 2), chrome("ex-list-tick", 1), chrome("ex-list-ref", 2), chrome("ex-map-step", 2));
+
+    // Act
+    const gate = gateOf({ probed }, "words-per-frame");
+
+    // Assert
+    expect(gate).toMatchObject({ value: 15, pass: true });
+  });
+
   it("leaves a code-walk beat's highlighted lines out of the count", () => {
     const timeline = { beats: [{ ...beat("b1", 0, 4), kind: "code-walk" }] };
     const codeLine = { ...text(many(40)), tag: "span", cls: "tok-kw", element: "span.tok-kw" };

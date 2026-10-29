@@ -1,4 +1,5 @@
 import { launch } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import {
   frameDiffs,
   inspectAt,
@@ -39,21 +40,24 @@ export interface QaEngine {
   flashScan(mp4: string): Promise<FlashReport>;
 }
 
-/** Real Chromium through frame-capture and render-qa, and the host's ffprobe and ffmpeg. */
-export function chromiumQaEngine(media: Pick<MediaExec, "durationS"> = ffmpegMedia()): QaEngine {
+/**
+ * Real Chromium through frame-capture and render-qa, and the host's ffprobe and ffmpeg. Each page opens in `browser`
+ * when one is lent and closes only its own context; otherwise each page gets a browser of its own.
+ */
+export function chromiumQaEngine(media: Pick<MediaExec, "durationS"> = ffmpegMedia(), browser?: Browser): QaEngine {
   return {
     async open(url, options, cues) {
-      const browser = await launch();
+      const openIn = browser ?? (await launch());
       try {
-        const { page } = await openQaPage(browser, url, { width: options.W, height: options.H }, cues);
+        const { page } = await openQaPage(openIn, url, { width: options.W, height: options.H }, cues);
         return {
           inspectAt: (t, opts) => inspectAt(page, t, opts),
           probe: (moments) => probeMoments(page, moments),
-          crops: (errors, dir, opts) => writeCrops(browser, url, errors, dir, opts),
-          close: () => browser.close(),
+          crops: (errors, dir, opts) => writeCrops(openIn, url, errors, dir, opts),
+          close: () => (browser ? page.context().close() : openIn.close()),
         };
       } catch (error) {
-        await browser.close();
+        if (!browser) await openIn.close();
         throw error;
       }
     },

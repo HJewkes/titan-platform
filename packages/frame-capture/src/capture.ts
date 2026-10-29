@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from 'playwright-core'
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import type { TitanMotionApi } from './protocol.js'
 import { VIRTUAL_TIME_SCRIPT, type VirtualTimeApi } from './virtual-time.js'
 
@@ -24,6 +24,14 @@ export interface FontState {
   status: string
 }
 
+/** The unloaded faces, and the font URLs the browser failed to fetch: the rejection itself says only "A network error occurred". */
+export class FontLoadError extends Error {
+  constructor(readonly faces: readonly FontState[], readonly urls: readonly string[]) {
+    const tried = urls.length > 0 ? `; font requests that failed: ${urls.join(', ')}` : ''
+    super(`fonts not loaded: ${faces.map((f) => `${f.family} (${f.status})`).join(', ')}${tried}`)
+  }
+}
+
 const API_POLL_MS = 10
 const API_TIMEOUT_MS = 10_000
 
@@ -37,6 +45,21 @@ const LAUNCH_ARGS = ['--disable-partial-raster']
 
 export function launch(): Promise<Browser> {
   return chromium.launch({ headless: true, args: LAUNCH_ARGS })
+}
+
+/**
+ * Runs `use` in `lent` when the caller lends a browser, and leaves it open for the caller's next use; otherwise
+ * in a browser launched here and closed after. A lent browser keeps whatever `use` leaves open, so `use` closes
+ * its own contexts.
+ */
+export async function withBrowser<T>(lent: Browser | undefined, use: (browser: Browser) => Promise<T>): Promise<T> {
+  if (lent) return use(lent)
+  const browser = await launch()
+  try {
+    return await use(browser)
+  } finally {
+    await browser.close()
+  }
 }
 
 function throwIfPageErrored(errors: readonly Error[], when: string): void {
@@ -84,10 +107,44 @@ export interface CapturePage {
   errors: readonly Error[]
 }
 
-function assertFontsLoaded(fonts: readonly FontState[]): void {
+function assertFontsLoaded(fonts: readonly FontState[], failedUrls: ReadonlySet<string>): void {
   const unloaded = fonts.filter((f) => f.status !== 'loaded')
-  if (unloaded.length > 0) {
-    throw new Error(`fonts not loaded: ${unloaded.map((f) => `${f.family} (${f.status})`).join(', ')}`)
+  if (unloaded.length > 0) throw new FontLoadError(unloaded, [...failedUrls])
+}
+
+/** Every font URL that failed to fetch or answered with an error status, from before navigation. */
+function watchFontRequests(page: Page): Set<string> {
+  const failed = new Set<string>()
+  page.on('requestfailed', (request) => {
+    if (request.resourceType() === 'font') failed.add(request.url())
+  })
+  page.on('response', (response) => {
+    if (response.request().resourceType() === 'font' && !response.ok()) failed.add(response.url())
+  })
+  return failed
+}
+
+/**
+ * The page in a context of its own. A failed open closes that context, so a browser lent across opens is not left
+ * holding the pages of the ones that failed.
+ */
+export async function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage> {
+  const context = await browser.newContext({ viewport: { width: options.width, height: options.height }, deviceScaleFactor: 1 })
+  try {
+    return await loadCapturePage(context, url, options)
+  } catch (error) {
+    await context.close()
+    throw error
+  }
+}
+
+/** Opens a capture page, runs `use` on it and closes its context however `use` ends. */
+export async function withCapturePage<T>(browser: Browser, url: string, options: PageOptions, use: (opened: CapturePage) => Promise<T>): Promise<T> {
+  const opened = await openCapturePage(browser, url, options)
+  try {
+    return await use(opened)
+  } finally {
+    await opened.page.context().close()
   }
 }
 
@@ -95,18 +152,18 @@ function assertFontsLoaded(fonts: readonly FontState[]): void {
  * The pageerror listener attaches before navigation: an error thrown while the page loads, such as a
  * render that throws on mount, leaves a page that still answers seeks and screenshots blank.
  */
-export async function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage> {
-  const context = await browser.newContext({ viewport: options, deviceScaleFactor: 1 })
+async function loadCapturePage(context: BrowserContext, url: string, options: PageOptions): Promise<CapturePage> {
   await context.addInitScript({ content: VIRTUAL_TIME_SCRIPT })
   const page = await context.newPage()
   const errors: Error[] = []
   page.on('pageerror', (e) => errors.push(e))
+  const failedFonts = watchFontRequests(page)
   await page.goto(url, { waitUntil: 'load' })
   const duration = await waitForMotionApi(page, errors)
   const fonts = await settleFonts(page, options.preloadFonts ?? true)
   // Anchors the animations the page started while loading at virtual 0, so a chunk that jumps ahead agrees with a sweep.
   await page.evaluate(() => window.__virtualTime.syncAnimations())
-  if (options.preloadFonts !== false) assertFontsLoaded(fonts)
+  if (options.preloadFonts !== false) assertFontsLoaded(fonts, failedFonts)
   throwIfPageErrored(errors, 'while loading')
   return { page, duration, fonts, errors }
 }

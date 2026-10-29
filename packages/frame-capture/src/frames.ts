@@ -1,5 +1,5 @@
 import type { Browser } from 'playwright-core'
-import { captureFrame, launch, openCapturePage, type CapturePage, type PageOptions } from './capture.js'
+import { captureFrame, withBrowser, withCapturePage, type CapturePage, type PageOptions } from './capture.js'
 
 export interface FramesOptions extends PageOptions {
   url: string
@@ -18,6 +18,8 @@ export interface FramesOptions extends PageOptions {
    * fewer beats.
    */
   beatStartsS?: readonly number[]
+  /** A browser to capture in, left open; without one the capture launches its own and closes them. */
+  browser?: Browser
 }
 
 export interface FramesResult {
@@ -94,23 +96,12 @@ function orderedSink(sink: Sink) {
   }
 }
 
-async function withBrowser<T>(use: (browser: Browser) => Promise<T>): Promise<T> {
-  const browser = await launch()
-  try {
-    return await use(browser)
-  } finally {
-    await browser.close()
-  }
-}
-
 /**
- * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
- * process, so a shared browser stops scaling at about 60 fps. A page error rejects the chunk
- * before its frame is emitted: a render that throws unmounts the page, and every frame after it would encode black.
+ * A page error rejects the chunk before its frame is emitted: a render that throws unmounts the page, and every
+ * frame after it would encode black.
  */
-function captureChunk(options: FramesOptions, [from, to]: Range, emit: Emit) {
-  return withBrowser(async (browser) => {
-    const { page, errors } = await openCapturePage(browser, options.url, options)
+function captureChunk(browser: Browser, options: FramesOptions, [from, to]: Range, emit: Emit) {
+  return withCapturePage(browser, options.url, options, async ({ page, errors }) => {
     for (let i = from; i < to; i++) {
       const png = await captureFrame(page, i / options.fps)
       const [error] = errors
@@ -120,11 +111,24 @@ function captureChunk(options: FramesOptions, [from, to]: Range, emit: Emit) {
   })
 }
 
+/**
+ * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
+ * process, so a shared browser stops scaling at about 60 fps. The probe's browser goes on to capture the
+ * first chunk, which saves a launch per capture and still runs one chunk per browser: the probe's page
+ * closes before that chunk opens its own. A lent browser runs every chunk, for callers such as tests that
+ * trade that scaling for one launch.
+ */
 export async function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult> {
-  const probe = await withBrowser((browser) => openCapturePage(browser, options.url, options))
-  const frames = options.frames ?? Math.round(probe.duration * options.fps)
-  const ordered = orderedSink(sink)
-  await Promise.all(chunks(options, frames).map((range) => captureChunk(options, range, ordered.emit)))
-  await ordered.drained()
-  return { frames, pageDurationS: probe.duration, fonts: probe.fonts }
+  return withBrowser(options.browser, async (first) => {
+    const probe = await withCapturePage(first, options.url, options, async ({ duration, fonts }) => ({ duration, fonts }))
+    const frames = options.frames ?? Math.round(probe.duration * options.fps)
+    const ordered = orderedSink(sink)
+    const [head, ...rest] = chunks(options, frames)
+    await Promise.all([
+      head && captureChunk(first, options, head, ordered.emit),
+      ...rest.map((range) => withBrowser(options.browser, (browser) => captureChunk(browser, options, range, ordered.emit))),
+    ])
+    await ordered.drained()
+    return { frames, pageDurationS: probe.duration, fonts: probe.fonts }
+  })
 }

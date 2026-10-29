@@ -29,6 +29,7 @@ import { agentChatAgents, installedHeadless } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
 import { machineStopWatch, type MachineStopWatch } from "./shepherd/machine-stop.js";
 import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
+import { movedPastOnList } from "./shepherd/review-queue.js";
 import { reviewCheckoutRoot } from "./shepherd/review-checkout.js";
 import { reviewCheckoutDisk } from "./shepherd/review-checkout-disk.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
@@ -42,6 +43,7 @@ import { orderExpiryRoute } from "./shepherd/merge-order-expiry.js";
 import { mergeOrderRoutes } from "./shepherd/merge-order-steps.js";
 import { fileRules, mergeOrderMigration, mergeOrderRef, type MergeOrderRules, type OrderWaits } from "./shepherd/merge-order.js";
 import { watchListMigration } from "./shepherd/watch-list.js";
+import { gateEvidenceMigration } from "./shepherd/lan-gates.js";
 import { mergeBaseExceptionMigration } from "./shepherd/merge-base-exception.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
@@ -71,6 +73,7 @@ import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-
 import { withAutoresearch } from "./autoresearch/configured.js";
 import { systemChorePorts } from "./workflows/post-merge-chore.js";
 import { devicePrWorkflow } from "./workflows/device-pr.js";
+import { buildSurfaceRoutes, buildSurfaceWorkflow, factoryBuildPorts } from "./build-surface/index.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { portReads, prSnapshot } from "./workflows/pr-snapshot.js";
 import { pushSignal } from "./shepherd/push-signal.js";
@@ -82,7 +85,7 @@ import { DEFAULT_PACKAGER_PROFILE, type VisualPacketPorts } from "./shepherd/vis
 import { DEFAULT_DIAGNOSIS_PROFILE, readLogTail, type DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
-export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow()];
+export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
 
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
@@ -165,7 +168,7 @@ export interface FactoryRouteDeps extends LandPrDeps {
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26), repairStopMigration(31), proofWaiverMigration(32), repoFreezeMigration(33), registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17), reviewRequestMigration(18), holdSlotsMigration(19), parkSettledMigration(21), ownerHoldMigration(22), freezeFixPrMigration(23), registrationFactsMigration(24), reclassMarkMigration(25), trainShadowMigration(26), repairStopMigration(31), proofWaiverMigration(32), repoFreezeMigration(33), registrantMigration(38), gateCancelKindMigration(39), mergeOrderMigration(40), watchListMigration(41), mergeBaseExceptionMigration(42), lastSliceMigration(43), orderEventKindsMigration(44), orderWaitKindMigration(45), planApprovalMigration(46), gateEvidenceMigration(48)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -202,7 +205,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits, shadow.shadow, order) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing, now: shepherdDeps.now, prFiles: deps.prFiles, gateway: deps.gateway, ...(deps.spawnGate && { reviewSlots: deps.spawnGate.reviewSlots }), ...(deps.visualDelivery && { visualDelivery: deps.visualDelivery }), ...(deps.thawAlert && { thawAlert: deps.thawAlert }), mergeOrder: { order: () => order.get(), holds, rules: orderRules, waits: orderWaits, now: shepherdDeps.now }, ...(deps.roster && { roster: deps.roster }), visualThreshold: deps.visualThreshold ?? deps.review?.visualThreshold };
-  return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
+  return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), ...mergeOrderRoutes({ order: () => order.get(), holds, rules: orderRules, port: deps.port, train, timing, now: shepherdDeps.now }), orderExpiryRoute({ order: () => order.get(), rules: orderRules, now: shepherdDeps.now }), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout())), ...buildSurfaceRoutes(factoryBuildPorts({ ...deps, agentChatBin: shepherdDeps.agentChatBin }))], { database, shepherd: services });
 }
 
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */
@@ -305,7 +308,12 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
   const limits = liveSpawnLimits(configuredSpawnLimits(shepherd), config);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits });
-  const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note });
+  const client = sharedOctokit();
+  const port = overrides.port ?? githubPort(octokitWire({ client }));
+  const pacing = tickPacing({ now: overrides.now });
+  const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
+  const movedPast = movedPastOnList((repo) => snapshot.cachedOpen?.(repo));
+  const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note, movedPast });
   const store = overrides.store ?? shepherdStoreRef();
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
   const review = configuredReview(shepherd, config, seats, repos, roster, gate, fixerReview(freeze, store), machineStop);
@@ -313,10 +321,6 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), { hubSeat: shepherd.hubSeat, redSeat: shepherd.redSeat }, store) : undefined;
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env), isAncestor: deployCheckoutAncestry(deployCheckoutFor(env)) });
-  const client = sharedOctokit();
-  const port = overrides.port ?? githubPort(octokitWire({ client }));
-  const pacing = tickPacing({ now: overrides.now });
-  const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
   const gateway = ghGateway({ client, snapshot, onCall: logGhCall });
   const pushes = pushSignal((repo) => boundCheckout(seats(), repo, repos()));
   const cwdFor = (repo: string) => boundCheckout(seats(), repo, repos());

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "approvals.flow reads the raw factory",
+      "file": "apps/console/server/commands.ts",
+      "find": "approvalsCommands({ ...sources, factory: cache.factory })",
+      "replace": "approvalsCommands(sources)",
+      "kills": [
+        "approvals.flow serves the cached factory leg while a slow needs.list refreshes",
+        "approvals.flow reads the factory again after a factory relay frame, inside the fresh window"
+      ]
+    },
+    {
+      "name": "a factory frame drops no cached read",
+      "file": "apps/console/server/commands.ts",
+      "find": "  invalidation?.on(\"factory\", cache.invalidate);\n",
+      "replace": "",
+      "kills": [
+        "approvals.flow reads the factory again after a factory relay frame, inside the fresh window"
+      ]
+    }
+  ]
+}

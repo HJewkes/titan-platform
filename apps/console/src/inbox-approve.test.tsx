@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const NOW = "2031-03-05T12:00:00.000Z";
 const CONFIRM = "c".repeat(64);
@@ -55,7 +54,7 @@ interface Call {
 }
 
 /** A live inbox page over one item, whose prepare answers with the given read-back. */
-function renderApprove(item: Record<string, unknown>, readBack: Record<string, unknown>): Call[] {
+function renderApprove(item: Record<string, unknown>, readBack: Record<string, unknown>, { inApp = false } = {}): Call[] {
   const list = successEnvelope({ items: [item], gaps: [], fyiCount: 0, readAt: NOW, derived: [] });
   const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: NOW, calls: { [snapshotKey("inbox.list", {})]: list } };
   const inner = pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
@@ -65,14 +64,7 @@ function renderApprove(item: Record<string, unknown>, readBack: Record<string, u
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (calls.push({ name, args }), taps[name] ? taps[name]() : inner.call(name, args, options)),
   };
-  window.location.hash = "#/inbox";
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={source}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, "#/inbox", { answers: source, inApp });
   return calls;
 }
 
@@ -137,7 +129,7 @@ describe("the inbox page, answering an agent's prompt from the console", () => {
   // The broker token lives only in the console server's verdict client, so the page holds none to render as long as it
   // reaches the broker through the inbox commands alone.
   it("reaches the broker only through inbox.prepare and inbox.act, so the page never holds the token", async () => {
-    const calls = renderApprove(ENDORSE, ENDORSE_READBACK);
+    const calls = renderApprove(ENDORSE, ENDORSE_READBACK, { inApp: true });
     const sheet = await openSheet("end-1");
     await act(async () => void fireEvent.click(await within(sheet).findByTestId("inbox-confirm-endorse")));
     expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build", "inbox.prepare", "inbox.act"]));

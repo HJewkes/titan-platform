@@ -20,7 +20,7 @@ export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 export type ScopeRefusal = "scope_untagged" | "repeated_finding";
 
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing" | ScopeRefusal;
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | ScopeRefusal;
 
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export function reviewCheckoutName(pr: number, head: string): string {
@@ -309,6 +309,7 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   bad_head: "its Head line was not 40 lowercase hex characters",
   wrong_target: "its block named another repo, PR or head",
   ci_policy_malformed: "its CI-policy line held more than the exact form",
+  ci_policy_prose: "a prose line used the CI-policy label, or the exact line was not right after Head",
   probes_missing: "it had no Probes line above the Verdict line",
   scope_untagged: `a blocking item cites only lines outside the fix's ranges and lacks \`${IMPORTANT_TAG}\` and a \`${CLASS_TAG}\` line`,
   repeated_finding: "a blocking item restates an earlier finding",

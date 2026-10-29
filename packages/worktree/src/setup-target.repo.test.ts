@@ -2,12 +2,11 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fixtureEnv, seedRepo, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator } from "./allocator.js";
 import { reattachWorktree } from "./reattach.js";
-import { seedRepo, seedRepoWithOrigin } from "./git-fixture.js";
 import { SETUP_FILE, type SetupRunner } from "./setup.js";
-import { fixtureEnv } from "./test-env.js";
 
 const dirs: string[] = [];
 afterEach(() => {

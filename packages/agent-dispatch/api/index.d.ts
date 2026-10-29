@@ -186,7 +186,19 @@ interface LaunchedBy {
     /** Sent only alongside `launchedBy`. */
     launchReason?: string;
 }
-interface DispatchRequest extends LaunchedBy {
+/** The roles agent-chat's `--role` accepts. */
+type AgentRole = "implementer" | "reviewer" | "shepherd-review" | "planner" | "other" | `fix-round-${number}`;
+/** A task id such as `tp/TP-12`: caller-derived, so it is checked to a strict shape before it reaches argv. */
+declare const TASK_ID_PATTERN: RegExp;
+/**
+ * What the spawn records on the agent's own row, so later readers (Shepherd's successor walk, the roster) see who the
+ * agent works for. Omitted fields leave their flags out of argv.
+ */
+interface AgentRecord {
+    role?: AgentRole;
+    task?: string;
+}
+interface DispatchRequest extends LaunchedBy, AgentRecord {
     agentChatBinPath: string;
     /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
     peerName: string;
@@ -204,6 +216,8 @@ interface DispatchRequest extends LaunchedBy {
     configDir?: string;
     /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
     profilesDir?: string;
+    /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+    worktree?: string;
 }
 interface DispatchResult {
     peerName: string;
@@ -221,11 +235,12 @@ interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-declare function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
+declare function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & {
     peerName: string;
     profile: string;
     briefing?: string;
     configDir?: string;
+    worktree?: string;
 }): string[];
 /** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
 interface SpawnPlacement {
@@ -515,6 +530,12 @@ declare function messageAgent(agentChatBinPath: string, name: string, text: stri
  */
 /** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
 declare function dataFence(label: string, text: string): string;
+/**
+ * The body of the last ```json fenced block in `text`, parsed; undefined when there is none. An agent's final report
+ * ends with one, so the last block is the report even when earlier ones quote examples. A block whose body is not JSON
+ * throws a SyntaxError rather than reading as no report, so a malformed report is never mistaken for a missing one.
+ */
+declare function lastFencedJson(text: string): unknown;
 
 /** The label shape agent-chat's broker accepts, checked before a call is spent on it. */
 declare const ASK_LABEL_PATTERN: RegExp;
@@ -557,4 +578,147 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };
+interface PrefixSection {
+    name: string;
+    text: string;
+}
+interface StablePrefixOptions {
+    /** Refused in every section: a per-agent name makes the prefix unique per spawn. */
+    agentName?: string;
+}
+interface StablePrefix {
+    text: string;
+    hash: string;
+}
+interface PrefixViolation {
+    section: string;
+    rule: string;
+    match: string;
+}
+declare class PrefixLintError extends Error {
+    readonly violations: readonly PrefixViolation[];
+    constructor(violations: readonly PrefixViolation[]);
+}
+declare function lintPrefixSections(sections: readonly PrefixSection[], options?: StablePrefixOptions): PrefixViolation[];
+/**
+ * Joins sections in the order given (order is part of the cache key, so it is
+ * never sorted) and hashes the result. Throws PrefixLintError on any per-spawn value.
+ */
+declare function stablePrefix(sections: readonly PrefixSection[], options?: StablePrefixOptions): StablePrefix;
+
+/** A file the plan names, with the line it points at when it gives one. */
+interface TouchPoint {
+    path: string;
+    line?: number;
+}
+/**
+ * The part of a plan about one slice: the section under a heading naming it, or, when no heading
+ * does, every paragraph, list item and table row that mentions the slice id as a whole word.
+ */
+declare function planSliceExcerpt(plan: string, slice: string): string | null;
+/** Backticked repo-relative paths in the text, first mention of each, with the first line number given. */
+declare function touchPointsIn(text: string, limit: number): TouchPoint[];
+
+interface GitState {
+    /** ISO time the state was read; the packet labels the section with it because it goes stale. */
+    capturedAt: string;
+    baseRef: string;
+    baseSha: string;
+    headSha: string;
+    /** One-line commits on HEAD that the base lacks. */
+    ahead: string[];
+    /** One-line base commits whose message names the task id. */
+    landed: string[];
+    /** Open pull requests naming the task id, when the reader can see them. */
+    openPrs?: string[];
+}
+interface TaskCard {
+    id: string;
+    title?: string;
+    status?: string;
+    estimate?: string | number;
+    doneWhen?: string[];
+    notes?: string[];
+}
+/** Everything the packet reads, injected so the builder itself does no I/O. */
+interface BootReaders {
+    /** A file's text, or null when it is missing or unreadable. Relative paths resolve against the repo root. */
+    readFile(path: string): string | null;
+    exists(path: string): boolean;
+    gitState(taskId: string): GitState | null;
+    readTask(taskId: string): TaskCard | null;
+}
+interface ReadinessFacts {
+    /** The command the repo wants run before a push, when the caller knows it. */
+    verify?: string;
+}
+
+type BootSectionId = "git" | "task" | "plan" | "touchPoints" | "readiness";
+interface BootPacketInput {
+    task: {
+        id: string;
+    };
+    /** The plan file and the slice id whose part of it the agent needs. */
+    plan?: {
+        path: string;
+        slice: string;
+    };
+    repo: ReadinessFacts;
+    /** Files to excerpt; defaults to the backticked paths in the plan slice. */
+    touchPoints?: TouchPoint[];
+    readers: BootReaders;
+    options?: BootPacketOptions;
+}
+interface BootPacketOptions {
+    /** Whole-packet budget in tokens. */
+    budget?: number;
+    /** Per-section caps in tokens; a section over its cap loses lines, or whole excerpts, from its end. */
+    caps?: Partial<Record<BootSectionId, number>>;
+    /** Sections to include, most important first; over budget, whole sections drop from the end. */
+    priority?: BootSectionId[];
+    maxTouchPoints?: number;
+    /** Token counter for the budget; the default estimates from characters. */
+    countTokens?: (text: string) => number;
+}
+interface BootSection {
+    id: BootSectionId;
+    title: string;
+    text: string;
+    tokens: number;
+    truncated: boolean;
+}
+interface BootPacket {
+    text: string;
+    tokens: number;
+    sections: BootSection[];
+    /** Sections left out, with why: no source, or dropped to fit the budget. */
+    omitted: Array<{
+        id: BootSectionId;
+        reason: string;
+    }>;
+}
+declare const BOOT_PACKET_BUDGET = 6000;
+declare const DEFAULT_BOOT_PRIORITY: readonly BootSectionId[];
+/** About four characters a token for English and code; a real tokenizer can be passed in instead. */
+declare function estimateTokens(text: string): number;
+/**
+ * The boot packet for an implementer: what the spawner already knows about the task's state, cut to a
+ * token budget so it can ride in the first turn. Every read goes through `input.readers`.
+ */
+declare function bootPacket(input: BootPacketInput): BootPacket;
+
+interface NodeBootReadersOptions {
+    repoRoot: string;
+    /** Absolute path of the git binary. */
+    gitBin: string;
+    baseRef?: string;
+    /** The task store read, e.g. a `@titan-design/pm` task mapped to a card; the packet does not parse task files. */
+    readTask: (taskId: string) => TaskCard | null;
+    /** Open PRs naming the task, when the caller can query a forge. */
+    openPrs?: (taskId: string) => string[];
+    now?: () => Date;
+}
+/** Readers over a local checkout: files from disk, git state from the git binary, tasks from the caller. */
+declare function nodeBootReaders(opts: NodeBootReadersOptions): BootReaders;
+
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRecord, type AgentRole, type AgentRow, type AnswersPage, type AskRequest, BOOT_PACKET_BUDGET, type BootPacket, type BootPacketInput, type BootPacketOptions, type BootReaders, type BootSection, type BootSectionId, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_BOOT_PRIORITY, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type GitState, type LaunchedBy, type MessageOptions, type NodeBootReadersOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, PrefixLintError, type PrefixSection, type PrefixViolation, type ReadinessFacts, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type StablePrefix, type StablePrefixOptions, TASK_ID_PATTERN, type TaskCard, type TouchPoint, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, bootPacket, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, estimateTokens, execSafe, execSafeAsync, installedProfilesDir, lastFencedJson, lintPrefixSections, listAgentLineage, listAgents, messageAgent, minimalEnv, nodeBootReaders, observeAgentChatCalls, parkAgent, parseAgentRows, planSliceExcerpt, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, stablePrefix, touchPointsIn };

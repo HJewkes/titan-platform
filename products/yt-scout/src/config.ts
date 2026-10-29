@@ -56,6 +56,7 @@ export const WatchlistSchema = z
     }),
     budget: z.strictObject({ daily_usd: z.number().positive(), backfill_usd: z.number().positive() }),
     models: z.strictObject({ score: z.string().min(1), digest: z.string().min(1) }),
+    yt_dlp: z.string().min(1).optional(),
   })
   .superRefine((w, ctx) => {
     const seen = new Set<string>();
