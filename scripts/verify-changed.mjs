@@ -124,9 +124,9 @@ const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script]
  * verify-changed-coverage.test.mjs fails on a step no row matches and on a labelled row the plan never runs.
  */
 export const CI_COVERAGE = [
-  { job: ["validate", "dag-check"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
+  { job: ["validate", "dag-check", "perf"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
   { job: "validate", run: "pnpm env:doctor", disposition: "local", label: "env:doctor" },
-  { job: ["validate", "dag-check"], run: "pnpm build", disposition: "local", label: "build" },
+  { job: ["validate", "dag-check", "perf"], run: "pnpm build", disposition: "local", label: "build" },
   { job: "validate", run: "pnpm egress:scan range", disposition: "covered-by", reason: "the pre-push hook that prepare installs scans the pushed range" },
   { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
   { job: "validate", run: "pnpm sidecar:finds", disposition: "local", label: "sidecar:finds" },
@@ -143,6 +143,7 @@ export const CI_COVERAGE = [
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm (?:dag:check:graph|dead:check) /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
+  { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
 ];
 
