@@ -13,6 +13,8 @@ import { SYNTHETIC_ELEMENT, writeSyntheticTree } from "./custom-layer-fixture.te
 import { stageCustomLayers, withCustomLayers } from "./custom-layers.js";
 
 const BROWSER_TIMEOUT_MS = 240_000;
+/** The headline band's height at body 48 px: 26 + 48 * 1.3 * 1.1 * 2 + 27 (explainer.css). */
+const STAGE_TOP_PX = 190.265625;
 const BEAT = { id: "beat-01", kind: "held", startS: 1, durationS: 3, slots: {} };
 
 let scratch: string;
@@ -75,7 +77,7 @@ describe("a custom layer on the composition page", { timeout: BROWSER_TIMEOUT_MS
 
     expect(seen.errors).toEqual([]);
     expect(seen.text).toBe("Parcels waiting: 10");
-    expect(seen.box).toEqual({ x: 320, y: 180, width: 1280, height: 720 });
+    expect(seen.box).toEqual({ x: 320, y: 180 + STAGE_TOP_PX, width: 1280, height: 720 });
     const [table] = buildOccupancy({ stage: STAGE, layouts: layerLayouts(timelineFromArtifact(staged)), marks: [{ beat: BEAT.id, t, elements: [{ id: SYNTHETIC_ELEMENT, box: seen.box! }] }] });
     expect(table).toMatchObject({ beat: BEAT.id, source: "declared" });
     expect(table!.cells.B2).toEqual([CUSTOM_LAYER_ELEMENT, SYNTHETIC_ELEMENT]);
