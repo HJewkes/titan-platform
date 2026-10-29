@@ -310,7 +310,8 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const port = overrides.port ?? githubPort(octokitWire({ client }));
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
-  const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note, movedPast: movedPastOnList((repo) => snapshot.cachedOpen?.(repo)) });
+  const movedPast = movedPastOnList((repo) => snapshot.cachedOpen?.(repo));
+  const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note, movedPast });
   const store = overrides.store ?? shepherdStoreRef();
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
   const review = configuredReview(shepherd, config, seats, repos, roster, gate, fixerReview(freeze, store), machineStop);

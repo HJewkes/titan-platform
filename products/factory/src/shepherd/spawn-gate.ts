@@ -130,7 +130,8 @@ const occupied = (running: number, admitted: number) => `${running} reviews are 
 
 /** Pure: a review also needs a free reviewer slot and room for its checkout, which can run a filesystem out of inodes before bytes. */
 function admitReview(disk: CheckoutDisk, limits: SpawnLimits, runningReviews: number, admittedReviews: number): Admission {
-  if (runningReviews + admittedReviews >= limits.maxConcurrentReviews) return { admit: false, reason: `${occupied(runningReviews, admittedReviews)}, the concurrent cap ${limits.maxConcurrentReviews}` };
+  const cap = limits.maxConcurrentReviews;
+  if (runningReviews + admittedReviews >= cap) return { admit: false, reason: `${occupied(runningReviews, admittedReviews)}, the concurrent cap ${cap}` };
   if (disk.freeBytes !== undefined && disk.freeBytes < limits.reviewMinFreeBytes) return refuse("free bytes", disk.freeBytes, limits.reviewMinFreeBytes);
   const floor = inodeFloor(disk, limits);
   if (floor !== undefined && disk.freeInodes !== undefined && disk.freeInodes < floor) return refuse("free inodes", disk.freeInodes, floor);
