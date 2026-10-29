@@ -34,7 +34,7 @@ import { movedMessage, opMessageOf, opReadBackOf, postedOp, type MergeWait, type
 import { CONSOLE_DECISION_IDS, readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
-import type { OwnerEvidence } from "./shepherd.js";
+import { gateEvidenceOf, type GateEvidence } from "./inbox-gate-evidence.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
 export const ACTIONS_OFF = "inbox actions are off";
@@ -64,9 +64,6 @@ export interface InboxActionOptions {
   decisionLog?: DecisionLog;
   now?: () => number;
 }
-
-/** An owner-at-head gate's evidence as the factory read it at the gate's head; the record posts `digest` back. */
-type GateEvidence = Omit<Extract<OwnerEvidence, { status: "ready" }>, "status" | "gateId" | "head">;
 
 type PrReadBack = {
   repo: string;
@@ -140,22 +137,11 @@ async function readBackOf(sources: InboxSources, item: InboxItem, action: Consol
   return gateReadBack(sources, item, action, at);
 }
 
-type GateTap = Extract<PostedAction, { kind: "resolve-gate" }>;
-
-/**
- * TP-4404: a merge on an owner-at-head gate reads back the evidence the factory shows for each fact it names, so the owner
- * reads it on the card; where the factory cannot show it all, there is no tap and the reason names the terminal command.
- * An unreadable evidence read leaves the plain read-back, and the factory refuses a digestless tap on such a gate.
- */
-async function gateReadBack(sources: InboxSources, item: InboxItem, action: GateTap, at: string): Promise<PrReadBack | string> {
+/** A merge on an owner-at-head gate reads back that gate's evidence (TP-4404), or offers no tap when the card cannot show it. */
+async function gateReadBack(sources: InboxSources, item: InboxItem, action: Extract<PostedAction, { kind: "resolve-gate" }>, at: string): Promise<PrReadBack | string> {
   const base = { ...prBaseOf(item, action), gateId: action.gateId, effect: gateEffect(action.decision, at) };
-  if (action.decision !== "merge") return base;
-  const evidence = await sources.shepherd.ownerEvidence(action.gateId).catch(() => undefined);
-  if (evidence === undefined || evidence.status === "none") return base;
-  if (evidence.status === "missing") return `the owner reads ${evidence.facts.join(", ")} at their own head, and ${evidence.reason}; run ${evidence.command}`;
-  if (evidence.head !== action.headSha) return `the evidence was read at ${short(evidence.head)}, not at ${short(action.headSha)}; read the item again`;
-  const { facts, mergeBase, sections, digest } = evidence;
-  return { ...base, evidence: { facts, mergeBase, sections, digest } };
+  const evidence = action.decision === "merge" ? await gateEvidenceOf(sources.shepherd, action.gateId, action.headSha) : undefined;
+  return evidence === undefined || typeof evidence === "string" ? (evidence ?? base) : { ...base, evidence };
 }
 
 const GATE_EFFECT: Record<ConsoleDecision, (at: string) => string> = {
@@ -176,12 +162,9 @@ function chosenAction(action: InboxAction, decision: ConsoleDecision | undefined
   return decision === action.decision || action.alternatives?.includes(decision) ? { ...action, decision } : undefined;
 }
 
-type RecordedAction = Exclude<ConsoleAction, OpAction> | (Omit<GateTap, "alternatives"> & { evidenceDigest?: string });
+type RecordedAction = Exclude<ConsoleAction, OpAction> | (Omit<Extract<PostedAction, { kind: "resolve-gate" }>, "alternatives"> & { evidenceDigest?: string });
 
-/**
- * The factory reads a strict action, so the record names the one decision given and none of the item's other taps, plus the
- * digest of any owner-at-head evidence the owner was shown.
- */
+/** The factory reads a strict action: the one decision given, none of the item's other taps, and any evidence digest shown. */
 function postedAction(action: Exclude<ConsoleAction, OpAction>, readBack: ReadBack): RecordedAction {
   if (action.kind !== "resolve-gate") return action;
   const { kind, gateId, runId, stepId, repo, pr, headSha, decision } = action;
