@@ -154,14 +154,18 @@ function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[
 
 async function readTask(source: TasksSource, reader: EvidenceReader, id: string): Promise<TaskDetail> {
   const { activeWork } = source;
-  const independent = Promise.all([readEvidence(activeWork, reader), readMentions(activeWork, id), sessionsForTask(source.sessions, id, SESSION_LIMIT)]);
-  // A missing id throws before this is awaited; the handler keeps its rejection from going unhandled meanwhile.
-  independent.catch(() => undefined);
-  // The open list is what the stage needs anyway, and holds the task unless it is done.
+  // The open list is what the stage needs anyway, and holds the task unless it is done. It is read alone because
+  // active-work answers on one event loop, and context.graph beside it pushes it past the read timeout.
   const [open, personal] = await Promise.all([activeWork.read("task.list", { all_initiatives: true }), personalSlugs(activeWork, source.work)]);
   const task = open.tasks.find((entry) => entry.id === id) ?? (await findDoneTask(activeWork, id));
   if (!task || !keeps(personal)(task.slug)) throw failure(`No task ${id} in any initiative`, EXIT.NOINPUT);
-  const [[repos, mentions, sessions], status, joined] = await Promise.all([independent, readStatus(activeWork, task.slug), joinDeliverables(activeWork, task.deliverables ?? [])]);
+  const [repos, mentions, sessions, status, joined] = await Promise.all([
+    readEvidence(activeWork, reader),
+    readMentions(activeWork, id),
+    sessionsForTask(source.sessions, id, SESSION_LIMIT),
+    readStatus(activeWork, task.slug),
+    joinDeliverables(activeWork, task.deliverables ?? []),
+  ]);
   const evidence = stageEvidence(open.tasks, repos);
   const kept = keeps(personal);
   return {
