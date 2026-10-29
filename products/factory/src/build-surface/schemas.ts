@@ -46,7 +46,8 @@ export type Validation = z.infer<typeof ValidationSchema>;
 export const AgentStepSchema = <T extends z.ZodType>(report: T) => z.object({ agent: z.string(), sessionId: z.string(), report });
 
 export const PreviewSchema = z.object({ pass: z.boolean(), detail: z.string() });
-export const BranchSchema = z.object({ branch: z.string(), baseSha: Sha, created: z.boolean() });
+/** `green` is the gate evidence already recorded at an existing branch's head when every gate there passed. */
+export const BranchSchema = z.object({ branch: z.string(), baseSha: Sha, created: z.boolean(), green: GateRunSchema.optional() });
 export const PrSchema = z.object({ pr: z.number().int().positive(), url: z.string(), created: z.boolean() });
 export const RegisteredSchema = z.object({ runId: z.string() });
 export const LandStateSchema = z.discriminatedUnion("state", [

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { agentChatImplementerRunner, type FinalMessages } from "./agent-chat-implementer.js";
 import type { SpawnRequest } from "./shepherd/agents.js";
+import { SpawnDeferred } from "./shepherd/spawn-gate.js";
 
 const HEAD = "a".repeat(40);
 const REPORT = { head: HEAD, targetsCovered: ["c1"] };
@@ -14,10 +15,14 @@ function row(name: string, presence: string, generation = 1): AgentRow {
 
 const fenced = (value: unknown) => `Done.\n\n\`\`\`json\n${JSON.stringify(value)}\n\`\`\``;
 
-/** A broker whose roster walks through the given presences, one per read, staying on the last. */
-function fakeBroker(presences: string[], messages: { text: string; writtenAt: number }[]) {
+/** A broker whose roster walks through the given presences, one per read, staying on the last; its gate defers the first `deferrals` asks. */
+function fakeBroker(presences: string[], messages: { text: string; writtenAt: number }[], deferrals = 0) {
   const spawned: SpawnRequest[] = [];
   const resumed: { name: string; message: string }[] = [];
+  const slept: number[] = [];
+  const admit = () => {
+    if (deferrals-- > 0) throw new SpawnDeferred("load5 50.45 is past the limit 48");
+  };
   let reads = 0;
   let clock = 1_000;
   const name = "bs-demo";
@@ -26,12 +31,12 @@ function fakeBroker(presences: string[], messages: { text: string; writtenAt: nu
       const presence = presences[Math.min(reads++, presences.length - 1)]!;
       return presence === "none" ? [] : [row(name, presence)];
     },
-    spawn: async (request: SpawnRequest) => void spawned.push(request),
-    resume: async (agent: string, message: string) => void resumed.push({ name: agent, message }),
+    spawn: async (request: SpawnRequest) => (admit(), void spawned.push(request)),
+    resume: async (agent: string, message: string) => (admit(), void resumed.push({ name: agent, message })),
   };
   const final: FinalMessages = async () => messages;
-  const runner = agentChatImplementerRunner({ agents, messages: final, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 10, startGraceMs: 50, timeoutMs: 1_000 });
-  return { runner, spawned, resumed, name };
+  const runner = agentChatImplementerRunner({ agents, messages: final, now: () => clock, sleep: async (ms) => void (slept.push(ms), (clock += ms)), pollMs: 10, startGraceMs: 50, timeoutMs: 1_000, spawnRetry: { firstMs: 100, maxMs: 300, totalMs: 1_000 } });
+  return { runner, spawned, resumed, slept, name };
 }
 
 const signal = new AbortController().signal;
@@ -74,6 +79,32 @@ describe("the agent-chat implementer runner", () => {
     const broker = fakeBroker(["none", "live", "exited"], [{ text: "```json\n{head: nope}\n```", writtenAt: 1_005 }]);
 
     await expect(broker.runner.start(spawn(broker.name), signal)).rejects.toThrow(/does not parse/);
+  });
+
+  it("waits out a spawn-gate deferral with a doubling, capped wait, then spawns and reads the report written after admission", async () => {
+    const broker = fakeBroker(["none", "live", "exited"], [{ text: fenced(REPORT), writtenAt: 1_710 }], 3);
+
+    const result = await broker.runner.start(spawn(broker.name), signal);
+
+    expect(result.report).toEqual(REPORT);
+    expect(broker.slept.slice(0, 3)).toEqual([100, 200, 300]);
+    expect(broker.spawned).toHaveLength(1);
+  });
+
+  it("waits out a deferral on a fix round's resume too", async () => {
+    const broker = fakeBroker(["live", "exited"], [{ text: fenced(REPORT), writtenAt: 1_105 }], 1);
+
+    const result = await broker.runner.resume(broker.name, "fix G4", ReportSchema, signal);
+
+    expect(result.report).toEqual(REPORT);
+    expect(broker.resumed).toEqual([{ name: broker.name, message: "fix G4" }]);
+  });
+
+  it("gives up, naming the gate's reason, once the deferrals outlast the retry bound", async () => {
+    const broker = fakeBroker(["none"], [], 100);
+
+    await expect(broker.runner.start(spawn(broker.name), signal)).rejects.toThrow("bs-demo was not admitted within 0 minutes: load5 50.45 is past the limit 48");
+    expect(broker.spawned).toEqual([]);
   });
 
   it("gives up once the timeout passes with the agent still running", async () => {

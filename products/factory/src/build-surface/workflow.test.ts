@@ -148,6 +148,40 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     expect(stepsOf(host, runId)).not.toContain(expect.stringMatching(/^deploy-approve:beta/));
   }, 5_000);
 
+  /** A one-slice spec whose branch a stopped run left at `head`, with the gate records it wrote there. */
+  function pickUp(records: object[]) {
+    const head = shaOf(500);
+    const spec = demoSpec({ slices: [{ id: "shell", title: "App shell", brief: "Build the shell." }] });
+    const evidence = { [`/work/demo-repo/evidence/shell/${head}`]: records.map((record) => ({ ...record, head })) };
+    const fake = fakeBuild({ spec, branches: { "build-surface/shell": head }, evidence });
+    return { fake, head, ...start(fake) };
+  }
+
+  it("picks up a branch a stopped run left green at its head: no implement turn and no gate rerun, straight to review", async () => {
+    const { fake, head, host, runId } = pickUp([{ gate: "G1", pass: true }, { gate: "G4", pass: true, score: 1 }]);
+    await approveDeploy(host, runId, "shell", 1);
+    await gateOpened(host, gateId(runId, "final-walk"));
+    host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(fake.agentCalls).toEqual(["bs-review:shell:0:0"]);
+    expect(fake.commands.filter((command) => command.argv[1] === "gates")).toEqual([]);
+    expect(fake.commands.find((command) => command.argv[1] === "preview")!.env.BS_HEAD).toBe(head);
+  });
+
+  it("implements again when the left branch has a failing gate at its head", async () => {
+    const { fake, host, runId } = pickUp([{ gate: "G1", pass: true }, { gate: "G4", pass: false, score: 0.4 }]);
+    await approveDeploy(host, runId, "shell", 1);
+    await gateOpened(host, gateId(runId, "final-walk"));
+    host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+
+    await host.runtime.wait(runId);
+
+    expect(fake.agentCalls[0]).toBe("bs-implement:shell");
+  });
+
   it("fails at plan when the spec names another repo, before any slice starts", async () => {
     const fake = fakeBuild({ spec: demoSpec({ repo: "owner/other-repo" }) });
     const { host, runId } = start(fake);

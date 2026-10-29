@@ -2,6 +2,7 @@ import type { StepResult } from "@titan-design/workflow";
 import { z } from "zod";
 import { DEPLOY_APPROVE } from "./manifest.js";
 import { buildRounds, runGates } from "./rounds.js";
+import { evidenceDirOf } from "./spec.js";
 import * as S from "./schemas.js";
 import { cancelRun, commandIn, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
 
@@ -70,8 +71,9 @@ async function deploy(run: SliceRun, mergeSha: string): Promise<boolean> {
 export async function runSlice(run: SliceRun): Promise<StepResult> {
   await preflight(run);
   const targets = await extractTargets(run);
-  await sliceStep(run, "bs-branch", undefined, { repo: run.spec.repo, branch: run.branch, base: run.spec.base }, S.BranchSchema);
-  const head = await buildRounds(run, targets);
+  const evidenceDir = evidenceDirOf(run.spec, run.slice.id, "{head}");
+  const { green } = await sliceStep(run, "bs-branch", undefined, { repo: run.spec.repo, branch: run.branch, base: run.spec.base, evidenceDir }, S.BranchSchema);
+  const head = await buildRounds(run, targets, green);
   const opened = { repo: run.spec.repo, branch: run.branch, base: run.spec.base, title: `${run.slice.title} (${run.slice.id})`, body: prBody(run, head) };
   const { pr } = await sliceStep(run, "bs-pr", undefined, opened, S.PrSchema);
   await sliceStep(run, "bs-shepherd", undefined, { repo: run.spec.repo, pr, task: run.slice.task ?? run.spec.task, implementer: run.agent }, S.RegisteredSchema);

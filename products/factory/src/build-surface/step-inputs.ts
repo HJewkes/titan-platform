@@ -30,6 +30,8 @@ export interface BranchInput {
   repo: string;
   branch: string;
   base: string;
+  /** The gate evidence directory with `{head}` left in, read at an existing branch's head. */
+  evidenceDir: string;
 }
 
 export interface GatesInput extends CommandInput {

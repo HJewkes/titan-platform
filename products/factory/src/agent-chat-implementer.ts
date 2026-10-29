@@ -5,6 +5,7 @@ import type { ReviewerMessage } from "@titan-design/review-panel";
 import type { ZodType } from "zod";
 import type { AgentChatAgents } from "./shepherd/agents.js";
 import { finishedTurnMessages } from "./shepherd/reviewer-reader.js";
+import { SpawnDeferred } from "./shepherd/spawn-gate.js";
 import { latestRow } from "./shepherd/wake-roster.js";
 import { sleep as abortableSleep } from "./workflows/deadline.js";
 
@@ -13,6 +14,17 @@ const IMPLEMENTER_TIMEOUT_MS = 6 * 60 * 60_000;
 const POLL_MS = 30_000;
 /** A resume returns once the broker accepts it, so the row can still read exited from the turn before for a while. */
 const START_GRACE_MS = 5 * 60_000;
+/**
+ * A spawn-gate deferral (load, memory pressure, the admit window) reads the machine now, not the slice: wait and ask again,
+ * doubling the wait up to `maxMs`, and give up once the next wait would pass `totalMs` since the first ask.
+ */
+const SPAWN_RETRY: SpawnRetry = { firstMs: 60_000, maxMs: 10 * 60_000, totalMs: 60 * 60_000 };
+
+interface SpawnRetry {
+  firstMs: number;
+  maxMs: number;
+  totalMs: number;
+}
 
 interface ImplementerSpawn {
   /** The agent's name; its worktree branch and its lineage follow it. */
@@ -52,7 +64,10 @@ interface ImplementerRunnerOptions {
   pollMs?: number;
   timeoutMs?: number;
   startGraceMs?: number;
+  spawnRetry?: SpawnRetry;
 }
+
+type ResolvedOptions = Required<Omit<ImplementerRunnerOptions, "agents">> & Pick<ImplementerRunnerOptions, "agents">;
 
 /** Reads the transcript the roster row names, through the same finished-turn rule Shepherd reads reviewers by. */
 function transcriptFinalMessages(namespace = os.hostname()): FinalMessages {
@@ -94,7 +109,7 @@ interface Wait {
 }
 
 /** Polls the roster until `name` has exited with a report written since the ask; an exit with none rejects. */
-async function awaitReport(options: Required<Omit<ImplementerRunnerOptions, "agents">> & Pick<ImplementerRunnerOptions, "agents">, wait: Wait): Promise<ImplementerReport> {
+async function awaitReport(options: ResolvedOptions, wait: Wait): Promise<ImplementerReport> {
   let sawRunning = false;
   for (;;) {
     const elapsed = options.now() - wait.askedAt;
@@ -111,16 +126,34 @@ async function awaitReport(options: Required<Omit<ImplementerRunnerOptions, "age
   }
 }
 
+/** Runs `start` once the spawn gate admits it, and returns when that admitted ask was made, so a report is read from then on. */
+async function whenAdmitted(options: ResolvedOptions, name: string, signal: AbortSignal, start: () => Promise<void>): Promise<number> {
+  const firstAsk = options.now();
+  for (let waitMs = options.spawnRetry.firstMs; ; waitMs = Math.min(waitMs * 2, options.spawnRetry.maxMs)) {
+    const askedAt = options.now();
+    try {
+      await start();
+      return askedAt;
+    } catch (error) {
+      if (!(error instanceof SpawnDeferred)) throw error;
+      const minutes = Math.round(options.spawnRetry.totalMs / 60_000);
+      if (askedAt - firstAsk + waitMs > options.spawnRetry.totalMs) throw new Error(`${name} was not admitted within ${minutes} minutes: ${error.message}`);
+      await options.sleep(waitMs, signal);
+    }
+  }
+}
+
 /**
  * The implementer route's runner over agent-chat: spawn on a worktree profile, wait for the exit, read the report.
  * A name already on the roster is the same lineage continuing: an exited one is resumed with the brief and a live one is
  * waited on, so a re-dispatch after a park never spawns a second agent under the name.
  */
 export function agentChatImplementerRunner(options: ImplementerRunnerOptions): ImplementerRunner {
-  const resolved = { messages: transcriptFinalMessages(), now: Date.now, sleep: abortableSleep, pollMs: POLL_MS, timeoutMs: IMPLEMENTER_TIMEOUT_MS, startGraceMs: START_GRACE_MS, ...options };
+  const waits = { pollMs: POLL_MS, timeoutMs: IMPLEMENTER_TIMEOUT_MS, startGraceMs: START_GRACE_MS, spawnRetry: SPAWN_RETRY };
+  const defaults = { messages: transcriptFinalMessages(), now: Date.now, sleep: abortableSleep, ...waits };
+  const resolved: ResolvedOptions = { ...defaults, ...options };
   const resume = async (name: string, message: string, schema: ZodType | undefined, signal: AbortSignal) => {
-    const askedAt = resolved.now();
-    await resolved.agents.resume(name, message);
+    const askedAt = await whenAdmitted(resolved, name, signal, () => resolved.agents.resume(name, message));
     return awaitReport(resolved, { name, askedAt, schema, signal });
   };
   return {
@@ -130,8 +163,9 @@ export function agentChatImplementerRunner(options: ImplementerRunnerOptions): I
       if (existing?.presence === "exited" && existing.status !== "retired") return resume(request.name, request.brief, request.schema, signal);
       if (existing && existing.status !== "retired") return awaitReport(resolved, { name: request.name, askedAt, schema: request.schema, signal });
       const { name, profile, brief, cwd, task } = request;
-      await resolved.agents.spawn({ name, profile, brief, cwd, role: request.role ?? "implementer", ...(task !== undefined && { task }) });
-      return awaitReport(resolved, { name: request.name, askedAt, schema: request.schema, signal });
+      const spawn = { name, profile, brief, cwd, role: request.role ?? "implementer", ...(task !== undefined && { task }) };
+      const admittedAt = await whenAdmitted(resolved, name, signal, () => resolved.agents.spawn(spawn));
+      return awaitReport(resolved, { name, askedAt: admittedAt, schema: request.schema, signal });
     },
     resume,
   };

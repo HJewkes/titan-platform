@@ -51,6 +51,10 @@ interface FakeOptions {
   reportCheck?: (head: string) => number;
   /** Exit status of the spec's preflight command; 0 when absent. */
   preflight?: number;
+  /** Branches already on the remote, as a stopped earlier run left them. */
+  branches?: Record<string, string>;
+  /** Gate records already in an evidence directory, keyed by the directory. */
+  evidence?: Record<string, unknown[]>;
 }
 
 const allGreen: GateScript = () => ({ status: 0, records: [{ gate: "G1", pass: true }] });
@@ -77,9 +81,9 @@ function commandRunner(fake: FakeBuild, evidence: Map<string, unknown[]>, option
 
 /** Ports with no machine behind them: commands, GitHub and Shepherd are maps, and every PR merges at once. */
 export function fakeBuild(options: FakeOptions = {}): FakeBuild {
-  const evidence = new Map<string, unknown[]>();
+  const evidence = new Map<string, unknown[]>(Object.entries(options.evidence ?? {}));
   const prs = new Map<string, number>();
-  const fake: FakeBuild = { ports: partialFake<BuildSurfacePorts>(), commands: [], branches: new Map([["main", MAIN_SHA]]), registered: [], agentCalls: [] };
+  const fake: FakeBuild = { ports: partialFake<BuildSurfacePorts>(), commands: [], branches: new Map([["main", MAIN_SHA], ...Object.entries(options.branches ?? {})]), registered: [], agentCalls: [] };
   fake.ports = {
     now: () => Date.parse("2026-10-28T12:00:00Z"),
     readText: async () => options.spec ?? demoSpec(),

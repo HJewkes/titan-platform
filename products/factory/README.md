@@ -529,6 +529,7 @@ titan-factory build-surface status owner/repo
 
 `start` checks the spec, then hands the run to serve if one answers (`factory.build-surface.start`), else drives
 it in-process until it waits on a human. A repo has at most one unfinished run; a second start returns it.
+Start an in-process run on the agent-chat broker's host: an off-host spawn is refused worktree isolation, and the Mac's config pins an old agent-chat.
 
 `bs-plan` reads the spec. Slices run in waves through `mapItems`, at most `concurrency` at a time, and a slice
 starts only once every slice it depends on has merged. Per slice: `bs-preflight` (the spec's command; exit 0 or 10, "re-extract", proceeds, since extraction runs at every slice start, and any other exit stops the slice), an optional one-turn
@@ -543,6 +544,12 @@ from the evidence directory; exit 0 and every record passing at that head is gre
 same implementer (`bs-fix`) with the failing evidence as data. Then `bs-pr`, `bs-shepherd` (registers the PR with
 the implementer's name, so Shepherd's wake and successor logic find that lineage), `bs-await-land` and, after
 `deploy-approve:<slice>` when `approve` is set, `bs-deploy`. Every slice merged opens `final-walk`.
+
+A fresh `start` over a branch a stopped run left behind picks it up: when `bs-branch` finds the slice branch past
+its base and every gate record in the evidence directory for its head passing, the slice skips `bs-implement` and
+the gate rerun, and round 0 goes on to `bs-preview` and `bs-review` at that head. A branch with any failing or missing
+record is implemented again on top of what it holds. A spawn or resume the spawn gate defers (load, memory pressure,
+the admit window) waits and asks again, from one minute doubling to ten, for up to an hour, before it fails the step.
 
 Stops, all made by the workflow: a rejected report, review or target set goes back once, and a second rejection
 stops the slice; so does one gate failing `noImprovementRounds` rounds without its score improving, more than

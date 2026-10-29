@@ -82,21 +82,28 @@ async function review(run: SliceRun, round: number, head: string): Promise<S.Rev
   }
 }
 
-/** Implement, then gates, preview and review at each head, fixing until all pass or a cap stops the slice; returns the green head. */
-export async function buildRounds(run: SliceRun, targets: unknown): Promise<string> {
+async function implement(run: SliceRun, targets: unknown): Promise<string> {
   const task = run.slice.task ?? run.spec.task;
   const brief = implementerBrief(run.spec, run.slice, targets);
   const first = await sliceStep(run, "bs-implement", undefined, { name: run.agent, profile: run.spec.implementer.profile, cwd: run.spec.clone, brief, task }, ReportStep);
-  let report = await checkedReport(run, 0, first.report);
+  return (await checkedReport(run, 0, first.report)).head;
+}
+
+/**
+ * Implement, then gates, preview and review at each head, fixing until all pass or a cap stops the slice; returns the green
+ * head. A branch already green at its head (`green`) starts there: no implement turn, and round 0 takes its recorded gates.
+ */
+export async function buildRounds(run: SliceRun, targets: unknown, green?: S.GateRun): Promise<string> {
+  let head = green?.head ?? (await implement(run, targets));
   const misses = new Map<string, { score?: number; count: number }>();
   const asked = { device: false };
   for (let round = 0; ; round++) {
-    const gates = await runGates(run, String(round), report.head);
+    const gates = round === 0 && green ? green : await runGates(run, String(round), head);
     trackProgress(run, misses, gates);
-    const previewed = gates.pass ? await preview(run, round, report.head, asked) : undefined;
-    const reviewed = gates.pass && previewed?.pass !== false ? await review(run, round, report.head) : undefined;
-    if (gates.pass && previewed?.pass !== false && reviewed?.verdict !== "BLOCK") return report.head;
+    const previewed = gates.pass ? await preview(run, round, head, asked) : undefined;
+    const reviewed = gates.pass && previewed?.pass !== false ? await review(run, round, head) : undefined;
+    if (gates.pass && previewed?.pass !== false && reviewed?.verdict !== "BLOCK") return head;
     if (round >= run.spec.maxFixRounds) stopSlice(run, `still failing after ${round} fix rounds`);
-    report = await checkedReport(run, round + 1, await fix(run, String(round + 1), report.head, { gates, ...(previewed && { preview: previewed }), ...(reviewed && { review: reviewed }) }));
+    head = (await checkedReport(run, round + 1, await fix(run, String(round + 1), head, { gates, ...(previewed && { preview: previewed }), ...(reviewed && { review: reviewed }) }))).head;
   }
 }

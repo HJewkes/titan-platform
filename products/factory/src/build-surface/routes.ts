@@ -56,26 +56,42 @@ async function reportCheck(ports: BuildSurfacePorts, input: I.ReportCheckInput, 
   return validate(ports, { ...input, builtIn: [...input.builtIn, ...builtIn] }, signal);
 }
 
+/** The gate records in `dir` for `head`; a record for another head or none at all is a problem. */
+async function recordedGates(ports: BuildSurfacePorts, dir: string, head: string): Promise<Pick<GateRun, "gates" | "problems">> {
+  const problems: string[] = [];
+  const records = (await ports.readEvidence(dir)).flatMap(({ path, json }) => {
+    const parsed = GateEvidenceSchema.safeParse(json);
+    if (!parsed.success) return (problems.push(`${path}: not a gate record`), []);
+    if (parsed.data.head !== head) return (problems.push(`${path}: written for head ${parsed.data.head}`), []);
+    return [{ gate: parsed.data.gate, pass: parsed.data.pass, ...(parsed.data.score !== undefined && { score: parsed.data.score }), evidence: path }];
+  });
+  if (records.length === 0) problems.push(`no gate evidence in ${dir}`);
+  return { gates: records, problems };
+}
+
+/** A stopped run's branch past its base, with every gate green at its head, is picked up there instead of implemented again. */
+async function greenAt(ports: BuildSurfacePorts, input: I.BranchInput, head: string): Promise<GateRun | undefined> {
+  const recorded = await recordedGates(ports, input.evidenceDir.replaceAll("{head}", head), head);
+  const pass = recorded.problems.length === 0 && recorded.gates.every((gate) => gate.pass);
+  return pass ? { head, exitCode: 0, pass, ...recorded } : undefined;
+}
+
 async function branch(ports: BuildSurfacePorts, input: I.BranchInput) {
   const existing = await ports.github.getHeadSha(input.repo, input.branch);
   const baseSha = await ports.github.getHeadSha(input.repo, input.base);
   if (!baseSha) throw new Error(`base ${input.base} has no head on ${input.repo}`);
-  if (existing) return { branch: input.branch, baseSha, created: false };
-  await ports.github.ensureBranch(input.repo, input.branch, baseSha);
-  return { branch: input.branch, baseSha, created: true };
+  if (!existing) {
+    await ports.github.ensureBranch(input.repo, input.branch, baseSha);
+    return { branch: input.branch, baseSha, created: true };
+  }
+  const green = existing === baseSha ? undefined : await greenAt(ports, input, existing);
+  return { branch: input.branch, baseSha, created: false, ...(green && { green }) };
 }
 
-/** Exit 0 and every gate's record passing at this head is green; a record for another head or none at all is a problem. */
+/** Exit 0 and every gate's record passing at this head is green. */
 async function gates(ports: BuildSurfacePorts, input: I.GatesInput, signal: AbortSignal): Promise<GateRun> {
   const done = await ports.run(input.argv, { cwd: input.cwd, env: input.env, signal });
-  const problems: string[] = [];
-  const records = (await ports.readEvidence(input.evidenceDir)).flatMap(({ path, json }) => {
-    const parsed = GateEvidenceSchema.safeParse(json);
-    if (!parsed.success) return (problems.push(`${path}: not a gate record`), []);
-    if (parsed.data.head !== input.head) return (problems.push(`${path}: written for head ${parsed.data.head}`), []);
-    return [{ gate: parsed.data.gate, pass: parsed.data.pass, ...(parsed.data.score !== undefined && { score: parsed.data.score }), evidence: path }];
-  });
-  if (records.length === 0) problems.push(`no gate evidence in ${input.evidenceDir}`);
+  const { gates: records, problems } = await recordedGates(ports, input.evidenceDir, input.head);
   if (done.status !== 0 && records.every((record) => record.pass)) problems.push(`gate command exited ${done.status}: ${tail(done.stderr)}`);
   return { head: input.head, exitCode: done.status, pass: done.status === 0 && problems.length === 0 && records.every((record) => record.pass), gates: records, problems };
 }
