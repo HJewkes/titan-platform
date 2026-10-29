@@ -61,7 +61,7 @@ function lastJsonBlock(text: string): unknown {
   }
 }
 
-export interface AgentTurn {
+interface AgentTurn {
   row: AgentRow;
   /** The final assistant message, whole: an answer longer than the index's span cap would lose its closing fence. */
   text: string | undefined;
