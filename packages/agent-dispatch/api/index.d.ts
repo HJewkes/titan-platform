@@ -204,6 +204,8 @@ interface DispatchRequest extends LaunchedBy {
     configDir?: string;
     /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
     profilesDir?: string;
+    /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+    worktree?: string;
 }
 interface DispatchResult {
     peerName: string;
@@ -226,6 +228,7 @@ declare function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
     profile: string;
     briefing?: string;
     configDir?: string;
+    worktree?: string;
 }): string[];
 /** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
 interface SpawnPlacement {
