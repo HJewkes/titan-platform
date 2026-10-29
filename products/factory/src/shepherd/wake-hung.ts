@@ -6,12 +6,14 @@ export interface Hung {
   agent: string;
 }
 
+type Retirer = { retire?(name: string): Promise<void> };
+
 /**
  * A live headless agent can sit idle through both asks (tp#2648, tp#2663), so it is retired and a successor takes the
  * wake. The retire is never forced, so a tree with unpushed work keeps its agent; and an agent no successor could
  * replace, on an advisory repo or one with no checkout, is left running. Either way the seat is told, as before.
  */
-export async function retireHung(agents: { retire?(name: string): Promise<void> }, agent: string, replaceable: boolean, stalled: string, signal: AbortSignal): Promise<Hung | { kind: "unhandled"; reason: string }> {
+export async function retireHung(agents: Retirer, agent: string, replaceable: boolean, stalled: string, signal: AbortSignal): Promise<Hung | { kind: "unhandled"; reason: string }> {
   if (agents.retire === undefined || !replaceable) return { kind: "unhandled", reason: stalled };
   try {
     await agents.retire(agent);

@@ -1291,7 +1291,7 @@ describe("the fix-proof bounce cap", () => {
     first.host.close();
 
     vi.resetModules();
-    const second = scene.open(dbPath, run, await import("./wake.js"));
+    const second = scene.open(dbPath, run, { ...(await import("./wake.js")), ...(await import("./wake-phase.js")) });
     await second.host.runtime.hydrate();
     await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
     second.host.runtime.signal(runId, HOLD, {}, OWNER);
@@ -1319,7 +1319,7 @@ describe("the fix-proof bounce cap", () => {
     expect(scene.stepIds(first.host, runId)).not.toContain(FIX_PROOF_WAKE_STEP);
     first.host.close();
 
-    const second = scene.open(dbPath, run, await import("./wake.js"));
+    const second = scene.open(dbPath, run, { ...(await import("./wake.js")), ...(await import("./wake-phase.js")) });
     await second.host.runtime.hydrate();
     await vi.waitFor(() => expect(second.host.gates.get(`${runId}/${HOLD}`)?.status).toBe("pending"));
     second.host.runtime.signal(runId, HOLD, {}, OWNER);

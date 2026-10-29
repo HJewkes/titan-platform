@@ -9,7 +9,14 @@ import { fixFirstCount } from "./wake-brief.js";
 import { AWAIT_NEW_HEAD_STEP, WAKE_STEP } from "./wake.js";
 
 const Woke = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
+  z.looseObject({
+    kind: z.literal("woken"),
+    agent: z.string(),
+    sessionId: z.string().optional(),
+    mode: z.enum(["resume", "successor", "live"]).optional(),
+    askedAt: z.number().optional(),
+    fallback: z.enum(["resume", "message"]).optional(),
+  }),
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
 ]);
 
@@ -36,7 +43,9 @@ function notWoken(woke: Extract<z.infer<typeof Woke>, { kind: "unhandled" }>): W
   return woke.held === undefined ? { kind: "unhandled", reason: woke.reason } : { kind: "unhandled", reason: woke.reason, held: woke.held };
 }
 
-const wakeStep = (ctx: WorkflowContext, request: WakeRequest, fixFirst: number | undefined) => step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
+function wakeStep(ctx: WorkflowContext, request: WakeRequest, fixFirst: number | undefined) {
+  return step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
+}
 
 /**
  * A live agent can end its turn before it reads a chat-sent wake, so the wake is asked once more after its exit: the
