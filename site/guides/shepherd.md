@@ -1128,10 +1128,12 @@ a measured diff. Each repo has its own key (`owner/name`, matched in any case):
 }
 ```
 
-The merge evidence step reads the key live at every head and records the result on the
+The merge evidence step reads the key at every head and records the result on the
 evidence record as `visualDelta`. The record also stores the mode, threshold and tolerance
 that judged the head, so a later config change applies from the next evidence read and
-never to a head already decided.
+never to a head already decided. A running `titan-factory serve` notices an edit to the
+config file at the next read, with no restart; an edit that fails to load leaves the last
+good config in force and logs one warning.
 
 **Modes.**
 
