@@ -56,7 +56,7 @@ describe("explainer run", () => {
     const draft = choppy();
     const last = draft.chapters[draft.chapters.length - 1]!.id;
     const script = { ...draft, chapters: draft.chapters.map((c) => (c.id === last ? { ...c, id: "reflection" } : c)), beats: draft.beats.map((b) => (b.chapter === last ? { ...b, chapter: "reflection" } : b)) };
-    const host = () => fakeHost(fx, fakeScriptModel(script), fakeRender(), { reflection });
+    const host = () => fakeHost(fx!, fakeScriptModel(script), fakeRender(), { reflection });
 
     const first = await runVideo({ spine: fx.spine, facts: fx.facts }, host());
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, from: "export", base: first.runId }, host());
