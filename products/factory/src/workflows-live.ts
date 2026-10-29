@@ -88,6 +88,8 @@ export function liveSpawnLimits(startup: Partial<SpawnLimits>, config: ConfigRef
   const reads = {
     load5: liveField(config, "shepherd.spawnGate.load5"),
     buildLoad5: liveField(config, "shepherd.spawnGate.buildLoad5"),
+    windowMs: liveField(config, "shepherd.spawnGate.windowMs"),
+    headroomIntervalMs: liveField(config, "shepherd.spawnGate.headroomIntervalMs"),
     maxConcurrentReviews: liveField(config, "shepherd.review.maxConcurrent"),
   };
   const fixed = Object.fromEntries(Object.entries(startup).filter(([key]) => !(key in reads)));

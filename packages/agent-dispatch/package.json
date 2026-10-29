@@ -17,10 +17,19 @@
     "./limits/node": {
       "types": "./dist/limits/node.d.ts",
       "import": "./dist/limits/node.js"
+    },
+    "./routing": {
+      "types": "./dist/routing/index.d.ts",
+      "import": "./dist/routing/index.js"
+    },
+    "./routing/node": {
+      "types": "./dist/routing/node.d.ts",
+      "import": "./dist/routing/node.js"
     }
   },
   "files": [
     "dist",
+    "workflow",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -44,6 +53,9 @@
   },
   "peerDependencies": {
     "zod": "^4.0.0"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "zod": "^4.4.3"

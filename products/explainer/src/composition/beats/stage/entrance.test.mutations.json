@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rising word fades in through low opacity",
+      "file": "products/explainer/src/composition/beats/stage/entrance.ts",
+      "find": "opacity: p > 0 ? 1 : 0,",
+      "replace": "opacity: p,",
+      "kills": [
+        "a text entrance a rising word is at full colour whenever it is visible"
+      ]
+    },
+    {
+      "name": "a cued row fades in through low opacity",
+      "file": "products/explainer/src/composition/beats/stage/video.ts",
+      "find": "return rise(progress(t, atS, durationS), risePx);",
+      "replace": "const p = progress(t, atS, durationS);\n  return { opacity: p, transform: `translateY(${(1 - p) * risePx}px)` };",
+      "kills": [
+        "a text entrance a row rising on its cue is at full colour whenever it is visible"
+      ]
+    }
+  ]
+}

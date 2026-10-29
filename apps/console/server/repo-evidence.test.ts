@@ -2,8 +2,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeGitHub, githubPort } from "@titan-design/github";
+import { runGit, type GitRunner } from "@titan-design/worktree";
 import { gitEvidenceReader } from "./repo-evidence.js";
 
 let dir: string;
@@ -74,6 +75,35 @@ describe("repository evidence", () => {
     await read([clone]);
 
     expect(fake.calls.filter((call) => call === "listOpenPrs")).toHaveLength(1);
+  });
+
+  it("spawns no git at all for a repeated read within the cache window, however many paths name the clone", async () => {
+    seedRepository();
+    const spawned: (readonly string[])[] = [];
+    const counted: GitRunner = (args, cwd) => (spawned.push(args), runGit(args, cwd));
+    const read = gitEvidenceReader({ git: counted, github: { listOpenPrs: async () => [] }, now: () => 0 });
+    const paths = [clone, path.join(dir, "tree")];
+
+    await read(paths);
+    const first = spawned.length;
+    await read(paths);
+
+    expect(first).toBeGreaterThan(0);
+    expect(spawned).toHaveLength(first);
+  });
+
+  it("serves the last evidence once past the window, while one read refreshes it behind", async () => {
+    seedRepository();
+    const clock = { at: 0 };
+    const fake = fakeGitHub({ repo: "example/orbit" });
+    const read = gitEvidenceReader({ github: githubPort(fake.wire, { login: "t" }), now: () => clock.at });
+    const [first] = await read([clone]);
+
+    clock.at = 61_000;
+    const [served] = await read([clone]);
+
+    expect(served).toBe(first);
+    await vi.waitFor(() => expect(fake.calls.filter((call) => call === "listOpenPrs")).toHaveLength(2));
   });
 
   it("marks pull requests unread when GitHub fails, and keeps the git evidence", async () => {

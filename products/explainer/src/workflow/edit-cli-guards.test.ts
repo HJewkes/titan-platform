@@ -1,19 +1,19 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { editHarness, recordingSpawn } from "./edit-cli.test-helpers.js";
 import { linkEditRun, readLedger } from "./edit-ledger.js";
-import { fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { dropSeeds, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk, run on fakes end to end; no real script, run, render or note.
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
 
-const { baseRun, editFile, cli } = editHarness(() => fx);
+const { baseRun, editFile, cli } = editHarness(() => fx, (next) => (fx = next));
 const figures = [{ id: "scan-rate", value: 4, label: "Scans a minute" }];
 const LINKED_RUN = "run-linked-synthetic";
 
 /** `edit apply --start` on a fresh base, then the launched run linking itself, as the detached run does on start. */
 async function startedEdit() {
-  fx = fixture();
   const base = await baseRun();
   const file = editFile(base, { h1: { slots: { figures } } });
   const { spawn, launched } = recordingSpawn();

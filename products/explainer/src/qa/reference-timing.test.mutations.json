@@ -18,6 +18,24 @@
       "kills": [
         "reports early-reveal and hold-through-reference without gating the qa stage on them"
       ]
+    },
+    {
+      "name": "counting numbers are keyed by text again",
+      "file": "products/explainer/src/qa/reference-timing.ts",
+      "find": "PLAIN_NUMBER.test(t.text.trim()) ? \"#number\" : t.text",
+      "replace": "t.text",
+      "kills": [
+        "text spans a number counting up in one element is one reading span"
+      ]
+    },
+    {
+      "name": "a merged span takes the latest sample's beat",
+      "file": "products/explainer/src/qa/reference-timing.ts",
+      "find": "prior ? settle(prior, t) :",
+      "replace": "prior ? { ...settle(prior, t), beat: moment.beat } :",
+      "kills": [
+        "text spans text still shown after a beat cut keeps the beat it first showed in"
+      ]
     }
   ]
 }

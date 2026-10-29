@@ -1,10 +1,12 @@
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { FontLoadError } from "@titan-design/frame-capture";
+import { FontLoadError, launch } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BuilderRef } from "../build/beat-worker.js";
 import type { LayerTextCheck } from "../build/layer-text.js";
 import { buildPage } from "../composition/page.test-helpers.js";
+import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { chromiumLayerTextCheck } from "./layer-text-check.js";
 
 // Synthetic: hand-written layers for an invented parcel desk; no builder wrote them.
@@ -32,18 +34,37 @@ const NAN_COUNT = layer(`const t = useBeatTime() as unknown as number;
 const PAST_THE_BOX = layer(`useBeatTime();
   return <div id="footer" style={{ position: "absolute", left: 120, bottom: -120, fontSize: 48 }}>last scan at the desk</div>;`);
 
+/** Shows its count when the cue word "desk" is spoken, read through useCue; the page must declare the cue. */
+const cueTimed = (shown: string) => `import { useBeatTime, useCue } from "@titan-design/react-ui/motion";
+
+export default function Desk() {
+  const { t } = useBeatTime();
+  const at = useCue("desk");
+  return <div id="count" style={{ position: "absolute", left: 120, top: 80, fontSize: 96, opacity: t >= at ? 1 : 0 }}>${shown}</div>;
+}
+`;
+const CUED_PACKET = { ...PACKET, cues: [{ action: "V6" as const, target: "count", atCue: "desk" }] };
+
 let pageDir: string;
 let check: LayerTextCheck;
+let browser: Browser;
 
 beforeAll(async () => {
   pageDir = await buildPage();
-  check = chromiumLayerTextCheck({ page: async () => ({ dir: pageDir, sha: "test" }) });
+  browser = await launch();
+  check = chromiumLayerTextCheck({ page: async () => ({ dir: pageDir, sha: "test" }), engine: chromiumQaEngine(undefined, browser) });
 }, BROWSER_TIMEOUT_MS);
 
-afterAll(() => rmSync(pageDir, { recursive: true, force: true }));
+afterAll(async () => {
+  await browser.close();
+  rmSync(pageDir, { recursive: true, force: true });
+});
 
 const checkLayer = (module: string) =>
   check({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module, anchors: ["A1:F6"], elements: [], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: PACKET });
+
+const checkCued = (module: string) =>
+  check({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module, anchors: ["A1:F6"], elements: ["count"], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: CUED_PACKET });
 
 describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEOUT_MS }, () => {
   // Mutations: CustomLayer never raises its layer's text to the floor (kills the 14 px caption case).
@@ -65,6 +86,18 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     expect(rows.map((row) => [row.rule, row.text])).toEqual([["under-chrome", "last scan at the desk"]]);
   });
 
+  it("draws a layer timed by useCue on the custom beat's own cue words", async () => {
+    const rows = await checkCued(cueTimed("12 parcels"));
+
+    expect(rows).toEqual([]);
+  });
+
+  it("flags a settled number the narration never says with the unspoken-fact rule", async () => {
+    const rows = await checkCued(cueTimed("12 parcels, 3 held"));
+
+    expect(rows).toEqual([expect.objectContaining({ beat: "b-desk", rule: "unspoken-fact", text: "12 parcels, 3 held", fact: "3" })]);
+  });
+
   // Mutation: the page's CSS names a font by a network or absolute URL.
   it("names every font face by a file in the built page or inline data, never a network or cwd path", () => {
     const assets = path.join(pageDir, "assets");
@@ -81,7 +114,7 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const broken = await buildPage();
     const [woff2] = readdirSync(path.join(broken, "assets")).filter((f) => f.endsWith(".woff2"));
     rmSync(path.join(broken, "assets", woff2!));
-    const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }) });
+    const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }), engine: chromiumQaEngine(undefined, browser) });
 
     const failure = await brokenCheck({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module: SMALL_CAPTION, anchors: ["A1:F6"], elements: [], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: PACKET }).then(() => undefined, (e: unknown) => e);
 

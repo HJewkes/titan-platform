@@ -9,7 +9,7 @@
       "kills": [
         "task.list on 9,000 synthetic tasks a warm list of 9,000 tasks parses no file",
         "task.list on 9,000 synthetic tasks editing one task file re-parses exactly that file",
-        "task.list on 9,000 synthetic tasks a warm list stays within its time budget"
+        "task.list on 9,000 synthetic tasks a warm list stats each task file at most once and reads none"
       ]
     }
   ]

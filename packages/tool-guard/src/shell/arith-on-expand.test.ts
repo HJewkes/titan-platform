@@ -8,6 +8,7 @@ import { mathCloseDisagrees } from "./assign-on-expand.js";
 import { assignedInMath, mentionedIn } from "./hooked-names.js";
 import { tokenize } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const HOME = "/home/you";
 const PUSH = "git push origin HEAD:feat";
@@ -173,27 +174,39 @@ describe("the math readers take the set of names to look for (TP-3294)", () => {
   });
 });
 
-const run = (shell: string, args: string[]): string => {
-  const result = spawnSync(shell, args, { encoding: "utf8", input: "", env: { PATH: process.env.PATH ?? "/usr/bin:/bin" } });
-  return result.status === 0 ? result.stdout : "";
-};
+/** A shell's stdout when it exits 0; a describe runs its rows through one driver (TP-4453). */
+const runOracle = () =>
+  shellOracle("arith-on-expand-", (_dir, shell: string, args: string[]) => ({
+    run: { program: shell, args, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, input: "" },
+    read: (result) => (result.status === 0 ? result.stdout : ""),
+  }));
 const bash = spawnSync("bash", ["--norc", "-c", "true"]).status === 0;
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 
 describe.skipIf(!bash)("bash really sets PS4 through the refused forms (TP-3294)", () => {
-  it.each([
+  const rows = [
     ["$(( PS4=1 ))", ': $(( PS4=1 )); echo "$PS4"'],
     ["${a[PS4=7]}", ': ${a[PS4=7]}; echo "$PS4"'],
     ["${x:PS4=1}", "x=abcdef; : ${x:PS4=1}; echo \"$PS4\""],
     ["a ${…[ ]} subscript past the window", `: \${${"a".repeat(600)}[PS4=7]}; echo "$PS4"`],
     ["a join at the window edge", `: \${${"a".repeat(598)}${JOIN}[PS4=7]}; echo "$PS4"`],
-  ])("%s", (_form, script) => {
-    expect(run("bash", ["--norc", "-c", script]).trim()).toMatch(/^[1-9]$/);
+  ];
+  const run = runOracle();
+  for (const [, script = ""] of rows) run.add("bash", ["--norc", "-c", script]);
+  run.beforeAll();
+
+  it.each(rows)("%s", (_form, script) => {
+    expect(run.get("bash", ["--norc", "-c", script]).trim()).toMatch(/^[1-9]$/);
   });
 });
 
 describe.skipIf(!zsh)("zsh really sets PS4 through $[ ] (TP-3294)", () => {
+  const SCRIPT = ': $[ PS4=1 ]; echo "$PS4"';
+  const run = runOracle();
+  run.add("zsh", ["-f", "-c", SCRIPT]);
+  run.beforeAll();
+
   it("$[ PS4=1 ]", () => {
-    expect(run("zsh", ["-f", "-c", ': $[ PS4=1 ]; echo "$PS4"']).trim()).toBe("1");
+    expect(run.get("zsh", ["-f", "-c", SCRIPT]).trim()).toBe("1");
   });
 });

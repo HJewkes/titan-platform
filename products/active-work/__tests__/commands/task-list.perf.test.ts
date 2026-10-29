@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { performance } from 'node:perf_hooks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import taskList from '../../src/commands/task-list.js';
 import type { CommandContext } from '../../src/registry/index.js';
@@ -9,11 +8,10 @@ import { withEmptyActiveRoot } from '../setup/test-helpers.js';
 
 // Every parse starts with a read of the file, so task-file reads count parses.
 const parseCount = { value: 0 };
+const statCount = { value: 0 };
 
 const INITIATIVES = 45;
 const TASKS_PER_INITIATIVE = 200;
-// About 3x the warm list's CI time, so runner noise does not flake it while losing the cache still does.
-const WARM_BUDGET_MS = 400;
 
 function ctx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
@@ -51,11 +49,6 @@ function listAll(root: string) {
   return taskList.run({ all_initiatives: true, status: 'all' }, ctx(root));
 }
 
-function median(samples: number[]): number {
-  const sorted = [...samples].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)]!;
-}
-
 describe('task.list on 9,000 synthetic tasks', () => {
   beforeEach(() => {
     parseCount.value = 0;
@@ -64,6 +57,12 @@ describe('task.list on 9,000 synthetic tasks', () => {
       if (String(file).endsWith('.yml')) parseCount.value += 1;
       return readFile(file, options);
     });
+    statCount.value = 0;
+    const stat = fs.stat.bind(fs);
+    vi.spyOn(fs, 'stat').mockImplementation(((file: Parameters<typeof fs.stat>[0], options?: Parameters<typeof fs.stat>[1]) => {
+      if (String(file).endsWith('.yml')) statCount.value += 1;
+      return stat(file, options as never);
+    }) as typeof fs.stat);
   });
 
   afterEach(() => {
@@ -99,19 +98,17 @@ describe('task.list on 9,000 synthetic tasks', () => {
     });
   });
 
-  it('a warm list stays within its time budget', async () => {
+  it('a warm list stats each task file at most once and reads none', async () => {
     await withEmptyActiveRoot(async (root) => {
       await writeSyntheticRoot(root);
       await listAll(root);
-      const samples: number[] = [];
+      parseCount.value = 0;
+      statCount.value = 0;
 
-      for (let i = 0; i < 5; i++) {
-        const start = performance.now();
-        await listAll(root);
-        samples.push(performance.now() - start);
-      }
+      await listAll(root);
 
-      expect(median(samples)).toBeLessThanOrEqual(WARM_BUDGET_MS);
+      expect(parseCount.value).toBe(0);
+      expect(statCount.value).toBeLessThanOrEqual(INITIATIVES * TASKS_PER_INITIATIVE);
     });
   });
 });

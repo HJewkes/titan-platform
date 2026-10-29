@@ -3,16 +3,27 @@ import { DataSource, CommandName, RpcError, LiveStatus, SnapshotResolver, Snapsh
 import { CommandMap, SseMessage } from '@titan-design/rpc-protocol';
 
 type QueryStatus = "loading" | "success" | "error";
+/** What `onSettle` learns about one call. It carries the command name only, never its arguments or result. */
+interface QuerySettled {
+    command: string;
+    /** Elapsed time from the call's start to its answer. */
+    ms: number;
+    ok: boolean;
+    /** True when the entry already held data as the call began, so the user saw that data while this call ran. */
+    fromCache: boolean;
+}
 
 interface RpcProviderProps {
     /** `liveSource(...)` against a daemon, or `staticSource(...)` over a snapshot; components cannot tell which. */
     source: DataSource;
     /** How long a query's result outlives its last watcher, so navigating back shows it at once; default 0. */
     gcMs?: number;
+    /** Observes each finished call by command name, time and outcome; keep it referentially stable, since a new one rebuilds the cache. */
+    onSettle?: (settled: QuerySettled) => void;
     children?: ReactNode;
 }
 /** Holds the query cache and the shared event stream for everything below it. */
-declare function RpcProvider({ source, gcMs, children }: RpcProviderProps): ReactNode;
+declare function RpcProvider({ source, gcMs, onSettle, children }: RpcProviderProps): ReactNode;
 
 interface QueryControls {
     /** True while a call is in flight, including a refetch that keeps the previous data. */
@@ -71,4 +82,4 @@ interface PageSourceOptions {
 /** A static source over the embedded snapshot when the page has one, otherwise a live one. */
 declare function pageDataSource(options?: PageSourceOptions): DataSource;
 
-export { type InvalidateOnOptions, type PageSourceOptions, type QueryArgs, type QueryResult, type QueryStatus, type RpcHooks, RpcProvider, type RpcProviderProps, SNAPSHOT_ELEMENT_ID, createRpcHooks, embedSnapshot, pageDataSource, readEmbeddedSnapshot };
+export { type InvalidateOnOptions, type PageSourceOptions, type QueryArgs, type QueryResult, type QuerySettled, type QueryStatus, type RpcHooks, RpcProvider, type RpcProviderProps, SNAPSHOT_ELEMENT_ID, createRpcHooks, embedSnapshot, pageDataSource, readEmbeddedSnapshot };

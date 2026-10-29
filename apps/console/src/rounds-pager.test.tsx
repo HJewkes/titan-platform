@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
-import { App } from "./App.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { onSection, shownSection, stubScroll, toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const PAGED = "kiln-schedule-r2";
 const RAMP = "Which ramp should the calculator propose by default?";
@@ -39,14 +39,9 @@ async function recorded(ids: readonly string[]): Promise<Snapshot> {
 }
 
 /** Opens `hash` as a fresh page load would. */
-async function load(hash: string, ids: readonly string[] = [PAGED]): Promise<void> {
+async function load(hash: string, ids: readonly string[] = [PAGED], { inApp = false } = {}): Promise<void> {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded(ids)), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
   await screen.findByText(/round \d/);
 }
 
@@ -114,7 +109,7 @@ describe("a round of several sections", () => {
   });
 
   it("steps with n and p, but not while typing or with a modifier held", async () => {
-    await load(`#/rounds/${PAGED}`);
+    await load(`#/rounds/${PAGED}`, [PAGED], { inApp: true });
 
     // The page's own text boxes stop their key events before they reach the window, so a plain field is what the guard is for.
     const field = document.body.appendChild(document.createElement("input"));
@@ -183,12 +178,7 @@ describe("a sent round of several sections", () => {
       embedSnapshot("<html><head></head><body></body></html>", { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls: { [snapshotKey("rounds.get", { id: PAGED })]: successEnvelope(sent) } }),
       "text/html",
     );
-    window.location.hash = `#/rounds/${PAGED}`;
-    render(
-      <RpcProvider source={pageDataSource({ doc: page })}>
-        <App />
-      </RpcProvider>,
-    );
+    renderPage(pageDataSource({ doc: page }), { view: "rounds", id: PAGED });
     await screen.findByTestId("round-question-ramp-default");
 
     fireEvent.click(endNext());
