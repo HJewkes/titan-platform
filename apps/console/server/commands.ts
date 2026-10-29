@@ -100,7 +100,8 @@ type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | 
 
 /**
  * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
- * taps and a round's submit, by hand or by its recommendations. Each write drops the reads the inbox view keeps.
+ * taps and a round's submit, by hand or by its recommendations. Each write drops the reads the inbox view keeps, and
+ * approvals.flow shares the kept factory read; the taps themselves read the factory fresh.
  */
 function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
@@ -109,7 +110,7 @@ function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decision
   return {
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, cache.invalidate),
     ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir, cache.invalidate)),
-    ...approvalsCommands(sources),
+    ...approvalsCommands({ ...sources, factory: cache.factory }),
     ...inboxViewCommands(sources, cache),
     ...inboxActionCommands(sources, actions, cache.invalidate),
   };

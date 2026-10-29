@@ -18,6 +18,15 @@
       "kills": [
         "inbox.list after a round is submitted drops the submitted round and the gate its answer settled on the next call"
       ]
+    },
+    {
+      "name": "approvals.flow reads the factory on every call",
+      "file": "apps/console/server/commands.ts",
+      "find": "...approvalsCommands({ ...sources, factory: cache.factory }),",
+      "replace": "...approvalsCommands(sources),",
+      "kills": [
+        "approvals.flow beside the inbox reads the factory once across two flows inside the fresh window"
+      ]
     }
   ]
 }

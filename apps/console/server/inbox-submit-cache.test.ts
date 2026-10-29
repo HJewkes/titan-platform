@@ -39,11 +39,13 @@ const listed = z.object({ items: z.array(z.object({ id: z.string() })) });
 let root: string;
 let rounds: CopiedRounds;
 let gateOpen: boolean;
+let factoryReads: number;
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), "console-inbox-submit-"));
   rounds = await copiedRounds();
   gateOpen = true;
+  factoryReads = 0;
 });
 
 afterEach(async () => {
@@ -53,7 +55,12 @@ afterEach(async () => {
 
 /** The console's own commands over a fake factory and Shepherd, with no listener, so no answer leaves the test. */
 function commands() {
-  const factory: FactoryNeeds = { list: () => Promise.resolve({ items: gateOpen ? [GATE] : [], gaps: [] }) };
+  const factory: FactoryNeeds = {
+    list: () => {
+      factoryReads += 1;
+      return Promise.resolve({ items: gateOpen ? [GATE] : [], gaps: [] });
+    },
+  };
   const shepherd = partialFake<ShepherdSource>({ list: () => Promise.resolve([]) });
   const broker = partialFake<BrokerReader>({ read: () => Promise.reject(new Error("no broker in this test")) });
   const agents = partialFake<AgentsSource>({ broker, eventsDbPath: "", seatPrefixes: [] });
@@ -87,5 +94,16 @@ describe("inbox.list after a round is submitted", () => {
     expect(before.some((id) => id.startsWith(`round:${SHOWN}/`))).toBe(true);
     expect(after).not.toContain(GATE.id);
     expect(after.some((id) => id.startsWith(`round:${SHOWN}/`))).toBe(false);
+  });
+});
+
+describe("approvals.flow beside the inbox", () => {
+  it("reads the factory once across two flows inside the fresh window", async () => {
+    const served = commands();
+
+    const flows = [await invokeCommand(served["approvals.flow"], {}, OWNER_CONTEXT), await invokeCommand(served["approvals.flow"], {}, OWNER_CONTEXT)];
+
+    expect(flows.map(({ envelope }) => envelope.ok)).toEqual([true, true]);
+    expect(factoryReads).toBe(1);
   });
 });
