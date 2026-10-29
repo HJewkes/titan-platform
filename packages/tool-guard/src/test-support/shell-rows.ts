@@ -217,7 +217,7 @@ interface ShellOracle<A extends unknown[], R> {
 
 export function shellOracle<A extends unknown[], R>(prefix: string, row: (dir: string, ...args: A) => OracleRow<R>): ShellOracle<A, R> {
   const added = new Map<string, A>();
-  const read = new Map<string, R | Error>();
+  const read = new Map<string, { value: R } | Error>();
   const key = (args: A): string => JSON.stringify(args);
   const runAll = async (): Promise<void> => {
     const root = mkdtempSync(join(tmpdir(), prefix));
@@ -229,7 +229,7 @@ export function shellOracle<A extends unknown[], R>(prefix: string, row: (dir: s
         return { dir, ...row(dir, ...args) };
       });
       const results = await runShellRows(rows.map(({ dir, run }, i) => ({ name: keys[i] ?? "", cwd: dir, ...run })));
-      rows.forEach(({ read: readRow }, i) => read.set(keys[i] ?? "", attempt(() => readRow(results.of(i)))));
+      rows.forEach(({ read: readRow }, i) => read.set(keys[i] ?? "", attempt(() => ({ value: readRow(results.of(i)) }))));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -239,9 +239,9 @@ export function shellOracle<A extends unknown[], R>(prefix: string, row: (dir: s
     beforeAll: () => beforeAll(runAll, (added.size + 1) * ROW_TIMEOUT_MS),
     get: (...args) => {
       const reading = read.get(key(args));
-      if (!read.has(key(args))) throw new Error(`shell row ${key(args)} was not added before the oracle ran`);
+      if (reading === undefined) throw new Error(`shell row ${key(args)} was not added before the oracle ran`);
       if (reading instanceof Error) throw reading;
-      return reading as R;
+      return reading.value;
     },
   };
 }

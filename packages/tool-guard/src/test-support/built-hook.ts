@@ -26,12 +26,23 @@ export function spawnBuiltHook(input: string, { home, env = process.env, timeout
   return { status: run.status, signal: run.signal, stdout: run.stdout };
 }
 
-let built: Promise<typeof Built> | undefined;
+type Bundle = Pick<typeof Built, "decide" | "handle" | "nodeContext">;
+
+const isBundle = (mod: unknown): mod is Bundle =>
+  typeof mod === "object" && mod !== null && ["decide", "handle", "nodeContext"].every((name) => typeof Reflect.get(mod, name) === "function");
+
+let built: Promise<unknown> | undefined;
+
+async function bundle(): Promise<Bundle> {
+  built ??= import(pathToFileURL(`${dist}index.js`).href);
+  const mod = await built;
+  if (!isBundle(mod)) throw new Error("dist/index.js does not export decide, handle and nodeContext; run `pnpm build`");
+  return mod;
+}
 
 /** The built bundle's own `handle`, answering as `bin.js hook` does: the answer on one line, or nothing. */
 async function inProcess(input: string, { home, env = process.env }: BuiltHookOptions): Promise<BuiltHookRun> {
-  built ??= import(pathToFileURL(`${dist}index.js`).href) as Promise<typeof Built>;
-  const { decide, handle, nodeContext } = await built;
+  const { decide, handle, nodeContext } = await bundle();
   const result = await handle(input, { ...env, HOME: home }, { context: nodeContext(resolve(home)), now: () => new Date(), loadDecide: async () => decide });
   return { status: 0, signal: null, stdout: result.stdout === "" ? "" : `${result.stdout}\n` };
 }
