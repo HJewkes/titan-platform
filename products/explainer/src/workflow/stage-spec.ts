@@ -47,7 +47,7 @@ const STAGE_INPUTS: Record<CachedStage, readonly string[]> = {
 
 /** Artifacts a stage reads when a pin or an earlier stage supplies them; absent, they stay out of its key. */
 const OPTIONAL_INPUTS: Partial<Record<CachedStage, readonly string[]>> = {
-  script: ["coverage"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
+  script: ["coverage", "seed-draft"], rewrite: ["facts", "coverage"], eval: ["facts", "coverage"], resolve: ["code", "slots", "layout", "chapter-links", "facts", "custom-layers"],
   render: ["code", "slots", "generated-slots", "custom-layers"], qa: ["visual", "code", "slots", "vtt"], sheets: ["render-manifest", "resolved", "slots", "qa", "visual"],
 };
 
