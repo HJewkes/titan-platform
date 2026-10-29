@@ -1,7 +1,9 @@
 import { EXIT } from "@titan-design/registry";
 import { GATE_NAME, type GateEvidence } from "./gate-evidence.js";
 
-export { gateEvidenceMigration } from "./gate-evidence.js";
+export type { GateEvidence } from "./gate-evidence.js";
+
+export { gateEvidenceMigration, gateEvidenceTable } from "./gate-evidence.js";
 
 /**
  * Gates that cannot run in GitHub Actions, such as a check against a device on the local network. The reason names them,
@@ -38,8 +40,8 @@ export function refuseUnknownGates(evidence: GateEvidence, reason: string): void
  * itself is never lifted, so a push to a new head, or a merge read at no head, finds it held again until that head's gates are green.
  * A hold naming a reviewer waits for that reviewer, as a g10-review one does.
  */
-export function lanGatesClearAt(evidence: GateEvidence, repo: string, hold: { reason: string; reviewer: string | null }, head: string): boolean {
-  const gates = gatesOf(hold.reason);
-  if (!gates || gates.length === 0 || hold.reviewer !== null) return false;
+export function lanGatesClearAt(evidence: GateEvidence, repo: string, hold: { holdReason: string | null; holdReviewer: string | null }, head: string): boolean {
+  const gates = hold.holdReason === null ? undefined : gatesOf(hold.holdReason);
+  if (!gates || gates.length === 0 || hold.holdReviewer !== null) return false;
   return gates.every((gate) => evidence.conclusionAt(repo, head, gate) === "success");
 }

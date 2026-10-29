@@ -6,8 +6,7 @@ import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
 import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
-import { gateEvidenceTable, type GateEvidence } from "./gate-evidence.js";
-import { lanGatesClearAt } from "./lan-gates.js";
+import { gateEvidenceTable, lanGatesClearAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
@@ -321,19 +320,12 @@ export class ShepherdStore implements HoldLookup {
     this.changed(runId, this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId).changes === 1);
   }
 
-  /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. No satisfaction passes an owner hold. */
+  /** A branch registration waiting for its PR holds that PR too. A MERGE, or green lan-gates, at `sha` passes the hold there only; none passes an owner hold. */
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
     const owner = candidates.find((registration) => registration?.ownerHold)?.ownerHold;
-    const held = candidates.find((registration) => registration?.held && !(sha !== undefined && this.satisfiedAt(repo, registration, sha)));
+    const held = candidates.find((r) => r?.held && !(sha !== undefined && (r.holdSatisfied?.head === sha || lanGatesClearAt(this.gateEvidence(), repo, r, sha))));
     return owner?.reason ?? (held && (held.holdReason ?? "held"));
-  }
-
-  /** A reviewer's MERGE recorded at `sha`, or a `lan-gates` hold whose gates are all green at `sha`; neither lifts the hold. */
-  private satisfiedAt(repo: RepoSlug, registration: Registration, sha: string): boolean {
-    if (registration.holdSatisfied?.head === sha) return true;
-    const hold = { reason: registration.holdReason ?? "", reviewer: registration.holdReviewer };
-    return lanGatesClearAt(this.gateEvidence(), repo, hold, sha);
   }
 
   /** Records an author of the run's code; a repeat for the same agent keeps the first row, so lineage never rewrites itself. */

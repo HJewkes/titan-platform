@@ -25,21 +25,21 @@
     {
       "name": "green evidence never clears",
       "file": "products/factory/src/shepherd/store.ts",
-      "find": "return lanGatesClearAt(this.gateEvidence(), repo, hold, sha);",
-      "replace": "return false;",
+      "find": "lanGatesClearAt(this.gateEvidence(), repo, r, sha))",
+      "replace": "false)",
       "kills": ["a lan-gates hold cleared by gate evidence stands aside at the PR's exact head once every named gate is green there, without lifting the hold"]
     },
     {
       "name": "green evidence lifts the hold for good",
       "file": "products/factory/src/shepherd/store.ts",
-      "find": "return lanGatesClearAt(this.gateEvidence(), repo, hold, sha);",
-      "replace": "return lanGatesClearAt(this.gateEvidence(), repo, hold, sha) && this.releaseIfHeld(registration.runId, hold.reason);",
+      "find": "lanGatesClearAt(this.gateEvidence(), repo, r, sha))",
+      "replace": "(lanGatesClearAt(this.gateEvidence(), repo, registration, sha) && this.releaseIfHeld(r.runId, r.holdReason ?? \"\")))",
       "kills": ["a lan-gates hold cleared by gate evidence holds again at a head pushed after the gates went green at the old one"]
     },
     {
       "name": "a named reviewer is passed over",
       "file": "products/factory/src/shepherd/lan-gates.ts",
-      "find": " || hold.reviewer !== null) return false;",
+      "find": " || hold.holdReviewer !== null) return false;",
       "replace": ") return false;",
       "kills": ["a lan-gates hold cleared by gate evidence stays held when the hold names a reviewer, whose verdict it waits for"]
     }
