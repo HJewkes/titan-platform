@@ -1,6 +1,7 @@
-import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, retire, type AgentRow } from "@titan-design/agent-dispatch";
+import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, retire, type AgentRecord, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
-import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
+import type { ReviewAsk } from "./review-queue.js";
+import type { SpawnGate } from "./spawn-gate.js";
 
 export const AGENT_CALL_TIMEOUT_MS = 90_000;
 
@@ -16,7 +17,7 @@ export interface AgentChatOptions {
   gate?: SpawnGate;
 }
 
-export interface SpawnRequest {
+export interface SpawnRequest extends AgentRecord {
   name: string;
   profile: string;
   brief: string;
@@ -56,10 +57,11 @@ export function agentChatAgents(agentChatBin: string, options: AgentChatOptions 
   const { timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
   return {
     roster: () => roster.rows(),
-    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir = options.configDir }) =>
+    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir = options.configDir, role, task }) =>
       mutating(roster, async () => {
         gate?.admit(name, runningReviews, review);
-        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);
+        const record = { ...(configDir !== undefined && { configDir }), ...(role !== undefined && { role }), ...(task !== undefined && { task }) };
+        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...record }, timeoutMs, [profile]);
       }),
     resume: (name, message, runningReviews, review) =>
       mutating(roster, async () => {

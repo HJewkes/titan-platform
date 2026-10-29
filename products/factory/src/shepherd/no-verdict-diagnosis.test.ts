@@ -259,10 +259,10 @@ function timing(clock = { at: 0 }): DiagnosisTiming & { slept: number[] } {
   return { now: () => clock.at, sleep: sleepFor, signal: new AbortController().signal, slept };
 }
 
-/** Ports whose spawns pass the factory's spawn gate, which admitted another agent 23762 ms before the planner asks at `load5`. */
+/** Ports whose spawns pass the factory's spawn gate, which admitted another agent 23762 ms before the planner asks at `load5`, under a configured 60 s window. */
 function gatedPorts(clock: { at: number }, load5 = 1): ReturnType<typeof diagnosisPorts> {
   const reading = { load5: 1 };
-  const gate = spawnGate({ now: () => clock.at, read: () => ({ ...reading }), limits: { load5: 28 }, log: () => undefined });
+  const gate = spawnGate({ now: () => clock.at, read: () => ({ ...reading }), limits: { load5: 28, windowMs: 60_000 }, log: () => undefined });
   gate.admit("rv-other");
   reading.load5 = load5;
   clock.at = 23_762;

@@ -6,12 +6,14 @@ import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegi
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./autoresearch/commands.js";
+import { buildSurfaceStartCommand } from "./build-surface/start.js";
 import type { ArConfig } from "./autoresearch/config.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
 import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
 import { ownerOpPreview } from "./owner-ops/preview.js";
+import { gateOwnerEvidence } from "./console-action/owner-evidence-command.js";
 import { logSlowRegister } from "./slow-register.js";
 import { SHEPHERD_COMMANDS } from "./shepherd/commands.js";
 import { GH_GATEWAY_COMMANDS } from "./shepherd/gh-gateway.js";
@@ -193,7 +195,8 @@ function autoresearchContext(config: ArConfig | undefined): Pick<FactoryContext,
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof and console Ship routes resolve, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  const commands = [land, status, gates, gatesReview, ownerOpPreview, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS, ...AR_WRITE_COMMANDS];
+  const own = [land, buildSurfaceStartCommand, status, gates, gatesReview, ownerOpPreview, gateOwnerEvidence];
+  const commands = [...own, ...SHEPHERD_COMMANDS, ...GH_GATEWAY_COMMANDS, ...NEEDS_COMMANDS, ...AR_READ_COMMANDS, ...AR_WRITE_COMMANDS];
   for (const cmd of commands) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

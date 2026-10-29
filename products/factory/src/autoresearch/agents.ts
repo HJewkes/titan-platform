@@ -1,19 +1,24 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import type { ArPorts, ImplementRequest } from "@titan-design/autoresearch";
 import { dispatchToAgentChat, listAgents, resumeAgent } from "@titan-design/agent-dispatch";
 import { resolveLimits, type ParsedLimits } from "@titan-design/agent-dispatch/limits";
 import { createWorktreeAllocator, type WorktreeAllocator } from "@titan-design/worktree";
 import { z } from "zod";
-import { awaitAgent, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
+import { awaitAgent, awaitTurn, finalOf, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
 import { loadWaitPort, staggerLatch, type LoadWaitOptions } from "./load-wait.js";
+import { plannerResumeBrief, plannerSpawnBrief } from "./planner-brief.js";
 import { execGit } from "./ratchet.js";
 
 export interface ArAgentsOptions {
   /** The target repo checkout idea trees are cut from. */
   clone: string;
+  /** The target's name and adapter directory, which the planner's brief points it at. */
+  target: { name: string; adapterDir: string };
   agentChat: AgentChat;
   /** The agents account's Claude config directory; every spawn runs on it. */
   configDir: string;
@@ -26,6 +31,8 @@ export interface ArAgentsOptions {
   limits: { pool: string; read: () => ParsedLimits };
   load: LoadWaitOptions;
   now?: () => Date;
+  /** Told when an implementer cannot adopt its idea tree; defaults to `console.warn`. */
+  warn?: (message: string) => void;
 }
 
 type AgentPorts = Pick<ArPorts, "allocTree" | "releaseTree" | "implement" | "plan" | "loadWait">;
@@ -49,6 +56,28 @@ const treeName = (runId: string, ideaId: string): string => `ar-${runTag(runId)}
 const implementerName = (tag: string, round: number, ideaId: string): string => `ar-${tag}-r${round}-${ideaId}`.toLowerCase();
 const inside = (path: string, tree: string): boolean => path === tree || path.startsWith(tree + sep);
 
+const run = promisify(execFile);
+const worktreeSupport = new Map<string, Promise<boolean>>();
+
+/** An agent-chat older than `agent spawn --worktree` refuses the flag, so it is read from the CLI's help once per binary. */
+function supportsWorktree(chat: AgentChat): Promise<boolean> {
+  const known = worktreeSupport.get(chat.bin);
+  if (known !== undefined) return known;
+  const probed = run(chat.bin, ["agent", "spawn", "--help"], { timeout: chat.timeoutMs }).then(
+    ({ stdout }) => /(^|\s)--worktree\b/.test(stdout),
+    () => false,
+  );
+  worktreeSupport.set(chat.bin, probed);
+  return probed;
+}
+
+async function adoptable(host: Host, name: string, worktree: string | undefined): Promise<{ worktree?: string }> {
+  if (worktree === undefined) return {};
+  if (await supportsWorktree(host.chat)) return { worktree };
+  (host.options.warn ?? console.warn)(`[no-adopt] ${host.chat.bin} has no agent spawn --worktree, so ${name} gets a fresh worktree, not ${worktree}`);
+  return {};
+}
+
 function admit(host: Host, profile: string): void {
   const { limits, now } = host.options;
   const resolved = resolveLimits(limits.read(), { pool: limits.pool, profile, now: now?.() ?? new Date() });
@@ -56,11 +85,11 @@ function admit(host: Host, profile: string): void {
 }
 
 /** A name already on the roster is a spawn a restarted host already sent, so it is joined, not sent twice. */
-async function spawnOrJoin(host: Host, name: string, profile: string, cwd: string, brief: string): Promise<void> {
+async function spawnOrJoin(host: Host, name: string, profile: string, cwd: string, brief: string, worktree?: string): Promise<void> {
   if ((await rosterRow(host.chat, name)) !== undefined) return;
   admit(host, profile);
   const { options, chat } = host;
-  const request = { agentChatBinPath: chat.bin, peerName: name, profile, brief, cwd, configDir: options.configDir };
+  const request = { agentChatBinPath: chat.bin, peerName: name, profile, brief, cwd, configDir: options.configDir, ...(await adoptable(host, name, worktree)) };
   await dispatchToAgentChat(request, chat.timeoutMs, [options.profiles.implementer, options.profiles.planner]);
 }
 
@@ -88,18 +117,19 @@ async function explore(host: Host, input: ImplementRequest, signal: AbortSignal)
   const tag = runTag(input.runId);
   const name = implementerName(tag, input.round, input.idea.id);
   return host.stagger(tag)(input.round, async (responded) => {
-    await spawnOrJoin(host, name, host.options.profiles.implementer, input.tree, implementBrief(input));
+    // The implementer profile isolates in a worktree, which ignores cwd and cuts from the clone's default branch; adopting the tree keeps the work at the ratchet head.
+    await spawnOrJoin(host, name, host.options.profiles.implementer, input.tree, implementBrief(input), input.tree);
     await untilResponded(host, name, responded, signal);
     return { name, ...(await awaitAgent(host.chat, name, signal)) };
   });
 }
 
-/** The winner's agent resumes in its own cwd, so the idea tree, already at the ratchet head, is moved there for the turn and back after. */
+/** An agent that adopted the idea tree already sits in it; one with another home has the tree, already at the ratchet head, moved there for the turn and back after. */
 async function exploit(host: Host, input: ImplementRequest & { resumeFrom: string }, signal: AbortSignal): Promise<Done> {
   const name = input.resumeFrom;
   const home = (await rosterRow(host.chat, name))?.cwd;
   if (home === undefined) throw new Error(`[resume] ${name} is not on the roster`);
-  if (existsSync(input.tree)) {
+  if (home !== input.tree && existsSync(input.tree)) {
     if (existsSync(home)) throw new Error(`[tree-occupied] ${home} exists, so ${name}'s tree cannot be re-created there`);
     await execGit(["worktree", "move", input.tree, home], host.options.clone);
   }
@@ -134,14 +164,24 @@ async function implement(host: Host, input: ImplementRequest, signal: AbortSigna
 /** Round 1 spawns the planner; later rounds resume the same agent so its prompt prefix is read from cache. */
 async function plan(host: Host, input: Parameters<ArPorts["plan"]>[0], signal: AbortSignal) {
   const name = plannerName(input.runId);
-  const { profiles, plannerCwd } = host.options;
-  const brief = JSON.stringify({ round: input.round, digest: input.digest, violations: input.violations });
+  const { profiles, plannerCwd, clone, target } = host.options;
   let from: From = { offset: 0 };
-  if (input.mode === "spawn") await spawnOrJoin(host, name, profiles.planner, plannerCwd, brief);
-  else from = await resumeOrJoin(host, name, profiles.planner, brief);
-  const done = await awaitAgent(host.chat, name, signal, from);
-  const session = done.row.sessionId === "" ? {} : { sessionId: done.row.sessionId };
-  return { ops: done.final, agent: name, ...session, mode: input.mode, usage: done.usage };
+  if (input.mode === "spawn") await spawnOrJoin(host, name, profiles.planner, plannerCwd, plannerSpawnBrief({ ...target, clone }, input));
+  else from = await resumeOrJoin(host, name, profiles.planner, plannerResumeBrief(input));
+  const turn = await awaitTurn(host.chat, name, signal, from);
+  const session = turn.row.sessionId === "" ? {} : { sessionId: turn.row.sessionId };
+  return { ...answerOf(name, turn.text), agent: name, ...session, mode: input.mode, usage: turn.usage };
+}
+
+/** An answer with no JSON is reported, not thrown, so the workflow can resume the planner with the error as its miss. */
+function answerOf(name: string, text: string | undefined): { ops: unknown } | { ops: Record<string, never>; malformed: string } {
+  try {
+    return { ops: finalOf(name, text) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.startsWith("[final-message]")) throw error;
+    return { ops: {}, malformed: message };
+  }
 }
 
 async function allocTree(host: Host, input: Parameters<ArPorts["allocTree"]>[0]) {

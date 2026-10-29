@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { flowCheck } from "../lint-flow.js";
@@ -10,11 +10,15 @@ import { ArtifactStore, sha256 } from "./artifacts.js";
 import { MAX_REPAIR_ROUNDS } from "./model-stages.js";
 import { openState, resumeVideo, runVideo } from "./host.js";
 import { STAGES } from "./records.js";
-import { fakeRender, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, dropSeeds, fakeRender, fakeHost, fakeScriptModel, fakeVoice, fixture, l0Check, seededRun, SPINE, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
-let fx: Fixture;
-afterEach(() => fx.cleanup());
+let fx: Fixture | undefined;
+afterEach(() => {
+  fx?.cleanup();
+  fx = undefined;
+});
+afterAll(dropSeeds);
 
 /** A chapter order leading ch1 on verdict-card, whose emphasis target list is `reasons`. */
 const LEAD_ORDER = "\n## 8. Chapter order\n| Chapter | Question | Rows | Beat |\n|---|---|---|---|\n| ch1 | Why does the desk refuse a parcel? | §3.1 | verdict-card |\n";
@@ -52,7 +56,7 @@ describe("explainer run", () => {
     const draft = choppy();
     const last = draft.chapters[draft.chapters.length - 1]!.id;
     const script = { ...draft, chapters: draft.chapters.map((c) => (c.id === last ? { ...c, id: "reflection" } : c)), beats: draft.beats.map((b) => (b.chapter === last ? { ...b, chapter: "reflection" } : b)) };
-    const host = () => fakeHost(fx, fakeScriptModel(script), fakeRender(), { reflection });
+    const host = () => fakeHost(fx!, fakeScriptModel(script), fakeRender(), { reflection });
 
     const first = await runVideo({ spine: fx.spine, facts: fx.facts }, host());
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, from: "export", base: first.runId }, host());
@@ -64,13 +68,10 @@ describe("explainer run", () => {
   });
 
   it("voices the rewritten script, not the draft", async () => {
-    fx = fixture();
-    const render = fakeRender();
+    const { fx: seed, result } = await seededRun();
 
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
-
-    expect(spokenOf(fx, row(result, "tts").outputs.words!)).toBe(spokenOf(fx, row(result, "rewrite").outputs.script!));
-    expect(spokenOf(fx, row(result, "rewrite").outputs.script!)).not.toBe(spokenOf(fx, row(result, "script").outputs.draft!));
+    expect(spokenOf(seed, row(result, "tts").outputs.words!)).toBe(spokenOf(seed, row(result, "rewrite").outputs.script!));
+    expect(spokenOf(seed, row(result, "rewrite").outputs.script!)).not.toBe(spokenOf(seed, row(result, "script").outputs.draft!));
   });
 
   it("stops at the script stage's l0 gate when an error-severity L0 check fails, before the rewrite spends", async () => {
@@ -240,10 +241,7 @@ describe("explainer run", () => {
   });
 
   it("makes no repair call for a draft that passes L0", async () => {
-    fx = fixture();
-    const model = fakeScriptModel();
-
-    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
+    const { model } = await seededRun();
 
     expect(model.prompts).toHaveLength(1);
   });
@@ -263,10 +261,7 @@ describe("explainer run", () => {
 
 describe("the cold rubric on every run", () => {
   it("scores J8 to J12 on the final script and records them as a note and an artifact, never a check", async () => {
-    fx = fixture();
-    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, host);
+    const { host, result } = await seededRun();
 
     const evalRow = row(result, "eval");
     expect(host.rubric.calls).toHaveLength(1);
@@ -296,16 +291,16 @@ describe("the cold rubric on every run", () => {
 
 describe("explainer run --from", () => {
   it("from tts spends nothing on models, and the unchanged script hits the stage cache from tts on", async () => {
-    fx = fixture();
+    const seed = await seededRun();
+    const first = seed.result;
+    fx = cloneFixture(seed);
     const model = fakeScriptModel();
-    const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, render));
-    const host = fakeHost(fx, model, render);
+    const host = fakeHost(fx, model, fakeRender());
 
     const second = await runVideo({ from: "tts" }, host);
 
     expect(second.status, second.error).toBe("completed");
-    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts).toHaveLength(0);
     expect(host.rewriter.prompts).toHaveLength(0);
     expect(second.report.totals.usd).toBe(0);
     expect(spokenOf(fx, row(second, "tts").outputs.words!)).toBe(spokenOf(fx, row(first, "rewrite").outputs.script!));
@@ -321,9 +316,10 @@ describe("explainer run --from", () => {
   });
 
   it("fills fresh at resolve after a base that went past resolve, since its stored generated slots are not a pin", async () => {
-    fx = fixture();
+    const seed = await seededRun();
+    const first = seed.result;
+    fx = cloneFixture(seed);
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
     const carried = await runVideo({ from: "tts", base: first.runId }, fakeHost(fx, fakeScriptModel(), render));
     const script = JSON.parse(readFileSync(path.join(fx.dataDir, "artifacts", row(first, "rewrite").outputs.script!), "utf8"));
     const h1 = script.beats.find((beat: { id: string }) => beat.id === "h1");
@@ -401,13 +397,11 @@ describe("the render stage", () => {
   });
 
   it("stores the mp4 and vtt export and sheets read, beside the manifest, timeline and page tree", async () => {
-    fx = fixture();
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const { fx: seed, result } = await seededRun();
 
     expect(Object.keys(row(result, "render").outputs).sort()).toEqual(["mp4", "page", "render-manifest", "timeline", "vtt"]);
     expect(row(result, "render")).toMatchObject({ checks: "1 pass, 0 gate fail, 0 reported fail" });
-    expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(true);
+    expect(existsSync(path.join(seed.theater, "demo.mp4"))).toBe(true);
   });
 });
 
@@ -438,9 +432,7 @@ describe("checks as stage steps", () => {
   });
 
   it("lists every stage's verdicts with their role in the report", async () => {
-    fx = fixture();
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const { result } = await seededRun();
 
     const md = readFileSync(result.reportPath, "utf8");
     expect(md).toContain("| script | l0 | gate | pass |");
@@ -451,10 +443,7 @@ describe("checks as stage steps", () => {
 
 describe("run report", () => {
   it("gives each stage its wall time, usd, tokens and shares, and totals that add up", async () => {
-    fx = fixture();
-    const model = fakeScriptModel(undefined, { usd: 0.05 });
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
+    const { result } = await seededRun();
 
     const { report } = result;
     const rewrite = row(result, "rewrite");
@@ -469,9 +458,7 @@ describe("run report", () => {
   });
 
   it("marks no stage bridged, and lists each stage's output shas", async () => {
-    fx = fixture();
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const { result } = await seededRun();
 
     const md = readFileSync(result.reportPath, "utf8");
     const bridgedRows = md.split("\n").filter((line) => line.includes("**bridge**")).map((line) => line.split("|")[1]!.trim());

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -82,14 +82,9 @@ function brokerDown(): Snapshot {
   });
 }
 
-function renderConsole(hash: string, recorded: Snapshot): void {
+function renderConsole(hash: string, recorded: Snapshot, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", recorded), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 describe("the agents view", () => {
@@ -111,7 +106,7 @@ describe("the agents view", () => {
   });
 
   it("switches tabs through the query string", async () => {
-    renderConsole("#/agents", healthy());
+    renderConsole("#/agents", healthy(), { inApp: true });
     await screen.findByTestId("agent-row-harbor-impl");
     fireEvent.click(screen.getByText("Messages"));
     await waitFor(() => expect(window.location.hash).toBe("#/agents?tab=messages"));
@@ -135,7 +130,7 @@ describe("the agents view", () => {
   });
 
   it("opens an agent from its roster row", async () => {
-    renderConsole("#/agents", healthy());
+    renderConsole("#/agents", healthy(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId("agent-row-harbor-impl")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/agents/harbor-impl"));
     expect(await screen.findByTestId("agent-card")).toBeTruthy();
@@ -154,7 +149,7 @@ describe("an agent's detail", () => {
   });
 
   it("opens a run's session", async () => {
-    renderConsole("#/agents/harbor-impl", healthy());
+    renderConsole("#/agents/harbor-impl", healthy(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId("run-row-run-1")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/sessions/run-1"));
   });
@@ -167,7 +162,7 @@ describe("an agent's detail", () => {
   });
 
   it("says when it has no runs and no messages", async () => {
-    renderConsole("#/agents/harbor-coord", healthy());
+    renderConsole("#/agents/harbor-coord", healthy(), { inApp: true });
     expect(await screen.findByText("No sessions recorded for harbor-coord.")).toBeTruthy();
     fireEvent.click(screen.getByText("Messages"));
     expect(await screen.findByText("No messages to or from harbor-coord in the broker's last 1,000 events.")).toBeTruthy();
@@ -191,7 +186,7 @@ describe("an agent's detail", () => {
   });
 
   it("returns to the roster from the breadcrumb", async () => {
-    renderConsole("#/agents/harbor-impl", healthy());
+    renderConsole("#/agents/harbor-impl", healthy(), { inApp: true });
     fireEvent.click(await screen.findByRole("link", { name: "Agents" }));
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
   });

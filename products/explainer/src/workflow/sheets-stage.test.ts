@@ -1,17 +1,18 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ConsoleSidecarSchema } from "../video-meta-mirror.test-helpers.js";
 import { ArtifactStore } from "./artifacts.js";
 import { BridgeFileSchema } from "./bridge.js";
 import { openState, runOneStage, runVideo } from "./host.js";
-import { fakeRender, fakeHost, fakeMedia, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, dropSeeds, fakeRender, fakeHost, fakeMedia, fakeScriptModel, fixture, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 import { ffmpegMedia } from "./sheets-stage.js";
 
 let fx: Fixture | undefined;
 afterEach(() => fx?.cleanup());
+afterAll(dropSeeds);
 
 const row = (outcome: Awaited<ReturnType<typeof runVideo>>, stage: string) => outcome.report.rows.find((r) => r.stage === stage)!;
 const artifact = (sha: string): string => readFileSync(path.join(fx!.dataDir, "artifacts", sha), "utf8");
@@ -32,6 +33,13 @@ async function firstRun(fixture: Fixture) {
   return { result, media };
 }
 
+/** A copy of the file's default run, as `fx`, and that run's outcome. */
+async function copiedRun() {
+  const seed = await seededRun();
+  fx = cloneFixture(seed);
+  return seed.result;
+}
+
 describe("the sheets stage in a run", () => {
   it("writes the sidecar, the poster and the fingerprint, and export links the first two into the theater", async () => {
     fx = fixture();
@@ -50,10 +58,9 @@ describe("the sheets stage in a run", () => {
   });
 
   it("lists both runs of a video in a repair run's sidecar, oldest first", async () => {
-    fx = fixture();
-    const { result: first } = await firstRun(fx);
+    const first = await copiedRun();
 
-    const repair = await runVideo({ from: "sheets", base: first.runId }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const repair = await runVideo({ from: "sheets", base: first.runId }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     expect(repair.status, repair.error).toBe("completed");
     expect(sidecarOf(row(repair, "sheets").outputs.sidecar!).explainer).toMatchObject({ videoId: first.runId, runIds: [first.runId, repair.runId] });
@@ -62,9 +69,8 @@ describe("the sheets stage in a run", () => {
 
 describe("explainer stage sheets", () => {
   it("lists the runs of the video it names, hits the cache on the same runs and misses it once the video has a new run", async () => {
-    fx = fixture();
-    const { result: first } = await firstRun(fx);
-    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
+    const first = await copiedRun();
+    const host = fakeHost(fx!, fakeScriptModel(), fakeRender());
     const inputs = { mp4: row(first, "render").outputs.mp4!, script: row(first, "rewrite").outputs.script! };
 
     const once = await runOneStage({ stage: "sheets", inputs, video: first.runId }, host);
@@ -79,21 +85,19 @@ describe("explainer stage sheets", () => {
   });
 
   it("makes the child run the video's only run when no video is named", async () => {
-    fx = fixture();
-    const { result: first } = await firstRun(fx);
+    const first = await copiedRun();
     const inputs = { mp4: row(first, "render").outputs.mp4!, script: row(first, "rewrite").outputs.script! };
 
-    const record = await runOneStage({ stage: "sheets", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const record = await runOneStage({ stage: "sheets", inputs }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     expect(sidecarOf(record.outputs.sidecar!).explainer).toMatchObject({ videoId: record.childRunId, runIds: [record.childRunId] });
   });
 
   it("refuses a video no run belongs to", async () => {
-    fx = fixture();
-    const { result: first } = await firstRun(fx);
+    const first = await copiedRun();
     const inputs = { mp4: row(first, "render").outputs.mp4!, script: row(first, "rewrite").outputs.script! };
 
-    const run = runOneStage({ stage: "sheets", inputs, video: "no-such-video" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const run = runOneStage({ stage: "sheets", inputs, video: "no-such-video" }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     await expect(run).rejects.toThrow("no explainer-video run belongs to video no-such-video");
   });
@@ -103,19 +107,18 @@ const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("f
 
 describe.skipIf(!hasFfmpeg)("the sheets stage on a real video", () => {
   it("probes an ffmpeg-made video and grabs a 480 px poster 30 % in", async () => {
-    fx = fixture();
-    const { result: first } = await firstRun(fx);
-    const mp4File = path.join(path.join(fx.dataDir, ".."), "synthetic.mp4");
+    const first = await copiedRun();
+    const mp4File = path.join(path.join(fx!.dataDir, ".."), "synthetic.mp4");
     const made = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=4:size=320x180:rate=10", "-pix_fmt", "yuv420p", mp4File]);
     expect(made.status, made.stderr.toString()).toBe(0);
-    const db = openState(fx.dataDir);
-    const mp4 = new ArtifactStore(fx.dataDir, db).putFile(mp4File, "mp4", { runId: "input", stage: "input" });
+    const db = openState(fx!.dataDir);
+    const mp4 = new ArtifactStore(fx!.dataDir, db).putFile(mp4File, "mp4", { runId: "input", stage: "input" });
     db.close();
 
-    const record = await runOneStage({ stage: "sheets", inputs: { mp4, script: row(first, "rewrite").outputs.script! } }, fakeHost(fx, fakeScriptModel(), fakeRender(), { media: ffmpegMedia() }));
+    const record = await runOneStage({ stage: "sheets", inputs: { mp4, script: row(first, "rewrite").outputs.script! } }, fakeHost(fx!, fakeScriptModel(), fakeRender(), { media: ffmpegMedia() }));
 
     expect(sidecarOf(record.outputs.sidecar!).posterAtS).toBe(1.2);
-    const probe = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name,width", "-of", "csv=p=0", path.join(fx.dataDir, "artifacts", record.outputs.poster!)]);
+    const probe = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name,width", "-of", "csv=p=0", path.join(fx!.dataDir, "artifacts", record.outputs.poster!)]);
     expect(probe.stdout.toString().trim()).toBe("mjpeg,480");
   });
 });

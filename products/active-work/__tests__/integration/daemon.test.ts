@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { captureStderr, waitForHealth } from './child-startup.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TSX_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
@@ -30,7 +31,12 @@ const SUCCESSOR_PID = 999_999;
  * Spawn a daemon with every path env var pointed inside `stateRoot` — HOME
  * included, so macOS env-paths cannot reach the real install.
  */
-function spawnDaemon(port: number, stateRoot: string, activeRoot: string): ChildProcess {
+interface SpawnedDaemon {
+  child: ChildProcess;
+  stderr: () => string;
+}
+
+function spawnDaemon(port: number, stateRoot: string, activeRoot: string): SpawnedDaemon {
   const child = spawn(TSX_BIN, ['-e', ENTRY_SRC], {
     env: {
       ...process.env,
@@ -44,11 +50,7 @@ function spawnDaemon(port: number, stateRoot: string, activeRoot: string): Child
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  child.stderr?.on('data', (chunk: Buffer) => {
-    // Surface daemon logs if the test fails.
-    process.stderr.write(`[daemon] ${chunk.toString()}`);
-  });
-  return child;
+  return { child, stderr: captureStderr(child.stderr, '[daemon]') };
 }
 
 function findFreePort(): Promise<number> {
@@ -82,19 +84,9 @@ interface HealthPayload {
  * has completed. `pid` is the daemon's own pid, which the caller needs: the
  * spawned `tsx` wrapper's pid is not the daemon's.
  */
-async function waitForHealth(port: number, timeoutMs: number): Promise<HealthPayload> {
-  const deadline = Date.now() + timeoutMs;
-  let lastErr: unknown = null;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`);
-      if (res.ok) return (await res.json()) as HealthPayload;
-    } catch (err) {
-      lastErr = err;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`daemon never became healthy on port ${port}: ${String(lastErr)}`);
+async function waitForHealthPayload(port: number, timeoutMs: number, daemon: SpawnedDaemon): Promise<HealthPayload> {
+  const res = await waitForHealth(port, timeoutMs, daemon.child, daemon.stderr);
+  return (await res.json()) as HealthPayload;
 }
 
 function isAlive(pid: number): boolean {
@@ -152,11 +144,12 @@ describe('integration: daemon over HTTP', () => {
     const stateRoot = mkdtempSync(path.join(tmpdir(), 'aw-daemon-int-'));
     const activeRoot = mkdtempSync(path.join(tmpdir(), 'aw-daemon-int-data-'));
 
-    const child = spawnDaemon(port, stateRoot, activeRoot);
+    const daemon = spawnDaemon(port, stateRoot, activeRoot);
+    const { child } = daemon;
     let daemonPid = 0;
 
     try {
-      daemonPid = (await waitForHealth(port, 15_000)).pid;
+      daemonPid = (await waitForHealthPayload(port, 15_000, daemon)).pid;
 
       const healthRes = await fetch(`http://127.0.0.1:${port}/health`);
       expect(healthRes.status).toBe(200);
@@ -220,10 +213,11 @@ describe('integration: daemon over HTTP', () => {
     const port = await findFreePort();
     const stateRoot = mkdtempSync(path.join(tmpdir(), 'aw-daemon-succ-'));
     const activeRoot = mkdtempSync(path.join(tmpdir(), 'aw-daemon-succ-data-'));
-    const child = spawnDaemon(port, stateRoot, activeRoot);
+    const daemon = spawnDaemon(port, stateRoot, activeRoot);
+    const { child } = daemon;
 
     try {
-      const health = await waitForHealth(port, 15_000);
+      const health = await waitForHealthPayload(port, 15_000, daemon);
       const pidFile = findDaemonPidFile(stateRoot);
       expect(pidFile).not.toBeNull();
       // A 200 means the daemon filed itself, so the file must already name it.

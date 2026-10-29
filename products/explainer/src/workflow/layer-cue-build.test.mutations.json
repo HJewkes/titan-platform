@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a layer timing cues without useCue is never rebuilt",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (untimed.length === 0) return { build };",
+      "replace": "if (untimed.length >= 0) return { build };",
+      "kills": [
+        "the cue-timing check on custom-layer builds a layer that times a cue target with a literal second gets one rebuild naming the cue",
+        "the cue-timing check on custom-layer builds fails resolve naming the cue word when the rebuild still times it with a literal second"
+      ]
+    },
+    {
+      "name": "a rebuild still timing cues without useCue is stored",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer still times",
+      "replace": "still.length >= 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer still times",
+      "kills": [
+        "the cue-timing check on custom-layer builds fails resolve naming the cue word when the rebuild still times it with a literal second"
+      ]
+    },
+    {
+      "name": "the build route skips the cue-timing check",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "const timed = fonted.error === undefined ? await timedFromCues(deps, worker, packet, fonted.build) : fonted;",
+      "replace": "const timed = fonted;",
+      "kills": [
+        "the cue-timing check on custom-layer builds a layer that times a cue target with a literal second gets one rebuild naming the cue",
+        "the cue-timing check on custom-layer builds fails resolve naming the cue word when the rebuild still times it with a literal second"
+      ]
+    },
+    {
+      "name": "G10's shared-run limit moves from 5 words to 6",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "export const SHARED_RUN_WORDS = 5;",
+      "replace": "export const SHARED_RUN_WORDS = 6;",
+      "kills": [
+        "the narration check on custom-layer builds a card repeating five narration words gets one rebuild"
+      ]
+    }
+  ]
+}

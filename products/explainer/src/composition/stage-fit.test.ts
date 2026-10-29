@@ -3,7 +3,8 @@ import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch, openCapturePage } from "@titan-design/frame-capture";
-import { afterAll, beforeAll, describe, test } from "vitest";
+import type { Browser } from "playwright-core";
+import { afterAll, afterEach, beforeAll, describe, test } from "vitest";
 import { chromiumStageFitScan } from "../render/stage-fit-scan.js";
 import { buildPage, fixtureDurationS, renderFrames, servePage, STAGE, type PageServer } from "./page.test-helpers.js";
 import { parseTimeline } from "./timeline.js";
@@ -14,23 +15,28 @@ const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
 
 let pageDir: string;
 let server: PageServer;
+let browser: Browser;
 
 beforeAll(async () => {
   pageDir = await buildPage();
   server = await servePage(pageDir, 0);
+  browser = await launch();
 }, BROWSER_TIMEOUT_MS);
 
+// Mutation: the stage-fit scan closes the browser it was lent; its test is the file's last, so only this check sees it.
+afterEach(() => assert.ok(browser.isConnected(), "a step closed the file's browser"));
+
 afterAll(async () => {
+  await browser.close();
   await server.close();
   rmSync(pageDir, { recursive: true, force: true });
 });
 
 /** The served fixture page at `t`, in report mode when asked, with what `read` returns from it and the page errors. */
 async function atMoment<T>(fixture: string, t: number, read: () => T, report = false): Promise<{ value: T; errors: string[] }> {
-  const browser = await launch();
+  const url = `${server.url("index.html", `/timelines/${fixture}`)}${report ? "&stage-fit=report" : ""}`;
+  const { page } = await openCapturePage(browser, url, STAGE);
   try {
-    const url = `${server.url("index.html", `/timelines/${fixture}`)}${report ? "&stage-fit=report" : ""}`;
-    const { page } = await openCapturePage(browser, url, STAGE);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.evaluate(async (seconds) => {
@@ -39,7 +45,7 @@ async function atMoment<T>(fixture: string, t: number, read: () => T, report = f
     }, t);
     return { value: await page.evaluate(read), errors };
   } finally {
-    await browser.close();
+    await page.context().close();
   }
 }
 
@@ -53,7 +59,7 @@ describe("the stage fit", { timeout: BROWSER_TIMEOUT_MS }, () => {
   test("a stat beat whose long labels overrun the row shrinks into its stage box, every frame, no text under 40 px", async () => {
     const fixture = "stat-fit.timeline.json";
 
-    const render = await renderFrames(server.url("index.html", `/timelines/${fixture}`));
+    const render = await renderFrames(server.url("index.html", `/timelines/${fixture}`), browser);
     const settled = await atMoment(fixture, 2.9, smallestTextPx);
 
     assert.equal(render.pageDurationS, fixtureDurationS(fixture));
@@ -77,7 +83,7 @@ describe("the stage fit", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const fixture = "stat-floor.timeline.json";
     const timeline = parseTimeline(JSON.parse(readFileSync(join(FIXTURES, fixture), "utf8")));
 
-    const rows = await chromiumStageFitScan(server.url("index.html", `/timelines/${fixture}`), timeline, STAGE);
+    const rows = await chromiumStageFitScan(browser)(server.url("index.html", `/timelines/${fixture}`), timeline, STAGE);
 
     assert.deepEqual(rows.map((row) => row.beat), ["label-past-floor", "line-past-floor"]);
     assert.ok(rows.every((row) => row.px > 0 && row.hint.startsWith("shorten ")));

@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { checkAndSend, checkButton, shownSection, toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
 afterEach(() => {
@@ -36,7 +35,7 @@ const notesOf = ({ general, answers }: SentArgs) => ({
  * Renders the synthetic question round over a recorded snapshot. `rounds.submit` answers with `reply`; once it has
  * succeeded, `rounds.get` answers as the server would after a send: status sent, recommendations no longer withheld, the free text read back.
  */
-async function renderRound(reply: ReturnType<typeof successEnvelope> | ReturnType<typeof errorEnvelope>): Promise<Rendered> {
+async function renderRound(reply: ReturnType<typeof successEnvelope> | ReturnType<typeof errorEnvelope>, { inApp = false } = {}): Promise<Rendered> {
   const unsent = await getRound(source, ROUND);
   if (!unsent.valid) throw new Error(unsent.reason);
   const recommendation = { answer: "Staged climb", rationale: "Staged climbs cracked fewer test tiles.", confidence: 0.7, by: "fixture-agent" };
@@ -62,14 +61,7 @@ async function renderRound(reply: ReturnType<typeof successEnvelope> | ReturnTyp
       return inner.call(name, args, options);
     },
   };
-  window.location.hash = `#/rounds/${ROUND}`;
-  render(
-    <RpcProvider source={live}>
-      <AnswerSourceProvider value={live}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(live, { view: "rounds", id: ROUND }, { answers: live, inApp });
   await screen.findByTestId("round-question-ramp-default");
   return { calls };
 }
@@ -292,7 +284,7 @@ describe("a round's check before sending (TP-3775)", () => {
   });
 
   it("steps to the next unanswered question on its own page, where digit keys answer it", async () => {
-    await renderRound(submitted);
+    await renderRound(submitted, { inApp: true });
     await answerRampAndCheck();
 
     fireEvent.click(screen.getByTestId("round-check-next-unanswered"));

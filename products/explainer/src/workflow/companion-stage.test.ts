@@ -1,20 +1,24 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { BEAT_SLOTS } from "../beat-slots.js";
 import type { ExplainerFact } from "../presets/repo-explainer/schemas.js";
 import { gatherReview } from "../presets/repo-explainer/gather.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { ResolvedSchema } from "../resolve-stage.js";
 import { runVideo } from "./host.js";
-import { fakeRender, fakeHost, fakeScriptModel, fixture, SPINE, type Fixture } from "./run-fakes.test-helpers.js";
+import { dropSeeds, fakeRender, fakeHost, fakeScriptModel, fixture, seededRun, SPINE, type Fixture } from "./run-fakes.test-helpers.js";
 
 const FIXTURE = fileURLToPath(new URL("../../fixtures/review-whiteboard", import.meta.url));
 const PIN = "2ddf3eb6c13d97b1d04a932c21de9a92029adaf9";
 
-let fx: Fixture;
-afterEach(() => fx.cleanup());
+let fx: Fixture | undefined;
+afterEach(() => {
+  fx?.cleanup();
+  fx = undefined;
+});
+afterAll(dropSeeds);
 
 async function gatheredFacts(): Promise<ExplainerFact[]> {
   const result = await gatherReview({ reviewDir: FIXTURE, clonePath: "/clone/whiteboard", readHead: async () => PIN });
@@ -44,10 +48,10 @@ function scriptWithCard(feature: string) {
 /** The theater file and anchor an exported href points at, as a reader beside the video would follow it. */
 function follow(href: string): { file: string; anchor: string } {
   const [file, anchor] = href.split("#");
-  return { file: path.join(fx.theater, file!), anchor: anchor! };
+  return { file: path.join(fx!.theater, file!), anchor: anchor! };
 }
 
-const artifact = (sha: string): string => readFileSync(path.join(fx.dataDir, "artifacts", sha), "utf8");
+const artifact = (sha: string): string => readFileSync(path.join(fx!.dataDir, "artifacts", sha), "utf8");
 
 describe("the script stage's companion doc", () => {
   it("writes companion.md and the chapter links as artifacts of a run on gathered review facts", async () => {
@@ -66,9 +70,7 @@ describe("the script stage's companion doc", () => {
   });
 
   it("writes no companion for a run whose facts are not gathered review facts", async () => {
-    fx = fixture();
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const { result } = await seededRun();
 
     expect(result.status, result.error).toBe("completed");
     expect(Object.keys(result.report.rows.find((row) => row.stage === "script")!.outputs)).toEqual(["draft"]);
@@ -112,11 +114,9 @@ describe("companion links through export", () => {
   });
 
   it("exports no companion doc for a run whose facts are not gathered review facts", async () => {
-    fx = fixture();
-
-    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const { fx: seed, result } = await seededRun();
 
     expect(result.status, result.error).toBe("completed");
-    expect(readdirSync(fx.theater).sort()).toEqual(["demo.mp4", "demo.vtt"]);
+    expect(readdirSync(seed.theater).sort()).toEqual(["demo.mp4", "demo.vtt"]);
   });
 });
