@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Command, CommanderError } from "commander";
+import { CommanderError, type Command } from "commander";
 import { auditCandidates, runAudit, selectAuditSample } from "./eval-audit.js";
 import { flagCase } from "./eval-cases.js";
 import { formatReplay, replayCases } from "./eval-replay.js";

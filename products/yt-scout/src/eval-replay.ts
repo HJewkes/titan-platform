@@ -27,6 +27,14 @@ const PER_CALL_CAP_USD = 0.25;
 const mean = (xs: number[]): number | null => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 
+function replayOne(c: EvalCase, opts: ReplayOptions, remainingUsd: number) {
+  const out = outputFields(c);
+  return rescore(
+    { ...opts, title: out.title ?? c.video_id, transcriptPath: c.inputs.transcript_path, partial: out.partial === true, maxBudgetUsd: Math.min(PER_CALL_CAP_USD, remainingUsd) },
+    c.inputs.transcript_sha256,
+  );
+}
+
 export async function replayCases(cases: EvalCase[], opts: ReplayOptions): Promise<ReplaySummary> {
   const scoreCases = cases.filter((c) => c.step === "score");
   const sameSide: boolean[] = [];
@@ -37,10 +45,7 @@ export async function replayCases(cases: EvalCase[], opts: ReplayOptions): Promi
   for (const c of scoreCases) {
     const remaining = opts.maxCostUsd - s.costUsd;
     if (s.replayed >= opts.maxCases || remaining <= 0) break;
-    const r = await rescore(
-      { ...opts, title: outputFields(c).title ?? c.video_id, transcriptPath: c.inputs.transcript_path, partial: outputFields(c).partial === true, maxBudgetUsd: Math.min(PER_CALL_CAP_USD, remaining) },
-      c.inputs.transcript_sha256,
-    );
+    const r = await replayOne(c, opts, remaining);
     if (r.kind === "stale") {
       s.stale++;
       continue;
@@ -58,11 +63,7 @@ export async function replayCases(cases: EvalCase[], opts: ReplayOptions): Promi
     diffs.push(Math.abs(total - ref));
     sameSide.push(total >= opts.thresholdTotal === ref >= opts.thresholdTotal);
   }
-  s.compared = diffs.length;
-  s.agreement = mean(sameSide.map(Number));
-  s.meanAbsDiff = mean(diffs);
-  s.tsValid = mean(tsFlags.map(Number));
-  return s;
+  return { ...s, compared: diffs.length, agreement: mean(sameSide.map(Number)), meanAbsDiff: mean(diffs), tsValid: mean(tsFlags.map(Number)) };
 }
 
 const pct = (n: number | null): string => (n === null ? "n/a" : `${(n * 100).toFixed(0)}%`);
