@@ -47,17 +47,19 @@ task's done-when includes the source repo consuming the release and deleting its
 `@titan-design/code-graph` is the cautionary case: extracted from codewatch, never swapped
 back, and now a 14 percent subset of the original by lines.
 
-## Before you finish any change
+## Before you push any change
 
 ```
-pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm docs:build
+pnpm verify:changed && pnpm dag:check
 ```
 
-All six must be green. `dag:check` is self-hosted: it runs against this repo's own
-`@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
-release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
-
-Before each push, implementers run `pnpm verify:changed`: max-file-loc, changeset status, tsc for touched packages and related vitest tests, on files changed against origin/main.
+`pnpm verify:changed` is the one pre-push gate. On files changed against origin/main it runs the
+max-file-loc cap, `changeset status`, tsc and type-aware lint (`lint:types`) for the touched packages,
+related vitest tests, and `capabilities:check` plus `docs:build` when a docs or capability input
+changed. Never run the root `pnpm test` locally; CI runs it. `pnpm dag:check` stays the separate
+pre-push check. It is self-hosted: it runs against this repo's own `@titan-design/code-graph`, built
+by `pnpm build`. `scripts/dag-check.sh` remains for one release as a fallback that needs
+`CODEWATCH_CLI` pointed at a built codewatch checkout.
 
 ## Rules that CI enforces
 

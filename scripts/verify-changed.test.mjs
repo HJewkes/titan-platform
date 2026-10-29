@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import * as graph from "../packages/code-graph/dist/index.js";
 import {
   countLoc,
+  docsInputsChanged,
   locRuleFrom,
   locScope,
   locViolations,
@@ -152,8 +153,8 @@ describe("planCommands", () => {
   const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], hasTypecheckScript: () => true, hasTimeout: true });
 
   it("orders changeset status, tsc, then bounded vitest", () => {
-    // Mutants caught: wrong base ref, missing per-package tsc, reordered steps.
-    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "vitest related"]);
+    // Mutants caught: wrong base ref, missing per-package tsc or lint:types, reordered steps.
+    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "lint:types", "vitest related"]);
     expect(plan[0].args).toContain("--since=origin/main");
   });
 
@@ -178,5 +179,45 @@ describe("planCommands", () => {
     // Mutant caught: running vitest unscoped when nothing is testable.
     const docs = planCommands({ base: "b", changed: ["README.md"], hasTypecheckScript: () => true });
     expect(docs.map((c) => c.label)).toEqual(["changeset status"]);
+  });
+});
+
+describe("lint:types scope", () => {
+  const plan = (changed) => planCommands({ base: "b", changed, hasTypecheckScript: () => true, hasTimeout: true });
+
+  it("lints only the changed packages", () => {
+    // Mutant caught: dropping --only so every package is linted (minutes, not seconds) on a one-package change.
+    const lint = plan(["packages/a/src/x.ts", "packages/b/tsconfig.json", "packages/c/README.md"]).find((c) => c.label === "lint:types");
+    expect(lint.args).toEqual(["scripts/lint-types.mjs", "--only=packages/a,packages/b"]);
+  });
+
+  it("skips lint:types when no type-affecting file changed", () => {
+    // Mutant caught: running type-aware lint for a docs-only change.
+    expect(plan(["packages/a/README.md"]).map((c) => c.label)).not.toContain("lint:types");
+  });
+});
+
+describe("docs gate", () => {
+  const plan = (changed) => planCommands({ base: "b", changed, hasTypecheckScript: () => false, hasTimeout: true }).map((c) => c.label);
+
+  it("skips docs:build and capabilities:check when no docs input changed", () => {
+    // Mutant caught: always appending docs:build, which adds a vitepress build to every push.
+    expect(plan(["packages/a/src/x.ts"])).toEqual(expect.not.arrayContaining(["docs:build", "capabilities:check"]));
+  });
+
+  it("runs both when a docs or capability input changed", () => {
+    // Mutant caught: leaving a generator input out of the pattern, so stale generated docs reach CI.
+    expect(plan(["site/guides/x.md"])).toEqual(expect.arrayContaining(["docs:build", "capabilities:check"]));
+    expect(plan(["packages/a/CAPABILITY.md"])).toContain("docs:build");
+  });
+
+  it("recognises each generator input and nothing else", () => {
+    // Mutants caught: an unanchored pattern matching any package.json or index.ts; omitting capabilities-data.json.
+    for (const hit of ["CAPABILITIES.md", "scripts/capabilities-data.json", "scripts/gen-docs-reference.mjs", "packages/a/package.json", "apps/console/src/index.ts", ".codewatch/check.json"]) {
+      expect(docsInputsChanged([hit]), hit).toBe(true);
+    }
+    for (const miss of ["packages/a/src/deep/index.ts", "packages/a/src/x.ts", "scripts/verify-changed.mjs", "README.md"]) {
+      expect(docsInputsChanged([miss]), miss).toBe(false);
+    }
   });
 });

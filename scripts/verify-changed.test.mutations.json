@@ -18,6 +18,24 @@
       "kills": [
         "locScope matches excludes with code-graph's pattern semantics, globs included"
       ]
+    },
+    {
+      "name": "lint:types lints every package instead of the changed ones",
+      "file": "scripts/verify-changed.mjs",
+      "find": "`--only=${lintDirs.join(\",\")}`",
+      "replace": "\"--only=\"",
+      "kills": [
+        "lint:types scope lints only the changed packages"
+      ]
+    },
+    {
+      "name": "docs:build runs on every push",
+      "file": "scripts/verify-changed.mjs",
+      "find": "if (docsInputsChanged(changed)) {",
+      "replace": "if (true) {",
+      "kills": [
+        "docs gate skips docs:build and capabilities:check when no docs input changed"
+      ]
     }
   ]
 }

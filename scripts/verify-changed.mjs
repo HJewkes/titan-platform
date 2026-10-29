@@ -86,6 +86,18 @@ export function typecheckDirs(changed, hasTypecheckScript) {
   return touchedPackageDirs(typed).filter(hasTypecheckScript);
 }
 
+// Everything gen-docs-reference.mjs and gen-capabilities.mjs read: site pages, the capability data and catalog, each
+// unit's manifest, CAPABILITY.md and entry point, the tier rule, and the generators themselves.
+const DOCS_INPUT =
+  /^(?:site\/|CAPABILITIES\.md$|scripts\/capabilities-data\.json$|scripts\/gen-(?:docs-reference|capabilities)[^/]*$|\.codewatch\/check\.json$|(?:packages|products|apps)\/[^/]+\/(?:package\.json|CAPABILITY\.md|src\/index\.ts)$)/;
+
+export const docsInputsChanged = (changed) => changed.some((path) => DOCS_INPUT.test(path));
+
+/** Packages whose changed files can alter type-aware lint: the same files that can alter types, no script needed. */
+export function lintTypesDirs(changed) {
+  return typecheckDirs(changed, () => true);
+}
+
 export function relatedTestArgs(changed) {
   const sources = changed.filter((path) => SOURCE_EXT.test(path));
   return sources.length === 0 ? null : ["related", "--run", "--passWithNoTests", ...sources];
@@ -96,6 +108,14 @@ export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) 
   const commands = [{ label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] }];
   for (const dir of typecheckDirs(changed, hasTypecheckScript)) {
     commands.push({ label: `tsc ${dir}`, cmd: "pnpm", args: ["--dir", dir, "run", "typecheck"] });
+  }
+  const lintDirs = lintTypesDirs(changed);
+  if (lintDirs.length > 0) {
+    commands.push({ label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", `--only=${lintDirs.join(",")}`] });
+  }
+  if (docsInputsChanged(changed)) {
+    commands.push({ label: "capabilities:check", cmd: "pnpm", args: ["run", "capabilities:check"] });
+    commands.push({ label: "docs:build", cmd: "pnpm", args: ["run", "docs:build"] });
   }
   const related = relatedTestArgs(changed);
   if (related) {
