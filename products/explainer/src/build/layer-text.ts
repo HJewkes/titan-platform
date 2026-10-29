@@ -1,8 +1,5 @@
 import type { Finding, ProbedMoment } from "@titan-design/render-qa";
-import { plainText } from "@titan-design/speech-vet";
 import { cueResolverFromWords } from "../cues.js";
-import { unspokenFacts } from "../qa/narration-facts.js";
-import { SHARED_RUN_WORDS, sharedRun } from "../qa/timing-gates.js";
 import type { BuilderRef } from "./beat-worker.js";
 import type { LayerPacket } from "./layer-packet.js";
 import type { BuiltLayer } from "./layer-tree.js";
@@ -72,25 +69,6 @@ export const qaRows = (beat: string, atS: number, findings: readonly Finding[]):
 /** Every visible text run that shows `NaN`, `undefined`, `null` or `[object`, as rows. */
 export const badTextRows = (beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] =>
   probed.flatMap(({ t, texts }) => texts.filter(({ text }) => BAD_TEXT.test(text)).map(({ element, text }) => ({ beat, element, rule: "bad-text" as const, text, atS: t })));
-
-type ProbedTexts = Pick<ProbedMoment, "t" | "texts">;
-
-/**
- * qa's narration rules on one layer, against the words its beat speaks: a number or headline name the settled frame
- * shows that the narration never says, read at the last moment so a count-up is judged on the value it lands on, and
- * any text that repeats 5 or more narration words in a row.
- */
-export function narrationRows(beat: string, spoken: string, probed: readonly ProbedTexts[]): LayerTextRow[] {
-  const heard = plainText(spoken);
-  const settled = [...probed].sort((a, b) => a.t - b.t).at(-1);
-  const facts = settled === undefined ? [] : unspokenFacts(beat, settled.texts, heard).map((fact): LayerTextRow => {
-    const shown = settled.texts.find(({ text }) => text === fact.shown)!;
-    return { beat, element: shown.element, rule: "unspoken-fact", text: shown.text, atS: settled.t, fact: fact.fact };
-  });
-  const echoes = probed.flatMap(({ t, texts }) => texts.filter(({ text }) => sharedRun(text, heard) >= SHARED_RUN_WORDS)
-    .map(({ element, text }): LayerTextRow => ({ beat, element, rule: "narration-echo", text, atS: t })));
-  return [...facts, ...echoes];
-}
 
 /** One row per element, rule, text and fact, the earliest moment kept. */
 export function distinctRows(rows: readonly LayerTextRow[]): LayerTextRow[] {

@@ -2,10 +2,11 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DEFAULT_OPTIONS, type InspectOptions, type ProbedMoment } from "@titan-design/render-qa";
-import { badTextRows, distinctRows, narrationRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
+import { badTextRows, distinctRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree } from "../build/layer-tree.js";
 import type { Timeline } from "../composition/timeline.js";
 import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js";
+import { narrationRows } from "../qa/layer-narration.js";
 import { defaultCompositionPage, servePage, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers } from "./custom-layers.js";
 
