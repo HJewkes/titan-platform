@@ -129,9 +129,12 @@ interface ReviewerAgent {
 /** How a caller starts a reviewer; a throw from `spawn` or `resume` that the caller does not classify as a broker outage is a refusal. */
 interface ReviewerDispatch {
     roster(): Promise<readonly ReviewerAgent[]>;
-    /** `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. */
-    spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts): Promise<void>;
-    resume(name: string, brief: string): Promise<void>;
+    /**
+     * `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. A dispatch that waits
+     * before starting the reviewer stops waiting, and starts nothing, once `signal` aborts.
+     */
+    spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts, signal?: AbortSignal): Promise<void>;
+    resume(name: string, brief: string, signal?: AbortSignal): Promise<void>;
 }
 /** The dispatched reviewer whose verdict a caller waits for. */
 interface AwaitVerdictInput extends ReviewTarget {
