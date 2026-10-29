@@ -33,18 +33,19 @@ function pageExtras(script: ScriptV1, beat: ScriptBeat, drawn: FilledBeat, ids: 
 
 /**
  * The storyboard render draws: each beat the template fill drew, in script order, under its storyboard id, with the
- * spec type and slots the fill chose and the script's own cue words, plus the page extras of each.
+ * spec type and slots the fill chose and the script's own cue words, plus the page extras of each. A custom beat
+ * (`customSpecs`, script id to spec type) holds its place with no slots or extras: its built layer draws it.
  */
-export function boardFromFill(script: ScriptV1, filled: FilledScript, ids: ReadonlyMap<string, string>): FillBoard {
-  const byId = new Map(script.beats.map((beat) => [beat.id, beat]));
+export function boardFromFill(script: ScriptV1, filled: FilledScript, ids: ReadonlyMap<string, string>, customSpecs: ReadonlyMap<string, string> = new Map()): FillBoard {
+  const drawnById = new Map(filled.beats.map((drawn) => [drawn.id, drawn]));
   const extras = new Map<string, PageExtras>();
-  const beats = filled.beats.map((drawn) => {
-    const beat = byId.get(drawn.id)!;
-    const id = ids.get(drawn.id)!;
+  const beats = script.beats.filter((beat) => drawnById.has(beat.id) || customSpecs.has(beat.id)).map((beat) => {
+    const id = ids.get(beat.id)!;
     const cues = beatCues(beat.visual);
-    extras.set(id, pageExtras(script, beat, drawn, ids));
+    const drawn = drawnById.get(beat.id);
+    if (drawn !== undefined) extras.set(id, pageExtras(script, beat, drawn, ids));
     return {
-      id, type: drawn.spec, duration_s: beat.plannedS, spoken: beat.spoken, slots: drawn.slots,
+      id, type: drawn?.spec ?? customSpecs.get(beat.id)!, duration_s: beat.plannedS, spoken: beat.spoken, slots: drawn?.slots ?? {},
       ...(cues.length > 0 ? { cues } : {}),
     };
   });

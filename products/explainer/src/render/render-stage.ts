@@ -76,14 +76,11 @@ function stagedPage(built: BuiltPage, styleCss: string | undefined, dir: string)
   }
 }
 
-/**
- * The custom beats' layers, bundled into the page tree. A run with no built tree draws them from their template spec,
- * with a note; a tree that lacks one of them throws.
- */
+/** The custom beats' layers, bundled into the page tree. A custom beat is never drawn from a template spec, so a missing tree or layer throws naming the beat. */
 async function pageLayers(input: RenderStageInput, custom: ReadonlyMap<string, string>, scratch: string, pageDir: string): Promise<{ layers: Map<string, PageLayer>; notes: string[] }> {
   if (custom.size === 0) return { layers: new Map(), notes: [] };
   const sha = input.artifacts[CUSTOM_LAYERS];
-  if (sha === undefined) return { layers: new Map(), notes: [`no custom-layers tree, so custom beats are drawn from their template spec: ${[...custom.keys()].join(", ")}`] };
+  if (sha === undefined) throw new Error(`custom layer for beat "${[...custom.keys()].join('", "')}" is not built: the run has no custom-layers tree`);
   const treeDir = path.join(scratch, CUSTOM_LAYERS);
   input.store.materialise(sha, treeDir);
   const layers = await stageCustomLayers(treeDir, custom, pageDir);
@@ -96,7 +93,7 @@ async function prepare(input: RenderStageInput, config: RenderConfig, engine: Re
   const pageDir = path.join(scratch, "page");
   stagedPage(await engine.page(), config.styleCss, pageDir);
   const { layers, notes } = await pageLayers(input, custom, scratch, pageDir);
-  const timeline = withCustomLayers(compileTimeline(board, words, { extras }), layers);
+  const timeline = withCustomLayers(compileTimeline(board, words, { extras, custom: new Set(custom.values()) }), layers);
   return { timeline, pageDir, pageSha: treeSha(pageDir), audio: { words: RenderWordsSchema.parse(words), wavDir: linkedWavs(input, ids, scratch) }, notes };
 }
 
