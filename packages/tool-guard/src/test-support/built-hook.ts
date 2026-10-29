@@ -6,13 +6,13 @@ import type * as Built from "../index.js";
 // CI builds before it tests; locally run `pnpm build` first.
 const dist = fileURLToPath(new URL("../../dist/", import.meta.url));
 
-export interface BuiltHookRun {
+interface BuiltHookRun {
   status: number | null;
   signal: NodeJS.Signals | null;
   stdout: string;
 }
 
-export interface BuiltHookOptions {
+interface BuiltHookOptions {
   home: string;
   /** The hook's environment, HOME aside; this process's by default, as the spawned bin inherited it. */
   env?: Readonly<Record<string, string | undefined>>;

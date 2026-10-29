@@ -7,7 +7,7 @@ import { createInterface } from "node:readline";
 import { beforeAll } from "vitest";
 
 /** One run a real-shell oracle used to start with its own `spawnSync`, spelled as that call was. */
-export interface ShellRun {
+interface ShellRun {
   /** Names the row in the error a timeout raises, so a hung row is found by name. */
   name: string;
   program: string;
@@ -21,7 +21,7 @@ export interface ShellRun {
   input?: string;
 }
 
-export interface ShellResult {
+interface ShellResult {
   /** As bash's `$?` reports it, so a signalled run reads 128 plus the signal. */
   status: number;
   stdout: string;
@@ -119,7 +119,7 @@ function watch({ program, args, kill }: Driver, script: string, timeoutMs: numbe
 }
 
 /** A row's outcome; reading one that timed out or never ran throws, naming it. */
-export interface ShellRows {
+interface ShellRows {
   of(i: number): ShellResult;
 }
 
@@ -156,7 +156,7 @@ function unwrap(result: ShellResult | Error | undefined, i: number): ShellResult
 }
 
 /** A row run in a subshell of one shell: its script, read from `scriptFile`, evaluated in `cwd` with no stdio. */
-export interface SubshellRow {
+interface SubshellRow {
   name: string;
   cwd: string;
   scriptFile: string;
@@ -167,7 +167,7 @@ export interface SubshellRow {
  * its subshell. The shell leads its own process group, killed when it ends; a row past `timeoutMs` is killed and fails
  * alone, and the rows after it still run. Written in the syntax bash and zsh share.
  */
-export interface SubshellOptions {
+interface SubshellOptions {
   /** The shell's whole environment. */
   env: Readonly<Record<string, string | undefined>>;
   cwd: string;
@@ -199,7 +199,7 @@ function statusOf(name: string, i: number, progress: Progress, timeoutMs: number
 }
 
 /** What one oracle row runs in its fresh directory, and what the test reads from the run. */
-export interface OracleRow<R> {
+interface OracleRow<R> {
   run: Omit<ShellRun, "name" | "cwd"> & { cwd?: string };
   read(result: ShellResult): R;
 }
@@ -208,7 +208,7 @@ export interface OracleRow<R> {
  * Rows a test file's `it`s look up by the arguments they used to run with: `add` each at collection, `beforeAll` runs
  * them all through one driver, each in its own fresh directory, and `get` returns a row's reading or throws its error.
  */
-export interface ShellOracle<A extends unknown[], R> {
+interface ShellOracle<A extends unknown[], R> {
   add(...args: A): void;
   /** Registers the vitest hook that runs every row added so far; call it after the adds. */
   beforeAll(): void;
