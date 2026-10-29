@@ -124,6 +124,14 @@ describe("pre-push ranges", () => {
       return { branchTip, onMain };
     });
 
+    // A copy still pointing at the template's bare would see the same history, so the tests below could pass against it.
+    it("hands each copy a remote inside its own root", () => {
+      const { repo, bare } = setup();
+
+      expect(repo.git(["remote", "get-url", "origin"]).trim()).toBe(bare);
+      expect(repo.git(["remote", "get-url", "--push", "origin"]).trim()).toBe(bare);
+    });
+
     it("skips a flagged commit that came in from a main the remote already has", () => {
       const { repo, bare, branchTip, onMain } = setup();
       repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
