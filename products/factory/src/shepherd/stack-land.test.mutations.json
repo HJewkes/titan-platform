@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "scratch repos keep the inherited push hook",
-      "file": "products/factory/src/shepherd/git-test-env.test-helpers.ts",
-      "find": "\"core.hooksPath\"",
-      "replace": "\"core.pager\"",
+      "name": "a rejected fast-forward push no longer ends as head-moved",
+      "file": "products/factory/src/shepherd/stack-land.ts",
+      "find": ".code !== 0) return headMoved(\"the fast-forward push was rejected\");",
+      "replace": ".code === 99) return headMoved(\"the fast-forward push was rejected\");",
       "kills": [
-        "restackChild retargets a child still on the parent's branch, then fast-forwards it to the merge-onto commit"
+        "restackChild ends as head-moved when a seat pushes between the restack and its push"
       ]
     }
   ]

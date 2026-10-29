@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "scratch repos keep the inherited push hook",
-      "file": "products/factory/src/shepherd/git-test-env.test-helpers.ts",
-      "find": "\"core.hooksPath\"",
-      "replace": "\"core.pager\"",
+      "name": "the restack merge drops the explicit merge base",
+      "file": "products/factory/src/shepherd/stack-restack.ts",
+      "find": " `--merge-base=${base}`,",
+      "replace": "",
       "kills": [
-        "a 3-deep stack squash-merged in order takes a clean merge-up at each level when each child edits only its own files"
+        "merge-onto restack of a stack landed level by level restacks the add/add case that a merge-tree without the explicit merge base conflicts on"
       ]
     }
   ]
