@@ -74,7 +74,7 @@ describe("report intake, shadow", () => {
     expect(await runCli(["report", "intake", "--since", "1d"], io)).toBe(EXIT.USAGE);
     expect(stderr.join("")).toContain("only --shadow");
     expect(await runCli(["report", "intake", "--since", "1d", "--shadow", "--out", out], io)).toBe(0);
-    expect(readFileSync(out, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { agent: string; status: string })).toEqual([
+    expect(readFileSync(out, "utf8").trim().split("\n").map((line): unknown => JSON.parse(line))).toEqual([
       expect.objectContaining({ agent: "w1", status: "DONE" }),
     ]);
   });
