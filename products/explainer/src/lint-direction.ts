@@ -55,7 +55,10 @@ function shownTexts(beat: DrawnBeat): ShownText[] | undefined {
   return stage && [...(beat.headline === undefined ? [] : [{ role: "heading" as const, text: beat.headline }]), ...stage];
 }
 
-const tooLong = ({ role, text: shown }: ShownText): boolean => screenTokens(shown).length > (role === "heading" ? HEADING_MAX_WORDS : LABEL_MAX_WORDS);
+/** The headings the beat's stage draws below the chrome headline: a fact-flash's chapter label, a list's title. */
+export const stageHeadings = (beat: DrawnBeat): string[] => (stageTexts(beat) ?? []).filter((shown) => shown.role === "heading").map((shown) => shown.text);
+
+const tooLong =({ role, text: shown }: ShownText): boolean => screenTokens(shown).length > (role === "heading" ? HEADING_MAX_WORDS : LABEL_MAX_WORDS);
 
 /** Each predicted beat's headings and labels over G9's caps. */
 export const overlongTexts = (script: ScriptV1): { beat: string; kind: string; texts: ShownText[] }[] =>

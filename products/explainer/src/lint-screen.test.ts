@@ -42,6 +42,28 @@ describe("Q-D14 on-screen numbers are spoken", () => {
 
     expect(row.pass).toBe(true);
   });
+
+  it("counts every number of a chart the fill draws as a list, as qa reads its rows", () => {
+    const script = dailyWith("ships-2", { visual: { labels: ["north: 3", "south: 9", "east is busy 12 trucks"] }, spoken: "The east dock is the busy one, at twelve trucks." });
+
+    const row = l0Row(script, "Q-D14");
+    const hint = repairHint(row, script);
+
+    expect(row.detail_beats).toEqual(["ships-2"]);
+    expect(hint).toContain('"3" (in "north: 3")');
+    expect(hint).toContain('"9" (in "south: 9")');
+  });
+
+  it("reads the chapter label a fact-flash beat draws as its heading", () => {
+    const base = dailyWith("reflection-2", { visual: { beat: "fact-flash", labels: ["Small lanes ship faster"] } });
+    const script = { ...base, chapters: base.chapters.map((chapter) => (chapter.id === "reflection" ? { ...chapter, label: "3 lanes stalled" } : chapter)) };
+
+    const row = l0Row(script, "Q-D14");
+    const hint = repairHint(row, script);
+
+    expect(row.detail_beats).toContain("reflection-2");
+    expect(hint).toContain('reflection-2 shows "3" (in "3 lanes stalled")');
+  });
 });
 
 describe("Q-D16 labels that echo the narration", () => {

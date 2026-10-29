@@ -9,7 +9,7 @@ import { beatCues, type ScriptV1 } from "./script-schema.js";
 const seconds = (s: number): string => `${Math.round(s * 10) / 10} s`;
 
 const numbersHint: Hint = (script, row) => {
-  const named = namedBeats(script, row).map((beat) => `${beat.id} shows ${unspokenNumbers(beat).map(({ fact, shown }) => `"${fact}" (in "${clipped(shown)}")`).join(", ")}`);
+  const named = namedBeats(script, row).map((beat) => `${beat.id} shows ${unspokenNumbers(script, beat).map(({ fact, shown }) => `"${fact}" (in "${clipped(shown)}")`).join(", ")}`);
   return `on-screen numbers the beat never says: ${named.join("; ")}. Say each number in that beat's spoken text, or drop it from the assertion, labels and chips: say it or drop it`;
 };
 
