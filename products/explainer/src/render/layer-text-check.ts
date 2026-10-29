@@ -1,11 +1,12 @@
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEFAULT_OPTIONS, type InspectOptions } from "@titan-design/render-qa";
+import { DEFAULT_OPTIONS, type InspectOptions, type ProbedMoment } from "@titan-design/render-qa";
 import { badTextRows, distinctRows, plannedCues, qaRows, revealMoments, type LayerCheckInput, type LayerTextCheck, type LayerTextRow } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree } from "../build/layer-tree.js";
 import type { Timeline } from "../composition/timeline.js";
 import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js";
+import { narrationRows } from "../qa/layer-narration.js";
 import { defaultCompositionPage, servePage, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers } from "./custom-layers.js";
 
@@ -31,18 +32,21 @@ async function layerPage(input: LayerCheckInput, built: BuiltPage, scratch: stri
 }
 
 // Virtual time only runs forward, so each moment is inspected and probed before the next is sought.
-async function rowsAt(page: QaPage, beat: string, moments: readonly number[], options: InspectOptions): Promise<LayerTextRow[]> {
+async function rowsAt(page: QaPage, packet: LayerCheckInput["packet"], moments: readonly number[], options: InspectOptions): Promise<LayerTextRow[]> {
+  const beat = packet.beat_id;
   const rows: LayerTextRow[] = [];
+  const probed: ProbedMoment[] = [];
   for (const t of moments) {
     rows.push(...qaRows(beat, t, (await page.inspectAt(t, options)).findings));
-    rows.push(...badTextRows(beat, await page.probe([{ beat, t }])));
+    probed.push(...(await page.probe([{ beat, t }])));
   }
-  return distinctRows(rows);
+  return distinctRows([...rows, ...badTextRows(beat, probed), ...narrationRows(beat, packet.spoken, probed)]);
 }
 
 /**
  * The $0 check after a layer build: the layer alone on the composition page, seeked to each reveal point, held to qa's
- * small-text and under-chrome rules at qa's thresholds and to the bad-text rule. No model call; Chromium only.
+ * small-text and under-chrome rules at qa's thresholds, to the bad-text rule, and to qa's narration-facts and G10 rules
+ * against the beat's spoken words. No model call; Chromium only.
  */
 export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerTextCheck {
   const engine = deps.engine ?? chromiumQaEngine();
@@ -57,7 +61,7 @@ export function chromiumLayerTextCheck(deps: LayerTextCheckDeps = {}): LayerText
       try {
         const page = await engine.open(served.url, options, []);
         try {
-          return await rowsAt(page, input.layer.beatId, revealMoments(timeline.beats[0]!.cues ?? {}, timeline.durationS), options);
+          return await rowsAt(page, { ...input.packet, beat_id: input.layer.beatId }, revealMoments(timeline.beats[0]!.cues ?? {}, timeline.durationS), options);
         } finally {
           await page.close();
         }

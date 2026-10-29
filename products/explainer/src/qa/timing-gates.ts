@@ -32,7 +32,8 @@ export const TEXT_FLOOR_PX = 40;
 const FIRST_MOTION_S = 0.2;
 const HEADLINE_WORDS = 10;
 const LABEL_WORDS = 3;
-const SHARED_RUN_WORDS = 5;
+/** G10's limit: a display text sharing this many narration words in a row repeats the sentence. */
+export const SHARED_RUN_WORDS = 5;
 /** Assertion-evidence slides averaged about 21 words against 41 for topic-bullet ones: the near-20 line, not a tested threshold. */
 const FRAME_WORDS = 20;
 /**
@@ -238,7 +239,7 @@ function g9Labels({ probed }: TimingInput): TimingGate {
 }
 
 /** Longest run of consecutive words a display text shares with its beat's narration. */
-function sharedRun(display: string, spoken: string): number {
+export function sharedRun(display: string, spoken: string): number {
   const a = tokens(display);
   const b = tokens(spoken);
   let best = 0;
