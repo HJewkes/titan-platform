@@ -141,6 +141,14 @@ and neither EOF nor a native turn completion proves session completion.
 Existing session-read functions, default roots and account behavior stay unchanged.
 
 
+## Agent-chat wire
+
+Import `@titan-design/agent-protocol/wire` for zod schemas and derived types of agent-chat's
+spawn, resume, retire, agents and surface frames and the profile, launch and roster records they
+carry. The exported schemas keep unknown keys; `buildRequestSchemas("exact")` and
+`buildResultSchemas("exact")` refuse them, for drift tests. The roster row is `AgentRecord`, so it
+never clashes with the root `AgentIdentity`.
+
 ## Shared pricing
 
 Import `@titan-design/agent-protocol/pricing` for the existing `PRICE_TABLE`, `PRICE_TABLE_VERSION`, `findPrice`, `priceRequest`, `priceCodexUsage` and `validateCodexPrices` exports and their input/result types. Session-analytics and agent preserve their existing entrypoints as compatibility exports.
