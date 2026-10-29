@@ -1,10 +1,12 @@
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
-import { FontLoadError } from "@titan-design/frame-capture";
+import { FontLoadError, launch } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BuilderRef } from "../build/beat-worker.js";
 import type { LayerTextCheck } from "../build/layer-text.js";
 import { buildPage } from "../composition/page.test-helpers.js";
+import { chromiumQaEngine } from "../qa/qa-engine.js";
 import { chromiumLayerTextCheck } from "./layer-text-check.js";
 
 // Synthetic: hand-written layers for an invented parcel desk; no builder wrote them.
@@ -34,13 +36,18 @@ const PAST_THE_BOX = layer(`useBeatTime();
 
 let pageDir: string;
 let check: LayerTextCheck;
+let browser: Browser;
 
 beforeAll(async () => {
   pageDir = await buildPage();
-  check = chromiumLayerTextCheck({ page: async () => ({ dir: pageDir, sha: "test" }) });
+  browser = await launch();
+  check = chromiumLayerTextCheck({ page: async () => ({ dir: pageDir, sha: "test" }), engine: chromiumQaEngine(undefined, browser) });
 }, BROWSER_TIMEOUT_MS);
 
-afterAll(() => rmSync(pageDir, { recursive: true, force: true }));
+afterAll(async () => {
+  await browser.close();
+  rmSync(pageDir, { recursive: true, force: true });
+});
 
 const checkLayer = (module: string) =>
   check({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module, anchors: ["A1:F6"], elements: [], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: PACKET });
@@ -81,7 +88,7 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const broken = await buildPage();
     const [woff2] = readdirSync(path.join(broken, "assets")).filter((f) => f.endsWith(".woff2"));
     rmSync(path.join(broken, "assets", woff2!));
-    const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }) });
+    const brokenCheck = chromiumLayerTextCheck({ page: async () => ({ dir: broken, sha: "broken" }), engine: chromiumQaEngine(undefined, browser) });
 
     const failure = await brokenCheck({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module: SMALL_CAPTION, anchors: ["A1:F6"], elements: [], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: PACKET }).then(() => undefined, (e: unknown) => e);
 

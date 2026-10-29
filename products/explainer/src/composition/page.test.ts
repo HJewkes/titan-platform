@@ -33,8 +33,8 @@ let browser: Browser;
 beforeAll(async () => {
   pageDir = await buildPage();
   server = await servePage(pageDir, SLOW_TIMELINE_MS);
-  baked = await renderFrames(server.url("baked.html"));
   browser = await launch();
+  baked = await renderFrames(server.url("baked.html"), browser);
 }, BROWSER_TIMEOUT_MS);
 
 // openCapturePage leaves its context open, also when the open rejects, so each test's pages close here.
@@ -102,7 +102,7 @@ function shownRowTexts(beat: string): string[] {
 
 describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   test("a timeline loaded at runtime renders the same frames as the fixture imported at build time", async () => {
-    const runtime = await renderFrames(server.url("index.html", "/timelines/fixture.timeline.json"));
+    const runtime = await renderFrames(server.url("index.html", "/timelines/fixture.timeline.json"), browser);
 
     assert.equal(runtime.pageDurationS, fixtureDurationS("fixture.timeline.json"));
     assert.equal(framesSha(runtime), framesSha(baked));
@@ -111,7 +111,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   // Mutation: mount MotionProvider before the timeline resolves (a provisional duration, beats filled in later);
   // the capture reads frame 0 before the held response lands, frame 0 is empty and the frames differ.
   test("a slowly served timeline still renders frame 0 and the build-time frames", async () => {
-    const slow = await renderFrames(server.url("index.html", "/slow/fixture.timeline.json"));
+    const slow = await renderFrames(server.url("index.html", "/slow/fixture.timeline.json"), browser);
 
     assert.equal(sha(slow.frames[0] ?? Buffer.alloc(0)), sha(baked.frames[0] ?? Buffer.alloc(1)));
     assert.equal(framesSha(slow), framesSha(baked));
@@ -120,7 +120,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   test("one build renders three different timelines, each at its own duration", async () => {
     const names = ["fixture.timeline.json", "second.timeline.json", "third.timeline.json"];
 
-    const renders = await Promise.all(names.map((name) => renderFrames(server.url("index.html", `/timelines/${name}`))));
+    const renders = await Promise.all(names.map((name) => renderFrames(server.url("index.html", `/timelines/${name}`), browser)));
 
     assert.deepEqual(renders.map((r) => r.pageDurationS), names.map(fixtureDurationS));
     assert.equal(new Set(renders.map(framesSha)).size, names.length);
@@ -186,7 +186,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
 
   // Mutation: keep the 48 px column gap on a dense chart; twelve labels then run past the stage box and the page fails.
   test("a line chart of twelve points fits its stage box with and without a legend, through every frame", async () => {
-    const render = await renderFrames(server.url("index.html", "/timelines/dense-line.timeline.json"));
+    const render = await renderFrames(server.url("index.html", "/timelines/dense-line.timeline.json"), browser);
 
     assert.equal(render.pageDurationS, fixtureDurationS("dense-line.timeline.json"));
   });
@@ -201,7 +201,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   test("the kind sheet writes a first and a settled frame of each kind, none of them blank", async () => {
     const outDir = mkdtempSync(join(tmpdir(), "explainer-kind-sheet-"));
     try {
-      const sheet = await writeParitySheet(pageDir, kindsTimeline(), outDir);
+      const sheet = await writeParitySheet(pageDir, kindsTimeline(), outDir, { browser });
 
       const kinds = [...new Set(kindsTimeline().beats.map(sheetKind))];
       assert.deepEqual(sheet.frames.map((f) => f.file), kinds.flatMap((k) => [`kind-${k}-first.png`, `kind-${k}-settled.png`]));
@@ -219,7 +219,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const stage = { ...timeline, beats: timeline.beats.filter((beat) => resolveBeat(beat.kind).stage) };
     const lead = new Set(stage.beats.filter((beat) => beat.hints?.qaLeadLine).map((beat) => beat.id));
 
-    const result = await cueGate(chromiumQaEngine(), server.url("index.html", KINDS_URL), timelineFromArtifact(stage), loadQaGate("daily-overview"), { lead });
+    const result = await cueGate(chromiumQaEngine(undefined, browser), server.url("index.html", KINDS_URL), timelineFromArtifact(stage), loadQaGate("daily-overview"), { lead });
 
     assert.deepEqual(result.held.errors.map(({ kind, beat, reason }) => ({ kind, beat, reason })), []);
   });
