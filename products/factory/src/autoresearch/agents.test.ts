@@ -10,6 +10,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arAgentPorts, plannerName, type ArAgentsOptions } from "./agents.js";
 import { loadWaitPort } from "./load-wait.js";
+import { resumeContract } from "./planner-brief.js";
 
 let dir: string;
 let clone: string;
@@ -32,19 +33,21 @@ const fs = require("fs"), path = require("path"), cp = require("child_process");
 const dir = process.env.AGENT_CHAT_HOME, args = process.argv.slice(2);
 const rosterPath = path.join(dir, "roster.json");
 const roster = fs.existsSync(rosterPath) ? JSON.parse(fs.readFileSync(rosterPath, "utf8")) : [];
+if (args[1] === "spawn" && args.includes("--help")) { process.stdout.write(fs.readFileSync(path.join(dir, "spawn-help.txt"), "utf8")); process.exit(0); }
 const log = (extra) => fs.appendFileSync(path.join(dir, "calls.jsonl"), JSON.stringify({ args, ...extra }) + "\\n");
 if (args[1] === "ls") { log({}); process.stdout.write(JSON.stringify(roster)); process.exit(0); }
 const name = args[2];
 const behave = JSON.parse(fs.readFileSync(path.join(dir, "behave", name + ".json"), "utf8"));
 let row = roster.find((r) => r.name === name);
+let brief;
 if (args[1] === "spawn") {
-  fs.readFileSync(0);
+  brief = fs.readFileSync(0, "utf8");
   row = { name, agentId: name, state: "exited", presence: "exited", status: "finished", profile: args[3], surface: "headless",
     cwd: process.cwd(), sessionId: "s-" + name, generation: 1, transcriptPath: path.join(dir, "t-" + name + ".jsonl") };
   roster.push(row);
 }
 const g = (...a) => cp.execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...a], { cwd: row.cwd, encoding: "utf8" }).trim();
-log({ head: g("rev-parse", "HEAD") });
+log({ head: g("rev-parse", "HEAD"), brief });
 if (behave.commit) { fs.writeFileSync(path.join(row.cwd, name + ".txt"), args[1]); g("add", "-A"); g("commit", "-qm", "work"); }
 const head = g("rev-parse", "HEAD");
 if (behave.pending) { row.presence = "live"; row.state = "live"; }
@@ -63,7 +66,7 @@ const final = (requestId: string, body: string, cache = { read: 0, w5m: 0, w1h: 
 const implemented = (requestId = "r-final") => final(requestId, '{"head": "{HEAD}", "lesson": "smaller is better"}');
 const behave = (name: string, script: { commit?: boolean; pending?: boolean; turns?: string[] }) => writeFileSync(join(dir, "behave", `${name}.json`), JSON.stringify(script));
 
-const calls = (): { args: string[]; head?: string }[] =>
+const calls = (): { args: string[]; head?: string; brief?: string }[] =>
   existsSync(join(dir, "calls.jsonl")) ? readFileSync(join(dir, "calls.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line)) : [];
 const spawns = () => calls().filter((call) => call.args[1] === "spawn" || call.args[1] === "resume");
 const roster = (): Record<string, unknown>[] => (existsSync(join(dir, "roster.json")) ? JSON.parse(readFileSync(join(dir, "roster.json"), "utf8")) : []);
@@ -73,7 +76,7 @@ const row = (name: string, cwd: string, presence = "exited") => ({ name, agentId
 function ports(overrides: Partial<ArAgentsOptions> = {}) {
   const bin = join(dir, "agent-chat");
   return arAgentPorts({
-    clone, configDir: "/accounts/agents", account: "agents", plannerCwd: clone,
+    clone, target: { name: "demo", adapterDir: "adapter" }, configDir: "/accounts/agents", account: "agents", plannerCwd: clone,
     agentChat: { bin, timeoutMs: 10_000, pollMs: 5 },
     profiles: { implementer: "impl", planner: "planner" },
     limits: { pool: "agents", read: () => parseLimits(OPEN) },
@@ -95,6 +98,7 @@ beforeEach(() => {
   writeFileSync(join(dir, "agent-chat.staging"), `#!${process.execPath}\n${FAKE}`);
   chmodSync(join(dir, "agent-chat.staging"), 0o755);
   cpSync(join(dir, "agent-chat.staging"), join(dir, "agent-chat"));
+  writeFileSync(join(dir, "spawn-help.txt"), "Usage: agent-chat agent spawn <name> <profile>\n  --cwd <dir>\n  --worktree <path>  adopt an existing worktree\n");
   vi.stubEnv("AGENT_CHAT_HOME", dir);
   clone = join(dir, "clone");
   mkdirSync(clone);
@@ -196,6 +200,20 @@ describe("implementers", () => {
 
     const argv = spawns()[0]!.args;
     expect(argv[argv.indexOf("--worktree") + 1]).toBe(tree);
+  });
+
+  it("spawn without --worktree, and warn that the tree is not adopted, on an agent-chat whose help lacks the flag", async () => {
+    writeFileSync(join(dir, "spawn-help.txt"), "Usage: agent-chat agent spawn <name> <profile>\n  --cwd <dir>\n");
+    const warnings: string[] = [];
+    const p = ports({ warn: (message) => warnings.push(message) });
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
+    behave(nameFor(tree, 1, "i-aaa"), { commit: true, turns: [implemented()] });
+
+    await p.implement(request(tree, "i-aaa"), signal);
+
+    expect(spawns()[0]!.args).not.toContain("--worktree");
+    expect(warnings).toEqual([expect.stringContaining(`[no-adopt]`)]);
+    expect(warnings[0]).toContain(tree);
   });
 
   it("are named from the request's run id, not from the tree they were handed", async () => {
@@ -324,12 +342,14 @@ describe("implementers", () => {
   });
 });
 
+const QUOTA = { keptLastRound: [], minPool: 12, queuedBefore: 0 };
+
 describe("the planner", () => {
   it("is spawned in round 1 and resumed in round 2", async () => {
     const p = ports();
     const name = plannerName("run-1");
     behave(name, { turns: [final("p1", '{"add": []}')] });
-    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [] };
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA };
 
     expect(await p.plan({ ...input, round: 1, mode: "spawn" }, signal)).toMatchObject({ ops: { add: [] }, agent: name, mode: "spawn" });
     behave(name, { turns: [final("p2", '{"add": [], "close": []}')] });
@@ -338,12 +358,42 @@ describe("the planner", () => {
     expect(spawns().map((call) => call.args.slice(0, 3))).toEqual([["agent", "spawn", name], ["agent", "resume", name]]);
   });
 
+  it("is spawned with the program path and the ops contract, and resumed with the contract line", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    behave(name, { turns: [final("p1", '{"add": []}')] });
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA };
+
+    await p.plan({ ...input, round: 1, mode: "spawn" }, signal);
+    await p.plan({ ...input, round: 2, mode: "resume" }, signal);
+
+    const [spawned, resumed] = spawns();
+    expect(spawned!.brief).toContain(join(clone, "adapter", "program.md"));
+    expect(spawned!.brief).toContain("End contract:");
+    expect(resumed!.args[resumed!.args.indexOf("--message") + 1]).toContain(resumeContract);
+  });
+
+  it("gets a second round-1 turn naming the quota its first answer missed", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    behave(name, { turns: [final("p1", '{"add": []}')] });
+    const input = { runId: "run-1", digest: partialFake<Digest>(), quota: QUOTA, round: 1 };
+
+    await p.plan({ ...input, violations: [], mode: "spawn" }, signal);
+    behave(name, { turns: [final("p2", '{"add": []}')] });
+    await p.plan({ ...input, violations: ["candidate pool 6 is under 12"], mode: "resume" }, signal);
+
+    const retry = spawns()[1]!;
+    expect(retry.args.slice(0, 3)).toEqual(["agent", "resume", name]);
+    expect(retry.args[retry.args.indexOf("--message") + 1]).toContain("candidate pool 6 is under 12");
+  });
+
   it("reports its session and the cache reads of its turn beside the ops", async () => {
     const p = ports();
     const name = plannerName("run-1");
     behave(name, { turns: [final("p1", '{"add": []}', { read: 120, w5m: 12, w1h: 0 })] });
 
-    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], round: 1, mode: "spawn" }, signal);
+    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA, round: 1, mode: "spawn" }, signal);
 
     expect(planned).toMatchObject({ sessionId: `s-${name}`, usage: { cacheReadTokens: 120, cacheWrite5mTokens: 12 } });
     expect(planned.usage!.usd).toBeGreaterThan(0);

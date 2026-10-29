@@ -281,6 +281,17 @@ describe("what a round records for readers", () => {
     expect(summaryOf(run, 1)).toMatchObject({ plannerRetried: true, quotaViolations: ["no bold idea and no [EXEMPT] reason"] });
   });
 
+  it("resumes the round-1 planner for its retry, naming the quota it missed", async () => {
+    const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
+    const { ports } = await loop([], { planner }, { ...CONFIG, minPool: 1 });
+
+    const round1 = ports.calls.plans.filter((plan) => plan.round === 1).map(({ mode, violations, quota }) => ({ mode, violations, minPool: quota.minPool }));
+    expect(round1).toEqual([
+      { mode: "spawn", violations: [], minPool: 1 },
+      { mode: "resume", violations: ["no bold idea and no [EXEMPT] reason"], minPool: 1 },
+    ]);
+  });
+
   it("settles the same outcomes the archive received: the superseded winner stopped, every one stamped with σ", async () => {
     const { run, ports } = await loop(["better", "better-2", "flat"]);
     const summary = summaryOf(run, 1);
