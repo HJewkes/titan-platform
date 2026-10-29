@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "lint:types scope skips the dependents test-scope's closure adds",
+      "file": "scripts/verify-changed.mjs",
+      "find": "  const scope = testScope(inputs, workspace);\n",
+      "replace": "  const scope = { mode: \"scoped\", dirs: inputs.map((path) => path.split(\"/\").slice(0, 2).join(\"/\")) };\n",
+      "kills": [
+        "lint:types scope covers a changed package and its workspace dependents, and nothing else"
+      ]
+    },
+    {
+      "name": "a lint:types input change stays scoped",
+      "file": "scripts/verify-changed.mjs",
+      "find": "  if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: \"full\" };\n",
+      "replace": "",
+      "kills": [
+        "lint:types scope runs unscoped when a lint:types input or a path test-scope does not know changes"
+      ]
+    }
+  ]
+}
