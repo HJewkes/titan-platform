@@ -6,7 +6,9 @@ import type { BuiltLayer } from "./layer-tree.js";
 
 /** qa's own finding kinds the build check holds a layer to, then the text no frame may show. */
 export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
-export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "bad-text";
+/** qa's narration rules on a layer's text: narration-facts on its settled numbers and names, G10 on every text. */
+export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
+export type LayerTextRule = (typeof QA_TEXT_RULES)[number] | "bad-text" | LayerNarrationRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -15,6 +17,8 @@ export interface LayerTextRow {
   rule: LayerTextRule;
   text: string;
   atS: number;
+  /** The number or name an unspoken-fact row shows that the narration never says. */
+  fact?: string;
 }
 
 export interface LayerCheckInput {
@@ -66,11 +70,11 @@ export const qaRows = (beat: string, atS: number, findings: readonly Finding[]):
 export const badTextRows = (beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] =>
   probed.flatMap(({ t, texts }) => texts.filter(({ text }) => BAD_TEXT.test(text)).map(({ element, text }) => ({ beat, element, rule: "bad-text" as const, text, atS: t })));
 
-/** One row per element and rule, the earliest moment kept. */
+/** One row per element, rule, text and fact, the earliest moment kept. */
 export function distinctRows(rows: readonly LayerTextRow[]): LayerTextRow[] {
   const first = new Map<string, LayerTextRow>();
   for (const row of [...rows].sort((a, b) => a.atS - b.atS)) {
-    const key = `${row.element}\u0000${row.rule}\u0000${row.text}`;
+    const key = `${row.element}\u0000${row.rule}\u0000${row.text}\u0000${row.fact ?? ""}`;
     if (!first.has(key)) first.set(key, row);
   }
   return [...first.values()];
@@ -83,8 +87,12 @@ const RULE_FIX: Record<LayerTextRule, string> = {
   "small-text": "draw it at 40 px or larger",
   "under-chrome": "keep it inside the stage box, inset 0, without running past its edges",
   "bad-text": "draw a real value: read the clock as const { t } = useBeatTime(), and format every number before it is shown",
+  "unspoken-fact": "draw no number or name the narration does not say; drop it or show only what is spoken",
+  "narration-echo": "show key words, not the sentence: share fewer than 5 words in a row with the narration",
 };
+
+const ruleFix = (row: LayerTextRow): string => (row.fact === undefined ? RULE_FIX[row.rule] : `the narration never says ${row.fact}: ${RULE_FIX[row.rule]}`);
 
 /** What a rebuild is told about the elements the last build drew against qa's text rules, as a field of its packet. */
 export const layerTextHint = (rows: readonly LayerTextRow[]): string =>
-  `the last build broke qa's text rules: ${rows.map((row) => `${row.rule} on ${row.element} ${JSON.stringify(row.text)} (${RULE_FIX[row.rule]})`).join("; ")}`;
+  `the last build broke qa's text rules: ${rows.map((row) => `${row.rule} on ${row.element} ${JSON.stringify(row.text)} (${ruleFix(row)})`).join("; ")}`;
