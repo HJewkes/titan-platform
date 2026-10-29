@@ -174,6 +174,11 @@ describe("planCommands", () => {
     expect(vitest.label).toMatch(/no timeout/);
   });
 
+  it("spools a verify-changed timing record from the vitest run", () => {
+    const spooled = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], hasTypecheckScript: () => true, spool: "/spool" });
+    expect(spooled.at(-1).env).toMatchObject({ TITAN_TEST_TIMING_SPOOL: "/spool", TITAN_TEST_TIMING_RUNNER: "verify-changed" });
+  });
+
   it("omits vitest and tsc for a docs-only change", () => {
     // Mutant caught: running vitest unscoped when nothing is testable.
     const docs = planCommands({ base: "b", changed: ["README.md"], hasTypecheckScript: () => true });

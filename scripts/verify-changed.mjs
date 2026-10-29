@@ -5,6 +5,7 @@
 // Usage: node scripts/verify-changed.mjs [base]   (base: VERIFY_CHANGED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -92,7 +93,7 @@ export function relatedTestArgs(changed) {
 }
 
 /** Ordered commands after the in-process LOC check; each is argv for spawnSync with optional env. */
-export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) {
+export function planCommands({ base, changed, hasTypecheckScript, hasTimeout, spool }) {
   const commands = [{ label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] }];
   for (const dir of typecheckDirs(changed, hasTypecheckScript)) {
     commands.push({ label: `tsc ${dir}`, cmd: "pnpm", args: ["--dir", dir, "run", "typecheck"] });
@@ -103,7 +104,9 @@ export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) 
     // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
     const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
     const label = hasTimeout ? "vitest related" : "vitest related (no timeout command, unbounded)";
-    commands.push({ label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` } });
+    // Each pre-push run leaves a timing record in the spool, so the corpus sees local runs too (TP-4465).
+    const timing = { TITAN_TEST_TIMING_SPOOL: spool, TITAN_TEST_TIMING_RUNNER: "verify-changed" };
+    commands.push({ label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}`, ...timing } });
   }
   return commands;
 }
@@ -124,6 +127,11 @@ function hasTypecheckScript(dir) {
   return existsSync(manifest) && Boolean(JSON.parse(readFileSync(manifest, "utf8")).scripts?.typecheck);
 }
 
+function timingSpool() {
+  const home = process.env.TITAN_TEST_TIMING_HOME || join(homedir(), ".local/share/titan-test-timing");
+  return process.env.TITAN_TEST_TIMING_SPOOL || join(home, "spool");
+}
+
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
 
 async function overLoc(changed) {
@@ -140,7 +148,7 @@ async function main() {
   const over = await overLoc(changed);
   for (const v of over) console.error(`verify:changed: ${v.path} has ${v.loc} lines, max ${v.max}`);
   let failed = over.length > 0;
-  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout() })) {
+  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout(), spool: timingSpool() })) {
     console.log(`verify:changed: ${label}`);
     const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
     if (result.status !== 0) {
