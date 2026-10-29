@@ -8,7 +8,7 @@
   },
   {
    "repo": "agent-chat",
-   "path": "src/agents/burndown"
+   "path": "src"
   },
   {
    "repo": "agent-chat",
@@ -35,6 +35,54 @@
    "path": "scripts/seat",
    "fate": "kept",
    "reason": "default: seat scripts retire per scripts/seat/README.md's retirement list (CC-746), not a D-task; an entry is still owed"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src",
+   "fate": "delete",
+   "task": "TP-626",
+   "milestone": "fold",
+   "reason": "default: agent-chat src is old path until the fold (TP-626); new logic there needs a package home or a carve-out tag"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents",
+   "fate": "delete",
+   "task": "TP-647",
+   "milestone": "fold",
+   "reason": "default: spawn and lifecycle code moves to the agent-dispatch Dispatcher (TP-647 spawn, TP-648 resume and retire)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/isolation",
+   "fate": "delete",
+   "task": "TP-646",
+   "milestone": "fold",
+   "reason": "default: isolation strategies move over @titan-design/worktree (TP-646)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/leak-guard",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "leak-guard",
+   "reason": "default: survives as product at the fold, pending the owner decision on its package home"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/broker",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "broker",
+   "reason": "default: the broker survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/seats",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "seats",
+   "reason": "default: seats survive as product at the fold"
   }
  ],
  "entries": [
@@ -4529,6 +4577,78 @@
    "path": "scripts/seat/testdata/backlog/records/tc-131/img/before.png",
    "fate": "kept",
    "reason": "stays beside queue and retires with it (TP-1570) (scripts/seat/README.md)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/supervisor.ts",
+   "fate": "delete",
+   "task": "TP-647",
+   "milestone": "fold",
+   "reason": "the Dispatcher replaces it: spawn, launch, attach and exit (TP-647), then resume, park and retire (TP-648)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/profiles.ts",
+   "fate": "delete",
+   "task": "TP-644",
+   "milestone": "fold",
+   "reason": "profiles and the launch plan move to agent-dispatch (TP-644)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/launch-plan.ts",
+   "fate": "delete",
+   "task": "TP-644",
+   "milestone": "fold",
+   "reason": "profiles and the launch plan move to agent-dispatch (TP-644)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/launch-files.ts",
+   "fate": "delete",
+   "task": "TP-644",
+   "milestone": "fold",
+   "reason": "profiles and the launch plan move to agent-dispatch (TP-644)"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-account.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-appendix.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-config.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
+  },
+  {
+   "repo": "agent-chat",
+   "path": "src/agents/teleport-destination.ts",
+   "fate": "survives",
+   "task": "TP-626",
+   "area": "teleport",
+   "reason": "teleport survives as product at the fold"
   }
  ],
  "compensators": [

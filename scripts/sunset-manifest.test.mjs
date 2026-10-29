@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, defaultedNotices, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
+import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, defaultFor, defaultedNotices, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "sunset-manifest.mjs");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -49,7 +49,7 @@ describe("sunset manifest check", () => {
     expect(checkManifest(manifestOf(...entries), listing("old/a.ts", "old/b.ts", "old/c.ts"))).toEqual([
       "titan-platform:old/a.ts: mapped twice",
       "old/b.ts: kept needs a reason",
-      "old/c.ts: delete needs a D-task id",
+      "old/c.ts: delete needs a D-task or fold id",
     ]);
   });
 
@@ -233,13 +233,52 @@ describe("the checked-in manifest", () => {
     expect(undeleted.filter((c) => !/^no v9\.1 task deletes it: .*v9\.1-amendments-421\.md.*v9\.1-decomposition-draft-r2\.md/.test(c.reason))).toEqual([]);
   });
 
-  it("carries the three root defaults, with burndown on its D-M8-08 rung", () => {
+  it("carries the root defaults, with burndown on its D-M8-08 rung and agent-chat src on its fold tasks", () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 
     expect(manifest.defaults.map(({ repo, path, fate, task }) => [repo, path, fate, task])).toEqual([
       ["titan-platform", "products/factory/src/shepherd", "kept", undefined],
       ["agent-chat", "src/agents/burndown", "delete", "D-M8-08"],
       ["agent-chat", "scripts/seat", "kept", undefined],
+      ["agent-chat", "src", "delete", "TP-626"],
+      ["agent-chat", "src/agents", "delete", "TP-647"],
+      ["agent-chat", "src/agents/isolation", "delete", "TP-646"],
+      ["agent-chat", "src/leak-guard", "survives", "TP-626"],
+      ["agent-chat", "src/broker", "survives", "TP-626"],
+      ["agent-chat", "src/agents/seats", "survives", "TP-626"],
     ]);
+  });
+
+  it("reports a new agent-chat src file under its area's default and exits 0 under warn", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sunset-agent-chat-"));
+    dirs.push(dir);
+    mkdirSync(join(dir, "src", "agents"), { recursive: true });
+    writeFileSync(join(dir, "src", "agents", "supervisor-new.ts"), "x\n");
+    execFileSync("git", ["-C", dir, "init", "-q"]);
+    execFileSync("git", ["-C", dir, "add", "."]);
+
+    const result = spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", dir, "--agent-chat-drift", "warn"], { encoding: "utf8" });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("::notice::defaulted: agent-chat:src/agents/supervisor-new.ts (src/agents)");
+  });
+});
+
+describe("sunset check fold entries", () => {
+  const fold = (path, milestone = "fold") => ({ repo: "titan-platform", path, fate: "delete", task: "TP-646", milestone });
+
+  it("accepts a TP fold id with the fold milestone and refuses one on a D milestone", () => {
+    expect(checkManifest(manifestOf(fold("old/a.ts"), fold("old/b.ts", "M3")), listing("old/a.ts", "old/b.ts"))).toEqual(["old/b.ts: a fold id's milestone is fold"]);
+  });
+
+  it("names an entry outside every root", () => {
+    expect(checkManifest(manifestOf(fold("elsewhere/a.ts")), {})).toEqual(["titan-platform:elsewhere/a.ts: under no root"]);
+  });
+
+  it("files a path under the deepest default that covers it", () => {
+    const rules = ["src", "src/agents/isolation", "src/agents"].map((path) => ({ ...fold(path), repo: "agent-chat" }));
+    const manifest = { roots: [{ repo: "agent-chat", path: "src" }], entries: [], defaults: rules };
+
+    expect(["src/x.ts", "src/agents/new.ts", "src/agents/isolation/x.ts"].map((file) => defaultFor(manifest, "agent-chat", file).path)).toEqual(["src", "src/agents", "src/agents/isolation"]);
   });
 });
