@@ -1,8 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { gitIn, seedRepo } from "../packages/test-kit/dist/git.js";
 import { combineExits, runGate } from "./graph-gate.mjs";
 
 const dirs = [];
@@ -28,8 +28,10 @@ process.exit(Number(process.env.${name.toUpperCase()}_EXIT));
 
 function gitRepo({ withOriginMain }) {
   const dir = scratchDir();
-  seedRepo(dir);
-  if (withOriginMain) gitIn(dir)("update-ref", "refs/remotes/origin/main", "HEAD");
+  const git = (...args) => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "ignore" });
+  git("init", "-q");
+  git("commit", "-q", "--allow-empty", "-m", "base");
+  if (withOriginMain) git("update-ref", "refs/remotes/origin/main", "HEAD");
   return dir;
 }
 
