@@ -1,13 +1,17 @@
-import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import type { ActiveWork } from "./active-work.js";
+import type { ActiveWork, ReadName, ReadResult } from "./active-work.js";
 import { cachedActiveWork } from "./active-work-cache.js";
 import { createInvalidation } from "./invalidation.js";
 
 /** Answers each call with its running number, and records the command and arguments it was asked. */
 function fakeActiveWork(): { client: ActiveWork; calls: Array<[string, unknown]> } {
   const calls: Array<[string, unknown]> = [];
-  const client = partialFake<ActiveWork>({ read: ((command: string, args?: unknown) => Promise.resolve({ call: calls.push([command, args]) })) as ActiveWork["read"] });
+  function read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+  function read(command: ReadName, args?: Record<string, unknown>): Promise<unknown> {
+    calls.push([command, args]);
+    return Promise.resolve({ call: calls.length });
+  }
+  const client: ActiveWork = { read };
   return { client, calls };
 }
 

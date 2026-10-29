@@ -282,8 +282,8 @@ describe("approvals.flow", () => {
     vi.setSystemTime(Date.now() + 60_000);
     const second = await Promise.race([flow(), new Promise<"waited">((resolve) => setTimeout(() => resolve("waited"), 300))]);
 
-    expect(second).not.toBe("waited");
-    expect(ids((second as ApprovalsFlow).flow.order)).toEqual([GATE]);
+    if (second === "waited") throw new Error("approvals.flow waited on the slow needs.list");
+    expect(ids(second.flow.order)).toEqual([GATE]);
     releases.forEach((release) => release());
   });
 

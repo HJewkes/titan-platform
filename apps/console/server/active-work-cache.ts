@@ -1,4 +1,4 @@
-import type { ActiveWork, ReadName } from "./active-work.js";
+import type { ActiveWork, ReadName, ReadResult } from "./active-work.js";
 import type { Invalidation } from "./invalidation.js";
 import { cachedReads, stableJson, type CacheTimes } from "./read-cache.js";
 
@@ -35,8 +35,10 @@ export function cachedActiveWork(inner: ActiveWork, invalidation?: Invalidation,
     ...(now !== undefined && { now }),
   });
   invalidation?.on("active-work", cache.invalidate);
-  return {
-    read: ((command: ReadName, args: Record<string, unknown> = {}) =>
-      CACHED.has(command) ? cache.read({ command, args }) : inner.read(command, args)) as ActiveWork["read"],
-  };
+  // The overload keeps the typed signature without asserting a cached `unknown` back to its result.
+  function read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
+  function read(command: ReadName, args: Record<string, unknown> = {}): Promise<unknown> {
+    return CACHED.has(command) ? cache.read({ command, args }) : inner.read(command, args);
+  }
+  return { read };
 }
