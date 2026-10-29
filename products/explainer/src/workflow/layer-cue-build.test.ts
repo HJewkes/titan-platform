@@ -118,14 +118,14 @@ describe("the narration check on custom-layer builds", () => {
   it("a card repeating five narration words gets one rebuild", async () => {
     // Arrange
     fx = fixture();
-    const { packets, worker } = scriptedWorker(span("holds each scan until the ledger"), span("Scan held for the ledger"));
+    const { packets, worker } = scriptedWorker(span("each scan until the ledger"), span("Scan held for the ledger"));
 
     // Act
     const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker));
 
     // Assert
     expect(packets).toHaveLength(2);
-    expect(JSON.parse(packets[1]!).rebuild).toMatch(/narration-echo on span#scans "holds each scan until the ledger" \(show key words, not the sentence/);
+    expect(JSON.parse(packets[1]!).rebuild).toMatch(/narration-echo on span#scans "each scan until the ledger" \(show key words, not the sentence/);
     expect(storedLayer(record.childRunId!)).toBe(span("Scan held for the ledger"));
   });
 
