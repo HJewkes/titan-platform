@@ -28,6 +28,6 @@ function pollWaitsFaster(): void {
   if (marked[marker]) return;
   marked[marker] = true;
   const wait = vi.waitFor;
-  vi.waitFor = ((callback, options = {}) =>
-    wait(callback, typeof options === "number" ? { timeout: options, interval: FACTORY_WAIT_INTERVAL_MS } : { ...options, interval: options.interval ?? FACTORY_WAIT_INTERVAL_MS })) as typeof vi.waitFor;
+  vi.waitFor = (callback, options = {}) =>
+    wait(callback, typeof options === "number" ? { timeout: options, interval: FACTORY_WAIT_INTERVAL_MS } : { ...options, interval: options.interval ?? FACTORY_WAIT_INTERVAL_MS });
 }
