@@ -101,7 +101,7 @@ async function keptRun(openPr?: (open: GitHubPort["openPr"]) => GitHubPort["open
   const config = arConfigFixture(root, { fixture: { clone, snapshot: SNAPSHOT } });
   const ports = targetPorts(config, "fixture", snapshotHost(services, () => partialFake<FactoryHost>({})));
   const pinned = await ports.pin({ runId: "run-1", pin: "main" }, signal);
-  const tree = pinned.integrationTree!;
+  const tree = pinned.integrationTree;
   writeFileSync(join(tree, "kept.txt"), "kept idea\n");
   await git(tree, "add", "--all");
   await git(tree, "commit", "--quiet", "-m", "kept idea");

@@ -29,7 +29,7 @@ const validatorCasesOf = (path: string | undefined): ValidatorCase[] =>
   });
 
 /** What a snapshot target needs from the host: Shepherd's GitHub port and its in-process register. */
-export interface SnapshotHost {
+interface SnapshotHost {
   port: SnapshotWiring["port"];
   register: SnapshotWiring["register"];
 }

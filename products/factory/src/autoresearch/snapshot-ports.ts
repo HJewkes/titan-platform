@@ -20,7 +20,7 @@ const keptLine = ({ ideaId, delta, sigma }: SnapshotLog["kept"][number]) =>
   `- ${ideaId}${delta === undefined ? "" : ` Δ ${delta}`}${sigma === undefined ? "" : ` σ ${sigma}`}`;
 
 /** The PR body and the log file: aggregates only, so no case name or per-case number leaves the run. */
-export function renderSnapshotLog(runId: string, log: SnapshotLog): string {
+function renderSnapshotLog(runId: string, log: SnapshotLog): string {
   const kept = log.kept.length > 0 ? log.kept.map(keptLine) : ["- none"];
   const spent = `agent ${dollars(log.spentSince.agentUsd)}, model ${dollars(log.spentSince.modelUsd)}`;
   return [`# ar ${runId} ${log.phase}`, "", `Trigger ${log.trigger} at round ${log.round}, ${log.from} to ${log.to}.`, `Spent since the last cut: ${spent}.`, "", "Kept:", ...kept, ""].join("\n");
