@@ -66,6 +66,7 @@ const CardFileSchema = z.looseObject({
   techniques: z.array(z.object({ ts: z.string(), what: z.string() })),
   prompt_sha: z.string(),
   model: z.string(),
+  transcript_path: z.string(),
 });
 
 type LoggedRow = z.infer<typeof RowSchema>;
@@ -78,14 +79,15 @@ interface CardLookup {
 function toCard(row: LoggedRow, lookup: CardLookup): DailyCard | undefined {
   const file = row.output_path!;
   if (!existsSync(file)) return undefined;
-  const c = CardFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
-  const digest = path.join(path.dirname(file), `${c.id}.digest.md`);
+  const { transcript_path: transcriptPath, ...c } = CardFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+  // The digest step writes `<id>.digest.md` beside the transcript (corpus-query's youtube layout).
+  const digest = path.join(path.dirname(transcriptPath), `${c.id}.digest.md`);
   const seconds = lookup.duration(c.id);
   return {
     ...c,
     sourceName: lookup.sourceName(row.source),
     durationMinutes: seconds === null ? null : Math.round(seconds / 60),
-    transcriptPath: path.join(path.dirname(file), `${c.id}.md`),
+    transcriptPath,
     inputSha: row.input_sha,
     ...(existsSync(digest) ? { digestPath: digest } : {}),
   };
