@@ -56,10 +56,11 @@ export function revealMoments(cues: Readonly<Record<string, number>>, durationS:
   return [...new Set([...Object.values(cues).map((atS) => Math.min(atS + SETTLE_S, end)), end])].sort((a, b) => a - b);
 }
 
+const isQaTextRule = (kind: string): kind is (typeof QA_TEXT_RULES)[number] => QA_TEXT_RULES.some((rule) => rule === kind);
+
 /** qa's small-text and under-chrome findings at one moment, as rows. */
 export const qaRows = (beat: string, atS: number, findings: readonly Finding[]): LayerTextRow[] =>
-  findings.flatMap((finding) => ((QA_TEXT_RULES as readonly string[]).includes(finding.kind)
-    ? [{ beat, element: finding.el, rule: finding.kind as LayerTextRule, text: finding.text ?? "", atS }] : []));
+  findings.flatMap(({ kind, el, text }) => (isQaTextRule(kind) ? [{ beat, element: el, rule: kind, text: text ?? "", atS }] : []));
 
 /** Every visible text run that shows `NaN`, `undefined`, `null` or `[object`, as rows. */
 export const badTextRows = (beat: string, probed: readonly Pick<ProbedMoment, "t" | "texts">[]): LayerTextRow[] =>
