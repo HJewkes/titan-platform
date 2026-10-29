@@ -55,8 +55,8 @@ pnpm verify:changed && pnpm dag:check
 
 `pnpm verify:changed` is the one pre-push gate. On files changed against origin/main it runs the
 max-file-loc cap, `changeset status`, tsc and type-aware lint (`lint:types`) for the touched packages,
-related vitest tests, `capabilities:check` (after rebuilding the touched packages) when a public
-package changed, and `docs:build` when a docs or generator input changed. Never run the root `pnpm test` locally; CI runs it. `pnpm dag:check` stays the separate
+related vitest tests, `capabilities:check` (after rebuilding touched packages) when a unit's `src/`,
+API snapshot or docs input changed, and `docs:build` when a file the doc generators read changed. Never run the root `pnpm test` locally; CI runs it. `pnpm dag:check` stays the separate
 pre-push check. It is self-hosted: it runs against this repo's own `@titan-design/code-graph`, built
 by `pnpm build`. `scripts/dag-check.sh` remains for one release as a fallback that needs
 `CODEWATCH_CLI` pointed at a built codewatch checkout.

@@ -53,6 +53,16 @@ function readExports(file, seen = new Set()) {
   return parseExports(readFileSync(file, "utf8"), resolveStar);
 }
 
+/** A workspace unit's library entry point, where the export walk starts. */
+export const entryPointOf = (base, entry) => join(base, entry.group, entry.dir, "src", "index.ts");
+
+/** Every file the export walk reads from `file`, so verify:changed can trigger on exactly these. */
+export function exportSources(file) {
+  const seen = new Set();
+  readExports(file, seen);
+  return [...seen];
+}
+
 /** Runtime values before types, callables before SCREAMING_CASE constants; source order breaks ties. */
 function rank(entry) {
   if (entry.type) return 2;
@@ -114,7 +124,7 @@ function useWhenFor(base, entry, data) {
 }
 
 function enrich(base, entry, data) {
-  const index = entry.group ? join(base, entry.group, entry.dir, "src", "index.ts") : "";
+  const index = entry.group ? entryPointOf(base, entry) : "";
   return { ...entry, useWhen: useWhenFor(base, entry, data), exports: keyExports(readExports(index)) };
 }
 

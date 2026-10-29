@@ -20,7 +20,7 @@
       ]
     },
     {
-      "name": "lint:types lints every package instead of the changed ones",
+      "name": "lint:types gets an empty --only list instead of the changed packages",
       "file": "scripts/verify-changed.mjs",
       "find": "`--only=${lintDirs.join(\",\")}`",
       "replace": "\"--only=\"",
@@ -31,10 +31,29 @@
     {
       "name": "docs:build runs on every push",
       "file": "scripts/verify-changed.mjs",
-      "find": "if (docsInputsChanged(changed)) commands.push(",
+      "find": "if (changed.some(triggers.docs)) commands.push(",
       "replace": "if (true) commands.push(",
       "kills": [
         "docs gate skips both checks when neither a docs nor a package input changed"
+      ]
+    },
+    {
+      "name": "capabilities trigger covers packages/ sources only",
+      "file": "scripts/verify-changed.mjs",
+      "find": "const unitSource = new RegExp(`${unit}src/`);",
+      "replace": "const unitSource = /^packages\\/[^/]+\\/src\\//;",
+      "kills": [
+        "docs gate checks capabilities for a product's star-exported source without rebuilding it",
+        "docs triggers derived from the generators cover every file the export walk reads, in every unit group"
+      ]
+    },
+    {
+      "name": "docs trigger drops the MARKED_PAGES pages",
+      "file": "scripts/verify-changed.mjs",
+      "find": "...Object.keys(markedPages), ",
+      "replace": "",
+      "kills": [
+        "docs triggers derived from the generators cover every page the reference generator fills"
       ]
     }
   ]

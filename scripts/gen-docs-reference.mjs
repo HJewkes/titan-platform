@@ -59,11 +59,14 @@ function tiersByDir(base) {
   return out;
 }
 
+/** The workspace directories whose units the docs and the catalog list. */
+export const UNIT_GROUPS = ["packages", "products", "apps"];
+
 /** Every workspace package, product and app, plus the published packages that live elsewhere. */
 export function collect(base = root) {
   const tiers = tiersByDir(base);
   const entries = [];
-  for (const group of ["packages", "products", "apps"]) {
+  for (const group of UNIT_GROUPS) {
     for (const dir of readdirSync(join(base, group)).sort()) {
       const manifest = join(base, group, dir, "package.json");
       if (!existsSync(manifest)) continue;

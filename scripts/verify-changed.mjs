@@ -5,8 +5,9 @@
 // Usage: node scripts/verify-changed.mjs [base]   (base: VERIFY_CHANGED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MARKED_PAGES, UNIT_GROUPS } from "./gen-docs-reference.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_BASE = "origin/main";
@@ -86,22 +87,42 @@ export function typecheckDirs(changed, hasTypecheckScript) {
   return touchedPackageDirs(typed).filter(hasTypecheckScript);
 }
 
-// What docs:build reads: site pages, the capability data and catalog, each unit's manifest, CAPABILITY.md and entry
-// point, the tier rule, and the generators with the modules they import.
-const DOCS_INPUT =
-  /^(?:site\/|CAPABILITIES\.md$|scripts\/(?:capabilities-data\.json|gen-(?:docs-reference|capabilities)[^/]*|api-snapshots[^/]*|new-package\.mjs)$|\.codewatch\/check\.json$|(?:packages|products|apps)\/[^/]+\/(?:package\.json|CAPABILITY\.md|src\/index\.ts)$)/;
+// Inputs the generators read at fixed paths; the rest of the trigger set comes from the generators' own exports.
+const FIXED_DOCS_INPUTS = [".codewatch/check.json", "scripts/capabilities-data.json"];
+const GENERATOR_ENTRIES = ["scripts/gen-docs-reference.mjs", "scripts/gen-capabilities.mjs"];
+const RELATIVE_IMPORT = /\bfrom\s*["'](\.{1,2}\/[^"']+)["']/g;
+// Only packages/ has API snapshots (api-snapshots.mjs), built from dist, so these files need a rebuild first.
+const SNAPSHOT_INPUT = /^packages\/[^/]+\/(?:src\/|api\/|package\.json$)/;
 
-export const docsInputsChanged = (changed) => changed.some((path) => DOCS_INPUT.test(path));
+/** The generator modules and every module they import by relative path; `readSource` maps a repo path to its text. */
+export function importClosure(entries, readSource) {
+  const seen = new Set();
+  const visit = (path) => {
+    if (seen.has(path)) return;
+    seen.add(path);
+    for (const [, spec] of readSource(path).matchAll(RELATIVE_IMPORT)) visit(posix.normalize(posix.join(posix.dirname(path), spec)));
+  };
+  entries.forEach(visit);
+  return [...seen];
+}
 
-// capabilities:check also compares API snapshots built from each public package's dist and follows `export *` into
-// sibling sources, so any change in a package can alter it, not just its entry point.
-const PUBLIC_PACKAGE_FILE = /^packages\/[^/]+\/(?:src\/|api\/|package\.json$|CAPABILITY\.md$)/;
-
-export const capabilityInputsChanged = (changed) =>
-  docsInputsChanged(changed) || changed.some((path) => PUBLIC_PACKAGE_FILE.test(path));
+/**
+ * Which changed files can fail docs:build and capabilities:check, from what the generators read: the MARKED_PAGES
+ * files, each UNIT_GROUPS unit's manifest and CAPABILITY.md, the generator modules and site/. capabilities:check
+ * also reads every unit's `export *` walk, covered by all of its src/, and the API snapshots.
+ */
+export function docsTriggers({ markedPages, unitGroups, generatorModules }) {
+  const unit = `^(?:${unitGroups.join("|")})/[^/]+/`;
+  const unitDoc = new RegExp(`${unit}(?:package\\.json|CAPABILITY\\.md)$`);
+  const unitSource = new RegExp(`${unit}src/`);
+  const files = new Set([...Object.keys(markedPages), ...generatorModules, ...FIXED_DOCS_INPUTS]);
+  const docs = (path) => path.startsWith("site/") || files.has(path) || unitDoc.test(path);
+  const capabilities = (path) => docs(path) || path === "CAPABILITIES.md" || unitSource.test(path) || SNAPSHOT_INPUT.test(path);
+  return { docs, capabilities };
+}
 
 /** Public packages to rebuild so the snapshots read fresh dist; none when only docs inputs changed. */
-export const snapshotBuildDirs = (changed) => touchedPackageDirs(changed.filter((path) => PUBLIC_PACKAGE_FILE.test(path))).filter((dir) => dir.startsWith("packages/"));
+export const snapshotBuildDirs = (changed) => touchedPackageDirs(changed.filter((path) => SNAPSHOT_INPUT.test(path)));
 
 /** Packages whose changed files can alter type-aware lint: the same files that can alter types, no script needed. */
 export function lintTypesDirs(changed) {
@@ -114,7 +135,7 @@ export function relatedTestArgs(changed) {
 }
 
 /** Ordered commands after the in-process LOC check; each is argv for spawnSync with optional env. */
-export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) {
+export function planCommands({ base, changed, hasTypecheckScript, hasTimeout, triggers }) {
   const commands = [{ label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] }];
   for (const dir of typecheckDirs(changed, hasTypecheckScript)) {
     commands.push({ label: `tsc ${dir}`, cmd: "pnpm", args: ["--dir", dir, "run", "typecheck"] });
@@ -123,12 +144,12 @@ export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) 
   if (lintDirs.length > 0) {
     commands.push({ label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", `--only=${lintDirs.join(",")}`] });
   }
-  if (capabilityInputsChanged(changed)) {
+  if (changed.some(triggers.capabilities)) {
     const builds = snapshotBuildDirs(changed).flatMap((dir) => ["--filter", `./${dir}`]);
     if (builds.length > 0) commands.push({ label: "build changed packages", cmd: "pnpm", args: [...builds, "run", "--if-present", "build"] });
     commands.push({ label: "capabilities:check", cmd: "pnpm", args: ["run", "capabilities:check"] });
   }
-  if (docsInputsChanged(changed)) commands.push({ label: "docs:build", cmd: "pnpm", args: ["run", "docs:build"] });
+  if (changed.some(triggers.docs)) commands.push({ label: "docs:build", cmd: "pnpm", args: ["run", "docs:build"] });
   const related = relatedTestArgs(changed);
   if (related) {
     const vitest = ["pnpm", "exec", "vitest", ...related];
@@ -156,6 +177,12 @@ function hasTypecheckScript(dir) {
   return existsSync(manifest) && Boolean(JSON.parse(readFileSync(manifest, "utf8")).scripts?.typecheck);
 }
 
+/** The trigger predicates for this checkout, built from the generators' exports and their import graph. */
+export function generatorTriggers(root = ROOT) {
+  const generatorModules = importClosure(GENERATOR_ENTRIES, (path) => readFileSync(join(root, path), "utf8"));
+  return docsTriggers({ markedPages: MARKED_PAGES, unitGroups: UNIT_GROUPS, generatorModules });
+}
+
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
 
 async function overLoc(changed) {
@@ -172,7 +199,7 @@ async function main() {
   const over = await overLoc(changed);
   for (const v of over) console.error(`verify:changed: ${v.path} has ${v.loc} lines, max ${v.max}`);
   let failed = over.length > 0;
-  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout() })) {
+  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout(), triggers: generatorTriggers() })) {
     console.log(`verify:changed: ${label}`);
     const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
     if (result.status !== 0) {
