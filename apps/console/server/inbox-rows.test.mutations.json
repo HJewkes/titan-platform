@@ -4,8 +4,8 @@
     {
       "name": "a row keeps its item's context",
       "file": "apps/console/server/inbox-rows.ts",
-      "find": "const UNSHOWN_KEYS = [\"context\", \"anchors\", \"pins\"] as const;",
-      "replace": "const UNSHOWN_KEYS = [\"anchors\", \"pins\"] as const;",
+      "find": "{ context: _context, anchors: _anchors",
+      "replace": "{ anchors: _anchors",
       "kills": [
         "inboxRow keeps a heavy round's item to what the page renders"
       ]
@@ -13,8 +13,8 @@
     {
       "name": "a row keeps its recommendation's rationale",
       "file": "apps/console/server/inbox-rows.ts",
-      "find": "const UNSHOWN_RECOMMENDATION_KEYS = [\"rationale\", \"cite\"] as const;",
-      "replace": "const UNSHOWN_RECOMMENDATION_KEYS = [\"cite\"] as const;",
+      "find": "{ rationale: _rationale, cite: _cite, ...shown }",
+      "replace": "{ cite: _cite, ...shown }",
       "kills": [
         "inboxRow keeps a heavy round's item to what the page renders"
       ]

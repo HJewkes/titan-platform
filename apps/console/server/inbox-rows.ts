@@ -12,22 +12,14 @@ import { cachedRead, type CacheTimes, type CachedRead } from "./read-cache.js";
 /** Long enough that a page and its taps share one needs read, short enough that a gate answered elsewhere leaves soon. */
 const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };
 
-const UNSHOWN_KEYS = ["context", "anchors", "pins"] as const;
-const UNSHOWN_RECOMMENDATION_KEYS = ["rationale", "cite"] as const;
-
 type Recommendation = NonNullable<OwnerItem["recommended"]>;
+type ShownRecommendation = Omit<Recommendation, "rationale" | "cite">;
+type InboxRow = Omit<InboxItem, "context" | "anchors" | "pins" | "recommended"> & { recommended?: ShownRecommendation };
 
-type InboxRow = Omit<InboxItem, (typeof UNSHOWN_KEYS)[number] | "recommended"> & {
-  recommended?: Omit<Recommendation, (typeof UNSHOWN_RECOMMENDATION_KEYS)[number]>;
-};
+const shownRecommendation = ({ rationale: _rationale, cite: _cite, ...shown }: Recommendation): ShownRecommendation => shown;
 
-const without = (value: object, keys: readonly string[]): Record<string, unknown> =>
-  Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
-
-export function inboxRow(item: InboxItem): InboxRow {
-  const row = without(item, UNSHOWN_KEYS) as Omit<InboxRow, "recommended">;
-  const { recommended } = item;
-  return recommended === undefined ? row : { ...row, recommended: without(recommended, UNSHOWN_RECOMMENDATION_KEYS) as InboxRow["recommended"] };
+export function inboxRow({ context: _context, anchors: _anchors, pins: _pins, recommended, ...row }: InboxItem): InboxRow {
+  return recommended === undefined ? row : { ...row, recommended: shownRecommendation(recommended) };
 }
 
 export interface ViewRows {
