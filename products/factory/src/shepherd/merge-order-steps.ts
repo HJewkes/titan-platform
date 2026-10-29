@@ -21,6 +21,8 @@ export const MERGE_ORDER_STEPS: readonly StepDeclaration[] = [RESERVE_STEP, WAIT
 interface OrderInput extends PrTarget {
   runId: string;
   headSha: string;
+  /** Taken again at a landable head after a fix round released it (TP-4497), not at a conflict. */
+  retake?: boolean;
 }
 
 const ReserveResult = z.looseObject({ reserved: z.boolean(), ahead: z.array(z.string()) });
@@ -99,7 +101,8 @@ async function reserve(deps: MergeOrderStepDeps, input: OrderInput): Promise<Res
   if (read.unread !== undefined || !baseSha) return NOT_RESERVED;
   const ahead = await mergingAhead(deps, input, read.paths, rule);
   const since = new Date(deps.now()).toISOString();
-  deps.order().reserve({ ...input, baseSha, paths: read.paths, ahead, since, reason: `conflict at ${input.headSha}` });
+  const reason = input.retake ? `landable again at ${input.headSha}` : `conflict at ${input.headSha}`;
+  deps.order().reserve({ ...input, baseSha, paths: read.paths, ahead, since, reason });
   return { reserved: true, ahead };
 }
 
@@ -174,11 +177,14 @@ export interface OrderRun {
   orderSteps: number;
   /** Set by a recorded reservation and cleared by its release or expiry, so a replay rebuilds it. */
   reserved?: boolean;
+  /** Set once a reservation was released short of landing, so the run's next landable head takes it again. */
+  retake?: boolean;
 }
 
 /**
  * TP-4098 (D1): a conflicted PR reserves its paths, waits for the overlapping PRs already merging and any earlier
  * reservation, then gets its one conflict wake at the base they leave. A push during the wait lands the next round.
+ * TP-4497: the reservation ends before the wake, so a fix round that waits on its implementer never holds ready PRs.
  */
 export async function orderedConflict(run: OrderRun, headSha: string, wake: () => Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
   if (replayingWithout(run.ctx, RESERVE_STEP)) return wake();
@@ -187,12 +193,28 @@ export async function orderedConflict(run: OrderRun, headSha: string, wake: () =
   if (!(await step(run.ctx, `${RESERVE_STEP}:${n}`, input, ReserveResult)).reserved) return wake();
   run.reserved = true;
   const waited = await step(run.ctx, `${WAIT_STEP}:${n}`, input, WaitResult);
+  await releaseUnlandable(run);
   return waited.moved ? undefined : wake();
 }
 
 /** The run's reservation ends with the run; liveness at read time covers a run that stops without reaching this. */
 export async function releaseOrder(run: OrderRun): Promise<void> {
   if (replayingWithout(run.ctx, UNRESERVE_STEP)) return;
-  await step(run.ctx, `${UNRESERVE_STEP}:${run.orderSteps}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
+  await step(run.ctx, `${UNRESERVE_STEP}:${run.orderSteps++}`, { repo: run.target.repo, runId: run.ctx.runId }, ReleaseResult);
   run.reserved = false;
+}
+
+/** A run leaving its land step unmerged has no landable head, so it holds no reservation until it reaches one again. */
+export async function releaseUnlandable(run: OrderRun): Promise<void> {
+  if (!run.reserved) return;
+  await releaseOrder(run);
+  run.retake = true;
+}
+
+/** A run whose reservation a fix round released takes it again, once, when a head reaches the merge decision. */
+export async function retakeOrder(run: OrderRun, headSha: string): Promise<void> {
+  if (!run.retake || run.reserved || replayingWithout(run.ctx, RESERVE_STEP)) return;
+  const input: OrderInput = { ...run.target, runId: run.ctx.runId, headSha, retake: true };
+  run.retake = false;
+  run.reserved = (await step(run.ctx, `${RESERVE_STEP}:${run.orderSteps++}`, input, ReserveResult)).reserved;
 }

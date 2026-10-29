@@ -45,7 +45,7 @@ import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gate
 import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
-import { orderedConflict, releaseOrder, type OrderRun } from "./merge-order-steps.js";
+import { orderedConflict, releaseOrder, releaseUnlandable, retakeOrder, type OrderRun } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -124,6 +124,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
     await leaveTrain(ctx, params.repo, run.state.round);
+    if (outcome?.kind !== "merged") await releaseUnlandable(run);
     const final = outcome && (await afterLand(run, outcome));
     if (final) await releaseOrder(run);
     if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : recordStopped(ctx, final);
@@ -174,12 +175,14 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 }
 
 /**
- * A woken agent has already awaited its new head, so the caller goes straight to the next land round.
+ * A woken agent has already awaited its new head, so the caller goes straight to the next land round; the run holds no
+ * merge-order reservation while it waits (TP-4497).
  * Every wake kind spends one repair budget per run, recorded as a step so a replay and a new head keep the count;
  * a wake past the budget asks the owner instead and leaves the round. A held run spends none, unless `heldRepair` lets it.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   run.trail.woken = kind;
+  await releaseUnlandable(run);
   if (await awaitedPast(run, headSha)) return true;
   if (await heldRepair(run, kind, headSha, payload)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
@@ -247,7 +250,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
     const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
     run.trail.last = { headSha, outcome, verdict };
     const routed: Routed = { headSha, verdict, observed, outcome, route: recordedRoute(run.ctx, headSha, routeFor(observed.runState, observed.mergeableState, outcome)) };
-    if (await takeRoute(run, routed)) return;
+    if (await takeRoute(run, routed)) return retakeOrder(run, headSha);
   }
 }
 
