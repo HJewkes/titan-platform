@@ -33,6 +33,39 @@ const activeWorkNeedsProcess = [
   "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
 ];
 
+// With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
+// worker instead of once per file. In the probes collect fell over 80% for factory and explainer and 25-45% for console
+// (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
+// product's file imported unmocked.
+const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
+const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
+const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
+// vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
+// stub would outlive its file. bot-identity asserts on @titan-design/github's process-wide rate budget, which another
+// file's client has already moved. They run isolated.
+const sharedGraphNeedsIsolation = [
+  "apps/console/server/config-writers.test.ts",
+  "apps/console/server/daemon.test.ts",
+  "apps/console/server/owner-guard.test.ts",
+  "apps/console/server/round-frames.test.ts",
+  "apps/console/server/rounds.test.ts",
+  "products/explainer/src/collect/history.test.ts",
+  "products/explainer/src/yaml-dir.test.ts",
+  "products/factory/src/bot-identity.test.ts",
+  "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/remote-factory.test.ts",
+  "products/factory/src/shepherd/merge-facts.test.ts",
+  "products/factory/src/shepherd/policy.test.ts",
+  "products/factory/src/shepherd/reviewer-reader.test.ts",
+  "products/factory/src/shepherd/spawn-profile.test.ts",
+  "products/factory/src/shepherd/visual-packet-trigger.test.ts",
+];
+// Per-RPC time budgets (TP-4403 d1) run alone in one fork, as their own CI job, so other tests' CPU does not leak into
+// their medians.
+const perfTests = ["apps/*/server/**/*.perf.test.ts"];
+
+const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...sharedGraphNeedsIsolation];
+
 // Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
 // worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
 // this process, which its threads share and its forks inherit.
@@ -49,10 +82,6 @@ const forksHeap = [`--max-old-space-size=${workerHeapMb}`];
 // process at its cap. A runaway worker also fails its own file with a worker exit; look for that before raising the cap.
 // The heap cap probe allocates until it hits that cap, so it runs only on request.
 const heapProbe = process.env.VITEST_HEAP_PROBE ? ["scripts/heap-cap.probe.mjs"] : [];
-
-// Per-RPC time budgets (TP-4403 d1) run alone in one fork, as their own CI job, so other tests' CPU does not leak into
-// their medians.
-const perfTests = ["apps/*/server/**/*.perf.test.ts"];
 
 export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
@@ -98,7 +127,27 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...factoryTests, ...explainerTests, ...consoleTests],
+        },
+      },
+      {
+        extends: true,
+        test: { name: "factory", pool: "threads", isolate: false, include: factoryTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "explainer", pool: "threads", isolate: false, include: explainerTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "console", pool: "threads", isolate: false, include: consoleTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: {
+          name: "isolated",
+          pool: "threads",
+          include: sharedGraphNeedsIsolation,
         },
       },
       {
