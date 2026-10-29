@@ -4,8 +4,8 @@
     {
       "name": "a red main's fixer spawn ignores the successor rotation's pick",
       "file": "products/factory/src/shepherd/main-red.ts",
-      "find": "await fixers.spawn(name, brief, checkout.dir, successorConfigDir(deps));",
-      "replace": "await fixers.spawn(name, brief, checkout.dir);",
+      "find": "failing, log), checkout.dir, successorConfigDir(deps));",
+      "replace": "failing, log), checkout.dir);",
       "kills": [
         "a red main's fixer spawn spawns under the next account in the successor rotation when the first is exhausted",
         "a red main's fixer spawn spawns under the fixer config directory when no rotation is wired"
