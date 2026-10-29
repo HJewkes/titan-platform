@@ -137,13 +137,13 @@ export function activeWorkState(seed: string): ActiveWorkState {
   const random = draw(`${seed}:active-work`);
   const list = initiatives(random);
   const tasks = list.flatMap(({ slug, prefix }) => tasksOf(random, slug, prefix));
-  const bySlug = Map.groupBy(tasks, (task) => task.slug);
+  const tasksOfSlug = (slug: string): WireTask[] => tasks.filter((task) => task.slug === slug);
   return {
     initiatives: list,
     tasks,
     notes: list.flatMap(({ slug }) => notesOf(random, slug)),
     sources: list.flatMap(({ slug }) => sourcesOf(random, slug)),
-    artifacts: list.map(({ slug }) => artifactsOf(random, slug, bySlug.get(slug) ?? [])),
+    artifacts: list.map(({ slug }) => artifactsOf(random, slug, tasksOfSlug(slug))),
     deliverables: deliverables(random),
   };
 }

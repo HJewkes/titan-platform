@@ -54,7 +54,11 @@ async function statusesOnDisk(roundsDir: string): Promise<Record<string, number>
   return counts;
 }
 
-const countBy = (rows: readonly { status: string }[]): Record<string, number> => Object.fromEntries([...Map.groupBy(rows, (row) => row.status)].map(([status, each]) => [status, each.length]));
+function countBy(rows: readonly { status: string }[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const { status } of rows) counts[status] = (counts[status] ?? 0) + 1;
+  return counts;
+}
 
 const call = (fixture: PerfFixture) => {
   const registry = createConsoleRegistry(createSources(fixture.config, silentLogger));
