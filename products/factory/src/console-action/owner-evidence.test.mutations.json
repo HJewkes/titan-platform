@@ -4,8 +4,8 @@
     {
       "name": "the headline is the last labelled line, not the stored reading",
       "file": "products/factory/src/console-action/owner-evidence.ts",
-      "find": "return { fact, ciPolicy, verdictText: text, labelledLines: ciPolicyLabelledLines(text) };",
-      "replace": "return { fact, ciPolicy: ciPolicyLabelledLines(text).at(-1)!.reading, verdictText: text, labelledLines: ciPolicyLabelledLines(text) };",
+      "find": "return { fact, ciPolicy, verdictLines",
+      "replace": "return { fact, ciPolicy: labelledLines.at(-1)!.reading, verdictLines",
       "kills": [
         "the owner-at-head evidence card heads a decorated weakened line before a canonical unchanged one with the stored reading, listing both lines"
       ]
@@ -35,6 +35,15 @@
       "replace": ")",
       "kills": [
         "the owner-at-head evidence card shows the evidence the gate opened on, not a re-read that completed after it"
+      ]
+    },
+    {
+      "name": "CI-policy files come from GitHub's compare list, not the evidence's paths",
+      "file": "products/factory/src/console-action/owner-evidence.ts",
+      "find": "evidence.merge.changedPaths.filter(isGithubPath)",
+      "replace": "(await port.compareFiles(land.repo, evidence.record.baseRef, land.head)).files.filter(isGithubPath)",
+      "kills": [
+        "the owner-at-head evidence card shows a renamed workflow's old path as deleted, since the evidence lists both sides of the rename"
       ]
     }
   ]

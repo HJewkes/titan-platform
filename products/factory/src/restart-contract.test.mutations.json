@@ -11,6 +11,15 @@
       ]
     },
     {
+      "name": "sh-fix-pr-stall is not declared",
+      "file": "products/factory/src/shepherd/shepherd-steps.ts",
+      "find": "  ...FIX_PR_STALL_STEPS,\n",
+      "replace": "",
+      "kills": [
+        "restart contract lists every dispatch step that is not orphan-safe in RESTART_WRITE_STEPS, and nothing else"
+      ]
+    },
+    {
       "name": "sh-scope-check is not declared",
       "file": "products/factory/src/shepherd/review.ts",
       "find": "  ...SCOPE_CHECK_STEPS,\n",

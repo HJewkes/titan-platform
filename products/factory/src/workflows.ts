@@ -29,7 +29,7 @@ import { agentChatAgents, installedHeadless } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
 import { machineStopWatch, type MachineStopWatch } from "./shepherd/machine-stop.js";
 import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
-import { movedPastOnList } from "./shepherd/review-queue.js";
+import { movedPastOnList, openHeadOnPort } from "./shepherd/review-queue.js";
 import { reviewCheckoutRoot } from "./shepherd/review-checkout.js";
 import { reviewCheckoutDisk } from "./shepherd/review-checkout-disk.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
@@ -81,8 +81,9 @@ import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suit
 import type { ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
-import { DEFAULT_PACKAGER_PROFILE, type VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
-import { DEFAULT_DIAGNOSIS_PROFILE, readLogTail, type DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
+import type { VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
+import type { DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
+import { configuredDiagnosis, configuredVisualPacket } from "./workflows-spawned.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
 export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
@@ -230,7 +231,6 @@ export function bindAll(db: Db, ...refs: { bind(db: Db): () => void }[]): () => 
 
 /** `shepherd.repos` as the config file writes it, re-read per call as the seat book is. */
 type UnseatedRepos = () => Record<string, ShepherdRepoConfig>;
-type CwdFor = (repo: string) => string | undefined;
 
 /** The PR registered as its frozen repo's fix; a store the host has not bound reads as no fixer, so the review queues like any other. */
 function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
@@ -313,7 +313,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
   const movedPast = movedPastOnList((repo) => snapshot.cachedOpen?.(repo));
-  const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note, movedPast });
+  const gate = overrides.spawnGate ?? spawnGate({ limits, disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note, movedPast, liveHead: openHeadOnPort(port) });
   const store = overrides.store ?? shepherdStoreRef();
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
   const review = configuredReview(shepherd, config, seats, repos, roster, gate, fixerReview(freeze, store), machineStop);
@@ -327,31 +327,6 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const chores = systemChorePorts({ dir: join(factoryStateDir(env), "chores"), wrapper: [process.execPath, ownChoreMain()] });
   const routes = factoryRoutesFor({ port, snapshot, pushes, pacing, gateway, store, freeze, postMerge, chores, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env), advisoryFile(factoryStateDir(env))), stackRestack: configuredStackRestack(() => readConfig(configPath(env))?.shepherd?.repos), heldRepair: liveField(config, "shepherd.gateReset.heldRepair"), noReproProceed: liveField(config, "shepherd.gateReset.noReproProceed"), nonSourceNoRepro: liveField(config, "shepherd.gateReset.nonSourceNoRepro"), taskClose: liveField(config, "shepherd.taskClose"), visualPacket: configuredVisualPacket(shepherd, env, roster, gate, cwdFor), diagnosis: configuredDiagnosis(shepherd, env, roster, gate, cwdFor), visualDelivery: configuredVisualDelivery(shepherd, env, roster, cwdFor, digest?.push), consoleAnswers: shepherd?.consoleAnswers !== undefined, thawAlert: configuredMainWatch(env), visualThreshold: visualThresholdOf(config), ...overrides, seats });
   return withAutoresearch(Object.assign(routes, { config }), config.get().autoresearch);
-}
-
-/** The packager spawns through the shared roster and spawn gate, under agent-chat's default account; `off` wires nothing. */
-function configuredVisualPacket(
-  shepherd: FactoryConfig["shepherd"],
-  env: NodeJS.ProcessEnv,
-  roster: RosterReader | undefined,
-  gate: SpawnGate,
-  cwdFor: CwdFor,
-): VisualPacketPorts | undefined {
-  const mode = shepherd?.visualPacket ?? "off";
-  if (mode === "off") return undefined;
-  const agentChatBin = shepherd?.agentChatBin;
-  const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
-  const bin = shepherd?.titanReviewBin && { titanReviewBin: shepherd.titanReviewBin };
-  return { mode, profile: shepherd?.visualPacketProfile ?? DEFAULT_PACKAGER_PROFILE, stateDir: factoryStateDir(env), cwdFor, ...agents, ...bin };
-}
-
-/** The planner spawns through the shared roster and spawn gate, at the configured profile as given, and reports to the hub seat. */
-function configuredDiagnosis(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate, cwdFor: CwdFor): DiagnosisPorts {
-  const agentChatBin = shepherd?.agentChatBin;
-  const agents = agentChatBin && { agents: agentChatAgents(agentChatBin, { roster, gate }) };
-  const hubSeat = shepherd?.hubSeat;
-  const errLog = join(factoryStateDir(env), "serve.err.log");
-  return { profile: shepherd?.diagnosisProfile ?? DEFAULT_DIAGNOSIS_PROFILE, cwdFor, readLog: () => readLogTail(errLog), reportTo: () => hubSeat, ...agents };
 }
 
 function logGhCall(line: GhCallLine): void {

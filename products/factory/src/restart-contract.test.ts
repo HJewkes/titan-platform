@@ -100,6 +100,7 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "sh-freeze-hold": `${WRITE}: holds the run behind a freeze`,
   "sh-freeze-wait": `${READ}: waits for the freeze to thaw`,
   "sh-base-wait": `${READ}: waits for the base to move`,
+  "sh-fix-pr-stall": `${RECORD}: whether a thaw wait holds an unmarked fix-task PR`,
   "sh-g10-release": `${WRITE}: releases the G10 adversary hold`,
   "sh-g10-rehold": `${WRITE}: re-places the G10 adversary hold`,
   "sh-seat-notice": `${WRITE}: sends the seat notice`,

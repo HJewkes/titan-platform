@@ -504,6 +504,20 @@ describe("agentChatReviewerDispatch reviewer-slot reading", () => {
     expect(gate.reviewSlots()).toEqual({ running: ["rv-demo-1", "rv-demo-2"], cap: 3, readAt: "2026-10-13T12:00:00.000Z" });
   });
 
+  it("stops waiting in the gate's queue, starting nobody, once the step's signal aborts", async () => {
+    const gate = spawnGate({ read: () => ({ load5: 30 }), log: () => undefined });
+    const dispatch = dispatchOver(undefined, { gate, roster: createRosterReader(async () => []) });
+    const step = new AbortController();
+    const cancelled = new Error("cancelled");
+
+    const spawned = failure(dispatch.spawn("rv-demo-7", BRIEF, target, {}, step.signal));
+    const resumed = failure(dispatch.resume("rv-demo-8", BRIEF, step.signal));
+    step.abort(cancelled);
+
+    expect(await spawned).toBe(cancelled);
+    expect(await resumed).toBe(cancelled);
+  });
+
   it("keeps a roster timeout as rosterError with no running list, so it never reads as 0", async () => {
     const gate = gateAt(Date.parse("2026-10-13T12:00:00Z"));
     gate.noteReviewers({ running: ["rv-demo-1"] });

@@ -1,4 +1,5 @@
-import { BUSY_LONGEST_WAIT_MS } from "./review-wait.js";
+import type { GitHubPort } from "@titan-design/github";
+import type { LiveHead } from "./review-dispatcher.js";
 
 type Admission = { admit: true } | { admit: false; reason: string };
 
@@ -17,18 +18,14 @@ export interface ReviewAsk {
   intentAt?: number;
 }
 
-/** A review spawn the gate has refused and that is still asking. */
+/** A review queued for the dispatcher; it waits until admitted, withdrawn or moved past. */
 export interface WaitingReview extends ReviewAsk {
   name: string;
   firstAsk: number;
-  lastAsk: number;
 }
 
 /** True when the run behind a queued ask has moved past it; `since` is when the ask's intent was recorded. */
 export type MovedPast = (target: QueuedTarget, since: number) => boolean;
-
-/** A refused review asks again after its busy wait, which grows to BUSY_LONGEST_WAIT_MS; one silent for two of those has stopped asking. */
-export const REVIEW_STALE_MS = 2 * BUSY_LONGEST_WAIT_MS;
 
 const waitingSince = (review: WaitingReview) => review.intentAt ?? review.firstAsk;
 
@@ -44,9 +41,15 @@ export function movedPastOnList(cached: CachedOpenList): MovedPast {
   };
 }
 
-/** Pure: the reviews that asked within `staleMs`, fixers first, then by the time their intent was recorded. */
-function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
-  return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || waitingSince(a) - waitingSince(b) || a.firstAsk - b.firstAsk);
+/** The open PR's head read through the port, for a queued review whose head the cached list has not shown moving. */
+export const openHeadOnPort = (port: GitHubPort): LiveHead => async ({ repo, pr }) => {
+  const read = await port.getPr(repo, pr);
+  return read.state === "open" ? read.headSha : undefined;
+};
+
+/** Pure: fixers first, then by the time their intent was recorded. */
+function reviewQueue(waiting: readonly WaitingReview[]): WaitingReview[] {
+  return [...waiting].sort((a, b) => Number(b.fixer) - Number(a.fixer) || waitingSince(a) - waitingSince(b) || a.firstAsk - b.firstAsk);
 }
 
 /**
@@ -78,48 +81,61 @@ export function spawnQueuePosition(repo: string, pr: number | null): string | un
   return pr === null ? undefined : positions.get(positionKey(repo, pr));
 }
 
+/** Replaces the positions this list published with the queue's; `published` holds the keys it owns. */
+function publishPositions(queue: readonly WaitingReview[], published: Set<string>): void {
+  published.forEach((key) => positions.delete(key));
+  published.clear();
+  queue.forEach(({ target }, index) => {
+    if (!target) return;
+    const key = positionKey(target.repo, target.pr);
+    published.add(key);
+    positions.set(key, `position ${index + 1} of ${queue.length}`);
+  });
+}
+
 interface WaitListOptions {
-  staleMs: number;
   movedPast?: MovedPast;
   log: (line: string) => void;
+  /** Told of each ask dropped because its run moved past it, so whoever waits on it hears at once. */
+  onDrop?: (name: string, head: string | undefined) => void;
 }
 
 /** Drops each other ask whose run has moved past it; the asker itself has just asked, so it stays. */
-function dropMoved(entries: Map<string, WaitingReview>, asker: string, { movedPast, log }: WaitListOptions): void {
+function dropMoved(entries: Map<string, WaitingReview>, asker: string | undefined, { movedPast, log, onDrop }: WaitListOptions): void {
   if (!movedPast) return;
   for (const review of [...entries.values()]) {
     if (review.name === asker || !review.target || !movedPast(review.target, waitingSince(review))) continue;
     entries.delete(review.name);
     log(`shepherd: spawn_gate dropped ${review.name}: its pull request moved past head ${review.target.head}`);
+    onDrop?.(review.name, review.target.head);
   }
 }
 
-/** The reviews one gate has refused, kept until each is admitted, stops asking or is moved past; every change republishes the positions it owns. */
+/** The one queue of reviews, kept until each is admitted, withdrawn or moved past; every change republishes the positions it owns. */
 export function reviewWaitList(options: WaitListOptions) {
   const entries = new Map<string, WaitingReview>();
   const published = new Set<string>();
-  const publish = (at: number): WaitingReview[] => {
-    const queue = reviewQueue([...entries.values()], at, options.staleMs);
+  const publish = (): WaitingReview[] => {
+    const queue = reviewQueue([...entries.values()]);
     entries.clear();
     queue.forEach((review) => entries.set(review.name, review));
-    published.forEach((key) => positions.delete(key));
-    published.clear();
-    queue.forEach(({ target }, index) => {
-      if (!target) return;
-      const key = positionKey(target.repo, target.pr);
-      published.add(key);
-      positions.set(key, `position ${index + 1} of ${queue.length}`);
-    });
+    publishPositions(queue, published);
     return queue;
   };
   return {
     ask(name: string, review: ReviewAsk, at: number): WaitingReview[] {
-      entries.set(name, { ...review, name, firstAsk: entries.get(name)?.firstAsk ?? at, lastAsk: at });
+      entries.set(name, { ...review, name, firstAsk: entries.get(name)?.firstAsk ?? at });
       dropMoved(entries, name, options);
-      return publish(at);
+      return publish();
     },
-    admitted(name: string, at: number): void {
-      if (entries.delete(name)) publish(at);
+    /** The queue after dropping every ask whose run moved past it, front first. */
+    order(): WaitingReview[] {
+      dropMoved(entries, undefined, options);
+      return publish();
+    },
+    /** Admitted, or no longer wanted: either way it leaves the queue. */
+    remove(name: string): void {
+      if (entries.delete(name)) publish();
     },
   };
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
+import { EvidenceFacts } from "./InboxEvidence.js";
 
 type Prepared = ConsoleCommands["inbox.prepare"]["result"];
 export type InboxReady = Extract<Prepared, { status: "ready" }>;
@@ -63,6 +64,7 @@ function PrFacts({ readBack, readAt }: { readBack: RepoReadBack; readAt: string 
       <Typography variant="mono">{`head ${readBack.headSha.slice(0, 7)}, matches the live head, read ${secondsSince(readAt)} s ago`}</Typography>
       {"gateId" in readBack && readBack.gateId !== undefined ? <Typography variant="caption" color="secondary">{`Gate ${readBack.gateId}`}</Typography> : null}
       {readBack.hold === undefined ? null : <Typography variant="caption" color="secondary">{`Hold: ${readBack.hold.reason}`}</Typography>}
+      {"evidence" in readBack && readBack.evidence !== undefined ? <EvidenceFacts evidence={readBack.evidence} /> : null}
       {"proposal" in readBack ? <OpFacts readBack={readBack} /> : null}
     </>
   );

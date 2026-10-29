@@ -62,6 +62,7 @@ const CardFileSchema = z.looseObject({
   novelty: z.number(),
   evidence: z.number(),
   total: z.number(),
+  partial: z.boolean(),
   summary: z.string(),
   techniques: z.array(z.object({ ts: z.string(), what: z.string() })),
   prompt_sha: z.string(),

@@ -88,14 +88,40 @@ jobs:
       # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.
       # It only orders files, so a miss leaves the step as it was and a hit never skips a test.
       - name: Restore vitest results
+        if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v4
         with:
           path: node_modules/.vite/vitest
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
-          restore-keys: vitest-results-${{ runner.os }}-
+          restore-keys: vitest-results-${{ runner.os }}-shard1of3-
       # redirect-corpus.test.ts needs real bash and zsh; the explainer render tests spawn real ffmpeg/ffprobe.
+      # The debs are cached per runner image, so a hit installs from disk with no apt-get update or download (TP-4400).
+      # A miss downloads; only main saves, because a hit installs the debs as root with no signature check,
+      # so a pull request must never write the cache a later run trusts. Pull requests hit main's save.
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore the zsh and ffmpeg debs
+        id: debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
+      - name: Download the zsh and ffmpeg debs
+        if: steps.debs.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/apt-debs/partial
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
+          sudo chmod -R a+rX ~/apt-debs
       - name: Install zsh and ffmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh ffmpeg
+        run: sudo dpkg -i "$HOME"/apt-debs/*.deb
+      - name: Save the zsh and ffmpeg debs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.debs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
       # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
       # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
       - name: Read the playwright-core version
@@ -120,8 +146,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-      # A pull request runs the packages its diff reaches through the workspace graph; main runs everything.
+      # A pull request runs the packages its diff reaches through the workspace graph. Main runs everything, but in the
+      # test-shard job below, in parallel with this one, so this step is pull-request only (TP-4401).
       - name: Run the tests in scope
+        if: github.event_name == 'pull_request'
         env:
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REF: ${{ github.head_ref }}
@@ -136,12 +164,6 @@ jobs:
           name: vitest-file-timing-${{ github.run_attempt }}
           path: vitest-file-timing.json
           if-no-files-found: ignore
-      - name: Save vitest results
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
-        with:
-          path: node_modules/.vite/vitest
-          key: vitest-results-${{ runner.os }}-${{ github.sha }}
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
@@ -168,6 +190,100 @@ jobs:
           BASE_REF: origin/${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm index-version:check
+
+  # Main's full suite as three parallel shards beside validate, so main's wall time is the slowest of them (TP-4401).
+  # Pull requests keep the scoped single-job run in validate. Branch protection requires validate, which a pull request
+  # still runs. Shepherd judges main by the required contexts, so each shard is listed under mainContexts in
+  # .github/required-checks.json and a red shard still freezes main; renaming the job or the matrix must update that list.
+  # Each shard repeats install, a turbo-cached build,
+  # the debs and Chromium; the restore-key fallback to the previous main's turbo cache makes the build a replay.
+  test-shard:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+      - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Restore vitest results
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules/.vite/vitest
+          key: vitest-results-${{ runner.os }}-shard${{ matrix.shard }}of3-${{ github.sha }}
+          restore-keys: vitest-results-${{ runner.os }}-shard${{ matrix.shard }}of3-
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore the zsh and ffmpeg debs
+        id: debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
+      - name: Download the zsh and ffmpeg debs
+        if: steps.debs.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/apt-debs/partial
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
+          sudo chmod -R a+rX ~/apt-debs
+      - name: Install zsh and ffmpeg
+        run: sudo dpkg -i "$HOME"/apt-debs/*.deb
+      - name: Read the playwright-core version
+        id: playwright
+        run: |
+          version=$(pnpm --filter @titan-design/frame-capture exec node -p "require('playwright-core/package.json').version")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "could not read the playwright-core version (got '$version')" >&2; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore the Chromium cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium for frame-capture
+        run: pnpm --filter @titan-design/frame-capture exec playwright-core install --with-deps --only-shell chromium
+      # The same reporters scripts/test-scope.mjs passes on CI (CI_REPORTERS), so a hang still fails and names its file.
+      - name: Run this shard of the full suite
+        run: >
+          pnpm exec vitest run --passWithNoTests
+          --reporter=default --reporter=hanging-process --reporter=./scripts/vitest-file-watchdog.mjs
+          --reporter=./scripts/vitest-file-timing.mjs
+          --shard=${{ matrix.shard }}/3
+      - name: Upload the vitest file timing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-file-timing-shard${{ matrix.shard }}of3-${{ github.run_attempt }}
+          path: vitest-file-timing.json
+          if-no-files-found: ignore
+      - name: Save vitest results
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules/.vite/vitest
+          key: vitest-results-${{ runner.os }}-shard${{ matrix.shard }}of3-${{ github.sha }}
 
   dag-check:
     runs-on: ubuntu-latest
