@@ -1,4 +1,4 @@
-import type { CiPolicy } from "@titan-design/session-read";
+import type { CiPolicy, CiPolicyKey } from "@titan-design/session-read";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
@@ -19,7 +19,7 @@ const CI_WEAKENED = "shepherd-merge-guard/ci-policy-weakened";
 const BEFORE_OPEN = "2020-01-01T00:00:00.000Z";
 const AFTER_OPEN = "2999-01-01T00:00:00.000Z";
 
-const weakened = (...keys: string[]) => ({ kind: "weakened", keys }) as CiPolicy;
+const weakened = (...keys: CiPolicyKey[]): CiPolicy => ({ kind: "weakened", keys });
 const verdictText = (...lines: string[]) => [...lines.slice(0, -1), "", "Verdict: MERGE", `PR: ${REPO}#1`, `Head: ${H}`, lines.at(-1)!].join("\n");
 
 /** An evidence step's output at H, whole as the step writes it. */
