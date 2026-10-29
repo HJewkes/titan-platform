@@ -289,6 +289,65 @@ describe("the cold rubric on every run", () => {
   });
 });
 
+describe("explainer run --pin seed-draft", () => {
+  const seedOf = (fx: Fixture, script = choppy()) => storeText(fx, `${JSON.stringify(script)}\n`, "script");
+
+  it("a script run seeded with a stored draft makes no draft call and repairs only its failing rows", async () => {
+    fx = fixture();
+    const seed = choppy();
+    const model = fakeScriptModel(seed, { repaired: { ...seed, id: `${seed.id}-repaired` } });
+    const passesOnceRepaired: L0Check = (input) => l0Check(input.script.id.endsWith("-repaired"))(input);
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script", pins: { "seed-draft": seedOf(fx, seed) } }, fakeHost(fx, model, fakeRender(), { evalChecks: [passesOnceRepaired] }));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain("## Checks the draft fails\n\n- fake-l0:");
+    expect(row(result, "script")).toMatchObject({ calls: 1, retries: 0, checks: "13 pass, 0 gate fail, 0 reported fail" });
+  });
+
+  it("a seeded draft that passes every gate makes no model call", async () => {
+    const seed = await seededRun();
+    fx = cloneFixture(seed);
+    const model = fakeScriptModel();
+    const stored = row(seed.result, "script").outputs.draft!;
+
+    const result = await runVideo({ from: "script", to: "script", base: seed.result.runId, pins: { "seed-draft": stored } }, fakeHost(fx, model, fakeRender()));
+
+    expect(result.status, result.error).toBe("completed");
+    expect(model.prompts).toHaveLength(0);
+    expect(row(result, "script")).toMatchObject({ status: "ran", calls: 0, usd: 0 });
+  });
+
+  it("the seed's sha is part of the script stage key", async () => {
+    const seed = await seededRun();
+    fx = cloneFixture(seed);
+    const stored = row(seed.result, "script").outputs.draft!;
+    const other = seedOf(fx, { ...choppy(), id: "another-seed" });
+    const seeded = (sha: string) => runVideo({ from: "script", to: "script", base: seed.result.runId, pins: { "seed-draft": sha } }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
+
+    const first = await seeded(stored);
+    const second = await seeded(other);
+    const again = await seeded(stored);
+
+    const keys = [row(seed.result, "script").key, row(first, "script").key, row(second, "script").key];
+    expect(new Set(keys).size).toBe(3);
+    expect(row(again, "script")).toMatchObject({ status: "cached", key: row(first, "script").key });
+  });
+
+  it("the script stage notes each call's kind and spend", async () => {
+    fx = fixture();
+    const draft = choppy();
+    const model = fakeScriptModel(draft, { repaired: { ...draft, id: `${draft.id}-repaired` }, usd: 0.05 });
+    const passesOnceRepaired: L0Check = (input) => l0Check(input.script.id.endsWith("-repaired"))(input);
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, fakeHost(fx, model, fakeRender(), { evalChecks: [passesOnceRepaired] }));
+
+    const spend = "$0.0500 (1000 in, 500 out, 200 cache read)";
+    expect(row(result, "script").notes).toContain(`calls: draft ${spend}; repair-1 ${spend}`);
+  });
+});
+
 describe("explainer run --from", () => {
   it("from tts spends nothing on models, and the unchanged script hits the stage cache from tts on", async () => {
     const seed = await seededRun();
