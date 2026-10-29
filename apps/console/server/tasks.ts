@@ -154,11 +154,7 @@ function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[
 
 async function readTask(source: TasksSource, reader: EvidenceReader, id: string): Promise<TaskDetail> {
   const { activeWork } = source;
-  // The open list is what the stage needs anyway, and holds the task unless it is done. It is read alone because
-  // active-work answers on one event loop, and context.graph beside it pushes it past the read timeout.
-  const [open, personal] = await Promise.all([activeWork.read("task.list", { all_initiatives: true }), personalSlugs(activeWork, source.work)]);
-  const task = open.tasks.find((entry) => entry.id === id) ?? (await findDoneTask(activeWork, id));
-  if (!task || !keeps(personal)(task.slug)) throw failure(`No task ${id} in any initiative`, EXIT.NOINPUT);
+  const { open, personal, task } = await lookUpTask(source, id);
   const [repos, mentions, sessions, status, joined] = await Promise.all([
     readEvidence(activeWork, reader),
     readMentions(activeWork, id),
@@ -166,11 +162,11 @@ async function readTask(source: TasksSource, reader: EvidenceReader, id: string)
     readStatus(activeWork, task.slug),
     joinDeliverables(activeWork, task.deliverables ?? []),
   ]);
-  const evidence = stageEvidence(open.tasks, repos);
+  const evidence = stageEvidence(open, repos);
   const kept = keeps(personal);
   return {
     fetchedAt: new Date().toISOString(),
-    task: { ...stagedRow(task, evidence), ...(task.notes !== undefined ? { notes: task.notes } : {}), ...(task.done_when !== undefined ? { doneWhen: task.done_when } : {}) },
+    task: detailRow(task, evidence),
     mentions: mentions.references.filter((reference) => kept(reference.slug)),
     mentionsDegraded: mentions.degraded,
     artifacts: artifactsOf(status.status, id),
@@ -179,9 +175,23 @@ async function readTask(source: TasksSource, reader: EvidenceReader, id: string)
     sessions: sessions.sessions,
     sessionsDegraded: sessions.degraded,
     evidence: summary(repos, status.degraded),
-    children: childrenOf(open.tasks.filter((entry) => kept(entry.slug)), id),
+    children: childrenOf(open.filter((entry) => kept(entry.slug)), id),
     ...joined,
   };
+}
+
+/** The open list is what the stage needs anyway, and holds the task unless it is done. It is read before the other
+ *  legs because active-work answers on one event loop, and context.graph beside it pushes it past the read timeout. */
+async function lookUpTask(source: TasksSource, id: string): Promise<{ open: WireTask[]; personal: Set<string>; task: WireTask }> {
+  const { activeWork } = source;
+  const [open, personal] = await Promise.all([activeWork.read("task.list", { all_initiatives: true }), personalSlugs(activeWork, source.work)]);
+  const task = open.tasks.find((entry) => entry.id === id) ?? (await findDoneTask(activeWork, id));
+  if (!task || !keeps(personal)(task.slug)) throw failure(`No task ${id} in any initiative`, EXIT.NOINPUT);
+  return { open: open.tasks, personal, task };
+}
+
+function detailRow(task: WireTask, evidence: StageEvidence): TaskDetail["task"] {
+  return { ...stagedRow(task, evidence), ...(task.notes !== undefined ? { notes: task.notes } : {}), ...(task.done_when !== undefined ? { doneWhen: task.done_when } : {}) };
 }
 
 /** A done task is not in the open list: its id prefix names the initiative, and `task.show` reads that one file. */

@@ -97,8 +97,7 @@ function showTask(args: Record<string, unknown>): unknown {
   if (!taskShowServed) throw new Error("Unknown command: task.show");
   const found = TASKS.find((entry) => entry.slug === args.slug && entry.id === args.id);
   if (!found) throw notFound(`task ${String(args.id)} not found in ${String(args.slug)}`);
-  const { slug: _slug, ...rest } = found;
-  return rest;
+  return Object.fromEntries(Object.entries(found).filter(([key]) => key !== "slug"));
 }
 
 function answer(command: string, args: Record<string, unknown>): unknown {
