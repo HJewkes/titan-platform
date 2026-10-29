@@ -4,8 +4,8 @@
     {
       "name": "services.ts reaches into the merge guard for its wait type",
       "file": "products/factory/src/shepherd/services.ts",
-      "find": "import type { MergeOrder, MergeOrderRules, OrderWaits } from \"./merge-order.js\";",
-      "replace": "import type { MergeOrder, MergeOrderRules } from \"./merge-order.js\";\nimport type { OrderWaits } from \"./merge-order-guard.js\";",
+      "find": "import type { MergeOrder, MergeOrderRules, OrderWaits, RunHolds } from \"./merge-order.js\";",
+      "replace": "import type { MergeOrder, MergeOrderRules, RunHolds } from \"./merge-order.js\";\nimport type { OrderWaits } from \"./merge-order-guard.js\";",
       "kills": [
         "shepherd services leaf services.ts imports only the shepherd stores and snapshot reads it describes"
       ]

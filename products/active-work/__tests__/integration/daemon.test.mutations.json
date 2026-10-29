@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the daemon ignores SIGTERM and leaves its PID file",
+      "file": "products/active-work/src/server/daemon.ts",
+      "find": "process.once('SIGTERM', shutdown);",
+      "replace": "process.once('SIGUSR2', shutdown);",
+      "kills": [
+        "integration: daemon over HTTP serves /health, /rpc/list, and /mcp; cleans up the PID file on shutdown"
+      ]
+    }
+  ]
+}

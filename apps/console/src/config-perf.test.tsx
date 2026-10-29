@@ -16,10 +16,10 @@ const SUMMARY_15M = {
     { name: "tasks", count: 4, p50: 400, p95: 900, max: 900 },
     { name: "home", count: 6, p50: 200, p95: 3500, max: 3500 },
   ],
-  rpcs: [stats("work.tasks", 100, 900), stats("rounds.get", 20, 60)],
+  rpcs: [stats("work.tasks", 100, 900, { bytesMax: 3000 * 1024 }), stats("work.portfolio", 10, 300, { bytesMax: 512 }), stats("rounds.get", 20, 60, { bytesMax: 512 })],
   upstreams: [stats("factory:needs.list", 300, 1200, { timeouts: 1 })],
 };
-const SUMMARY_24H = { ...SUMMARY_15M, window: "24h", rpcs: [stats("rounds.get", 20, 60)], routes: [], upstreams: [] };
+const SUMMARY_24H = { ...SUMMARY_15M, window: "24h", rpcs: [stats("rounds.get", 20, 60, { bytesMax: 512 })], routes: [], upstreams: [] };
 
 function renderPerf(): void {
   const calls = {
@@ -42,6 +42,7 @@ describe("the perf tab", () => {
 
     const slow = await screen.findByTestId("perf-rpc-work.tasks");
     expect(within(slow).getByTestId("perf-over-budget")).toBeTruthy();
+    expect(within(screen.getByTestId("perf-rpc-work.portfolio")).getByTestId("perf-over-budget")).toBeTruthy();
     expect(within(screen.getByTestId("perf-rpc-rounds.get")).queryByTestId("perf-over-budget")).toBeNull();
   });
 
@@ -57,7 +58,7 @@ describe("the perf tab", () => {
 
     await screen.findByTestId("perf-routes");
     expect(within(screen.getByTestId("perf-upstream-factory:needs.list")).getByText("1,200")).toBeTruthy();
-    expect(screen.getAllByTestId(/^perf-rpc-/).map((row) => row.getAttribute("data-testid"))).toEqual(["perf-rpc-work.tasks", "perf-rpc-rounds.get"]);
+    expect(screen.getAllByTestId(/^perf-rpc-/).map((row) => row.getAttribute("data-testid"))).toEqual(["perf-rpc-work.tasks", "perf-rpc-work.portfolio", "perf-rpc-rounds.get"]);
   });
 
   it("the 24 h toggle shows that window's rows", async () => {
