@@ -45,7 +45,7 @@ export function perfCommands(recorder: PerfRecorder | undefined, commandNames: C
       description: "Store the browser's route and query timings for the perf summary; names, view keys and numbers only",
       args: reportSchema(commandNames),
       result: z.object({ accepted: z.number() }),
-      run: ({ rows, dropped }) => {
+      run: async ({ rows, dropped }) => {
         const logged: ClientRow[] = dropped > 0 ? [...rows, { kind: "dropped", count: dropped }] : rows;
         recorder?.recordClient(logged);
         return { accepted: rows.length };

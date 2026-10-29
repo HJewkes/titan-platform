@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
-import { SNAPSHOT_FORMAT, snapshotKey } from "@titan-design/rpc-client";
+import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { App } from "./App.js";
 import { RouteTrackerProvider, createPerfSink, createRouteTracker, trackCalls, type PerfRow } from "./data/perf.js";
 
@@ -11,7 +11,7 @@ afterEach(cleanup);
 const SECRET_ID = "TP-4242-secret";
 
 function renderTimed(hash: string, rows: PerfRow[]): void {
-  const snapshot = { format: SNAPSHOT_FORMAT, createdAt: "2026-01-02T03:04:05.000Z", calls: { [snapshotKey("upstreams.health", {})]: { ok: true as const, data: { checkedAt: "2026-01-02T03:04:05.000Z", upstreams: [] } } } };
+  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: "2026-01-02T03:04:05.000Z", calls: { [snapshotKey("upstreams.health", {})]: { ok: true as const, data: { checkedAt: "2026-01-02T03:04:05.000Z", upstreams: [] } } } };
   const doc = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const tracker = createRouteTracker({ emit: (row) => rows.push(row) });
   window.location.hash = hash;
