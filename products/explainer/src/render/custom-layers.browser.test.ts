@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { launch, openCapturePage } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildPage, STAGE } from "../composition/page.test-helpers.js";
 import type { Timeline } from "../composition/timeline.js";
@@ -20,6 +21,7 @@ const BEAT = { id: "beat-01", kind: "held", startS: 1, durationS: 3, slots: {} }
 let scratch: string;
 let pageDir: string;
 let staged: Timeline;
+let browser: Browser;
 
 beforeAll(async () => {
   scratch = mkdtempSync(path.join(tmpdir(), "explainer-custom-layers-"));
@@ -27,9 +29,11 @@ beforeAll(async () => {
   const tree = writeSyntheticTree(path.join(scratch, "tree"), "b-hold");
   const layers = await stageCustomLayers(tree, new Map([["b-hold", BEAT.id]]), pageDir);
   staged = withCustomLayers({ durationS: 4, beats: [BEAT] }, layers);
+  browser = await launch();
 }, BROWSER_TIMEOUT_MS);
 
-afterAll(() => {
+afterAll(async () => {
+  await browser.close();
   rmSync(scratch, { recursive: true, force: true });
   rmSync(pageDir, { recursive: true, force: true });
 });
@@ -45,7 +49,6 @@ async function seenAt(timeline: Timeline, t: number): Promise<Seen> {
   const file = path.join(mkdtempSync(path.join(scratch, "run-")), "timeline.json");
   writeFileSync(file, JSON.stringify(timeline));
   const served = await servePage(pageDir, file);
-  const browser = await launch();
   try {
     const { page } = await openCapturePage(browser, served.url, STAGE);
     const errors: string[] = [];
@@ -62,7 +65,7 @@ async function seenAt(timeline: Timeline, t: number): Promise<Seen> {
     await page.waitForTimeout(200);
     return { errors, ...drawn };
   } finally {
-    await browser.close();
+    await Promise.all(browser.contexts().map((context) => context.close()));
     await served.close();
   }
 }

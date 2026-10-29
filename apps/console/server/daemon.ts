@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { isIPv6 } from "node:net";
 import path from "node:path";
+import type { CommandRegistry } from "@titan-design/registry";
 import {
   LOGIN_PATH,
   consoleLogger,
@@ -14,16 +15,16 @@ import {
   type Logger,
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
-import { perfCommands } from "./perf/commands.js";
+import { PERF_REPORT, PERF_REPORT_BODY_LIMIT, perfCommands } from "./perf/commands.js";
 import { createPerfRecorder, type PerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
-import { relayUpstreams, startEventsRelay } from "./events-relay.js";
+import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
 import type { ConsoleSources } from "./commands.js";
-import type { ClassedCommand } from "./owner-guard.js";
+import type { ClassedCommand, ConsoleContext } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { mountRoundMedia } from "./round-clip.js";
 import type { LiveReader } from "./round-live.js";
@@ -50,12 +51,13 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const remote = lanListener(config);
   const logger = options.logger ?? consoleLogger;
   const ports = { console: config.port, story: config.storyPort ?? null };
-  const sources = withStoryOrigin(createSources(config, logger), config, ports);
+  const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
+  const sources = withStoryOrigin(createSources(config, logger, perf), config, ports);
   const { upstreams } = sources;
   const build = readBuildInfo();
-  const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
+  const registry: CommandRegistry<ConsoleContext> = createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf, () => registry.list().map(({ name }) => name))]);
   const handle = await startDaemon({
-    registry: createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf)]),
+    registry,
     createContext: consoleContextFor(config.ownerWrites),
     version: APP_VERSION,
     port: config.port,
@@ -63,7 +65,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     ...(remote ? { remote } : {}),
     ...storyContentOrigin(config, ports),
     onRpc: (sample) => perf.record(sample),
-    rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
+    rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT, [PERF_REPORT]: PERF_REPORT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream. `build` is what the self-updater checks after a restart.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })), build }),
     mountRoutes: (app) => mountRoutes(app, sources, staticRoot),
@@ -71,7 +73,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
+  const relay = relayEvents(handle.hub, sources, config, logger);
   return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
 }
 
@@ -80,8 +82,14 @@ async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promis
   await perf.close();
 }
 
-function perfCommandList(perf: PerfRecorder): ClassedCommand[] {
-  return Object.values(perfCommands(perf));
+function perfCommandList(perf: PerfRecorder, commandNames: () => readonly string[]): ClassedCommand[] {
+  return Object.values(perfCommands(perf, commandNames));
+}
+
+/** Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too. */
+function relayEvents(hub: DaemonHandle["hub"], sources: ConsoleSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+  sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
+  return startEventsRelay({ hub, upstreams: relayUpstreams(config), logger, onFrame: (source) => sources.invalidation?.emit(source) });
 }
 
 /** Media routes go ahead of the static app, whose `/*` would answer them with the page. */

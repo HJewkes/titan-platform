@@ -1,10 +1,21 @@
+import { readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Command, CommanderError } from "commander";
 import { isOnTrial, type Watchlist } from "./config.js";
+import { claudeScoreRunner } from "./claude-runner.js";
+import { addDailyCommand } from "./daily-cli.js";
+import type { ConsoleRunner } from "./daily.js";
 import { createDetector, detectNew, formatDetected, insertNew, realDeps, resolveYtDlp, type DetectDeps } from "./detect.js";
-import { configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
+import { casesDir, configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
 import { appendRows, type StepRow } from "./rows.js";
+import { scoreVideo, type ScoreDeps } from "./score.js";
+import type { ScoreRunner } from "./seams.js";
 import { formatSeenImport, importSeen } from "./seen-import.js";
+import { sqliteBreaker } from "./breaker.js";
 import { openScoutDb } from "./store.js";
+import { execRunner } from "./transcribe.js";
+import { runTranscribeQueue } from "./transcribe-queue.js";
 import { loadWatchlist, WatchlistError } from "./watchlist.js";
 
 type Write = (line: string) => void;
@@ -54,6 +65,89 @@ function addSeenCommand(program: Command, write: Write): void {
     });
 }
 
+function addTranscribeCommand(program: Command, write: Write): void {
+  program
+    .command("transcribe")
+    .description("Transcribe the due new videos, one at a time")
+    .option("--root <dir>", "youtube sources tree (default: $YT_ROOT, else the youtube initiative's sources)")
+    .option("--db <file>", "scout database (default: $TITAN_YT_SCOUT_DB, else ~/.local/state/titan-yt-scout/scout.sqlite3)")
+    .action(async (opts: { root?: string; db?: string }) => {
+      const db = openScoutDb(opts.db ?? dbPath());
+      try {
+        const report = await runTranscribeQueue(db, {
+          ytRoot: opts.root ?? ytRoot(),
+          runner: execRunner,
+          now: () => new Date(),
+          load5: () => os.loadavg()[1]!,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          random: Math.random,
+          breaker: sqliteBreaker(db),
+        });
+        write(`transcribed ${report.transcribed.length}, rescheduled ${report.rescheduled.length}, failed ${report.failed.length}, whisper refused ${report.whisperRefused.length}`);
+        if (report.breakerOpen) write("circuit breaker open: no YouTube pulls this run");
+      } finally {
+        db.close();
+      }
+    });
+}
+
+function addScoreCommand(program: Command, write: Write, runner: ScoreRunner): void {
+  program
+    .command("score <id>")
+    .description("Score one transcript with a single headless call and append its step row")
+    .requiredOption("--transcript <file>", "transcript markdown, with [mm:ss] anchors")
+    .requiredOption("--rubric <file>", "RUBRIC.md; only its owner's-system and scores sections are used")
+    .option("--title <text>", "video title (default: the transcript's front matter)")
+    .option("--out <file>", "card path (default: <id>.score.json beside the transcript)")
+    .option("--source <key>", "watch-list source key")
+    .option("--duration <seconds>", "video length; past 2 h only the start is scored", Number)
+    .option("--workflow-version <sha>", "recorded on the row", "dev")
+    .action(async (id: string, o: ScoreOptions) => {
+      await runScore(id, o, write, runner);
+    });
+}
+
+async function runScore(id: string, o: ScoreOptions, write: Write, runner: ScoreRunner): Promise<void> {
+  const config = loadWatchlist(configPath());
+  const transcriptPath = path.resolve(o.transcript);
+  const deps: ScoreDeps = {
+    runner,
+    rubric: readFileSync(o.rubric, "utf8"),
+    model: config.models.score,
+    rowsDir: rowsDir(),
+    casesDir: casesDir(),
+    runId: `score-${Date.now()}`,
+    workflowVersion: o.workflowVersion,
+  };
+  const result = await scoreVideo(deps, {
+    id,
+    source: o.source ?? null,
+    title: o.title ?? frontMatterTitle(transcriptPath) ?? id,
+    transcriptPath,
+    outputPath: o.out ? path.resolve(o.out) : path.join(path.dirname(transcriptPath), `${id}.score.json`),
+    durationSeconds: o.duration,
+  });
+  write(result.ok ? `scored ${id}: ${result.card!.total}/15, $${result.costUsd.toFixed(4)}` : `score failed for ${id}: ${result.errorClass}`);
+  if (!result.ok) throw new CommanderError(EXIT_SCORE, "score.failed", result.errorClass ?? "failed");
+}
+
+interface ScoreOptions {
+  transcript: string;
+  rubric: string;
+  title?: string;
+  out?: string;
+  source?: string;
+  duration?: number;
+  workflowVersion: string;
+}
+
+/** Exit code for a score call that produced no card. */
+export const EXIT_SCORE = 2;
+
+function frontMatterTitle(file: string): string | undefined {
+  return /^title:\s*"?(.*?)"?\s*$/m.exec(readFileSync(file, "utf8").split("\n---\n")[0] ?? "")?.[1];
+}
+
 function addDetectCommand(program: Command, write: Write, makeDeps: MakeDeps): void {
   program
     .command("detect")
@@ -85,12 +179,17 @@ export async function runCli(
   argv: string[],
   write: Write = console.log,
   writeErr: Write = console.error,
+  scoreRunner: ScoreRunner = claudeScoreRunner,
   makeDeps: MakeDeps = realDeps,
+  consoleRunner?: ConsoleRunner,
 ): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);
   addSeenCommand(program, write);
   addDetectCommand(program, write, makeDeps);
+  addTranscribeCommand(program, write);
+  addScoreCommand(program, write, scoreRunner);
+  addDailyCommand(program, write, consoleRunner);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;

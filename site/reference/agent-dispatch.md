@@ -133,6 +133,26 @@ the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or m
   resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
   `fiveHourResetsAt`, and it clamps the grant to the pool's `lift`.
 
+## Routing
+
+The `./routing` subpath holds the workflow table that picks an implementer profile from a
+task's facts: estimate, done_when, tags and the files its plan owns. The package ships the
+default table as `workflow/shape-v1.yml`.
+
+```ts
+import { classifyTask, parseWorkflowTable, profileFor } from "@titan-design/agent-dispatch/routing";
+import { DEFAULT_WORKFLOW_TABLE } from "@titan-design/agent-dispatch/routing/node";
+
+const { table } = parseWorkflowTable(readFileSync(DEFAULT_WORKFLOW_TABLE, "utf8"));
+const facts = { estimate: 2, done_when: "ships", tags: [], owns: ["src/cli/x.ts"] };
+const { prior, reason } = classifyTask(table!, facts); // "standard", "estimate 2 <= 2"
+profileFor(table!, prior, facts.estimate); // "bd-implementer-lite"
+```
+
+Rules run in order and the first match wins, so a risk row (door, safety or visual paths,
+`kind:security`) beats a size row. A row with `needsOwns: true` never matches a task whose
+owns are unknown, so missing facts route up to `needs-plan`, never down.
+
 ## What it deliberately does not do
 
 It holds no profile names, derives no peer names and installs no profile files: those are

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { fakeRewriter } from "../rewrite-fixtures.test-helpers.js";
@@ -14,11 +14,19 @@ import { canonicalJson } from "../eval-store.js";
 import { stylePack } from "../profile-fixtures.test-helpers.js";
 import type { StylePack } from "../style-pack-schema.js";
 import type { RenderEngine } from "../render/render-stage.js";
-import { fakeRender, fakeHost, fakeScriptModel, fixture, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, dropSeeds, fakeRender, fakeHost, fakeScriptModel, fixture, seededRun, spokenOf, type Fixture } from "./run-fakes.test-helpers.js";
 import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
+
+/** A copy of the file's default run, as `fx`, and that run's outcome. */
+async function fromSeed(request: Parameters<typeof seededRun>[0] = {}) {
+  const seed = await seededRun(request);
+  fx = cloneFixture(seed);
+  return seed.result;
+}
 
 const row = (outcome: Awaited<ReturnType<typeof runVideo>>, stage: string) => outcome.report.rows.find((r) => r.stage === stage)!;
 const statuses = (outcome: Awaited<ReturnType<typeof runVideo>>) => Object.fromEntries(outcome.report.rows.map((r) => [r.stage, r.status]));
@@ -31,18 +39,16 @@ function variantFile(stage: string, name: string, params: Record<string, unknown
 
 describe("stage cache over whole runs", () => {
   it("same script, new render variant: only render, qa and sheets run again", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const model = fakeScriptModel();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, render));
-    render.renders.length = 0;
 
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, variants: { render: variantFile("render", "w8", { workers: 8 }) } }, fakeHost(fx, model, render));
 
     expect(second.status, second.error).toBe("completed");
     expect(statuses(second)).toEqual({ gather: "not run", audition: "not run", script: "cached", rewrite: "cached", eval: "cached", resolve: "cached", tts: "cached", render: "ran", qa: "ran", sheets: "ran", export: "ran" });
     expect(render.renders).toHaveLength(1);
-    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts).toHaveLength(0);
     expect(second.report.totals.usd).toBe(0);
     expect(row(second, "render").outputs.mp4).not.toBe(row(first, "render").outputs.mp4);
   });
@@ -112,9 +118,8 @@ describe("stage cache over whole runs", () => {
   });
 
   it("--from with pins and no base starts mid-pipeline, and a missing input fails naming it", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
     const { words, audio } = row(first, "tts").outputs;
     const script = row(first, "rewrite").outputs.script!;
     const resolved = row(first, "resolve").outputs.resolved!;
@@ -131,9 +136,8 @@ describe("stage cache over whole runs", () => {
 
 describe("pins over a base run", () => {
   it("a pin replaces the base run's output for the stages after --from", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
     const draft = row(first, "script").outputs.draft!;
 
     const repair = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), render));
@@ -144,9 +148,8 @@ describe("pins over a base run", () => {
   });
 
   it("a run based on a pinned run keeps the pin, not the output the pinned run only reused", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
     const draft = row(first, "script").outputs.draft!;
     const repair = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), render));
 
@@ -158,9 +161,8 @@ describe("pins over a base run", () => {
   });
 
   it("a resumed pinned run keeps the pin for the runs based on it", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), render));
     const draft = row(first, "script").outputs.draft!;
     const failed = await runVideo({ from: "eval", base: first.runId, pins: { script: draft } }, fakeHost(fx, fakeScriptModel(), fakeRender(), { qaEngine: fakeQa(heldOverlap()) }));
     const resumed = await resumeVideo(failed.runId, fakeHost(fx, fakeScriptModel(), render));
@@ -176,12 +178,10 @@ describe("pins over a base run", () => {
 
 describe("explainer stage", () => {
   it("two samples are two cached runs, and a repeated sample is a cache hit", async () => {
-    fx = fixture();
+    await fromSeed({ to: "script" });
     const model = fakeScriptModel();
     const host = fakeHost(fx, model, fakeRender());
-    await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, host);
     const inputs = { spine: sha256(readFileSync(fx.spine)), facts: sha256(readFileSync(fx.facts)) };
-    model.prompts.length = 0;
 
     const one = await runOneStage({ stage: "script", inputs, sample: 1 }, host);
     const two = await runOneStage({ stage: "script", inputs, sample: 2 }, host);
@@ -208,14 +208,12 @@ function heldRewriter() {
 
 describe("adopt or start", () => {
   async function rewriteSpec() {
-    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts, to: "script" }, host);
+    const first = await fromSeed({ to: "script" });
     return (rt: ReturnType<typeof newRuntime>) => stageSpec({ stage: "rewrite", artifacts: row(first, "script").outputs, settings: SETTINGS, sample: 5, remainingUsd: 1, bridge: rt.bridge });
   }
   const children = (rt: ReturnType<typeof newRuntime>) => rt.runtime.list(["running", "completed", "failed"]).filter((run) => run.workflowName === "explainer.rewrite");
 
   it("a second caller with the same key waits on the live child instead of starting another", async () => {
-    fx = fixture();
     const specFor = await rewriteSpec();
     const held = heldRewriter();
     const db = openState(fx.dataDir);
@@ -235,7 +233,6 @@ describe("adopt or start", () => {
   });
 
   it("after a crash, the next caller claims the orphaned child and finishes it", async () => {
-    fx = fixture();
     const specFor = await rewriteSpec();
     const held = heldRewriter();
     const db1 = openState(fx.dataDir);
@@ -276,10 +273,9 @@ describe("linked runs of one video", () => {
   });
 
   it("a run whose plan predates video ids belongs to the video at the root of its base chain", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const model = fakeScriptModel();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, render));
     const middle = await runVideo({ from: "sheets", base: first.runId }, fakeHost(fx, model, render));
     dropVideoId(middle.runId);
 
@@ -290,9 +286,8 @@ describe("linked runs of one video", () => {
   });
 
   it("a new video started with no base is not linked to an earlier one", async () => {
-    fx = fixture();
+    await fromSeed();
     const model = fakeScriptModel();
-    await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
     const other = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, fakeRender()));
 
@@ -301,10 +296,9 @@ describe("linked runs of one video", () => {
   });
 
   it("compare names the stages the second run took from the cache and the outputs that changed", async () => {
-    fx = fixture();
+    const first = await fromSeed();
     const model = fakeScriptModel();
     const render = fakeRender();
-    const first = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, model, render));
     const second = await runVideo({ spine: fx.spine, facts: fx.facts, variants: { render: variantFile("render", "w8", { workers: 8 }) } }, fakeHost(fx, model, render));
 
     const rows = compareReports(first.report, second.report);
