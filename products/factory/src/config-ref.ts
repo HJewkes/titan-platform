@@ -54,36 +54,40 @@ function loadStamped(path: string, now: () => number, file: ConfigFile): Loaded 
   return { config: parseConfig(path, bytes.toString("utf8")), stamp: { sha: createHash("sha256").update(bytes).digest("hex"), loadedAt }, probe };
 }
 
+interface Held {
+  loaded: Loaded;
+  /** The probe of an edit that failed to load, so a bad file warns once rather than on every read. */
+  rejected?: string | null;
+}
+
+function refresh(held: Held, path: string, now: () => number, deps: Required<ConfigRefDeps>): void {
+  const probe = deps.file.probe(path);
+  if (probe === held.loaded.probe || probe === held.rejected) return;
+  try {
+    held.loaded = loadStamped(path, now, deps.file);
+    held.rejected = undefined;
+  } catch (error) {
+    held.rejected = probe;
+    deps.warn(`factory config: kept the loaded config, the edited file failed to load: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export function configRef(path: string, now: () => number = Date.now, deps: ConfigRefDeps = {}): ConfigRef {
-  const file = deps.file ?? diskConfigFile;
-  const warn = deps.warn ?? console.warn;
-  let loaded = loadStamped(path, now, file);
-  // The probe of an edit that failed to load, so a bad file warns once rather than on every read.
-  let rejected: string | null | undefined;
-  const refresh = () => {
-    const probe = file.probe(path);
-    if (probe === loaded.probe || probe === rejected) return;
-    try {
-      loaded = loadStamped(path, now, file);
-      rejected = undefined;
-    } catch (error) {
-      rejected = probe;
-      warn(`factory config: kept the loaded config, the edited file failed to load: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
+  const resolved = { file: deps.file ?? diskConfigFile, warn: deps.warn ?? console.warn };
+  const held: Held = { loaded: loadStamped(path, now, resolved.file) };
   return {
     get() {
-      refresh();
-      return loaded.config;
+      refresh(held, path, now, resolved);
+      return held.loaded.config;
     },
     stamp() {
-      refresh();
-      return loaded.stamp;
+      refresh(held, path, now, resolved);
+      return held.loaded.stamp;
     },
     reload() {
-      loaded = loadStamped(path, now, file);
-      rejected = undefined;
-      return loaded.stamp;
+      held.loaded = loadStamped(path, now, resolved.file);
+      held.rejected = undefined;
+      return held.loaded.stamp;
     },
   };
 }
