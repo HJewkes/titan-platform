@@ -272,7 +272,9 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     factory appends each gate's conclusion at a head to `shepherd_gate_evidence`. The hold is never lifted by evidence:
     a hold read at the PR's head, as read just then, stands aside while every named gate's newest record at exactly that
     head is `success`, so a push to a new head is held again until its own gates are green. A record at any other head, a
-    red newest record, or a hold that names a `--reviewer` keeps it held. `shepherd release` still lifts it by hand.
+    red newest record, or a hold that names a `--reviewer` keeps it held. `shepherd release` still lifts it by hand. Merge
+    order and the restart drain read the same clearance at the head the run's merge step last read CI at, so a run green
+    there keeps ordering its peers and a restart waits on its merge, as with a satisfied `g10-review` hold.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
