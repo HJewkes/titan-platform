@@ -149,11 +149,12 @@ describe("relatedTestArgs", () => {
 });
 
 describe("planCommands", () => {
-  const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], hasTypecheckScript: () => true, hasTimeout: true });
+  const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
+  const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], workspace, hasTypecheckScript: () => true, hasTimeout: true });
 
-  it("orders changeset status, tsc, then bounded vitest", () => {
+  it("orders changeset status, tsc, lint:types, then bounded vitest", () => {
     // Mutants caught: wrong base ref, missing per-package tsc, reordered steps.
-    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "vitest related"]);
+    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "lint:types", "vitest related"]);
     expect(plan[0].args).toContain("--since=origin/main");
   });
 
@@ -167,16 +168,16 @@ describe("planCommands", () => {
 
   it("still runs vitest, unbounded and labelled so, without a timeout command", () => {
     // Mutant caught: spawning a missing timeout binary, which fails the gate on stock macOS.
-    const bare = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], hasTypecheckScript: () => true, hasTimeout: false });
+    const bare = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace, hasTypecheckScript: () => true, hasTimeout: false });
     const vitest = bare.at(-1);
     expect(vitest.cmd).toBe("pnpm");
     expect(vitest.args.slice(0, 3)).toEqual(["exec", "vitest", "related"]);
     expect(vitest.label).toMatch(/no timeout/);
   });
 
-  it("omits vitest and tsc for a docs-only change", () => {
+  it("omits vitest, tsc and lint:types for a docs-only change", () => {
     // Mutant caught: running vitest unscoped when nothing is testable.
-    const docs = planCommands({ base: "b", changed: ["README.md"], hasTypecheckScript: () => true });
+    const docs = planCommands({ base: "b", changed: ["README.md"], workspace, hasTypecheckScript: () => true });
     expect(docs.map((c) => c.label)).toEqual(["changeset status"]);
   });
 });
