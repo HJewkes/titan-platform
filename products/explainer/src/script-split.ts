@@ -13,7 +13,7 @@ const SPLIT_KIND = "claim-card";
 const [BEAT_FLOOR_S] = BEAT_SECONDS;
 
 /** One beat the split cut: its id, kept by the first piece so every reference stays valid, and each piece's id. */
-interface Split {
+export interface Split {
   id: string;
   pieces: string[];
 }

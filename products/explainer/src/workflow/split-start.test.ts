@@ -4,6 +4,7 @@ import { dailyWith } from "../daily-script.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { cueGapCheck } from "../lint-cadence.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
+import { splitKeeps } from "../repair-hints-screen.js";
 import { splitCuelessBeats } from "../script-split.js";
 import { MAX_REPAIR_ROUNDS, runScriptStage, type ModelStageInput } from "./model-stages.js";
 import { SPINE } from "./run-fakes.test-helpers.js";
@@ -96,5 +97,24 @@ describe("the split as the repair's starting script", () => {
     expect(ids(ScriptSchema.parse(JSON.parse(read(outcome.outputs["candidate-split"]!))))).toContain("reflection-2b");
     expect(outcome.notes).toContain(`repair candidates: ${["candidate-split", ...rounds].map((name) => `${name} ${outcome.outputs[name]}`).join(", ")}`);
     expect(outcome.notes?.find((note) => note.startsWith("repair-1 hint:"))).toContain(SPLIT_HINT);
+  });
+
+  it("the split hint asks every reflection piece to cite its slow fact", async () => {
+    const { prompts } = await runSeeded(splitOfSeed());
+
+    expect(prompts[0]).toContain("cite the slow/ fact it answers in every piece");
+    expect(prompts[0]).toContain("keep each piece's fact_ids");
+  });
+
+  it("the split hint forbids a chip number the piece does not speak", async () => {
+    const { prompts } = await runSeeded(splitOfSeed());
+
+    expect(prompts[0]).toContain("no number on a chip or label that the piece does not speak");
+  });
+
+  it("the split hint and the cueless move share their keep clauses", async () => {
+    const { prompts } = await runSeeded(splitOfSeed());
+
+    expect(prompts[0]).toContain(splitKeeps(seed().beats.find((beat) => beat.id === "reflection-2")!));
   });
 });

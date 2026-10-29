@@ -1,7 +1,8 @@
 import type { L0Result } from "../eval-l0.js";
 import type { Stamped } from "../ledger-stamp.js";
 import type { ScriptV1 } from "../script-schema.js";
-import { splitCuelessBeats, splitHint } from "../script-split.js";
+import { splitKeeps } from "../repair-hints-screen.js";
+import { splitCuelessBeats, splitHint, type Split } from "../script-split.js";
 import type { Candidate, Repaired } from "./script-draft.js";
 
 /** Where the repair rounds start: the seed, or its $0 split with the hint naming what the pieces still need. */
@@ -17,6 +18,13 @@ const CUE_GAP_ID = "Q-D17";
 const clearsCueGap = (rows: readonly L0Result[], pieces: readonly string[]): boolean =>
   !rows.some((row) => row.check_id === CUE_GAP_ID && row.detail_beats.some((beat) => pieces.includes(beat)));
 
+// The keep clauses are cuelessMove's own, and a piece may not show a number it does not speak (Q-D14).
+function splitLine(split: Split, seed: ScriptV1): string {
+  const beat = seed.beats.find((candidate) => candidate.id === split.id);
+  const keeps = beat === undefined ? "" : splitKeeps(beat);
+  return `${splitHint(split)}; keep each piece's fact_ids${keeps}; no number on a chip or label that the piece does not speak`;
+}
+
 /**
  * The split starts the rounds when it clears Q-D17 on every piece and fails no more rows than the seed. It swaps that
  * row for the pieces' unlinked boundaries and copied claim, which only the model can write, so it is a start and never
@@ -29,7 +37,7 @@ export function splitStart(seed: Stamped, failing: (script: ScriptV1) => L0Resul
   const rows = failing(stamped.script);
   const pieces = splits.flatMap((split) => split.pieces);
   if (!clearsCueGap(rows, pieces) || rows.length > failing(seed.script).length) return { stamped: seed, candidates: [] };
-  return { stamped, hint: splits.map((split) => `- split: ${splitHint(split)}`).join("\n"), candidates: [{ kind: "split", text: `${JSON.stringify(stamped.script, null, 2)}\n` }] };
+  return { stamped, hint: splits.map((split) => `- split: ${splitLine(split, seed.script)}`).join("\n"), candidates: [{ kind: "split", text: `${JSON.stringify(stamped.script, null, 2)}\n` }] };
 }
 
 /** The repaired script when it fails strictly fewer rows than the seed; else the seed, with the spend and what was tried. */
