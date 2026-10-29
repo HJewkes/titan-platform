@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import type { ActiveWork } from "./active-work.js";
 import { cachedActiveWork } from "./active-work-cache.js";
@@ -6,7 +7,7 @@ import { createInvalidation } from "./invalidation.js";
 /** Answers each call with its running number, and records the command and arguments it was asked. */
 function fakeActiveWork(): { client: ActiveWork; calls: Array<[string, unknown]> } {
   const calls: Array<[string, unknown]> = [];
-  const client = { read: (command: string, args?: unknown) => Promise.resolve({ call: calls.push([command, args]) }) } as unknown as ActiveWork;
+  const client = partialFake<ActiveWork>({ read: ((command: string, args?: unknown) => Promise.resolve({ call: calls.push([command, args]) })) as ActiveWork["read"] });
   return { client, calls };
 }
 

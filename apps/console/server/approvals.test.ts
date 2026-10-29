@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { partialFake } from "@titan-design/test-kit";
 import { depositItemId, type OwnerItem, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { FEEDBACK_SCHEMA_ID, MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
@@ -29,6 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await factory?.close();
   factory = undefined;
   await rm(root, { recursive: true, force: true });
@@ -267,17 +269,17 @@ describe("approvals.flow", () => {
   });
 
   it("serves the cached factory leg while a slow needs.list refreshes", async () => {
-    const clock = { at: 0 };
+    vi.useFakeTimers({ toFake: ["Date"] });
     const releases: Array<() => void> = [];
     let calls = 0;
-    const slowFactory = {
+    const slowFactory = partialFake<NonNullable<ApprovalsSources["factory"]>>({
       list: () => (++calls === 1 ? Promise.resolve({ items: [hitlGate()], gaps: [] }) : new Promise((resolve) => releases.push(() => resolve({ items: [], gaps: [] })))),
-    } as unknown as NonNullable<ApprovalsSources["factory"]>;
-    const command = consoleCommands({ ...createSources(resolveConfig({}, root)), ...sources(slowFactory), now: () => clock.at })["approvals.flow"];
+    });
+    const command = consoleCommands({ ...createSources(resolveConfig({}, root)), ...sources(slowFactory) })["approvals.flow"];
     const flow = () => command.run({}, { warnings: [], format: "json" });
     await flow();
 
-    clock.at = 60_000;
+    vi.setSystemTime(Date.now() + 60_000);
     const second = await Promise.race([flow(), new Promise<"waited">((resolve) => setTimeout(() => resolve("waited"), 300))]);
 
     expect(second).not.toBe("waited");
@@ -287,8 +289,8 @@ describe("approvals.flow", () => {
 
   it("reads the factory again after a factory relay frame, inside the fresh window", async () => {
     let calls = 0;
-    const countingFactory = { list: () => Promise.resolve({ items: [], gaps: [++calls && ""].filter(Boolean) }) } as unknown as NonNullable<ApprovalsSources["factory"]>;
-    const wired = { ...createSources(resolveConfig({}, root)), ...sources(countingFactory), now: () => 0 };
+    const countingFactory = partialFake<NonNullable<ApprovalsSources["factory"]>>({ list: () => Promise.resolve({ items: [], gaps: [] }).finally(() => calls++) });
+    const wired = { ...createSources(resolveConfig({}, root)), ...sources(countingFactory) };
     const command = consoleCommands(wired)["approvals.flow"];
 
     await command.run({}, { warnings: [], format: "json" });

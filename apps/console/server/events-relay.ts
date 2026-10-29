@@ -188,10 +188,7 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
       return outcome(`HTTP ${response.status}`);
     }
     openedAt = context.now();
-    if (reopening) {
-      notifyFrame(upstream.source, context);
-      broadcast(context.hub, upstream.source, { kind: RECONNECTED_KIND });
-    }
+    if (reopening) announceReopen(upstream.source, context);
     await pump(response.body, upstream, context, watchdog);
     return outcome("stream ended");
   } catch (err) {
@@ -227,6 +224,11 @@ function relayFrame(frame: SseMessage, upstream: RelayUpstream, context: RelayCo
   if (KEEPALIVES.has(frame.event)) return;
   notifyFrame(upstream.source, context);
   broadcast(context.hub, upstream.source, { kind: KIND.test(frame.event) ? frame.event : "unknown", ...upstream.pick(frame.data) });
+}
+
+function announceReopen(source: RelaySource, context: RelayContext): void {
+  notifyFrame(source, context);
+  broadcast(context.hub, source, { kind: RECONNECTED_KIND });
 }
 
 function notifyFrame(source: RelaySource, { onFrame, logger }: RelayContext): void {
