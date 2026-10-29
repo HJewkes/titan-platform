@@ -38,6 +38,9 @@ export function resolveYtDlp(configured: string | undefined, env: NodeJS.Process
 
 const listingArgs = (url: string): string[] => ["--flat-playlist", "--playlist-end", PLAYLIST_END, "--dump-single-json", url];
 
+// Current yt-dlp has no ytsearchdate: prefix; sp=CAI%3D asks YouTube's results page for newest first.
+const searchUrl = (query: string): string => `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=CAI%3D`;
+
 function tabUrls(source: Source, tabs: readonly string[]): string[] {
   const base = source.handle ? `https://www.youtube.com/@${source.handle}` : `https://www.youtube.com/channel/${source.channel_id}`;
   return tabs.map((tab) => `${base}/${tab}`);
@@ -88,7 +91,7 @@ export function createDetector(deps: DetectDeps, tabs: readonly string[]): Detec
   return {
     async detect(source, now) {
       if (source.search !== undefined) {
-        const entries = parseFlatListing(await deps.ytDlp(listingArgs(`ytsearchdate${PLAYLIST_END}:${source.search}`)));
+        const entries = parseFlatListing(await deps.ytDlp(listingArgs(searchUrl(source.search))));
         return dedupe(entries.filter((e) => matches(source, e)).map((e) => fromListing(source, e)));
       }
       const started = Date.now();

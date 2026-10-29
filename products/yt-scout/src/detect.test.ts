@@ -109,6 +109,15 @@ describe("detector", () => {
     expect(found.map((v) => v.id)).toEqual(["hhhhhhhhh01", "hhhhhhhhh02"]);
   });
 
+  it("lists a search source through the newest-first results page", async () => {
+    const calls: string[][] = [];
+    const deps = fakeDeps({ ytDlp: async (a) => (calls.push(a), listing([])) });
+
+    await createDetector(deps, ["videos"]).detect(watchlist.sources[2]!, NOW);
+
+    expect(calls[0]!.at(-1)).toBe("https://www.youtube.com/results?search_query=%22Jane%20Speaker%22&sp=CAI%3D");
+  });
+
   it("skips ids already in videos and attaches filtered states", async () => {
     const db = openScoutDb(":memory:");
     db.prepare("INSERT INTO videos (id, source, detected_at, state) VALUES ('vvvvvvvvv01', 'confTalks', ?, 'seen')").run(NOW.toISOString());
