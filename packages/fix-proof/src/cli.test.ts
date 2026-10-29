@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { FIXED, makeRepo, parsed, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
+import { FIXED, makeRepo, parsed, REAL_RUNNER, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
 import { decodeReport, MAX_ENCODED_BYTES } from "./transport.js";
 
 const DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
@@ -26,7 +26,7 @@ const ADD_SUBTRACTS = { name: "add subtracts", file: "src/math.ts", find: "a + b
 const THROWING_TEST = 'import { add } from "./math";\ntest("adds", () => { if (add(1, 2) !== 3) throw new Error("sum not reached within 10 ms"); });\n';
 
 async function mutantsVerdict(test: string) {
-  const repo = makeRepo({}, os.tmpdir(), { "src/math.ts": FIXED });
+  const repo = makeRepo(REAL_RUNNER, os.tmpdir(), { "src/math.ts": FIXED });
   const head = repo.commit({ "src/math.test.ts": test, "src/math.test.mutations.json": JSON.stringify({ v: 1, mutations: [ADD_SUBTRACTS] }) });
   const out = outDir();
   const shas = ["--base", repo.base, "--head", head];
@@ -122,7 +122,7 @@ describe("fix-proof cli", { timeout: 120_000 }, () => {
   });
 
   it("exec base, exec head and judge as separate processes prove a reproducing test", () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
     const shas = ["--base", repo.base, "--head", head];

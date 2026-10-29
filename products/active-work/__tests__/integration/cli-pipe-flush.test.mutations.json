@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the CLI exits without waiting for stdout to drain",
+      "file": "products/active-work/src/utils/exit.ts",
+      "find": "  await Promise.all([flushed(process.stdout), flushed(process.stderr)]);\n",
+      "replace": "",
+      "kills": ["cli output to a pipe delivers the whole result to a slow pipe reader before exiting"]
+    }
+  ]
+}
