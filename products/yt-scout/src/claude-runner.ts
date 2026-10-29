@@ -1,6 +1,6 @@
 import os from "node:os";
-import { runAgent, type AgentFailure, type AgentUsage } from "@titan-design/agent";
-import { ScoreCardSchema } from "./score-card.js";
+import { runAgent, type AgentFailure, type AgentRunConfig, type AgentRunResult, type AgentUsage } from "@titan-design/agent";
+import { ScoreCardSchema, type ScoreCard } from "./score-card.js";
 import type { CallUsage, ScoreRunner, StepErrorClass } from "./seams.js";
 
 const ERROR_CLASS: Record<AgentFailure["kind"], StepErrorClass> = {
@@ -15,6 +15,8 @@ const ERROR_CLASS: Record<AgentFailure["kind"], StepErrorClass> = {
   inactivity_timeout: "other",
 };
 
+export type RunScoreAgent = (config: AgentRunConfig<ScoreCard>) => Promise<AgentRunResult<ScoreCard>>;
+
 function callUsage(usage: AgentUsage): CallUsage {
   const usages = Object.values(usage.modelUsage);
   const sum = (pick: (u: (typeof usages)[number]) => number) => usages.reduce((n, u) => n + pick(u), 0);
@@ -26,8 +28,8 @@ function callUsage(usage: AgentUsage): CallUsage {
 }
 
 /** One bare `claude -p` call: no tools, no settings, the CLI's own login as the credential. */
-export const claudeScoreRunner: ScoreRunner = async (call) => {
-  const result = await runAgent({
+export const createClaudeScoreRunner = (run: RunScoreAgent = runAgent): ScoreRunner => async (call) => {
+  const result = await run({
     harness: "claude-print",
     model: call.model,
     prompt: call.prompt,
@@ -52,3 +54,5 @@ export const claudeScoreRunner: ScoreRunner = async (call) => {
     value: { output: result.output, ...callUsage(result.usage), model: Object.keys(result.usage.modelUsage)[0] ?? call.model },
   };
 };
+
+export const claudeScoreRunner: ScoreRunner = createClaudeScoreRunner();

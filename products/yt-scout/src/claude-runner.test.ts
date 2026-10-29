@@ -1,13 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 
-const runAgent = vi.hoisted(() => vi.fn());
-vi.mock("@titan-design/agent", () => ({ runAgent }));
+import { createClaudeScoreRunner, type RunScoreAgent } from "./claude-runner.js";
 
-const { claudeScoreRunner } = await import("./claude-runner.js");
+const runAgent = vi.fn<RunScoreAgent>();
+const claudeScoreRunner = createClaudeScoreRunner(runAgent);
 
 const usage = {
   totalCostUsd: 0.07,
-  modelUsage: { "model-a": { inputTokens: 100, cacheReadInputTokens: 20, cacheCreationInputTokens: 5, outputTokens: 40 } },
+  turns: 1,
+  durationMs: 10,
+  modelUsage: {
+    "model-a": {
+      inputTokens: 100,
+      cacheReadInputTokens: 20,
+      cacheCreationInputTokens: 5,
+      outputTokens: 40,
+      webSearchRequests: 0,
+      costUSD: 0.07,
+      contextWindow: 200_000,
+      maxOutputTokens: 32_000,
+    },
+  },
 };
 const call = { prompt: "p", systemPrompt: "s", model: "model-a", maxBudgetUsd: 0.25 };
 
