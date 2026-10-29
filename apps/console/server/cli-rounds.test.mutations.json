@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a refused rounds verb exits 1 instead of the refusal's own code",
+      "file": "apps/console/server/cli-rounds.ts",
+      "find": "process.exitCode = exitCodeOf(error);",
+      "replace": "process.exitCode = 1;",
+      "kills": [
+        "titan-console rounds import refuses a --seat that is not an agent-chat name before anything lands",
+        "titan-console rounds import refuses a symlinked source on stderr with no URL, a non-zero exit and nothing written",
+        "titan-console rounds withdraw refuses an unknown reason on stderr with a usage exit and nothing on stdout"
+      ]
+    }
+  ]
+}

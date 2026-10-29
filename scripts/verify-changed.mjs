@@ -129,9 +129,10 @@ export const CI_COVERAGE = [
   { job: ["validate", "dag-check", "perf"], run: "pnpm build", disposition: "local", label: "build" },
   { job: "validate", run: "pnpm egress:scan range", disposition: "covered-by", reason: "the pre-push hook that prepare installs scans the pushed range" },
   { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
+  { job: "validate", run: "pnpm sidecar:finds", disposition: "local", label: "sidecar:finds" },
   { job: "validate", run: "pnpm typecheck", disposition: "local", label: "typecheck" },
   { job: "validate", run: "pnpm lint", disposition: "local", label: "lint" },
-  { job: "validate", run: /apt-get install|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
+  { job: "validate", run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
   { job: "validate", run: "pnpm test:scope", disposition: "local-subset", label: "vitest related", reason: "the full reverse closure can pass the 600 s cap; CI stays the authority" },
   { job: "validate", run: "pnpm capabilities:check", disposition: "local", label: "capabilities:check" },
   { job: "validate", run: "pnpm metrics:check", disposition: "local", label: "metrics:check" },
@@ -142,7 +143,7 @@ export const CI_COVERAGE = [
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm (?:dag:check:graph|dead:check) /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
-  { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "read budgets need a runner of their own so no other test's CPU skews the medians" },
+  { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
 ];
 
@@ -158,6 +159,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool }) {
     pnpmRun("build"),
     { label: LOC_LABEL, inProcess: true },
     pnpmRun("merge:lint"),
+    pnpmRun("sidecar:finds"),
     pnpmRun("typecheck"),
     pnpmRun("lint"),
     vitestCommand(changed, hasTimeout, spool),
