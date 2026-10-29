@@ -15,7 +15,8 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 import { timelineEntries, watchRow } from "./view.js";
-import { WAKE_STEP, wakePhase, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { WAKE_STEP, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { wakePhase } from "./wake-phase.js";
 
 const REFUSAL = "agent-chat refused to start the successor impl-a-s1: DispatchError";
 const SCRATCH = mkdtempSync(join(tmpdir(), "tp1751-held-"));

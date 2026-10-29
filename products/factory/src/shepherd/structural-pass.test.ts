@@ -14,7 +14,8 @@ import { REVIEW_STEPS, reviewPhase, reviewRoutes } from "./review.js";
 import { holdReviewerMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
-import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { WAKE_STEPS, wakeRoutes, type ImplementerAgents } from "./wake.js";
+import { wakePhase } from "./wake-phase.js";
 
 const REPO = "octo/demo";
 const HEADS = [fakeSha("structural-1"), fakeSha("structural-2"), fakeSha("structural-3")] as const;
