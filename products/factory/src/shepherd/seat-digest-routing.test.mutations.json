@@ -23,8 +23,8 @@
     {
       "name": "an unreadable roster reads every digest seat as retired",
       "file": "products/factory/src/shepherd/seat-digest.ts",
-      "find": "  const roster = ports.roster ? await ports.roster().catch(() => undefined) : undefined;",
-      "replace": "  const roster = ports.roster ? await ports.roster().catch(() => []) : undefined;",
+      "find": "await ports.roster().catch(unreadRoster)",
+      "replace": "await ports.roster().catch(() => [])",
       "kills": [
         "a seat digest for a seat with no live session goes where its notice goes (TP-4050) keeps the repo's seat when the roster cannot be read, as for notices"
       ]
