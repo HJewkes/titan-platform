@@ -33,6 +33,32 @@ const activeWorkNeedsProcess = [
   "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
 ];
 
+// With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
+// worker instead of once per file. In the probes collect fell over 80% for factory and explainer and about 25% for
+// console (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
+// product's file imported unmocked.
+const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
+const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
+const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
+// vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
+// stub would outlive its file. They run isolated.
+const sharedGraphNeedsIsolation = [
+  "apps/console/server/config-writers.test.ts",
+  "apps/console/server/daemon.test.ts",
+  "apps/console/server/owner-guard.test.ts",
+  "apps/console/server/round-frames.test.ts",
+  "apps/console/server/rounds.test.ts",
+  "products/explainer/src/collect/history.test.ts",
+  "products/factory/src/bot-token-path.test.ts",
+  "products/factory/src/remote-factory.test.ts",
+  "products/factory/src/shepherd/merge-facts.test.ts",
+  "products/factory/src/shepherd/policy.test.ts",
+  "products/factory/src/shepherd/reviewer-reader.test.ts",
+  "products/factory/src/shepherd/spawn-profile.test.ts",
+  "products/factory/src/shepherd/visual-packet-trigger.test.ts",
+];
+const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...sharedGraphNeedsIsolation];
+
 // Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
 // worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
 // this process, which its threads share and its forks inherit.
@@ -91,7 +117,27 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...factoryTests, ...explainerTests, ...consoleTests],
+        },
+      },
+      {
+        extends: true,
+        test: { name: "factory", pool: "threads", isolate: false, include: factoryTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "explainer", pool: "threads", isolate: false, include: explainerTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: { name: "console", pool: "threads", isolate: false, include: consoleTests, exclude: notShared },
+      },
+      {
+        extends: true,
+        test: {
+          name: "isolated",
+          pool: "threads",
+          include: sharedGraphNeedsIsolation,
         },
       },
       {
