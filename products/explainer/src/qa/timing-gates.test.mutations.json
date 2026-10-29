@@ -18,6 +18,15 @@
       "kills": [
         "words-per-frame leaves a code-walk beat's highlighted lines out of the count"
       ]
+    },
+    {
+      "name": "words-per-frame counts frame chrome",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "moment.texts.filter((t) => !isChrome(t.cls)).reduce",
+      "replace": "moment.texts.reduce",
+      "kills": [
+        "words-per-frame frame chrome does not count toward words per frame"
+      ]
     }
   ]
 }

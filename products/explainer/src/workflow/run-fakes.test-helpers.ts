@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { TtsUnknownWordsError, type TtsProvider } from "@titan-design/speech-tts";
@@ -16,7 +16,7 @@ import type { ScriptBeat, ScriptV1 } from "../script-schema.js";
 import { FillError } from "../template-fill/fill.js";
 import { sha256 } from "./artifacts.js";
 import { z } from "zod";
-import type { RunHost } from "./host.js";
+import { runVideo, type RunHost, type RunOutcome, type RunRequest } from "./host.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { TtsEngine } from "./tts-stage.js";
 import { fakeQa } from "../qa/qa-fakes.test-helpers.js";
@@ -284,4 +284,62 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender
   const layers = { beatWorker: null, layerTextCheck: null };
   const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, ...layers };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
+}
+
+interface SeededRun {
+  /** The seed's own fixture: read it, never run in it; `cloneFixture` gives a test its own copy. */
+  fx: Fixture;
+  model: FakeScriptModel;
+  render: FakeRender;
+  host: RunHost & Fakes;
+  result: RunOutcome;
+}
+
+const seeds = new Map<string, Promise<SeededRun>>();
+
+/**
+ * One run on the default fakes per `request`, made on first call and shared by every later call in the test file, so
+ * tests that only read a default run, or start from one, skip the pipeline. A test that asserts first-run cache misses
+ * makes its own run.
+ */
+export function seededRun(request: Omit<RunRequest, "spine" | "facts"> = {}): Promise<SeededRun> {
+  const key = JSON.stringify(request);
+  let seed = seeds.get(key);
+  if (!seed) {
+    seed = seedRun(request);
+    seeds.set(key, seed);
+  }
+  return seed;
+}
+
+async function seedRun(request: Omit<RunRequest, "spine" | "facts">): Promise<SeededRun> {
+  const fx = fixture();
+  const model = fakeScriptModel();
+  const render = fakeRender();
+  const host = fakeHost(fx, model, render);
+  const result = await runVideo({ spine: fx.spine, facts: fx.facts, ...request }, host);
+  return { fx, model, render, host, result };
+}
+
+/** Removes every seed's fixture; a file that seeds calls it in `afterAll`. */
+export async function dropSeeds(): Promise<void> {
+  const all = await Promise.all(seeds.values());
+  seeds.clear();
+  for (const seed of all) seed.fx.cleanup();
+}
+
+/**
+ * A copy of the seed's fixture with its data dir, sqlite state and artifacts, mtimes kept so cache freshness reads
+ * the same, and its bridge pointed at the copy's own theater.
+ */
+export function cloneFixture(seed: SeededRun): Fixture {
+  const from = path.dirname(seed.fx.dataDir);
+  const root = mkdtempSync(path.join(tmpdir(), "explainer-run-"));
+  cpSync(from, root, { recursive: true, preserveTimestamps: true });
+  const at = (file: string) => path.join(root, path.relative(from, file));
+  const fx = { dataDir: at(seed.fx.dataDir), page: at(seed.fx.page), theater: at(seed.fx.theater), spine: at(seed.fx.spine), facts: at(seed.fx.facts) };
+  const bridgeFile = path.join(fx.dataDir, "bridge.json");
+  const bridge = JSON.parse(readFileSync(bridgeFile, "utf8"));
+  writeFileSync(bridgeFile, JSON.stringify({ ...bridge, theater: { ...bridge.theater, dir: fx.theater } }));
+  return { ...fx, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }

@@ -9,6 +9,15 @@
       "kills": [
         "template fill: chart beats draws three ISO-dated points as a line titled by the chapter, each point on its cue and read as MM-DD"
       ]
+    },
+    {
+      "name": "bars reveal on the first bar's cue only",
+      "file": "products/explainer/src/template-fill/derive-figures.ts",
+      "find": "reveals: barReveals(beat, series.length) };",
+      "replace": "reveals: barReveals(beat, 1) };",
+      "kills": [
+        "template fill: chart beats each cued bar reveals on its own cue"
+      ]
     }
   ]
 }
