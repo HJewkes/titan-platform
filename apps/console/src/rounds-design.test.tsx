@@ -1,17 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source, sentRound } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
 import type { Question } from "../server/round-schema.js";
 import { getRound, type RoundDetail, type RoundsSource } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend, checkButton, toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const DESIGN = "beacon-states-r1";
 const STATES = [
@@ -74,7 +73,7 @@ interface Rendered {
 }
 
 /** Renders the design round over a recorded snapshot; rounds.submit answers "submitted". */
-async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: Listing; rounds?: RoundsSource; extra?: Snapshot["calls"] } = {}): Promise<Rendered> {
+async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: Listing; rounds?: RoundsSource; extra?: Snapshot["calls"]; inApp?: boolean } = {}): Promise<Rendered> {
   const snapshot = await recorded(options.detail ?? {}, options.listing, options.rounds, options.extra);
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
@@ -84,14 +83,7 @@ async function renderDesign(options: { detail?: Partial<RoundDetail>; listing?: 
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, callOptions) => (calls.push({ name, args }), name === "rounds.submit" ? Promise.resolve(submitted) : inner.call(name, args, callOptions)),
   };
-  window.location.hash = `#/rounds/${DESIGN}`;
-  render(
-    <RpcProvider source={counting}>
-      <AnswerSourceProvider value={counting}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(counting, { view: "rounds", id: DESIGN }, { answers: counting, inApp: options.inApp });
   await screen.findByText("Beacon states");
   return { calls };
 }
@@ -107,7 +99,7 @@ async function designRound(): Promise<Extract<RoundDetail, { valid: true }>> {
 
 describe("a design round", () => {
   it("renders every STATES variant as a labelled frame that opens full size", async () => {
-    await renderDesign();
+    await renderDesign({ inApp: true });
     scrollAll();
 
     for (const [key, label] of STATES) {
@@ -411,12 +403,7 @@ describe("a design round the console cannot show", () => {
     ["has an invalid frames.json", errorEnvelope("frame refused: the round's frames index is not a frames@1 index", 66)],
   ])("falls back to the harness notice when it %s", async (_label, listing) => {
     const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded({}, listing)), "text/html");
-    window.location.hash = `#/rounds/${DESIGN}`;
-    render(
-      <RpcProvider source={pageDataSource({ doc: page })}>
-        <App />
-      </RpcProvider>,
-    );
+    renderPage(pageDataSource({ doc: page }), { view: "rounds", id: DESIGN });
 
     await waitFor(() => expect(screen.getByText("design round: open in the harness")).toBeTruthy());
     expect(screen.queryByTestId("round-question-beacon-fill-pick")).toBeNull();

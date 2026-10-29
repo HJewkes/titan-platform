@@ -1,16 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend, toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
 afterEach(() => {
@@ -26,7 +25,7 @@ interface Rendered {
 }
 
 /** The synthetic question round, unsent unless `detail` says otherwise; `rounds.reveal` hands back RAMP and `rounds.submit` succeeds. */
-async function renderRound(detail: (unsent: Extract<RoundDetail, { valid: true }>) => Partial<RoundDetail> = () => ({})): Promise<Rendered> {
+async function renderRound(detail: (unsent: Extract<RoundDetail, { valid: true }>) => Partial<RoundDetail> = () => ({}), { inApp = false } = {}): Promise<Rendered> {
   const unsent = await getRound(source, ROUND);
   if (!unsent.valid) throw new Error(unsent.reason);
   const snapshot: Snapshot = {
@@ -45,14 +44,7 @@ async function renderRound(detail: (unsent: Extract<RoundDetail, { valid: true }
       return inner.call(name, args, options);
     },
   };
-  window.location.hash = `#/rounds/${ROUND}`;
-  render(
-    <RpcProvider source={live}>
-      <AnswerSourceProvider value={live}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(live, `#/rounds/${ROUND}`, { answers: live, inApp });
   await screen.findByTestId("round-question-ramp-default");
   return { calls };
 }
@@ -67,7 +59,7 @@ const rampAnswer = (rendered: Rendered) => SentAnswers.parse(callsNamed(rendered
 
 describe("revealing a withheld recommendation", () => {
   it("reveals the active question's recommendation on r, through rounds.reveal, with a Recommended badge", async () => {
-    const rendered = await renderRound();
+    const rendered = await renderRound(() => ({}), { inApp: true });
     const detail = await getRound(source, ROUND);
     if (!detail.valid) throw new Error(detail.reason);
     const { manifestSha256 } = detail;
