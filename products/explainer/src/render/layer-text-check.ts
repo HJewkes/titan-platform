@@ -30,10 +30,13 @@ async function layerPage(input: LayerCheckInput, built: BuiltPage, scratch: stri
   return { pageDir, timeline: withCustomLayers({ durationS, beats: [beat] }, layers) };
 }
 
+// Virtual time only runs forward, so each moment is inspected and probed before the next is sought.
 async function rowsAt(page: QaPage, beat: string, moments: readonly number[], options: InspectOptions): Promise<LayerTextRow[]> {
   const rows: LayerTextRow[] = [];
-  for (const t of moments) rows.push(...qaRows(beat, t, (await page.inspectAt(t, options)).findings));
-  rows.push(...badTextRows(beat, await page.probe(moments.map((t) => ({ beat, t })))));
+  for (const t of moments) {
+    rows.push(...qaRows(beat, t, (await page.inspectAt(t, options)).findings));
+    rows.push(...badTextRows(beat, await page.probe([{ beat, t }])));
+  }
   return distinctRows(rows);
 }
 
