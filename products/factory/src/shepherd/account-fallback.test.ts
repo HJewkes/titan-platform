@@ -105,7 +105,7 @@ describe("the account-limit fallback (TP-4507)", () => {
     const error = await accounts.dispatchUnder(FIRST).spawn("rv-demo-7", "Review octo/demo#7.", target).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ReviewerBrokerBusy);
-    expect((error as Error).cause).toBeInstanceOf(DispatchError);
+    expect(error).toMatchObject({ cause: expect.any(DispatchError) });
     expect(spawnedUnder()).toEqual([FIRST]);
   });
 });
