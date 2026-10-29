@@ -9,7 +9,9 @@ type RpcRow = z.infer<typeof rpcRow>;
 const upstreamOutcome = z.enum(["ok", "timeout", "error"]);
 const upstreamRow = z.object({ t: z.number(), kind: z.literal("upstream"), name: z.string(), ms: z.number(), bytes: z.number(), outcome: upstreamOutcome });
 type UpstreamRow = z.infer<typeof upstreamRow>;
-const logRow = z.discriminatedUnion("kind", [rpcRow, upstreamRow]);
+const routeRow = z.object({ t: z.number(), kind: z.literal("route"), view: z.string(), detail: z.boolean(), ms: z.number(), queries: z.number() });
+type RouteRow = z.infer<typeof routeRow>;
+const logRow = z.discriminatedUnion("kind", [rpcRow, upstreamRow, routeRow]);
 
 /** One call to an upstream daemon. `name` is `<upstream>:<command>`, taken from the RPC path. */
 export type UpstreamSample = Omit<UpstreamRow, "t" | "kind">;
@@ -42,6 +44,14 @@ export interface RpcStats {
   bytesMax: number;
 }
 
+export interface RouteStats {
+  name: string;
+  count: number;
+  p50: number;
+  p95: number;
+  max: number;
+}
+
 type UpstreamStats = RpcStats & { timeouts: number };
 
 type SummaryWindow = "15m" | "24h";
@@ -52,6 +62,8 @@ export interface PerfRecorder {
   recordClient(rows: readonly ClientRow[]): void;
   recordUpstream(sample: UpstreamSample): void;
   summary(window: SummaryWindow): Promise<RpcStats[]>;
+  /** Time to first data per view; a detail route is its own row, so a list and its detail page are not averaged. */
+  routes(window: SummaryWindow): Promise<RouteStats[]>;
   upstreams(window: SummaryWindow): Promise<(RpcStats & { timeouts: number })[]>;
   /** Writes what is buffered; resolves when it is on disk. */
   flush(): Promise<void>;
@@ -75,6 +87,18 @@ function statsOf(rows: readonly RpcRow[]): RpcStats[] {
 function upstreamStatsOf(rows: readonly UpstreamRow[]): UpstreamStats[] {
   const timeouts = (name: string) => rows.filter((row) => row.name === name && row.outcome === "timeout").length;
   return groupStats(rows, (row) => row.outcome !== "ok").map((stats) => ({ ...stats, timeouts: timeouts(stats.name) }));
+}
+
+function routeStatsOf(rows: readonly RouteRow[]): RouteStats[] {
+  const byName = new Map<string, number[]>();
+  for (const row of rows) {
+    const name = row.detail ? `${row.view} (detail)` : row.view;
+    byName.set(name, [...(byName.get(name) ?? []), row.ms]);
+  }
+  return [...byName].map(([name, group]) => {
+    const times = group.sort((a, b) => a - b);
+    return { name, count: times.length, p50: percentile(times, 0.5), p95: percentile(times, 0.95), max: times[times.length - 1]! };
+  });
 }
 
 function groupStats<R extends { name: string; ms: number; bytes: number }>(rows: readonly R[], failed: (row: R) => boolean): RpcStats[] {
@@ -121,10 +145,16 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
       keep({ t: now(), kind: "upstream", name: sample.name, ms: sample.ms, bytes: sample.bytes, outcome: sample.outcome });
     },
     recordClient(rows) {
-      for (const row of rows) log.add({ ...row, t: now() });
+      for (const row of rows) {
+        if (row.kind === "route") keep({ ...row, t: now() });
+        else log.add({ ...row, t: now() });
+      }
     },
     async summary(window) {
       return statsOf((await rowsIn(window)).filter((row): row is RpcRow => row.kind === "rpc"));
+    },
+    async routes(window) {
+      return routeStatsOf((await rowsIn(window)).filter((row): row is RouteRow => row.kind === "route"));
     },
     async upstreams(window) {
       return upstreamStatsOf((await rowsIn(window)).filter((row): row is UpstreamRow => row.kind === "upstream"));
