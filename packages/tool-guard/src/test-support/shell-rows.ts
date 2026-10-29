@@ -44,7 +44,9 @@ export function spawnInGroup(program: string, args: string[], options: SpawnSync
   killGroup(pid);
 }
 
-function killGroup(pid: number): void {
+/** Kills what is left in the process group `pid` leads; a pid of undefined, a child that never started, is a no-op. */
+export function killGroup(pid: number | undefined): void {
+  if (pid === undefined) return;
   try {
     process.kill(-pid, "SIGKILL");
   } catch {
@@ -54,7 +56,7 @@ function killGroup(pid: number): void {
 
 const quote = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
 
-/** `env -i` with the run's own environment, as spawnSync's `env` replaces the whole of it. */
+/** The run's argv, behind `env -i` when it names its whole environment, as spawnSync's `env` replaces all of it. */
 function commandOf(run: ShellRun): string {
   const argv = [run.program, ...run.args].map(quote).join(" ");
   const pairs = (env: Readonly<Record<string, string | undefined>>): string =>
@@ -100,7 +102,7 @@ function watch(driver: string, timeoutMs: number): Promise<Progress> {
     child.on("error", reject);
     child.on("close", () => {
       clearTimeout(timer);
-      if (child.pid !== undefined) killGroup(child.pid);
+      killGroup(child.pid);
       resolve(progress);
     });
   });
