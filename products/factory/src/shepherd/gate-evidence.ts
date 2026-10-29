@@ -33,7 +33,7 @@ const GATE_EVIDENCE_DDL = `
   CREATE INDEX shepherd_gate_evidence_head ON shepherd_gate_evidence (repo, head, gate);`;
 
 /** Gates that run outside GitHub Actions, and what each concluded at one head; a `lan-gates` hold reads them. */
-export function gateEvidenceMigration(version = 47): Migration {
+export function gateEvidenceMigration(version = 48): Migration {
   return { version, name: "factory:shepherd_gate_evidence", up: (db) => db.exec(GATE_EVIDENCE_DDL) };
 }
 

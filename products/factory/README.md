@@ -271,7 +271,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     `shepherd release`.
   - `lan-gates` waits on gates that cannot run in GitHub Actions. The reason names them,
     `lan-gates: <gate>, <gate>; <detail>`, and `shepherd hold` refuses with exit 65 a list that is empty, badly spelled
-    or names a gate never declared in `shepherd_external_gate` (migration 47, `src/shepherd/gate-evidence.ts`). The
+    or names a gate never declared in `shepherd_external_gate` (migration 48, `src/shepherd/gate-evidence.ts`). The
     factory appends each gate's conclusion at a head to `shepherd_gate_evidence`. The hold is never lifted by evidence:
     a hold read at the PR's head, as read just then, stands aside while every named gate's newest record at exactly that
     head is `success`, so a push to a new head is held again until its own gates are green. A record at any other head, a
