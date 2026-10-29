@@ -89,8 +89,32 @@ jobs:
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
           restore-keys: vitest-results-${{ runner.os }}-
       # redirect-corpus.test.ts needs real bash and zsh; the explainer render tests spawn real ffmpeg/ffprobe.
+      # The debs are cached per runner image, so a hit installs from disk with no apt-get update or download (TP-4400).
+      # A miss downloads once and saves, so the first run on a new image pays and later runs, including pull requests, hit.
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore the zsh and ffmpeg debs
+        id: debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
+      - name: Download the zsh and ffmpeg debs
+        if: steps.debs.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/apt-debs/partial
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
+          sudo chmod -R a+rX ~/apt-debs
       - name: Install zsh and ffmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh ffmpeg
+        run: sudo dpkg -i "$HOME"/apt-debs/*.deb
+      - name: Save the zsh and ffmpeg debs
+        if: steps.debs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
       # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
       # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
       - name: Read the playwright-core version
