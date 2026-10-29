@@ -9,7 +9,15 @@ export interface ReviewStart {
 /** The queued review's pull request moved to a new head or closed before its turn, so it never started. */
 export class ReviewSuperseded extends Error {
   override readonly name = "ReviewSuperseded";
+
+  /** `movedTo` is set when the live PR read, not the cached list, found the move; the step then answers as a resync would. */
+  constructor(message: string, readonly moved?: { from: string; to: string }) {
+    super(message);
+  }
 }
+
+/** The open PR's head now; undefined when it cannot be read or is no longer open. */
+export type LiveHead = (target: { repo: string; pr: number }) => Promise<string | undefined>;
 
 /** What the dispatcher needs from the gate: the one queue, and the verdict that admits or defers the review at its front. */
 interface DispatcherPorts {
@@ -19,6 +27,8 @@ interface DispatcherPorts {
   /** Throws `deferred` when the machine or the slots would not take the review now. */
   admit(name: string, running: readonly number[], review: ReviewAsk): void;
   deferred: (error: unknown) => boolean;
+  /** Absent means no live read is made. */
+  liveHead?: LiveHead;
   /** Thrown to a review still queued after `holdMs`, so its step can give up as it did on a long machine hold. */
   expired: (waitedMs: number) => Error;
   now: () => number;
@@ -58,6 +68,19 @@ function waiterBook(ports: DispatcherPorts, onTick: () => void) {
 
 type Book = ReturnType<typeof waiterBook>;
 
+/** Gives up each waiter whose PR now stands at another head; one that cannot be read stays queued. */
+async function dropMovedLive(ports: DispatcherPorts, book: Book): Promise<void> {
+  const { liveHead } = ports;
+  if (!liveHead) return;
+  await Promise.all([...book.waiting].map(async ([name, { review }]) => {
+    const { target } = review;
+    if (!target?.head) return;
+    const current = await liveHead(target).catch(() => undefined);
+    if (current === undefined || current === target.head || !book.waiting.has(name)) return;
+    book.settle(name, new ReviewSuperseded(`superseded: the pull request moved from head ${target.head} to ${current}`, { from: target.head, to: current }));
+  }));
+}
+
 /** The queue's front that still has a waiter; undefined when none does. */
 function frontOf(ports: DispatcherPorts, { waiting }: Book): (Waiter & { name: string }) | undefined {
   const name = ports.order().find((queued) => waiting.has(queued.name))?.name;
@@ -68,6 +91,7 @@ function frontOf(ports: DispatcherPorts, { waiting }: Book): (Waiter & { name: s
 /** One pass over the front of the queue: gives up the expired, then admits and launches until the gate defers one. */
 async function pass(ports: DispatcherPorts, book: Book): Promise<void> {
   const at = ports.now();
+  await dropMovedLive(ports, book);
   for (const [name, waiter] of book.waiting) if (at - waiter.since >= ports.holdMs) book.settle(name, ports.expired(at - waiter.since));
   for (let front = frontOf(ports, book); front; front = frontOf(ports, book)) {
     try {
