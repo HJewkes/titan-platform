@@ -100,7 +100,7 @@ describe("emphasis-target gate on the resolve stage", () => {
   it("fails the stage on a cue whose target names no element of the chosen beat", () => {
     const { checks } = stageThenChecks({ script: json(cuedOnFigures("lost")), slots: resolveFixture("slots.json") });
 
-    expect(failedGates(checks.checks).map((check) => check.detail)).toEqual(["1 of 1 emphasis cues fail: h2#0 no-element"]);
+    expect(failedGates(checks.checks).map((check) => check.detail)).toEqual([expect.stringMatching(/^1 of 1 emphasis cues fail: h2#0 lost no-element \(lost names no element of beat spec stat\)\. Hint: /)]);
   });
 
   it("reads element boxes from a layout artifact when one exists", () => {

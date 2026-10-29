@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the draft's cue targets go unchecked once every beat fills",
+      "file": "products/explainer/src/script-fill.ts",
+      "find": "if (!(filled instanceof FillError)) return cueTargetFaults(draft, filled, specs);",
+      "replace": "if (!(filled instanceof FillError)) return [];",
+      "kills": [
+        "cue targets at the script stage's template fill faults a verdict card that falls back to a list, naming the fallback's cause, the cues it orphans and the list's elements",
+        "every fallback the registry allows, at the script stage leaves no cue the original kind would light orphaned on its fallback without a script-stage fault, but a sim resolve cuts"
+      ]
+    },
+    {
+      "name": "a cue fault drops why the beat fell back",
+      "file": "products/explainer/src/script-fill.ts",
+      "find": "`the ${beat.spec} it falls back to (${beat.fallback.reason})`",
+      "replace": "beat.spec",
+      "kills": [
+        "cue targets at the script stage's template fill gives the repair round an error row for the beat and a hint naming its fallback and orphaned cues"
+      ]
+    }
+  ]
+}

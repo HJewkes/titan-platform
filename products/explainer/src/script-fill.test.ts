@@ -7,10 +7,11 @@ import type { ScriptV1 } from "./script-schema.js";
 const SIDE_QUESTS_SEVEN = [...SIDE_QUEST_LABELS, "ops · Spare printer set up", "docs · Glossary trimmed", "test · Slow case split", "ops · Old branch parked"];
 const STATS_SEVEN = ["9 merges", "12 lanes", "5 in review", "3 reverts", "2 drafts", "1 alarm", "4 docs"];
 
-/** The daily with its stats beat drawn as a metrics-panel, which derives no slots and so falls back to a list. */
+/** The daily with its stats beat drawn as a metrics-panel, which derives no slots and so falls back to a list its cues light. */
 function metricsPanel(labels: string[]): ScriptV1 {
   const script = dailyScript();
-  return { ...script, beats: script.beats.map((beat) => (beat.id === "stats-1" ? { ...beat, visual: { ...beat.visual, beat: "metrics-panel", labels } } : beat)) };
+  const cues = [{ action: "V6" as const, target: "rows-1", atCue: "merges" }];
+  return { ...script, beats: script.beats.map((beat) => (beat.id === "stats-1" ? { ...beat, visual: { ...beat.visual, beat: "metrics-panel", labels, cues } } : beat)) };
 }
 
 describe("the script stage's template fill on its own draft", () => {

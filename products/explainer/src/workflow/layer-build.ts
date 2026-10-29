@@ -4,7 +4,8 @@ import { z } from "zod";
 import { BuilderRefSchema, LayerBuildSchema, packetKey, type BeatWorker, type BuilderRef, type LayerBuild, type LayerRepair, type LayerRepairer, type RepairRequest } from "../build/beat-worker.js";
 import { LayerBuildCache } from "../build/build-cache.js";
 import { compileLayer } from "../build/compile-gate.js";
-import { buildLayerPacket, type LayerPacket } from "../build/layer-packet.js";
+import { missingCueElements, missingElementsHint } from "../build/layer-elements.js";
+import { buildLayerPacket, type BuiltLayerPacket, type LayerPacket } from "../build/layer-packet.js";
 import { layerTreeFiles, writeLayerTree, type BuiltLayer } from "../build/layer-tree.js";
 import { claimFacts } from "../claim-facts.js";
 import { canonicalJson } from "../eval-store.js";
@@ -130,14 +131,40 @@ function buildRoute(deps: LayerRouteDeps): StepRoute {
     const hit = cache.get(key);
     if (hit) return { result: { ...hit, usage: NO_USAGE }, cached: true as const, usage: stepUsage(NO_USAGE) };
     const packet = { packet: LayerPacketJson.parse(JSON.parse(json)), json, bytes: Buffer.byteLength(json) };
-    const build: LayerBuild = LayerBuildSchema.parse(await worker.build(packet, deps.signal ? { signal: deps.signal } : {}));
+    const build = await workerBuild(deps, worker, packet);
     const verdict = await compileLayer(build.module);
     const scratchDir = path.join(runPaths(deps.dataDir, step.runId).runDir, LAYER_REPAIRS_DIR, key);
-    const gated = verdict.ok ? { build } : await repairOnce(deps, { packet, key, module: build.module, error: verdict.error, scratchDir }, build);
+    const compiled = verdict.ok ? { build } : await repairOnce(deps, { packet, key, module: build.module, error: verdict.error, scratchDir }, build);
+    const gated = compiled.error === undefined ? await exposingCueTargets(deps, worker, packet, compiled.build) : compiled;
     if (gated.error !== undefined) return { result: gated.build, needsRepair: { error: gated.error }, usage: stepUsage(gated.build.usage) };
     cache.put(key, gated.build, { runId: step.runId, stage: STAGE });
     return { result: gated.build, usage: stepUsage(gated.build.usage) };
   });
+}
+
+const workerBuild = async (deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket): Promise<LayerBuild> =>
+  LayerBuildSchema.parse(await worker.build(packet, deps.signal ? { signal: deps.signal } : {}));
+
+/** The packet again, with a field naming the cue targets the last build left without an element. */
+function hintedPacket(packet: BuiltLayerPacket, missing: readonly string[]): BuiltLayerPacket {
+  const json = `${JSON.stringify({ ...packet.packet, rebuild: missingElementsHint(missing) }, null, 2)}\n`;
+  return { packet: packet.packet, json, bytes: Buffer.byteLength(json) };
+}
+
+/**
+ * The $0 cue check after the compile gate: a build that does not expose every cue target is rebuilt once, told which
+ * targets it missed. The rebuild's spend joins the build's; a rebuild that does not compile or still misses fails the beat.
+ */
+async function exposingCueTargets(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, build: LayerBuild): Promise<{ build: LayerBuild; error?: string }> {
+  const targets = packet.packet.cues.map((cue) => cue.target);
+  const missing = missingCueElements(targets, build);
+  if (missing.length === 0) return { build };
+  const again = await workerBuild(deps, worker, hintedPacket(packet, missing));
+  const rebuilt: LayerBuild = { ...again, usage: addUsage(build.usage, again.usage) };
+  const verdict = await compileLayer(rebuilt.module);
+  if (!verdict.ok) return { build: rebuilt, error: `rebuilt to expose cue targets ${missing.join(", ")}, the layer does not compile: ${verdict.error}` };
+  const still = missingCueElements(targets, rebuilt);
+  return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer exposes no element for cue targets ${still.join(", ")} after one rebuild` };
 }
 
 /**
