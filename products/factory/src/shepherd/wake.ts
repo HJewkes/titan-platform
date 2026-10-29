@@ -8,9 +8,9 @@ import { awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute } from "../workflows/land.js";
 import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { FIX_PROOF_WAKE_STEP } from "./fix-proof-cap.js";
-import { successorConfigDir } from "./account-hold.js";
+import { successorConfigDir, successorSpawnAccounts } from "./account-hold.js";
 import { noteFixerLimit } from "./fixer-limit.js";
-import { agentChatAgents, type AgentChatAgents } from "./agents.js";
+import { agentChatAgents, type AgentChatAgents, type SpawnAccounts } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
@@ -53,9 +53,10 @@ export interface ImplementerAgents {
   retire?(name: string): Promise<void>;
 }
 
-export const implementersOver = (agents: AgentChatAgents): ImplementerAgents => ({
+/** `accounts` is read per spawn; absent leaves the adapter's own account with no fallback. */
+export const implementersOver = (agents: AgentChatAgents, accounts: () => SpawnAccounts = () => ({})): ImplementerAgents => ({
   ...agents,
-  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd }),
+  spawn: (name, brief, cwd) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd, ...accounts() }),
 });
 
 export interface WakeWiring extends WaitDeadlines {
@@ -337,7 +338,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {
-  return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: successorConfigDir(deps), roster: deps.roster, gate: deps.spawnGate })) : undefined);
+  return wiring.agents ?? (isAbsolute(deps.agentChatBin) ? implementersOver(agentChatAgents(deps.agentChatBin, { configDir: successorConfigDir(deps), roster: deps.roster, gate: deps.spawnGate }), () => successorSpawnAccounts(deps)) : undefined);
 }
 
 /** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate; a `held` one tells the seat first. */

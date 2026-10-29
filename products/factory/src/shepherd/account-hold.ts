@@ -4,6 +4,8 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { accountsFrom } from "./account-fallback.js";
+import type { SpawnAccounts } from "./agents.js";
 import { DEFAULT_ACCOUNT, accountAlertText, accountHoldReason, believedReset, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
 import type { AccountLimitStore } from "./account-store.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
@@ -113,6 +115,13 @@ export function successorConfigDir(deps: ShepherdDeps): string | undefined {
   if (first === undefined) return deps.agentChatConfigDir;
   const account = headroomOrFirst(deps, [first, ...rest]);
   return account === DEFAULT_ACCOUNT ? undefined : account;
+}
+
+/** The successor's account, then the rotation's later accounts, which its spawn falls back to on an account-limit refusal. */
+export function successorSpawnAccounts(deps: ShepherdDeps): SpawnAccounts {
+  const configDir = successorConfigDir(deps);
+  const fallbackConfigDirs = accountsFrom(deps.successorAccounts?.() ?? [], configDir ?? DEFAULT_ACCOUNT).slice(1);
+  return { ...(configDir !== undefined && { configDir }), fallbackConfigDirs };
 }
 
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
