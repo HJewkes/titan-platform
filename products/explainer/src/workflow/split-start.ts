@@ -5,7 +5,7 @@ import { splitCuelessBeats, splitHint } from "../script-split.js";
 import type { Candidate, Repaired } from "./script-draft.js";
 
 /** Where the repair rounds start: the seed, or its $0 split with the hint naming what the pieces still need. */
-export interface Start {
+interface Start {
   stamped: Stamped;
   /** The split's line in the repair's failure list; absent when the rounds start from the seed. */
   hint?: string;
