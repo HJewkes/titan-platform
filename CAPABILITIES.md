@@ -88,6 +88,7 @@ Before adding code:
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`titan`](#cap-titan) | product | You want this host's services sampled on a schedule and kept: `titan health sample` probes each target (by default the factory's loopback `/health`, with its pid file as identity), copies serve's own restart counters into the row, and writes every result plus a `self` row of the sampler's own CPU, fs blocks, context switches, RSS and wall time in one transaction. |
+| [`yt-scout`](#cap-yt-scout) | product | Placeholder: replace with the situation that should send a reader to yt-scout, and name the neighbouring unit for the situations that should not. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
 | [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. |
 
@@ -1669,6 +1670,20 @@ You want this host's services sampled on a schedule and kept: `titan health samp
 Key exports:
 
 - `cli`: `runCli`, `CliIo`
+
+<a id="cap-yt-scout"></a>
+
+### `yt-scout`
+
+Tier product, private, `products/yt-scout`. Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest
+
+**Use this when:**
+
+Placeholder: replace with the situation that should send a reader to yt-scout, and name the neighbouring unit for the situations that should not.
+
+Key exports:
+
+No library entry point.
 
 <a id="cap-codewatch"></a>
 
