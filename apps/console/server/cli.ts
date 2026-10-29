@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
 import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
+import { inboxLink, inboxLinkArgs } from "./cli-inbox-link.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
 import { nudgeRoundsCli, roundsNudgeArgs } from "./cli-rounds-nudge.js";
 import { roundsSweepArgs, sweepRoundsCli } from "./cli-rounds-sweep.js";
@@ -31,6 +32,9 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console inbox file [<json>|-]
                                         file an owner item on loopback and print its id;
                                         with - or no argument, the JSON comes from stdin
+       titan-console inbox link <item-id>
+                                        print the console URL that opens the inbox on that item:
+                                        https on the first LAN name, or loopback with no LAN listener
        titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> --actor <seat> [--json]
                                         withdraw a deposit --as filed; no answer is written, and the
                                         spool's withdrawals.jsonl logs asker, --actor, when and why;
@@ -122,6 +126,7 @@ const roundsSweep = roundsSweepArgs(argv);
 const roundsNudge = roundsNudgeArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
 const inboxWithdraw = inboxWithdrawArgs(argv);
+const inboxLinkVerb = inboxLinkArgs(argv);
 const subscription = subscriptionArgs(argv);
 const storybooksGc = storybooksGcArgs(argv);
 const configVerb = configArgs(argv);
@@ -130,6 +135,7 @@ if (args === "") await serve(resolveConfig());
 else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
 else if (argv[0] === "inbox" && argv[1] === "file" && argv.length <= 3) await fileInbox(resolveConfig(), argv[2]);
+else if (inboxLinkVerb !== null) console.log(inboxLink(resolveConfig(), inboxLinkVerb.id));
 else if (inboxWithdraw !== null) await inboxWithdrawCli(resolveConfig(), inboxWithdraw);
 else if (decisionsFile !== null) await fileDecisionCli(resolveConfig(), decisionsFile, readSource);
 else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImport);

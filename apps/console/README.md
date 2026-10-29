@@ -965,6 +965,25 @@ deposit whose op itself blocks asks the owner to act on its PR. A `personal`
 deposit and an agent-chat `approve` over a day old never block. A blocking item open past four days carries
 `aged: true`; the page lists it under "Older than 4 days" inside Blocking, after the fresh ones, never hidden.
 
+### Linking to one item
+
+`#/inbox/<encodeURIComponent(item id)>` opens the inbox on one item (TP-4389), with the id exactly as `inbox.list`
+returns it: `gate:<run>/<step>`, `deposit:<hex>`, `round:<round id>`. The row is scrolled to the middle of the screen,
+drawn as an accent card with a Linked badge, and keeps its own tap. Planning opens by itself when the item is listed
+there. An id no longer in the list, answered, withdrawn or never real, shows "This item is no longer open" with the id,
+above the whole inbox, and adds that its source may be unreadable when the list has a gap.
+
+```sh
+titan-console inbox link 'gate:<run>/approve-merge'
+# https://<first LAN name>:7500/#/inbox/gate%3A<run>%2Fapprove-merge
+```
+
+`inbox link` reads config alone, never the daemon, so run it with the service's `TITAN_CONSOLE_PORT`, `_HOST` and
+`_LAN_NAMES`. With a LAN listener it prints `https://` on the first of `TITAN_CONSOLE_LAN_NAMES` (this machine's
+hostname when unset, the bound address when there is none); with no `TITAN_CONSOLE_HOST` it prints the loopback
+`http://127.0.0.1:<port>` link, since no other device can reach the console then. A phone needs a session first:
+open a `login-link` once and the cookie lasts 30 days.
+
 A tap is two calls (`server/inbox-actions.ts`). Both answer "inbox actions are off" until
 `TITAN_CONSOLE_INBOX_ACTIONS=1`. They act on `resolve-gate` (an approve-merge gate, or an sh-sent-back gate),
 `owner-release` (an owner-asked hold), `owner-op` (a deposit's typed op), `answer-chat` (an agent's chat_ask) and a
@@ -1106,6 +1125,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
 | `#/` | Home | Upstream health, status counts, a read-only needs-you list and the last day's activity | TP-1061 |
+| `#/inbox`, `#/inbox/<item id>` | Inbox | Every pending owner decision; with an item id, that item scrolled into view and marked Linked (see "Linking to one item") | TP-4389 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
