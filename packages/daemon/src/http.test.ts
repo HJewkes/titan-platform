@@ -142,7 +142,8 @@ describe("POST /rpc/:name observer", () => {
       { name: "boom", status: 500, bytes: Buffer.byteLength(failedBody) },
       { name: "(unknown)", status: 404, bytes: Buffer.byteLength(missingBody) },
     ]);
-    expect(samples.every((sample) => sample.surface === "http" && sample.ms >= 0)).toBe(true);
+    expect(samples.map((sample) => sample.surface)).toEqual(["http", "http", "http"]);
+    expect(samples.every((sample) => sample.ms >= 0)).toBe(true);
   });
 
   it("never puts arguments or the body in a sample", async () => {

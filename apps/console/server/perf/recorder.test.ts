@@ -4,7 +4,7 @@ import { createRegistry, inProcessCaller } from "@titan-design/registry";
 import type { ConsoleContext } from "../owner-guard.js";
 import { logFileNames, makeLogDir, readLogText, removeDir, seedLog } from "../perf-recorder.test-helpers.js";
 import { perfCommands } from "./commands.js";
-import { createPerfRecorder, percentile, type RpcStats } from "./recorder.js";
+import { createPerfRecorder, percentile } from "./recorder.js";
 
 const NOW = Date.parse("2026-10-29T12:00:00Z");
 
@@ -50,11 +50,13 @@ describe("perf recorder", () => {
     const answer = await inProcessCaller(registry, context)("perf.summary", { window: "15m" });
     await recorder.close();
 
-    const rpcs = answer.ok ? (answer.data as { rpcs: RpcStats[] }).rpcs : [];
-
-    expect(rpcs.map((row) => row.name)).toEqual(["work.task", "work.tasks"]);
-    expect(rpcs[0]).toMatchObject({ count: 1, errors: 1, p95: 900 });
-    expect(rpcs[1]).toMatchObject({ count: 20, errors: 0, p50: 10, p95: 19, max: 20, bytesP50: 100, bytesMax: 200 });
+    expect(answer.ok && answer.data).toMatchObject({
+      window: "15m",
+      rpcs: [
+        { name: "work.task", count: 1, errors: 1, p95: 900 },
+        { name: "work.tasks", count: 20, errors: 0, p50: 10, p95: 19, max: 20, bytesP50: 100, bytesMax: 200 },
+      ],
+    });
   });
 
   it("the 24 hour summary reads rows from the log, not only the ring", async () => {
