@@ -1,5 +1,6 @@
 import { EXIT } from "@titan-design/registry";
 import { GATE_NAME, type GateEvidence } from "./gate-evidence.js";
+import type { Registration } from "./store.js";
 
 export type { GateEvidence } from "./gate-evidence.js";
 
@@ -40,8 +41,30 @@ export function refuseUnknownGates(evidence: GateEvidence, reason: string): void
  * itself is never lifted, so a push to a new head, or a merge read at no head, finds it held again until that head's gates are green.
  * A hold naming a reviewer waits for that reviewer, as a g10-review one does.
  */
-export function lanGatesClearAt(evidence: GateEvidence, repo: string, hold: { holdReason: string | null; holdReviewer: string | null }, head: string): boolean {
+function lanGatesClearAt(evidence: GateEvidence, repo: string, hold: { holdReason: string | null; holdReviewer: string | null }, head: string): boolean {
   const gates = hold.holdReason === null ? undefined : gatesOf(hold.holdReason);
   if (!gates || gates.length === 0 || hold.holdReviewer !== null) return false;
   return gates.every((gate) => evidence.conclusionAt(repo, head, gate) === "success");
+}
+
+/** The hold facts of one registration, and the evidence its lan-gates read; the store and its readers' fakes both supply them. */
+export type HoldFacts = Pick<Registration, "repo" | "held" | "holdReason" | "holdReviewer" | "holdSatisfied" | "ownerHold">;
+export interface GateEvidenceSource {
+  gateEvidence(): GateEvidence;
+}
+
+/** The one test of whether a run's gating hold lets it merge at `head`: its reviewer's MERGE, or green lan-gates, at exactly that head. None passes an owner hold. */
+export function holdPassedAt(source: GateEvidenceSource, registration: HoldFacts, head: string): boolean {
+  if (registration.ownerHold !== null) return false;
+  return registration.holdSatisfied?.head === head || lanGatesClearAt(source.gateEvidence(), registration.repo, registration, head);
+}
+
+/**
+ * Whether a hold keeps the run from merging, as merge order and the restart drain read it at the head the run's merge step is at.
+ * A MERGE at any head still lets the run merge once its head comes round, as before; green lan-gates count only at `head`.
+ */
+export function holdBarsMerge(source: GateEvidenceSource, registration: HoldFacts | undefined, head: string | undefined): boolean {
+  if (registration?.held !== true) return false;
+  if (registration.ownerHold === null && registration.holdSatisfied !== null) return false;
+  return head === undefined || !holdPassedAt(source, registration, head);
 }

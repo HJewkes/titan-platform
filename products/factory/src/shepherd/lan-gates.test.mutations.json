@@ -6,35 +6,45 @@
       "file": "products/factory/src/shepherd/gate-evidence.ts",
       "find": "WHERE repo = ? AND head = ? AND gate = ?",
       "replace": "WHERE repo = ? AND (head = ? OR 1) AND gate = ?",
-      "kills": ["a lan-gates hold cleared by gate evidence stays held when every gate is green only at a head the PR has moved past"]
+      "kills": [
+        "a lan-gates hold cleared by gate evidence stays held when every gate is green only at a head the PR has moved past"
+      ]
     },
     {
       "name": "a red record counts as green",
       "file": "products/factory/src/shepherd/lan-gates.ts",
       "find": "evidence.conclusionAt(repo, head, gate) === \"success\"",
       "replace": "evidence.conclusionAt(repo, head, gate) !== undefined",
-      "kills": ["a lan-gates hold cleared by gate evidence stays held when the newest record for one gate at the head is red, even after an earlier green one"]
+      "kills": [
+        "a lan-gates hold cleared by gate evidence stays held when the newest record for one gate at the head is red, even after an earlier green one"
+      ]
     },
     {
       "name": "one green gate is enough",
       "file": "products/factory/src/shepherd/lan-gates.ts",
       "find": "gates.every((gate) =>",
       "replace": "gates.some((gate) =>",
-      "kills": ["a lan-gates hold cleared by gate evidence stays held while one named gate has no record at the head"]
+      "kills": [
+        "a lan-gates hold cleared by gate evidence stays held while one named gate has no record at the head"
+      ]
     },
     {
       "name": "green evidence lifts the hold for good",
       "file": "products/factory/src/shepherd/store.ts",
-      "find": "lanGatesClearAt(this.gateEvidence(), repo, r, sha))",
-      "replace": "(lanGatesClearAt(this.gateEvidence(), repo, registration, sha) && this.releaseIfHeld(r.runId, r.holdReason ?? \"\")))",
-      "kills": ["a lan-gates hold cleared by gate evidence holds again at a head pushed after the gates went green at the old one"]
+      "find": "holdPassedAt(this, r, sha)))",
+      "replace": "(holdPassedAt(this, r, sha) && this.releaseIfHeld(r.runId, r.holdReason ?? \"\"))))",
+      "kills": [
+        "a lan-gates hold cleared by gate evidence holds again at a head pushed after the gates went green at the old one"
+      ]
     },
     {
       "name": "a named reviewer is passed over",
       "file": "products/factory/src/shepherd/lan-gates.ts",
       "find": " || hold.holdReviewer !== null) return false;",
       "replace": ") return false;",
-      "kills": ["a lan-gates hold cleared by gate evidence stays held when the hold names a reviewer, whose verdict it waits for"]
+      "kills": [
+        "a lan-gates hold cleared by gate evidence stays held when the hold names a reviewer, whose verdict it waits for"
+      ]
     }
   ]
 }

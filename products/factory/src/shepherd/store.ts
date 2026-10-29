@@ -6,7 +6,7 @@ import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
 import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
-import { gateEvidenceTable, lanGatesClearAt, type GateEvidence } from "./lan-gates.js";
+import { gateEvidenceTable, holdPassedAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
@@ -324,7 +324,7 @@ export class ShepherdStore implements HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
     const owner = candidates.find((registration) => registration?.ownerHold)?.ownerHold;
-    const held = candidates.find((r) => r?.held && !(sha !== undefined && (r.holdSatisfied?.head === sha || lanGatesClearAt(this.gateEvidence(), repo, r, sha))));
+    const held = candidates.find((r) => r?.held && !(sha !== undefined && holdPassedAt(this, r, sha)));
     return owner?.reason ?? (held && (held.holdReason ?? "held"));
   }
 
