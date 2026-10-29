@@ -11,6 +11,7 @@ import { z } from "zod";
 import { consoleResolver, githubOutcome, refused, type Outcome } from "./outcome.js";
 import { ownerEvidence, terminalCommand, type ReadVerdictText } from "./owner-evidence.js";
 import type { GateAction, Read } from "./record.js";
+import { spendTapPresence } from "./tap-presence.js";
 
 /**
  * The steps a console tap may resolve and the decisions it may give on each. Policy as data: an approve-merge gate at a pinned
@@ -47,7 +48,8 @@ export async function resolveGate(read: Read<GateAction>, port: GitHubPort, host
   const stale = storeMoved(host, gate, target, action) ?? (await githubOutcome(port, action));
   if (stale !== undefined) return stale;
   const covered = await evidenceCovers(gate, action, { host, port, ...(readText && { readText }) });
-  return Array.isArray(covered) ? resolveOnce(read, gate, host, covered) : covered;
+  if (!Array.isArray(covered)) return covered;
+  return ownerAtHeadOf(gate) === undefined ? resolveOnce(read, gate, host, []) : resolvePresent(read, gate, host, covered);
 }
 
 /** The record's gate must be one the console may answer, with a decision it may give, and ask about the record's PR. */
@@ -56,7 +58,7 @@ function gateRefusal(gate: GateRecord, action: GateAction): GateTarget | Outcome
   const target = targetOf(gate);
   if (target === undefined) return refused("class", `${gate.id} is ${batchRefusal(gate) ?? "not on the console's step allowlist"}`);
   const ownerRow = ownerAtHeadOf(gate);
-  if (ownerRow !== undefined && action.evidenceDigest === undefined) return refused("class", noEvidence(gate.id, ownerRow, target.head));
+  if (ownerRow !== undefined && (action.evidenceDigest === undefined || action.presence === undefined)) return refused("class", noEvidence(gate.id, ownerRow, target.head));
   if (!consoleDecisions(gate).includes(action.decision)) return refused("class", `the console may not answer ${action.decision} on ${gate.id}`);
   const samePr = target.repo.toLowerCase() === action.repo.toLowerCase() && target.pr === action.pr;
   return samePr ? target : refused("mismatch", `${gate.id} asks about ${target.repo}#${target.pr}, the record names ${action.repo}#${action.pr}`);
@@ -72,7 +74,7 @@ function targetOf(gate: GateRecord): GateTarget | undefined {
 }
 
 const noEvidence = (gateId: string, row: string, head: string): string =>
-  `${gateId} is a ${row} gate, which the console answers only with its evidence shown; run ${terminalCommand(gateId, head)}`;
+  `${gateId} is a ${row} gate, which the console answers only with its evidence shown and the owner's signed presence; run ${terminalCommand(gateId, head)}`;
 
 const ownerAtHeadOf = (gate: GateRecord): string | undefined => (stepOf(gate.id) === MERGE_GATE ? ownerAtHeadRow(gate) : undefined);
 
@@ -82,11 +84,30 @@ const ownerAtHeadOf = (gate: GateRecord): string | undefined => (stepOf(gate.id)
  * digest on any other gate is a record fault, never ignored.
  */
 async function evidenceCovers(gate: GateRecord, action: GateAction, deps: Parameters<typeof ownerEvidence>[1]): Promise<string[] | Outcome> {
-  if (ownerAtHeadOf(gate) === undefined) return action.evidenceDigest === undefined ? [] : refused("record", `${gate.id} asks for no evidence, yet the record carries a digest`);
+  if (ownerAtHeadOf(gate) === undefined) return noEvidenceAsked(gate, action);
   const evidence = await ownerEvidence(gate, deps);
   if (evidence.status === "none") return refused("evidence", `${gate.id} names no owner-at-head fact the console can read`);
   if (evidence.status === "missing") return refused("evidence", `${evidence.reason}; run ${evidence.command}`);
   return evidence.digest === action.evidenceDigest ? evidence.facts : refused("evidence", `the evidence for ${gate.id} changed since it was shown; read the item again`);
+}
+
+function noEvidenceAsked(gate: GateRecord, action: GateAction): string[] | Outcome {
+  if (action.evidenceDigest !== undefined) return refused("record", `${gate.id} asks for no evidence, yet the record carries a digest`);
+  return action.presence === undefined ? [] : refused("record", `${gate.id} asks for no owner presence, yet the record carries a statement`);
+}
+
+/**
+ * TP-4491: the digest any agent can read is not the owner, so an owner-at-head tap resolves only on a presence statement the
+ * owner's key signed for this gate and answer, spent once; the ledger item records how the resolve it admitted ended.
+ */
+function resolvePresent(read: Read<GateAction>, gate: GateRecord, host: FactoryHost, covered: readonly string[]): Outcome {
+  const { presence } = read.action;
+  if (presence === undefined) return refused("class", `${gate.id} is answered from the console only with the owner's signed presence`);
+  const spent = spendTapPresence(host.batches, read.action, presence);
+  if ("refusal" in spent) return refused("resolver", `${gate.id} needs the owner's signed presence: ${spent.refusal}`);
+  const outcome = resolveOnce(read, gate, host, covered);
+  host.batches.mark(spent.batchId, 0, outcome.outcome === "resolved" ? "resolved" : "failed", outcome.outcome === "resolved" ? undefined : outcome.outcome);
+  return outcome;
 }
 
 /** The step's allowlist, narrowed to the decisions the gate's own schema offers, so the console never gives one the gate lacks. */

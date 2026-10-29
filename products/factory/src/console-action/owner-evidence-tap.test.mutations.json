@@ -7,17 +7,28 @@
       "find": "return evidence.digest === action.evidenceDigest ? evidence.facts",
       "replace": "return evidence.digest !== action.evidenceDigest ? evidence.facts",
       "kills": [
-        "a console tap on an owner-at-head gate merges at the pinned head on the digest of the card shown, naming the facts it covered",
+        "a console tap on an owner-at-head gate merges at the pinned head on the digest of the card shown and the owner's signed presence, naming the facts it covered",
         "a console tap on an owner-at-head gate refuses a digest of another card, so evidence that changed after the owner read it never merges"
       ]
     },
     {
-      "name": "an owner-at-head tap with no digest is not refused",
+      "name": "an owner-at-head tap with no digest or presence is not refused",
       "file": "products/factory/src/console-action/gate.ts",
       "find": "  const ownerRow = ownerAtHeadOf(gate);",
       "replace": "  const ownerRow = undefined as string | undefined;",
       "kills": [
-        "a console tap on an owner-at-head gate refuses a tap with no digest, naming the terminal command"
+        "a console tap on an owner-at-head gate refuses a tap with no digest, naming the terminal command",
+        "a console tap on an owner-at-head gate refuses the card's public digest with no presence statement, so an agent cannot forge the owner's tap"
+      ]
+    },
+    {
+      "name": "a presence statement the owner's ring does not verify still resolves",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "  if (\"refusal\" in spent) return refused(\"resolver\"",
+      "replace": "  if (\"refusal\" in spent && spent.refusal === \"\") return refused(\"resolver\"",
+      "kills": [
+        "a console tap on an owner-at-head gate refuses a presence statement signed by a key outside the owner's ring",
+        "a console tap on an owner-at-head gate refuses an owner statement that names no evidence digest, as a terminal resolve's does"
       ]
     },
     {
@@ -32,8 +43,8 @@
     {
       "name": "a digest on a gate that asks for none is ignored",
       "file": "products/factory/src/console-action/gate.ts",
-      "find": "return action.evidenceDigest === undefined ? [] : refused(\"record\"",
-      "replace": "return action.evidenceDigest !== null ? [] : refused(\"record\"",
+      "find": "  if (action.evidenceDigest !== undefined) return refused(\"record\"",
+      "replace": "  if (action.evidenceDigest === null) return refused(\"record\"",
       "kills": [
         "a console tap on an owner-at-head gate refuses a digest on a gate that asks for no evidence as a record fault"
       ]
