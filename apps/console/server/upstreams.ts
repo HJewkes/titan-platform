@@ -11,6 +11,7 @@ import type { ConsoleSources } from "./commands.js";
 import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
+import type { UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { factoryOwnerAction } from "./owner-action.js";
@@ -166,9 +167,9 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
   });
 }
 
-export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
-  const activeWork = activeWorkClient(config.activeWorkPort);
-  const shepherd = shepherdReader(config.factoryPort);
+export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger, recorder?: UpstreamObserver): ConsoleSources {
+  const activeWork = activeWorkClient(config.activeWorkPort, undefined, recorder);
+  const shepherd = shepherdReader(config.factoryPort, undefined, recorder);
   return {
     upstreams: createUpstreams(config),
     activeWork,
@@ -176,9 +177,9 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     ...localDirSourcesOf(config),
     shepherd,
-    autoresearch: autoresearchReader(config.factoryPort),
+    autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
-    factory: factoryNeeds(config.factoryPort),
+    factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
     listeners: listenersOf(config, shepherd, logger),
