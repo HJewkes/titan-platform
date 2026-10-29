@@ -3,7 +3,7 @@ import { loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 import { stopReason } from "./machine-stop.js";
 import type { ReviewerReading, ReviewSlots } from "./review-slots.js";
-import { reviewDispatcher, type ReviewStart } from "./review-dispatcher.js";
+import { reviewDispatcher, type LiveHead, type ReviewStart } from "./review-dispatcher.js";
 import { admitQueued, queueNote, reviewWaitList, type MovedPast, type ReviewAsk, type WaitingReview } from "./review-queue.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 
@@ -198,6 +198,8 @@ interface SpawnGateOptions {
   holdMs?: number;
   /** Tells when a queued review's run has moved past it, so it leaves the queue at once. */
   movedPast?: MovedPast;
+  /** The open PR's head read live, once per pass for each queued review, so a head the cached list has not shown yet still drops it. */
+  liveHead?: LiveHead;
   /** One line per admitted or deferred spawn; defaults to the factory log. */
   log?: (line: string) => void;
   /** Told of every machine-stop breach a spawn ask reads, whatever the verdict, so a review that ends later can see the stop held. */
@@ -283,6 +285,7 @@ function queuedReviews(options: SpawnGateOptions, admit: SpawnGate["admit"], now
     remove: (name) => reviews.remove(name),
     admit: (name, running, review) => admit(name, running, review),
     deferred: (error) => error instanceof SpawnDeferred,
+    liveHead: options.liveHead,
     expired: (waitedMs) => new SpawnDeferred(`the review stayed queued for ${minutes(waitedMs)}`),
     now,
     tickMs: options.tickMs ?? REVIEW_TICK_MS,
