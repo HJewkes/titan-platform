@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 import { resolveConfig, type MinerConfig } from "../config.js";
@@ -49,8 +50,8 @@ describe("route-outcomes (Q15)", () => {
     const { code, stdout } = await cli(["--json", "insights", "route-outcomes", "--since", SINCE]);
 
     expect(code).toBe(0);
-    const envelope = JSON.parse(stdout) as { ok: boolean; data: unknown };
-    const result = insightResultSchema(routeOutcomeSchema).parse(envelope.data);
+    const envelope = z.object({ ok: z.literal(true), data: insightResultSchema(routeOutcomeSchema) }).parse(JSON.parse(stdout));
+    const result = envelope.data;
     expect(result.answer.since).toBe(SINCE);
     expect(result.answer.groups).toHaveLength(1);
     expect(result.answer.groups[0]).toMatchObject({ table: "shape-v1@0000abcd", prior: "standard", estimateBand: "2", agreement: "agree", spawns: 2 });
