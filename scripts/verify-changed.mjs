@@ -128,7 +128,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
   { job: "validate", run: "pnpm typecheck", disposition: "local", label: "typecheck" },
   { job: "validate", run: "pnpm lint", disposition: "local", label: "lint" },
-  { job: "validate", run: /apt-get install|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
+  { job: "validate", run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
   { job: "validate", run: "pnpm test:scope", disposition: "local-subset", label: "vitest related", reason: "the full reverse closure can pass the 600 s cap; CI stays the authority" },
   { job: "validate", run: "pnpm capabilities:check", disposition: "local", label: "capabilities:check" },
   { job: "validate", run: "pnpm metrics:check", disposition: "local", label: "metrics:check" },
