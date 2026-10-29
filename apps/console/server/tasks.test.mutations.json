@@ -6,7 +6,11 @@
       "file": "apps/console/server/tasks.ts",
       "find": "[activeWork.read(\"task.list\", { all_initiatives: true }), personalSlugs(activeWork, source.work)]",
       "replace": "[activeWork.read(\"task.list\", { all_initiatives: true, status: \"all\" }), personalSlugs(activeWork, source.work)]",
-      "kills": ["work.task never asks for every initiative's done tasks to find one id"]
+      "kills": [
+        "work.task returns a done task with the done stage, read from its own initiative by id",
+        "work.task never asks for every initiative's done tasks to find one id",
+        "work.task finds a done task through one initiative's list on a daemon without task.show"
+      ]
     },
     {
       "name": "a daemon without task.show fails the done-task lookup",
