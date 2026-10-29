@@ -4,7 +4,7 @@
     {
       "name": "gh no longer reaches the gist egress check",
       "file": "packages/tool-guard/src/families/egress.ts",
-      "find": "  if (cmd.name === \"gh\") return gist(cmd);",
+      "find": "  if (cmd.name === \"gh\") return ghPathUnknown(cmd) ? [classified(\"bash.egress.gh-gist\", { host: \"gist.github.com\" })] : gist(cmd);",
       "replace": "  if (cmd.name === \"gh\") return [];",
       "kills": [
         "every guarded family's sentinel egress denies on its own",
