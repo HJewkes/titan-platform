@@ -18,7 +18,7 @@ import { perfCommands } from "./perf/commands.js";
 import { createPerfRecorder, type PerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
-import { relayUpstreams, startEventsRelay } from "./events-relay.js";
+import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
@@ -71,7 +71,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
+  const relay = relayEvents(handle.hub, sources, config, logger);
   return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
 }
 
@@ -82,6 +82,12 @@ async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promis
 
 function perfCommandList(perf: PerfRecorder): ClassedCommand[] {
   return Object.values(perfCommands(perf));
+}
+
+/** Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too. */
+function relayEvents(hub: DaemonHandle["hub"], sources: ConsoleSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+  sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
+  return startEventsRelay({ hub, upstreams: relayUpstreams(config), logger, onFrame: (source) => sources.invalidation?.emit(source) });
 }
 
 /** Media routes go ahead of the static app, whose `/*` would answer them with the page. */
