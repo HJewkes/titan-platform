@@ -155,11 +155,6 @@
       "count": 1
     }
   },
-  "apps/console/server/work.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
-    }
-  },
   "apps/console/src/pages/InitiativeDetailPage.tsx": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
