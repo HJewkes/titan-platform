@@ -292,6 +292,17 @@ because the installed `beat-builder` profile predates its TSX variant. They turn
 that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
 and no resumed session.
 
+**Custom layers on the page, and the text check** (TP-4418). The page draws a custom layer in the stage box between
+empty chrome bands, the same box a stage kind fills, so the layer's `inset: 0` clears the chrome. Its anchors are
+still cells of the full frame. After each commit the layer host raises any text under the page's `--beat-floor`
+(40 px, qa's small-text floor) to the floor. After the compile gate and the cue check, the host's `layerTextCheck`
+(`chromiumLayerTextCheck`, Chromium, $0) renders the layer alone on the composition page. It seeks to each cue
+word's planned time plus 1 s and to the beat's end. At each moment it applies qa's own `small-text` and
+`under-chrome` findings at qa's thresholds, and a `bad-text` rule for visible `NaN`, `undefined`, `null` or `[object`.
+A layer that breaks a rule is rebuilt once, with a `rebuild` field naming each element, its text and the rule. The
+rebuild's spend joins the build's. A rebuild that does not compile, drops a cue target or still breaks a rule fails
+resolve with one row per beat, element and rule. `layerTextCheck: null` turns the check off; the test host does.
+
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
 bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt

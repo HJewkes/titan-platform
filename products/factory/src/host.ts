@@ -21,6 +21,7 @@ import {
   type WorkflowCapability,
   type WorkflowEvent,
   workflowMigration,
+  workflowNameIndexMigration,
   workflowOwnershipMigration,
   type WorkflowRun,
   WorkflowRunStore,
@@ -108,10 +109,10 @@ const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "faile
 
 /** The migrations every factory database runs; the harness opens its own database from this so it cannot drift from serve. */
 export function factoryMigrations(): Migration[] {
-  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34), githubApiPoolMigration(35), reconcilerCursorMigration(36), botIntentMigration(37)];
+  return [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), gateRuleMigration(27), gateDelegateMigration(28), mergeLogMigration(29), eventLogMigration(30), headEpochMigration(34), githubApiPoolMigration(35), reconcilerCursorMigration(36), botIntentMigration(37), workflowNameIndexMigration(47)];
 }
 
-/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, 34 the head epoch, 35 the github-api pool state, 36 the reconciler cursor, and 37 the bot intent rows (31-33 are the Shepherd tenant's). */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, 20 follows the tenant's 19, 27 and 28 follow the tenant's 26, 29 is the merge log, 30 the event log, 34 the head epoch, 35 the github-api pool state, 36 the reconciler cursor, 37 the bot intent rows, and 47 the run table's workflow-and-status index (31-33 are the Shepherd tenant's). */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);

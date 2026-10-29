@@ -645,7 +645,7 @@ Key exports:
 
 - `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
 - `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
-- `capture`: `captureFrame`, `launch`, `openCapturePage`, `settleFonts`, `CapturePage`
+- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `settleFonts`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
