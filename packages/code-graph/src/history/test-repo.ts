@@ -25,7 +25,7 @@ export function daysAgo(days: number): string {
 }
 
 /** `fixtureEnv` with every commit made as `author` at `date`. */
-export function commitEnv(date = FIXED_DATE, author = DEFAULT_AUTHOR): NodeJS.ProcessEnv {
+function commitEnv(date = FIXED_DATE, author = DEFAULT_AUTHOR): NodeJS.ProcessEnv {
   const email = `${author}@example.com`;
   return {
     ...fixtureEnv(),
