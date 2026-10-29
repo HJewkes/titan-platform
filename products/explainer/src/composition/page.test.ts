@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launch, openCapturePage } from "@titan-design/frame-capture";
-import { afterAll, beforeAll, describe, test } from "vitest";
+import type { Browser } from "playwright-core";
+import { afterAll, afterEach, beforeAll, describe, test } from "vitest";
 import { cueGate } from "../qa/cue-gate.js";
 import { loadQaGate } from "../qa/gate-profile.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
@@ -27,14 +28,22 @@ const KINDS_URL = "/fixtures/kinds.timeline.json";
 let pageDir: string;
 let server: PageServer;
 let baked: Render;
+let browser: Browser;
 
 beforeAll(async () => {
   pageDir = await buildPage();
   server = await servePage(pageDir, SLOW_TIMELINE_MS);
   baked = await renderFrames(server.url("baked.html"));
+  browser = await launch();
 }, BROWSER_TIMEOUT_MS);
 
+// openCapturePage leaves its context open, also when the open rejects, so each test's pages close here.
+afterEach(async () => {
+  await Promise.all(browser.contexts().map((context) => context.close()));
+});
+
 afterAll(async () => {
+  await browser.close();
   await server.close();
   rmSync(pageDir, { recursive: true, force: true });
 });
@@ -50,20 +59,15 @@ interface KindsPage {
 
 /** The kinds timeline on the page, seekable, with every page error it throws on the way. */
 async function withKindsPage(use: (kinds: KindsPage) => Promise<void>): Promise<void> {
-  const browser = await launch();
-  try {
-    const { page } = await openCapturePage(browser, server.url("index.html", KINDS_URL), STAGE);
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    const seek = (t: number) =>
-      page.evaluate(async (seconds) => {
-        window.__titanMotion?.seek(seconds);
-        await window.__titanMotion?.ready();
-      }, t);
-    await use({ page, seek, errors });
-  } finally {
-    await browser.close();
-  }
+  const { page } = await openCapturePage(browser, server.url("index.html", KINDS_URL), STAGE);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const seek = (t: number) =>
+    page.evaluate(async (seconds) => {
+      window.__titanMotion?.seek(seconds);
+      await window.__titanMotion?.ready();
+    }, t);
+  await use({ page, seek, errors });
 }
 
 /** How visible slot element `target` of a beat is: its most opaque leaf (a row, a title word), through every ancestor. */
@@ -123,91 +127,61 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   });
 
   test("a beat kind the registry does not know fails the page", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/unknown-kind.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/unknown-kind.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: unknown beat kind "hologram"/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: unknown beat kind "hologram"/);
   });
 
   // Mutation: draw every chart kind past bar as a line; a gauge then renders as a line chart and the page opens.
   test("a chart of a kind with no view (gauge) fails the page and names the kind", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/gauge-chart.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/gauge-chart.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: chart kind "gauge" is not drawn yet; drawn kinds: bar, line/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: chart kind "gauge" is not drawn yet; drawn kinds: bar, line/);
   });
 
   // Mutation: let the arch-map take any node count; six nodes then fail as a stage overflow, not as this refusal.
   test("an arch-map of six nodes is refused, since the path holds two to five", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/six-node-map.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/six-node-map.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: arch-map draws 2 to 5 nodes, not 6/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: arch-map draws 2 to 5 nodes, not 6/);
   });
 
   // Mutation: skip the edge check; the map_state map with no edges then draws Ledger -> Scanner and the page opens.
   test("an arch-map whose edges are not the node path is refused, so no link is drawn that the map lacks", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
   });
 
   test("a provisional timeline is stamped DRAFT and a spoken one is not", async () => {
-    const browser = await launch();
-    try {
-      const badgeOn = async (name: string) => {
-        const { page } = await openCapturePage(browser, server.url("index.html", `/timelines/${name}`), STAGE);
-        return page.evaluate(() => document.querySelector('[data-testid="draft-badge"]')?.textContent ?? null);
-      };
+    const badgeOn = async (name: string) => {
+      const { page } = await openCapturePage(browser, server.url("index.html", `/timelines/${name}`), STAGE);
+      return page.evaluate(() => document.querySelector('[data-testid="draft-badge"]')?.textContent ?? null);
+    };
 
-      const badges = [await badgeOn("second.timeline.json"), await badgeOn("fixture.timeline.json")];
+    const badges = [await badgeOn("second.timeline.json"), await badgeOn("fixture.timeline.json")];
 
-      assert.deepEqual(badges, ["DRAFT", null]);
-    } finally {
-      await browser.close();
-    }
+    assert.deepEqual(badges, ["DRAFT", null]);
   });
 
   test("a stage beat draws its headline, source and chapter in the chrome, and a page beat draws no chrome", async () => {
-    const browser = await launch();
-    try {
-      const { page } = await openCapturePage(browser, server.url("index.html", "/fixtures/kinds.timeline.json"), STAGE);
-      const chromeAt = (t: number) =>
-        page.evaluate(async (seconds) => {
-          window.__titanMotion?.seek(seconds);
-          await window.__titanMotion?.ready();
-          const shown = [...document.querySelectorAll<HTMLElement>(".xp-chrome")].filter((el) => el.style.visibility === "visible");
-          const text = (selector: string) => shown[0]?.querySelector(selector)?.textContent ?? null;
-          return { count: shown.length, headline: text(".xp-headline"), source: text(".xp-chips"), chapter: text(".xp-chapter") };
-        }, t);
+    const { page } = await openCapturePage(browser, server.url("index.html", "/fixtures/kinds.timeline.json"), STAGE);
+    const chromeAt = (t: number) =>
+      page.evaluate(async (seconds) => {
+        window.__titanMotion?.seek(seconds);
+        await window.__titanMotion?.ready();
+        const shown = [...document.querySelectorAll<HTMLElement>(".xp-chrome")].filter((el) => el.style.visibility === "visible");
+        const text = (selector: string) => shown[0]?.querySelector(selector)?.textContent ?? null;
+        return { count: shown.length, headline: text(".xp-headline"), source: text(".xp-chips"), chapter: text(".xp-chapter") };
+      }, t);
 
-      const chrome = { hook: await chromeAt(1), held: await chromeAt(3.5), catalogue: await chromeAt(6) };
+    const chrome = { hook: await chromeAt(1), held: await chromeAt(3.5), catalogue: await chromeAt(6) };
 
-      assert.deepEqual(chrome, {
-        hook: { count: 0, headline: null, source: null, chapter: null },
-        held: { count: 1, headline: "The router lane shipped its matcher rewrite", source: "verifiedmatch.ts:12-40+1", chapter: "2/4Lanes" },
-        catalogue: { count: 0, headline: null, source: null, chapter: null },
-      });
-    } finally {
-      await browser.close();
-    }
+    assert.deepEqual(chrome, {
+      hook: { count: 0, headline: null, source: null, chapter: null },
+      held: { count: 1, headline: "The router lane shipped its matcher rewrite", source: "verifiedmatch.ts:12-40+1", chapter: "2/4Lanes" },
+      catalogue: { count: 0, headline: null, source: null, chapter: null },
+    });
   });
 
   // Mutation: keep the 48 px column gap on a dense chart; twelve labels then run past the stage box and the page fails.
@@ -219,14 +193,9 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
 
   // Mutation: make useStageFit return before measuring; the too-wide line renders under the chrome and the page opens.
   test("a held line too wide for its stage box fails the page with the overflow", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/overflow.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/overflow.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: too-wide overflows its stage box by \d+ px \(right \d+\)/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: too-wide overflows its stage box by \d+ px \(right \d+\)/);
   });
 
   test("the kind sheet writes a first and a settled frame of each kind, none of them blank", async () => {
@@ -306,23 +275,18 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   });
 
   test("the catalogue beat renders react-ui's FileCard, SchemaCard and Annotate live", async () => {
-    const browser = await launch();
-    try {
-      const { page } = await openCapturePage(browser, server.url("index.html", "/timelines/third.timeline.json"), STAGE);
-      await page.evaluate(async () => {
-        window.__titanMotion?.seek(1.4);
-        await window.__titanMotion?.ready();
-      });
+    const { page } = await openCapturePage(browser, server.url("index.html", "/timelines/third.timeline.json"), STAGE);
+    await page.evaluate(async () => {
+      window.__titanMotion?.seek(1.4);
+      await window.__titanMotion?.ready();
+    });
 
-      const shown = await page.evaluate(() => ({
-        fileCard: document.body.textContent.includes("lib/cache/store.ts"),
-        schemaCard: document.querySelector('[aria-label="Cache entry table"]') !== null,
-        annotate: document.body.textContent.includes("entries expire") && document.querySelector('[data-testid="catalogue-annotate"] svg path') !== null,
-      }));
+    const shown = await page.evaluate(() => ({
+      fileCard: document.body.textContent.includes("lib/cache/store.ts"),
+      schemaCard: document.querySelector('[aria-label="Cache entry table"]') !== null,
+      annotate: document.body.textContent.includes("entries expire") && document.querySelector('[data-testid="catalogue-annotate"] svg path') !== null,
+    }));
 
-      assert.deepEqual(shown, { fileCard: true, schemaCard: true, annotate: true });
-    } finally {
-      await browser.close();
-    }
+    assert.deepEqual(shown, { fileCard: true, schemaCard: true, annotate: true });
   });
 });

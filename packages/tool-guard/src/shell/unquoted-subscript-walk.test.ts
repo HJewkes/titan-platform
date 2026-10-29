@@ -7,6 +7,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -50,7 +51,11 @@ const bashOnPath = spawnSync("bash", ["-c", "true"]).status === 0;
 describe.skipIf(!bashOnPath)("bash on the unquoted form", () => {
   const scratch = mkdtempSync(join(tmpdir(), "tool-guard-tp-2248-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-  const bash = (...args: string[]) => spawnSync("bash", args, { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("tool-guard-tp-2248-rows-", (_dir, ...args: string[]) => ({ run: { program: "bash", args, cwd: scratch, input: "" }, read: (run) => run }));
+  const bash = (...args: string[]) => oracle.get(...args);
+  for (const repeats of [6, 9, 12]) for (const flags of [["-n", "-c"], ["-c"]]) oracle.add(...flags, unquoted(repeats, `echo ${MARKER}`));
+  oracle.beforeAll();
 
   it.each([6, 9, 12])("rejects the text at %i nested substitutions with an unterminated quote", (repeats) => {
     const run = bash("-n", "-c", unquoted(repeats, `echo ${MARKER}`));

@@ -70,6 +70,12 @@ export type OpenDatabase = (file: string, options: Database.Options) => Database
 
 const openBetterSqlite: OpenDatabase = (file, options) => new Database(file, options);
 
+/** A locked `events.db` is not worth better-sqlite3's default 5 s busy wait: origins and skipping are only savings. */
+const EVENTS_BUSY_TIMEOUT_MS = 100;
+
+export const openBriefly: OpenDatabase = (file, options) =>
+  new Database(file, { ...options, timeout: EVENTS_BUSY_TIMEOUT_MS });
+
 export function agentChatHome(): string {
   return process.env.AGENT_CHAT_HOME ?? path.join(os.homedir(), '.agent-chat');
 }
@@ -155,7 +161,7 @@ export type IsKnownTask = (taskId: string) => boolean;
 
 /** Known task ids are read once per pass, so every origin in it links against the same store. */
 export function agentChatOriginResolver(
-  source: SpawnSource = eventsDbSource(),
+  source: SpawnSource = eventsDbSource(agentChatHome(), openBriefly),
   taskRoot?: string,
 ): OriginResolver {
   return async (sessionIds) => {

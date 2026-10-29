@@ -3,8 +3,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { HashEmbedder, OllamaEmbedder, type EmbedRole, type Embedder } from "@titan-design/embed";
+import { FIXTURE_TSCONFIG, openTestStore } from "../incremental.test-helpers.js";
 import { indexPaths } from "../indexer.js";
-import { openCodeGraph, type CodeGraphStore } from "../store.js";
+import type { CodeGraphStore } from "../store.js";
 import { SYMBOL_EMBEDDING_NAMESPACE } from "./cache.js";
 import { embedSnapshot, findSimilarCapability, tryEmbedSnapshot } from "./embeddings.js";
 
@@ -66,8 +67,8 @@ describe("embeddings over an indexed snapshot", () => {
     root = await fs.mkdtemp(path.join(tmpdir(), "code-graph-emb-"));
     await fs.mkdir(path.join(root, "src"), { recursive: true });
     await fs.writeFile(path.join(root, "src/time.ts"), DURATION_TS);
-    store = openCodeGraph(path.join(root, "graph.sqlite3"));
-    ({ snapshotId } = await indexPaths(store, { paths: [root], ref: "wd", detectRenames: false }));
+    store = openTestStore(path.join(root, "graph.sqlite3"));
+    ({ snapshotId } = await indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, tsConfig: FIXTURE_TSCONFIG }));
   });
 
   afterEach(async () => {
