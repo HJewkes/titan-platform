@@ -22,7 +22,7 @@
     {
       "name": "a timed-out context.graph fails the whole task read",
       "file": "apps/console/server/tasks.ts",
-      "find": "return { references: [], degraded: `Mentions unread: ${(error as Error).message}` };",
+      "find": "return { references: [], degraded: `Mentions unread: ${messageOf(error)}` };",
       "replace": "throw error;",
       "kills": ["work.task loads with mentions and artifact state marked unavailable when those reads time out"]
     }

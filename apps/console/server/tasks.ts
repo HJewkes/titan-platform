@@ -207,7 +207,7 @@ async function showTask(activeWork: ActiveWork, slug: string, id: string): Promi
   try {
     return { ...(await activeWork.read("task.show", { slug, id })), slug };
   } catch (error) {
-    const { code } = error as { code?: number };
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === EXIT.NOINPUT) return undefined;
     // A daemon without task.show still answers one initiative's list, far short of every initiative's done tasks.
     if (code === EXIT.USAGE) return (await activeWork.read("task.list", { slug, status: "all" })).tasks.find((entry) => entry.id === id);
@@ -215,11 +215,13 @@ async function showTask(activeWork: ActiveWork, slug: string, id: string): Promi
   }
 }
 
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
 async function readMentions(activeWork: ActiveWork, id: string): Promise<{ references: WireReference[]; degraded: string | null }> {
   try {
     return { references: (await activeWork.read("context.graph", { id })).references, degraded: null };
   } catch (error) {
-    return { references: [], degraded: `Mentions unread: ${(error as Error).message}` };
+    return { references: [], degraded: `Mentions unread: ${messageOf(error)}` };
   }
 }
 
@@ -228,7 +230,7 @@ async function readStatus(activeWork: ActiveWork, slug: string): Promise<{ statu
   try {
     return { status: await activeWork.read("artifact.status", { slug }), degraded: [] };
   } catch (error) {
-    return { status: { branches: [], worktrees: [] }, degraded: [`Artifact state unread: ${(error as Error).message}`] };
+    return { status: { branches: [], worktrees: [] }, degraded: [`Artifact state unread: ${messageOf(error)}`] };
   }
 }
 
