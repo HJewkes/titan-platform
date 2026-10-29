@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a live agent idle through both asks is left to its seat",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "if (asked.choice.mode !== \"live\" || fallback !== \"message\") return unhandled(stalled);",
+      "replace": "return unhandled(stalled);",
+      "kills": [
+        "sh-wake-implementer: a live agent that takes no wake is replaced (TP-4430) retires a live agent idle through the ci-red wake and its fallback, and starts a successor on the PR branch with the failure, telling no seat",
+        "sh-wake-implementer: a live agent that takes no wake is replaced (TP-4430) polls when the spawn gate defers the successor, and starts it without asking the retired agent again",
+        "sh-wake-implementer: a live agent that takes no wake is replaced (TP-4430) replaces a hung successor with the next successor, not a resume of the warm implementer before it"
+      ]
+    },
+    {
+      "name": "a refused retire still starts a successor beside the live agent",
+      "file": "products/factory/src/shepherd/wake-hung.ts",
+      "find": "return { kind: \"unhandled\", reason: `${stalled}, and its retire failed: ${failureOf(error)}` };",
+      "replace": "return { kind: \"hung\", agent };",
+      "kills": [
+        "sh-wake-implementer: a live agent that takes no wake is replaced (TP-4430) starts no successor beside the agent when agent-chat refuses its retire, and tells the seat with the error class only"
+      ]
+    },
+    {
+      "name": "a live agent is retired though no successor could replace it",
+      "file": "products/factory/src/shepherd/wake-hung.ts",
+      "find": "if (agents.retire === undefined || !replaceable) return",
+      "replace": "if (agents.retire === undefined) return",
+      "kills": [
+        "sh-wake-implementer: a live agent that takes no wake is replaced (TP-4430) leaves the live agent running when no successor could push, as on an advisory repo"
+      ]
+    },
+    {
+      "name": "the loop forgets the retired agent and picks by roster again",
+      "file": "products/factory/src/shepherd/wake.ts",
+      "find": "if (loop.hung !== undefined) return successorChoice(deps, wiring, task, loop.hung, roster);",
+      "replace": "",
+      "kills": [
+        "sh-wake-implementer: a live agent that takes no wake is replaced (TP-4430) replaces a hung successor with the next successor, not a resume of the warm implementer before it"
+      ]
+    }
+  ]
+}

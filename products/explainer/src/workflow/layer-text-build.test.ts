@@ -1,12 +1,15 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BeatWorker, BuilderRef, LayerBuild } from "../build/beat-worker.js";
 import type { LayerCheckInput, LayerTextCheck } from "../build/layer-text.js";
-import { runOneStage } from "./host.js";
-import { CUSTOM_LAYERS } from "./layer-build.js";
+import { FontLoadError } from "@titan-design/frame-capture";
+import { ArtifactStore } from "./artifacts.js";
+import { openState, runOneStage } from "./host.js";
+import { CUSTOM_LAYERS, UNBUILT_LAYERS } from "./layer-build.js";
 import { customBeatInputs } from "./layer-repair.test-helpers.js";
-import { runPaths } from "./run-dir.js";
+import { runPaths, readJson } from "./run-dir.js";
+import { StageRecordSchema } from "./records.js";
 import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 
 // Synthetic: an invented parcel desk; no real script, layer or session.
@@ -15,6 +18,7 @@ afterEach(() => fx.cleanup());
 
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
 const NAN_LAYER = "export default () => <span id=\"parcels\">{NaN} parcels held</span>;\n";
+const OWN_FONT_LAYER = "export default () => <span id=\"parcels\" style={{ fontFamily: \"Inter\" }}>12 parcels held</span>;\n";
 const GOOD_LAYER = "export default () => <span id=\"parcels\">12 parcels held</span>;\n";
 
 /** A fake model that answers its packets with `modules` in turn, keeping each packet it was sent. */
@@ -93,5 +97,87 @@ describe("the text check on custom-layer builds", () => {
     expect(JSON.parse(packets[0]!).rebuild).toBeUndefined();
     expect(checked.map((input) => input.packet.beat_id)).toEqual(["b1"]);
     expect(record.outputs[CUSTOM_LAYERS]).toBeDefined();
+  });
+
+  // Mutations: a check that cannot run is rebuilt as a defect (the model is called twice), or its reason loses the URL.
+  it("fails resolve as an infra error naming the face and URL when fonts cannot load, with no model rebuild", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(GOOD_LAYER);
+    const unloaded: LayerTextCheck = async () => {
+      throw new FontLoadError([{ family: "Inter", status: "error" }], ["http://127.0.0.1:1/page/assets/latin-x.woff2"]);
+    };
+
+    // Act
+    const run = runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, unloaded));
+
+    // Assert
+    await expect(run).rejects.toThrow(
+      "custom layers not built: b1 (layer check could not run, not a layer defect: fonts not loaded: Inter (error); font requests that failed: http://127.0.0.1:1/page/assets/latin-x.woff2)",
+    );
+    expect(packets).toHaveLength(1);
+  });
+
+  // Mutation: the unbuilt branch of the tree step stores no layer sources.
+  it.each([
+    ["the check cannot run", async () => { throw new Error("browser did not start"); }, GOOD_LAYER],
+    ["the rebuild still breaks a rule", undefined, NAN_LAYER],
+  ])("keeps the built layer sources in the failed record when %s", async (_case, check, layer) => {
+    // Arrange
+    fx = fixture();
+    const { worker } = scriptedWorker(layer);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, check ?? nanCheck().check)).catch(() => undefined);
+
+    // Assert
+    const runId = readdirSync(path.join(fx.dataDir, "runs")).find((id) => readJson(runPaths(fx.dataDir, id).failed("resolve"), StageRecordSchema));
+    const failed = readJson(runPaths(fx.dataDir, runId!).failed("resolve"), StageRecordSchema)!;
+    const db = openState(fx.dataDir);
+    const dest = path.join(fx.dataDir, "unbuilt-copy");
+    new ArtifactStore(fx.dataDir, db).materialise(failed.outputs[UNBUILT_LAYERS]!, dest);
+    db.close();
+    expect(readFileSync(path.join(dest, "b1.tsx"), "utf8")).toBe(layer);
+  });
+
+  // Mutations: the font check never runs, or its rebuild is skipped, or its hint drops the line.
+  it("rebuilds once a layer that names its own font, naming the line and the theme font tokens", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(OWN_FONT_LAYER, GOOD_LAYER);
+
+    // Act
+    const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    expect(JSON.parse(packets[1]!).rebuild).toMatch(/^the last build set its own fonts: line 1 \(font family\).*--font-family-body/);
+    const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
+    expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(GOOD_LAYER);
+  });
+
+  it("fails resolve when the rebuild still names its own font", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(OWN_FONT_LAYER);
+
+    // Act
+    const run = runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    await expect(run).rejects.toThrow("custom layers not built: b1 (needs repair: the layer still sets its own fonts after one rebuild: line 1 (font family))");
+    expect(packets).toHaveLength(2);
+  });
+
+  it("builds a layer with no font of its own in one model call", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(GOOD_LAYER);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(1);
   });
 });

@@ -29,6 +29,26 @@
         "the text check on custom-layer builds rebuilds once a layer that draws NaN, naming the element and rule, and stores the rebuild",
         "the text check on custom-layer builds stores a layer that passes the check with one model call and no rebuild"
       ]
+    },
+    {
+      "name": "the failed record stores no layer sources",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "outputs: { ...record.outputs, ...sources }, notes: [...record.notes, message]",
+      "replace": "outputs: record.outputs, notes: [...record.notes, message]",
+      "kills": [
+        "the text check on custom-layer builds keeps the built layer sources in the failed record when the check cannot run",
+        "the text check on custom-layer builds keeps the built layer sources in the failed record when the rebuild still breaks a rule"
+      ]
+    },
+    {
+      "name": "a layer that names its own font is never rebuilt",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (findings.length === 0) return { build };",
+      "replace": "if (findings.length >= 0) return { build };",
+      "kills": [
+        "the text check on custom-layer builds rebuilds once a layer that names its own font, naming the line and the theme font tokens",
+        "the text check on custom-layer builds fails resolve when the rebuild still names its own font"
+      ]
     }
   ]
 }

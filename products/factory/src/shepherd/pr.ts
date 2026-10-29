@@ -39,7 +39,8 @@ import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./ou
 import { leaveTrain } from "./train.js";
 import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
 import { countRound, endedOutcome, routeEscalation, type Routed } from "./routed.js";
-import { wakePhase, wakeRoutes } from "./wake.js";
+import { wakeRoutes } from "./wake.js";
+import { wakePhase } from "./wake-phase.js";
 import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
 import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
 import { conflictBaseRoute } from "./conflict-base.js";
