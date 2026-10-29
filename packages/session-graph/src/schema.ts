@@ -8,6 +8,7 @@ import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema }
 import { REQUEST_COST_BOUNDARY_MIGRATION_NAME, applyRequestCostBoundary } from "./audit-schema-v10.js";
 import { PRICE_LONG_PROMPT_MIGRATION_NAME, applyPriceLongPrompt } from "./price-long-prompt-schema.js";
 import { ECHO_STATE_MIGRATION_NAME, ECHO_STATE_TABLE, applyEchoStateSchema } from "./echo-state-schema.js";
+import { ORIGIN_ROUTE_MIGRATION_NAME, applyOriginRouteSchema } from "./origin-route-schema.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, hasTable, kitMigration, type Db, type Migration } from "@titan-design/store-sqlite";
 
@@ -208,4 +209,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 12, name: INBOUND_BROADCAST_MIGRATION_NAME, up: applyInboundBroadcastSchema },
   { version: 13, name: PRICE_LONG_PROMPT_MIGRATION_NAME, up: applyPriceLongPrompt },
   { version: 14, name: ECHO_STATE_MIGRATION_NAME, up: applyEchoStateSchema },
+  { version: 15, name: ORIGIN_ROUTE_MIGRATION_NAME, up: applyOriginRouteSchema },
 ];

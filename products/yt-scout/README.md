@@ -1,15 +1,16 @@
 # @titan-design/yt-scout
 
 A scheduled AI-video scout: poll a watch list of YouTube sources, transcribe and score new
-videos, and file one daily owner item. This first slice holds the watch list, the `videos`
-state table and the one-off seen-set import; detect, transcribe, score and the timers come in
-later slices, against the typed seams in `src/seams.ts`.
+videos, and file one daily owner item. So far it holds the watch list, the `videos` state
+table, the one-off seen-set import and detect; transcribe, score and the timers come in later
+slices, against the typed seams in `src/seams.ts`.
 
 Tier product of the titan-platform DAG. Private; not published.
 
 ```sh
 titan-yt-scout config check [--config <file>]
 titan-yt-scout seen import [--config <file>] [--root <dir>] [--db <file>]
+titan-yt-scout detect [--dry-run] [--config <file>] [--db <file>] [--rows-dir <dir>]
 ```
 
 ## Paths
@@ -19,6 +20,8 @@ titan-yt-scout seen import [--config <file>] [--root <dir>] [--db <file>]
 | youtube sources tree | `<active-work root>/youtube/sources` | `YT_ROOT`, `--root` |
 | watch list | `<sources>/scout/watchlist.yml` | `TITAN_YT_SCOUT_CONFIG`, `--config` |
 | state database | `~/.local/state/titan-yt-scout/scout.sqlite3` | `TITAN_YT_SCOUT_DB`, `--db` |
+| step rows | `rows/` beside the state database | `--rows-dir` |
+| yt-dlp binary | `yt-dlp` on `PATH` | `yt_dlp` in the watch list, then `YT_DLP` |
 
 The watch list is owner data, so it lives in the initiative tree, not in this repo.
 
@@ -46,6 +49,14 @@ models: { score: <model id>, digest: <model id> }
 
 Every object is strict: an unknown key is an error. `config check` prints `ok: N sources, M on
 trial` or one `file:line: path: message` line per problem and exits 1.
+
+## Detect
+
+`detect` polls every source and lists the ids not yet in `videos`, with the state the length
+filter gives each one. A channel tries its RSS feed first and falls back to a yt-dlp flat
+listing of its tabs, writing a `fallback` row. A source whose listing fails yields nothing and
+writes a `fail` row with `listing_error`; the other sources still run, and every row collected
+reaches disk. `--dry-run` inserts nothing.
 
 ## Seen-set import
 

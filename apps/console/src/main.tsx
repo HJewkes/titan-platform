@@ -13,7 +13,7 @@ const source = pageDataSource();
 
 createRoot(root).render(
   <StrictMode>
-    <RpcProvider source={source}>
+    <RpcProvider source={source} gcMs={60_000}>
       <AnswerSourceProvider value={readEmbeddedSnapshot() ? null : source}>
         <App />
       </AnswerSourceProvider>

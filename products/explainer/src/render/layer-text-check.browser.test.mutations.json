@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the layer host never raises text to the floor",
+      "file": "products/explainer/src/composition/custom-layer.tsx",
+      "find": "if (box.current) raiseTextToFloor(box.current);",
+      "replace": "",
+      "kills": [
+        "the rendered text check on one custom layer passes a layer whose 14 px caption the page raises to the type floor"
+      ]
+    },
+    {
+      "name": "a custom beat draws no chrome bands",
+      "file": "products/explainer/src/composition/Composition.tsx",
+      "find": "      <Chrome chips={[]} />\n",
+      "replace": "",
+      "kills": [
+        "the rendered text check on one custom layer flags text past the stage box with qa's under-chrome rule"
+      ]
+    },
+    {
+      "name": "the check page's fonts are never watched for failure",
+      "file": "packages/frame-capture/src/capture.ts",
+      "find": "if (options.preloadFonts !== false) assertFontsLoaded(fonts, failedFonts)",
+      "replace": "",
+      "kills": [
+        "the rendered text check on one custom layer fails as an infra error naming the face and the URL when a font file is missing from the page"
+      ]
+    }
+  ]
+}

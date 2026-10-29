@@ -23,6 +23,7 @@ import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
 import { defaultProfilesRoot } from "./friction-transcripts.js";
 import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
+import { attachReportIntake } from "./report-intake-run.js";
 import { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily, type DailyOptions, type RunnerFor } from "./self-improve/run.js";
 
 export interface CliIo {
@@ -170,6 +171,7 @@ function attachScheduled(program: Command, io: CliIo, onExit: (code: number) => 
   attachToolGapWeekly(program, io, onExit);
   attachSelfImproveDaily(program, io, onExit);
   attachFrictionDaily(program, io, onExit);
+  attachReportIntake(program, () => resolveConfig(configOverrides(program.opts()), io.env), io, onExit);
 }
 
 interface FrictionDailyFlags {

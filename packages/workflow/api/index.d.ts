@@ -436,6 +436,8 @@ declare function unfilledVariables(template: string, vars: Record<string, string
 
 declare const DEFAULT_RUN_TABLE = "workflow_run";
 declare function workflowRunTableDdl(name?: string): string;
+/** Adds the (workflow_name, status) index when an earlier workflowMigration already created the table. */
+declare function workflowNameIndexMigration(version: number, name?: string): Migration;
 /** Creates a fresh table. Existing deployments also add workflowOwnershipMigration once. */
 declare function workflowMigration(version: number, name?: string): Migration;
 /** Adds fencing columns when an earlier workflowMigration already created the table. */
@@ -460,6 +462,9 @@ declare class WorkflowRunStore {
     create(run: WorkflowRun): void;
     get(id: string): WorkflowRun | undefined;
     listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[];
+    /** One workflow's runs of `statuses`, so a caller that reads a single workflow never loads or parses another's step results. */
+    listByWorkflow(workflowName: string, statuses: readonly WorkflowStatus[]): WorkflowRun[];
+    private runsWhere;
     /** Counts from the status index alone: a caller that only needs totals never loads or parses a run's step results. */
     countByStatus<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     claim(id: string, runtimeId: string, leaseUntil: string, at: string): WorkflowRun | undefined;
@@ -718,6 +723,8 @@ declare class WorkflowRuntime {
     private finish;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
+    /** One workflow's runs, read by name so no other workflow's step results are loaded. */
+    listByWorkflow(workflowName: string, statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
     wait(runId: string): Promise<WorkflowRun>;
     /** Resolves the waiting gate as `resolvedBy`; a store that refuses the resolver throws and the run stays paused. */
     signal(runId: string, stepId: string, payload: Record<string, unknown>, resolvedBy: GateResolver): void;
@@ -769,4 +776,4 @@ interface RunTraceSources {
  */
 declare function projectRunTrace(run: WorkflowRun, sources: RunTraceSources): TraceRecord[];
 
-export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, CapabilityLeakError, type CodeRecord, type CodeRouteOptions, type CodeStepEnvelope, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowCapability, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, codeRecordRoute, codeRoute, codeStep, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };
+export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, CapabilityLeakError, type CodeRecord, type CodeRouteOptions, type CodeStepEnvelope, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowCapability, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, codeRecordRoute, codeRoute, codeStep, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowNameIndexMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };

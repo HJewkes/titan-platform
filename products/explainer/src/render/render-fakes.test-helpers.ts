@@ -1,7 +1,8 @@
 import { writeFileSync } from "node:fs";
+import type { OverflowRow } from "../composition/beats/stage/overflow-row.js";
 import { fakeQa, type FakeQaOptions } from "../qa/qa-fakes.test-helpers.js";
 import { qaGateWith } from "./qa-gate.js";
-import { FAKE_HOST } from "./render-fixtures.test-helpers.js";
+import { FAKE_HOST, fitsStage } from "./render-fixtures.test-helpers.js";
 import { RENDER_FPS, type RenderDeps } from "./render-video.js";
 
 export interface FakeRenderOptions {
@@ -13,6 +14,8 @@ export interface FakeRenderOptions {
   varies?: boolean;
   /** What the pre-capture QA gate's fake browser finds; a clean page by default. */
   qa?: FakeQaOptions;
+  /** What the pre-capture stage-fit scan finds; every beat fits by default. */
+  overflows?: readonly OverflowRow[];
 }
 
 /**
@@ -39,5 +42,6 @@ export function fakeRenderDeps(options: FakeRenderOptions = {}): RenderDeps {
     host: async () => FAKE_HOST,
     now: () => 0,
     qaGate: qaGateWith(fakeQa(options.qa)),
+    stageFit: options.overflows ? async () => [...(options.overflows ?? [])] : fitsStage,
   };
 }
