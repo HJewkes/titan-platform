@@ -30,7 +30,7 @@ declare function normalizedSearchText(value: unknown): string;
  */
 declare function thinkingTokens(message: Json | null, outputTokens: number): number;
 /** The prose of a line for one search field. The caller indexes it and discards it. */
-declare function searchText(message: Json | null, field: SpanField): string;
+declare function searchText(message: Json | null, field: SpanField, cap?: number): string;
 
 /**
  * What woke the session, read off one arriving record. The transcript records
@@ -290,6 +290,8 @@ interface EmitPolicy {
     readonly toolSpans: boolean;
     /** `context_block` audit rows, from user, assistant and attachment lines alike. */
     readonly contextBlocks: boolean;
+    /** Chars kept per span; absent, `SPAN_TEXT_CAP`. */
+    readonly spanTextCap?: number;
 }
 declare const DEFAULT_EMIT_POLICY: EmitPolicy;
 /**
@@ -449,6 +451,11 @@ interface ReadOptions {
     toolSpans?: boolean;
     /** Emit `context_block` audit rows. Default true. */
     contextBlocks?: boolean;
+    /**
+     * Chars kept per span. Default `SPAN_TEXT_CAP`, which bounds a search index; a caller that parses a span, such as
+     * an agent's final JSON answer, passes `Infinity` to read it whole.
+     */
+    spanTextCap?: number;
 }
 /** A malformed JSON line aborts the transcript so the caller can quarantine it. */
 declare class TranscriptParseError extends Error {
