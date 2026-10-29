@@ -11,8 +11,9 @@ import { waitForHealth } from './child-startup.js';
 import { findFreePort, spawnDaemon, stopDaemon } from './daemon-harness.js';
 
 /**
- * Open the SSE stream and resolve with the first frame whose body contains
- * `needle` after `trigger` has run, or reject on timeout.
+ * Open the SSE stream and resolve with the frames read until one contains
+ * `needle` after `trigger` has run, or until the deadline. It never throws on a
+ * missing frame: the caller asserts, so the failure is an assertion failure.
  */
 async function waitForEvent(
   port: number,
@@ -45,7 +46,7 @@ async function waitForEvent(
     clearTimeout(timer);
     await reader.cancel().catch(() => {});
   }
-  throw new Error(`event containing "${needle}" never arrived; saw: ${buffer}`);
+  return buffer;
 }
 
 describe('integration: daemon live-reload SSE', () => {
@@ -72,6 +73,7 @@ describe('integration: daemon live-reload SSE', () => {
       // only listens for the event name and ignores the data
       // (src/dashboard/utils/live.ts:32), so what matters is that the change
       // event fired and that it identifies the tree it came from.
+      expect(frame).toContain('event: change');
       expect(frame).toContain(activeRoot);
     } finally {
       await stopDaemon(child, 8_000);
