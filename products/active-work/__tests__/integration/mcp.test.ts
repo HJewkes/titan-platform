@@ -1,31 +1,20 @@
 /**
  * Smoke test for the stdio MCP server.
  *
- * Spawns a child process running the MCP server, hands it stdio, drives a
- * `tools/list` request through an MCP `Client`, and asserts a sensible
- * response. We spawn via `tsx -e` so this test is independent of Wave 3.1's
- * CLI work (the eventual public entrypoint is `active-work mcp serve --stdio`).
+ * Spawns the built CLI's public entrypoint (`active-work mcp serve --stdio`),
+ * hands it stdio, drives a `tools/list` request through an MCP `Client`, and
+ * asserts a sensible response.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
 import { captureStderr, withStderr } from './child-startup.js';
-
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const TSX_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
-const SERVER_PATH = path.join(REPO_ROOT, 'src', 'server', 'mcp.ts').replaceAll('\\', '\\\\');
-const SERVER_ENTRY_SRC = `import('${SERVER_PATH}').then((m) => m.runMcpStdio()).catch((e) => { console.error(e); process.exit(1); });`;
+import { requireDistBin } from './cli-runner.js';
 
 describe('integration: stdio MCP server', () => {
-  beforeAll(() => {
-    expect(existsSync(TSX_BIN)).toBe(true);
-  });
-
   it('handshakes and lists tools over real stdio', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'aw-mcp-int-'));
     try {
@@ -36,8 +25,8 @@ describe('integration: stdio MCP server', () => {
       filteredEnv.ACTIVE_ROOT = root;
 
       const transport = new StdioClientTransport({
-        command: TSX_BIN,
-        args: ['-e', SERVER_ENTRY_SRC],
+        command: process.execPath,
+        args: [requireDistBin(), 'mcp', 'serve', '--stdio'],
         env: filteredEnv,
         stderr: 'pipe',
       });
