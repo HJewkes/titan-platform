@@ -47,6 +47,8 @@
     "spawnedAs": "burndown",
     "callerAgent": "agent-0001",
     "task": "EX-1",
+    "slice": "b",
+    "routeOverride": "needs the named profile",
     "workRole": "implementer",
     "override": "fix-round",
     "hostPlatform": "linux",

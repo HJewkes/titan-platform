@@ -17,6 +17,8 @@
     "config_dir": "/home/example/.claude-profiles/example",
     "briefing": "example-initiative",
     "task": "EX-1",
+    "slice": "b",
+    "route_override": "needs the named profile",
     "role": "fix-round-2",
     "override": "fix-round",
     "host": "example-host"

@@ -278,6 +278,8 @@ declare function buildRequestSchemas(mode: WireParseMode): {
             burndown: "burndown";
         }>>;
         task: z.ZodOptional<z.ZodString>;
+        slice: z.ZodOptional<z.ZodString>;
+        routeOverride: z.ZodOptional<z.ZodString>;
         workRole: z.ZodOptional<z.ZodString>;
         override: z.ZodOptional<z.ZodLiteral<"fix-round">>;
         lineageFrom: z.ZodOptional<z.ZodString>;
@@ -362,6 +364,8 @@ declare const SpawnRequestSchema: z.ZodObject<{
         burndown: "burndown";
     }>>;
     task: z.ZodOptional<z.ZodString>;
+    slice: z.ZodOptional<z.ZodString>;
+    routeOverride: z.ZodOptional<z.ZodString>;
     workRole: z.ZodOptional<z.ZodString>;
     override: z.ZodOptional<z.ZodLiteral<"fix-round">>;
     lineageFrom: z.ZodOptional<z.ZodString>;
@@ -1912,6 +1916,8 @@ declare const AgentSpawnArgsSchema: z.ZodObject<{
     config_dir: z.ZodOptional<z.ZodString>;
     briefing: z.ZodOptional<z.ZodString>;
     task: z.ZodOptional<z.ZodString>;
+    slice: z.ZodOptional<z.ZodString>;
+    route_override: z.ZodOptional<z.ZodString>;
     role: z.ZodOptional<z.ZodString & z.ZodType<WorkRole, string, z.core.$ZodTypeInternals<WorkRole, string>>>;
     override: z.ZodOptional<z.ZodLiteral<"fix-round">>;
     host: z.ZodOptional<z.ZodString>;

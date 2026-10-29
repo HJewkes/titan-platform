@@ -28,6 +28,8 @@ export const AgentSpawnArgsSchema = z.object({
   config_dir: z.string().optional(),
   briefing: z.string().optional(),
   task: z.string().optional(),
+  slice: z.string().optional(),
+  route_override: z.string().optional(),
   role: z.string().refine(isWorkRole, { error: `role must be one of: ${WORK_ROLE_CHOICES}` }).optional(),
   override: z.literal("fix-round").optional(),
   host: z.string().optional(),

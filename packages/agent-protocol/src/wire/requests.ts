@@ -83,6 +83,10 @@ function spawnSchema(mode: WireParseMode) {
     tier: z.number().optional(),
     spawnedAs: z.enum(["burndown", "shepherd"]).optional(),
     task: z.string().optional(),
+    /** The plan slice of `task` this spawn runs, recorded on its spawn row. */
+    slice: z.string().optional(),
+    /** Why the requester keeps `profile` unrouted, recorded on its spawn row. */
+    routeOverride: z.string().optional(),
     /** implementer, reviewer, fix-round-N, shepherd-review, planner or other; inferred when absent. */
     workRole: z.string().optional(),
     override: z.literal("fix-round").optional(),
