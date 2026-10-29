@@ -34,7 +34,7 @@ import { movedMessage, opMessageOf, opReadBackOf, postedOp, type MergeWait, type
 import { CONSOLE_DECISION_IDS, readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
-import { gateEvidenceOf, type GateEvidence } from "./inbox-gate-evidence.js";
+import { gateReadBack, prBaseOf, type PostedAction, type PrReadBack } from "./inbox-pr-readback.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
 export const ACTIONS_OFF = "inbox actions are off";
@@ -46,7 +46,6 @@ const WAIT_FOR = z.enum(MERGE_WAITS).optional();
 const VERDICT = z.enum(VERDICTS).optional();
 
 type InboxAction = InboxItem["action"];
-type PostedAction = Extract<InboxAction, { kind: "resolve-gate" | "owner-release" }>;
 type ChatAction = Extract<InboxAction, { kind: "answer-chat" }>;
 type ConsoleAction = PostedAction | ChatAction | ApproveChatAction | G10Action | OpAction;
 type Outcome = ActionOutcome | Unreachable | AnswerOutcome | VerdictOutcome;
@@ -64,17 +63,6 @@ export interface InboxActionOptions {
   decisionLog?: DecisionLog;
   now?: () => number;
 }
-
-type PrReadBack = {
-  repo: string;
-  pr: number;
-  title: string;
-  headSha: string;
-  gateId?: string;
-  hold?: { class: string; reason: string };
-  effect: string;
-  evidence?: GateEvidence;
-};
 
 type ChatReadBack = {
   msgId: string;
@@ -120,11 +108,9 @@ function chatReadBackOf(item: InboxItem, action: ChatAction): ChatReadBack {
   return { msgId: action.msgId, title: item.summary, ...(item.asker && { asker: item.asker }), question: item.context, ...(options && { options }), ...(item.recommended && { recommended: item.recommended.optionId }), effect };
 }
 
-const prBaseOf = (item: InboxItem, action: PostedAction | G10Action) => ({ repo: action.repo, pr: action.pr, title: item.summary, headSha: action.headSha, ...(item.hold && { hold: item.hold }) });
-
 /**
- * A g10 release reads the PR's timeline for its verdicts and an op reads the factory's preview; every other read-back comes
- * from the item alone. A string is the reason there is nothing to do.
+ * A g10 release reads the PR's timeline for its verdicts, an op reads the factory's preview and an owner-at-head merge reads
+ * its gate's evidence; every other read-back comes from the item alone. A string is the reason there is nothing to do.
  */
 async function readBackOf(sources: InboxSources, item: InboxItem, action: ConsoleAction, waitFor?: MergeWait): Promise<ReadBack | string> {
   if (waitFor !== undefined && action.kind !== "owner-op") return "only a merge-at-head tap waits for the adversary loop";
@@ -136,21 +122,6 @@ async function readBackOf(sources: InboxSources, item: InboxItem, action: Consol
   if (action.kind === "owner-release") return { ...prBaseOf(item, action), effect: `Release the owner-asked hold on ${at}` };
   return gateReadBack(sources, item, action, at);
 }
-
-/** A merge on an owner-at-head gate reads back that gate's evidence (TP-4404), or offers no tap when the card cannot show it. */
-async function gateReadBack(sources: InboxSources, item: InboxItem, action: Extract<PostedAction, { kind: "resolve-gate" }>, at: string): Promise<PrReadBack | string> {
-  const base = { ...prBaseOf(item, action), gateId: action.gateId, effect: gateEffect(action.decision, at) };
-  const evidence = action.decision === "merge" ? await gateEvidenceOf(sources.shepherd, action.gateId, action.headSha) : undefined;
-  return evidence === undefined || typeof evidence === "string" ? (evidence ?? base) : { ...base, evidence };
-}
-
-const GATE_EFFECT: Record<ConsoleDecision, (at: string) => string> = {
-  merge: (at) => `Approve the merge of ${at}`,
-  "await-new-head": (at) => `Wait for the implementer's next pushed head on ${at}; nothing merges`,
-  "waive-proof": (at) => `Skip the fix-proof requirement for ${at} only, so Shepherd reviews this head. This tap merges nothing: the merge still needs your Approve merge tap, and a new push asks again`,
-};
-
-const gateEffect = (decision: ConsoleDecision, at: string): string => GATE_EFFECT[decision](at);
 
 /**
  * The tap the owner chose: the item's own action, or its gate answered with a second decision the item offers. Undefined

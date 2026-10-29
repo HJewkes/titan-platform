@@ -22,7 +22,7 @@
     },
     {
       "name": "the waiver reads back as a wait",
-      "file": "apps/console/server/inbox-actions.ts",
+      "file": "apps/console/server/inbox-pr-readback.ts",
       "find": "GATE_EFFECT[decision](at)",
       "replace": "GATE_EFFECT[\"await-new-head\"](at)",
       "kills": [
