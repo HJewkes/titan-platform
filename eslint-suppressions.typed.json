@@ -2770,11 +2770,6 @@
       "count": 1
     }
   },
-  "products/active-work/src/commands/task-list.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/active-work/src/commands/task-reorder.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

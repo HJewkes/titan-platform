@@ -70,7 +70,7 @@ await writeFile("report.html", embedSnapshot(await readFile("dist/index.html", "
 
 | Export | Entry | What it does |
 | --- | --- | --- |
-| `RpcProvider({ source })` | main | Holds the query cache and one shared event stream for its subtree |
+| `RpcProvider({ source, gcMs? })` | main | Holds the query cache and one shared event stream for its subtree; `gcMs` keeps an unwatched query's result that long (default 0) |
 | `createRpcHooks<M>()` | main | `useQuery`, `useEvents`, `useInvalidate`, and `useInvalidateOn`, typed from `M` |
 | `pageDataSource(options?)` | main | `staticSource` over the embedded snapshot if the page has one, otherwise `liveSource` |
 | `embedSnapshot(html, snapshot)` and `readEmbeddedSnapshot(doc?)` | main | Write and read `<script type="application/json" id="titan-snapshot">` |

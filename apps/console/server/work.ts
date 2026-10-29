@@ -176,6 +176,14 @@ export function forgetTaskPrefixes(activeWork: ActiveWork): void {
   prefixMemo.delete(activeWork);
 }
 
+/** Initiatives whose brief claims this task-id prefix, so one task can be read without listing every initiative's tasks. */
+export async function slugsForPrefix(activeWork: ActiveWork, prefix: string, now: number = Date.now()): Promise<string[]> {
+  const list = await activeWork.read("list");
+  const items = list.sections.flatMap((section) => section.items);
+  const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item, now)));
+  return items.filter((_, index) => prefixes[index] === prefix).map((item) => item.slug);
+}
+
 function parsePrefix(content: string): string | undefined {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1];
   return frontmatter ? TASK_PREFIX.exec(frontmatter)?.[1] : undefined;

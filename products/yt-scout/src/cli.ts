@@ -1,11 +1,14 @@
 import { Command, CommanderError } from "commander";
 import { isOnTrial, type Watchlist } from "./config.js";
-import { configPath, dbPath, ytRoot } from "./paths.js";
+import { createDetector, detectNew, formatDetected, insertNew, realDeps, resolveYtDlp, type DetectDeps } from "./detect.js";
+import { configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
+import { appendRows, type StepRow } from "./rows.js";
 import { formatSeenImport, importSeen } from "./seen-import.js";
 import { openScoutDb } from "./store.js";
 import { loadWatchlist, WatchlistError } from "./watchlist.js";
 
 type Write = (line: string) => void;
+type MakeDeps = (onRow: DetectDeps["onRow"], ytDlpBin: string) => DetectDeps;
 
 /** Exit code for a watch list that fails to parse or validate. */
 export const EXIT_CONFIG = 1;
@@ -51,10 +54,43 @@ function addSeenCommand(program: Command, write: Write): void {
     });
 }
 
-export async function runCli(argv: string[], write: Write = console.log, writeErr: Write = console.error): Promise<number> {
+function addDetectCommand(program: Command, write: Write, makeDeps: MakeDeps): void {
+  program
+    .command("detect")
+    .description("Poll the watch list and list ids not yet in the videos table")
+    .option("--dry-run", "list new ids without inserting them")
+    .option("--config <file>", "watch list")
+    .option("--db <file>", "scout database")
+    .option("--rows-dir <dir>", "step rows directory (default: beside the database)")
+    .action(async (opts: { dryRun?: boolean; config?: string; db?: string; rowsDir?: string }) => {
+      const watchlist = loadWatchlist(opts.config ?? configPath());
+      const db = openScoutDb(opts.db ?? dbPath());
+      const rows: StepRow[] = [];
+      try {
+        const detector = createDetector(makeDeps((row) => rows.push(row), resolveYtDlp(watchlist.yt_dlp)), watchlist.defaults.tabs);
+        const now = new Date();
+        const found = await detectNew(db, watchlist, detector, now);
+        for (const line of formatDetected(found)) write(line);
+        if (!opts.dryRun) write(`inserted ${insertNew(db, found, now)}`);
+        write(`rss fallbacks: ${rows.filter((r) => r.outcome === "fallback").length}`);
+        write(`listing failures: ${rows.filter((r) => r.outcome === "fail").length}`);
+      } finally {
+        appendRows(opts.rowsDir ?? rowsDir(), rows);
+        db.close();
+      }
+    });
+}
+
+export async function runCli(
+  argv: string[],
+  write: Write = console.log,
+  writeErr: Write = console.error,
+  makeDeps: MakeDeps = realDeps,
+): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);
   addSeenCommand(program, write);
+  addDetectCommand(program, write, makeDeps);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;
