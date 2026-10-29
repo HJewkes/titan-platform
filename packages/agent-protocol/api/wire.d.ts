@@ -1858,4 +1858,98 @@ type SpawnResult = Known<z.output<typeof SpawnResultSchema>>;
 type AgentListResult = Known<z.output<typeof AgentListResultSchema>>;
 type SurfaceResult = Known<z.output<typeof SurfaceResultSchema>>;
 
-export { AGENT_LIFECYCLES, AGENT_ORIGINS, AGENT_ROLES, type AgentLifecycle, AgentLifecycleSchema, type AgentListRequest, AgentListRequestSchema, type AgentListResult, AgentListResultSchema, type AgentOrigin, AgentOriginSchema, type AgentProfile, AgentProfileSchema, type AgentRecord, AgentRecordSchema, type AgentRole, AgentRoleSchema, CACHE_TTLS, type CacheTtl, CacheTtlSchema, EFFORT_LEVELS, type EffortLevel, EffortLevelSchema, type ExperimentArm, ExperimentArmSchema, HARNESSES, type Harness, HarnessSchema, ISOLATION_NAMES, type IsolationName, IsolationNameSchema, type Known, LAUNCHERS, type Launcher, LauncherSchema, PUSH_POLICIES, type PushPolicy, PushPolicySchema, RETURN_CONTRACTS, type RemoteLaunch, RemoteLaunchSchema, type RemoteProfile, RemoteProfileSchema, type ResumeRequest, ResumeRequestSchema, type RetireRequest, RetireRequestSchema, type ReturnContract, ReturnContractSchema, type RosterHidden, RosterHiddenSchema, type RosterView, RosterViewSchema, SETTING_SOURCES, SPAWN_REFUSAL_CODES, SUBSCRIBABLE_KINDS, SURFACE_LIFETIMES, SURFACE_NAMES, type SettingSource, SettingSourceSchema, type SpawnRefusalCode, SpawnRefusalCodeSchema, type SpawnRequest, SpawnRequestSchema, type SpawnResult, type SpawnResultFields, SpawnResultFieldsSchema, SpawnResultSchema, type SubscribableKind, SubscribableKindSchema, type Subscription, SubscriptionSchema, type SubscriptionSelector, type SurfaceLifetime, SurfaceLifetimeSchema, type SurfaceName, SurfaceNameSchema, type SurfaceRequest, SurfaceRequestSchema, type SurfaceResult, SurfaceResultSchema, WAKE_SOURCES, type WakeSource, WakeSourceSchema, type WireParseMode, buildRequestSchemas, buildResultSchemas };
+/** Refuses blank as well as absent: a stringified `undefined` once reached a peer as the word "undefined". */
+declare const nonBlank: (message: string) => z.ZodString;
+declare const requiredString: (field: string) => z.ZodString;
+/** The refusal wording callers match on when an enum argument is out of range. */
+declare const oneOf: (field: string, allowed: readonly string[]) => {
+    error: string;
+};
+declare const WORK_ROLES: readonly ["implementer", "reviewer", "shepherd-review", "planner", "other"];
+/** One of `WORK_ROLES`, or `fix-round-<n>` for a shepherd's n-th fix round. */
+type WorkRole = (typeof WORK_ROLES)[number] | `fix-round-${number}`;
+declare const isWorkRole: (value: string) => value is WorkRole;
+declare const WORK_ROLE_CHOICES: string;
+
+/**
+ * `agent_spawn`'s MCP arguments, in the snake_case a model types. A plain object, so a key the tool
+ * does not name is stripped rather than forwarded. Carries no `.describe()` text: the help is the
+ * product's, written for its models, and the product adds it with `.extend()`.
+ */
+declare const AgentSpawnArgsSchema: z.ZodObject<{
+    name: z.ZodString;
+    profile: z.ZodString;
+    brief: z.ZodString;
+    surface: z.ZodOptional<z.ZodEnum<{
+        headless: "headless";
+        "iterm-pane": "iterm-pane";
+        "iterm-tab": "iterm-tab";
+        "iterm-window": "iterm-window";
+        "tmux-window": "tmux-window";
+    }>>;
+    isolation: z.ZodOptional<z.ZodEnum<{
+        none: "none";
+        worktree: "worktree";
+        "file-ownership": "file-ownership";
+        "toolset-limited": "toolset-limited";
+    }>>;
+    cwd: z.ZodOptional<z.ZodString>;
+    worktree: z.ZodOptional<z.ZodString>;
+    owns: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    inherit: z.ZodOptional<z.ZodEnum<{
+        context: "context";
+    }>>;
+    remote_control: z.ZodOptional<z.ZodBoolean>;
+    resume_session: z.ZodOptional<z.ZodString>;
+    predecessor: z.ZodOptional<z.ZodString>;
+    experiment: z.ZodOptional<z.ZodObject<{
+        id: z.ZodString;
+        arm: z.ZodString;
+    }, z.core.$strip>>;
+    return_contract: z.ZodOptional<z.ZodEnum<{
+        none: "none";
+    }>>;
+    config_dir: z.ZodOptional<z.ZodString>;
+    briefing: z.ZodOptional<z.ZodString>;
+    task: z.ZodOptional<z.ZodString>;
+    role: z.ZodOptional<z.ZodString & z.ZodType<WorkRole, string, z.core.$ZodTypeInternals<WorkRole, string>>>;
+    override: z.ZodOptional<z.ZodLiteral<"fix-round">>;
+    host: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+type AgentSpawnArgs = z.output<typeof AgentSpawnArgsSchema>;
+
+/** MCP arguments for the agent tools other than spawn; plain objects, so unknown keys are stripped. */
+declare const AgentResumeArgsSchema: z.ZodObject<{
+    name: z.ZodString;
+    message: z.ZodOptional<z.ZodString>;
+    surface: z.ZodOptional<z.ZodEnum<{
+        headless: "headless";
+        "iterm-pane": "iterm-pane";
+        "iterm-tab": "iterm-tab";
+        "iterm-window": "iterm-window";
+        "tmux-window": "tmux-window";
+    }>>;
+    host: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+declare const AgentSurfaceArgsSchema: z.ZodObject<{
+    name: z.ZodString;
+}, z.core.$strip>;
+/** `limit`'s default and cap are applied by the tool, so the published schema keeps it optional. */
+declare const AgentListArgsSchema: z.ZodObject<{
+    include_finished: z.ZodOptional<z.ZodBoolean>;
+    include_retired: z.ZodOptional<z.ZodBoolean>;
+    limit: z.ZodOptional<z.ZodNumber>;
+    mine: z.ZodOptional<z.ZodBoolean>;
+    prefix: z.ZodOptional<z.ZodString>;
+    verbose: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strip>;
+declare const AgentProfilesArgsSchema: z.ZodObject<{
+    name: z.ZodOptional<z.ZodString>;
+    verbose: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strip>;
+type AgentResumeArgs = z.output<typeof AgentResumeArgsSchema>;
+type AgentSurfaceArgs = z.output<typeof AgentSurfaceArgsSchema>;
+type AgentListArgs = z.output<typeof AgentListArgsSchema>;
+type AgentProfilesArgs = z.output<typeof AgentProfilesArgsSchema>;
+
+export { AGENT_LIFECYCLES, AGENT_ORIGINS, AGENT_ROLES, type AgentLifecycle, AgentLifecycleSchema, type AgentListArgs, AgentListArgsSchema, type AgentListRequest, AgentListRequestSchema, type AgentListResult, AgentListResultSchema, type AgentOrigin, AgentOriginSchema, type AgentProfile, AgentProfileSchema, type AgentProfilesArgs, AgentProfilesArgsSchema, type AgentRecord, AgentRecordSchema, type AgentResumeArgs, AgentResumeArgsSchema, type AgentRole, AgentRoleSchema, type AgentSpawnArgs, AgentSpawnArgsSchema, type AgentSurfaceArgs, AgentSurfaceArgsSchema, CACHE_TTLS, type CacheTtl, CacheTtlSchema, EFFORT_LEVELS, type EffortLevel, EffortLevelSchema, type ExperimentArm, ExperimentArmSchema, HARNESSES, type Harness, HarnessSchema, ISOLATION_NAMES, type IsolationName, IsolationNameSchema, type Known, LAUNCHERS, type Launcher, LauncherSchema, PUSH_POLICIES, type PushPolicy, PushPolicySchema, RETURN_CONTRACTS, type RemoteLaunch, RemoteLaunchSchema, type RemoteProfile, RemoteProfileSchema, type ResumeRequest, ResumeRequestSchema, type RetireRequest, RetireRequestSchema, type ReturnContract, ReturnContractSchema, type RosterHidden, RosterHiddenSchema, type RosterView, RosterViewSchema, SETTING_SOURCES, SPAWN_REFUSAL_CODES, SUBSCRIBABLE_KINDS, SURFACE_LIFETIMES, SURFACE_NAMES, type SettingSource, SettingSourceSchema, type SpawnRefusalCode, SpawnRefusalCodeSchema, type SpawnRequest, SpawnRequestSchema, type SpawnResult, type SpawnResultFields, SpawnResultFieldsSchema, SpawnResultSchema, type SubscribableKind, SubscribableKindSchema, type Subscription, SubscriptionSchema, type SubscriptionSelector, type SurfaceLifetime, SurfaceLifetimeSchema, type SurfaceName, SurfaceNameSchema, type SurfaceRequest, SurfaceRequestSchema, type SurfaceResult, SurfaceResultSchema, WAKE_SOURCES, WORK_ROLES, WORK_ROLE_CHOICES, type WakeSource, WakeSourceSchema, type WireParseMode, type WorkRole, buildRequestSchemas, buildResultSchemas, isWorkRole, nonBlank, oneOf, requiredString };

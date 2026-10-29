@@ -1,0 +1,40 @@
+{
+  "agent_spawn": {
+    "name": "example-worker",
+    "profile": "implementer",
+    "brief": "Fix the widget.",
+    "surface": "headless",
+    "isolation": "worktree",
+    "cwd": "/work/example-repo",
+    "worktree": "/work/example-repo/.worktrees/example-worker",
+    "owns": ["src/widget/**"],
+    "inherit": "context",
+    "remote_control": false,
+    "resume_session": "00000000-0000-4000-8000-000000000002",
+    "predecessor": "example-worker-1",
+    "experiment": { "id": "example-exp", "arm": "control" },
+    "return_contract": "none",
+    "config_dir": "/home/example/.claude-profiles/example",
+    "briefing": "example-initiative",
+    "task": "EX-1",
+    "role": "fix-round-2",
+    "override": "fix-round",
+    "host": "example-host"
+  },
+  "agent_resume": {
+    "name": "example-worker",
+    "message": "Continue.",
+    "surface": "iterm-tab",
+    "host": "example-host"
+  },
+  "agent_surface": { "name": "example-worker" },
+  "agent_list": {
+    "include_finished": true,
+    "include_retired": false,
+    "limit": 20,
+    "mine": true,
+    "prefix": "example-",
+    "verbose": false
+  },
+  "agent_profiles": { "name": "implementer", "verbose": true }
+}
