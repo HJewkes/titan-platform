@@ -64,7 +64,7 @@ describe("CI_COVERAGE mirrors ci.yml", () => {
 
   it("plans every labelled row's command in ci.yml order", () => {
     // Mutant caught: dropping pnpm lint from planCommands, the gap behind two review rounds.
-    const ciOrder = [...new Set(ciSteps.map((step) => CI_COVERAGE.find((row) => matches(row, step)).label))].filter(Boolean);
+    const ciOrder = [...new Set(ciSteps.map((step) => CI_COVERAGE.find((row) => matches(row, step))?.label))].filter(Boolean);
     expect(labelsOf(["packages/a/src/x.ts"]).filter((label) => ciOrder.includes(label))).toEqual(ciOrder);
   });
 
