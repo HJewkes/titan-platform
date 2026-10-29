@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { RoundSummarySchema } from "./ports.js";
 import { IdeaSchema, ideaId, OutcomeSchema, type Outcome, type Proposal } from "./schemas.js";
@@ -77,9 +77,31 @@ async function loop(mechanisms: string[], options: Partial<FakeOptions> = {}, co
   return { repo, ports, run, outcomes: outcomes(run) };
 }
 
+// Tests that only read a finished run share one per scenario, so its host and repo outlive afterEach.
+const sharedRuns = new Map<string, ReturnType<typeof loop>>();
+const sharedHosts: TestHost[] = [];
+const sharedRepos: FixtureRepo[] = [];
+afterAll(() => {
+  sharedHosts.splice(0).forEach((host) => host.close());
+  sharedRepos.splice(0).forEach(removeFixture);
+});
+
+async function sharedLoop(...args: Parameters<typeof loop>): ReturnType<typeof loop> {
+  const key = JSON.stringify(args, (_key, value: unknown) => (typeof value === "function" ? value.name : value));
+  if (!sharedRuns.has(key)) {
+    sharedRuns.set(key, loop(...args));
+    await sharedRuns.get(key);
+    sharedHosts.push(hosts.pop()!);
+    sharedRepos.push(repos.pop()!);
+  }
+  return sharedRuns.get(key)!;
+}
+
+const retryPlanner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
+
 describe("autoresearch on a fixture target at $0", () => {
   it("keeps a better idea and fast-forwards the ratchet on the local bare remote", async () => {
-    const { repo, ports, run, outcomes } = await loop(["better"]);
+    const { repo, ports, run, outcomes } = await sharedLoop(["better"]);
 
     expect(run.status).toBe("completed");
     const kept = outcomes.get(id("better"))!;
@@ -98,7 +120,7 @@ describe("autoresearch on a fixture target at $0", () => {
   });
 
   it("stops an idea with no micro signal at L1 without a case eval", async () => {
-    const { ports, outcomes } = await loop(["flat"]);
+    const { ports, outcomes } = await sharedLoop(["flat"]);
 
     expect(outcomes.get(id("flat"))).toMatchObject({ verdict: "stopped", rungReached: "L1", reason: "no-micro-signal" });
     expect(evalKeys(ports, "flat")).toEqual([]);
@@ -185,8 +207,7 @@ describe("autoresearch on a fixture target at $0", () => {
   });
 
   it("asks the planner once more, naming the quota, when its ops carry no bold idea", async () => {
-    const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
-    const { ports, run } = await loop([], { planner });
+    const { ports, run } = await sharedLoop([], { planner: retryPlanner });
 
     expect(run.status).toBe("completed");
     expect(ports.calls.plans.map((call) => call.violations)).toEqual([[], ["no bold idea and no [EXEMPT] reason"]]);
@@ -195,7 +216,7 @@ describe("autoresearch on a fixture target at $0", () => {
 
 describe("inputs a restarted host can act on", () => {
   it("names the run and its recorded pin on every evaluator step, the baseline included", async () => {
-    const { repo, ports, run } = await loop(["better"]);
+    const { repo, ports, run } = await sharedLoop(["better"]);
 
     const steps = new Set(ports.calls.runPins.map((call) => call.step));
     expect(steps).toEqual(new Set(["eval", "l0", "l1", "ratchet"]));
@@ -204,13 +225,13 @@ describe("inputs a restarted host can act on", () => {
   });
 
   it("gives the implementer the run id, so a host need not read it off the tree name", async () => {
-    const { ports, run } = await loop(["better"]);
+    const { ports, run } = await sharedLoop(["better"]);
 
     expect(ports.calls.implementInputs.map((input) => input.runId)).toEqual([run.id]);
   });
 
   it("records the planner that wrote the round's ops on the round", async () => {
-    const { ports, run } = await loop(["better"]);
+    const { ports, run } = await sharedLoop(["better"]);
 
     expect(ports.calls.archives[0]!.record.planner).toEqual({
       agent: `planner-${run.id}`, sessionId: `session-planner-${run.id}`, mode: "spawn", usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 },
@@ -275,14 +296,13 @@ describe("what a round records for readers", () => {
   });
 
   it("names the first planner answer's quota misses when the retry met them", async () => {
-    const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
-    const { run } = await loop([], { planner });
+    const { run } = await sharedLoop([], { planner: retryPlanner });
 
     expect(summaryOf(run, 1)).toMatchObject({ plannerRetried: true, quotaViolations: ["no bold idea and no [EXEMPT] reason"] });
   });
 
   it("settles the same outcomes the archive received: the superseded winner stopped, every one stamped with σ", async () => {
-    const { run, ports } = await loop(["better", "better-2", "flat"]);
+    const { run, ports } = await sharedLoop(["better", "better-2", "flat"]);
     const summary = summaryOf(run, 1);
 
     const settled = finalOutcomes([...stopOutcomes(run).values()], { sigma: summary.against.sigma, superseded: summary.superseded, reevals: summary.reevals });
@@ -295,7 +315,7 @@ describe("what a round records for readers", () => {
 
   it("records why the loop ended: rounds without gain, or the round limit", async () => {
     const { run } = await loop(["flat"], {}, { ...CONFIG, rounds: 5 });
-    const { run: short } = await loop(["flat"]);
+    const { run: short } = await sharedLoop(["flat"]);
 
     expect(endOf(run)).toBe("rounds-without-gain");
     expect(run.stepResults["ar-plan:4:0"]).toBeUndefined();
@@ -352,7 +372,7 @@ describe("owner ideas", () => {
 
 describe("the phase registry row", () => {
   it("counts each evaluated idea once by rung and names every round archive", async () => {
-    const { run, ports } = await loop(["better", "better-2", "flat"]);
+    const { run, ports } = await sharedLoop(["better", "better-2", "flat"]);
 
     expect(ports.calls.registry).toHaveLength(1);
     const { row } = ports.calls.registry[0]!;

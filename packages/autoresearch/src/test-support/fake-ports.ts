@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
@@ -71,19 +72,19 @@ export function writeFiles(dir: string, files: Record<string, string>): void {
   }
 }
 
+// Every copy of one policy's template holds the same seed commit, so its sha is read once.
+const pins = new Map<string, string>();
+
+/** A copy of the policy's template repo and its bare origin, which already holds the seed commit. */
 export async function fixtureRepo(policy: Policy): Promise<FixtureRepo> {
   const root = mkdtempSync(join(tmpdir(), "ar-fixture-"));
   const bare = join(root, "origin.git");
   const work = join(root, "work");
-  mkdirSync(work);
-  await git(work, "init", "--quiet", "-b", "main");
-  writeFiles(work, { ...SEED_FILES, "policy.json": JSON.stringify(policy, null, 2) });
-  await git(work, "add", ".");
-  await git(work, "commit", "--quiet", "-m", "fixture");
-  await git(root, "clone", "--quiet", "--bare", work, bare);
-  await git(work, "remote", "add", "origin", bare);
-  await git(work, "fetch", "--quiet", "origin");
-  return { root, bare, work, policyPath: join(work, "policy.json"), pin: await git(work, "rev-parse", "HEAD") };
+  const policyText = JSON.stringify(policy, null, 2);
+  seedRepoWithOrigin(work, bare, { ...SEED_FILES, "policy.json": policyText });
+  const pin = pins.get(policyText) ?? (await git(work, "rev-parse", "HEAD"));
+  pins.set(policyText, pin);
+  return { root, bare, work, policyPath: join(work, "policy.json"), pin };
 }
 
 export const removeFixture = (repo: FixtureRepo) => rmSync(repo.root, { recursive: true, force: true });
