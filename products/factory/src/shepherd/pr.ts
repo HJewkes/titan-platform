@@ -11,7 +11,7 @@ import { setCarryOf } from "./approved-set-carry.js";
 import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
-import { fixPrStall, fixPrStallRoute } from "./fix-pr-stall.js";
+import { fixPrStall } from "./fix-pr-stall.js";
 import { conflictCheckRoute, conflictCheckedGates, conflictsAt, leaveOnConflict } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
@@ -347,13 +347,11 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     conflictCheckRoute(deps), conflictBaseRoute(deps),
     seatNoticeRoute(deps.now, deps.exitNotice, deps.sleep),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
-    fixPrStallRoute(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps, () => wiring.review?.twoMergeRelease),
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
-    sendBackOfferRoute(deps),
-    visualAcceptOfferRoute(deps),
+    sendBackOfferRoute(deps), visualAcceptOfferRoute(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
     autoPassRoute(deps.port, deps.now),
