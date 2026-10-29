@@ -186,7 +186,19 @@ interface LaunchedBy {
     /** Sent only alongside `launchedBy`. */
     launchReason?: string;
 }
-interface DispatchRequest extends LaunchedBy {
+/** The roles agent-chat's `--role` accepts. */
+type AgentRole = "implementer" | "reviewer" | "shepherd-review" | "planner" | "other" | `fix-round-${number}`;
+/** A task id such as `tp/TP-12`: caller-derived, so it is checked to a strict shape before it reaches argv. */
+declare const TASK_ID_PATTERN: RegExp;
+/**
+ * What the spawn records on the agent's own row, so later readers (Shepherd's successor walk, the roster) see who the
+ * agent works for. Omitted fields leave their flags out of argv.
+ */
+interface AgentRecord {
+    role?: AgentRole;
+    task?: string;
+}
+interface DispatchRequest extends LaunchedBy, AgentRecord {
     agentChatBinPath: string;
     /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
     peerName: string;
@@ -223,7 +235,7 @@ interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-declare function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
+declare function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & {
     peerName: string;
     profile: string;
     briefing?: string;
@@ -518,6 +530,12 @@ declare function messageAgent(agentChatBinPath: string, name: string, text: stri
  */
 /** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
 declare function dataFence(label: string, text: string): string;
+/**
+ * The body of the last ```json fenced block in `text`, parsed; undefined when there is none. An agent's final report
+ * ends with one, so the last block is the report even when earlier ones quote examples. A block whose body is not JSON
+ * throws a SyntaxError rather than reading as no report, so a malformed report is never mistaken for a missing one.
+ */
+declare function lastFencedJson(text: string): unknown;
 
 /** The label shape agent-chat's broker accepts, checked before a call is spent on it. */
 declare const ASK_LABEL_PATTERN: RegExp;
@@ -703,4 +721,4 @@ interface NodeBootReadersOptions {
 /** Readers over a local checkout: files from disk, git state from the git binary, tasks from the caller. */
 declare function nodeBootReaders(opts: NodeBootReadersOptions): BootReaders;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BOOT_PACKET_BUDGET, type BootPacket, type BootPacketInput, type BootPacketOptions, type BootReaders, type BootSection, type BootSectionId, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_BOOT_PRIORITY, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type GitState, type LaunchedBy, type MessageOptions, type NodeBootReadersOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, PrefixLintError, type PrefixSection, type PrefixViolation, type ReadinessFacts, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type StablePrefix, type StablePrefixOptions, type TaskCard, type TouchPoint, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, bootPacket, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, estimateTokens, execSafe, execSafeAsync, installedProfilesDir, lintPrefixSections, listAgentLineage, listAgents, messageAgent, minimalEnv, nodeBootReaders, observeAgentChatCalls, parkAgent, parseAgentRows, planSliceExcerpt, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, stablePrefix, touchPointsIn };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRecord, type AgentRole, type AgentRow, type AnswersPage, type AskRequest, BOOT_PACKET_BUDGET, type BootPacket, type BootPacketInput, type BootPacketOptions, type BootReaders, type BootSection, type BootSectionId, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_BOOT_PRIORITY, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type GitState, type LaunchedBy, type MessageOptions, type NodeBootReadersOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, PrefixLintError, type PrefixSection, type PrefixViolation, type ReadinessFacts, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type StablePrefix, type StablePrefixOptions, TASK_ID_PATTERN, type TaskCard, type TouchPoint, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, bootPacket, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, estimateTokens, execSafe, execSafeAsync, installedProfilesDir, lastFencedJson, lintPrefixSections, listAgentLineage, listAgents, messageAgent, minimalEnv, nodeBootReaders, observeAgentChatCalls, parkAgent, parseAgentRows, planSliceExcerpt, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, stablePrefix, touchPointsIn };

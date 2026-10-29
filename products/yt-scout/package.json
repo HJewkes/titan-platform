@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "prompts",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -36,6 +37,7 @@
     "titan-yt-scout": "./dist/bin.js"
   },
   "dependencies": {
+    "@titan-design/agent": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "commander": "^14.0.3",

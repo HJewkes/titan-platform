@@ -7,6 +7,13 @@ import { z } from "zod";
 const rpcRow = z.object({ t: z.number(), kind: z.literal("rpc"), name: z.string(), ms: z.number(), bytes: z.number(), status: z.number() });
 type RpcRow = z.infer<typeof rpcRow>;
 
+/** What the browser measured: a route's time to first data, one query's time, or how many rows it had to drop. Names and numbers only. */
+export type ClientRow =
+  | { kind: "route"; view: string; detail: boolean; ms: number; queries: number }
+  | { kind: "query"; command: string; ms: number; ok: boolean; fromCache: boolean }
+  | { kind: "dropped"; count: number };
+type LogRow = RpcRow | (ClientRow & { t: number });
+
 interface PerfRecorderOptions {
   /** `stateDir/perf`; created on first flush. */
   dir: string;
@@ -32,6 +39,8 @@ type SummaryWindow = "15m" | "24h";
 
 export interface PerfRecorder {
   record(sample: RpcSample): void;
+  /** Logs rows the browser reported; they join the day files but not the rpc summary. */
+  recordClient(rows: readonly ClientRow[]): void;
   summary(window: SummaryWindow): Promise<RpcStats[]>;
   /** Writes what is buffered; resolves when it is on disk. */
   flush(): Promise<void>;
@@ -84,6 +93,9 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
       if (ring.length > ringSize) ring.shift();
       log.add(row);
     },
+    recordClient(rows) {
+      for (const row of rows) log.add({ ...row, t: now() });
+    },
     async summary(window) {
       const since = now() - WINDOW_MS[window];
       if (window === "15m") return statsOf(ring.filter((row) => row.t >= since));
@@ -99,7 +111,7 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
 
 /** Buffers rows and appends them to the day files every `flushMs` or once `flushRows` wait; a failed write drops that batch. */
 function createBatchWriter(dir: string, flushMs: number, flushRows: number) {
-  let pending: RpcRow[] = [];
+  let pending: LogRow[] = [];
   let writing: Promise<void> = Promise.resolve();
   const flush = (): Promise<void> => {
     const batch = pending;
@@ -111,7 +123,7 @@ function createBatchWriter(dir: string, flushMs: number, flushRows: number) {
   const timer = setInterval(() => void flush(), flushMs);
   timer.unref();
   return {
-    add(row: RpcRow): void {
+    add(row: LogRow): void {
       pending.push(row);
       if (pending.length >= flushRows) void flush();
     },
@@ -123,7 +135,7 @@ function createBatchWriter(dir: string, flushMs: number, flushRows: number) {
   };
 }
 
-async function writeBatch(dir: string, batch: readonly RpcRow[]): Promise<void> {
+async function writeBatch(dir: string, batch: readonly LogRow[]): Promise<void> {
   await mkdir(dir, { recursive: true });
   const byFile = new Map<string, string>();
   for (const row of batch) byFile.set(logName(row.t), `${byFile.get(logName(row.t)) ?? ""}${JSON.stringify(row)}\n`);

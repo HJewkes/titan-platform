@@ -1,3 +1,4 @@
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -31,6 +32,26 @@ export const C_TS = `export class Counter {
 }
 `;
 
+let templateStore: string | undefined;
+
+// Running the migrations on a fresh database costs ~90 ms; copying an already migrated one costs ~1 ms.
+function migratedTemplate(): string {
+  if (templateStore) return templateStore;
+  const dir = mkdtempSync(path.join(os.tmpdir(), "code-graph-template-"));
+  process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "graph.db");
+  openCodeGraph(file).close();
+  templateStore = file;
+  return file;
+}
+
+/** An empty, fully migrated store at `dbPath`, as `openCodeGraph` would create it. */
+export function openTestStore(dbPath: string): CodeGraphStore {
+  mkdirSync(path.dirname(dbPath), { recursive: true });
+  copyFileSync(migratedTemplate(), dbPath);
+  return openCodeGraph(dbPath);
+}
+
 export interface Project {
   rootDir: string;
   store: CodeGraphStore;
@@ -44,7 +65,7 @@ export async function createProject(): Promise<Project> {
   await fs.writeFile(path.join(src, "a.ts"), A_TS);
   await fs.writeFile(path.join(src, "b.ts"), B_TS);
   await fs.writeFile(path.join(src, "c.ts"), C_TS);
-  return { rootDir, store: openCodeGraph(path.join(rootDir, ".codewatch", "graph.db")) };
+  return { rootDir, store: openTestStore(path.join(rootDir, ".codewatch", "graph.db")) };
 }
 
 export async function disposeProject(project: Project): Promise<void> {
@@ -100,7 +121,7 @@ export function readSnapshot(store: CodeGraphStore, snapshotId: number): Snapsho
 /** Index `rootDir` from scratch into a throwaway store and return its snapshot. */
 export async function fullIndexSnapshot(rootDir: string): Promise<Snapshot> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-truth-"));
-  const store = openCodeGraph(path.join(dir, "graph.db"));
+  const store = openTestStore(path.join(dir, "graph.db"));
   try {
     const result = await runIndex(store, rootDir, { incremental: false });
     return readSnapshot(store, result.snapshotId);
