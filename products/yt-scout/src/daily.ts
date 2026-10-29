@@ -1,11 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import { appendRow, writeCase, type StepRow } from "./step-rows.js";
 
 const ASKER = "yt-scout";
 const DAILY_KEY = "yt-scout-daily";
 const VERDICTS = ["over", "under", "miss", "bad-why"] as const;
 type Verdict = (typeof VERDICTS)[number];
+const isVerdict = (s: string): s is Verdict => VERDICTS.some((v) => v === s);
+const Marker = z.object({ itemId: z.string() });
 
 export interface DailyCard {
   id: string;
@@ -56,7 +59,7 @@ export interface DailyDeps {
   now?: () => Date;
 }
 
-export type DailyOutcome = { outcome: "filed"; itemId: string } | { outcome: "skip"; reason?: "already-filed"; itemId?: string };
+type DailyOutcome = { outcome: "filed"; itemId: string } | { outcome: "skip"; reason?: "already-filed"; itemId?: string };
 
 export function rankCards(cards: DailyCard[]): DailyCard[] {
   return [...cards].sort((a, b) => b.total - a.total || b.actionable - a.actionable || b.evidence - a.evidence || a.id.localeCompare(b.id));
@@ -101,13 +104,14 @@ export function renderDeposit(day: string, cards: DailyCard[], stats: DailyStats
   };
 }
 
-export const depositIdFor = (day: string): string => `${ASKER}-${day}`;
+const depositIdFor = (day: string): string => `${ASKER}-${day}`;
 
 export function parseAnswer(text: string): { verdict: Verdict; id: string }[] {
   const found: { verdict: Verdict; id: string }[] = [];
   for (const line of text.split("\n")) {
-    const m = /^\s*(over|under|miss|bad-why)\s+([A-Za-z0-9_-]{11})\b/i.exec(line);
-    if (m) found.push({ verdict: m[1]!.toLowerCase() as Verdict, id: m[2]! });
+    const m = new RegExp(`^\\s*(${VERDICTS.join("|")})\\s+([A-Za-z0-9_-]{11})\\b`, "i").exec(line);
+    const verdict = m?.[1]?.toLowerCase();
+    if (m && verdict !== undefined && isVerdict(verdict)) found.push({ verdict, id: m[2]! });
   }
   return found;
 }
@@ -172,7 +176,7 @@ export async function runDaily(deps: DailyDeps): Promise<DailyOutcome> {
   const marker = markerFile(deps, day);
   if (existsSync(marker)) {
     appendRow(deps.rowsDir, dailyRow(deps, startedAt, "skip"));
-    return { outcome: "skip", reason: "already-filed", itemId: (JSON.parse(readFileSync(marker, "utf8")) as { itemId: string }).itemId };
+    return { outcome: "skip", reason: "already-filed", itemId: Marker.parse(JSON.parse(readFileSync(marker, "utf8"))).itemId };
   }
   await filesCasesFromAnswer(deps, previousDay(day));
   const cards = await deps.cards();

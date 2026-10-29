@@ -62,7 +62,7 @@ describe("renderDeposit", () => {
   });
 
   it("keeps unblocksNow within the console's 200 characters", () => {
-    expect((deposit.unblocksNow as string).length).toBeLessThanOrEqual(200);
+    expect(String(deposit.unblocksNow).length).toBeLessThanOrEqual(200);
   });
 
   it("adds a digested card that ranks below the top three", () => {

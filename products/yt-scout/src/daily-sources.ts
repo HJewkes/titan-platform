@@ -6,7 +6,7 @@ import { depositItemId } from "@titan-design/owner-queue";
 import { readAnswer } from "@titan-design/owner-queue/spool";
 import type { Watchlist } from "./config.js";
 import type { ConsoleResult, ConsoleRunner, DailyCard, DailyDeps, DailyStats } from "./daily.js";
-import type { StepRow } from "./step-rows.js";
+import { z } from "zod";
 import type { VideoRow } from "./store.js";
 
 const DAY_MS = 86_400_000;
@@ -31,39 +31,54 @@ export function readOwnerAnswer(dir: string): DailyDeps["readAnswer"] {
   return async (depositId) => (await readAnswer(dir, depositItemId("yt-scout", depositId)))?.text;
 }
 
-export function loadRows(rowsDir: string): StepRow[] {
+function loadRows(rowsDir: string): LoggedRow[] {
   if (!existsSync(rowsDir)) return [];
   return readdirSync(rowsDir)
     .filter((f) => /^steps-\d{4}-\d{2}\.jsonl$/.test(f))
     .sort()
     .flatMap((f) => readFileSync(path.join(rowsDir, f), "utf8").split("\n").filter(Boolean))
-    .map((line) => JSON.parse(line) as StepRow);
+    .map((line) => RowSchema.parse(JSON.parse(line)));
 }
 
-const scored = (r: StepRow): boolean => r.step === "score" && (r.outcome === "ok" || r.outcome === "fallback") && r.output_path !== null;
+const scored = (r: LoggedRow): boolean => r.step === "score" && (r.outcome === "ok" || r.outcome === "fallback") && r.output_path !== null;
 
-interface StoredCardFile {
-  id: string;
-  title: string;
-  actionable: number;
-  novelty: number;
-  evidence: number;
-  total: number;
-  summary: string;
-  techniques: { ts: string; what: string }[];
-  prompt_sha: string;
-  model: string;
-}
+// Rows are written by this product; only the fields read here are checked, the rest pass through.
+const RowSchema = z.looseObject({
+  run_id: z.string(),
+  video_id: z.string(),
+  source: z.string().nullable(),
+  step: z.string(),
+  started_at: z.string(),
+  outcome: z.enum(["ok", "skip", "retry", "fallback", "fail", "deferred"]),
+  input_sha: z.string(),
+  cost_usd: z.number(),
+  output_path: z.string().nullable(),
+});
+
+const CardFileSchema = z.looseObject({
+  id: z.string(),
+  title: z.string(),
+  actionable: z.number(),
+  novelty: z.number(),
+  evidence: z.number(),
+  total: z.number(),
+  summary: z.string(),
+  techniques: z.array(z.object({ ts: z.string(), what: z.string() })),
+  prompt_sha: z.string(),
+  model: z.string(),
+});
+
+type LoggedRow = z.infer<typeof RowSchema>;
 
 interface CardLookup {
   sourceName(key: string | null): string;
   duration(id: string): number | null;
 }
 
-function toCard(row: StepRow, lookup: CardLookup): DailyCard | undefined {
+function toCard(row: LoggedRow, lookup: CardLookup): DailyCard | undefined {
   const file = row.output_path!;
   if (!existsSync(file)) return undefined;
-  const c = JSON.parse(readFileSync(file, "utf8")) as StoredCardFile;
+  const c = CardFileSchema.parse(JSON.parse(readFileSync(file, "utf8")));
   const digest = path.join(path.dirname(file), `${c.id}.digest.md`);
   const seconds = lookup.duration(c.id);
   return {
@@ -81,7 +96,7 @@ export function sourceCardLoaders(rowsDir: string, watchlist: Watchlist, video: 
     sourceName: (key) => watchlist.sources.find((s) => s.key === key)?.name ?? key ?? "unknown",
     duration: (id) => video(id)?.duration ?? null,
   };
-  const latestPerVideo = (rows: StepRow[]): StepRow[] => [...new Map(rows.map((r) => [r.video_id, r])).values()];
+  const latestPerVideo = (rows: LoggedRow[]): LoggedRow[] => [...new Map(rows.map((r) => [r.video_id, r])).values()];
   const since = (): number => now().getTime() - DAY_MS;
   return {
     async cards(): Promise<DailyCard[]> {
