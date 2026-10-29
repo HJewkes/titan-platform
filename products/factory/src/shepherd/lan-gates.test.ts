@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import type { GateConclusion } from "./gate-evidence.js";
 import { heldCheck } from "./hold.js";
-import { lanGatesSatisfier } from "./lan-gates.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore } from "./store.js";
 
@@ -36,10 +35,10 @@ function rig(): Rig {
 
 const record = (r: Rig, head: string, gate: string, conclusion: GateConclusion) => r.store.gateEvidence().record({ repo: REPO, head, gate, conclusion, source: "factory:demo-build" });
 
-/** The merge port's own hold read, with the lan-gates satisfier wired as `workflows.ts` wires it. */
-const heldAt = (r: Rig, sha: string) => heldCheck(r.port, () => r.store, undefined, lanGatesSatisfier(() => r.store))(REPO, r.pr, sha);
+/** The merge port's own hold read. */
+const heldAt = (r: Rig, sha: string) => heldCheck(r.port, () => r.store)(REPO, r.pr, sha);
 
-describe("a lan-gates hold released by gate evidence", () => {
+describe("a lan-gates hold cleared by gate evidence", () => {
   it("stays held when every gate is green only at a head the PR has moved past", async () => {
     const r = rig();
     record(r, H1, SMOKE, "success");
@@ -72,7 +71,7 @@ describe("a lan-gates hold released by gate evidence", () => {
     expect(held).toBe(REASON);
   });
 
-  it("releases once every named gate is green at the PR's exact head, recording that head on the release", async () => {
+  it("stands aside at the PR's exact head once every named gate is green there, without lifting the hold", async () => {
     const r = rig();
     record(r, H1, SMOKE, "success");
     record(r, H1, DEVICE, "success");
@@ -80,7 +79,31 @@ describe("a lan-gates hold released by gate evidence", () => {
     const held = await heldAt(r, H1);
 
     expect(held).toBeUndefined();
-    expect(r.store.eventsOf("run-1").filter((event) => event.kind === "release").map((event) => [event.reason, event.actor, event.headSha])).toEqual([[REASON, "shepherd", H1]]);
+    expect(r.store.byRun("run-1")?.held).toBe(true);
+    expect(r.store.eventsOf("run-1").filter((event) => event.kind === "release")).toEqual([]);
+  });
+
+  it("holds again at a head pushed after the gates went green at the old one", async () => {
+    const r = rig();
+    record(r, H1, SMOKE, "success");
+    record(r, H1, DEVICE, "success");
+    await heldAt(r, H1);
+    r.fake.pushHead(r.pr, H2);
+
+    const held = await heldAt(r, H2);
+
+    expect(held).toBe(REASON);
+  });
+
+  it("stays held when the merge names a head other than the one the PR is at", async () => {
+    const r = rig();
+    record(r, H1, SMOKE, "success");
+    record(r, H1, DEVICE, "success");
+    r.fake.pushHead(r.pr, H2);
+
+    const held = await heldAt(r, H1);
+
+    expect(held).toBe(REASON);
   });
 
   it("stays held when the hold names a reviewer, whose verdict it waits for", async () => {

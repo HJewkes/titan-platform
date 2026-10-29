@@ -42,7 +42,7 @@ import { orderExpiryRoute } from "./shepherd/merge-order-expiry.js";
 import { mergeOrderRoutes } from "./shepherd/merge-order-steps.js";
 import { fileRules, mergeOrderMigration, mergeOrderRef, type MergeOrderRules, type OrderWaits } from "./shepherd/merge-order.js";
 import { watchListMigration } from "./shepherd/watch-list.js";
-import { gateEvidenceMigration, lanGatesSatisfier } from "./shepherd/lan-gates.js";
+import { gateEvidenceMigration } from "./shepherd/lan-gates.js";
 import { mergeBaseExceptionMigration } from "./shepherd/merge-base-exception.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
@@ -187,7 +187,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   const ordered = mergeOrderGuard({ order: () => order.get(), registrations: holds, rules: orderRules, now: deps.now, waits: orderWaits });
   const adversary = adversaryGuard({ store: holds, carry: (input) => carry(input, deps.review?.carry) });
   const guard = firstReason(advisoryGuard(isAdvisory), freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now), adversary, ordered);
-  const satisfy = lanGatesSatisfier(holds, holdSatisfierFor(deps));
+  const satisfy = holdSatisfierFor(deps);
   const held = heldCheck(deps.port, holds, guard, satisfy, deps.snapshot);
   const train = deps.train ?? mergeTrainRef(deps.now);
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);

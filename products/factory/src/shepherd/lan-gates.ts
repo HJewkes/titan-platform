@@ -1,15 +1,11 @@
-import type { RepoSlug } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
-import { SHEPHERD_ACTOR } from "./events.js";
 import { GATE_NAME, type GateEvidence } from "./gate-evidence.js";
-import type { HoldSatisfier } from "./hold.js";
-import type { ShepherdStore } from "./store.js";
 
 export { gateEvidenceMigration } from "./gate-evidence.js";
 
 /**
  * Gates that cannot run in GitHub Actions, such as a check against a device on the local network. The reason names them,
- * `lan-gates: <gate>, <gate>; <detail>`, and the hold releases itself once each has a green record at the PR's head.
+ * `lan-gates: <gate>, <gate>; <detail>`, and the hold stands aside at any head where each has a green record.
  */
 export const LAN_GATES_CLASS = "lan-gates";
 const PREFIX = `${LAN_GATES_CLASS}:`;
@@ -37,30 +33,13 @@ export function refuseUnknownGates(evidence: GateEvidence, reason: string): void
   throw Object.assign(new Error(message), { code: EXIT.DATAERR });
 }
 
-/** True when every named gate's newest record at exactly `head` is green; none at that head, or a red one, keeps the hold. */
-const gatesGreenAt = (evidence: GateEvidence, repo: string, head: string, gates: readonly string[]): boolean =>
-  gates.length > 0 && gates.every((gate) => evidence.conclusionAt(repo, head, gate) === "success");
-
 /**
- * Releases the run's gating `lan-gates` hold when its gates are green at `head`. A hold naming a reviewer waits for that reviewer,
- * as a g10-review one does. The release is a compare-and-swap on the reason judged, so a re-hold in between stands.
+ * Whether a `lan-gates` hold stands aside at `head`: every gate it names has a green newest record at exactly that head. The hold
+ * itself is never lifted, so a push to a new head, or a merge read at no head, finds it held again until that head's gates are green.
+ * A hold naming a reviewer waits for that reviewer, as a g10-review one does.
  */
-function releaseOnGateEvidence(store: ShepherdStore, repo: RepoSlug, pr: number, head: string): boolean {
-  const registration = store.byPr(repo, pr);
-  const reason = registration?.held ? registration.holdReason : null;
-  const gates = reason === null ? undefined : gatesOf(reason);
-  if (!registration || reason === null || !gates || registration.holdReviewer !== null) return false;
-  if (!gatesGreenAt(store.gateEvidence(), repo, head, gates)) return false;
-  return store.releaseIfHeld(registration.runId, reason, { actor: SHEPHERD_ACTOR, headSha: head });
-}
-
-/**
- * The merge wait and the merge port call the satisfier only at the PR's head as read just then, so evidence that lands while the
- * run waits releases the hold at its next poll, and evidence for any older head never does.
- */
-export function lanGatesSatisfier(store: () => ShepherdStore, inner?: HoldSatisfier): HoldSatisfier {
-  return async (repo, pr, sha, baseRef) => {
-    await inner?.(repo, pr, sha, baseRef);
-    releaseOnGateEvidence(store(), repo, pr, sha);
-  };
+export function lanGatesClearAt(evidence: GateEvidence, repo: string, hold: { reason: string; reviewer: string | null }, head: string): boolean {
+  const gates = gatesOf(hold.reason);
+  if (!gates || gates.length === 0 || hold.reviewer !== null) return false;
+  return gates.every((gate) => evidence.conclusionAt(repo, head, gate) === "success");
 }
