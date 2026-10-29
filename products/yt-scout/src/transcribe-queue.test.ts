@@ -121,6 +121,38 @@ describe("transcribe queue", () => {
     expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", attempts: 1, last_error_class: "no_captions", next_retry_at: hoursAhead(6) });
   });
 
+  it("walks a young no_captions video through the +6 h retry, the +24 h retry, then Whisper", async () => {
+    addVideo("vvvvvvvvv01", { published: hoursAgo(3) });
+    let clock = NOW;
+    const h = harness((id, argv) => (argv.includes("--whisper") ? wrote(id, "whisper (base.en)") : failure("no subtitles")));
+    h.env.now = () => clock;
+    const tick = async (to: Date) => {
+      clock = to;
+      return runTranscribeQueue(db, h.env);
+    };
+    const at = (hours: number) => new Date(NOW.getTime() + hours * 3_600_000);
+
+    await tick(at(0));
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ next_retry_at: at(6).toISOString(), attempts: 1 });
+
+    await tick(at(5));
+    expect(h.calls).toHaveLength(1);
+
+    await tick(at(6));
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", next_retry_at: at(30).toISOString(), attempts: 2 });
+
+    await tick(at(29));
+    expect(h.calls).toHaveLength(2);
+
+    await tick(at(30));
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ next_retry_at: null, last_error_class: "no_captions", attempts: 3 });
+    expect(h.calls.some((c) => c.includes("--whisper"))).toBe(false);
+
+    const report = await tick(at(31));
+    expect(report.transcribed).toEqual(["vvvvvvvvv01"]);
+    expect(h.calls.at(-1)).toContain("--whisper");
+  });
+
   it("queues a no_captions video older than 24 h for Whisper, which runs niced", async () => {
     addVideo("vvvvvvvvv01", { published: hoursAgo(30) });
     const h = harness((id, argv) => (argv.includes("--whisper") ? wrote(id, "whisper (base.en)") : failure("no subtitles")));

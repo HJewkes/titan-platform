@@ -8,6 +8,9 @@ const HOUR = 3_600_000;
 export const MAX_ATTEMPTS = 5;
 export const CAPTION_WAIT_MS = 24 * HOUR;
 export const CAPTION_RETRY_MS = 6 * HOUR;
+export const CAPTION_SECOND_RETRY_MS = 24 * HOUR;
+// Marks a video whose first caption retry has also failed; only the third failure sends it to Whisper.
+const SECOND_CAPTION_WAIT = "no_captions:2";
 export const LIVE_GIVE_UP_MS = 48 * HOUR;
 export const WHISPER_PER_TICK = 2;
 export const WHISPER_MAX_LOAD = 12;
@@ -49,6 +52,20 @@ function dueVideos(db: Db, now: Date, whisper: boolean): VideoRow[] {
     .all(now.toISOString());
 }
 
+// Auto-captions often land hours after upload: retry at +6 h, then +24 h, and only then queue for Whisper.
+// A video already past 24 h old at its first failure goes straight to the Whisper queue.
+function scheduleNoCaptions(db: Db, v: VideoRow, now: Date, attempts: number): void {
+  const at = (ms: number) => iso(now.getTime() + ms);
+  if (v.last_error_class === SECOND_CAPTION_WAIT) {
+    update(db, v.id, { attempts, last_error_class: "no_captions", next_retry_at: null });
+  } else if (v.last_error_class === "no_captions") {
+    update(db, v.id, { attempts, last_error_class: SECOND_CAPTION_WAIT, next_retry_at: at(CAPTION_SECOND_RETRY_MS) });
+  } else {
+    const young = ageMs(v, now) < CAPTION_WAIT_MS;
+    update(db, v.id, { attempts, last_error_class: "no_captions", next_retry_at: young ? at(CAPTION_RETRY_MS) : null });
+  }
+}
+
 /** Where a failed attempt leaves the video (plan section 3, failures and retries). */
 function scheduleFailure(db: Db, env: QueueEnv, v: VideoRow, errorClass: StepErrorClass, report: QueueReport): void {
   const now = env.now();
@@ -62,9 +79,7 @@ function scheduleFailure(db: Db, env: QueueEnv, v: VideoRow, errorClass: StepErr
     update(db, v.id, { ...base, state: "failed", next_retry_at: null });
     report.failed.push(v.id);
   } else if (errorClass === "no_captions") {
-    // Auto-captions often land hours after upload; past 24 h the video waits for the Whisper queue.
-    const young = ageMs(v, now) < CAPTION_WAIT_MS;
-    update(db, v.id, { ...base, next_retry_at: young ? iso(now.getTime() + CAPTION_RETRY_MS) : null });
+    scheduleNoCaptions(db, v, now, attempts);
     report.rescheduled.push(v.id);
   } else {
     update(db, v.id, { ...base, next_retry_at: iso(now.getTime() + OTHER_RETRY_MS) });
