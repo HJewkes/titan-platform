@@ -77,6 +77,15 @@ describe("the render stage's custom layers", () => {
     expect(bundled).not.toMatch(/from\s*["']react["']/);
   });
 
+  it("fails naming the beat when the run has no custom-layers tree", async () => {
+    fx = fixture();
+    const inputs = Object.fromEntries(Object.entries(await customInputs()).filter(([name]) => name !== "custom-layers"));
+
+    const render = runOneStage({ stage: "render", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    await expect(render).rejects.toThrow(/custom layer for beat "h1" is not built/);
+  });
+
   it("rejects naming the module when the tree lacks the file its index names", async () => {
     fx = fixture();
     const inputs = await customInputs({ "other.tsx": SYNTHETIC_LAYER });

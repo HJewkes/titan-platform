@@ -16,6 +16,8 @@ interface CompileDeps {
   slotsFor?: SlotsFor;
   /** What the page draws beside each beat's slots, by storyboard id (boardFromFill); a beat without any carries none. */
   extras?: ReadonlyMap<string, PageExtras>;
+  /** Storyboard ids of custom-layer beats: they hold no slots, since their built layer draws them. */
+  custom?: ReadonlySet<string>;
 }
 
 // BEAT_SLOTS stands in for the @titan-design/beats registry until it publishes (TD-907); the page parses the same schemas.
@@ -89,7 +91,7 @@ export function compileTimeline(board: Storyboard, words?: unknown, deps: Compil
     const durationS = durations[i] ?? beat.duration_s;
     const cues = beatCues(beat, resolve);
     const page = pageFields(beat.id, deps.extras?.get(beat.id), revealAt);
-    const compiled = { id: beat.id, kind: beat.type, startS, durationS, ...(cues ? { cues } : {}), slots: slotsFor(beat.type, beat.slots), ...page };
+    const compiled = { id: beat.id, kind: beat.type, startS, durationS, ...(cues ? { cues } : {}), slots: deps.custom?.has(beat.id) ? {} : slotsFor(beat.type, beat.slots), ...page };
     startS += durationS;
     return compiled;
   });
