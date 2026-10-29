@@ -30,12 +30,12 @@
       ]
     },
     {
-      "name": "a run that ends keeps its reservation",
+      "name": "a review fix round keeps the conflict's reservation",
       "file": "products/factory/src/shepherd/pr.ts",
-      "find": "    if (final) await releaseOrder(run);\n",
+      "find": "  if (kind !== \"conflict\") await releaseUnlandable(run);\n",
       "replace": "",
       "kills": [
-        "TP-4098 slice C: the #2301 loop releases the reservation when its run lands"
+        "TP-4497: a reservation is held only through a conflict round or at a landable head a review fix round releases the reservation and a ready overlapping PR lands"
       ]
     },
     {
