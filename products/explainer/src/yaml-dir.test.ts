@@ -2,13 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import type * as Yaml from "yaml";
 import { z } from "zod";
 import { readYamlDir } from "./yaml-dir.js";
 
 const yamlParse = vi.hoisted(() => ({ calls: 0 }));
 
 vi.mock("yaml", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("yaml")>();
+  const actual = await importOriginal<typeof Yaml>();
   return {
     ...actual,
     parse: (...args: Parameters<typeof actual.parse>) => {
