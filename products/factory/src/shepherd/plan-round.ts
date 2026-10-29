@@ -52,7 +52,7 @@ export function readPlanBlock(text: string): PlanBlock {
   try {
     json = JSON.parse(fences[0]!);
   } catch (error) {
-    throw new PlanRoundRefused(`the plan-round block is not JSON: ${(error as Error).message}`);
+    throw new PlanRoundRefused(`the plan-round block is not JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
   const parsed = PlanBlockSchema.safeParse(json);
   if (!parsed.success) throw new PlanRoundRefused(`the plan-round block is invalid: ${z.prettifyError(parsed.error)}`);

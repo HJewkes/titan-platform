@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { text } from "node:stream/consumers";
 import { EXIT } from "@titan-design/registry";
 import type { Command } from "commander";
 import { parsePositiveInt } from "./cli-options.js";
@@ -59,12 +60,6 @@ export async function draftPlanRound(source: string, args: PlanRoundArgs, ports:
   }
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Buffer));
-  return Buffer.concat(chunks).toString("utf8");
-}
-
 function seatVisualPaths(env: NodeJS.ProcessEnv, repo: string): readonly string[] | undefined {
   const found = lookupSeat(loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}), repo);
   return found.kind === "seat" ? found.seat.visualPaths : undefined;
@@ -85,7 +80,7 @@ export function registerShepherdPlanRound(shepherd: Command, verbs: Verbs): void
     .action(async (source: string, args: PlanRoundArgs) => {
       const ports: PlanRoundPorts = {
         io: verbs.io,
-        readPlan: (from) => (from === "-" ? readStdin() : readFile(from, "utf8")),
+        readPlan: (from) => (from === "-" ? text(process.stdin) : readFile(from, "utf8")),
         git: (checkout) => checkoutGit(checkout),
         visualPaths: (repo) => seatVisualPaths(verbs.io.env, repo),
       };

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { checkoutGit, draftPlanRound, type PlanRoundArgs, type PlanRoundPorts } from "../cli-shepherd-plan-round.js";
 import { runCli } from "../cli.js";
 import { PlanApprovalActionSchema } from "../console-action/record.js";
@@ -11,6 +12,7 @@ import { blobOf, NOTHING_PREDICTED, pinFiles, PlanBlockSchema, planRound, PlanRo
 const plan = (fields: Partial<PlanBlock> & Pick<PlanBlock, "files">): PlanBlock => PlanBlockSchema.parse({ task: "demo/TP-1", repo: "octo/planned", summary: "Add a merge-lint entry", ...fields });
 const noGit: GitRead = { show: async () => null };
 const ARGS: PlanRoundArgs = { round: 1, supersedes: [], base: "origin/main" };
+const PrintedBindings = z.object({ planApprovals: z.array(z.object({ task: z.string(), repo: z.string(), gate: z.string(), scope: z.unknown() })) });
 
 const tmp: string[] = [];
 afterEach(() => tmp.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -137,7 +139,7 @@ describe("drafting the round", () => {
     const { out, run } = drafting(JSON.stringify(plan({ files, ciPolicyKeys: ["other"] })), ["packages/ui/**"]);
 
     expect(await run()).toBe(0);
-    const bindings = JSON.parse(out.stdout).planApprovals as { task: string; repo: string; gate: string; scope: unknown }[];
+    const bindings = PrintedBindings.parse(JSON.parse(out.stdout)).planApprovals;
     expect(bindings.map((each) => each.gate)).toEqual(["ci-policy", "skill", "visual"]);
     for (const { task, repo, gate, scope } of bindings) expect(PlanApprovalActionSchema.safeParse({ kind: "plan-approval", task, repo, round: "plan-demo-tp-1-r1", gate, scope }).success).toBe(true);
   });
