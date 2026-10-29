@@ -1,5 +1,4 @@
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { successEnvelope } from "@titan-design/registry";
 import { activeWorkClient } from "./active-work.js";
@@ -24,7 +23,9 @@ function collector() {
 async function listenNeverAnswering(): Promise<number> {
   hung = createServer(() => {});
   await new Promise<void>((resolve) => hung!.listen(0, "127.0.0.1", resolve));
-  return (hung.address() as AddressInfo).port;
+  const address = hung.address();
+  if (address === null || typeof address === "string") throw new Error("no port");
+  return address.port;
 }
 
 describe("active-work upstream timing", () => {
