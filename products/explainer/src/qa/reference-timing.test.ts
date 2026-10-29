@@ -1,6 +1,6 @@
 import type { ProbedMoment } from "@titan-design/render-qa";
 import { describe, expect, it } from "vitest";
-import { earlyReveal, holdThroughReference } from "./reference-timing.js";
+import { earlyReveal, holdThroughReference, textSpans } from "./reference-timing.js";
 import { TIMING_GATES, timingProfile, timingReport, type TimingInput } from "./timing-gates.js";
 
 /** Three sentences, one word every 0.5 s from 0.5 s: "cache" opens the third, at 4.5 s. */
@@ -108,5 +108,28 @@ describe("timing report", () => {
     expect(ids).toEqual(expect.arrayContaining(["early-reveal", "hold-through-reference"]));
     expect(TIMING_GATES).not.toContain("early-reveal");
     expect(TIMING_GATES).not.toContain("hold-through-reference");
+  });
+});
+
+describe("text spans", () => {
+  const counting = (value: string, t: number): ProbedMoment => moment(t, [[value, "div.tile"]]);
+
+  it("a number counting up in one element is one reading span", () => {
+    // Arrange
+    const probed = [counting("5", 0), counting("19", 0.5), counting("32", 1), moment(1.5, [])];
+
+    // Act
+    const spans = textSpans(probed);
+
+    // Assert
+    expect(spans).toEqual([expect.objectContaining({ text: "32", fromS: 0, untilS: 1.5 })]);
+  });
+
+  it("words replacing words in one element stay separate spans", () => {
+    const probed = [moment(0, [["Queue", "div.t"]]), moment(0.5, [["Cache", "div.t"]]), moment(1, [])];
+
+    const spans = textSpans(probed);
+
+    expect(spans.map((s) => s.text)).toEqual(["Queue", "Cache"]);
   });
 });

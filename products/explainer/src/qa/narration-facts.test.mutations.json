@@ -9,6 +9,42 @@
       "kills": [
         "narration carries on-screen facts hears a list marker by its place, so Q1 opened with 'first' is said and Q3 left unplaced is not"
       ]
+    },
+    {
+      "name": "chapter counter is no longer scaffolding",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "|counter|chapter-count|",
+      "replace": "|counter|",
+      "kills": [
+        "scaffolding and citations a chapter counter's numbers are not claims"
+      ]
+    },
+    {
+      "name": "PR and task ids are no longer citations",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "|\\bPRs?\\s?#?\\d+\\b|#\\d+\\b|\\b[A-Z]{2,}-\\d+\\b/gi",
+      "replace": "/gi",
+      "kills": [
+        "scaffolding and citations a PR number in a row cites its source"
+      ]
+    },
+    {
+      "name": "nothing is no longer heard as zero",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "(value === 0 && /\\b(?:nothing|none)\\b/i.test(spoken))",
+      "replace": "false",
+      "kills": [
+        "scaffolding and citations nothing merged is heard as zero"
+      ]
+    },
+    {
+      "name": "counting figures are judged on every step",
+      "file": "products/explainer/src/qa/narration-facts.ts",
+      "find": "unspokenFacts(beat, settledTexts(texts), spoken(beat))",
+      "replace": "unspokenFacts(beat, texts, spoken(beat))",
+      "kills": [
+        "narration facts report a counting figure is judged by the value it settles on"
+      ]
     }
   ]
 }

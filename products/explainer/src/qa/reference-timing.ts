@@ -31,18 +31,22 @@ export interface TextSpan {
   untilS: number | null;
 }
 
-/** Each text's runs of consecutive samples on screen, keyed by element and text. */
+const PLAIN_NUMBER = /^[£$€]?\d[\d,]*(?:\.\d+)?\s?(?:k|K|M|bn|B|%)?$/;
+/** A number counting up in its element is one text, so it is keyed by the element alone. */
+const spanKey = (t: { element: string; text: string }): string => `${t.element}\u0000${PLAIN_NUMBER.test(t.text.trim()) ? "#number" : t.text}`;
+
+/** Each text's runs of consecutive samples on screen, keyed by element and text; a counting number keeps its settled value. */
 export function textSpans(probed: readonly ProbedMoment[]): TextSpan[] {
   const open = new Map<string, TextSpan>();
   const spans: TextSpan[] = [];
   for (const moment of probed) {
-    const shown = new Map(moment.texts.map((t) => [`${t.element}\u0000${t.text}`, t]));
+    const shown = new Map(moment.texts.map((t) => [spanKey(t), t]));
     for (const [key, span] of open) {
       if (shown.has(key)) continue;
       spans.push({ ...span, untilS: moment.t });
       open.delete(key);
     }
-    for (const [key, t] of shown) if (!open.has(key)) open.set(key, { text: t.text, element: t.element, beat: moment.beat, fromS: moment.t, untilS: null });
+    for (const [key, t] of shown) open.set(key, { text: t.text, element: t.element, beat: moment.beat, fromS: open.get(key)?.fromS ?? moment.t, untilS: null });
   }
   return [...spans, ...open.values()];
 }

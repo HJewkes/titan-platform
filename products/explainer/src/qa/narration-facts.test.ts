@@ -108,7 +108,69 @@ describe("narration carries on-screen facts", () => {
   });
 });
 
+describe("scaffolding and citations", () => {
+  it("a chapter counter's numbers are not claims", () => {
+    // Arrange
+    const texts = [label("3", "xp-chapter-count"), label("8", "xp-chapter-count")];
+
+    // Act
+    const found = facts(texts, "the desk sorts parcels");
+
+    // Assert
+    expect(found).toEqual([]);
+  });
+
+  it("a PR number in a row cites its source", () => {
+    // Arrange
+    const texts = [label("PR 2312 sorted the desk"), label("fixed in #88"), label("see ABC-4467")];
+
+    // Act
+    const found = facts(texts, "the desk sorts parcels");
+
+    // Assert
+    expect(found).toEqual([]);
+  });
+
+  it("nothing merged is heard as zero", () => {
+    // Arrange
+    const texts = [label("Guardrails 0")];
+
+    // Act
+    const found = facts(texts, "nothing moved toward its guardrails goal");
+
+    // Assert
+    expect(found).toEqual([]);
+  });
+
+  it("a shown zero is still flagged when the narration says neither zero nor nothing", () => {
+    const found = facts([label("Guardrails 0")], "the guardrails goal moved");
+
+    expect(found).toEqual(["number:0"]);
+  });
+});
+
 describe("narration facts report", () => {
+  it("a counting figure is judged by the value it settles on", () => {
+    // Arrange
+    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile" });
+    const moments = ["5", "19", "23", "32"].map((value) => ({ beat: "b1", texts: [tile(value)] }));
+
+    // Act
+    const report = narrationFactsReport(moments, () => "thirty-two lanes");
+
+    // Assert
+    expect(report.findings).toEqual([]);
+  });
+
+  it("a counting figure that settles on an unspoken value is flagged once", () => {
+    const tile = (value: string) => ({ ...label(value, "ex-stat"), element: "div.tile" });
+    const moments = ["5", "19", "33"].map((value) => ({ beat: "b1", texts: [tile(value)] }));
+
+    const report = narrationFactsReport(moments, () => "thirty-two lanes");
+
+    expect(report.findings).toEqual([{ beat: "b1", kind: "number", fact: "33", shown: "33" }]);
+  });
+
   it("joins a beat's moments, keeps each fact once, and names its beat", () => {
     const moments = [
       { beat: "b1", texts: [headline("60% wait")] },
