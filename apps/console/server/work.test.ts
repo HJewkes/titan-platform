@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT } from "@titan-design/registry";
-import { snapshotKey } from "@titan-design/rpc-client";
+import { snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { activeWorkClient } from "./active-work.js";
+import { cachedActiveWork } from "./active-work-cache.js";
 import { brokerReader } from "./broker.js";
+import { createInvalidation } from "./invalidation.js";
 import { fixtureActiveWork, fixtureAnswer, type FixtureOptions } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
 import { shepherdReader } from "./shepherd.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
-import { readInitiative, readNotes, readPortfolio, readRecord, searchRecords, type Portfolio } from "./work.js";
+import { PREFIX_MEMO_MS, readInitiative, readNotes, readPortfolio, readRecord, searchRecords, type Portfolio } from "./work.js";
 
 /** The export records no agents call, so this broker is never read. */
 const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), eventsDbPath: "/nonexistent/events.db", seatPrefixes: [] };
@@ -29,6 +31,39 @@ async function fakeActiveWork(options: FixtureOptions = {}) {
     return fixtureAnswer(command, args, options);
   });
   return activeWorkClient(daemon.port);
+}
+
+/** A daemon whose orbit-relay brief prefix and day stamp a test can change between reads. */
+async function editableBrief() {
+  const state = { stamp: "2031-03-04", prefix: "OR" };
+  daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+    calls.push(command);
+    if (command === "source.read" && args.slug === "orbit-relay") {
+      const content = `---\nstate: focused\ntask_prefix: ${state.prefix}\n---\n\n# orbit-relay\n`;
+      return { path: args.path, content, truncated: false, bytes: content.length };
+    }
+    const answer = fixtureAnswer(command, args);
+    if (command === "list" && typeof answer === "object" && answer !== null && "sections" in answer && Array.isArray(answer.sections)) {
+      for (const section of answer.sections) for (const item of section.items) if (item.slug === "orbit-relay") item.updated = state.stamp;
+    }
+    return answer;
+  });
+  return Object.assign(state, { activeWork: activeWorkClient(daemon.port) });
+}
+
+function isPortfolio(value: unknown): value is Portfolio {
+  return typeof value === "object" && value !== null && "initiatives" in value && Array.isArray(value.initiatives);
+}
+
+function hasInitiatives(value: unknown): value is { initiatives: object[] } {
+  return typeof value === "object" && value !== null && "initiatives" in value && Array.isArray(value.initiatives);
+}
+
+function recordedPortfolio(snapshot: Snapshot): Portfolio {
+  const envelope = snapshot.calls[snapshotKey("work.portfolio", {})];
+  const data = envelope?.ok ? (envelope as { data: unknown }).data : undefined;
+  if (!isPortfolio(data)) throw new Error("the first paint recorded no portfolio");
+  return data;
 }
 
 describe("the portfolio", () => {
@@ -70,6 +105,55 @@ describe("the portfolio", () => {
     expect(initiatives.find((row) => row.slug === "kiln-tools")).not.toHaveProperty("taskPrefix");
   });
 
+  it("a portfolio read with unchanged initiatives makes no brief reads", async () => {
+    const activeWork = await fakeActiveWork();
+    await readPortfolio(activeWork);
+    const first = calls.filter((command) => command === "source.read").length;
+    calls = [];
+    const { initiatives } = await readPortfolio(activeWork);
+    expect(first).toBeGreaterThan(0);
+    expect(calls.filter((command) => command === "source.read")).toEqual([]);
+    expect(initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OR");
+  });
+
+  it("a portfolio read re-reads the brief of an initiative whose updated stamp moved", async () => {
+    const brief = await editableBrief();
+    await readPortfolio(brief.activeWork);
+    calls = [];
+    brief.stamp = "2031-03-05";
+    await readPortfolio(brief.activeWork);
+    expect(calls.filter((command) => command === "source.read")).toHaveLength(1);
+  });
+
+  it("a prefix set on the day the brief was last touched shows once the memo ages out", async () => {
+    const brief = await editableBrief();
+    await readPortfolio(brief.activeWork, { now: () => 0 });
+    brief.prefix = "OX";
+    const held = await readPortfolio(brief.activeWork, { now: () => PREFIX_MEMO_MS - 1 });
+    const { initiatives } = await readPortfolio(brief.activeWork, { now: () => PREFIX_MEMO_MS });
+    expect(held.initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OR");
+    expect(initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OX");
+  });
+
+  it("a prefix set on the day the brief was last touched shows on the next read after active-work reports a change", async () => {
+    const brief = await editableBrief();
+    const invalidation = createInvalidation();
+    const registry = createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, rounds: { dir: "/nonexistent/rounds" }, shepherd: shepherdReader(1), activeWork: brief.activeWork, invalidation });
+    await recordFirstPaint(registry);
+    brief.prefix = "OX";
+    invalidation.emit("active-work");
+    const snapshot = await recordFirstPaint(registry);
+    const portfolio = recordedPortfolio(snapshot);
+    expect(portfolio.initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OX");
+  });
+
+  it("a read of one initiative through the cached client reads the inventory once across repeats", async () => {
+    const activeWork = cachedActiveWork(await fakeActiveWork());
+    await readInitiative(activeWork, "orbit-relay");
+    await readInitiative(activeWork, "orbit-relay");
+    expect(calls.filter((command) => command === "inventory")).toHaveLength(1);
+  });
+
   it("flags a personal initiative and still shows it", async () => {
     const { initiatives } = await readPortfolio(await fakeActiveWork());
     expect(initiatives.filter((row) => row.personal).map((row) => row.slug)).toEqual(["garden-plan"]);
@@ -77,8 +161,9 @@ describe("the portfolio", () => {
 
   it("flags an initiative as personal when active-work reports the charter unread but leaves human_only false", async () => {
     daemon = await startFakeDaemon({ ok: true }, (command, args) => {
-      const answer = fixtureAnswer(command, args) as { initiatives?: Array<{ human_only: boolean }>; human_only_known?: boolean };
-      return command === "inventory" ? { ...answer, human_only_known: false, initiatives: answer.initiatives!.map((entry) => ({ ...entry, human_only: false })) } : answer;
+      const answer = fixtureAnswer(command, args);
+      if (command !== "inventory" || !hasInitiatives(answer)) return answer;
+      return { ...answer, human_only_known: false, initiatives: answer.initiatives.map((entry) => ({ ...entry, human_only: false })) };
     });
     const activeWork = activeWorkClient(daemon.port);
     expect((await readPortfolio(activeWork)).initiatives.every((row) => row.personal)).toBe(true);
@@ -191,15 +276,15 @@ describe("an export", () => {
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());
-    const envelope = snapshot.calls[snapshotKey("work.portfolio", {})] as { ok: true; data: Portfolio };
-    expect(envelope.data.initiatives.map((row) => row.slug)).toEqual(["orbit-relay", "lantern-docs", "kiln-tools", "atlas-archive"]);
+    const portfolio = recordedPortfolio(snapshot);
+    expect(portfolio.initiatives.map((row) => row.slug)).toEqual(["orbit-relay", "lantern-docs", "kiln-tools", "atlas-archive"]);
     expect(JSON.stringify(snapshot)).not.toContain("garden-plan");
   });
 
   it("records no initiative at all when active-work cannot say which are personal", async () => {
     const snapshot = await recordFirstPaint(await exported({ humanOnlyKnown: false }));
-    const envelope = snapshot.calls[snapshotKey("work.portfolio", {})] as { ok: true; data: Portfolio };
-    expect(envelope.data.initiatives).toEqual([]);
+    const portfolio = recordedPortfolio(snapshot);
+    expect(portfolio.initiatives).toEqual([]);
   });
 
   it("refuses the detail of a personal initiative", async () => {

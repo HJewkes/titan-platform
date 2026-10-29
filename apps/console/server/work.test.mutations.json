@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every portfolio read fetches each brief again",
+      "file": "apps/console/server/work.ts",
+      "find": "if (known?.updated === item.updated && now - known.at < PREFIX_MEMO_MS) return known.prefix;",
+      "replace": "if (known?.updated === item.updated && false) return known.prefix;",
+      "kills": [
+        "the portfolio a portfolio read with unchanged initiatives makes no brief reads",
+        "the portfolio a portfolio read re-reads the brief of an initiative whose updated stamp moved"
+      ]
+    },
+    {
+      "name": "a moved updated stamp keeps the old prefix",
+      "file": "apps/console/server/work.ts",
+      "find": "if (known?.updated === item.updated && now - known.at < PREFIX_MEMO_MS) return known.prefix;",
+      "replace": "if (known && now - known.at < PREFIX_MEMO_MS) return known.prefix;",
+      "kills": [
+        "the portfolio a portfolio read re-reads the brief of an initiative whose updated stamp moved"
+      ]
+    },
+    {
+      "name": "a same-day prefix edit stays hidden until restart",
+      "file": "apps/console/server/work.ts",
+      "find": "if (known?.updated === item.updated && now - known.at < PREFIX_MEMO_MS) return known.prefix;",
+      "replace": "if (known?.updated === item.updated) return known.prefix;",
+      "kills": [
+        "the portfolio a prefix set on the day the brief was last touched shows once the memo ages out"
+      ]
+    },
+    {
+      "name": "an active-work change event leaves the prefix memo in place",
+      "file": "apps/console/server/commands.ts",
+      "find": "  invalidation?.on(\"active-work\", () => forgetTaskPrefixes(activeWork));\n",
+      "replace": "  void forgetTaskPrefixes;\n",
+      "kills": [
+        "the portfolio a prefix set on the day the brief was last touched shows on the next read after active-work reports a change"
+      ]
+    }
+  ]
+}
