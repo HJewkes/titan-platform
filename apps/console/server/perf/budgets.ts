@@ -26,7 +26,7 @@ type Limits = Omit<RpcBudget, "rpc" | "args" | "fixtureGap">;
 const KB = 1024;
 
 /** A read with no row of its own still gets one with these limits, so a new read is checked from the start. */
-export const DEFAULT_LIMITS: Limits = { maxMs: 200, maxBytes: 256 * KB, maxUpstreamCalls: 2 };
+const DEFAULT_LIMITS: Limits = { maxMs: 200, maxBytes: 256 * KB, maxUpstreamCalls: 2 };
 
 const NO_FAKE_ANSWER = "the fake factory has no answer for it";
 const NO_VIDEO_ROOTS = "the fixture sets no video roots";
