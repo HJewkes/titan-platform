@@ -77,7 +77,7 @@ function recordedRun(base: string, head: string, params: Record<string, string> 
 }
 
 function contextOver(runs: readonly WorkflowRun[], clones: Record<string, string> = {}) {
-  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: () => [...runs] };
+  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), listByWorkflow: (workflowName: string) => runs.filter((run) => run.workflowName === workflowName) };
   const autoresearchClone = vi.fn((target: string) => clones[target]);
   const ctx: FactoryContext = { warnings: [], format: "json", host: partialFake<FactoryHost>({ runtime: partialFake<FactoryHost["runtime"]>(runtime) }), autoresearchClone };
   return { ctx, autoresearchClone };
@@ -186,7 +186,7 @@ function writeContext(initial: readonly WorkflowRun[], inboxRoot = "/nonexistent
     runs.push({ ...baselinedRun(id), workflowName, params, stepResults: {} });
     return id;
   });
-  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: (statuses = UNFINISHED) => runs.filter((run) => statuses.includes(run.status)), start };
+  const runtime = { status: (runId: string) => runs.find((run) => run.id === runId), list: (statuses = UNFINISHED) => runs.filter((run) => statuses.includes(run.status)), listByWorkflow: (workflowName: string, statuses: readonly WorkflowStatus[]) => runs.filter((run) => run.workflowName === workflowName && statuses.includes(run.status)), start };
   const autoresearch = arConfigFixture(inboxRoot, { fixture: { clone: `${inboxRoot}/fixture` }, other: { clone: `${inboxRoot}/other` } });
   const ctx: FactoryContext = { warnings: [], format: "json", host: partialFake<FactoryHost>({ runtime: partialFake<FactoryHost["runtime"]>(runtime) }), autoresearch };
   return { ctx, start };

@@ -19,6 +19,7 @@ import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
+import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
@@ -57,8 +58,11 @@ interface InboxList {
   readAt: string;
 }
 
-/** `inbox.list`'s answer: the owner queue, the machine-derived rows that carry no action, and the rounds waiting over six hours. */
-export interface InboxView extends InboxList {
+/**
+ * `inbox.list`'s answer: the owner queue as rows the page renders, planning rows only when asked for, the machine-derived
+ * rows that carry no action, and the rounds waiting over six hours.
+ */
+export interface InboxView extends Omit<InboxList, "items">, ViewRows {
   derived: DerivedRow[];
   nudges: RoundNudge[];
 }
@@ -183,11 +187,28 @@ function mergeHold(op: OwnerOp, row: WatchRow | undefined): Pick<Derived, "hold"
   return { hold: { class: holdClassOf(row.held.reason) ?? "unclassed", reason: row.held.reason } };
 }
 
+const short = (sha: string): string => sha.slice(0, 8);
+
+/**
+ * TP-4402: a gate op offers the gate's own tap only while that gate is still the row's open one at the head the deposit
+ * named, so a tap never approves a head the deposit's ask did not cover. Its command pins the same head, so neither
+ * fallback shows it.
+ */
+function gateOpDerived(item: OwnerItem, op: Extract<OwnerOp, { kind: "resolve-gate" }>, row: WatchRow | undefined): Derived {
+  if (row !== undefined && row.pendingGate?.gateId.toLowerCase() !== op.gateId.toLowerCase()) {
+    return { action: terminal(`gate ${op.gateId} is no longer open on ${row.repo}#${row.pr ?? "?"}; withdraw this deposit`) };
+  }
+  if (row?.headSha != null && row.headSha.toLowerCase() !== op.headSha.toLowerCase()) {
+    return { action: terminal(`this deposit asks at ${short(op.headSha)}, but the gate now pins ${short(row.headSha)}; answer the gate's own item at that head`) };
+  }
+  return hitlDerived(item, op.gateId, row);
+}
+
 /** A deposit's op names a target; the action comes from the live row, or for an allowlisted kind from the factory's preview at the tap. */
 function depositDerived(item: OwnerItem, row: WatchRow | undefined): Derived {
   const { op } = item;
   if (op === undefined) return { action: terminal("a deposit is agent-written, so the console offers it no write; run its command", item.command) };
-  if (op.kind === "resolve-gate") return hitlDerived(item, op.gateId, row);
+  if (op.kind === "resolve-gate") return gateOpDerived(item, op, row);
   if (op.kind === "release-hold") return { action: holdOpAction(item, op, row) };
   if (CONSOLE_OPS.has(op.kind)) return { action: { kind: "owner-op", op }, ...mergeHold(op, row) };
   return { action: terminal(`a ${op.kind} op has no console tap yet; run its command`, item.command) };
@@ -325,13 +346,11 @@ export async function readInbox(sources: InboxSources): Promise<InboxList> {
 
 const NOT_READ: Read<WatchRow[]> = { value: [], gaps: [] };
 
-/** A Shepherd that just failed the active read already has its gap line, so the finished read is skipped, not doubled. */
-async function readDerived({ shepherd, rounds, now = Date.now }: InboxSources, { live, roster }: Omit<OwnerQueueRead, "list">): Promise<Read<DerivedRow[]>> {
+/** A Shepherd that just failed the active read already has its gap line, so the finished read is dropped, not doubled. */
+async function readDerived({ rounds, now = Date.now }: InboxSources, { live, roster }: Omit<OwnerQueueRead, "list">, finishedRead: Promise<Read<WatchRow[]>>): Promise<Read<DerivedRow[]>> {
   const at = now();
-  const [finished, missed] = await Promise.all([
-    live.gaps.length > 0 ? NOT_READ : readOrGap("shepherd finished", () => shepherd.list("finished"), []),
-    readOrGap("round notices", () => missedNoticeRows(rounds.dir, at), []),
-  ]);
+  const [read, missed] = await Promise.all([finishedRead, readOrGap("round notices", () => missedNoticeRows(rounds.dir, at), [])]);
+  const finished = live.gaps.length > 0 ? NOT_READ : read;
   const blocked = roster?.value === undefined ? [] : blockedAgentRows(roster.value);
   const rows = [...stalledRunRows(live.value, at), ...failedRunRows(finished.value, live.value, at), ...blocked, ...missed.value].sort(byDerivedOrder);
   return { value: rows, gaps: [...finished.gaps, ...(roster?.gaps ?? []), ...missed.gaps] };
@@ -343,23 +362,26 @@ async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<Rou
   return roundNudges(rounds.dir, read.rounds, now()).catch(() => []);
 }
 
-async function readInboxView(sources: InboxSources, strips: GateStripReader): Promise<InboxView> {
-  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(sources, strips), readNudges(sources)]);
-  const derived = await readDerived(sources, reads);
-  return { ...list, gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
+/** The finished runs are read beside the queue rather than after it, since each read waits seconds on its upstream. */
+async function readInboxView(sources: InboxSources, strips: GateStripReader, cache: InboxReadCache, args: { planning?: boolean }): Promise<InboxView> {
+  const finished = readOrGap("shepherd finished", () => cache.finished.read(), []);
+  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue({ ...sources, factory: cache.factory }, strips), readNudges(sources)]);
+  const derived = await readDerived(sources, reads, finished);
+  const { items, ...rest } = list;
+  return { ...rest, ...viewRows(items, args), gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
 }
 
-export function inboxViewCommands(sources: InboxSources) {
+export function inboxViewCommands(sources: InboxSources, cache: InboxReadCache = inboxReadCache(sources)) {
   const strips = gateStripReader(sources.shepherd, sources.now);
   return {
     ...gateStripCommands(sources.shepherd, strips),
     "inbox.list": readCommand({
       name: "inbox.list",
       description:
-        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command and, for a gate on a live PR, its gate strip at that head; blocking first and newest first; beside them, machine-derived stall, failed-run, blocked-agent and missed round-notice rows with their evidence and no action; and each round open over six hours, once, with its recommendations stated",
-      args: z.object({}),
+        "The owner's inbox: approvals.flow joined to Shepherd's live rows, each item with the one action a tap takes or the terminal command and, for a gate on a live PR, its gate strip at that head; blocking first and newest first, planning items counted and listed only with planning; beside them, machine-derived stall, failed-run, blocked-agent and missed round-notice rows with their evidence and no action; and each round open over six hours, once, with its recommendations stated",
+      args: z.object({ planning: z.boolean().optional().describe("list the planning items too; left out unless true") }),
       result: z.custom<InboxView>(),
-      run: () => readInboxView(sources, strips),
+      run: (args) => readInboxView(sources, strips, cache, args),
     }),
   };
 }

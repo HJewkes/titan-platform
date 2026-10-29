@@ -292,6 +292,17 @@ because the installed `beat-builder` profile predates its TSX variant. They turn
 that profile. `BEAT_WORKERS` is the whole runner registry: `claude-print` and `agent-chat`, with no fork runner
 and no resumed session.
 
+**Custom layers on the page, and the text check** (TP-4418). The page draws a custom layer in the stage box between
+empty chrome bands, the same box a stage kind fills, so the layer's `inset: 0` clears the chrome. Its anchors are
+still cells of the full frame. After each commit the layer host raises any text under the page's `--beat-floor`
+(40 px, qa's small-text floor) to the floor. After the compile gate and the cue check, the host's `layerTextCheck`
+(`chromiumLayerTextCheck`, Chromium, $0) renders the layer alone on the composition page. It seeks to each cue
+word's planned time plus 1 s and to the beat's end. At each moment it applies qa's own `small-text` and
+`under-chrome` findings at qa's thresholds, and a `bad-text` rule for visible `NaN`, `undefined`, `null` or `[object`.
+A layer that breaks a rule is rebuilt once, with a `rebuild` field naming each element, its text and the rule. The
+rebuild's spend joins the build's. A rebuild that does not compile, drops a cue target or still breaks a rule fails
+resolve with one row per beat, element and rule. `layerTextCheck: null` turns the check off; the test host does.
+
 **Long scripts, one chapter per call** (`script-chunks.ts`). A spine past either bound drafts each chapter in its own
 call. The shared sections (guide, spine, coverage, lead beats, budget, schema) go as the call's system prompt, the same
 bytes on every call, which `claude -p` sends as its own cached block: the first chapter's draft writes it to the prompt
@@ -369,8 +380,9 @@ the template fill as resolve gated it (cited `code`, the owner's `slots` pin, el
 `boardFromFill` makes the storyboard: each beat's spec type and slots, its planned seconds and its script cue words.
 `storyboardIds` (`src/render/beat-ids.ts`) is the one place script ids become `beat-01`, `beat-02`, ... in script
 order; it renames the `words.json` beats and links each `<script id>.wav` of the `audio` tree under its new name, and
-qa's lead-line set goes through it too. A custom-layer beat is drawn from its template spec, with a stage note, until
-TP-2607 C4 renders custom layers. `compileTimeline` writes `timeline.json`; the built composition page is copied into
+qa's lead-line set goes through it too. A custom-layer beat is never template-filled (`isCustomRow` is the one
+predicate resolve's gate and render share): the board holds it by spec type with no slots, its built layer from the
+`custom-layers` tree draws it, and a run with no built layer for it fails naming the beat. `compileTimeline` writes `timeline.json`; the built composition page is copied into
 the `page` tree, with the render variant's style pack as `style-pack.css` (`:root { --pack-<slot>: var(--<token>); }`)
 linked from its head, and served beside the timeline; `renderVideo` renders it behind the run type's gate profile
 (`qa { mode: "gate", gate: loadQaGate(type) }`, or `"skip"` with `noQa`). The stage stores `mp4`, `vtt`,
@@ -383,6 +395,16 @@ still has a `render` block is refused, naming where each retired command went: `
 the spike page's `vite build` (the composition page, built once per source sha in the explainer cache) and `render.ts`
 (`renderVideo`: capture, mix, `captions.vtt`, `render-manifest.json` and its QA gate). Its mid and end−1 s contact
 sheet (`sheet`) is dropped until the beat-aware sheets (TP-3000), and `render-json` is now `render-manifest`.
+
+**Stage fit (TP-4408).** A template beat in the stage box fits itself to it: `useStageFit` (`beats/stage/stageFit.ts`)
+searches `--beat-fit` (beats.css) from 1 down to 0.2 on every render, and every text token shrinks with it to the 40 px
+type floor qa's G8 gate enforces, never under it. A stat card reserves its settled figure's width, so the fit does
+not change while the figure counts up. Content still past the box at the floor is a row (`overflow-row.ts`): the beat,
+the element by slot id and class (`figures-2 beat-stat-label`), the px per side and a hint such as `shorten ... to <= 12
+chars`. Before the QA gate and any capture, `renderVideo` runs the stage-fit scan (`render/stage-fit-scan.ts`): it
+opens the page with `?stage-fit=report`, which records each row on `window.__stageOverflows` and draws on, seeks every
+beat at 2 Hz and at its settled end, and throws one `StageOverflow` that lists every row. Outside report mode the page
+still throws at the first row, so a capture never draws content under the chrome.
 
 **The sheets stage (TP-4018).** The port of the host's `write_video_meta.py`. ffprobe reads the MP4's duration and
 ffmpeg grabs a 480 px poster at `posterAtS`, 30 % in rounded to a tenth of a second. `buildSidecar` writes

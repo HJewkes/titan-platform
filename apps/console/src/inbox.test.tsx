@@ -79,8 +79,15 @@ interface Inbox {
   nudges?: Record<string, unknown>[];
 }
 
-const inboxAnswer = ({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [], nudges }: Inbox = {}): JsonEnvelope<unknown> =>
-  successEnvelope({ items, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived, ...(nudges !== undefined && { nudges }) });
+const isPlanning = (each: Record<string, unknown>): boolean => each.section === "planning";
+
+/** As the server answers: planning rows counted, and listed only when the page asks with `planning`. */
+function inboxView({ items = [GATE, HELD, ASK, ROUND, DEPOSIT, ...PLANNING], gaps = [], fyiCount = 42, derived = [], nudges }: Inbox, planning: boolean): JsonEnvelope<unknown> {
+  const listed = planning ? items : items.filter((each) => !isPlanning(each));
+  return successEnvelope({ items: listed, planningCount: items.filter(isPlanning).length, gaps, fyiCount, readAt: new Date(NOW).toISOString(), derived, ...(nudges !== undefined && { nudges }) });
+}
+
+const inboxAnswer = (inbox: Inbox = {}): JsonEnvelope<unknown> => inboxView(inbox, false);
 
 const ROUND_SHA = "e".repeat(64);
 
@@ -109,7 +116,8 @@ interface Call {
 
 /** Renders the inbox over a recorded snapshot; with `taps` the page is live and those commands answer as given. */
 function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Record<string, Tap>): Call[] {
-  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer } };
+  const planning = inboxView({}, true);
+  const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer, [snapshotKey("inbox.list", { planning: true })]: planning } };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
   const calls: Call[] = [];
@@ -264,13 +272,15 @@ describe("the inbox page", () => {
     expect(within(await screen.findByTestId("inbox-row-round-1")).queryByText("Run on terminal")).toBeNull();
   });
 
-  it("starts the planning section collapsed with its count, and opens it on request", async () => {
-    renderInbox();
+  it("starts the planning section collapsed with its count, and reads its rows only once opened", async () => {
+    const calls = renderInbox();
     await screen.findByTestId("inbox-planning");
     expect(screen.getByText("Planning (5)")).toBeTruthy();
     expect(rowIds("inbox-planning")).toEqual([]);
+    expect(calls.filter((call) => call.name === "inbox.list").map((call) => call.args)).not.toContainEqual({ planning: true });
     fireEvent.click(screen.getByText("Show 5 planning items"));
-    expect(rowIds("inbox-planning")).toHaveLength(5);
+    await waitFor(() => expect(rowIds("inbox-planning")).toHaveLength(5));
+    expect(calls.filter((call) => call.name === "inbox.list").map((call) => call.args)).toContainEqual({ planning: true });
   });
 
   it("counts FYIs as text only", async () => {
