@@ -6,10 +6,10 @@ import type { StepDeclaration } from "../definition.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
 import { greenAfterRed, redOnlyFromCancels, type Freeze, type FreezeStore } from "./freeze.js";
-import type { AgentChatAgents } from "./agents.js";
+import type { AgentChatAgents, SpawnAccounts } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { recordAutoPass } from "./auto-pass.js";
-import { successorConfigDir } from "./account-hold.js";
+import { successorSpawnAccounts } from "./account-hold.js";
 import { failureOf } from "./error-class.js";
 import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import { SpawnDeferred } from "./spawn-gate.js";
@@ -62,8 +62,8 @@ export interface FlakeFields {
 export interface FixerAgents {
   /** `presence` is `live` while a session holds the name. */
   roster(): Promise<readonly { name: string; presence?: string }[]>;
-  /** `configDir` is the account picked for this spawn; absent means agent-chat's default. */
-  spawn(name: string, brief: string, cwd: string, configDir?: string): Promise<void>;
+  /** `accounts` is the account picked for this spawn and its fallbacks; absent means agent-chat's default. */
+  spawn(name: string, brief: string, cwd: string, accounts?: SpawnAccounts): Promise<void>;
   /** Retires a fixer spawned for an episode that recorded another one meanwhile; absent leaves it to the ended-fixer sweep. */
   retire?(name: string): Promise<void>;
 }
@@ -81,7 +81,7 @@ export interface MainRedWiring {
 /** A spawn invalidates `roster`, so a retried spawn checks a fresh roster for the fixer it may already have started. */
 export const fixersOver = (agents: AgentChatAgents): FixerAgents => ({
   roster: () => agents.roster(),
-  spawn: (name, brief, cwd, configDir) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd, ...(configDir !== undefined && { configDir }) }),
+  spawn: (name, brief, cwd, accounts) => agents.spawn({ name, profile: FACTORY_IMPLEMENTER_PROFILE, brief, cwd, ...accounts }),
   ...(agents.retire && { retire: agents.retire.bind(agents) }),
 });
 
@@ -331,7 +331,7 @@ export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | und
   const redSha = wiring.freezes().episodes.firstRed(input.repo, live.episode) ?? live.redSha;
   const name = fixerName(input.repo, redSha);
   const { failing, log } = await failingLogs(deps.port, input.repo, redSha);
-  const spawn = () => fixers.spawn(name, fixerBrief(name, { ...input, mergeSha: redSha }, failing, log), checkout.dir, successorConfigDir(deps));
+  const spawn = () => fixers.spawn(name, fixerBrief(name, { ...input, mergeSha: redSha }, failing, log), checkout.dir, successorSpawnAccounts(deps));
   const current = () => wiring.freezes().live(input.repo, input.episode);
   const spawned = await patiently(deps, signal, () => spawnUnlessTaken(fixers, name, current, spawn), brokerDown);
   if ("error" in spawned) return noFixer(`spawning ${name} failed: ${spawned.error}`);

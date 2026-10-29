@@ -1,5 +1,6 @@
 import { liveField, type ConfigRef } from "./config-ref.js";
 import type { ReviewConfig } from "./config.js";
+import { accountsFrom } from "./shepherd/account-fallback.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.js";
 import { DEFAULT_ADVERSARY_PROFILE } from "./shepherd/review-panel-plan.js";
 import type { ReviewWiring } from "./shepherd/review.js";
@@ -9,22 +10,24 @@ import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 
 /** The parts of the route wiring that read a live config row per use instead of once at start. */
 
-type DispatchUnder = (configDir: string | undefined) => AgentChatReviewerDispatch;
+type DispatchUnder = (configDir: string | undefined, fallbackConfigDirs?: () => readonly string[]) => AgentChatReviewerDispatch;
 
 type Accounts = { primary: AgentChatReviewerDispatch; accounts: ReviewAccounts };
 
 /**
  * `review.configDir` first, then each fallback, read per use; every account gets its own dispatch over the one roster and
- * spawn gate, built the first time it is asked for and kept, so a fallback dropped and re-added keeps its dispatch.
+ * spawn gate, built the first time it is asked for and kept, so a fallback dropped and re-added keeps its dispatch. A spawn the
+ * broker refuses at an account's limit moves to the accounts after it (TP-4507).
  */
 export function reviewAccounts(review: ReviewConfig, fallbacks: () => readonly string[] | undefined, under: DispatchUnder, alert: ReviewAccounts["alert"]): Accounts {
   const first = review.configDir ?? DEFAULT_ACCOUNT;
-  const primary = under(review.configDir);
-  const byDir = new Map([[first, primary]]);
   const dirs = () => [...new Set([first, ...(fallbacks() ?? [])])];
+  const after = (dir: string) => () => accountsFrom(dirs(), dir).slice(1);
+  const primary = under(review.configDir, after(first));
+  const byDir = new Map([[first, primary]]);
   const dispatchUnder = (dir: string): AgentChatReviewerDispatch => {
     if (!dirs().includes(dir)) return primary;
-    const built = byDir.get(dir) ?? under(dir);
+    const built = byDir.get(dir) ?? under(dir, after(dir));
     byDir.set(dir, built);
     return built;
   };
