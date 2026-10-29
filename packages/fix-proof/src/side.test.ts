@@ -12,6 +12,9 @@ import { decodeReport } from "./transport.js";
 
 const outs: string[] = [];
 
+// Keyed on the runner contract, not the command text, so it holds for the fake runner too.
+const runsUnsandboxed = (call: { file: string; args: readonly string[] }) => call.file === "sh" && call.args.includes("--outputFile");
+
 function outDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-side-"));
   outs.push(dir);
@@ -210,7 +213,7 @@ describe("execSide", { timeout: 120_000 }, () => {
     expect(chownTree).toBeGreaterThanOrEqual(0);
     expect(vitest).toHaveLength(2);
     expect(chownTree).toBeLessThan(vitest[0] ?? -1);
-    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.some(runsUnsandboxed)).toBe(false);
     expect(calls.filter((call) => call.file === "sudo").at(-1)?.args.slice(0, 4)).toEqual(["-n", "--", "chown", "-R"]);
     const seconds = Number(calls[vitest[0] ?? 0]?.args[5]);
     expect(seconds).toBeGreaterThan(60);
@@ -231,7 +234,7 @@ describe("execSide", { timeout: 120_000 }, () => {
       expect(report).toEqual({ ok: false, error: expect.stringMatching(/^base: sandbox setup failed/), reported: true }),
     );
     expect(calls.some(isSandboxed)).toBe(false);
-    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.some(runsUnsandboxed)).toBe(false);
   });
 
   it("a symlinked vitest output is not read", async () => {
