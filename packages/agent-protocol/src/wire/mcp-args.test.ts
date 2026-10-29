@@ -17,7 +17,7 @@ const tools = [
   ["agent_profiles", AgentProfilesArgsSchema],
 ] as const;
 
-const spawnArgs = mcpArgsFixture.agent_spawn as Record<string, unknown>;
+const spawnArgs = mcpArgsFixture.agent_spawn;
 const refusal = (input: unknown) => AgentSpawnArgsSchema.safeParse(input).error?.issues[0]?.message;
 
 describe("agent tool MCP arguments", () => {
@@ -30,13 +30,13 @@ describe("agent tool MCP arguments", () => {
   });
 
   it.each(tools)("strips a key the %s tool does not name", (name, schema) => {
-    const call = { ...(mcpArgsFixture[name] as object), not_an_arg: "x" };
+    const call = { ...mcpArgsFixture[name], not_an_arg: "x" };
 
     expect(schema.parse(call)).toEqual(mcpArgsFixture[name]);
   });
 
   it("keeps an unknown key on the socket frame that the MCP arguments would strip", () => {
-    const frame = { ...(socketFixture.spawn as object), notAField: "x" };
+    const frame = { ...socketFixture.spawn, notAField: "x" };
 
     expect(SpawnRequestSchema.parse(frame)).toMatchObject({ notAField: "x" });
   });

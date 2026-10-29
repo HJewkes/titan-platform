@@ -6,7 +6,7 @@ import type { AgentListResult, AgentProfile, AgentRecord, RemoteLaunch, SpawnRes
 const FIXTURES = new URL("../../fixtures/wire/v1/", import.meta.url);
 
 /** The shipped synthetic fixtures, each with every field the contract names populated. */
-export const readFixture = (name: string): Record<string, unknown> => JSON.parse(readFileSync(new URL(name, FIXTURES), "utf8"));
+export const readFixture = (name: string): Record<string, Record<string, unknown>> => JSON.parse(readFileSync(new URL(name, FIXTURES), "utf8"));
 
 export const socketFixture = readFixture("socket-frames.json");
 export const recordFixture = readFixture("records.json");
