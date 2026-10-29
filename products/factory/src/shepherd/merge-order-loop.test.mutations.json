@@ -30,15 +30,6 @@
       ]
     },
     {
-      "name": "a run that ends keeps its reservation",
-      "file": "products/factory/src/shepherd/pr.ts",
-      "find": "    if (final) await releaseOrder(run);\n",
-      "replace": "",
-      "kills": [
-        "TP-4098 slice C: the #2301 loop releases the reservation when its run lands"
-      ]
-    },
-    {
       "name": "a run held behind a live reservation counts as merging",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
       "find": "    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;\n",

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a queued review ignores its step's abort",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "    entry.signal?.addEventListener(\"abort\", abort, { once: true });\n",
+      "replace": "",
+      "kills": ["the push dispatcher drops a queued review whose step aborts rejects a queued review at once when its step aborts, never launches it, and frees its place in the queue", "the push dispatcher drops a queued review whose step aborts never queues a review whose step aborted before it asked"]
+    },
+    {
+      "name": "a review whose step already aborted is queued anyway",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "      if (start.signal?.aborted) return Promise.reject(start.signal.reason);\n",
+      "replace": "",
+      "kills": ["the push dispatcher drops a queued review whose step aborts never queues a review whose step aborted before it asked"]
+    }
+  ]
+}

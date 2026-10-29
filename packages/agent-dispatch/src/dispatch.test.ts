@@ -159,6 +159,19 @@ describe("buildSpawnArgs launchedBy", () => {
   });
 });
 
+describe("buildSpawnArgs agent record", () => {
+  it("records the role and task on the agent's row after the launch flags", () => {
+    const args = buildSpawnArgs({ peerName: "bs-lighting", profile: DISPATCH_PROFILE, launchedBy: "shepherd", role: "implementer", task: "demo/DM-7" });
+
+    expect(args).toEqual(["agent", "spawn", "bs-lighting", DISPATCH_PROFILE, "--launched-by", "shepherd", "--task", "demo/DM-7", "--role", "implementer", "--brief-stdin"]);
+  });
+
+  it("refuses a task id that is not a plain id before it reaches argv", () => {
+    expect(() => buildSpawnArgs({ peerName: "agent-x", profile: DISPATCH_PROFILE, task: "--force" })).toThrow(DispatchError);
+    expect(() => buildSpawnArgs({ peerName: "agent-x", profile: DISPATCH_PROFILE, task: "a b" })).toThrow(/invalid task id/);
+  });
+});
+
 describe("dispatchToAgentChat", () => {
   it("invokes the CLI with the spawn argv, in the initiative's directory", async () => {
     const bin = fakeAgentChat();

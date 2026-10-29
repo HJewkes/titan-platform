@@ -11,6 +11,7 @@ import { IdeaSchema, ideaId, type Proposal } from "./schemas.js";
 import { FIXTURE_POLICY, fakeArPorts, fixtureRepo, git, proposal, removeFixture, type FakeArPorts, type FakeOptions, type FixtureRepo, type Policy } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, stopOutcomes } from "./test-support/runs.js";
+import { sharedRuns } from "./test-support/shared-runs.js";
 import { AUTORESEARCH_WORKFLOW } from "./workflow.js";
 
 /** `a` gains 4 pp and `b` 3 pp, so `a` always goes first; `b` edits the planner files, so the two merge cleanly. */
@@ -64,6 +65,8 @@ async function loop(mechanisms: string[], { config = CONFIG, drop = false }: { c
   return { repo, ports, run };
 }
 
+const sharedLoop = sharedRuns(loop, { hosts, repos });
+
 const seedOf = <T>(run: WorkflowRun, stepId: string, schema: z.ZodType<T>) => schema.parse(JSON.parse(run.stepResults[stepId]!.output!));
 const reevalOf = (run: WorkflowRun, mechanism: string) => seedOf(run, `ar-reeval:1/${id(mechanism)}`, ReevalSchema);
 const summaryOf = (run: WorkflowRun) => seedOf(run, "ar-summary:1", RoundSummarySchema);
@@ -98,7 +101,7 @@ describe("a later winner re-evaluated on top of the round's new head", () => {
   });
 
   it("keeps a winner that still clears the new B: two moves, a merge commit on the ratchet and B's runs from the re-evaluation", async () => {
-    const { repo, ports, run } = await loop(["a", "b"]);
+    const { repo, ports, run } = await sharedLoop(["a", "b"]);
     const [first, later] = [stopOutcomes(run).get(id("a"))!, stopOutcomes(run).get(id("b"))!];
     const reeval = reevalOf(run, "b");
 
@@ -130,7 +133,7 @@ describe("a later winner re-evaluated on top of the round's new head", () => {
   });
 
   it("runs the re-evaluation under its own scope, so the solo ladder's runs and Δ stay its own", async () => {
-    const { ports, run } = await loop(["a", "b"]);
+    const { ports, run } = await sharedLoop(["a", "b"]);
     const solo = stopOutcomes(run).get(id("b"))!;
     const reeval = reevalOf(run, "b");
 
@@ -168,7 +171,7 @@ describe("a later winner re-evaluated on top of the round's new head", () => {
   });
 
   it("counts the re-evaluation's eval dollars in the run's model spend", async () => {
-    const { ports } = await loop(["a", "b"]);
+    const { ports } = await sharedLoop(["a", "b"]);
 
     expect(ports.calls.evals.filter((call) => call.key.includes("-re-"))).toHaveLength(3);
     expect(ports.calls.registry[0]!.row.spend.modelUsd).toBeCloseTo(ports.calls.evals.length * 0.1, 9);

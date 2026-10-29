@@ -9,6 +9,7 @@ import type { FactoryContext } from "../registry.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
+import { refuseUnknownGates } from "./lan-gates.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
@@ -311,6 +312,7 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   result: z.custom<HoldResult>(),
   async run({ repo, pr, reason, reviewer, actor }, ctx) {
     const services = servicesOf(ctx);
+    refuseUnknownGates(services.store.get().gateEvidence(), reason);
     const { runId } = await locate(services, repo, pr);
     const held = services.store.get().hold(runId, reason, reviewer, { actor });
     return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };

@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fixtureEnv, withHistory } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MainCommit } from "../corpus/git.js";
 import { lines, scratchRepo, type ScratchRepo } from "../corpus/test-fixture.js";
@@ -22,28 +24,25 @@ let origin: ScratchRepo;
 let shas: Shas;
 let mirror: MirrorGit;
 
-/** Branches off `from`, commits `files` on it, publishes it as `refs/pull/<n>/head` and returns to main. */
-function pullRequest(repo: ScratchRepo, n: number, from: string, files: Record<string, string>, at: string): string {
-  repo.git(["checkout", "-q", "-b", `pr${n}`, from]);
-  const head = repo.commit(files, `work for ${n}`, at);
-  repo.git(["update-ref", `refs/pull/${n}/head`, head]);
-  repo.git(["checkout", "-q", "main"]);
-  return head;
-}
-
 function buildOrigin(repo: ScratchRepo): Shas {
-  const init = repo.commit({ "src/a.ts": lines(3) }, "init", "2026-01-01T00:00:00Z");
   const pr7Files = { "src/x.ts": lines(15), "src/x.test.ts": lines(10) };
-  const pr7Head = pullRequest(repo, 7, init, pr7Files, "2026-01-02T00:00:00Z");
-  repo.git(["update-ref", "refs/pull/7/merge", pr7Head]);
-  const other = repo.commit({ "src/b.ts": lines(4) }, "Other change (#5)", "2026-01-03T00:00:00Z");
-  const squash7 = repo.commit(pr7Files, "Add x (#7)", "2026-01-04T00:00:00Z");
-  const pr9Head = pullRequest(repo, 9, squash7, { "docs/guide.txt": lines(2) }, "2026-01-05T00:00:00Z");
-  repo.git(["merge", "-q", "--no-ff", "-m", "Merge pull request #9 from acme/guide", "pr9"], "2026-01-06T00:00:00Z");
-  const merge9 = repo.git(["rev-parse", "HEAD"]);
-  repo.commit({ "src/x.ts": lines(16) }, "Follow-up for x (#7)", "2026-01-07T00:00:00Z");
-  repo.commit({ "src/c.ts": lines(1) }, "No pull head (#12)", "2026-01-08T00:00:00Z");
-  const pr11Head = pullRequest(repo, 11, merge9, { "src/d.ts": lines(1) }, "2026-01-09T00:00:00Z");
+  const [init = "", pr7Head = "", other = "", squash7 = "", pr9Head = ""] = withHistory(repo.dir, [
+    { files: { "src/a.ts": lines(3) }, message: "init" },
+    { files: pr7Files, message: "work for 7", branch: "pr7", from: "main" },
+    { files: { "src/b.ts": lines(4) }, message: "Other change (#5)" },
+    { files: pr7Files, message: "Add x (#7)" },
+    { files: { "docs/guide.txt": lines(2) }, message: "work for 9", branch: "pr9", from: "main" },
+  ]);
+  // pr9 branched from main's tip, so its tree is the merge's tree.
+  const merge9 = repo.git(["commit-tree", `${pr9Head}^{tree}`, "-p", squash7, "-p", pr9Head, "-m", "Merge pull request #9 from acme/guide"]);
+  const [pr11Head = ""] = withHistory(repo.dir, [
+    { files: { "src/d.ts": lines(1) }, message: "work for 11", branch: "pr11", from: merge9 },
+    { files: { "src/x.ts": lines(16) }, message: "Follow-up for x (#7)", from: merge9 },
+    { files: { "src/c.ts": lines(1) }, message: "No pull head (#12)" },
+  ]);
+  const pulls = { "7/head": pr7Head, "7/merge": pr7Head, "9/head": pr9Head, "11/head": pr11Head };
+  const updates = Object.entries(pulls).map(([ref, sha]) => `update refs/pull/${ref} ${sha}\n`);
+  execFileSync("git", ["-C", repo.dir, "update-ref", "--stdin"], { input: updates.join(""), env: fixtureEnv() });
   return { init, other, pr7Head, squash7, pr9Head, merge9, pr11Head };
 }
 

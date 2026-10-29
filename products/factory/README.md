@@ -253,7 +253,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
-  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked` or `owner-review`, and a reason in one of the
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked`, `owner-review` or `lan-gates`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
   - `g10-review` releases itself unless it names a `--reviewer` or has no hold event on record (an unreadable history
     counts as none), since either may be a review the owner assigned. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
@@ -269,6 +269,15 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
   - `owner-review` records that the owner assigned the review to a person; no Shepherd MERGE releases it, only
     `shepherd release`.
+  - `lan-gates` waits on gates that cannot run in GitHub Actions. The reason names them,
+    `lan-gates: <gate>, <gate>; <detail>`, and `shepherd hold` refuses with exit 65 a list that is empty, badly spelled
+    or names a gate never declared in `shepherd_external_gate` (migration 48, `src/shepherd/gate-evidence.ts`). The
+    factory appends each gate's conclusion at a head to `shepherd_gate_evidence`. The hold is never lifted by evidence:
+    a hold read at the PR's head, as read just then, stands aside while every named gate's newest record at exactly that
+    head is `success`, so a push to a new head is held again until its own gates are green. A record at any other head, a
+    red newest record, or a hold that names a `--reviewer` keeps it held. `shepherd release` still lifts it by hand. Merge
+    order and the restart drain read the same clearance at the head the run's merge step last read CI at, so a run green
+    there keeps ordering its peers and a restart waits on its merge, as with a satisfied `g10-review` hold.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
@@ -513,6 +522,55 @@ never as a zero. The run stops at the `audit-review` gate for the area owner. Af
 `{"decision":"publish"}`, `titan-factory resume` writes the report to `--out`. Only `mode: initial` runs for now;
 a reaudit needs the drift check. Tests inject `AuditPorts`, so no test calls a model.
 
+## Build surface
+
+`build-surface` (`src/build-surface/`) builds a surface slice by slice from a repo's build spec: a markdown file
+whose YAML front matter is `titan.build-surface/v1` (`src/build-surface/spec.ts`). The spec names everything
+repo-specific: the clone, the base branch, the task, the gate command and its evidence path, optional preview,
+preflight and deploy commands, optional validator commands for targets, reports and reviews, the implementer and
+reviewer profiles, the run and slice budgets, the fix-round caps and the slices with their dependencies. The
+workflow itself names no repo.
+
+```
+titan-factory build-surface start owner/repo --spec docs/BUILD-SPEC.md
+titan-factory build-surface status owner/repo
+```
+
+`start` checks the spec, then hands the run to serve if one answers (`factory.build-surface.start`), else drives
+it in-process until it waits on a human. A repo has at most one unfinished run; a second start returns it.
+Start an in-process run on the agent-chat broker's host: an off-host spawn is refused worktree isolation, and the Mac's config pins an old agent-chat.
+
+`bs-plan` reads the spec. Slices run in waves through `mapItems`, at most `concurrency` at a time, and a slice
+starts only once every slice it depends on has merged. Per slice: `bs-preflight` (the spec's command; exit 0 or 10, "re-extract", proceeds, since extraction runs at every slice start, and any other exit stops the slice), an optional one-turn
+`bs-extract` (claude-print) checked by `bs-extract-check`, `bs-branch`, then `bs-implement`, an agent-chat
+implementer on the spec's profile with the role `implementer` and the slice's task on its roster row. Each round
+its report (the last fenced JSON block of its final message, `ImplementerReportSchema`) goes to
+`bs-report-check`: the head must be the branch's remote head and the repo's validator must accept it. Then
+`bs-gates` runs the gate command with `BS_SLICE`, `BS_HEAD` and `BS_EVIDENCE` and reads one `<gate>.json` per gate
+from the evidence directory; exit 0 and every record passing at that head is green. Green gates go to
+`bs-preview` (and once per slice the owner's `device-check:<slice>` gate, when the spec names a device step), then
+`bs-review`, a read-only reviewer at that head whose report `bs-review-check` validates. Anything red resumes the
+same implementer (`bs-fix`) with the failing evidence as data. Then `bs-pr`, `bs-shepherd` (registers the PR with
+the implementer's name, so Shepherd's wake and successor logic find that lineage), `bs-await-land` and, after
+`deploy-approve:<slice>` when `approve` is set, `bs-deploy`. Every slice merged opens `final-walk`.
+
+A fresh `start` over a branch a stopped run left behind picks it up: when `bs-branch` finds the slice branch past
+its base and every gate record in the evidence directory for its head passing, the slice skips `bs-implement` and
+the gate rerun, and round 0 goes on to `bs-preview` and `bs-review` at that head. A branch with any failing or missing
+record is implemented again on top of what it holds. A spawn or resume the spawn gate defers (load, memory pressure,
+the admit window) waits and asks again, from one minute doubling to ten, for up to an hour, before it fails the step.
+
+Stops, all made by the workflow: a rejected report, review or target set goes back once, and a second rejection
+stops the slice; so does one gate failing `noImprovementRounds` rounds without its score improving, more than
+`maxFixRounds` fix rounds, spend over `sliceBudgetUsd`, Shepherd stopping the PR, or a moved head with red gates.
+Two stopped slices, or the run budget, stop the loop and fail the run with what merged and why the rest did not.
+A gate command exiting 3 twice (a broken sensitivity proof) or a failed deploy cancels the run. `bs-implement`,
+`bs-fix` and `bs-deploy` park on a restart; every other step repeats.
+
+Not yet: the agent-chat steps report no cost, so the budgets count only claude-print spend; `final-walk`'s
+`changes` records the notes but files no tasks; there is no ledger step; and the Shepherd calls go to serve over
+loopback on its default port.
+
 ## Install as a LaunchAgent
 
 ```sh
@@ -634,7 +692,8 @@ That install restarts serve.
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
 current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
-its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
+its step's route has `onRestart: "park"`. An `sh-review` step whose spawn the spawn gate still
+queues is not busy: it has started no reviewer, and it asks again after the restart. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
 `--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service

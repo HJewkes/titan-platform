@@ -48,6 +48,23 @@ it("runs every active-work __tests__ file in exactly one project", () => {
   for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
 });
 
+const SHARED_GRAPH_PROJECTS = ["factory", "explainer", "console"];
+const sharedGraphFiles = () =>
+  ["products/factory/src", "products/explainer/src", "apps/console/{src,scripts,server}"].flatMap((dir) => globSync(`${dir}/**/*.test.{ts,tsx}`, { cwd: ROOT }));
+
+it("runs every factory, explainer and console test file in exactly one project", () => {
+  const files = sharedGraphFiles();
+  expect(files.length).toBeGreaterThan(0);
+  for (const file of files) expect(projectsRunning(file), file).toHaveLength(1);
+});
+
+// Under isolate:false, vi.mock misses a module the worker already loaded, so the test runs against the real one (TP-4441).
+it("keeps every file that mocks a module or stubs HOME out of the isolate:false projects", () => {
+  const isolating = sharedGraphFiles().filter((file) => /vi\.(mock|doMock)\(|stubEnv\(["']HOME/.test(readFileSync(join(ROOT, file), "utf8")));
+  expect(isolating.length).toBeGreaterThan(0);
+  for (const file of isolating) expect(projectsRunning(file).filter((name) => SHARED_GRAPH_PROJECTS.includes(name)), file).toEqual([]);
+});
+
 function projectsRunning(file) {
   const matchesAny = (globs) => (globs ?? []).some((glob) => matchesGlob(file, glob));
   return config.test.projects

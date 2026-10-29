@@ -17,6 +17,7 @@ import {
 } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, runLabel, stopOutcomes, until } from "./test-support/runs.js";
+import { sharedRuns } from "./test-support/shared-runs.js";
 import { AUTORESEARCH_WORKFLOW, forkPlan } from "./workflow.js";
 
 const CC = "cc_total_delta_pct";
@@ -75,6 +76,8 @@ async function loop(byRound: Proposal[][], config: object = CONFIG, options: Par
   return { repo, ports, run, outcomes: stopOutcomes(run) };
 }
 
+const sharedLoop = sharedRuns(loop, { hosts, repos });
+
 const ideas = (...mechanisms: string[]) => mechanisms.map((mechanism) => proposal(mechanism));
 const implementsOf = (ports: FakeArPorts, round: number) => ports.calls.implementInputs.filter((input) => input.round === round);
 
@@ -103,13 +106,13 @@ describe("eval keys and the σ pairs they feed", () => {
   });
 
   it("records the engine's lock, not a pair count, when σ locks after four pairs", async () => {
-    const { repo, outcomes } = await loop([ideas("flat")], CONFIG, { target: lockingTarget() });
+    const { repo, outcomes } = await sharedLoop([ideas("flat")], CONFIG, { target: lockingTarget() });
 
     expect(outcomes.get(id("flat"))!.against).toEqual({ case: "t-alpha", head: repo.pin, bandWidth: expect.any(Number), sigma: expect.any(Number), pairs: 4, locked: true });
   });
 
   it("records the band the keep rule used, bandSigmas times the locked σ, not σ itself", async () => {
-    const { outcomes } = await loop([ideas("flat")], CONFIG, { target: lockingTarget() });
+    const { outcomes } = await sharedLoop([ideas("flat")], CONFIG, { target: lockingTarget() });
 
     const { bandWidth, sigma } = outcomes.get(id("flat"))!.against!;
     expect(sigma).toBeGreaterThan(0);
@@ -180,7 +183,7 @@ describe("the fork schedule and lane slots", () => {
 
 describe("what each step receives and each round records", () => {
   it("gives the micro rung the best's own artifact dir and a directed signal", async () => {
-    const { repo, ports } = await loop([ideas("better")]);
+    const { repo, ports } = await sharedLoop([ideas("better")]);
 
     expect(ports.calls.microInputs[0]).toMatchObject({ case: "t-alpha", microSignal: "fewer accepts:down", microArgs: {} });
     expect(ports.calls.microInputs[0]!.baselineDir).toMatch(new RegExp(`^${repo.work}/\\.artifacts/.*-base-b1$`));
@@ -201,7 +204,7 @@ describe("what each step receives and each round records", () => {
   });
 
   it("hands the ratchet the move's Δ, σ, pin and run digests", async () => {
-    const { repo, ports, outcomes } = await loop([ideas("better")]);
+    const { repo, ports, outcomes } = await sharedLoop([ideas("better")]);
 
     const kept = outcomes.get(id("better"))!;
     expect(ports.calls.ratchet[0]).toMatchObject({ round: 1, ideaId: id("better"), kind: "ff", keepRung: "L3", delta: kept.delta, sigma: kept.against!.sigma, pin: repo.pin });
@@ -209,7 +212,7 @@ describe("what each step receives and each round records", () => {
   });
 
   it("records the implementer, lane, fork, L0 rows, micro counts and spend on the ar-stop outcome", async () => {
-    const { outcomes } = await loop([ideas("better")]);
+    const { outcomes } = await sharedLoop([ideas("better")]);
 
     expect(outcomes.get(id("better"))).toMatchObject({
       implementer: { agent: expect.any(String), sessionId: expect.any(String), mode: "spawn", account: "fixture" },

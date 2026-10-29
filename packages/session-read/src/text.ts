@@ -109,9 +109,9 @@ export function thinkingTokens(message: Json | null, outputTokens: number): numb
 }
 
 /** The prose of a line for one search field. The caller indexes it and discards it. */
-export function searchText(message: Json | null, field: SpanField): string {
+export function searchText(message: Json | null, field: SpanField, cap = SPAN_TEXT_CAP): string {
   const content = message?.content;
-  if (typeof content === "string") return content.slice(0, SPAN_TEXT_CAP);
+  if (typeof content === "string") return content.slice(0, cap);
   const parts: string[] = [];
   for (const block of blocks(message)) {
     if (field === "tool_input") {
@@ -122,5 +122,5 @@ export function searchText(message: Json | null, field: SpanField): string {
       parts.push(str(block, "text") ?? "");
     }
   }
-  return parts.filter(Boolean).join("\n").slice(0, SPAN_TEXT_CAP);
+  return parts.filter(Boolean).join("\n").slice(0, cap);
 }

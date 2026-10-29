@@ -1,4 +1,5 @@
 import { interpolate, MOTION, type Easing } from "@titan-design/react-ui/motion";
+import { rise } from "./entrance.js";
 
 /**
  * DIRECTION section 4 timing for video, which runs slower than titan-design's UI `MOTION` durations: a small move
@@ -16,10 +17,9 @@ export function progress(t: number, atS: number, durationS: number = SMALL_MOVE_
   return interpolate(t, [atS, atS + durationS], [0, 1], { ease });
 }
 
-/** Fade in while rising into place: the entrance every example beat uses. */
+/** Rise into place at full colour: the entrance every example beat uses. */
 export function fadeUp(t: number, atS: number, risePx = 32, durationS: number = SMALL_MOVE_S) {
-  const p = progress(t, atS, durationS);
-  return { opacity: p, transform: `translateY(${(1 - p) * risePx}px)` };
+  return rise(progress(t, atS, durationS), risePx);
 }
 
 /** Blend between two CSS colours by `p` (0 = from, 1 = to). */

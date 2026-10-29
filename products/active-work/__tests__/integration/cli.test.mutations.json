@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "--quiet with --json runs instead of refusing",
+      "file": "products/active-work/src/cli.ts",
+      "find": "if (raw.quiet === true && format === 'json') {",
+      "replace": "if (raw.quiet === 'never') {",
+      "kills": ["cli integration task --quiet exits 64 and writes nothing for --quiet with --json"]
+    }
+  ]
+}
