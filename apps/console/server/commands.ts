@@ -16,6 +16,7 @@ import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
+import { inboxReadCache } from "./inbox-rows.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
@@ -97,7 +98,8 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
 
 /** The owner's merged queue, as the raw Flow, as the inbox with its actions, and the taps that take them. */
 function ownerQueueCommands(sources: InboxSources, actions: InboxActionOptions) {
-  return { ...approvalsCommands(sources), ...inboxViewCommands(sources), ...inboxActionCommands(sources, actions) };
+  const cache = inboxReadCache(sources);
+  return { ...approvalsCommands(sources), ...inboxViewCommands(sources, cache), ...inboxActionCommands(sources, actions, cache.invalidate) };
 }
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
