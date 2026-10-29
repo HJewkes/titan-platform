@@ -13,3 +13,5 @@ HarnessExecutionPort adds an open generic execution service with profile/account
 HarnessPricingPort describes an event-time quote with optional readonly normalized cache-write TTL context: reported cost, a source-provided existing estimate, a dated/versioned catalog estimate with matching/accounting policy references, or explicit unpriced reason. It supplies no arithmetic, catalog or provider adapter.
 
 For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
+
+For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames and the records they carry, import `./wire`.

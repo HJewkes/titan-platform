@@ -2182,7 +2182,7 @@ describe("reviewPhase", () => {
 
         expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
         expect(stepIds).toContain(`sh-await-verdict:${H1}:corrected`);
-        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("its CI-policy line held more than the exact form") }]);
+        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("a prose line used the CI-policy label") }]);
         expect(verdicts).toMatchObject([decided({ outcome: "allow", rule: { table: "authority" } })]);
       });
 
@@ -2191,14 +2191,14 @@ describe("reviewPhase", () => {
 
         const { verdicts, stepIds } = await review({ dispatch, files: CI_FILES, read: correcting(verdictAt(H1) + PROSE, (head) => verdictAt(head) + PROSE), policy: AUTO });
 
-        expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_malformed)" }]);
+        expect(verdicts).toEqual([{ kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_prose)" }]);
         expect(dispatch.resumes).toHaveLength(1);
         expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
       });
 
       it("quotes a prose CI policy heading above a canonical block in the resume brief (tp#2442)", async () => {
         const dispatch = fakeDispatch();
-        const heading = "**CI policy:** nothing under .github/ changed in this PR.";
+        const heading = "**CI policy:** no workflow permissions changed in this PR.";
 
         await review({ dispatch, files: CI_FILES, read: correcting(`${heading}\n\n${verdictAt(H1)}CI-policy: unchanged`, (head) => `${verdictAt(head)}CI-policy: unchanged`), policy: AUTO });
 
