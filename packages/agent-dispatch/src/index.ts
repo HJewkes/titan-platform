@@ -66,3 +66,12 @@ export {
   type AskRequest,
   type ServiceAnswer,
 } from "./ask.js";
+export {
+  PrefixLintError,
+  lintPrefixSections,
+  stablePrefix,
+  type PrefixSection,
+  type PrefixViolation,
+  type StablePrefix,
+  type StablePrefixOptions,
+} from "./prefix/stable-prefix.js";
