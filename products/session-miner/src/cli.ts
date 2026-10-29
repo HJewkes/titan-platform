@@ -21,6 +21,8 @@ import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
 import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
 import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
 import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
+import { defaultProfilesRoot } from "./friction-transcripts.js";
+import { defaultFrictionArchive, parseWindowMs, renderFrictionResult, runFrictionDaily, titanConsoleInbox, type ConsoleInboxPort } from "./friction-daily-run.js";
 import { DEFAULT_MAX_BUDGET_USD, checkInputs, runSelfImproveDaily, type DailyOptions, type RunnerFor } from "./self-improve/run.js";
 
 export interface CliIo {
@@ -29,6 +31,8 @@ export interface CliIo {
   env?: NodeJS.ProcessEnv;
   /** Where self-improve-daily's model calls go; tests pass a fake so no model is called. */
   runnerFor?: RunnerFor;
+  /** Where friction-daily withdraws and files; tests pass a fake so no inbox is touched. */
+  consoleInbox?: ConsoleInboxPort;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t) };
@@ -165,6 +169,43 @@ function attachScheduled(program: Command, io: CliIo, onExit: (code: number) => 
   attachGraphRefresh(program, io, onExit);
   attachToolGapWeekly(program, io, onExit);
   attachSelfImproveDaily(program, io, onExit);
+  attachFrictionDaily(program, io, onExit);
+}
+
+interface FrictionDailyFlags {
+  since: string;
+  dryRun?: boolean;
+  archiveDir?: string;
+  profiles?: string;
+}
+
+function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number) => void): void {
+  program
+    .command("friction-daily")
+    .description("Daily pass: rank the window's friction from worker transcripts, then from worker reports, archive the rows, file one owner inbox item")
+    .option("--since <window>", "how far back to read, as <n>h or <n>d", "24h")
+    .option("--dry-run", "print the top clusters; write and file nothing")
+    .option("--archive-dir <dir>", "where <date>.jsonl and <date>.md go (default <active-work>/titan-platform/artifacts/friction-daily)")
+    .option("--profiles <dir>", "root of the Claude profiles whose <profile>/projects transcripts are read (default ~/.claude-profiles)")
+    .action(async (opts: FrictionDailyFlags) => {
+      const windowMs = parseWindowMs(opts.since);
+      if (windowMs === null) {
+        io.stderr("error: --since takes <n>h or <n>d\n");
+        return onExit(EXIT.USAGE);
+      }
+      const config = resolveConfig(configOverrides(program.opts()), io.env);
+      const result = await runFrictionDaily({
+        eventsDb: config.eventsDb,
+        profilesRoot: opts.profiles ?? defaultProfilesRoot(),
+        archiveDir: opts.archiveDir ?? defaultFrictionArchive(config.initiativesRoot),
+        now: new Date(),
+        windowMs,
+        dryRun: opts.dryRun === true,
+        inbox: io.consoleInbox ?? titanConsoleInbox,
+      });
+      io.stdout(program.opts().json === true ? `${JSON.stringify(result)}\n` : renderFrictionResult(result));
+      onExit(EXIT.OK);
+    });
 }
 
 function attachToolGapWeekly(program: Command, io: CliIo, onExit: (code: number) => void): void {

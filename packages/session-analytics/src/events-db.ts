@@ -102,3 +102,73 @@ export function readHandoffs(db: Db, since?: string): HandoffRecord[] {
   const rows = handoffRowsSchema.parse(db.prepare(HANDOFFS_SQL).all({ since: since ? Date.parse(since) : 0 }));
   return rows.map(({ ts, committed, ...row }) => ({ ...row, at: new Date(ts).toISOString(), committed: committed === 1 }));
 }
+
+/** A worker's report to its coordinator, with the worker's last spawn before it, when the log has one. */
+export interface WorkerReportRecord {
+  eventId: number;
+  at: string;
+  agent: string;
+  coordinator: string;
+  spawnedAt: string | null;
+  body: string;
+}
+
+export const WORKER_REPORTS_SQL = [
+  `SELECT m.id AS eventId, m.ts, m.actor AS agent, coalesce(m.target, '') AS coordinator, m.body,`,
+  `(SELECT max(s.ts) FROM events s WHERE s.kind = 'agent_spawned' AND s.target = m.actor AND s.ts <= m.ts) AS spawnedTs`,
+  `FROM events m WHERE m.kind = 'message' AND m.body LIKE 'Status:%' AND m.ts >= @since AND m.ts < @until ORDER BY m.id`,
+].join(" ");
+
+const workerReportRowsSchema = z.array(
+  z.object({ eventId: z.number(), ts: z.number(), agent: z.string(), coordinator: z.string(), body: z.string(), spawnedTs: z.number().nullable() }),
+);
+
+/** Messages that open with the return contract's `Status:` line, inside the inclusive-exclusive ISO window. */
+export function readWorkerReports(db: Db, window: { since: string; until: string }): WorkerReportRecord[] {
+  const rows = workerReportRowsSchema.parse(db.prepare(WORKER_REPORTS_SQL).all({ since: Date.parse(window.since), until: Date.parse(window.until) }));
+  return rows.map(({ ts, spawnedTs, ...row }) => ({ ...row, at: new Date(ts).toISOString(), spawnedAt: spawnedTs === null ? null : new Date(spawnedTs).toISOString() }));
+}
+
+/** A Claude session agent-chat started or resumed for a named agent; the session id names its transcript file. */
+export interface WorkerSessionRecord {
+  agent: string;
+  sessionId: string;
+}
+
+/** Spawn and resume rows only, so the kind index carries it; coordinators are told apart in code, since a correlated subquery over a coordinator's events is slow. */
+export const WORKER_SESSIONS_SQL = [
+  `SELECT kind, actor, target AS agent, ${metaField("session_id")} AS sessionId, ${metaField("profile")} AS profile FROM events`,
+  `WHERE kind IN ('agent_spawned', 'agent_resumed') AND target IS NOT NULL AND ts < @until ORDER BY id`,
+].join(" ");
+
+const sessionEventRowsSchema = z.array(
+  z.object({ kind: z.string(), actor: z.string(), agent: z.string(), sessionId: z.unknown(), profile: z.unknown() }),
+);
+
+/**
+ * Every worker session started or resumed before `until` (ISO), whichever window its transcript is
+ * read for. A coordinator is left out, by its profile or by having spawned an agent itself: it idles
+ * on its inbox by design, which is not friction.
+ */
+export function readWorkerSessions(db: Db, until: string): WorkerSessionRecord[] {
+  const rows = sessionEventRowsSchema.parse(db.prepare(WORKER_SESSIONS_SQL).all({ until: Date.parse(until) }));
+  const spawns = rows.filter((r) => r.kind === "agent_spawned");
+  const coordinators = new Set([...spawns.map((r) => r.actor), ...spawns.filter((r) => typeof r.profile === "string" && r.profile.includes("coordinator")).map((r) => r.agent)]);
+  const sessions = new Map<string, string>();
+  for (const { agent, sessionId } of rows) if (typeof sessionId === "string" && !coordinators.has(agent) && !sessions.has(sessionId)) sessions.set(sessionId, agent);
+  return [...sessions].map(([sessionId, agent]) => ({ agent, sessionId }));
+}
+
+export const SPAWNER_MESSAGES_SQL = [
+  `SELECT m.ts, m.target AS agent, coalesce(m.body, '') AS body FROM events m`,
+  `WHERE m.kind = 'message' AND m.target IS NOT NULL AND m.ts >= @since AND m.ts < @until`,
+  `AND m.actor = (SELECT s.actor FROM events s WHERE s.kind = 'agent_spawned' AND s.target = m.target AND s.ts <= m.ts ORDER BY s.id DESC LIMIT 1) ORDER BY m.id`,
+].join(" ");
+
+const spawnerMessageRowsSchema = z.array(z.object({ ts: z.number(), agent: z.string(), body: z.string() }));
+
+/** Messages each agent got in the window from the agent that last spawned it, the follow-ups Q6 classes. */
+export function readSpawnerMessages(db: Db, window: { since: string; until: string }): { agent: string; at: string; body: string }[] {
+  const rows = spawnerMessageRowsSchema.parse(db.prepare(SPAWNER_MESSAGES_SQL).all({ since: Date.parse(window.since), until: Date.parse(window.until) }));
+  return rows.map(({ ts, ...row }) => ({ ...row, at: new Date(ts).toISOString() }));
+}
