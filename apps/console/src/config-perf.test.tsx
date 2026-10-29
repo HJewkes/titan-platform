@@ -69,4 +69,17 @@ describe("the perf tab", () => {
     expect(await screen.findByText("No route timed yet")).toBeTruthy();
     expect(screen.queryByTestId("perf-rpc-work.tasks")).toBeNull();
   });
+
+  it("on a phone only the name and the p95 column stay visible", async () => {
+    renderPerf();
+    await screen.findByTestId("perf-rpc-work.tasks");
+
+    const hiddenOnPhone = (element: Element): boolean => element.closest(".max-md\\:hidden") !== null;
+    const shown = (label: string) => screen.getAllByText(label).filter((header) => !hiddenOnPhone(header));
+    expect(shown("p95 ms").length).toBeGreaterThan(0);
+    for (const label of ["p50 ms", "p50 bytes", "Errors", "Count", "Timeouts"]) expect(shown(label)).toHaveLength(0);
+    const row = screen.getByTestId("perf-rpc-work.tasks");
+    expect(hiddenOnPhone(within(row).getByText("100"))).toBe(true);
+    expect(hiddenOnPhone(within(row).getByText("900"))).toBe(false);
+  });
 });

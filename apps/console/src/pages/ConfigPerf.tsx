@@ -5,7 +5,10 @@ import { useQuery, type ServedCommands } from "../data/rpc.js";
 
 type Summary = ServedCommands["perf.summary"]["result"];
 const WINDOWS = ["15m", "24h"] as const;
-const NAME_WIDTH = 290;
+/** The sort key stays on a phone; every other number waits for a wider screen. */
+const KEPT_LABEL = "p95 ms";
+const KEPT_INDEX = 1;
+const HIDE_ON_PHONE = "max-md:hidden";
 
 /** What the console measured about itself, slowest first; a row past its budget carries a warning badge. */
 export function PerfTab(): ReactNode {
@@ -72,35 +75,37 @@ function OverBudget(): ReactNode {
   );
 }
 
-/** A phone is narrower than six numeric columns, so the table scrolls sideways inside its section instead of clipping. */
 function PerfTable({ labels, children }: { labels: readonly string[]; children: ReactNode }): ReactNode {
   return (
-    <div className="overflow-x-auto">
-      <Table density="dense" className="min-w-[44rem]">
-        <TableHeader>
-          <TableRow>
-            {labels.map((label, i) => (
-              <TableHeaderCell key={label} align={i === 0 ? "left" : "right"} width={i === 0 ? NAME_WIDTH : undefined}>
-                {label}
-              </TableHeaderCell>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>{children}</TableBody>
-      </Table>
-    </div>
+    <Table density="dense">
+      <TableHeader>
+        <TableRow>
+          {labels.map((label, i) => (
+            <TableHeaderCell key={label} align={i === 0 ? "left" : "right"} className={i === 0 || label === KEPT_LABEL ? undefined : HIDE_ON_PHONE}>
+              {label}
+            </TableHeaderCell>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>{children}</TableBody>
+    </Table>
   );
 }
 
-function Num({ value }: { value: number }): ReactNode {
-  return <TableCell align="right">{Math.round(value).toLocaleString("en-US")}</TableCell>;
+function Num({ value, hideOnPhone }: { value: number; hideOnPhone: boolean }): ReactNode {
+  return (
+    <TableCell align="right" className={hideOnPhone ? HIDE_ON_PHONE : undefined}>
+      {Math.round(value).toLocaleString("en-US")}
+    </TableCell>
+  );
 }
 
+/** `values` follow the labels after the name, and the one at {@link KEPT_INDEX} is p95. */
 function Nums({ values }: { values: readonly number[] }): ReactNode {
   return (
     <>
       {values.map((value, i) => (
-        <Num key={i} value={value} />
+        <Num key={i} value={value} hideOnPhone={i !== KEPT_INDEX} />
       ))}
     </>
   );
@@ -108,7 +113,7 @@ function Nums({ values }: { values: readonly number[] }): ReactNode {
 
 function NameCell({ name, over }: { name: string; over: boolean }): ReactNode {
   return (
-    <TableCell width={NAME_WIDTH}>
+    <TableCell>
       <HStack gap={2} align="center">
         <span>{name}</span>
         {over ? <OverBudget /> : null}
