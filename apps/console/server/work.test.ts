@@ -86,8 +86,10 @@ describe("the portfolio", () => {
     let stamp = "2031-03-04T16:20:00Z";
     daemon = await startFakeDaemon({ ok: true }, (command, args) => {
       calls.push(command);
-      const answer = fixtureAnswer(command, args) as { sections?: Array<{ items: Array<{ slug: string; updated: string }> }> };
-      if (command === "list") answer.sections?.forEach((section) => section.items.forEach((item) => { if (item.slug === "orbit-relay") item.updated = stamp; }));
+      const answer = fixtureAnswer(command, args);
+      if (command === "list" && typeof answer === "object" && answer !== null && "sections" in answer && Array.isArray(answer.sections)) {
+        for (const section of answer.sections) for (const item of section.items) if (item.slug === "orbit-relay") item.updated = stamp;
+      }
       return answer;
     });
     const activeWork = activeWorkClient(daemon.port);
