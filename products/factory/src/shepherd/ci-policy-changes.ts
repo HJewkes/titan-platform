@@ -50,7 +50,7 @@ export function shownLine(line: string): string {
 }
 
 /** The raw lines, so a change only in characters the card strips still shows as a changed line; a final break ends the last line. */
-function linesOf(text: string): string[] {
+export function linesOf(text: string): string[] {
   const lines = text.split(LINE_BREAK);
   return lines.at(-1) === "" ? lines.slice(0, -1) : lines;
 }

@@ -162,4 +162,42 @@ describe("owner-at-head evidence for a console tap", () => {
     expect(skillEvidence.status === "ready" && skillEvidence.sections).toEqual([{ fact: "skill-path", files: [{ path: SKILL, lines: [{ side: "+", n: 1, text: "# Synthetic skill" }], omitted: 0 }] }]);
     expect(unreadEvidence.status === "ready" && unreadEvidence.sections.map((section) => section.files.map((file) => file.path))).toEqual([[SKILL, SOURCE]]);
   });
+
+  it("reads as missing when a changed line runs past the card's line width, so a tail the card cuts never merges unseen", async () => {
+    const w = world([WORKFLOW]);
+    const long = `    run: pnpm test ${"x".repeat(160)} || true`;
+    w.fixture.fake.files.set(`${H}:${WORKFLOW}`, { blobSha: "6", content: `jobs:\n  test:\n${long}\n` });
+    const { gate } = await gatedPr(w, CI_WEAKENED, ["ci-policy-weakened"]);
+
+    const evidence = await ownerEvidence(gate, { host: w.host, port: w.port, readText });
+
+    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} has a changed line the card cuts or strips` });
+  });
+
+  it("reads as missing when a changed line differs only in characters the card strips", async () => {
+    const w = world([WORKFLOW]);
+    w.fixture.fake.files.set(`${H}:${WORKFLOW}`, { blobSha: "7", content: "jobs:\n  test:\n    required: true\u001b\n" });
+    const { gate } = await gatedPr(w, CI_WEAKENED, ["ci-policy-weakened"]);
+
+    const evidence = await ownerEvidence(gate, { host: w.host, port: w.port, readText });
+
+    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} has a changed line the card cuts or strips` });
+  });
+
+  it("shows a renamed file's old path as deleted, so a workflow moved out of .github/ still shows on the card", async () => {
+    const moved = "docs/ci.yml";
+    const w = world([moved]);
+    w.fixture.fake.files.set(`${H}:${moved}`, { blobSha: "8", content: "jobs:\n  test:\n    required: true\n" });
+    w.fixture.fake.files.delete(`${H}:${WORKFLOW}`);
+    const unread = await gatedPr(w, "shepherd-merge-guard/files-unread", ["files-unread"]);
+    const weakened = await gatedPr(w, CI_WEAKENED, ["ci-policy-weakened"]);
+    for (const { pr } of [unread, weakened]) w.fixture.fake.prFiles.set(pr, [{ path: moved, previousPath: WORKFLOW, status: "renamed" }]);
+
+    const unreadEvidence = await ownerEvidence(unread.gate, { host: w.host, port: w.port, readText });
+    const weakenedEvidence = await ownerEvidence(weakened.gate, { host: w.host, port: w.port, readText });
+
+    const deleted = { path: WORKFLOW, lines: [1, 2, 3].map((n) => ({ side: "-", n, text: ["jobs:", "  test:", "    required: true"][n - 1] })), omitted: 0 };
+    expect(unreadEvidence.status === "ready" && unreadEvidence.sections[0]!.files).toEqual([expect.objectContaining({ path: moved }), deleted]);
+    expect(weakenedEvidence.status === "ready" && weakenedEvidence.sections[0]!.files).toEqual([deleted]);
+  });
 });

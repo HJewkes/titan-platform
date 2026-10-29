@@ -2,9 +2,10 @@
  * TP-4404: the evidence an owner-at-head merge gate (D21, TP-4141) needs before the console may answer it, read live at the
  * gate's pinned head. Each fact the gate names gets a section: a weakened or malformed CI policy shows the changed `.github/`
  * files against the merge base beside the reviewer's own verdict text (its `CI-policy:` line and rationale); a skill change
- * shows the repo skill files; unread files show every changed file. The console shows the sections and posts their digest;
- * the factory reads them again at the tap and resolves only on the same digest. Anything the card could not show in full
- * (a moved head, a capped diff, an unreadable verdict) reads as missing, and the gate stays on the terminal.
+ * shows the repo skill files; unread files show every changed file. A rename counts both its paths, so the old one shows as
+ * deleted. The console shows the sections and posts their digest; the factory reads them again at the tap and resolves only
+ * on the same digest. Anything the card could not show in full (a moved head, a capped diff, a line the card cut or
+ * stripped, an unreadable verdict) reads as missing, and the gate stays on the terminal.
  */
 import { createHash } from "node:crypto";
 import type { GitHubPort } from "@titan-design/github";
@@ -14,7 +15,7 @@ import { z } from "zod";
 import { landGate, ownerAtHeadRow, type LandGate } from "../coordinator-evidence.js";
 import type { FactoryHost } from "../host.js";
 import { isOwnerAtHeadRow, ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
-import { ciPolicyChanges, type CiPolicyFileChange } from "../shepherd/ci-policy-changes.js";
+import { ciPolicyChanges, linesOf, type CiPolicyFile, type CiPolicyFileChange } from "../shepherd/ci-policy-changes.js";
 import { isGithubPath } from "../shepherd/ci-policy-read.js";
 import { LocatorSchema } from "../shepherd/review-schemas.js";
 import { skillPathsIn } from "../shepherd/skill-paths.js";
@@ -97,19 +98,25 @@ interface Refs {
 
 async function readSections(gateId: string, land: LandGate, facts: readonly OwnerAtHeadRow[], deps: EvidenceDeps): Promise<Sections | string> {
   const pull = await deps.port.getPr(land.repo, land.pr);
-  if (pull.state !== "open" || pull.headSha !== land.head) return `${land.repo}#${land.pr} is at ${short(pull.headSha)}, not the gate's ${short(land.head)}`;
+  if (pull.state !== "open" || pull.headSha !== land.head) return headMoved(land, pull.headSha);
   const compare = await deps.port.compareFiles(land.repo, pull.baseRef, land.head);
   if (compare.truncated) return "GitHub cut the changed-file list short";
+  const renamedFrom = (await deps.port.listPrFiles(land.repo, land.pr)).flatMap((file) => (file.previousPath === undefined ? [] : [file.previousPath]));
+  const after = await deps.port.getPr(land.repo, land.pr);
+  if (after.headSha !== land.head) return headMoved(land, after.headSha);
+  const changed = [...new Set([...compare.files, ...renamedFrom])];
   const refs = { repo: land.repo, base: compare.mergeBaseSha, head: land.head };
   const read = { port: deps.port, refs, reviewer: () => reviewerTextAt(gateId, land.head, deps) };
   const sections: EvidenceSection[] = [];
   for (const fact of facts) {
-    const section = await readSection(fact, compare.files, read);
+    const section = await readSection(fact, changed, read);
     if (typeof section === "string") return section;
     sections.push(section);
   }
   return { mergeBase: compare.mergeBaseSha, sections };
 }
+
+const headMoved = (land: LandGate, current: string): string => `${land.repo}#${land.pr} is at ${short(current)}, not the gate's ${short(land.head)}`;
 
 const NO_FILES: Record<OwnerAtHeadRow, string> = {
   "ci-policy-weakened": "no .github/ file changed, so the weakening is outside what the card shows",
@@ -133,23 +140,34 @@ async function readSection(fact: OwnerAtHeadRow, changed: readonly string[], { p
   const paths = pathsFor(fact, changed);
   if (paths.length === 0) return NO_FILES[fact];
   if (paths.length > MAX_EVIDENCE_FILES) return `${fact} covers ${paths.length} files, more than the ${MAX_EVIDENCE_FILES} the card shows`;
-  const files = await fileDiffs(port, refs, paths);
+  const read = await readFiles(port, refs, paths);
+  const files = ciPolicyChanges(read);
   const capped = files.find((file) => file.omitted > 0);
   if (capped !== undefined) return `${capped.path} changes more lines than the card shows`;
+  const cut = files.find((file, index) => !shownWhole(file, read[index]!));
+  if (cut !== undefined) return `${cut.path} has a changed line the card cuts or strips`;
   if (!CI_POLICY_FACTS.has(fact)) return { fact, files };
   const text = await reviewer();
   return typeof text === "string" ? text : { fact, files, reviewer: text };
 }
 
 /** Both sides of each path against the merge base; a file absent on one side was added or deleted, so that side is empty. */
-async function fileDiffs(port: GitHubPort, { repo, base, head }: Refs, paths: readonly string[]): Promise<CiPolicyFileChange[]> {
-  const files = await Promise.all(
+async function readFiles(port: GitHubPort, { repo, base, head }: Refs, paths: readonly string[]): Promise<CiPolicyFile[]> {
+  return Promise.all(
     paths.map(async (path) => {
       const [before, after] = await Promise.all([port.getFile(repo, path, base), port.getFile(repo, path, head)]);
       return { path, before: before?.content ?? "", after: after?.content ?? "" };
     }),
   );
-  return ciPolicyChanges(files);
+}
+
+/**
+ * The shared diff cuts each line at 160 characters and strips control characters, which is fine for a notice but not for
+ * a merge: the owner must see every character the gate covers, so any line or path shown other than as written fails closed.
+ */
+function shownWhole(change: CiPolicyFileChange, file: CiPolicyFile): boolean {
+  const sides = { "-": linesOf(file.before), "+": linesOf(file.after) };
+  return change.path === file.path && change.lines.every((line) => line.text === sides[line.side][line.n - 1]);
 }
 
 const MergeEvidenceStep = z.looseObject({ result: z.looseObject({ head: z.string(), record: z.looseObject({ verdictLocator: LocatorSchema }) }) });
