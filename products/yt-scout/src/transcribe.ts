@@ -20,7 +20,7 @@ export const execRunner: Runner = (command, args) =>
     });
   });
 
-type TranscribeMode = "subtitles" | "whisper";
+export type TranscribeMode = "subtitles" | "whisper";
 
 export interface TranscribeEnv {
   ytRoot: string;

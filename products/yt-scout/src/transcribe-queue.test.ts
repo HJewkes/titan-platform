@@ -102,9 +102,19 @@ describe("transcribe queue", () => {
     expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", attempts: 0, last_error_class: "http429", next_retry_at: hoursAhead(2) });
   });
 
-  it("pulls nothing while the breaker is open, and does not fall back to Whisper", async () => {
+  it("pulls no subtitles while the stored breaker is open", async () => {
     addVideo("vvvvvvvvv01");
-    addVideo("vvvvvvvvv02", { last_error_class: "no_captions", published: hoursAgo(30) });
+    const h = harness((id) => wrote(id, "subtitles"));
+    h.env.breaker.write({ openUntil: hoursAhead(1), cooldownMs: 2 * 3_600_000 });
+
+    const report = await runTranscribeQueue(db, h.env);
+
+    expect(h.calls).toEqual([]);
+    expect(report.breakerOpen).toBe(true);
+  });
+
+  it("runs no Whisper job while the stored breaker is open, even with no subtitle work due", async () => {
+    addVideo("vvvvvvvvv01", { last_error_class: "no_captions", published: hoursAgo(30), attempts: 1 });
     const h = harness((id) => wrote(id, "whisper"));
     h.env.breaker.write({ openUntil: hoursAhead(1), cooldownMs: 2 * 3_600_000 });
 
@@ -112,6 +122,28 @@ describe("transcribe queue", () => {
 
     expect(h.calls).toEqual([]);
     expect(report.breakerOpen).toBe(true);
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", attempts: 1 });
+  });
+
+  it("opens the breaker on a 429 during the Whisper audio download and stops the tick", async () => {
+    for (const n of [1, 2]) addVideo(`vvvvvvvvv0${n}`, { last_error_class: "no_captions", published: hoursAgo(30), attempts: 1 });
+    const h = harness((id) => throttled(id));
+
+    const report = await runTranscribeQueue(db, h.env);
+
+    expect(h.calls).toHaveLength(1);
+    expect(report.breakerOpen).toBe(true);
+    expect(h.env.breaker.read().openUntil).toBe(hoursAhead(2));
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", attempts: 1, last_error_class: "no_captions", next_retry_at: null });
+  });
+
+  it("keeps a video's caption retry stage across a 429", async () => {
+    addVideo("vvvvvvvvv01", { last_error_class: "no_captions:2", next_retry_at: hoursAgo(1), attempts: 2 });
+    const h = harness((id) => throttled(id));
+
+    await runTranscribeQueue(db, h.env);
+
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ attempts: 2, last_error_class: "no_captions:2", next_retry_at: hoursAhead(2) });
   });
 
   it("doubles the cooldown on a repeat trip up to 24 h, and resets it on a success", async () => {

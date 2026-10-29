@@ -74,7 +74,7 @@ function addTranscribeCommand(program: Command, write: Write): void {
           breaker: sqliteBreaker(db),
         });
         write(`transcribed ${report.transcribed.length}, rescheduled ${report.rescheduled.length}, failed ${report.failed.length}, whisper refused ${report.whisperRefused.length}`);
-        if (report.breakerOpen) write("circuit breaker open: no more subtitle pulls this run");
+        if (report.breakerOpen) write("circuit breaker open: no YouTube pulls this run");
       } finally {
         db.close();
       }

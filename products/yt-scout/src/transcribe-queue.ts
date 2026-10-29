@@ -1,7 +1,7 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { isOpen, reset, trip, type BreakerStore } from "./breaker.js";
-import { transcribeVideo, type TranscribeEnv } from "./transcribe.js";
-import type { StepErrorClass } from "./seams.js";
+import { transcribeVideo, type TranscribeEnv, type TranscribeMode } from "./transcribe.js";
+import type { StepErrorClass, StepOutcome, Transcript } from "./seams.js";
 import type { VideoRow } from "./store.js";
 
 const HOUR = 3_600_000;
@@ -87,31 +87,42 @@ function scheduleFailure(db: Db, env: QueueEnv, v: VideoRow, errorClass: StepErr
   }
 }
 
-function openBreaker(db: Db, env: QueueEnv, v: VideoRow, report: QueueReport): void {
+function openBreaker(db: Db, env: QueueEnv, v: VideoRow, mode: TranscribeMode, report: QueueReport): void {
   const next = trip(env.breaker.read(), env.now());
   env.breaker.write(next);
-  // A throttle is not the video's fault, so it does not spend an attempt.
-  update(db, v.id, { last_error_class: "http429", next_retry_at: next.openUntil });
-  report.rescheduled.push(v.id);
   report.breakerOpen = true;
+  // A Whisper-queued video stays queued; the stored breaker holds it back until the cooldown ends.
+  if (mode === "whisper") return;
+  // A throttle is not the video's fault: it spends no attempt and keeps its caption retry stage.
+  const keepStage = v.last_error_class === "no_captions" || v.last_error_class === SECOND_CAPTION_WAIT;
+  update(db, v.id, { last_error_class: keepStage ? v.last_error_class : "http429", next_retry_at: next.openUntil });
+  report.rescheduled.push(v.id);
+}
+
+/**
+ * Every YouTube pull, subtitles or Whisper audio, goes through here: it reads the stored breaker before
+ * pulling and trips it on any 429. Undefined means the run must stop pulling.
+ */
+async function pull(db: Db, env: QueueEnv, v: VideoRow, mode: TranscribeMode, report: QueueReport): Promise<StepOutcome<Transcript> | undefined> {
+  if (isOpen(env.breaker.read(), env.now())) {
+    report.breakerOpen = true;
+    return undefined;
+  }
+  const out = await transcribeVideo(env, v.id, mode);
+  if (out.ok || out.errorClass !== "http429") return out;
+  openBreaker(db, env, v, mode, report);
+  return undefined;
 }
 
 async function subtitlePhase(db: Db, env: QueueEnv, report: QueueReport): Promise<void> {
-  const queue = dueVideos(db, env.now(), false);
-  for (const [i, v] of queue.entries()) {
-    if (isOpen(env.breaker.read(), env.now())) {
-      report.breakerOpen = true;
-      return;
-    }
+  for (const [i, v] of dueVideos(db, env.now(), false).entries()) {
     if (i > 0) await env.sleep(6000 + (env.random() - 0.5) * 6000);
-    const out = await transcribeVideo(env, v.id, "subtitles");
+    const out = await pull(db, env, v, "subtitles", report);
+    if (!out) return;
     if (out.ok) {
       update(db, v.id, { state: "transcribed", attempts: v.attempts + 1, next_retry_at: null, last_error_class: null });
       env.breaker.write(reset());
       report.transcribed.push(v.id);
-    } else if (out.errorClass === "http429") {
-      openBreaker(db, env, v, report);
-      return;
     } else {
       scheduleFailure(db, env, v, out.errorClass, report);
     }
@@ -119,8 +130,6 @@ async function subtitlePhase(db: Db, env: QueueEnv, report: QueueReport): Promis
 }
 
 async function whisperPhase(db: Db, env: QueueEnv, report: QueueReport): Promise<void> {
-  // Never turn a throttle into CPU load.
-  if (report.breakerOpen) return;
   let ran = 0;
   for (const v of dueVideos(db, env.now(), true)) {
     if (ran >= WHISPER_PER_TICK) return;
@@ -129,7 +138,8 @@ async function whisperPhase(db: Db, env: QueueEnv, report: QueueReport): Promise
       continue;
     }
     ran++;
-    const out = await transcribeVideo(env, v.id, "whisper");
+    const out = await pull(db, env, v, "whisper", report);
+    if (!out) return;
     if (out.ok) {
       update(db, v.id, { state: "transcribed", attempts: v.attempts + 1, next_retry_at: null, last_error_class: null });
       report.transcribed.push(v.id);
