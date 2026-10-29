@@ -125,10 +125,10 @@ function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly
   };
 }
 
-const PlanStepSchema = PlannerSchema.partial().extend({ ops: QueueOpsSchema });
+const PlanStepSchema = PlannerSchema.partial().extend({ ops: QueueOpsSchema, malformed: z.string().optional() });
 
 /** Only a planner that named itself is recorded; its other fields mean nothing without the agent. */
-function plannerOf({ ops: _ops, ...planned }: z.infer<typeof PlanStepSchema>): Planner | undefined {
+function plannerOf({ ops: _ops, malformed: _malformed, ...planned }: z.infer<typeof PlanStepSchema>): Planner | undefined {
   return planned.agent === undefined ? undefined : { ...planned, agent: planned.agent };
 }
 
@@ -152,7 +152,8 @@ async function planRound(run: Run, state: LoopState, round: number): Promise<Pla
     const input = { runId: run.ctx.runId, round, digest, violations, quota, mode: round === 1 && attempt === "" ? "spawn" : "resume" };
     const planned = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, PlanStepSchema);
     if (planned.usage) usage.push(planned.usage);
-    violations = quotaViolations(planned.ops, quota);
+    // An answer that held no JSON gets the same one corrective turn a quota miss does.
+    violations = planned.malformed === undefined ? quotaViolations(planned.ops, quota) : [planned.malformed];
     first ??= violations;
     if (violations.length === 0) return { ops: planned.ops, planner: plannerOf(planned), violations: first, retried: attempt !== "", usage };
   }

@@ -373,6 +373,27 @@ describe("the planner", () => {
     expect(resumed!.args[resumed!.args.indexOf("--message") + 1]).toContain(resumeContract);
   });
 
+  it("parses a final answer longer than the transcript reader's span cap", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    const analysis = "x".repeat(17_000);
+    behave(name, { turns: [final("p1", JSON.stringify({ add: [], analysis: [analysis] }))] });
+
+    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA, round: 1, mode: "spawn" }, signal);
+
+    expect(planned.ops).toEqual({ add: [], analysis: [analysis] });
+  });
+
+  it("reports a final message with no JSON as malformed rather than failing the step", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    behave(name, { turns: [assistantLine("p1", "Here are the ideas, no block.", { read: 0, w5m: 0, w1h: 0 })] });
+
+    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA, round: 1, mode: "spawn" }, signal);
+
+    expect(planned).toMatchObject({ ops: {}, malformed: expect.stringContaining("[final-message] the agent's last message is not JSON"), agent: name });
+  });
+
   it("gets a second round-1 turn naming the quota its first answer missed", async () => {
     const p = ports();
     const name = plannerName("run-1");

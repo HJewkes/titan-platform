@@ -200,6 +200,8 @@ const runPinIn = ({ runId, pin, frozenHash }: RunPin): RunPin => ({ runId, pin, 
 
 export interface FakeOptions extends SnapshotOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
+  /** A parse error to answer instead of ops, as a planner whose final message held no JSON does. */
+  plannerMalformed?: (input: { round: number; violations: string[] }) => string | undefined;
   target?: Target;
   bounds?: Bounds;
   /** Case names the L0 post-check refuses in an added line. */
@@ -367,7 +369,9 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.plans.push(input);
       await options.beforePlan?.(input.round);
       const agent = `planner-${input.runId}`;
-      return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
+      const malformed = options.plannerMalformed?.(input);
+      const answer = malformed === undefined ? { ops: options.planner(input) } : { ops: {}, malformed };
+      return { ...answer, agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
     ...movePorts(calls, options),
     ...fakeSnapshotPorts(calls, options),

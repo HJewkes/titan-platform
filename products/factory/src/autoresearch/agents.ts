@@ -9,7 +9,7 @@ import { dispatchToAgentChat, listAgents, resumeAgent } from "@titan-design/agen
 import { resolveLimits, type ParsedLimits } from "@titan-design/agent-dispatch/limits";
 import { createWorktreeAllocator, type WorktreeAllocator } from "@titan-design/worktree";
 import { z } from "zod";
-import { awaitAgent, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
+import { awaitAgent, awaitTurn, finalOf, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
 import { loadWaitPort, staggerLatch, type LoadWaitOptions } from "./load-wait.js";
 import { plannerResumeBrief, plannerSpawnBrief } from "./planner-brief.js";
 import { execGit } from "./ratchet.js";
@@ -168,9 +168,20 @@ async function plan(host: Host, input: Parameters<ArPorts["plan"]>[0], signal: A
   let from: From = { offset: 0 };
   if (input.mode === "spawn") await spawnOrJoin(host, name, profiles.planner, plannerCwd, plannerSpawnBrief({ ...target, clone }, input));
   else from = await resumeOrJoin(host, name, profiles.planner, plannerResumeBrief(input));
-  const done = await awaitAgent(host.chat, name, signal, from);
-  const session = done.row.sessionId === "" ? {} : { sessionId: done.row.sessionId };
-  return { ops: done.final, agent: name, ...session, mode: input.mode, usage: done.usage };
+  const turn = await awaitTurn(host.chat, name, signal, from);
+  const session = turn.row.sessionId === "" ? {} : { sessionId: turn.row.sessionId };
+  return { ...answerOf(name, turn.text), agent: name, ...session, mode: input.mode, usage: turn.usage };
+}
+
+/** An answer with no JSON is reported, not thrown, so the workflow can resume the planner with the error as its miss. */
+function answerOf(name: string, text: string | undefined): { ops: unknown } | { ops: Record<string, never>; malformed: string } {
+  try {
+    return { ops: finalOf(name, text) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.startsWith("[final-message]")) throw error;
+    return { ops: {}, malformed: message };
+  }
 }
 
 async function allocTree(host: Host, input: Parameters<ArPorts["allocTree"]>[0]) {

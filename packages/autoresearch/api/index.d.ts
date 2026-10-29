@@ -658,6 +658,7 @@ declare const PlannerSchema: z.ZodObject<{
         retries: z.ZodNumber;
     }, z.core.$strip>>;
 }, z.core.$strip>;
+/** `malformed` is the parse error of a final message that held no JSON; the workflow retries the planner with it as the miss. */
 declare const PlannedSchema: z.ZodObject<{
     agent: z.ZodOptional<z.ZodString>;
     sessionId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -673,6 +674,7 @@ declare const PlannedSchema: z.ZodObject<{
         retries: z.ZodNumber;
     }, z.core.$strip>>>;
     ops: z.ZodUnknown;
+    malformed: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type Planner = z.infer<typeof PlannerSchema>;
 /** One row per L0 check, in the order they ran; `diff` is measured and replaces the implementer's own count on the outcome. */
