@@ -19,7 +19,7 @@ const BLOBS: Record<string, string> = {
 };
 const SKILL_FILE = ".claude/skills/x/SKILL.md";
 const ROUND_ID = "plan-demo-tp-1-r1";
-const baseless: GitRead = { show: async () => null };
+const baseless: GitRead = { show: async () => null, blob: async () => null, commit: async (ref) => ref, diffNames: async () => [] };
 
 const plan = (fields: Pick<PlanBlock, "files"> & Partial<PlanBlock>): PlanBlock => PlanBlockSchema.parse({ task: TASK, repo: REPO, summary: "Allow b in merge-lint", ...fields });
 

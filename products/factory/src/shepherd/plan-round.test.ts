@@ -10,7 +10,7 @@ import { PlanApprovalActionSchema } from "../console-action/record.js";
 import { blobOf, NOTHING_PREDICTED, pinFiles, PlanBlockSchema, planRound, PlanRoundRefused, predictGates, readPlanBlock, type GitRead, type PlanBlock } from "./plan-round.js";
 
 const plan = (fields: Partial<PlanBlock> & Pick<PlanBlock, "files">): PlanBlock => PlanBlockSchema.parse({ task: "demo/TP-1", repo: "octo/planned", summary: "Add a merge-lint entry", ...fields });
-const noGit: GitRead = { show: async () => null };
+const noGit: GitRead = { show: async () => null, blob: async () => null, commit: async (ref) => ref, diffNames: async () => [] };
 const ARGS: PlanRoundArgs = { round: 1, supersedes: [], base: "origin/main" };
 const PrintedBindings = z.object({ planApprovals: z.array(z.object({ task: z.string(), repo: z.string(), gate: z.string(), scope: z.unknown() })) });
 
@@ -145,7 +145,7 @@ describe("drafting the round", () => {
   });
 
   it("shows the owner each pinned file's changed lines against the base", async () => {
-    const git: GitRead = { show: async (ref, path) => (ref === "origin/main" && path === ".github/merge-lint.json" ? '{ "allow": ["a"] }\n' : null) };
+    const git: GitRead = { ...noGit, show: async (ref, path) => (ref === "origin/main" && path === ".github/merge-lint.json" ? '{ "allow": ["a"] }\n' : null) };
     const files = [{ path: ".github/merge-lint.json", content: '{ "allow": ["a", "b"] }\n' }];
 
     const { round } = await planRound(plan({ files, ciPolicyKeys: ["other"] }), { round: 2, base: "origin/main", supersedes: ["plan-demo-tp-1-r1"] }, git);
