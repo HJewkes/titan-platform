@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import type { SpawnSyncOptions } from "node:child_process";
+import type { SpawnOptions, SpawnSyncOptions } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -84,9 +84,19 @@ interface Progress {
   timedOut: Set<number>;
 }
 
-function watch(driver: string, timeoutMs: number): Promise<Progress> {
+interface Driver {
+  program: string;
+  args: readonly string[];
+  /** Stops one row by the pid its `s` marker named. */
+  kill(pid: number): void;
+}
+
+const BASH_DRIVER: Driver = { program: "bash", args: ["--norc", "--noprofile"], kill: killGroup };
+
+/** Runs `driver`, which echoes `s <row> <pid>` as a row starts and `e <row> <status>` as it ends, timing out each row. */
+function watch({ program, args, kill }: Driver, script: string, timeoutMs: number, where: Pick<SpawnOptions, "cwd" | "env"> = {}): Promise<Progress> {
   const progress: Progress = { status: new Map(), timedOut: new Set() };
-  const child = spawn("bash", ["--norc", "--noprofile", driver], { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+  const child = spawn(program, [...args, script], { ...where, detached: true, stdio: ["ignore", "pipe", "ignore"] });
   let timer: NodeJS.Timeout | undefined;
   createInterface({ input: child.stdout }).on("line", (line) => {
     const [kind, row, value] = line.split(" ");
@@ -94,7 +104,7 @@ function watch(driver: string, timeoutMs: number): Promise<Progress> {
     if (kind === "s") {
       timer = setTimeout(() => {
         progress.timedOut.add(Number(row));
-        killGroup(Number(value));
+        kill(Number(value));
       }, timeoutMs);
     } else progress.status.set(Number(row), Number(value));
   });
@@ -124,7 +134,7 @@ export async function runShellRows(runs: readonly ShellRun[], timeoutMs = ROW_TI
       if (run.input !== undefined) writeFileSync(join(io, `${i}.in`), run.input);
     });
     writeFileSync(join(io, "driver.sh"), driverOf(runs, io));
-    const progress = await watch(join(io, "driver.sh"), timeoutMs);
+    const progress = await watch(BASH_DRIVER, join(io, "driver.sh"), timeoutMs);
     const results = runs.map((run, i) => resultOf(run, i, io, progress, timeoutMs));
     return { of: (i) => unwrap(results[i], i) };
   } finally {
@@ -133,17 +143,59 @@ export async function runShellRows(runs: readonly ShellRun[], timeoutMs = ROW_TI
 }
 
 function resultOf(run: ShellRun, i: number, io: string, progress: Progress, timeoutMs: number): ShellResult | Error {
-  if (progress.timedOut.has(i)) return new Error(`shell row ${JSON.stringify(run.name)} ran past ${timeoutMs} ms and was killed`);
-  const status = progress.status.get(i);
-  if (status === undefined) return new Error(`shell row ${JSON.stringify(run.name)} never finished`);
+  const status = statusOf(run.name, i, progress, timeoutMs);
+  if (status instanceof Error) return status;
   const read = (ext: string) => readFileSync(join(io, `${i}.${ext}`), "utf-8");
-  return { status, stdout: read("out"), stderr: read("err") };
+  return { ...status, stdout: read("out"), stderr: read("err") };
 }
 
 function unwrap(result: ShellResult | Error | undefined, i: number): ShellResult {
   if (result === undefined) throw new Error(`no shell row ${i}`);
   if (result instanceof Error) throw result;
   return result;
+}
+
+/** A row run in a subshell of one shell: its script, read from `scriptFile`, evaluated in `cwd` with no stdio. */
+export interface SubshellRow {
+  name: string;
+  cwd: string;
+  scriptFile: string;
+}
+
+/**
+ * Runs every row in a subshell of one `program` process, as a shell's own semantics need: a row's syntax error stays in
+ * its subshell. The shell leads its own process group, killed when it ends; a row past `timeoutMs` is killed and fails
+ * alone, and the rows after it still run. Written in the syntax bash and zsh share.
+ */
+export interface SubshellOptions {
+  /** The shell's whole environment. */
+  env: Readonly<Record<string, string | undefined>>;
+  cwd: string;
+  timeoutMs?: number;
+}
+
+export async function runSubshellRows(program: string, args: readonly string[], rows: readonly SubshellRow[], options: SubshellOptions): Promise<ShellRows> {
+  const { env, cwd, timeoutMs = ROW_TIMEOUT_MS } = options;
+  const io = mkdtempSync(join(tmpdir(), "tool-guard-subshell-rows-"));
+  try {
+    const driver = rows.map(
+      (row, i) => `(cd ${quote(row.cwd)} && eval "$(<${quote(row.scriptFile)})") </dev/null >/dev/null 2>&1 &\np=$!; echo "s ${i} $p"; wait "$p"; echo "e ${i} $?"`,
+    );
+    writeFileSync(join(io, "driver.sh"), `${driver.join("\n")}\n`);
+    const kill = (pid: number) => void attempt(() => process.kill(pid, "SIGKILL"));
+    const progress = await watch({ program, args, kill }, join(io, "driver.sh"), timeoutMs, { cwd, env });
+    const results = rows.map((row, i) => statusOf(row.name, i, progress, timeoutMs));
+    return { of: (i) => unwrap(results[i], i) };
+  } finally {
+    rmSync(io, { recursive: true, force: true });
+  }
+}
+
+function statusOf(name: string, i: number, progress: Progress, timeoutMs: number): ShellResult | Error {
+  if (progress.timedOut.has(i)) return new Error(`shell row ${JSON.stringify(name)} ran past ${timeoutMs} ms and was killed`);
+  const status = progress.status.get(i);
+  if (status === undefined) return new Error(`shell row ${JSON.stringify(name)} never finished`);
+  return { status, stdout: "", stderr: "" };
 }
 
 /** What one oracle row runs in its fresh directory, and what the test reads from the run. */
