@@ -15,8 +15,7 @@ import {
  * coordinator did.
  */
 
-const CONCERN_CLASSES = ["visibility-denied", "ci-unread", "follow-up-filed", "pre-existing-failure", "could-not-verify"] as const;
-type ConcernClass = (typeof CONCERN_CLASSES)[number];
+type ConcernClass = "visibility-denied" | "ci-unread" | "follow-up-filed" | "pre-existing-failure" | "could-not-verify";
 
 /** First match wins: a denied visibility check is usually also a thing the worker could not verify. */
 const CONCERN_RULES: readonly [ConcernClass, RegExp][] = [
@@ -32,8 +31,7 @@ const CONCERN_RULES: readonly [ConcernClass, RegExp][] = [
 
 export const concernClass = (text: string): ConcernClass | "residual" => CONCERN_RULES.find(([, pattern]) => pattern.test(text))?.[0] ?? "residual";
 
-const INTAKE_ACTIONS = ["verify-head", "ensure-shepherd", "copy-plan", "note-task", "retire", "park-tree", "count-friction", "resume-after-backoff", "enqueue-for-seat"] as const;
-type IntakeAction = (typeof INTAKE_ACTIONS)[number];
+type IntakeAction = "verify-head" | "ensure-shepherd" | "copy-plan" | "note-task" | "retire" | "park-tree" | "count-friction" | "resume-after-backoff" | "enqueue-for-seat";
 
 /** Closeout leaves the seat out; every other suggestion puts the report in front of it. */
 export const isCloseout = (actions: readonly IntakeAction[]): boolean => !actions.includes("enqueue-for-seat");
