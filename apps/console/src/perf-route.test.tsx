@@ -50,7 +50,7 @@ describe("report batching", () => {
   const route = (n: number): PerfRow => ({ kind: "route", view: "home", detail: false, ms: n, queries: 1 });
 
   it("posts at most 100 rows and counts the rows it dropped", () => {
-    const posts: unknown[] = [];
+    const posts: Array<{ rows: PerfRow[]; dropped: number }> = [];
     const sink = createPerfSink((report) => posts.push(report));
 
     for (let n = 0; n < 130; n += 1) sink.add(route(n));
@@ -58,8 +58,8 @@ describe("report batching", () => {
     sink.flush();
 
     expect(posts).toHaveLength(1);
-    expect(posts[0]).toMatchObject({ dropped: 30 });
-    expect((posts[0] as { rows: unknown[] }).rows).toHaveLength(100);
+    expect(posts[0]?.dropped).toBe(30);
+    expect(posts[0]?.rows).toHaveLength(100);
   });
 });
 
