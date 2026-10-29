@@ -2,10 +2,13 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { launch } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { probeStreams, sineWav } from "./render/render-fixtures.test-helpers.js";
 import { RenderManifestSchema } from "./render/render-manifest.js";
 import { compositionPage, type BuiltPage } from "./render/composition-page.js";
+import { chromiumRenderDeps, renderVideo } from "./render/render-video.js";
 import { runRenderCli } from "./render-cli.js";
 
 const BROWSER_TIMEOUT_MS = 300_000;
@@ -15,13 +18,18 @@ const BADGE_CROP = "crop=200:80:1700:0";
 
 let dir: string;
 let page: BuiltPage;
+let browser: Browser;
 
 beforeAll(async () => {
   dir = mkdtempSync(path.join(tmpdir(), "explainer-render-cli-browser-"));
   page = await compositionPage(path.join(dir, "cache"));
+  browser = await launch();
 }, BROWSER_TIMEOUT_MS);
 
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(async () => {
+  await browser.close();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 function writeBoard(): string {
   const beats = BEAT_IDS.map((id, i) => ({ id, type: "hook", duration_s: 1, spoken: `Synthetic line ${i + 1}.`, slots: { line: `Line ${i + 1}` } }));
@@ -40,7 +48,7 @@ function writeNarration(): string {
 }
 
 async function render(out: string, extra: readonly string[]): Promise<void> {
-  const code = await runRenderCli(["render", writeBoard(), "--no-qa", "--workers", "2", "--out", out, ...extra], { page: async () => page, out: () => undefined });
+  const code = await runRenderCli(["render", writeBoard(), "--no-qa", "--workers", "2", "--out", out, ...extra], { page: async () => page, render: (input) => renderVideo(input, chromiumRenderDeps(browser)), out: () => undefined });
   expect(code).toBe(0);
 }
 

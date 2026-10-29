@@ -10,19 +10,21 @@ const fs = require("fs"), path = require("path"), cp = require("child_process");
 const dir = process.env.AGENT_CHAT_HOME, args = process.argv.slice(2);
 const rosterPath = path.join(dir, "roster.json");
 const roster = fs.existsSync(rosterPath) ? JSON.parse(fs.readFileSync(rosterPath, "utf8")) : [];
+if (args[1] === "spawn" && args.includes("--help")) { process.stdout.write(fs.readFileSync(path.join(dir, "spawn-help.txt"), "utf8")); process.exit(0); }
 const log = (extra) => fs.appendFileSync(path.join(dir, "calls.jsonl"), JSON.stringify({ args, ...extra }) + "\\n");
 if (args[1] === "ls") { log({}); process.stdout.write(JSON.stringify(roster)); process.exit(0); }
 const name = args[2];
 const behave = JSON.parse(fs.readFileSync(path.join(dir, "behave", name + ".json"), "utf8"));
 let row = roster.find((r) => r.name === name);
+let brief;
 if (args[1] === "spawn") {
-  fs.readFileSync(0);
+  brief = fs.readFileSync(0, "utf8");
   row = { name, agentId: name, state: "exited", presence: "exited", status: "finished", profile: args[3], surface: "headless",
     cwd: process.cwd(), sessionId: "s-" + name, generation: 1, transcriptPath: path.join(dir, "t-" + name + ".jsonl") };
   roster.push(row);
 }
 const g = (...a) => cp.execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...a], { cwd: row.cwd, encoding: "utf8" }).trim();
-log({ head: g("rev-parse", "HEAD") });
+log({ head: g("rev-parse", "HEAD"), brief });
 if (behave.commit) { fs.writeFileSync(path.join(row.cwd, name + ".txt"), args[1]); g("add", "-A"); g("commit", "-qm", "work"); }
 const head = g("rev-parse", "HEAD");
 if (behave.pending) { row.presence = "live"; row.state = "live"; }
@@ -32,7 +34,7 @@ fs.writeFileSync(rosterPath, JSON.stringify(roster));
 
 /**
  * Writes the fake into `dir`, its AGENT_CHAT_HOME, with an empty `behave/` and a headless profile per name in
- * `profiles`, and returns the bin path.
+ * `profiles`, a `spawn --help` that lists `--worktree`, and returns the bin path.
  */
 export function installAgentChatFake(dir: string, profiles: readonly string[]): string {
   mkdirSync(join(dir, "behave"));
@@ -42,5 +44,6 @@ export function installAgentChatFake(dir: string, profiles: readonly string[]): 
   writeFileSync(join(dir, "agent-chat.staging"), `#!${process.execPath}\n${FAKE}`);
   chmodSync(join(dir, "agent-chat.staging"), 0o755);
   cpSync(join(dir, "agent-chat.staging"), join(dir, "agent-chat"));
+  writeFileSync(join(dir, "spawn-help.txt"), "Usage: agent-chat agent spawn <name> <profile>\n  --cwd <dir>\n  --worktree <path>  adopt an existing worktree\n");
   return join(dir, "agent-chat");
 }

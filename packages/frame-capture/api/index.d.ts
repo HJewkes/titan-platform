@@ -66,6 +66,12 @@ declare class FontLoadError extends Error {
 }
 declare function launch(): Promise<Browser>;
 /**
+ * Runs `use` in `lent` when the caller lends a browser, and leaves it open for the caller's next use; otherwise
+ * in a browser launched here and closed after. A lent browser keeps whatever `use` leaves open, so `use` closes
+ * its own contexts.
+ */
+declare function withBrowser<T>(lent: Browser | undefined, use: (browser: Browser) => Promise<T>): Promise<T>;
+/**
  * Loads the page's fonts and waits on document.fonts.ready. The explicit load matters: fonts load
  * lazily on first use, so fonts.ready alone can resolve before a beat that mounts later asks for one.
  * A face that fails to load is left in its `error` status for the caller, which can name it; the
@@ -81,10 +87,12 @@ interface CapturePage {
     errors: readonly Error[];
 }
 /**
- * The pageerror listener attaches before navigation: an error thrown while the page loads, such as a
- * render that throws on mount, leaves a page that still answers seeks and screenshots blank.
+ * The page in a context of its own. A failed open closes that context, so a browser lent across opens is not left
+ * holding the pages of the ones that failed.
  */
 declare function openCapturePage(browser: Browser, url: string, options: PageOptions): Promise<CapturePage>;
+/** Opens a capture page, runs `use` on it and closes its context however `use` ends. */
+declare function withCapturePage<T>(browser: Browser, url: string, options: PageOptions, use: (opened: CapturePage) => Promise<T>): Promise<T>;
 /** One frame: advance virtual time, seek (commits through flushSync), await ready(), sync the animations the seek started, screenshot. */
 declare function captureFrame(page: Page, t: number): Promise<Buffer>;
 
@@ -105,6 +113,8 @@ interface FramesOptions extends PageOptions {
      * fewer beats.
      */
     beatStartsS?: readonly number[];
+    /** A browser to capture in, left open; without one the capture launches its own and closes them. */
+    browser?: Browser;
 }
 interface FramesResult {
     frames: number;
@@ -113,6 +123,13 @@ interface FramesResult {
     fonts: CapturePage['fonts'];
 }
 type Sink = (index: number, png: Buffer) => Promise<void>;
+/**
+ * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
+ * process, so a shared browser stops scaling at about 60 fps. The probe's browser goes on to capture the
+ * first chunk, which saves a launch per capture and still runs one chunk per browser: the probe's page
+ * closes before that chunk opens its own. A lent browser runs every chunk, for callers such as tests that
+ * trade that scaling for one launch.
+ */
 declare function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult>;
 
 /** One voice clip in the mix: `wavPath(id)` names its file, and it is padded to `durationS`. */
@@ -129,4 +146,4 @@ interface Encoder {
 /** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
 declare function startEncoder(out: string, fps: number, audio: string): Encoder;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, settleFonts, startEncoder };
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, settleFonts, startEncoder, withBrowser, withCapturePage };

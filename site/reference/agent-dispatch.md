@@ -153,6 +153,39 @@ Rules run in order and the first match wins, so a risk row (door, safety or visu
 `kind:security`) beats a size row. A row with `needsOwns: true` never matches a task whose
 owns are unknown, so missing facts route up to `needs-plan`, never down.
 
+At spawn time, `routeSpawn` turns the table's pick into the profile that runs:
+
+```ts
+import { routeMeta, routeSpawn } from "@titan-design/agent-dispatch/routing";
+
+const decision = routeSpawn({
+  mode: "shadow", // "off" | "shadow" | "on"
+  requested: "implementer", // or "auto"
+  table: { table: table!, id: "shape-v1@1a2b3c4d" },
+  taskId: "EX-1",
+  role: "fix-round-2", // kept, logged as keep-role
+  facts,
+});
+// undefined for a reviewer, or for an explicit profile with routing off
+const meta = decision === undefined ? {} : routeMeta(decision); // { route_source: "keep-role", ... }
+```
+
+| `source` | When | Profile that runs |
+|---|---|---|
+| `auto` | `auto` was requested | the table's tier, else `bd-implementer` |
+| `routed` | `on`, and the table picks another tier | the table's tier, in the caller's family |
+| `agrees` | the table picks the requested tier, or a profile outside the tiers | requested |
+| `shadow` | `shadow`, and the table picks another tier | requested |
+| `override` | the caller passed an override | requested |
+| `keep-role` | the role is a keep-role (default `fix-round`) | requested |
+| `no-task` | `auto` with no task id | `bd-implementer` |
+| `table-error` | the table could not be read | requested, or `bd-implementer` for `auto` |
+
+A `candidate` table is classified beside the live one, and its pick is recorded as
+`candidateWanted` but never applied. `summarizeRoutes(rows)` reads logged rows back. It
+counts agreement over `agrees`, `shadow` and `routed` only, so keep-role, override and auto
+rows are not in the denominator.
+
 ## What it deliberately does not do
 
 It holds no profile names, derives no peer names and installs no profile files: those are

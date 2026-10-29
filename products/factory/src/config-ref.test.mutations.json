@@ -36,6 +36,15 @@
       "kills": [
         "configRef without a reload keeps the previous config on an invalid edit and warns once"
       ]
+    },
+    {
+      "name": "windowMs is read once at startup",
+      "file": "products/factory/src/workflows-live.ts",
+      "find": "    windowMs: liveField(config, \"shepherd.spawnGate.windowMs\"),\n",
+      "replace": "",
+      "kills": [
+        "liveSpawnLimits reads the live rows afresh, the pace windows included, and keeps restart-class keys at their startup value"
+      ]
     }
   ]
 }

@@ -284,6 +284,29 @@ describe("what a round records for readers", () => {
     expect(summaryOf(run, 1)).toMatchObject({ plannerRetried: true, quotaViolations: ["no bold idea and no [EXEMPT] reason"] });
   });
 
+  it("resumes the planner once with the parse error when its answer held no JSON", async () => {
+    const notJson = "[final-message] the agent's last message is not JSON: Here are the ideas";
+    const plannerMalformed = ({ violations }: { violations: string[] }) => (violations.length === 0 ? notJson : undefined);
+    const { run, ports } = await loop([], { planner: () => ({ add: [proposal("better", { bold: true })] }), plannerMalformed });
+
+    expect(ports.calls.plans.filter((plan) => plan.round === 1).map(({ mode, violations }) => ({ mode, violations }))).toEqual([
+      { mode: "spawn", violations: [] },
+      { mode: "resume", violations: [notJson] },
+    ]);
+    expect(summaryOf(run, 1)).toMatchObject({ plannerRetried: true, quotaViolations: [notJson] });
+  });
+
+  it("resumes the round-1 planner for its retry, naming the quota it missed", async () => {
+    const planner = ({ violations }: { violations: string[] }) => ({ add: [proposal("better", { bold: violations.length > 0 })] });
+    const { ports } = await loop([], { planner }, { ...CONFIG, minPool: 1 });
+
+    const round1 = ports.calls.plans.filter((plan) => plan.round === 1).map(({ mode, violations, quota }) => ({ mode, violations, minPool: quota.minPool }));
+    expect(round1).toEqual([
+      { mode: "spawn", violations: [], minPool: 1 },
+      { mode: "resume", violations: ["no bold idea and no [EXEMPT] reason"], minPool: 1 },
+    ]);
+  });
+
   it("settles the same outcomes the archive received: the superseded winner stopped, every one stamped with σ", async () => {
     const { run, ports } = await sharedLoop(["better", "better-2", "flat"]);
     const summary = summaryOf(run, 1);

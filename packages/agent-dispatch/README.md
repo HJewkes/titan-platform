@@ -153,5 +153,13 @@ profile, shipped as `workflow/shape-v1.yml`.
   route down. The shipped table sets it on `small` and `standard`.
 - `priorRoute(router, facts, today, label)` keeps or changes a profile in `shadow` or `on`
   mode; `planFacts(planText, slice?)` reads owns and points from a `burndown-slices` block.
+- `routeSpawn(input)` is the spawn-time decision. It applies to `auto` and the implementer
+  family (`implementer`, `implementer-lite`, `bd-implementer`, `bd-implementer-lite`). The
+  table picks the tier; the caller's family keeps its prefix. It never refuses a spawn: a
+  missing table, an override, a keep-role (default `fix-round`) or a pick outside the two
+  tiers keeps the requested profile and says why in `source`.
+- `routeMeta(decision)` writes the decision as the `ROUTE_META_KEYS` fields of a spawn row.
+  `summarizeRoutes(rows)` reads such rows back into agreement, would-lite, lite-without-owns,
+  fact coverage and candidate counts.
 - `./routing/node` has `DEFAULT_WORKFLOW_TABLE`, `readWorkflowTable(root)` and
   `readPriorRouter(mode, root)`.

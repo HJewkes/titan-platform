@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import type { DataSource } from "@titan-design/rpc-client";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
 import { listPage, tasksArgs } from "../server/task-list.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -120,13 +120,8 @@ function heldSource(snapshot: Snapshot): { source: DataSource; held: string[]; r
   return { source, held, release: () => release() };
 }
 
-function renderConsole(hash: string, snapshot: Snapshot | DataSource): void {
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={"format" in snapshot ? snapshotSource(snapshot) : snapshot}>
-      <App />
-    </RpcProvider>,
-  );
+function renderConsole(hash: string, snapshot: Snapshot | DataSource, { inApp = false } = {}): void {
+  renderPage("format" in snapshot ? snapshotSource(snapshot) : snapshot, hash, { inApp });
 }
 
 const group = (stage: string): HTMLElement => screen.getByTestId(`stage-group-${stage}`);
@@ -159,14 +154,14 @@ describe("the tasks list", () => {
   });
 
   it("keeps typed filter text in the query string", async () => {
-    renderConsole("#/tasks?stage=ready", recorded());
+    renderConsole("#/tasks?stage=ready", recorded(), { inApp: true });
     fireEvent.change(await screen.findByLabelText("Filter by id or title"), { target: { value: "routing" } });
     await waitFor(() => expect(window.location.hash).toBe("#/tasks?stage=ready&q=routing"));
     expect(shownIds()).toEqual(["OR-4"]);
   });
 
   it("offers to clear filters that match nothing", async () => {
-    renderConsole("#/tasks?q=nothing-like-this", recorded());
+    renderConsole("#/tasks?q=nothing-like-this", recorded(), { inApp: true });
     expect(await screen.findByText("No tasks match these filters")).toBeTruthy();
     fireEvent.click(screen.getByText("Clear filters"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks"));
@@ -174,7 +169,7 @@ describe("the tasks list", () => {
   });
 
   it("opens a task's detail from its row", async () => {
-    renderConsole("#/tasks", recorded());
+    renderConsole("#/tasks", recorded(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId("task-row-OR-1")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-1"));
     expect(await screen.findByText("A dropped handshake retries with backoff.")).toBeTruthy();
@@ -250,13 +245,13 @@ describe("a task's detail", () => {
   });
 
   it("links a mention to the task that makes it", async () => {
-    renderConsole("#/tasks/OR-1", recorded());
+    renderConsole("#/tasks/OR-1", recorded(), { inApp: true });
     fireEvent.click(await screen.findByText("orbit-relay OR-7"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-7"));
   });
 
   it("links each linked session and its agent", async () => {
-    renderConsole("#/tasks/OR-1", recorded());
+    renderConsole("#/tasks/OR-1", recorded(), { inApp: true });
     const session = await screen.findByTestId(`session-${SESSION}`);
     fireEvent.click(within(session).getByText("impl-a"));
     await waitFor(() => expect(window.location.hash).toBe("#/agents/impl-a"));
@@ -291,7 +286,7 @@ describe("a task's detail", () => {
   });
 
   it("returns to the list from the breadcrumb", async () => {
-    renderConsole("#/tasks/OR-1", recorded());
+    renderConsole("#/tasks/OR-1", recorded(), { inApp: true });
     fireEvent.click(await screen.findByRole("link", { name: "Tasks" }));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks"));
   });
