@@ -1,8 +1,6 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { SETTINGS_ENTRY } from "./cli.js";
 import { nodeContext } from "./context.js";
@@ -10,7 +8,8 @@ import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
 import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
-import { withinWallBudget } from "./test-support/cpu-budget.js";
+import { runBuiltHook, spawnBuiltHook } from "./test-support/built-hook.js";
+import { BENCH, withinWallBudget } from "./test-support/cpu-budget.js";
 import { countWork } from "./test-support/work-count.js";
 
 const HOME = "/home/you";
@@ -120,28 +119,20 @@ describe("handle: a command that fails to parse", () => {
   });
 });
 
-// CI builds before it tests; locally run `pnpm build` first.
-const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-fail-closed-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 describe("the built hook on a command that fails to parse", () => {
   // Node's start-up runs in the child, where thread CPU cannot see it, so only the bench holds the run to a second
-  // (TP-4047). Claude Code kills the hook at its settings timeout and then runs the call unchecked, so that ceiling holds
-  // on every run: past it the deny below would never reach Claude Code.
+  // (TP-4047), spawning every row. Claude Code kills the hook at its settings timeout and then runs the call unchecked:
+  // past it the deny below would never reach Claude Code. Under `pnpm test` one row spawns and the rest run the built
+  // bundle in process (TP-4453); the counted work above bounds their cost.
   const killAtMs = SETTINGS_ENTRY.hooks[0].timeout * 1000;
 
   it.each(pushShapes)("denies %s before Claude Code would kill the hook", async (_, command) => {
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
 
-    const run = await withinWallBudget(1000, () =>
-      spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], {
-        input,
-        env: { ...process.env, HOME: home },
-        encoding: "utf-8",
-        timeout: killAtMs,
-      }),
-    );
+    const run = await withinWallBudget(1000, () => (BENCH ? spawnBuiltHook(input, { home, timeoutMs: killAtMs }) : runBuiltHook(input, { home })));
 
     expect(run.signal).toBeNull();
     expect(run.status).toBe(0);

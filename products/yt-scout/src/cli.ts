@@ -1,16 +1,23 @@
 import { readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Command, CommanderError } from "commander";
 import { isOnTrial, type Watchlist } from "./config.js";
 import { claudeScoreRunner } from "./claude-runner.js";
+import { createDetector, detectNew, formatDetected, insertNew, realDeps, resolveYtDlp, type DetectDeps } from "./detect.js";
 import { casesDir, configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
+import { appendRows, type StepRow } from "./rows.js";
 import { scoreVideo, type ScoreDeps } from "./score.js";
 import type { ScoreRunner } from "./seams.js";
 import { formatSeenImport, importSeen } from "./seen-import.js";
+import { sqliteBreaker } from "./breaker.js";
 import { openScoutDb } from "./store.js";
+import { execRunner } from "./transcribe.js";
+import { runTranscribeQueue } from "./transcribe-queue.js";
 import { loadWatchlist, WatchlistError } from "./watchlist.js";
 
 type Write = (line: string) => void;
+type MakeDeps = (onRow: DetectDeps["onRow"], ytDlpBin: string) => DetectDeps;
 
 /** Exit code for a watch list that fails to parse or validate. */
 export const EXIT_CONFIG = 1;
@@ -50,6 +57,32 @@ function addSeenCommand(program: Command, write: Write): void {
       const db = openScoutDb(opts.db ?? dbPath());
       try {
         for (const line of formatSeenImport(importSeen(db, opts.root ?? ytRoot(), watchlist))) write(line);
+      } finally {
+        db.close();
+      }
+    });
+}
+
+function addTranscribeCommand(program: Command, write: Write): void {
+  program
+    .command("transcribe")
+    .description("Transcribe the due new videos, one at a time")
+    .option("--root <dir>", "youtube sources tree (default: $YT_ROOT, else the youtube initiative's sources)")
+    .option("--db <file>", "scout database (default: $TITAN_YT_SCOUT_DB, else ~/.local/state/titan-yt-scout/scout.sqlite3)")
+    .action(async (opts: { root?: string; db?: string }) => {
+      const db = openScoutDb(opts.db ?? dbPath());
+      try {
+        const report = await runTranscribeQueue(db, {
+          ytRoot: opts.root ?? ytRoot(),
+          runner: execRunner,
+          now: () => new Date(),
+          load5: () => os.loadavg()[1]!,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          random: Math.random,
+          breaker: sqliteBreaker(db),
+        });
+        write(`transcribed ${report.transcribed.length}, rescheduled ${report.rescheduled.length}, failed ${report.failed.length}, whisper refused ${report.whisperRefused.length}`);
+        if (report.breakerOpen) write("circuit breaker open: no YouTube pulls this run");
       } finally {
         db.close();
       }
@@ -113,15 +146,45 @@ function frontMatterTitle(file: string): string | undefined {
   return /^title:\s*"?(.*?)"?\s*$/m.exec(readFileSync(file, "utf8").split("\n---\n")[0] ?? "")?.[1];
 }
 
+function addDetectCommand(program: Command, write: Write, makeDeps: MakeDeps): void {
+  program
+    .command("detect")
+    .description("Poll the watch list and list ids not yet in the videos table")
+    .option("--dry-run", "list new ids without inserting them")
+    .option("--config <file>", "watch list")
+    .option("--db <file>", "scout database")
+    .option("--rows-dir <dir>", "step rows directory (default: beside the database)")
+    .action(async (opts: { dryRun?: boolean; config?: string; db?: string; rowsDir?: string }) => {
+      const watchlist = loadWatchlist(opts.config ?? configPath());
+      const db = openScoutDb(opts.db ?? dbPath());
+      const rows: StepRow[] = [];
+      try {
+        const detector = createDetector(makeDeps((row) => rows.push(row), resolveYtDlp(watchlist.yt_dlp)), watchlist.defaults.tabs);
+        const now = new Date();
+        const found = await detectNew(db, watchlist, detector, now);
+        for (const line of formatDetected(found)) write(line);
+        if (!opts.dryRun) write(`inserted ${insertNew(db, found, now)}`);
+        write(`rss fallbacks: ${rows.filter((r) => r.outcome === "fallback").length}`);
+        write(`listing failures: ${rows.filter((r) => r.outcome === "fail").length}`);
+      } finally {
+        appendRows(opts.rowsDir ?? rowsDir(), rows);
+        db.close();
+      }
+    });
+}
+
 export async function runCli(
   argv: string[],
   write: Write = console.log,
   writeErr: Write = console.error,
   scoreRunner: ScoreRunner = claudeScoreRunner,
+  makeDeps: MakeDeps = realDeps,
 ): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);
   addSeenCommand(program, write);
+  addDetectCommand(program, write, makeDeps);
+  addTranscribeCommand(program, write);
   addScoreCommand(program, write, scoreRunner);
   try {
     await program.parseAsync(argv, { from: "user" });

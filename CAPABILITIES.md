@@ -38,7 +38,7 @@ Before adding code:
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
 | [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. |
-| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. |
+| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
@@ -164,6 +164,8 @@ HarnessExecutionPort adds an open generic execution service with profile/account
 HarnessPricingPort describes an event-time quote with optional readonly normalized cache-write TTL context: reported cost, a source-provided existing estimate, a dated/versioned catalog estimate with matching/accounting policy references, or explicit unpriced reason. It supplies no arithmetic, catalog or provider adapter.
 
 For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
+
+For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames and the records they carry, import `./wire`.
 
 Key exports:
 
@@ -562,7 +564,7 @@ Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents
 
 **Use this when:**
 
-Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
+Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
 
 Key exports:
 
@@ -643,7 +645,7 @@ Key exports:
 
 - `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
 - `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
-- `capture`: `captureFrame`, `launch`, `openCapturePage`, `settleFonts`, `CapturePage`
+- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `settleFonts`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
@@ -1360,7 +1362,7 @@ Key exports:
 
 - `hooks/provider`: `RpcProviderProps`, `RpcProvider`
 - `hooks/hooks`: `InvalidateOnOptions`, `QueryArgs`, `QueryResult`, `RpcHooks`, `createRpcHooks`
-- `hooks/query-store`: `QueryStatus`
+- `hooks/query-store`: `QuerySettled`
 - `hooks/embedded-snapshot`: `SNAPSHOT_ELEMENT_ID`, `embedSnapshot`, `pageDataSource`, `readEmbeddedSnapshot`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/react-app)
 
@@ -1604,12 +1606,14 @@ Tier product, private, `products/factory`. Code-driven software-factory workflow
 
 **Use this when:**
 
-You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch.
+You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for five kinds of agent: the Shepherd reviewer, the main-red fixer, the successor implementer, and build-surface's slice implementer and slice reviewer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch.
 
 - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class.
 - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main.
 - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line.
 - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer.
+- **Build-surface implementer.** Spawned once per slice of a `build-surface` run (`titan-factory build-surface start <owner/repo> --spec <path>`), under the profile the repo's build spec names (`bd-implementer` by default), with `--role implementer` and the slice's task on its roster row. It starts in the spec's clone, works on the slice branch the workflow created, pushes, and ends its final message with a fenced JSON report that the workflow reads from its transcript. Each fix round resumes the same session, and the PR is registered with Shepherd under its name, so Shepherd's wake and successor logic follow that lineage.
+- **Build-surface reviewer.** Spawned per gated head of a slice under the spec's read-only reviewer profile, with `--role reviewer`, never in the implementer's lineage. It reviews that exact head, changes nothing, and ends with a fenced JSON verdict that a validator checks before it counts.
 - **Audit steps.** Not an agent-chat dispatch. Each agent step of `measurement-audit` (`titan-factory audit <area>`) is one `claude -p` turn through `@titan-design/agent`. The turn runs with no tools, on the CLI login, under the model the step's manifest names. It gets the inventory as data and answers with JSON that the step's schema checks.
 
 Key exports:

@@ -1,21 +1,19 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { runBuiltHook } from "./test-support/built-hook.js";
 
 // Through the built hook, as a harness runs it. CI builds before it tests; locally run `pnpm build` first.
-const bin = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-arith-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
 const PUSH = "git push origin HEAD:main";
 const HIDDEN = `X='a[$(${PUSH})]'`;
 
-function verdict(command: string): "deny" | "pass" {
+async function verdict(command: string): Promise<"deny" | "pass"> {
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
-  const run = spawnSync(process.execPath, [bin, "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8" });
+  const run = await runBuiltHook(input, { home });
   expect(run.status).toBe(0);
   return run.stdout.includes('"permissionDecision":"deny"') ? "deny" : "pass";
 }
@@ -63,8 +61,8 @@ describe("a subscript in a variable's value that holds code, whichever way the v
     ["typeset -g in a function", `f() { typeset -g X='a[$(${PUSH})]'; }; f; (( X ))`],
     ["export in a function", `f() { export X='a[$(${PUSH})]'; }; f; (( X ))`],
     ["an append to a declared value", `declare X='a['; declare X+='$(${PUSH})]'; (( X ))`],
-  ])("denies a push behind %s", (_, command) => {
-    expect(verdict(command)).toBe("deny");
+  ])("denies a push behind %s", async (_, command) => {
+    expect(await verdict(command)).toBe("deny");
   });
 });
 
@@ -86,7 +84,7 @@ describe("benign arithmetic and values stay unchecked (TP-1624)", () => {
     ["an append of plain text to a value from input", "read P; P+=' more'"],
     ["a prefix assignment to a builtin that evaluates nothing", `${HIDDEN} true`],
     ["an append to a value read from input that nothing evaluates", `read P; P+='x [$(${PUSH})]'`],
-  ])("passes %s", (_, command) => {
-    expect(verdict(command)).toBe("pass");
+  ])("passes %s", async (_, command) => {
+    expect(await verdict(command)).toBe("pass");
   });
 });

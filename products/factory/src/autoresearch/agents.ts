@@ -56,11 +56,11 @@ function admit(host: Host, profile: string): void {
 }
 
 /** A name already on the roster is a spawn a restarted host already sent, so it is joined, not sent twice. */
-async function spawnOrJoin(host: Host, name: string, profile: string, cwd: string, brief: string): Promise<void> {
+async function spawnOrJoin(host: Host, name: string, profile: string, cwd: string, brief: string, worktree?: string): Promise<void> {
   if ((await rosterRow(host.chat, name)) !== undefined) return;
   admit(host, profile);
   const { options, chat } = host;
-  const request = { agentChatBinPath: chat.bin, peerName: name, profile, brief, cwd, configDir: options.configDir };
+  const request = { agentChatBinPath: chat.bin, peerName: name, profile, brief, cwd, configDir: options.configDir, ...(worktree === undefined ? {} : { worktree }) };
   await dispatchToAgentChat(request, chat.timeoutMs, [options.profiles.implementer, options.profiles.planner]);
 }
 
@@ -88,18 +88,19 @@ async function explore(host: Host, input: ImplementRequest, signal: AbortSignal)
   const tag = runTag(input.runId);
   const name = implementerName(tag, input.round, input.idea.id);
   return host.stagger(tag)(input.round, async (responded) => {
-    await spawnOrJoin(host, name, host.options.profiles.implementer, input.tree, implementBrief(input));
+    // The implementer profile isolates in a worktree, which ignores cwd and cuts from the clone's default branch; adopting the tree keeps the work at the ratchet head.
+    await spawnOrJoin(host, name, host.options.profiles.implementer, input.tree, implementBrief(input), input.tree);
     await untilResponded(host, name, responded, signal);
     return { name, ...(await awaitAgent(host.chat, name, signal)) };
   });
 }
 
-/** The winner's agent resumes in its own cwd, so the idea tree, already at the ratchet head, is moved there for the turn and back after. */
+/** An agent that adopted the idea tree already sits in it; one with another home has the tree, already at the ratchet head, moved there for the turn and back after. */
 async function exploit(host: Host, input: ImplementRequest & { resumeFrom: string }, signal: AbortSignal): Promise<Done> {
   const name = input.resumeFrom;
   const home = (await rosterRow(host.chat, name))?.cwd;
   if (home === undefined) throw new Error(`[resume] ${name} is not on the roster`);
-  if (existsSync(input.tree)) {
+  if (home !== input.tree && existsSync(input.tree)) {
     if (existsSync(home)) throw new Error(`[tree-occupied] ${home} exists, so ${name}'s tree cannot be re-created there`);
     await execGit(["worktree", "move", input.tree, home], host.options.clone);
   }

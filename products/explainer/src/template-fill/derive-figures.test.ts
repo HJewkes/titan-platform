@@ -22,6 +22,22 @@ describe("template fill: chart beats", () => {
     expect(found.reveals).toEqual([{ target: "series-1", atCue: "Monday" }]);
   });
 
+  it("each cued bar reveals on its own cue", () => {
+    // Arrange
+    const spoken = "North sorted three, south sorted five, and east sorted only two.";
+    const visual = { beat: "chart", labels: ["north: 3", "south: 5", "east: 2"], cues: [cue("series-1", "North"), cue("series-3", "east")] };
+
+    // Act
+    const found = fillSolo(visual, spoken);
+
+    // Assert
+    expect(found.slots.kind).toBe("bar");
+    expect(found.reveals).toEqual([
+      { target: "series-1", atCue: "North" },
+      { target: "series-3", atCue: "east" },
+    ]);
+  });
+
   it("draws three points whose names are not dates as bars", () => {
     // Arrange / Act
     const found = fillSolo({ beat: "chart", labels: ["north: 3", "south: 5", "east: 2"] });

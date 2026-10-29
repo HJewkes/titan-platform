@@ -48,6 +48,7 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@titan-design/egress-scan": "workspace:^",
+    "@titan-design/evidence": "workspace:^",
     "@titan-design/frame-capture": "workspace:^",
     "@titan-design/test-kit": "workspace:*",
     "@types/react": "^19.3.0",

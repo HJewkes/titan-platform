@@ -8,6 +8,7 @@ import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { ParseError, tokenize } from "./lexer.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -155,15 +156,23 @@ describe.skipIf(!bashOnPath)("bash on each compound redirect probe", () => {
   const scratch = mkdtempSync(join(tmpdir(), "tool-guard-tp-2573-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
+  // Every row runs through one driver (TP-4453).
+  const bashN = shellOracle("tool-guard-tp-2573-rows-", (_dir, command: string) => ({
+    run: { program: "bash", args: ["-n", "-c", command], cwd: scratch, input: "" },
+    read: (run) => run,
+  }));
+  for (const command of [...PROBES, ...GROUPED]) bashN.add(command);
+  bashN.beforeAll();
+
   it.each(PROBES)("bash -n rejects %j as a syntax error", (command) => {
-    const run = spawnSync("bash", ["-n", "-c", command], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+    const run = bashN.get(command);
 
     expect(run.status).not.toBe(0);
     expect(run.stderr).toMatch(/syntax error near (unexpected token )?`/);
   });
 
   it.each(GROUPED)("bash -n accepts %j", (command) => {
-    const run = spawnSync("bash", ["-n", "-c", command], { cwd: scratch, encoding: "utf-8", timeout: 5000 });
+    const run = bashN.get(command);
 
     expect(run.status).toBe(0);
   });

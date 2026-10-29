@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { describeOverflow, overflowPx } from "./stageFit.js";
+import { describeOverflow } from "./overflow-row.js";
+import { overflowPx } from "./stageFit.js";
 
 const STAGE = { w: 1920, h: 793 };
 

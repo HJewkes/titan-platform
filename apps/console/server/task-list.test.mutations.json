@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a list row carries the whole staged task again",
+      "file": "apps/console/server/task-list.ts",
+      "find": "export function listRow({ slug, id, title, severity, stage, stageReason, stageGuessed }: TaskListRow): TaskListRow {\n  return { slug, id, title, ...(severity !== undefined ? { severity } : {}), stage, stageReason, stageGuessed };",
+      "replace": "export function listRow(row: TaskListRow): TaskListRow {\n  return row;",
+      "kills": [
+        "a task list row keeps only what the board renders, whatever else the staged task carries"
+      ]
+    },
+    {
+      "name": "the list sends every row of each stage again",
+      "file": "apps/console/server/task-list.ts",
+      "find": "++counts[row.stage] <= perStage",
+      "replace": "++counts[row.stage] > 0",
+      "kills": [
+        "a task list page caps each stage at perStage rows in the given order, and still counts every match",
+        "a task list page caps at 200 rows a stage by default"
+      ]
+    },
+    {
+      "name": "the initiatives list follows the filters",
+      "file": "apps/console/server/task-list.ts",
+      "find": "initiatives: [...new Set(rows.map((row) => row.slug))].sort()",
+      "replace": "initiatives: [...new Set(tasks.map((row) => row.slug))].sort()",
+      "kills": [
+        "a task list page names every initiative with a row, whatever the filters"
+      ]
+    }
+  ]
+}
