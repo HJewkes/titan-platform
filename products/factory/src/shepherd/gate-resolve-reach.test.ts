@@ -24,8 +24,7 @@ function reachingNames(files: Record<string, string>): string[] {
   });
   const program = ts.createProgram(paths, { ...COMPILER_OPTIONS, noEmit: true });
   const scanned = paths.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
-  const inRoot = (file: ts.SourceFile): boolean => file.fileName.startsWith(root);
-  const kept = filesReaching(program, inRoot, (file) => basename(file.fileName) === "sink.ts", scanned);
+  const kept = filesReaching(program, (file) => basename(file.fileName) === "sink.ts", scanned);
   return kept.map((file) => file.fileName.slice(root.length + 1)).sort();
 }
 
@@ -74,5 +73,27 @@ describe("the files that reach a resolve sink", () => {
     });
 
     expect(kept).toEqual(["sink.ts"]);
+  });
+
+  it("follows a chain through a file outside any unit", () => {
+    const kept = reachingNames({
+      "packages/hitl/src/sink.ts": SINK,
+      "scripts/shim.ts": `export { resolve as answer } from "../packages/hitl/src/sink.js";\n`,
+      "products/p/src/user-shim.ts": `import { answer } from "../../../scripts/shim.js";\nexport const pass = () => answer("g", "me");\n`,
+    });
+
+    expect(kept).toEqual(["packages/hitl/src/sink.ts", "products/p/src/user-shim.ts", "scripts/shim.ts"]);
+  });
+
+  it("keeps an importer of a module whose augmentation reaches a sink", () => {
+    const kept = reachingNames({
+      "sink.ts": SINK,
+      "plain.ts": `export interface Tools { name: string; }\n`,
+      "aug.ts": `import type { resolve } from "./sink.js";\ndeclare module "./plain.js" { interface Tools { make(): typeof resolve; } }\nexport {};\n`,
+      "user-aug.ts": `import type { Tools } from "./plain.js";\nexport const pass = (t: Tools) => t.make()("g", "me");\n`,
+      "unrelated.ts": `export const answer = 42;\n`,
+    });
+
+    expect(kept).toEqual(["aug.ts", "plain.ts", "sink.ts", "user-aug.ts"]);
   });
 });

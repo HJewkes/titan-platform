@@ -125,7 +125,7 @@ export class GateResolveClosure {
     const all = scanned.map((path) => program.getSourceFile(path)).filter((file): file is ts.SourceFile => file !== undefined);
     this.anchorSinkInterfaces();
     if (this.rules.implementers) this.addImplementers(program.getSourceFiles());
-    const files = filesReaching(program, (file) => unitOf(this.root, file.fileName) !== undefined, (file) => this.holdsSink(file), all);
+    const files = filesReaching(program, (file) => this.holdsSink(file), all);
     if (this.rules.forwarders) this.addForwarders(files);
     return files.filter((file) => this.touches(file)).map((file) => relative(this.root, file.fileName).split(sep).join("/"));
   }
