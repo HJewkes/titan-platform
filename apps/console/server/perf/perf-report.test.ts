@@ -85,7 +85,9 @@ describe("perf.report over HTTP", () => {
     const answers: Response[] = [];
     // The browser adds Host and Origin to a same-origin post; `keepalive` stays in the browser and never reaches the wire.
     const browser = async (url: string, { keepalive: _, ...init }: RequestInit): Promise<void> => {
-      answers.push(await app.request(`http://localhost:7400${url}`, { ...init, headers: { ...(init.headers as Record<string, string>), origin: "http://localhost:7400" } }));
+      const headers = new Headers(init.headers);
+      headers.set("origin", "http://localhost:7400");
+      answers.push(await app.request(`http://localhost:7400${url}`, { ...init, headers }));
     };
 
     postReport({ rows: [{ kind: "route", view: "home", detail: false, ms: 12, queries: 1 }], dropped: 0 }, browser);
