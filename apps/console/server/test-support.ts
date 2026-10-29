@@ -6,6 +6,7 @@ import { createServer, request, type IncomingMessage, type Server } from "node:h
 import { request as httpsRequest } from "node:https";
 import { isIP, type AddressInfo } from "node:net";
 import path from "node:path";
+import { format } from "node:util";
 import { SESSION_COOKIE } from "@titan-design/daemon";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { z } from "zod";
@@ -255,4 +256,31 @@ export async function importStoryRound({ scratch, roundsDir, storybooksDir }: { 
   await writeFile(path.join(source, "storybook", "storybook.json"), JSON.stringify(sidecar));
   await importRound({ source, roundsDir, storybooksDir });
   return buildIdOf(files);
+}
+
+export interface CliRun {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Runs one titan-console verb handler in process and reports it the way the spawned bin would: console.log and
+ * console.error lines become stdout and stderr, and process.exitCode the exit code.
+ */
+export async function runConsoleCli(verb: () => Promise<void>): Promise<CliRun> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const { log, error } = console;
+  const exitCode = process.exitCode;
+  console.log = (...args: unknown[]) => void stdout.push(`${format(...args)}\n`);
+  console.error = (...args: unknown[]) => void stderr.push(`${format(...args)}\n`);
+  process.exitCode = undefined;
+  try {
+    await verb();
+    return { code: Number(process.exitCode ?? 0), stdout: stdout.join(""), stderr: stderr.join("") };
+  } finally {
+    Object.assign(console, { log, error });
+    process.exitCode = exitCode;
+  }
 }
