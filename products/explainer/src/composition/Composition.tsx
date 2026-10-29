@@ -48,7 +48,7 @@ const BOUNDARY_S = 1e-9;
 
 /**
  * A custom layer draws in the stage box between empty chrome bands, as a stage kind does, so its content clears the
- * chrome by construction and qa's under-chrome rule sees any overflow. Its anchors are cells of the stage box.
+ * chrome by construction and qa's under-chrome rule sees any overflow. Its anchors stay cells of the full frame.
  */
 function CustomLayerBeatView({ beat, module }: { beat: TimelineBeat; module: string }) {
   return (

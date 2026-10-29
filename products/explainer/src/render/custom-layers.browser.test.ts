@@ -77,7 +77,7 @@ describe("a custom layer on the composition page", { timeout: BROWSER_TIMEOUT_MS
 
     expect(seen.errors).toEqual([]);
     expect(seen.text).toBe("Parcels waiting: 10");
-    expect(seen.box).toEqual({ x: 320, y: 180 + STAGE_TOP_PX, width: 1280, height: 720 });
+    expect(seen.box).toEqual({ x: 320, y: STAGE_TOP_PX, width: 1280, height: 540 });
     const [table] = buildOccupancy({ stage: STAGE, layouts: layerLayouts(timelineFromArtifact(staged)), marks: [{ beat: BEAT.id, t, elements: [{ id: SYNTHETIC_ELEMENT, box: seen.box! }] }] });
     expect(table).toMatchObject({ beat: BEAT.id, source: "declared" });
     expect(table!.cells.B2).toEqual([CUSTOM_LAYER_ELEMENT, SYNTHETIC_ELEMENT]);

@@ -44,8 +44,9 @@ The packet describes a single beat and nothing about its neighbours:
   seconds as `const { t } = useBeatTime();`. Arithmetic on the object itself makes every value drawn
   from it `NaN`.
 - The layer draws in the stage box between the headline band and the source band: 1920 px wide and
-  about 725 px tall. Its `position: absolute; inset: 0` is that box, and `anchors` are cells of it.
-  Text or shapes past the box run under the chrome, which the build check refuses.
+  about 725 px tall, starting about 190 px from the top of the frame. Its `position: absolute;
+  inset: 0` is that box; `anchors` still name cells of the full frame. Text or shapes past the box
+  run under the chrome, which the build check refuses.
 - No text is smaller than 40 px, the video's type floor. The page raises smaller text to 40 px, so a
   layout sized for smaller text overflows its box.
 - Never show `NaN`, `undefined`, `null` or `[object …]`. The build check refuses a layer that does.
