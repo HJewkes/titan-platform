@@ -68,7 +68,11 @@ function failed(io: CliIo, error: unknown): number {
 export async function draftPlanRound(source: string, args: PlanRoundArgs, ports: PlanRoundPorts): Promise<number> {
   try {
     const plan = readPlanBlock(await ports.readPlan(source));
-    const optional = { ...(args.supersedes.length > 0 && { supersedes: args.supersedes }), ...(args.storybookUrl && { storybookUrl: args.storybookUrl }), ...(args.pinFrom && { pinFrom: args.pinFrom }) };
+    const optional = {
+      ...(args.supersedes.length > 0 && { supersedes: args.supersedes }),
+      ...(args.storybookUrl && { storybookUrl: args.storybookUrl }),
+      ...(args.pinFrom && { pinFrom: args.pinFrom }),
+    };
     const options = { round: args.round, base: args.base, visualPaths: ports.visualPaths(plan.repo), ...optional };
     const result = await planRound(plan, options, ports.git(args.checkout ?? process.cwd()));
     for (const note of result.notes) ports.io.stderr(`note: ${note}\n`);
@@ -80,7 +84,7 @@ export async function draftPlanRound(source: string, args: PlanRoundArgs, ports:
 }
 
 /** `--verify <ref>`: exit 0 when the ref stays inside the plan, 1 with one stderr line per drift, 65 for a plan the guard could not honour. */
-export async function verifyPlanRound(source: string, ref: string, args: PlanRoundArgs, ports: PlanRoundPorts): Promise<number> {
+async function verifyPlanRound(source: string, ref: string, args: PlanRoundArgs, ports: PlanRoundPorts): Promise<number> {
   try {
     const plan = readPlanBlock(await ports.readPlan(source));
     const problems = await verifyPlan(plan, { source, ref, base: args.base }, ports.git(args.checkout ?? process.cwd()));
@@ -94,7 +98,7 @@ export async function verifyPlanRound(source: string, ref: string, args: PlanRou
 }
 
 /** The verify reads a head against the plan's own pins, so a pin taken from another ref would check nothing. */
-export async function runPlanRound(source: string, args: PlanRoundArgs, ports: PlanRoundPorts): Promise<number> {
+async function runPlanRound(source: string, args: PlanRoundArgs, ports: PlanRoundPorts): Promise<number> {
   if (args.verify === undefined) return draftPlanRound(source, args, ports);
   if (args.pinFrom === undefined) return verifyPlanRound(source, args.verify, args, ports);
   ports.io.stderr("error: --verify and --pin-from do not combine: verify the head against the plan, then re-ask with --pin-from\n");

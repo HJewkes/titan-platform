@@ -2000,6 +2000,43 @@ own plan round with a slice task such as `titan-platform/TP-1234-s2`, and regist
 the same `--task`. Two PRs under one task string fail closed: the first to register claims both
 approvals, and the second gates.
 
+**Content drift.** A `ci-policy` approval holds only while every byte the PR merges matches its
+pin, so a policy plan carries the final content of every file in its PR, and the implementer
+writes those files byte-for-byte. Skill and visual approvals pin paths, not content: only an
+unplanned path drifts them. Before pushing and before registering, the implementer runs:
+
+```
+titan-factory shepherd plan-round <plan.md> --verify HEAD
+```
+
+`--verify <ref>` prints no round. It reads `git diff --name-status -M <base>...<ref>` in
+`--checkout` and exits 1, with one `drift:` line per problem on stderr, when the ref changes a
+path the plan does not list (a rename's source included), when a pinned file's blob at the ref
+differs from its pin (the line names the path and both blob prefixes), or when a file pinned
+`absent` exists at the ref. A skill-only or visual-only plan passes a planned file whose content
+changed. It exits 0 when the ref stays inside the plan, and 65 for a plan that would be refused.
+An implementer whose verify fails stops and tells the coordinator, rather than editing the files
+until it passes.
+
+Every `drift:` line ends with the re-ask. The coordinator adds any unplanned path to the block,
+drops the block's inline `content` and `absent` fields, and drafts the next round from the head:
+
+```
+titan-factory shepherd plan-round <plan.md> --pin-from <head sha> --round <n+1> --supersedes plan-<task>-r<n> | titan-console decisions file - --seat <coordinator> --initiative <slug>
+```
+
+`--pin-from <ref>` pins each planned file to `git rev-parse <ref>:<path>`, or `null` where the
+ref has no such path, and shows the owner that ref's bytes against `--base`. It refuses a block
+that still gives a file `content` or `absent` inline, since the ref's bytes are the new answer,
+and it does not combine with `--verify`. The owner approves the new diff, the console write
+claims it for the task's one live registration, and the next `sh-policy` read honours it. The
+superseded round is withdrawn while it is still open; a row its owner already approved stays,
+and it does not cover the new head, so it is harmless. A drift found only at merge gates at
+`ci-policy-weakened` or `skill-path` with "unplanned change", and an open approve-merge gate is
+re-decided only by a new head or base, so verify before review keeps the owner off the merge
+path. When main moves under a pinned file, verify against the updated head and re-ask the same
+way.
+
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
 a replay finds it instead of posting again. It leads with a readable summary: a one-line outcome (merged, gated or refused, with the reason and the short head sha), a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record follows inside a collapsed `Machine evidence` block, unchanged:

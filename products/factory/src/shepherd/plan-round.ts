@@ -65,7 +65,7 @@ export function blobOf(bytes: Buffer): string {
 }
 
 /** Blob shas read at `--pin-from`, by planned path; null where the ref holds no such path. */
-export type RefPins = ReadonlyMap<string, string | null>;
+type RefPins = ReadonlyMap<string, string | null>;
 
 export function pinFiles(plan: PlanBlock, pins?: RefPins): CiPolicyScope["files"] {
   if (pins) return plan.files.map((file) => ({ path: file.path, blob: pins.get(file.path) ?? null }));
@@ -73,7 +73,7 @@ export function pinFiles(plan: PlanBlock, pins?: RefPins): CiPolicyScope["files"
 }
 
 /** The re-ask pins the bytes a drifted head really holds, so a path that also states its bytes inline would leave two answers. */
-export async function pinsAt(plan: PlanBlock, git: GitRead, ref: string): Promise<RefPins> {
+async function pinsAt(plan: PlanBlock, git: GitRead, ref: string): Promise<RefPins> {
   const inline = plan.files.filter((file) => file.content !== undefined || file.absent !== undefined).map((file) => file.path);
   if (inline.length > 0) throw new PlanRoundRefused(`--pin-from ${ref} pins every planned file from that ref, and ${inline.join(", ")} also gives content or absent inline; drop those fields from the block`);
   return new Map(await Promise.all(plan.files.map(async (file) => [file.path, await git.blob(ref, file.path)] as const)));
