@@ -28,6 +28,8 @@ export function ageOf(openedAt: string, now: number = Date.now()): string {
 }
 
 const RELEASE_GATE = /shepherd-release\//;
+/** `inbox.list` lists the planning items only when asked; the default read counts them. */
+const PLANNING_READ = { planning: true };
 
 /** The source badge: what kind of thing is waiting, read from where the item came from. */
 export function badgeOf(item: InboxItem): { label: string; color: "info" | "warning" | "error" | "primary" | "secondary" | "default" } {
@@ -117,35 +119,26 @@ function followEvidence(evidence: string): void {
 
 /** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs; `#/inbox/<id>` focuses one item. */
 export function InboxPage({ route }: { route?: Route }): ReactNode {
-  const inbox = useQuery("inbox.list");
+  // A link may name a planning item, which only the planning read lists.
+  const inbox = useQuery("inbox.list", route?.id === undefined ? {} : PLANNING_READ);
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
   // A snapshot exported before TP-4044 carries no nudges.
   const { items, gaps, fyiCount, derived, nudges = [], planningCount } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
+  const planning = items.filter((item) => item.section === "planning");
   return (
-<<<<<<< HEAD
-    <VStack gap={6}>
-      <GapBanners gaps={gaps} />
-      {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
-      <BlockingSection items={blocking} quiet={planningCount === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
-      {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-      {planningCount > 0 ? <PlanningSection count={planningCount} /> : null}
-      <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
-    </VStack>
-=======
     <InboxFocusProvider value={route?.id}>
       <VStack gap={6}>
         <FocusNotice items={items} focusId={route?.id} gapped={gaps.length > 0} />
         <GapBanners gaps={gaps} />
         {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
-        <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
+        <BlockingSection items={blocking} quiet={planningCount === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
         {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-        {planning.length > 0 ? <PlanningSection items={planning} startOpen={holdsFocus(planning, route?.id)} /> : null}
+        {planningCount > 0 ? <PlanningSection count={planningCount} startOpen={holdsFocus(planning, route?.id)} /> : null}
         <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
       </VStack>
     </InboxFocusProvider>
->>>>>>> origin/main
   );
 }
 
@@ -224,15 +217,9 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
   );
 }
 
-<<<<<<< HEAD
-/** Planning can run to hundreds of rows, so it opens only when asked, and only then are its rows read. */
-function PlanningSection({ count }: { count: number }): ReactNode {
-  const [isOpen, setOpen] = useState(false);
-=======
-/** Planning can run to hundreds of rows, so it opens only when asked, or when a link names one of them. */
-function PlanningSection({ items, startOpen }: { items: readonly InboxItem[]; startOpen: boolean }): ReactNode {
+/** Planning can run to hundreds of rows, so it opens only when asked, or when a link names one of them; only then are its rows read. */
+function PlanningSection({ count, startOpen }: { count: number; startOpen: boolean }): ReactNode {
   const [isOpen, setOpen] = useState(startOpen);
->>>>>>> origin/main
   return (
     <Section testID="inbox-planning">
       <SectionHeader title={`Planning (${count})`} subtitle="Answered at each item's source" />
@@ -249,7 +236,7 @@ function PlanningSection({ items, startOpen }: { items: readonly InboxItem[]; st
 }
 
 function PlanningRows(): ReactNode {
-  const planning = useQuery("inbox.list", { planning: true });
+  const planning = useQuery("inbox.list", PLANNING_READ);
   if (planning.status === "loading") return <Spinner size="sm" label="Loading the planning items" />;
   if (planning.data === undefined) return <Alert status="error" message={`Could not load the planning items: ${planning.error.message}`} />;
   return <InboxRows items={planning.data.items.filter((item) => item.section === "planning")} />;
