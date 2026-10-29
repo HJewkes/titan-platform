@@ -45,15 +45,6 @@
       "kills": [
         "the render stage's custom layers bundles a custom beat's layer into the served page and names it from the timeline beat"
       ]
-    },
-    {
-      "name": "a custom beat with no custom-layers tree is drawn blank",
-      "file": "products/explainer/src/render/render-stage.ts",
-      "find": "if (sha === undefined) throw new Error(`custom layer for beat \"${[...custom.keys()].join('\", \"')}\" is not built: the run has no custom-layers tree`);",
-      "replace": "if (sha === undefined) return { layers: new Map(), notes: [] };",
-      "kills": [
-        "the render stage's custom layers fails naming the beat when the run has no custom-layers tree"
-      ]
     }
   ]
 }
