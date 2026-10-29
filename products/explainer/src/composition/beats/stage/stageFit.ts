@@ -64,8 +64,8 @@ function elementName(el: HTMLElement, frame: HTMLElement): string {
 function textLeaves(frame: HTMLElement): TextLeaf[] {
   const leaves = [...frame.querySelectorAll("*")].filter((el): el is HTMLElement => el instanceof HTMLElement && el.childElementCount === 0 && el.offsetParent !== null);
   return leaves
-    .filter((el) => (el.textContent ?? "").trim() !== "")
-    .map((el) => ({ element: elementName(el, frame), text: (el.textContent ?? "").trim(), w: Math.max(el.offsetWidth, el.scrollWidth), h: Math.max(el.offsetHeight, el.scrollHeight) }));
+    .filter((el) => el.textContent.trim() !== "")
+    .map((el) => ({ element: elementName(el, frame), text: el.textContent.trim(), w: Math.max(el.offsetWidth, el.scrollWidth), h: Math.max(el.offsetHeight, el.scrollHeight) }));
 }
 
 /** Below this scale no text shrinks further: every text token is on the 40 px floor by 40 / 184 (the stat figure). */

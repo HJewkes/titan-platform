@@ -34,8 +34,9 @@ describe("an overflow row", () => {
 
     const row = overflowRow("list-1", { ...NONE, top: 25, bottom: 25 }, leaves);
 
-    assert.equal(row?.element, "items-2 beat-list-text");
-    assert.equal(row?.hint, 'shorten items-2 beat-list-text "a long item that wraps" to <= 16 chars or drop an item');
+    assert.ok(row);
+    assert.equal(row.element, "items-2 beat-list-text");
+    assert.equal(row.hint, 'shorten items-2 beat-list-text "a long item that wraps" to <= 16 chars or drop an item');
   });
 
   test("reads as the overflow, the element and the hint on one line", () => {

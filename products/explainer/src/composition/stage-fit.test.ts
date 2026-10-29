@@ -44,7 +44,7 @@ async function atMoment<T>(fixture: string, t: number, read: () => T, report = f
 }
 
 function smallestTextPx(): number {
-  const leaves = [...document.querySelectorAll(".beat-frame *")].filter((el) => el.childElementCount === 0 && (el.textContent ?? "").trim() !== "");
+  const leaves = [...document.querySelectorAll(".beat-frame *")].filter((el) => el.childElementCount === 0 && el.textContent.trim() !== "");
   return Math.min(...leaves.map((el) => Number.parseFloat(getComputedStyle(el).fontSize)));
 }
 
@@ -66,9 +66,10 @@ describe("the stage fit", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const { value: row, errors } = await atMoment("stat-floor.timeline.json", 2.9, () => window.__stageOverflows?.["label-past-floor"], true);
 
     assert.deepEqual(errors, []);
-    assert.equal(row?.element, "figures-2 beat-stat-label");
-    assert.ok((row?.px ?? 0) > 0);
-    assert.match(row?.hint ?? "", /^shorten figures-2 beat-stat-label "a synthetic label far too long[^"]*" to <= \d+ chars$/);
+    assert.ok(row);
+    assert.equal(row.element, "figures-2 beat-stat-label");
+    assert.ok(row.px > 0);
+    assert.match(row.hint, /^shorten figures-2 beat-stat-label "a synthetic label far too long[^"]*" to <= \d+ chars$/);
   });
 
   // Mutation: throw on the first overflow in report mode too; the scan then stops at the stat beat and never sees the line.
