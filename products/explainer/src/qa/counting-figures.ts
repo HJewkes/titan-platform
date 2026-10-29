@@ -5,6 +5,9 @@ export const PLAIN_NUMBER = /^[£$€]?\d[\d,]*(?:\.\d+)?\s?(?:k|K|M|bn|B|%)?$/;
 
 const SAME_PLACE_PX = 4;
 
+/** One figure's next sample: only the shown value moves; where and when it first appeared stay as the first sample set them. */
+export const settle = <T extends { text: string }>(first: T, latest: { text: string }): T => ({ ...first, text: latest.text });
+
 type Figure = Pick<ProbedText, "text"> & Partial<Pick<ProbedText, "element" | "lines">>;
 
 interface Anchor {

@@ -11,7 +11,7 @@
  * where the next one starts, and a beat's last word ends at its own start.
  */
 import type { ProbedMoment } from "@titan-design/render-qa";
-import { countingElements, PLAIN_NUMBER } from "./counting-figures.js";
+import { countingElements, PLAIN_NUMBER, settle } from "./counting-figures.js";
 import type { TimingGate, TimingInput } from "./timing-gates.js";
 
 /** RW-12's margin past the last referring word. */
@@ -55,7 +55,10 @@ export function textSpans(probed: readonly ProbedMoment[]): TextSpan[] {
       spans.push({ ...span, untilS: moment.t });
       open.delete(key);
     }
-    for (const [key, t] of shown) open.set(key, { text: t.text, element: t.element, beat: moment.beat, fromS: open.get(key)?.fromS ?? moment.t, untilS: null });
+    for (const [key, t] of shown) {
+      const prior = open.get(key);
+      open.set(key, prior ? settle(prior, t) : { text: t.text, element: t.element, beat: moment.beat, fromS: moment.t, untilS: null });
+    }
   }
   return [...spans, ...open.values()];
 }

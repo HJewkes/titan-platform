@@ -2,7 +2,7 @@ import type { ProbedText } from "@titan-design/render-qa";
 import { numberToWords } from "@titan-design/speech-vet";
 import { z } from "zod";
 import { numberForms } from "../spoken-numbers.js";
-import { countingElements, PLAIN_NUMBER } from "./counting-figures.js";
+import { countingElements, PLAIN_NUMBER, settle } from "./counting-figures.js";
 
 /**
  * Narration carries every on-screen fact (content standards XT-36; WCAG 1.2.5 AA without an audio-description track):
@@ -179,9 +179,14 @@ export function unspokenFacts(beat: string, texts: readonly ScreenText[], spoken
 /** A figure counting up in place shows each step as its own text; the viewer takes away the one it settles on. */
 function settledTexts(samples: readonly ScreenText[], counting: ReadonlySet<string>): ScreenText[] {
   const isStep = (text: ScreenText) => text.element !== undefined && counting.has(text.element) && PLAIN_NUMBER.test(text.text.trim());
-  const last = new Map<string, ScreenText>();
-  for (const text of samples) if (isStep(text)) last.set(text.element!, text);
-  return samples.filter((text) => !isStep(text) || last.get(text.element!) === text);
+  const first = new Map<string, ScreenText>();
+  const settled = new Map<string, ScreenText>();
+  for (const text of samples) {
+    if (!isStep(text)) continue;
+    if (!first.has(text.element!)) first.set(text.element!, text);
+    settled.set(text.element!, settle(first.get(text.element!)!, text));
+  }
+  return samples.flatMap((text) => (!isStep(text) ? [text] : first.get(text.element!) === text ? [settled.get(text.element!)!] : []));
 }
 
 /** The report for qa.json: every probed beat's on-screen text against the words heard in it. */

@@ -133,6 +133,14 @@ describe("text spans", () => {
     expect(spans.map((s) => s.text)).toEqual(["12", "40"]);
   });
 
+  it("text still shown after a beat cut keeps the beat it first showed in", () => {
+    const probed = [moment(0, [["Queue", "div.chapter"]]), { ...moment(1, [["Queue", "div.chapter"]]), beat: "b2" }, moment(2, [])];
+
+    const spans = textSpans(probed);
+
+    expect(spans).toEqual([expect.objectContaining({ text: "Queue", beat: "b1", fromS: 0, untilS: 2 })]);
+  });
+
   it("words replacing words in one element stay separate spans", () => {
     const probed = [moment(0, [["Queue", "div.t"]]), moment(0.5, [["Cache", "div.t"]]), moment(1, [])];
 
