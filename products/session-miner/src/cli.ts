@@ -199,7 +199,7 @@ function attachFrictionDaily(program: Command, io: CliIo, onExit: (code: number)
         dryRun: opts.dryRun === true,
         inbox: io.consoleInbox ?? titanConsoleInbox,
       });
-      io.stdout((program.opts() as { json?: boolean }).json ? `${JSON.stringify(result)}\n` : renderFrictionResult(result));
+      io.stdout(program.opts().json === true ? `${JSON.stringify(result)}\n` : renderFrictionResult(result));
       onExit(EXIT.OK);
     });
 }

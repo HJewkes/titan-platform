@@ -13,6 +13,7 @@ import {
   renderFrictionTop,
   type FrictionDailyReport,
 } from "@titan-design/session-analytics";
+import { z } from "zod";
 import { withEventsDb } from "./insights/blocked-flow-sources.js";
 
 /** The owner inbox, through titan-console's own CLI; tests inject a fake. */
@@ -110,17 +111,23 @@ const execFileAsync = promisify(execFile);
 /** titan-console's exit for an unknown item id. */
 const EXIT_UNKNOWN_ITEM = 66;
 
-const exitOf = (error: unknown) => (error as { code?: unknown }).code;
-const stderrOf = (error: unknown) => String((error as { stderr?: unknown }).stderr ?? "");
+const withdrawOutput = z.object({ outcome: z.string() });
+const failedRun = z.object({ code: z.unknown(), stderr: z.unknown() });
+
+/** An unknown id, or one the owner already answered, leaves nothing to withdraw. */
+function nothingToWithdraw(error: unknown): boolean {
+  const run = failedRun.safeParse(error);
+  return run.success && (run.data.code === EXIT_UNKNOWN_ITEM || String(run.data.stderr).includes("already answered"));
+}
 
 /** titan-console on PATH; the deposit goes on stdin, so no shell ever sees its text. */
 export const titanConsoleInbox: ConsoleInboxPort = {
   async withdraw(id, reason) {
     try {
       const { stdout } = await execFileAsync("titan-console", ["inbox", "withdraw", id, "--reason", reason, "--as", FRICTION_ASKER, "--actor", FRICTION_ASKER, "--json"]);
-      return (JSON.parse(stdout) as { outcome?: unknown }).outcome === "withdrawn";
+      return withdrawOutput.parse(JSON.parse(stdout)).outcome === "withdrawn";
     } catch (error) {
-      if (exitOf(error) === EXIT_UNKNOWN_ITEM || stderrOf(error).includes("already answered")) return false;
+      if (nothingToWithdraw(error)) return false;
       throw error;
     }
   },
