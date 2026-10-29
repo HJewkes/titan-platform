@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { openSessionGraph } from "@titan-design/session-graph";
 import { activeWorkClient } from "./active-work.js";
+import type { BranchInput, BranchStates } from "./branch-prs.js";
 import type { RepoEvidence } from "./repo-evidence.js";
-import { tasksCommands, type TaskDetail, type TasksResult, type TasksSource } from "./tasks.js";
+import { tasksCommands, type TaskArtifacts, type TaskDetail, type TaskMentions, type TasksResult, type TasksSource } from "./tasks.js";
 import { startFakeDaemon, type FakeDaemon } from "./test-support.js";
 
 // Synthetic records in active-work's wire shapes; nothing here comes from a real workspace.
@@ -33,14 +34,7 @@ const ARTIFACTS = {
   items: [{ slug: "orbit-relay", artifacts: { branches: [{ repo: "/synthetic/orbit", name: "pc-or-1-retry" }, { repo: "/synthetic/orbit", name: "pc-or-3-old" }], stashes: [], worktrees: [] } }],
 };
 
-const STATUS = {
-  slug: "orbit-relay",
-  branches: [
-    { repo: "/synthetic/orbit", name: "pc-or-1-retry", present: true, last_commit_iso: null, ahead: 2, behind: 0, pr: { number: 41, state: "OPEN", title: "OR-1: Retry", url: "https://example.invalid/41", checks: "pass (3/3)" } },
-    { repo: "/synthetic/orbit", name: "pc-or-3-old", present: false, last_commit_iso: null, ahead: null, behind: null, pr: null },
-  ],
-  worktrees: [{ path: "/synthetic/orbit/.worktrees/or-1", repo: "/synthetic/orbit", branch: "pc-or-1-retry", present: true, dirty: false, files_changed: 0, ahead: 0, behind: 0, has_upstream: true }],
-};
+const PR_41 = { number: 41, state: "OPEN", title: "OR-1: Retry", url: "https://example.invalid/41", checks: "pass (3/3)" };
 
 const REFERENCES = [
   { slug: "orbit-relay", source: "task", file: "tasks/OR-7.yml", field: "notes", text: "Follows OR-1" },
@@ -69,12 +63,26 @@ const OTHER = "0a1b2c3d-0000-4000-8000-0000000000bb";
 let daemon: FakeDaemon | undefined;
 let dir: string;
 let calls: string[];
+let taskLists: Record<string, unknown>[];
 let registryServed: boolean;
+let taskShowServed: boolean;
+let failing: Set<string>;
+let branchLookups: BranchInput[][];
+
+/** What the cached `gh pr list` reader answers, without spawning anything. */
+async function fakeBranches(branches: readonly BranchInput[]): Promise<BranchStates> {
+  branchLookups.push([...branches]);
+  return { branches: branches.map(({ name }) => ({ repo: "orbit", name, present: true, pr: name === "pc-or-1-retry" ? PR_41 : null })), degraded: [] };
+}
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-tasks-"));
   calls = [];
+  taskLists = [];
   registryServed = true;
+  taskShowServed = true;
+  failing = new Set();
+  branchLookups = [];
 });
 
 afterEach(async () => {
@@ -83,15 +91,32 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+const PREFIXES: Record<string, string> = { "orbit-relay": "OR", "garden-plan": "GP" };
+
+const notFound = (message: string) => Object.assign(new Error(message), { code: EXIT.NOINPUT });
+
+function showTask(args: Record<string, unknown>): unknown {
+  if (!taskShowServed) throw new Error("Unknown command: task.show");
+  const found = TASKS.find((entry) => entry.slug === args.slug && entry.id === args.id);
+  if (!found) throw notFound(`task ${String(args.id)} not found in ${String(args.slug)}`);
+  return Object.fromEntries(Object.entries(found).filter(([key]) => key !== "slug"));
+}
+
 function answer(command: string, args: Record<string, unknown>): unknown {
   calls.push(command);
+  if (failing.has(command)) throw new Error("The operation was aborted due to timeout");
   switch (command) {
     case "task.list":
-      return { tasks: TASKS.filter((entry) => args.status === "all" || entry.status === "open") };
+      taskLists.push(args);
+      return { tasks: TASKS.filter((entry) => (args.slug === undefined || entry.slug === args.slug) && (args.status === "all" || entry.status === "open")) };
+    case "task.show":
+      return showTask(args);
+    case "list":
+      return { sections: [{ heading: "Focused", items: Object.keys(PREFIXES).map((slug) => ({ slug, title: slug, state: "focused", updated: "2031-03-01" })) }], parse_errors: [] };
+    case "source.read":
+      return { content: `---\ntask_prefix: ${PREFIXES[String(args.slug)]}\n---\nBrief.`, truncated: false };
     case "artifact.list":
-      return ARTIFACTS;
-    case "artifact.status":
-      return STATUS;
+      return args.slug === undefined || args.slug === "orbit-relay" ? ARTIFACTS : { items: [] };
     case "context.graph":
       return { id: args.id, kind: "task", subject: null, references: REFERENCES, initiatives_scanned: [], errors: [] };
     case "deliverable.list":
@@ -124,10 +149,10 @@ async function source(fields: Partial<TasksSource> = {}): Promise<TasksSource> {
   daemon = await startFakeDaemon({ ok: true }, answer);
   const graphPath = path.join(dir, "graph.sqlite3");
   if (!existsSync(graphPath)) seedGraph(graphPath);
-  return { activeWork: activeWorkClient(daemon.port), sessions: { graphPath }, evidence: async () => EVIDENCE, ...fields };
+  return { activeWork: activeWorkClient(daemon.port), sessions: { graphPath }, evidence: async () => EVIDENCE, branches: fakeBranches, ...fields };
 }
 
-async function invoke<T>(name: "work.tasks" | "work.task", args: Record<string, unknown>, fields: Partial<TasksSource> = {}) {
+async function invoke<T>(name: "work.tasks" | "work.task" | "work.taskMentions" | "work.taskArtifacts", args: Record<string, unknown>, fields: Partial<TasksSource> = {}) {
   const { envelope, exitCode } = await invokeCommand(tasksCommands(await source(fields))[name], args, { warnings: [], format: "json" });
   return { envelope, exitCode, data: (envelope as { data?: T }).data as T };
 }
@@ -193,16 +218,24 @@ describe("work.tasks", () => {
 });
 
 describe("work.task", () => {
-  it("returns the task with notes, done_when, mentions, artifacts with PR state and its sessions", async () => {
+  it("returns the task with notes, done_when, open PRs and its sessions", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
 
     expect(data.task).toMatchObject({ id: "OR-1", stage: "review", notes: "Handshake retry.", doneWhen: "A dropped handshake retries with backoff." });
-    expect(data.mentions.map((mention) => mention.file)).toEqual(["tasks/OR-7.yml", "tasks/GP-1.yml"]);
-    expect(data.artifacts.branches).toEqual([{ repo: "orbit", name: "pc-or-1-retry", present: true, pr: expect.objectContaining({ number: 41, state: "OPEN" }) }]);
-    expect(data.artifacts.worktrees).toEqual([{ repo: "orbit", branch: "pc-or-1-retry", present: true }]);
     expect(data.openPrs).toEqual([{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }]);
     expect(data.sessions.map((session) => session.sessionId)).toEqual([SESSION]);
     expect(data.sessionsDegraded).toBeNull();
+  });
+
+  it("returns the shell without reading mentions or any branch's PR state", async () => {
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
+
+    expect(data.task.id).toBe("OR-1");
+    expect(calls).not.toContain("context.graph");
+    expect(calls).not.toContain("artifact.status");
+    expect(branchLookups).toEqual([]);
+    expect(data).not.toHaveProperty("mentions");
+    expect(data).not.toHaveProperty("artifacts");
   });
 
   it("lists the children a parent tag or a parent field names", async () => {
@@ -234,27 +267,93 @@ describe("work.task", () => {
     expect(JSON.stringify(data)).not.toContain("/synthetic/");
   });
 
-  it("returns a done task with the done stage", async () => {
+  it("returns a done task with the done stage, read from its own initiative by id", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-9" });
-    expect(data.task).toMatchObject({ stage: "done", stageRule: "status-done", status: "done" });
+    expect(data.task).toMatchObject({ id: "OR-9", slug: "orbit-relay", stage: "done", stageRule: "status-done", status: "done" });
+    expect(calls).toContain("task.show");
+  });
+
+  it("never asks for every initiative's done tasks to find one id", async () => {
+    await invoke<TaskDetail>("work.task", { id: "OR-9" });
+    expect(taskLists).toEqual([{ all_initiatives: true }]);
+  });
+
+  it("finds a done task through one initiative's list on a daemon without task.show", async () => {
+    taskShowServed = false;
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-9" });
+    expect(data.task).toMatchObject({ id: "OR-9", status: "done" });
+    expect(taskLists).toContainEqual({ slug: "orbit-relay", status: "all" });
+    expect(taskLists).not.toContainEqual(expect.objectContaining({ all_initiatives: true, status: "all" }));
+  });
+
+  it("is not found, not failing, for an id whose prefix no initiative claims", async () => {
+    const { exitCode } = await invoke<TaskDetail>("work.task", { id: "ZZ-1" });
+    expect(exitCode).toBe(EXIT.NOINPUT);
+    expect(calls).not.toContain("task.show");
   });
 
   it("is not found for an id no initiative holds", async () => {
     const { envelope, exitCode } = await invoke<TaskDetail>("work.task", { id: "OR-404" });
     expect(envelope.ok).toBe(false);
     expect(exitCode).toBe(EXIT.NOINPUT);
-    expect(calls).not.toContain("artifact.status");
+    expect(calls).toContain("task.show");
   });
 
-  it("is not found for a personal initiative's task in an export, and drops personal mentions", async () => {
+  it("is not found for a personal initiative's task in an export", async () => {
     expect((await invoke<TaskDetail>("work.task", { id: "GP-1" }, { work: { excludePersonal: true } })).exitCode).toBe(EXIT.NOINPUT);
-    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" }, { work: { excludePersonal: true } });
-    expect(data.mentions.map((mention) => mention.slug)).toEqual(["orbit-relay"]);
   });
 
   it("returns the task with degraded sessions when the session graph is missing", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" }, { sessions: { graphPath: path.join(dir, "absent.sqlite3") } });
     expect(data.sessions).toEqual([]);
     expect(data.sessionsDegraded).toMatchObject({ reason: "graph-missing" });
+  });
+});
+
+describe("work.taskMentions", () => {
+  it("returns every record that mentions the id", async () => {
+    const { data } = await invoke<TaskMentions>("work.taskMentions", { id: "OR-1" });
+    expect(data).toEqual({ mentions: REFERENCES, degraded: null });
+  });
+
+  it("answers degraded, not failing, when context.graph times out", async () => {
+    failing = new Set(["context.graph"]);
+    const { data, exitCode } = await invoke<TaskMentions>("work.taskMentions", { id: "OR-1" });
+    expect(exitCode).toBe(EXIT.OK);
+    expect(data.mentions).toEqual([]);
+    expect(data.degraded).toContain("aborted due to timeout");
+  });
+
+  it("drops a personal initiative's mentions for an export", async () => {
+    const { data } = await invoke<TaskMentions>("work.taskMentions", { id: "OR-1" }, { work: { excludePersonal: true } });
+    expect(data.mentions.map((mention) => mention.slug)).toEqual(["orbit-relay"]);
+  });
+});
+
+describe("work.taskArtifacts", () => {
+  it("looks up PR state for only the task's own branches, from its initiative's artifacts", async () => {
+    const { data } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" });
+    expect(branchLookups).toEqual([[{ repo: "/synthetic/orbit", name: "pc-or-1-retry" }]]);
+    expect(data).toEqual({ branches: [{ repo: "orbit", name: "pc-or-1-retry", present: true, pr: PR_41 }], degraded: [] });
+    expect(calls).not.toContain("artifact.status");
+  });
+
+  it("asks GitHub nothing when no branch carries the id", async () => {
+    const { data } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "OR-2", slug: "orbit-relay" });
+    expect(data).toEqual({ branches: [], degraded: [] });
+    expect(branchLookups).toEqual([]);
+  });
+
+  it("answers degraded, not failing, when the artifacts cannot be read", async () => {
+    failing = new Set(["artifact.list"]);
+    const { data, exitCode } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" });
+    expect(exitCode).toBe(EXIT.OK);
+    expect(data).toEqual({ branches: [], degraded: [expect.stringContaining("artifact.list")] });
+  });
+
+  it("is not found for a personal initiative in an export", async () => {
+    const { exitCode } = await invoke<TaskArtifacts>("work.taskArtifacts", { id: "GP-1", slug: "garden-plan" }, { work: { excludePersonal: true } });
+    expect(exitCode).toBe(EXIT.NOINPUT);
+    expect(branchLookups).toEqual([]);
   });
 });

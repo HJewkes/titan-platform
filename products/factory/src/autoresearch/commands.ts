@@ -28,7 +28,7 @@ const refused = (message: string, code: number) => Object.assign(new Error(messa
 const notFound = (what: string) => refused(`[not_found] ${what}`, EXIT.NOINPUT);
 
 /** Validate runs are separate workflow runs, so a look is found by the run it names as its parent. */
-const allOf = (host: FactoryHost, workflowName: string) => host.runtime.list(ALL_STATUSES).filter((run) => run.workflowName === workflowName);
+const allOf = (host: FactoryHost, workflowName: string) => host.runtime.listByWorkflow(workflowName, ALL_STATUSES);
 
 function autoresearchRun(host: FactoryHost, runId: string): WorkflowRun {
   const run = host.runtime.status(runId);

@@ -23,3 +23,13 @@ export function dbPath(opts: PathOptions = {}): string {
   const stateHome = env.XDG_STATE_HOME || path.join(opts.home ?? os.homedir(), ".local", "state");
   return path.join(stateHome, "titan-yt-scout", "scout.sqlite3");
 }
+
+/** One JSON line per step attempt, one file a month, beside the database. */
+export function rowsDir(opts: PathOptions = {}): string {
+  return path.join(path.dirname(dbPath(opts)), "rows");
+}
+
+/** Eval cases hold input refs and shas, never transcript text, so they stay outside the repo. */
+export function casesDir(opts: PathOptions = {}): string {
+  return path.join(ytRoot(opts), "scout", "evals", "cases");
+}

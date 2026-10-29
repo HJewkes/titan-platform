@@ -1499,7 +1499,7 @@
   },
   "products/factory/src/shepherd/wake.ts": {
     "titan/max-line-length": {
-      "count": 3
+      "count": 1
     }
   },
   "products/factory/src/workflows.ts": {

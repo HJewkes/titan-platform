@@ -30,7 +30,7 @@ describe("testScope", () => {
     expect(scope).toEqual({ mode: "scoped", dirs: ["deploy/hub/", "packages/leaf/", "scripts/"] });
   });
 
-  it.each(["pnpm-lock.yaml", "package.json", "vitest.config.ts", ".github/workflows/ci.yml", "scripts/fixtures/x.json"])(
+  it.each(["package.json", "vitest.config.ts", ".github/workflows/ci.yml", "scripts/fixtures/x.json"])(
     "runs everything when %s changes",
     (path) => {
       expect(testScope(["packages/leaf/src/a.ts", path], workspace)).toEqual({ mode: "full", reason: path });
@@ -87,6 +87,19 @@ describe("scopeForEvent", () => {
     expect(scopeForEvent({ ...pr, HEAD_REF: "changeset-release/main" }, factoryDiff, fixture).mode).toBe("full");
   });
 
+  it("reads the lockfile at the PR's base and head when the diff changes it", () => {
+    const shas = [];
+    const readLock = (...args) => {
+      shas.push(args);
+      return { base: "importers: {}", head: "importers: {}" };
+    };
+
+    const scope = scopeForEvent(pr, () => ["pnpm-lock.yaml", ...factoryDiff()], fixture, readLock);
+
+    expect(shas).toEqual([[pr.BASE_SHA, pr.HEAD_SHA]]);
+    expect(scope).toEqual({ mode: "scoped", dirs: ["products/factory/", "scripts/"] });
+  });
+
   it("runs everything when the diff cannot be read", () => {
     const failing = () => {
       throw new Error("fatal: bad revision");
@@ -130,6 +143,7 @@ describe("vitestArgs", () => {
       "--reporter=default",
       "--reporter=hanging-process",
       "--reporter=./scripts/vitest-file-watchdog.mjs",
+      "--reporter=./scripts/vitest-file-timing.mjs",
     ]);
   });
 });

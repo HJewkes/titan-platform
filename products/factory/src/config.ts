@@ -335,7 +335,9 @@ export interface ConfigSources {
   dbFlag?: string;
 }
 
+/** `TITAN_FACTORY_CONFIG` exists because agent sessions cannot set `XDG_CONFIG_HOME`. */
 export function configPath(env: NodeJS.ProcessEnv): string {
+  if (env.TITAN_FACTORY_CONFIG) return env.TITAN_FACTORY_CONFIG;
   return join(env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "titan-factory", "config.json");
 }
 
