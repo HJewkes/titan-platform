@@ -88,6 +88,7 @@ Before adding code:
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`titan`](#cap-titan) | product | You want this host's services sampled on a schedule and kept: `titan health sample` probes each target (by default the factory's loopback `/health`, with its pid file as identity), copies serve's own restart counters into the row, and writes every result plus a `self` row of the sampler's own CPU, fs blocks, context switches, RSS and wall time in one transaction. |
+| [`yt-scout`](#cap-yt-scout) | product | You are working on the owner's scheduled AI-video scout (Y-15): the YouTube watch list (`WatchlistSchema`, `loadWatchlist`, line-numbered `WatchlistError`), the `videos` state table (`openScoutDb`, `VIDEO_STATES`) and the one-off seen-set import (`importSeen`), behind the `titan-yt-scout` CLI. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
 | [`titan-console`](#cap-console) | product | You want a view over active-work, the agent-chat broker or the session graph: add it here as a route and a command, not as a new app or a new daemon. |
 
@@ -1669,6 +1670,25 @@ You want this host's services sampled on a schedule and kept: `titan health samp
 Key exports:
 
 - `cli`: `runCli`, `CliIo`
+
+<a id="cap-yt-scout"></a>
+
+### `yt-scout`
+
+Tier product, private, `products/yt-scout`. Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest
+
+**Use this when:**
+
+You are working on the owner's scheduled AI-video scout (Y-15): the YouTube watch list (`WatchlistSchema`, `loadWatchlist`, line-numbered `WatchlistError`), the `videos` state table (`openScoutDb`, `VIDEO_STATES`) and the one-off seen-set import (`importSeen`), behind the `titan-yt-scout` CLI. Detect, transcribe and score are typed seams only (`Detector`, `Transcriber`, `Scorer`); full-text search over transcripts is `corpus-query`, and the durable step runner is `workflow`.
+
+Key exports:
+
+- `config`: `isOnTrial`, `SourceSchema`, `WatchlistSchema`
+- `paths`: `configPath`, `dbPath`, `ytRoot`
+- `seen-import`: `formatSeenImport`, `importSeen`, `mergeRecords`, `sourceResolver`
+- `seen-sources`: `readSeenSources`
+- `store`: `countByState`
+- More in `products/yt-scout/src/index.ts`
 
 <a id="cap-codewatch"></a>
 

@@ -1,0 +1,13 @@
+export { isOnTrial, SourceSchema, WatchlistSchema } from "./config.js";
+export type { Source, Watchlist } from "./config.js";
+export { configPath, dbPath, ytRoot } from "./paths.js";
+export type { Detector, DetectedVideo, Scorer, ScoreResult, StepErrorClass, StepOutcome, Transcriber, Transcript } from "./seams.js";
+export { formatSeenImport, importSeen, mergeRecords, sourceResolver } from "./seen-import.js";
+export type { SeenImportReport } from "./seen-import.js";
+export { readSeenSources, SEEN_PATHS } from "./seen-sources.js";
+export type { SeenRecord, SeenSourceResult } from "./seen-sources.js";
+export { countByState, getVideo, openScoutDb, SCHEMA_VERSION, VIDEO_KINDS, VIDEO_STATES } from "./store.js";
+export type { VideoKind, VideoRow, VideoState } from "./store.js";
+export { formatProblem, loadWatchlist, parseWatchlist, WatchlistError } from "./watchlist.js";
+export type { ConfigProblem } from "./watchlist.js";
+export { runCli } from "./cli.js";
