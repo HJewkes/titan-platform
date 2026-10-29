@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
+import type { QuotaContext } from "../queue.js";
 import type { Digest } from "../digest.js";
 import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
@@ -176,7 +177,7 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
 }
 
 interface FakeCalls extends SnapshotCalls {
-  plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
+  plans: { round: number; violations: string[]; digest: Digest; quota: QuotaContext; mode: string }[];
   implement: string[];
   /** Every implement input but the brief, in call order. */
   implementInputs: Omit<ImplementRequest, "brief">[];

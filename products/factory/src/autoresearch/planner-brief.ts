@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { QueueOpsSchema, type ArPorts } from "@titan-design/autoresearch";
+import { quotaRules, QueueOpsSchema, type ArPorts } from "@titan-design/autoresearch";
 import { z } from "zod";
 
 interface PlannerTarget {
@@ -19,6 +19,9 @@ const OPS_KEYS = Object.keys(QueueOpsSchema.shape).join(", ");
 
 const roundInput = (input: PlanInput): string => JSON.stringify({ round: input.round, digest: input.digest, violations: input.violations });
 
+/** Worded by the same module whose check the answer must pass, from this round's quota. */
+const quotaLine = (input: PlanInput): string => `Quotas this round: ${quotaRules(input.quota).join("; ")}.`;
+
 export const resumeContract = `End with one fenced JSON block of queue ops, keys ${OPS_KEYS}, in the JSON Schema your first brief gave; nothing else is read.`;
 
 function programSection(target: PlannerTarget): string {
@@ -34,12 +37,12 @@ export function plannerSpawnBrief(target: PlannerTarget, input: PlanInput): stri
     `You are the planner of autoresearch run ${input.runId} on target ${target.name}. Each round you edit the idea queue; implementers build the picked ideas and a frozen evaluator judges them. You only read; never edit files.`,
     programSection(target),
     `Round input (the digest of evidence so far, and the quotas your last answer missed):\n${roundInput(input)}`,
-    "Quotas: add at least one bold idea or give exempt.bold a reason; add a follow-up (source \"followup\", parent the kept id) for every idea kept last round or give exempt.followup a reason; keep the queue at or above its minimum pool.",
+    quotaLine(input),
     `End contract: your last message must end with one fenced JSON block of queue ops matching this JSON Schema, and nothing else is read:\n${OPS_JSON_SCHEMA}`,
   ].join("\n\n");
 }
 
-/** A resumed planner already holds the program in its cached prefix, so only the contract is restated. */
+/** A resumed planner already holds the program in its cached prefix, so only this round's quotas and the contract are restated. */
 export function plannerResumeBrief(input: PlanInput): string {
-  return `${roundInput(input)}\n\n${resumeContract}`;
+  return `${roundInput(input)}\n\n${quotaLine(input)}\n\n${resumeContract}`;
 }

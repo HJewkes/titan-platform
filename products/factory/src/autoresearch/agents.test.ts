@@ -326,12 +326,14 @@ describe("implementers", () => {
   });
 });
 
+const QUOTA = { keptLastRound: [], minPool: 12, queuedBefore: 0 };
+
 describe("the planner", () => {
   it("is spawned in round 1 and resumed in round 2", async () => {
     const p = ports();
     const name = plannerName("run-1");
     behave(name, { turns: [final("p1", '{"add": []}')] });
-    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [] };
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA };
 
     expect(await p.plan({ ...input, round: 1, mode: "spawn" }, signal)).toMatchObject({ ops: { add: [] }, agent: name, mode: "spawn" });
     behave(name, { turns: [final("p2", '{"add": [], "close": []}')] });
@@ -344,7 +346,7 @@ describe("the planner", () => {
     const p = ports();
     const name = plannerName("run-1");
     behave(name, { turns: [final("p1", '{"add": []}')] });
-    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [] };
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA };
 
     await p.plan({ ...input, round: 1, mode: "spawn" }, signal);
     await p.plan({ ...input, round: 2, mode: "resume" }, signal);
@@ -355,12 +357,27 @@ describe("the planner", () => {
     expect(resumed!.args[resumed!.args.indexOf("--message") + 1]).toContain(resumeContract);
   });
 
+  it("gets a second round-1 turn naming the quota its first answer missed", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    behave(name, { turns: [final("p1", '{"add": []}')] });
+    const input = { runId: "run-1", digest: partialFake<Digest>(), quota: QUOTA, round: 1 };
+
+    await p.plan({ ...input, violations: [], mode: "spawn" }, signal);
+    behave(name, { turns: [final("p2", '{"add": []}')] });
+    await p.plan({ ...input, violations: ["candidate pool 6 is under 12"], mode: "resume" }, signal);
+
+    const retry = spawns()[1]!;
+    expect(retry.args.slice(0, 3)).toEqual(["agent", "resume", name]);
+    expect(retry.args[retry.args.indexOf("--message") + 1]).toContain("candidate pool 6 is under 12");
+  });
+
   it("reports its session and the cache reads of its turn beside the ops", async () => {
     const p = ports();
     const name = plannerName("run-1");
     behave(name, { turns: [final("p1", '{"add": []}', { read: 120, w5m: 12, w1h: 0 })] });
 
-    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], round: 1, mode: "spawn" }, signal);
+    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA, round: 1, mode: "spawn" }, signal);
 
     expect(planned).toMatchObject({ sessionId: `s-${name}`, usage: { cacheReadTokens: 120, cacheWrite5mTokens: 12 } });
     expect(planned.usage!.usd).toBeGreaterThan(0);

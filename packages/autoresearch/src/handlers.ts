@@ -41,10 +41,12 @@ const RunInput = z.object({ runId: text });
 const RunPinInput = RunInput.extend({ pin: text, frozenHash: text.optional() });
 const IdeaInput = RunPinInput.extend({ idea: IdeaSchema, tree: text, base: text });
 const round = z.number().int().positive();
+const count = z.number().int().nonnegative();
+const QuotaInput = z.object({ keptLastRound: z.array(text), minPool: count, queuedBefore: count });
 const Inputs = {
   pin: RunInput.extend({ pin: text }),
   eval: RunPinInput.extend({ tree: text, case: text, key: text, rung: text }),
-  plan: RunInput.extend({ round, digest: z.custom<Digest>(), violations: z.array(text), mode: z.enum(["spawn", "resume"]) }),
+  plan: RunInput.extend({ round, digest: z.custom<Digest>(), violations: z.array(text), quota: QuotaInput, mode: z.enum(["spawn", "resume"]) }),
   alloc: RunInput.extend({ ideaId: text, base: text, lane: z.number().int().positive() }),
   implement: RunInput.extend({ idea: IdeaSchema, tree: text, base: text, brief: text, round, lane: z.number().int().positive(), fork: z.enum(["exploit", "explore"]), resumeFrom: text.optional() }),
   l0: IdeaInput.extend({ head: text }),

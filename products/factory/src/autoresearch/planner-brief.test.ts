@@ -8,7 +8,7 @@ import { z } from "zod";
 import { plannerResumeBrief, plannerSpawnBrief, resumeContract } from "./planner-brief.js";
 
 let clone: string;
-const input = { runId: "run-7", round: 1, digest: partialFake<Digest>({ round: 1, evidence: [] }), violations: ["no bold idea and no [EXEMPT] reason"], mode: "spawn" as const };
+const input = { runId: "run-7", round: 1, digest: partialFake<Digest>({ round: 1, evidence: [] }), violations: ["no bold idea and no [EXEMPT] reason"], quota: { keptLastRound: ["i-kept"], minPool: 9, queuedBefore: 4 }, mode: "spawn" as const };
 const target = () => ({ name: "demo", clone, adapterDir: "adapter" });
 
 const ContractSchema = z.object({ properties: z.record(z.string(), z.object({ items: z.object({ required: z.array(z.string()) }).partial().optional() })), required: z.array(z.string()).optional() });
@@ -48,6 +48,15 @@ describe("the planner's spawn brief", () => {
     expect(Object.keys(schema.properties)).toEqual(Object.keys(QueueOpsSchema.shape));
     expect(schema.required ?? []).toEqual([]);
     expect(schema.properties.add!.items!.required).toEqual(expect.arrayContaining(["hypothesis", "mechanism", "class", "targets", "expectedEffect", "testPlan", "bold"]));
+  });
+});
+
+describe("both planner briefs", () => {
+  it("state this round's quota numbers from the run settings", () => {
+    for (const brief of [plannerSpawnBrief(target(), input), plannerResumeBrief({ ...input, round: 2, mode: "resume" })]) {
+      expect(brief).toContain("a candidate pool of at least 9: the queue holds 4, so adds minus drops must be at least 5");
+      expect(brief).toContain("parent set to each kept idea (i-kept)");
+    }
   });
 });
 

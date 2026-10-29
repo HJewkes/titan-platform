@@ -141,7 +141,7 @@ interface PlannedRound {
   usage: DispatchUsage[];
 }
 
-/** The planner gets one retry that names the quota it missed; a second miss stops the run. */
+/** The planner gets one retry that names the quota it missed, resuming it even in round 1; a second miss stops the run. */
 async function planRound(run: Run, state: LoopState, round: number): Promise<PlannedRound> {
   const digest = buildDigest({ round, evidence: state.evidence, registries: state.registries, queue: state.queue });
   const quota = { keptLastRound: state.keptLastRound, minPool: run.settings.minPool, queuedBefore: state.queue.length };
@@ -149,7 +149,7 @@ async function planRound(run: Run, state: LoopState, round: number): Promise<Pla
   let first: string[] | undefined;
   const usage: DispatchUsage[] = [];
   for (const attempt of ["", ".retry"]) {
-    const input = { runId: run.ctx.runId, round, digest, violations, mode: round === 1 ? "spawn" : "resume" };
+    const input = { runId: run.ctx.runId, round, digest, violations, quota, mode: round === 1 && attempt === "" ? "spawn" : "resume" };
     const planned = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, PlanStepSchema);
     if (planned.usage) usage.push(planned.usage);
     violations = quotaViolations(planned.ops, quota);
