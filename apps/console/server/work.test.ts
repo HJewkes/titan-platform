@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT } from "@titan-design/registry";
-import { snapshotKey } from "@titan-design/rpc-client";
+import { snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { activeWorkClient } from "./active-work.js";
 import { cachedActiveWork } from "./active-work-cache.js";
 import { brokerReader } from "./broker.js";
@@ -49,6 +49,21 @@ async function editableBrief() {
     return answer;
   });
   return Object.assign(state, { activeWork: activeWorkClient(daemon.port) });
+}
+
+function isPortfolio(value: unknown): value is Portfolio {
+  return typeof value === "object" && value !== null && "initiatives" in value && Array.isArray(value.initiatives);
+}
+
+function hasInitiatives(value: unknown): value is { initiatives: object[] } {
+  return typeof value === "object" && value !== null && "initiatives" in value && Array.isArray(value.initiatives);
+}
+
+function recordedPortfolio(snapshot: Snapshot): Portfolio {
+  const envelope = snapshot.calls[snapshotKey("work.portfolio", {})];
+  const data = envelope?.ok ? (envelope as { data: unknown }).data : undefined;
+  if (!isPortfolio(data)) throw new Error("the first paint recorded no portfolio");
+  return data;
 }
 
 describe("the portfolio", () => {
@@ -128,8 +143,8 @@ describe("the portfolio", () => {
     brief.prefix = "OX";
     invalidation.emit("active-work");
     const snapshot = await recordFirstPaint(registry);
-    const envelope = snapshot.calls[snapshotKey("work.portfolio", {})] as { ok: true; data: Portfolio };
-    expect(envelope.data.initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OX");
+    const portfolio = recordedPortfolio(snapshot);
+    expect(portfolio.initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OX");
   });
 
   it("a read of one initiative through the cached client reads the inventory once across repeats", async () => {
@@ -146,8 +161,9 @@ describe("the portfolio", () => {
 
   it("flags an initiative as personal when active-work reports the charter unread but leaves human_only false", async () => {
     daemon = await startFakeDaemon({ ok: true }, (command, args) => {
-      const answer = fixtureAnswer(command, args) as { initiatives?: Array<{ human_only: boolean }>; human_only_known?: boolean };
-      return command === "inventory" ? { ...answer, human_only_known: false, initiatives: answer.initiatives!.map((entry) => ({ ...entry, human_only: false })) } : answer;
+      const answer = fixtureAnswer(command, args);
+      if (command !== "inventory" || !hasInitiatives(answer)) return answer;
+      return { ...answer, human_only_known: false, initiatives: answer.initiatives.map((entry) => ({ ...entry, human_only: false })) };
     });
     const activeWork = activeWorkClient(daemon.port);
     expect((await readPortfolio(activeWork)).initiatives.every((row) => row.personal)).toBe(true);
@@ -260,15 +276,15 @@ describe("an export", () => {
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());
-    const envelope = snapshot.calls[snapshotKey("work.portfolio", {})] as { ok: true; data: Portfolio };
-    expect(envelope.data.initiatives.map((row) => row.slug)).toEqual(["orbit-relay", "lantern-docs", "kiln-tools", "atlas-archive"]);
+    const portfolio = recordedPortfolio(snapshot);
+    expect(portfolio.initiatives.map((row) => row.slug)).toEqual(["orbit-relay", "lantern-docs", "kiln-tools", "atlas-archive"]);
     expect(JSON.stringify(snapshot)).not.toContain("garden-plan");
   });
 
   it("records no initiative at all when active-work cannot say which are personal", async () => {
     const snapshot = await recordFirstPaint(await exported({ humanOnlyKnown: false }));
-    const envelope = snapshot.calls[snapshotKey("work.portfolio", {})] as { ok: true; data: Portfolio };
-    expect(envelope.data.initiatives).toEqual([]);
+    const portfolio = recordedPortfolio(snapshot);
+    expect(portfolio.initiatives).toEqual([]);
   });
 
   it("refuses the detail of a personal initiative", async () => {
