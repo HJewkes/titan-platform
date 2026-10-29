@@ -16,7 +16,8 @@ afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) fs.rmS
 async function fixture() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "typed-refusal-"))); roots.push(root);
   const repo = path.join(root, "repo"); fs.mkdirSync(repo); seedRepo(repo);
-  const allocator = api.createWorktreeAllocator({ releaseProof: "git-or-merged-pr-tip" });
+  // The gh shims finish in milliseconds; the default 3s bound reads a loaded CI runner as no proof (TP-4367).
+  const allocator = api.createWorktreeAllocator({ releaseProof: "git-or-merged-pr-tip", ghTimeoutMs: 120_000 });
   const allocation = await allocator.allocate({ baseCwd: repo, agentName: "alice" });
   const bin = path.join(root, "bin"); fs.mkdirSync(bin);
   const calls = path.join(root, "git-calls");
