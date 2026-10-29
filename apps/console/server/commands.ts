@@ -99,14 +99,14 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
   };
 }
 
-type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions" | "invalidation">;
+type OwnerAnswerSources = Pick<ConsoleSources, "factory" | "rounds" | "inbox" | "shepherd" | "agents" | "decisionLog" | "listeners" | "inboxActions">;
 
 /**
  * The owner's merged queue, as the raw Flow, as the inbox with its actions, and every write that answers it: the inbox
  * taps and a round's submit, by hand or by its recommendations. Each write drops the reads the inbox view keeps, and
  * approvals.flow shares the kept factory read; the taps themselves read the factory fresh.
  */
-function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions, invalidation }: OwnerAnswerSources) {
+function ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }: OwnerAnswerSources, invalidation: Invalidation | undefined) {
   const sources: InboxSources = { factory, rounds, inbox, shepherd, agents };
   const cache = inboxReadCache(sources);
   invalidation?.on("factory", cache.invalidate);
@@ -162,7 +162,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsCommands(rounds),
     ...roundFramesCommands(rounds),
     ...roundsRevealCommands(rounds),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions, invalidation }),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents, decisionLog, listeners, inboxActions }, invalidation),
     ...shepherdCommands(shepherd),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
     ...configSurfacesCommands(configReaders),

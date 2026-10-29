@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the drop timer ignores gcMs and fires a tick after the last unwatch",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "drop(key, entry), gcMs);",
+      "replace": "drop(key, entry), 0);",
+      "kills": [
+        "createQueryStore gcMs serves kept data and refetches once for a query re-watched within gcMs"
+      ]
+    },
+    {
+      "name": "a kept query is never refetched when it is re-watched",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "kept && gcMs > 0 && !entry.controller",
+      "replace": "false",
+      "kills": [
+        "createQueryStore gcMs serves kept data and refetches once for a query re-watched within gcMs"
+      ]
+    },
+    {
+      "name": "the drop timer waits twice gcMs",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "drop(key, entry), gcMs);",
+      "replace": "drop(key, entry), gcMs * 2);",
+      "kills": [
+        "createQueryStore gcMs drops a query unwatched for longer than gcMs"
+      ]
+    },
+    {
+      "name": "gcMs defaults to a keep window instead of zero",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "{ gcMs = 0 }",
+      "replace": "{ gcMs = 1000 }",
+      "kills": [
+        "createQueryStore gcMs drops a query a tick after its last unwatch when gcMs is unset"
+      ]
+    }
+  ]
+}

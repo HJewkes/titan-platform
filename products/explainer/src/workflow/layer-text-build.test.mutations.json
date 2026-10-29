@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a layer that breaks a text rule is never rebuilt",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "if (rows.length === 0) return { build: layer.build };",
+      "replace": "if (rows.length >= 0) return { build: layer.build };",
+      "kills": [
+        "the text check on custom-layer builds rebuilds once a layer that draws NaN, naming the element and rule, and stores the rebuild",
+        "the text check on custom-layer builds fails resolve with a row naming the beat, element and rule when the rebuild still draws NaN"
+      ]
+    },
+    {
+      "name": "a rebuild that still breaks a text rule is stored",
+      "file": "products/explainer/src/workflow/layer-build.ts",
+      "find": "still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer breaks",
+      "replace": "still.length >= 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer breaks",
+      "kills": [
+        "the text check on custom-layer builds fails resolve with a row naming the beat, element and rule when the rebuild still draws NaN"
+      ]
+    },
+    {
+      "name": "the host never hands the text check to the layer routes",
+      "file": "products/explainer/src/workflow/host.ts",
+      "find": "...(textCheck ? { textCheck } : {}) };",
+      "replace": "};",
+      "kills": [
+        "the text check on custom-layer builds rebuilds once a layer that draws NaN, naming the element and rule, and stores the rebuild",
+        "the text check on custom-layer builds stores a layer that passes the check with one model call and no rebuild"
+      ]
+    }
+  ]
+}
