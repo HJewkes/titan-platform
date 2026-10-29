@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import type { ArPorts, ImplementRequest } from "@titan-design/autoresearch";
 import { dispatchToAgentChat, listAgents, resumeAgent } from "@titan-design/agent-dispatch";
 import { resolveLimits, type ParsedLimits } from "@titan-design/agent-dispatch/limits";
@@ -29,6 +31,8 @@ export interface ArAgentsOptions {
   limits: { pool: string; read: () => ParsedLimits };
   load: LoadWaitOptions;
   now?: () => Date;
+  /** Told when an implementer cannot adopt its idea tree; defaults to `console.warn`. */
+  warn?: (message: string) => void;
 }
 
 type AgentPorts = Pick<ArPorts, "allocTree" | "releaseTree" | "implement" | "plan" | "loadWait">;
@@ -52,6 +56,28 @@ const treeName = (runId: string, ideaId: string): string => `ar-${runTag(runId)}
 const implementerName = (tag: string, round: number, ideaId: string): string => `ar-${tag}-r${round}-${ideaId}`.toLowerCase();
 const inside = (path: string, tree: string): boolean => path === tree || path.startsWith(tree + sep);
 
+const run = promisify(execFile);
+const worktreeSupport = new Map<string, Promise<boolean>>();
+
+/** An agent-chat older than `agent spawn --worktree` refuses the flag, so it is read from the CLI's help once per binary. */
+function supportsWorktree(chat: AgentChat): Promise<boolean> {
+  const known = worktreeSupport.get(chat.bin);
+  if (known !== undefined) return known;
+  const probed = run(chat.bin, ["agent", "spawn", "--help"], { timeout: chat.timeoutMs }).then(
+    ({ stdout }) => /(^|\s)--worktree\b/.test(stdout),
+    () => false,
+  );
+  worktreeSupport.set(chat.bin, probed);
+  return probed;
+}
+
+async function adoptable(host: Host, name: string, worktree: string | undefined): Promise<{ worktree?: string }> {
+  if (worktree === undefined) return {};
+  if (await supportsWorktree(host.chat)) return { worktree };
+  (host.options.warn ?? console.warn)(`[no-adopt] ${host.chat.bin} has no agent spawn --worktree, so ${name} gets a fresh worktree, not ${worktree}`);
+  return {};
+}
+
 function admit(host: Host, profile: string): void {
   const { limits, now } = host.options;
   const resolved = resolveLimits(limits.read(), { pool: limits.pool, profile, now: now?.() ?? new Date() });
@@ -63,7 +89,7 @@ async function spawnOrJoin(host: Host, name: string, profile: string, cwd: strin
   if ((await rosterRow(host.chat, name)) !== undefined) return;
   admit(host, profile);
   const { options, chat } = host;
-  const request = { agentChatBinPath: chat.bin, peerName: name, profile, brief, cwd, configDir: options.configDir, ...(worktree === undefined ? {} : { worktree }) };
+  const request = { agentChatBinPath: chat.bin, peerName: name, profile, brief, cwd, configDir: options.configDir, ...(await adoptable(host, name, worktree)) };
   await dispatchToAgentChat(request, chat.timeoutMs, [options.profiles.implementer, options.profiles.planner]);
 }
 

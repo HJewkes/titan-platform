@@ -33,6 +33,7 @@ const fs = require("fs"), path = require("path"), cp = require("child_process");
 const dir = process.env.AGENT_CHAT_HOME, args = process.argv.slice(2);
 const rosterPath = path.join(dir, "roster.json");
 const roster = fs.existsSync(rosterPath) ? JSON.parse(fs.readFileSync(rosterPath, "utf8")) : [];
+if (args[1] === "spawn" && args.includes("--help")) { process.stdout.write(fs.readFileSync(path.join(dir, "spawn-help.txt"), "utf8")); process.exit(0); }
 const log = (extra) => fs.appendFileSync(path.join(dir, "calls.jsonl"), JSON.stringify({ args, ...extra }) + "\\n");
 if (args[1] === "ls") { log({}); process.stdout.write(JSON.stringify(roster)); process.exit(0); }
 const name = args[2];
@@ -97,6 +98,7 @@ beforeEach(() => {
   writeFileSync(join(dir, "agent-chat.staging"), `#!${process.execPath}\n${FAKE}`);
   chmodSync(join(dir, "agent-chat.staging"), 0o755);
   cpSync(join(dir, "agent-chat.staging"), join(dir, "agent-chat"));
+  writeFileSync(join(dir, "spawn-help.txt"), "Usage: agent-chat agent spawn <name> <profile>\n  --cwd <dir>\n  --worktree <path>  adopt an existing worktree\n");
   vi.stubEnv("AGENT_CHAT_HOME", dir);
   clone = join(dir, "clone");
   mkdirSync(clone);
@@ -198,6 +200,20 @@ describe("implementers", () => {
 
     const argv = spawns()[0]!.args;
     expect(argv[argv.indexOf("--worktree") + 1]).toBe(tree);
+  });
+
+  it("spawn without --worktree, and warn that the tree is not adopted, on an agent-chat whose help lacks the flag", async () => {
+    writeFileSync(join(dir, "spawn-help.txt"), "Usage: agent-chat agent spawn <name> <profile>\n  --cwd <dir>\n");
+    const warnings: string[] = [];
+    const p = ports({ warn: (message) => warnings.push(message) });
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
+    behave(nameFor(tree, 1, "i-aaa"), { commit: true, turns: [implemented()] });
+
+    await p.implement(request(tree, "i-aaa"), signal);
+
+    expect(spawns()[0]!.args).not.toContain("--worktree");
+    expect(warnings).toEqual([expect.stringContaining(`[no-adopt]`)]);
+    expect(warnings[0]).toContain(tree);
   });
 
   it("are named from the request's run id, not from the tree they were handed", async () => {
