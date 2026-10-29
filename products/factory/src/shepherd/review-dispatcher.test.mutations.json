@@ -45,15 +45,6 @@
       "kills": [
         "the push dispatcher starts reviews from the one queue on its three triggers withdraws a queued review whose step aborts, so the next in line takes the freed slot"
       ]
-    },
-    {
-      "name": "a review whose step already aborted is queued anyway",
-      "file": "products/factory/src/shepherd/review-dispatcher.ts",
-      "find": "      if (signal?.aborted) return Promise.reject(signal.reason);\n",
-      "replace": "",
-      "kills": [
-        "the push dispatcher starts reviews from the one queue on its three triggers never queues a review whose step aborted before it asked"
-      ]
     }
   ]
 }

@@ -80,6 +80,11 @@ type Admission = { admit: true } | { admit: false; reason: string };
 
 const refuse = (what: string, reading: number, limit: number): Admission => ({ admit: false, reason: `${what} ${reading} is past the limit ${limit}` });
 
+const underFloor = (idle: number, unabsorbed: number, floor: number): Admission => ({
+  admit: false,
+  reason: `idle cores ${Math.round(idle * 100) / 100} with ${unabsorbed} unabsorbed reviews are under the floor ${floor}`,
+});
+
 /** load5 is a five-minute average, so a review older than this is already in the reading. */
 const LOAD5_WINDOW_MS = 5 * 60_000;
 
@@ -118,7 +123,7 @@ export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recen
   if (readings.load5 > limits.load5) return refuse("load5", readings.load5, limits.load5);
   const { unabsorbed, build, idle } = buildPressure(readings, limits, runningReviews, now, admittedReviews);
   if (build > limits.buildLoad5) return refuse(`load5 with ${unabsorbed} unabsorbed reviews`, build, limits.buildLoad5);
-  if (idle !== undefined && idle < limits.minIdleCores) return { admit: false, reason: `idle cores ${Math.round(idle * 100) / 100} with ${unabsorbed} unabsorbed reviews are under the floor ${limits.minIdleCores}` };
+  if (idle !== undefined && idle < limits.minIdleCores) return underFloor(idle, unabsorbed, limits.minIdleCores);
   if (readings.pressureLevel !== undefined && readings.pressureLevel >= limits.pressureLevel) return refuse("memory pressure level", readings.pressureLevel, limits.pressureLevel);
   if (readings.freeMemoryPct !== undefined && readings.freeMemoryPct < limits.freeMemoryPct) return refuse("free memory percent", readings.freeMemoryPct, limits.freeMemoryPct);
   return admitPace(limits, recentStarts, now, hasHeadroom(readings, limits, unabsorbed));
@@ -288,7 +293,8 @@ function noteStop(ask: Ask, onStop: SpawnGateOptions["onStop"]): void {
 
 const coresNote = ({ load1, cores }: MachineReadings) => (load1 === undefined || cores === undefined ? "" : `, load1 ${load1} of ${cores} cores`);
 
-const seenNote = (readings: MachineReadings, disk: string) => `load5 ${readings.load5}${coresNote(readings)}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${disk}`;
+const seenNote = (readings: MachineReadings, disk: string) =>
+  `load5 ${readings.load5}${coresNote(readings)}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${disk}`;
 
 /** Logs and throws a deferral; an admission passes. */
 function deferUnless(verdict: Admission, who: string, seen: string, log: (line: string) => void): void {

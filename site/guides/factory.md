@@ -130,8 +130,11 @@ stays out of the repo.
   `fixer.fallbackConfigDirs` (see [Shepherd](/guides/shepherd)).
 - `shepherd.spawnGate` overrides the load gate every factory spawn passes: reviewers, fixers
   and successors share it. It refuses above `load5` (28), `buildLoad5` (20, with `reviewLoad`
-  4 added per review started in the last five minutes, or admitted and not yet seen running),
-  at memory `pressureLevel` 2, and under `freeMemoryPct` 20. Load is the only limiter by
+  0.05 added per review started in the last five minutes, or admitted and not yet seen running),
+  with fewer than `minIdleCores` (1) idle, read as the core count less load1 less those reviews,
+  at memory `pressureLevel` 2, and under `freeMemoryPct` 20. `reviewLoad` is measured: reviewers
+  run no tests and each claude process used 1 to 3 percent of a core in a 2026-10-29 sample, so
+  `review.maxConcurrent` is the backstop on how many start. Load is the only limiter by
   default: `windowMs` and `headroomIntervalMs` are 0, and either can be raised live to space
   admits that many ms apart (`headroomIntervalMs` while load5 is under half of `buildLoad5`,
   memory pressure reads normal and fewer than `headroomReviews` (4) reviews are unabsorbed).
@@ -142,7 +145,8 @@ stays out of the repo.
   with no reviewer. Reviews queue once and never ask again on their own: the gate starts them
   from the queue's front when one is queued, when a review ends, and on a one-minute tick while
   any waits. A review still queued after the 3 hour machine-hold ceiling gives up, so a
-  saturated machine reaches the owner instead of waiting without end.
+  saturated machine reaches the owner instead of waiting without end. A review step that is
+  aborted takes its queued ask out of the queue.
   A reviewer also waits while `shepherd.review.maxConcurrent` (3) reviewers run, while the
   filesystem holding review checkouts has under `shepherd.review.minFreeBytes` (5 GiB) free, or
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
