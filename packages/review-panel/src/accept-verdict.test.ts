@@ -266,8 +266,8 @@ describe("acceptVerdict CI-policy prose beside a correct block", () => {
   it.each([
     ["a bold heading", "**CI policy.** No files under .github/ changed."],
     ["a bold heading in a list", "- **CI policy:** no `.github/` files change."],
-    ["a list item", "* CI policy: the diff is docs only"],
-    ["a sentence", "CI policy: nothing under .github/ changed in this diff."],
+    ["a list item", "* CI policy: unchanged"],
+    ["a sentence", "CI policy: nothing under .github/ changed."],
   ])("takes the canonical unchanged line over %s", (_shape, prose) => {
     expect(acceptVerdict(input, [said(reply(prose))])).toMatchObject({ kind: "verdict", verdict: "MERGE", ciPolicy: { kind: "unchanged" } });
   });
@@ -276,6 +276,12 @@ describe("acceptVerdict CI-policy prose beside a correct block", () => {
     ["says weakened", "**CI policy:** no CI rules are weakened."],
     ["says weakening in another form", "- CI policy: this weakens nothing"],
     ["names a key", "**CI policy.** Nothing touches secrets or the ruleset."],
+    ["loosens branch protection without naming a key", "**CI policy:** loosens branch protection on main."],
+    ["renames a required check without naming a key", "**CI policy:** renames the validate check."],
+    ["negates unchanged", "CI policy: not unchanged; the job token now gets write access."],
+    ["hides weakened behind a homoglyph", "**CI policy:** w\u0435akened, see below."],
+    ["hides unchanged behind a homoglyph", "**CI policy:** unch\u0430nged"],
+    ["says something harmless but off the allowlist", "* CI policy: the diff is docs only"],
   ])("refuses as prose when the heading %s", (_shape, prose) => {
     expect(readMalformed(acceptVerdict(input, [said(reply(prose))]))).toEqual({ refusal: "ci_policy_prose", writtenAt: DISPATCHED_AT + 1, quotes: [prose] });
   });
