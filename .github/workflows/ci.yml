@@ -108,7 +108,7 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
           sudo chmod -R a+rX ~/apt-debs
       - name: Install zsh and ffmpeg
-        run: sudo apt-get install -y -qq --no-install-recommends --no-download "$HOME"/apt-debs/*.deb
+        run: sudo dpkg -i "$HOME"/apt-debs/*.deb
       - name: Save the zsh and ffmpeg debs
         if: steps.debs.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
