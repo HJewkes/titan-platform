@@ -39,9 +39,13 @@ function augmentedBy(program: ts.Program, file: ts.SourceFile): ts.SourceFile[] 
 const declaresGlobals = (file: ts.SourceFile): boolean =>
   !ts.isExternalModule(file) || file.statements.some((statement) => ts.isModuleDeclaration(statement) && (statement.flags & ts.NodeFlags.GlobalAugmentation) !== 0);
 
-/** Library code (`node_modules`, TypeScript's own lib files) never imports repo code, so it cannot carry a sink's names. */
+/**
+ * Library code (`node_modules`, TypeScript's own lib files) never imports repo code, so it cannot carry a sink's names.
+ * Not `isSourceFileFromExternalLibrary`: a workspace package's `.d.ts`, reached through its `node_modules` link, counts
+ * as external there though its real path is in the repo, and the seeds live in those files.
+ */
 const isLibrary = (program: ts.Program, file: ts.SourceFile): boolean =>
-  program.isSourceFileDefaultLibrary(file) || program.isSourceFileFromExternalLibrary(file) || file.fileName.split(/[\\/]/).includes("node_modules");
+  program.isSourceFileDefaultLibrary(file) || file.fileName.split(/[\\/]/).includes("node_modules");
 
 /** Maps each file to the files that see its names: its importers, and the files whose module it augments. */
 function importersOf(program: ts.Program, files: readonly ts.SourceFile[]): Map<ts.SourceFile, ts.SourceFile[]> {
