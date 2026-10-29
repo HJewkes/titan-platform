@@ -40,3 +40,22 @@ export interface ScoreResult {
 export interface Scorer {
   score(video: VideoRow, transcript: Transcript): Promise<StepOutcome<ScoreResult>>;
 }
+
+export interface ScoreCall {
+  prompt: string;
+  systemPrompt: string;
+  model: string;
+  maxBudgetUsd: number;
+}
+
+export interface ScoreCallOutput {
+  /** Unvalidated: the score step parses it against `ScoreCardSchema` itself. */
+  output: unknown;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+}
+
+/** One bare, tool-less harness call. The real one wraps `runAgent`; tests pass a fake. */
+export type ScoreRunner = (call: ScoreCall) => Promise<StepOutcome<ScoreCallOutput>>;
