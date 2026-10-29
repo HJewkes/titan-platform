@@ -1,6 +1,7 @@
 import { FILL_FLOOR, heldBeats, longestCueGapS, scriptPacing, underfilledBeats } from "./lint-cadence.js";
 import { bodyBeats } from "./lint-text.js";
-import { ECHO_RUN_WORDS, echoedLabels, FRAME_MAX_WORDS, frameWords, unspokenNumbers } from "./lint-screen.js";
+import { FRAME_MAX_WORDS, frameCounts } from "./lint-frame-words.js";
+import { ECHO_RUN_WORDS, echoedLabels, unspokenNumbers } from "./lint-screen.js";
 import { clipped, listed, namedBeats, quoted, type Hint } from "./repair-hint.js";
 import { beatCues, type ScriptV1 } from "./script-schema.js";
 
@@ -12,8 +13,9 @@ const numbersHint: Hint = (script, row) => {
 };
 
 const frameHint: Hint = (script, row) => {
-  const named = namedBeats(script, row).map((beat) => `${beat.id} (${frameWords(beat)} words)`);
-  return `beats putting more than ${FRAME_MAX_WORDS} words on screen across assertion, labels and chips: ${named.join(", ")}. Write rows as key words, not sentences, and move the rest to the narration`;
+  const failing = new Set(row.detail_beats);
+  const named = frameCounts(script).filter((count) => failing.has(count.beat)).map((count) => `${count.beat} (${count.words} words as ${count.kind})`);
+  return `beats whose fullest frame shows more than ${FRAME_MAX_WORDS} words, headline, rows and source line together: ${named.join(", ")}. Write rows as key words, not sentences, and move the rest to the narration`;
 };
 
 const echoHint: Hint = (script, row) => {

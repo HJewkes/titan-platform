@@ -28,7 +28,7 @@ interface Doctrine {
 
 let shipped: Doctrine | undefined;
 // Read once: the rewrite pass runs L0 once per candidate beat, and the doctrine never changes inside a process.
-const doctrine = (): Doctrine => (shipped ??= { profiles: loadProfiles(), specs: loadBeatSpecs(), bands: loadSpeechBands() });
+export const doctrine = (): Doctrine => (shipped ??= { profiles: loadProfiles(), specs: loadBeatSpecs(), bands: loadSpeechBands() });
 
 /** The script's pacing, or undefined for a profile the doctrine does not hold (its runtime check says so on its own). */
 export function scriptPacing(script: Pick<ScriptV1, "profile">): TimingProfile["pacing"] | undefined {

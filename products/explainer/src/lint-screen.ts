@@ -1,16 +1,14 @@
 import type { L0Check } from "./eval-l0.js";
-import { countRow, wordsOf } from "./lint-text.js";
+import { countRow } from "./lint-text.js";
 import { unspokenFacts, type ScreenText } from "./qa/narration-facts.js";
 import { plainWords, type ScriptBeat } from "./script-schema.js";
 
 /**
  * Script-time preflight for qa's content rows (TP-4470). Each rule reads what the script will put on screen, the
  * assertion, labels and chips, against the beat's spoken text, so the script repair fixes it before a paid render
- * fails narration-facts, words-per-frame or G10 on it.
+ * fails narration-facts or G10 on it.
  */
 
-/** qa's words-per-frame line: assertion-evidence slides averaged about 21 words, topic-bullet ones 41. */
-export const FRAME_MAX_WORDS = 20;
 /** qa's G10 line: a display text sharing this many spoken words in a row is the narration read off the screen. */
 export const ECHO_RUN_WORDS = 5;
 
@@ -33,9 +31,6 @@ function screenTexts(beat: ScriptBeat): ScreenText[] {
 export function unspokenNumbers(beat: ScriptBeat): { fact: string; shown: string }[] {
   return unspokenFacts(beat.id, screenTexts(beat), spokenOf(beat)).filter((fact) => fact.kind === "number").map(({ fact, shown }) => ({ fact, shown }));
 }
-
-/** Words the beat puts on screen: its assertion, every label and every chip. */
-export const frameWords = (beat: ScriptBeat): number => screenTexts(beat).reduce((sum, text) => sum + wordsOf(text.text).length, 0);
 
 const tokens = (text: string): string[] => text.toLowerCase().replace(/[^a-z0-9%\s-]/g, " ").split(/\s+/).filter(Boolean);
 
@@ -60,9 +55,6 @@ export const echoedLabels = (beat: ScriptBeat): string[] =>
 
 /** Q-D14: every number the assertion, a label or a chip shows is said in the beat (qa's narration-facts, at script time). */
 export const numbersSpokenCheck: L0Check = ({ script }) => [countRow("Q-D14", script.beats.filter((beat) => unspokenNumbers(beat).length > 0).map((beat) => beat.id), "tagged")];
-
-/** Q-D15: assertion, labels and chips hold at most 20 words a beat (qa's words-per-frame, at script time). */
-export const frameWordsCheck: L0Check = ({ script }) => [countRow("Q-D15", script.beats.filter((beat) => frameWords(beat) > FRAME_MAX_WORDS).map((beat) => beat.id), "tagged")];
 
 /** Q-D16: no label or chip repeats five spoken words in a row (qa's G10, at script time). */
 export const labelEchoCheck: L0Check = ({ script }) => [countRow("Q-D16", script.beats.filter((beat) => echoedLabels(beat).length > 0).map((beat) => beat.id), "tagged")];

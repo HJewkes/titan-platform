@@ -44,30 +44,6 @@ describe("Q-D14 on-screen numbers are spoken", () => {
   });
 });
 
-describe("Q-D15 words on screen", () => {
-  const SENTENCES = ["router · The router lane wants every match to finish faster", "cache · The cache lane wants its store warm before the rush", "label · Fewer reprints"];
-
-  it("a beat over 20 on-screen words fails", () => {
-    const script = dailyWith("goals-1", { visual: { labels: SENTENCES } });
-
-    const row = l0Row(script, "Q-D15");
-    const hint = repairHint(row, script);
-
-    expect(row).toMatchObject({ severity: "error", pass: false });
-    expect(row.detail_beats).toContain("goals-1");
-    expect(hint).toMatch(/goals-1 \(\d+ words\)/);
-    expect(hint).toContain("key words");
-  });
-
-  it("passes once the rows are key words", () => {
-    const script = dailyWith("goals-1", { visual: { labels: ["router · Faster matches", "cache · Warm store", "label · Fewer reprints"] } });
-
-    const row = l0Row(script, "Q-D15");
-
-    expect(row.detail_beats).not.toContain("goals-1");
-  });
-});
-
 describe("Q-D16 labels that echo the narration", () => {
   it("a label repeating five spoken words fails", () => {
     const script = dailyWith("lanes-1", { visual: { labels: ["router · rewrote its matcher and merged it", "router · Old path behind a switch"] } });

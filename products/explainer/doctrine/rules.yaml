@@ -408,11 +408,11 @@ rules:
     note: "TP-4470, rolled out on daily-overview first: the register rewrite still moves numbers it stops saying onto labels, which this rule and qa refuse, so the other types wait on that policy. qa's narration-facts hard gate at script time, through its own unspokenFacts: citations and ordering numbers are exempt, and a chart's labels count only their largest value."
     l0: { severity: error, status: implemented, checks: ["Q-D14"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
   - id: Q-D15
-    rule: "A beat's assertion, labels and chips hold at most 20 words together"
-    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.chips]
+    rule: "A template beat's fullest frame holds at most 20 words: the headline, the stage text and the source line, as the page draws them together"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.chips, beats.visual.beat]
     related: [words-per-frame]
     owner_support: none
-    note: "TP-4470. qa's words-per-frame gate at script time; the frame chrome is not in the script, so the count is the beat's own text."
+    note: "TP-4470. qa's words-per-frame gate at script time, read off resolve's template fill: the kind each beat is drawn as, a list heading that yields past 3 rows, no headline on claim-card, button, outro or hook, and none of the series chrome qa skips. A custom-layer beat draws its own text, so it is not predicted."
     l0: { severity: error, status: implemented, checks: ["Q-D15"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
   - id: Q-D16
     rule: "No label or chip repeats 5 or more of the beat's spoken words in a row"
