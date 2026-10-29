@@ -1,10 +1,13 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import { buildDigestPrompt, type DigestPrompt } from "./digest-prompt.js";
 import type { Retriever } from "./digest-retrieval.js";
 import { totalOf, type ScoreCard } from "./score-card.js";
 import type { DigestRunner } from "./seams.js";
 import { appendRow, type RowOutcome, type StepRow } from "./step-rows.js";
+
+const DigestRowSchema = z.object({ step: z.string(), outcome: z.string(), started_at: z.string() });
 
 const SYSTEM_PROMPT = "You write a digest of one video transcript as Markdown. Reply with the digest and nothing else.";
 const MAX_BUDGET_USD = 0.75;
@@ -49,7 +52,7 @@ function digestsWrittenOn(rowsDir: string, day: string): number {
   return readFileSync(file, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as StepRow)
+    .map((line) => DigestRowSchema.parse(JSON.parse(line)))
     .filter((r) => r.step === "digest" && r.outcome === "ok" && r.started_at.slice(0, 10) === day).length;
 }
 

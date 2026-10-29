@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ScoreCard } from "./score-card.js";
 
 export interface TaskRef {
@@ -50,15 +51,13 @@ async function priorDigests(config: CliRetrieverConfig, card: ScoreCard): Promis
   return [...seen].slice(0, TOP);
 }
 
-interface SearchHit {
-  ref?: string;
-  class?: string;
-  title?: string;
-}
+const SearchOutputSchema = z.object({
+  hits: z.array(z.object({ ref: z.string().optional(), class: z.string().optional(), title: z.string().optional() })).default([]),
+});
 
 function parseTasks(stdout: string): TaskRef[] {
   try {
-    const hits = (JSON.parse(stdout) as { hits?: SearchHit[] }).hits ?? [];
+    const { hits } = SearchOutputSchema.parse(JSON.parse(stdout));
     return hits
       .filter((h) => h.class === "tasks" && h.ref && h.title)
       .map((h) => ({ id: h.ref!.replace(/^task:/, ""), title: h.title! }));
