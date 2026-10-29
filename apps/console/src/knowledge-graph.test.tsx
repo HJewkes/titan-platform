@@ -15,6 +15,7 @@ const SESSION = "session:00000000-0000-4000-8000-000000000007";
 const LONELY = "task:OR-9";
 const BUSY = "task:OR-11";
 const FALLBACK = "task:OR-12";
+const SLOW = "task:OR-13";
 
 const node = (ref: string, kind: EgoGraph["nodes"][number]["kind"], depth: 0 | 1 | 2, label: string) => ({ ref, kind, depth, label, degree: 1, expanded: depth < 2 });
 
@@ -48,6 +49,7 @@ function snapshot(): Snapshot {
       [egoKey(LONELY)]: successEnvelope(ego(LONELY, { nodes: [node(LONELY, "task", 0, "OR-9")], edges: [], counts: {} })),
       [egoKey(BUSY)]: successEnvelope(ego(BUSY, { counts: { note: 40, session: 12, file: 9 }, truncated: { nodeCap: 150, edgeCap: 300, omitted: { note: 39, session: 11 }, omittedEdges: 0, collapsed: [{ kind: "file", via: "touched", count: 9 }] } })),
       [egoKey(FALLBACK)]: successEnvelope(ego(FALLBACK, { depth: 1, sources: { graph: "absent", mentions: "ok", fallback: "mentions" } })),
+      [egoKey(SLOW)]: successEnvelope(ego(SLOW, { sources: { graph: "ok", mentions: "unavailable" } })),
       [egoKey("task:OR-404")]: errorEnvelope("graph unreadable", 65),
     },
   };
@@ -98,6 +100,11 @@ describe("the knowledge graph tab", () => {
     renderConsole(graphRoute(FALLBACK));
     expect(await screen.findByText("Session links are unavailable; showing mention links only.")).toBeTruthy();
     expect(screen.queryByText(/^Showing \d+ of/)).toBeNull();
+  });
+
+  it("says plainly when mentions did not load in time", async () => {
+    renderConsole(graphRoute(SLOW));
+    expect(await screen.findByText("Mentions did not load in time; showing session links only.")).toBeTruthy();
   });
 
   it("says so when the graph cannot be read", async () => {

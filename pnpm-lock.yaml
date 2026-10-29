@@ -315,7 +315,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/agent-surface: {}
+  packages/agent-surface:
+    devDependencies:
+      '@titan-design/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
 
   packages/anthropic-account:
     dependencies:

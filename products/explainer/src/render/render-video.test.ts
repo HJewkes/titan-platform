@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256 } from "../workflow/artifacts.js";
-import { FAKE_HOST, framesOf, pngFrame, probeStreams, sineWav, timelineOf } from "./render-fixtures.test-helpers.js";
+import { FAKE_HOST, fitsStage, framesOf, pngFrame, probeStreams, sineWav, timelineOf } from "./render-fixtures.test-helpers.js";
 import { RenderManifestSchema } from "./render-manifest.js";
 import { defaultRenderDeps, renderVideo, type RenderDeps, type RenderInput, type RenderWords } from "./render-video.js";
 
@@ -19,7 +19,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const fakeCapture = (pageDurationS?: (frames: number, fps: number) => number) => framesOf(png, pageDurationS);
 
 function deps(overrides: Partial<RenderDeps> = {}): RenderDeps {
-  return { ...defaultRenderDeps, captureFrames: fakeCapture(), host: async () => FAKE_HOST, now: () => 0, ...overrides };
+  return { ...defaultRenderDeps, captureFrames: fakeCapture(), host: async () => FAKE_HOST, now: () => 0, stageFit: fitsStage, ...overrides };
 }
 
 function input(overrides: Partial<RenderInput> = {}): RenderInput {
