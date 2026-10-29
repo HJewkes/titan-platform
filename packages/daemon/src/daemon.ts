@@ -73,7 +73,6 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   guards?: RequestGuardOptions;
   /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
   rpcBodyLimit?: RpcBodyLimit;
-  /** Observes every `/rpc` answer on every listener; see `HttpAppOptions.onRpc`. */
   onRpc?: (sample: RpcSample) => void;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;

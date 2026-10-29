@@ -3,7 +3,7 @@ import path from "node:path";
 import type { RpcSample } from "@titan-design/daemon";
 
 /** One logged call. Name, timing, size and status only: never arguments, ids or the body. */
-export interface RpcRow {
+interface RpcRow {
   t: number;
   kind: "rpc";
   name: string;
@@ -12,7 +12,7 @@ export interface RpcRow {
   status: number;
 }
 
-export interface PerfRecorderOptions {
+interface PerfRecorderOptions {
   /** `stateDir/perf`; created on first flush. */
   dir: string;
   now?: () => number;
@@ -22,7 +22,7 @@ export interface PerfRecorderOptions {
   retentionDays?: number;
 }
 
-export interface RpcStats {
+interface RpcStats {
   name: string;
   count: number;
   errors: number;
@@ -33,7 +33,7 @@ export interface RpcStats {
   bytesMax: number;
 }
 
-export type SummaryWindow = "15m" | "24h";
+type SummaryWindow = "15m" | "24h";
 
 export interface PerfRecorder {
   record(sample: RpcSample): void;
@@ -53,7 +53,7 @@ export function percentile(sorted: readonly number[], p: number): number {
   return sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)]!;
 }
 
-export function statsOf(rows: readonly RpcRow[]): RpcStats[] {
+function statsOf(rows: readonly RpcRow[]): RpcStats[] {
   const byName = new Map<string, RpcRow[]>();
   for (const row of rows) byName.set(row.name, [...(byName.get(row.name) ?? []), row]);
   return [...byName].map(([name, group]) => {
