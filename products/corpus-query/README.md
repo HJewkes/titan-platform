@@ -6,7 +6,7 @@ a deterministic retrieve, then small verified model calls.
 Tier product of the titan-platform DAG. Private; not published.
 
 ```sh
-corpus-query index <root> [--layout archive|plain] [--db <file>]
+corpus-query index <root> [--layout archive|plain|youtube] [--db <file>]
 ```
 
 `index` prints `documents, indexed, unchanged, removed, skipped, headerless, paragraphs`. The
@@ -60,5 +60,8 @@ chapter, story-order key), or `undefined` to skip the file.
   `TITLE: <code> - <title>`, `PUBLISHED` and `POST_ID` header lines. The ref is the TITLE code. Reading order
   is `player-manager`, `soccer-supremo`, `dof`, any other series by name, then `other/` by publish date.
 - `plain`: one `.txt` file is one document, ordered by path; header lines are optional.
+- `youtube`: `<handle>/<id>.md` with YAML front matter (`title`, `channel`, `posted`, `duration`, `id`). The
+  ref is the video id; paragraphs open with a `[mm:ss]` anchor that `paragraphAnchor` reads as seconds.
+  `<id>.score.json` and `<id>.digest.md` are sibling documents with the same ref.
 
 Tests use a synthetic corpus written to a temp directory. Do not commit text from a real corpus.
