@@ -98,6 +98,7 @@ graph TD
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
     titan["titan"]
+    ytScout["yt-scout"]
     codewatch["codewatch"]
     console["console"]
   end
@@ -280,6 +281,8 @@ graph TD
   sessionMiner --> workflow
   titan --> daemon
   titan --> health
+  ytScout --> appPaths
+  ytScout --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp
   codewatch --> rpcClient
@@ -358,7 +361,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds ten units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds eleven units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

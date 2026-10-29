@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a LAN name alone, with no LAN listener, gets an https link",
+      "file": "apps/console/server/cli-inbox-link.ts",
+      "find": "config.lanHost === null ?",
+      "replace": "config.lanNames.length === 0 ?",
+      "kills": [
+        "titan-console inbox link falls back to loopback only for a console with no LAN listener"
+      ]
+    },
+    {
+      "name": "the item id goes into the hash unencoded",
+      "file": "apps/console/server/cli-inbox-link.ts",
+      "find": "/#/inbox/${encodeURIComponent(id)}",
+      "replace": "/#/inbox/${id}",
+      "kills": [
+        "titan-console inbox link prints an https link on the first LAN name and the console's port, with the whole gate id as one segment",
+        "titan-console inbox link names this machine's hostname when no LAN names are set but the LAN listener is on",
+        "titan-console inbox link falls back to loopback only for a console with no LAN listener"
+      ]
+    }
+  ]
+}
