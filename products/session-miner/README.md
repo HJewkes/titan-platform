@@ -480,6 +480,22 @@ systemctl --user daemon-reload
 systemctl --user enable --now session-miner-friction-daily.timer
 ```
 
+## Worker-report intake, shadow (CC-1662)
+
+`titan-miner report intake --shadow [--since 24h] [--eval] [--out <file>]` reads the window's
+`Status:` report messages from agent-chat's events table and writes one JSON line per report to
+`<state>/report-intake/<date>.jsonl` (or `--out`). Each row holds the status, PR, head sha and CI
+state that session-analytics' `parseReport` reads, the `Concerns:` items with their prefilter class
+(`visibility-denied`, `ci-unread`, `follow-up-filed`, `pre-existing-failure`, `could-not-verify` or
+`residual`), the friction clusters, and the actions the W1 rule table suggests. It acts on nothing,
+and `--shadow` is required until the rule table's match is trusted.
+
+`--eval` joins each row to what happened next to the agent, before its next report and within 12
+hours: the coordinator messaged it, it was resumed, it was retired, or it was left. It prints how
+often a suggested closeout met no re-engagement. The strict rate counts every resume. The attributed
+rate counts only resumes logged under the coordinator's own name, since agent-chat logs a CLI resume
+(Shepherd's fix rounds among them) under `human`.
+
 ## Daily self-improve classification (TP-685)
 
 `titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir> [--max-budget-usd 3]`
