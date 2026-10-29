@@ -116,15 +116,16 @@ async function describe(
   }
 }
 
+/** One initiative's indexable files, unsorted. */
+export async function scanWorkspaceSlug(activeRoot: string, slug: string): Promise<WorkspaceFile[]> {
+  const entries = await collectSlug(activeRoot, slug);
+  const described = await Promise.all(entries.map((e) => describe(activeRoot, slug, e)));
+  return described.filter((file): file is WorkspaceFile => file !== null);
+}
+
 /** Every indexable file under the active root, sorted by relative path. */
 export async function scanWorkspace(activeRoot: string): Promise<WorkspaceFile[]> {
   const slugs = await listInitiativeSlugs(activeRoot);
-  const perSlug = await Promise.all(
-    slugs.map(async (slug) => {
-      const entries = await collectSlug(activeRoot, slug);
-      const described = await Promise.all(entries.map((e) => describe(activeRoot, slug, e)));
-      return described.filter((file): file is WorkspaceFile => file !== null);
-    }),
-  );
+  const perSlug = await Promise.all(slugs.map((slug) => scanWorkspaceSlug(activeRoot, slug)));
   return perSlug.flat().sort((a, b) => a.path.localeCompare(b.path));
 }

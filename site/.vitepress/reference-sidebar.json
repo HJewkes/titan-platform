@@ -158,6 +158,10 @@
         "link": "/reference/speech-tts"
       },
       {
+        "text": "test-timing",
+        "link": "/reference/test-timing"
+      },
+      {
         "text": "worktree",
         "link": "/reference/worktree"
       }

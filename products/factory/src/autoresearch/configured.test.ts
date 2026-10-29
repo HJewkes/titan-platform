@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ArPorts } from "@titan-design/autoresearch";
 import { inProcessCaller } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
+import { seedRepoWithOrigin, withHistory } from "@titan-design/test-kit/git";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -35,22 +36,12 @@ const TARGET = {
 async function originWithSideBranch() {
   const root = mkdtempSync(join(tmpdir(), "ar-configured-"));
   roots.push(root);
-  const [seed, bare, clone] = [join(root, "seed"), join(root, "origin.git"), join(root, "clone")];
-  mkdirSync(join(seed, "ar"), { recursive: true });
-  await git(seed, "init", "--quiet", "-b", "main");
-  writeFileSync(join(seed, "ar/target.json"), JSON.stringify(TARGET));
-  writeFileSync(join(seed, "ar/bounds.json"), JSON.stringify({ schema: "ar-bounds/v1", classes: {} }));
-  await git(seed, "add", "--all");
-  await git(seed, "commit", "--quiet", "-m", "fixture");
-  await git(seed, "checkout", "--quiet", "-b", "side");
-  writeFileSync(join(seed, "side.txt"), "side\n");
-  await git(seed, "add", "--all");
-  await git(seed, "commit", "--quiet", "-m", "side");
-  const side = await git(seed, "rev-parse", "HEAD");
-  await git(seed, "checkout", "--quiet", "main");
-  await git(root, "clone", "--quiet", "--bare", seed, bare);
-  await git(root, "clone", "--quiet", bare, clone);
-  return { root, clone, side };
+  const [bare, clone] = [join(root, "origin.git"), join(root, "clone")];
+  seedRepoWithOrigin(clone, bare, { "ar/target.json": JSON.stringify(TARGET), "ar/bounds.json": JSON.stringify({ schema: "ar-bounds/v1", classes: {} }) });
+  const [side] = withHistory(clone, [{ branch: "side", from: "main", files: { "side.txt": "side\n" }, message: "side" }]);
+  await git(clone, "push", "--quiet", "origin", "side");
+  await git(clone, "checkout", "--quiet", "main");
+  return { root, clone, side: side! };
 }
 
 describe("portsForRun", () => {

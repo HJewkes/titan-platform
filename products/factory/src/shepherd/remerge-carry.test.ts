@@ -1,28 +1,19 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generatedPathsFor, remerge, remergeFact, type RemergeResult } from "./remerge-carry.js";
 
 const REPO = "acme/widgets";
 const GENERATED = ["CAPABILITIES.md", "site/generated/**"];
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 let root: string;
 let origin: string;
 let stateDir: string;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", origin, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(origin)(...args);
 }
 
 function write(file: string, text: string): void {
@@ -43,13 +34,12 @@ function branchAt(name: string, at: string): void {
 
 /** main and the reviewed head on `feature` both edit `file`, so merging main into the reviewed head conflicts there. */
 function conflictingOn(file: string): string {
-  commit(file, "base\n");
-  commit("b.txt", "b0\n");
-  branchAt("feature", "HEAD");
-  const reviewed = commit(file, "feature\n");
-  branchAt("main", "main");
-  commit(file, "main\n");
-  branchAt("feature", "feature");
+  const [, , , reviewed = ""] = withHistory(origin, [
+    { files: { [file]: "base\n" }, message: `edit ${file}` },
+    { files: { "b.txt": "b0\n" }, message: "edit b.txt" },
+    { files: { [file]: "main\n" }, message: `edit ${file}` },
+    { branch: "feature", from: ":2", files: { [file]: "feature\n" }, message: `edit ${file}` },
+  ]);
   return reviewed;
 }
 
@@ -63,13 +53,12 @@ function resolveMerge(resolution: Record<string, string>): string {
 
 /** The reviewed head on `feature`, with main moved on by one unrelated commit. */
 function reviewedHead(): { m0: string; h1: string } {
-  const m0 = commit("a.txt", "a0\n");
-  commit("b.txt", "b0\n");
-  branchAt("feature", "HEAD");
-  const h1 = commit("a.txt", "a1\n");
-  branchAt("main", "main");
-  commit("b.txt", "b1\n");
-  branchAt("feature", "feature");
+  const [m0 = "", , , h1 = ""] = withHistory(origin, [
+    { files: { "a.txt": "a0\n" }, message: "edit a.txt" },
+    { files: { "b.txt": "b0\n" }, message: "edit b.txt" },
+    { files: { "b.txt": "b1\n" }, message: "edit b.txt" },
+    { branch: "feature", from: ":2", files: { "a.txt": "a1\n" }, message: "edit a.txt" },
+  ]);
   return { m0, h1 };
 }
 
@@ -85,7 +74,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "remerge-carry-"));
   origin = join(root, "origin");
   stateDir = join(root, "state");
-  execFileSync("git", ["init", "-q", "-b", "main", origin], { env: TEST_GIT_ENV });
+  seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
 });
 

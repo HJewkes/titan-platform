@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the pace windows default to the old 60 s and 15 s",
+      "file": "products/factory/src/shepherd/spawn-gate.ts",
+      "find": "  windowMs: 0,\n  headroomIntervalMs: 0,\n",
+      "replace": "  windowMs: 60_000,\n  headroomIntervalMs: 15_000,\n",
+      "kills": [
+        "admitSpawn admits a second start in the same millisecond with the default pace windows at 0",
+        "spawnGate admits a burst of four ready spawns in one poll with the default pace windows at 0"
+      ]
+    }
+  ]
+}

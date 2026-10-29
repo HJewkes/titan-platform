@@ -38,7 +38,7 @@
       ]
     },
     {
-      "name": "the CI-policy files come from GitHub's compare list, not the evidence's paths",
+      "name": "CI-policy files come from GitHub's compare list, not the evidence's paths",
       "file": "products/factory/src/console-action/owner-evidence.ts",
       "find": "evidence.merge.changedPaths.filter(isGithubPath)",
       "replace": "(await port.compareFiles(land.repo, evidence.record.baseRef, land.head)).files.filter(isGithubPath)",

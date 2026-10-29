@@ -4,7 +4,7 @@ import { EXIT as RPC_EXIT, inProcessCaller, type JsonEnvelope } from "@titan-des
 import { InvalidArgumentError, type Command } from "commander";
 import { z } from "zod";
 import type { Verbs } from "../cli.js";
-import { formatResume } from "../cli-host-verbs.js";
+import { formatResume, routesOf } from "../cli-host-verbs.js";
 import { parsePort } from "../cli-options.js";
 import { postRpc, unansweredMessage } from "../cli-shepherd-rpc.js";
 import { EXIT } from "../exit-codes.js";
@@ -12,6 +12,8 @@ import { untilSettledOrGated, type FactoryHost } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { probeServe } from "../serve-probe.js";
+import { targetPorts } from "./configured.js";
+import { planDryRun } from "./plan-dry-run.js";
 
 const RUNGS = ["none", "L0", "L1", "L2", "L3"] as const;
 
@@ -186,8 +188,27 @@ function registerMilestone(group: Command, verbs: Verbs): void {
     });
 }
 
+/** Runs here, never on serve: it records no run and touches no database. */
+async function planDryRunVerb(verbs: Verbs, target: string, opts: { minPool?: number }): Promise<void> {
+  const config = routesOf(verbs.deps).autoresearch;
+  if (!config) return void (verbs.io.stderr("error: [no-config] autoresearch is not configured on this factory\n"), verbs.setExit(EXIT.FAILURE));
+  if (!config.targets[target]) return usage(verbs, `[no-target] ${target} is not under autoresearch.targets`);
+  const runId = `dry-${target}-${Date.now()}`;
+  const report = await planDryRun(targetPorts(config, target).plan, { runId, minPool: opts.minPool ?? config.run.minPool }, new AbortController().signal);
+  verbs.io.stdout(`${JSON.stringify({ runId, ...report }, null, 2)}\n`);
+  if (!report.ok) verbs.setExit(EXIT.FAILURE);
+}
+
+function registerPlanDryRun(group: Command, verbs: Verbs): void {
+  group
+    .command("plan-dry-run <target>")
+    .description("run only a round-1 planner turn on an empty digest and check its ops against the schema and quotas; no pin, baseline or implementer")
+    .option("--min-pool <n>", "the minimum pool to check against; default the config's run.minPool", positiveInt)
+    .action((target: string, opts: { minPool?: number }) => planDryRunVerb(verbs, target, opts));
+}
+
 /** `titan-factory autoresearch`: every verb goes to serve when it answers, and only the reads and writes that are safe here fall back in-process. */
 export function registerAutoresearch(program: Command, verbs: Verbs): void {
   const group = program.command("autoresearch").description("start, watch, steer and validate autoresearch runs");
-  for (const register of [registerStart, registerResume, registerStatus, registerAddIdea, registerMilestone]) register(group, verbs);
+  for (const register of [registerStart, registerResume, registerStatus, registerAddIdea, registerMilestone, registerPlanDryRun]) register(group, verbs);
 }

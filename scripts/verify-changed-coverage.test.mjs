@@ -62,6 +62,14 @@ describe("CI_COVERAGE mirrors ci.yml", () => {
     expect(unexplained).toEqual([]);
   });
 
+  it("covers the perf job's budget step as ci-only and its build as local", () => {
+    const perfSteps = ciSteps.filter((step) => step.job === "perf");
+    const dispositionOf = (run) => CI_COVERAGE.find((row) => matches(row, perfSteps.find((step) => step.run === run)))?.disposition;
+    expect(dispositionOf("pnpm vitest run --project perf")).toBe("ci-only");
+    expect(dispositionOf("pnpm build")).toBe("local");
+    expect(dispositionOf("pnpm install --frozen-lockfile")).toBe("setup");
+  });
+
   it("plans every labelled row's command in ci.yml order", () => {
     // Mutant caught: dropping pnpm lint from planCommands, the gap behind two review rounds.
     const ciOrder = [...new Set(ciSteps.map((step) => CI_COVERAGE.find((row) => matches(row, step))?.label))].filter(Boolean);

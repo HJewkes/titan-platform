@@ -1,5 +1,6 @@
 import { arch, cpus, platform } from "node:os";
-import { launch } from "@titan-design/frame-capture";
+import { withBrowser } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { z } from "zod";
 import { runFfmpeg } from "./ffmpeg.js";
 
@@ -49,17 +50,9 @@ async function ffmpegVersion(): Promise<string> {
   return out.split("\n")[0]!.trim();
 }
 
-async function chromiumVersion(): Promise<string> {
-  const browser = await launch();
-  try {
-    return browser.version();
-  } finally {
-    await browser.close();
-  }
-}
-
-export async function collectRenderHost(): Promise<RenderHost> {
-  const [ffmpeg, chromium] = await Promise.all([ffmpegVersion(), chromiumVersion()]);
+/** The host, its Chromium read from `browser` when one is lent, else from one launched for the read. */
+export async function collectRenderHost(browser?: Browser): Promise<RenderHost> {
+  const [ffmpeg, chromium] = await Promise.all([ffmpegVersion(), withBrowser(browser, async (readFrom) => readFrom.version())]);
   const cores = cpus();
   return { platform: platform(), arch: arch(), cpuModel: cores[0]?.model.trim() ?? "unknown", cpus: cores.length, node: process.version, ffmpeg, chromium };
 }

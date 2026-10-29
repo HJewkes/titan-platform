@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { href } from "./router.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -45,20 +44,13 @@ interface Call {
 }
 
 /** Opens `#/inbox/<id>` as a phone's link would, live so the gate's tap reaches `inbox.prepare`. */
-function openLink(id: string | undefined, answer: JsonEnvelope<unknown> = inboxAnswer()): Call[] {
+function openLink(id: string | undefined, answer: JsonEnvelope<unknown> = inboxAnswer(), { inApp = false } = {}): Call[] {
   const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: inboxAnswer([], false), [snapshotKey("inbox.list", { planning: true })]: answer } };
   const inner = pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
   const calls: Call[] = [];
   const prepare = (): Promise<JsonEnvelope<unknown>> => Promise.resolve(successEnvelope({ status: "refused", message: "fixture" }));
   const source: DataSource = { subscribe: inner.subscribe.bind(inner), call: (name, args, options) => (calls.push({ name, args }), name === "inbox.prepare" ? prepare() : inner.call(name, args, options)) };
-  window.location.hash = href(id === undefined ? { view: "inbox" } : { view: "inbox", id });
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={source}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, href(id === undefined ? { view: "inbox" } : { view: "inbox", id }), { answers: source, inApp });
   return calls;
 }
 
@@ -107,7 +99,7 @@ describe("an inbox deep link", () => {
   });
 
   it("focuses a round and its evidence link opens the round", async () => {
-    openLink(ROUND_ID);
+    openLink(ROUND_ID, inboxAnswer(), { inApp: true });
     const row = await expectFocused(ROUND_ID);
     fireEvent.click(within(row).getByText("Open evidence"));
     expect(window.location.hash).toBe("#/rounds/ship-tile-r1");

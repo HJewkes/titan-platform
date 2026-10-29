@@ -3,6 +3,7 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { withHistory, type HistoryCommit } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CostOf } from "./cost.js";
 import type { CorpusRow } from "./extract.js";
@@ -20,34 +21,38 @@ let repo: ScratchRepo;
 const heads: Record<string, string> = {};
 const merges: Record<string, string> = {};
 
-function branchCommit(name: string, from: string, files: Record<string, string>, at: string): string {
-  repo.git(["checkout", "-q", "-B", name, from]);
-  const sha = repo.commit(files, `head ${name}`, at);
-  repo.git(["checkout", "-q", "main"]);
-  return sha;
-}
+const commitIn = (files: Record<string, string | null>, message: string, branch = "main"): HistoryCommit => ({ files, message, branch });
+const branchCommit = (name: string, files: Record<string, string>, from?: string): HistoryCommit => ({ files, message: `head ${name}`, branch: name, from });
 
 /** main: base, then one squash commit per merged PR, with a revert and two fixes landing after them. */
 function buildHistory(): void {
-  const base = repo.commit({ "src/a.ts": lines(10, "a"), "src/c.ts": lines(10, "c"), "src/d.ts": lines(5, "d"), "src/e.ts": lines(5, "e"), "README.md": "x\n" }, "Base", "2026-01-01T00:00:00Z");
   const a34 = lines(10, "a").replace("a 3\na 4\n", "A3\nA4\n");
-  heads.p1 = branchCommit("p1", base, { "src/c.ts": lines(10, "c").replace("c 5\n", "C5\n") }, "2026-01-02T00:00:00Z");
-  heads.p2 = branchCommit("p2", base, { "src/r.ts": "r\n" }, "2026-01-02T00:00:00Z");
-  heads.p3 = branchCommit("p3", base, { "src/a.ts": a34 }, "2026-01-02T00:00:00Z");
-  heads.p4 = branchCommit("p4", base, { "src/c.ts": lines(10, "c").replace("c 9\n", "C9\n") }, "2026-01-02T00:00:00Z");
-  heads.p5a = branchCommit("p5", base, { "src/n5.ts": "n\n" }, "2026-01-02T00:00:00Z");
-  heads.p5b = branchCommit("p5", "p5", { "src/d.ts": "fixed\n" }, "2026-01-03T00:00:00Z");
-  heads.p6a = branchCommit("p6", base, { "src/e.ts": "changed\n" }, "2026-01-02T00:00:00Z");
-  heads.p6b = branchCommit("p6", "p6", { "README.md": "y\n" }, "2026-01-03T00:00:00Z");
-  merges.p1 = repo.commit({ "src/c.ts": lines(10, "c").replace("c 5\n", "C5\n") }, "Change c five (#1)", "2026-01-04T00:00:00Z");
-  repo.commit({ "src/c.ts": lines(10, "c").replace("c 5\n", "C5\n").replace("c 10\n", "C10\n") }, "Fix c ten", "2026-01-05T00:00:00Z");
-  merges.p2 = repo.commit({ "src/r.ts": "r\n" }, "Add r (#2)", "2026-01-06T00:00:00Z");
-  repo.git(["rm", "-q", "src/r.ts"]);
-  repo.commit({}, `Revert "Add r (#2)"\n\nThis reverts commit ${merges.p2}.`, "2026-01-07T00:00:00Z");
-  merges.p3 = repo.commit({ "src/a.ts": a34 }, "Change a (#3)", "2026-01-08T00:00:00Z");
-  repo.commit({ "src/a.ts": a34.replace("A3\n", "AA3\n") }, "Fix a three", "2026-01-09T00:00:00Z");
-  merges.p4 = repo.commit({ "src/c.ts": lines(10, "c").replace("c 5\n", "C5\n").replace("c 10\n", "C10\n").replace("c 9\n", "C9\n") }, "Change c nine (#4)", "2026-01-10T00:00:00Z");
-  merges.p5 = repo.commit({ "src/n5.ts": "n\n", "src/d.ts": "fixed\n" }, "Add n5 (#5)", "2026-01-11T00:00:00Z");
+  const c5 = lines(10, "c").replace("c 5\n", "C5\n");
+  const [, p1, p2, p3, p4, p5a, p5b, p6a, p6b, m1, , m2] = withHistory(repo.dir, [
+    commitIn({ "src/a.ts": lines(10, "a"), "src/c.ts": lines(10, "c"), "src/d.ts": lines(5, "d"), "src/e.ts": lines(5, "e"), "README.md": "x\n" }, "Base"),
+    branchCommit("p1", { "src/c.ts": c5 }, ":1"),
+    branchCommit("p2", { "src/r.ts": "r\n" }, ":1"),
+    branchCommit("p3", { "src/a.ts": a34 }, ":1"),
+    branchCommit("p4", { "src/c.ts": lines(10, "c").replace("c 9\n", "C9\n") }, ":1"),
+    branchCommit("p5", { "src/n5.ts": "n\n" }, ":1"),
+    branchCommit("p5", { "src/d.ts": "fixed\n" }),
+    branchCommit("p6", { "src/e.ts": "changed\n" }, ":1"),
+    branchCommit("p6", { "README.md": "y\n" }),
+    commitIn({ "src/c.ts": c5 }, "Change c five (#1)"),
+    commitIn({ "src/c.ts": c5.replace("c 10\n", "C10\n") }, "Fix c ten"),
+    commitIn({ "src/r.ts": "r\n" }, "Add r (#2)"),
+  ]);
+  Object.assign(heads, { p1, p2, p3, p4, p5a, p5b, p6a, p6b });
+  Object.assign(merges, { p1: m1, p2: m2 });
+  // The revert names the sha it reverts, so it goes in after that sha is known.
+  const [, p3Merge, , p4Merge, p5Merge] = withHistory(repo.dir, [
+    commitIn({ "src/r.ts": null }, `Revert "Add r (#2)"\n\nThis reverts commit ${m2}.`),
+    commitIn({ "src/a.ts": a34 }, "Change a (#3)"),
+    commitIn({ "src/a.ts": a34.replace("A3\n", "AA3\n") }, "Fix a three"),
+    commitIn({ "src/c.ts": c5.replace("c 10\n", "C10\n").replace("c 9\n", "C9\n") }, "Change c nine (#4)"),
+    commitIn({ "src/n5.ts": "n\n", "src/d.ts": "fixed\n" }, "Add n5 (#5)"),
+  ]);
+  Object.assign(merges, { p3: p3Merge, p4: p4Merge, p5: p5Merge });
 }
 
 const source = { path: "/transcripts/r.jsonl", namespace: "test" };
@@ -101,7 +106,7 @@ const gates: FixtureGate[] = [
 let rows: CorpusRow[];
 const rowAt = (pr: number, head = rows.find((row) => row.pr === pr)?.head) => rows.find((row) => row.pr === pr && row.head === head);
 
-// The hook runs about seventy git processes, which on a loaded CI runner outran vitest's 10 s default (TP-3978).
+// buildCorpus runs dozens of git reads of its own, which on a loaded CI runner can outrun vitest's 10 s default (TP-3978).
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "corpus-fixture-"));
   repo = scratchRepo(join(root, "widgets"));

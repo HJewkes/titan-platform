@@ -54,6 +54,7 @@ Before adding code:
 | [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. |
+| [`test-timing`](#cap-test-timing) | 1 | You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. |
 | [`autoresearch`](#cap-autoresearch) | 2 | An agent loop should propose changes to a system, measure each against a frozen evaluator, and keep only those that beat the best by more than run-to-run noise, with the metric, guards and gates read from the target's own config. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
@@ -502,6 +503,8 @@ A test needs a value of an interface type but the code under test reads only a f
 
 A test must show an operation is linear or bounded, typically a glob or regex matcher that could backtrack: `linearWork` with `hostileGlobs` and a step meter, or `countCalls` with a cap, asserts counted work, never a time.
 
+A test runs real git against scratch repositories: `@titan-design/test-kit/git` copies a per-file template (`seedRepo`, `seedRepoWithOrigin`), writes multi-commit history in one process (`withHistory`), and runs git without session hooks or host config (`fixtureEnv`, `gitIn`).
+
 Key exports:
 
 - `count-calls`: `callMeter`, `countCalls`, `CallMeter`, `CountedMethod`
@@ -564,7 +567,7 @@ Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents
 
 **Use this when:**
 
-Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
+Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves. Its `./routing` subpath holds the workflow table that picks an implementer profile (lite or full) from a task's estimate, tags and owned files.
 
 Key exports:
 
@@ -643,9 +646,9 @@ You need deterministic PNG frames, or an MP4, of a web page that animates on a t
 
 Key exports:
 
-- `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
-- `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
-- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `settleFonts`
+- `protocol`: `TITAN_MOTION_GLOBAL`
+- `virtual-time`: `VIRTUAL_TIME_SCRIPT`
+- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `settleFonts`, `withBrowser`, `withCapturePage`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)
@@ -857,6 +860,22 @@ Key exports:
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
+
+<a id="cap-test-timing"></a>
+
+### [`test-timing`](https://hjewkes.github.io/titan-platform/reference/test-timing)
+
+Tier 1, `@titan-design/test-timing@0.0.0`. titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store
+
+**Use this when:**
+
+You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). `openTimingStore` and `ingestArtifact` keep each record as one `runs` row and a `files` row per test file in SQLite, idempotent on the run id, with a `runner_class` per row so a CI runner is never compared with a bigger host. For service health samples use health; for the SQLite primitives use store-sqlite.
+
+Key exports:
+
+- `artifact`: `TimingArtifact`, `TimingFile`, `TimingRun`, `TIMING_SCHEMA_ID`, `parseTimingArtifact`, `timingArtifactReadSchema`, `timingArtifactSchema`
+- `store`: `TIMING_MIGRATIONS`, `ingestArtifact`, `openTimingStore`, `runnerClass`, `storeStats`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/test-timing)
 
 <a id="cap-worktree"></a>
 
