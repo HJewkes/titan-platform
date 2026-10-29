@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { TYPED_FILES } from "../eslint.typed.config.js";
-import { chunkExit, chunkGroups, runChunks, typedGroups } from "./lint-types.mjs";
+import { chunkExit, chunkGroups, groupsInPackages, runChunks, typedGroups } from "./lint-types.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const groupsOfSize = (...sizes) => sizes.map((files, i) => ({ pattern: `g${i}`, dir: `d${i}`, files }));
@@ -49,5 +49,20 @@ describe("lint:types exit codes", () => {
 
     expect(code).toBe(1);
     expect(ran).toHaveLength(3);
+  });
+});
+
+describe("lint:types --only", () => {
+  const groups = [
+    { pattern: "packages/a/src/**", dir: "packages/a/src", files: 1 },
+    { pattern: "packages/b/src/**", dir: "packages/b/src", files: 1 },
+    { pattern: "packages/*/scripts/**/*.ts", dir: "packages/*/scripts/**/*.ts", files: 1 },
+    { pattern: "apps/console/{src,server}/**", dir: "apps/console/{src,server}/**", files: 1 },
+  ];
+
+  it("keeps only the named packages' groups, including glob groups that cover them", () => {
+    // Mutant caught: prefix-only matching drops the packages/*/scripts group; no filtering lints every package.
+    expect(groupsInPackages(groups, ["packages/a"]).map((g) => g.pattern)).toEqual(["packages/a/src/**", "packages/*/scripts/**/*.ts"]);
+    expect(groupsInPackages(groups, ["apps/console"]).map((g) => g.pattern)).toEqual(["apps/console/{src,server}/**"]);
   });
 });

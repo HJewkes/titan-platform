@@ -129,6 +129,15 @@ describe("buildSpawnArgs", () => {
   });
 });
 
+describe("buildSpawnArgs worktree", () => {
+  it("adopts the given worktree with --worktree, and leaves the flag out otherwise", () => {
+    const base = { peerName: "agent-x", profile: DISPATCH_PROFILE };
+
+    expect(buildSpawnArgs({ ...base, worktree: "/trees/t1" })).toEqual(["agent", "spawn", "agent-x", DISPATCH_PROFILE, "--worktree", "/trees/t1", "--brief-stdin"]);
+    expect(buildSpawnArgs(base)).not.toContain("--worktree");
+  });
+});
+
 describe("buildSpawnArgs launchedBy", () => {
   it("leaves a caller that does not opt in with exactly the argv it had before the option", () => {
     expect(buildSpawnArgs({ peerName: "agent-x", profile: DISPATCH_PROFILE, briefing: "relay", configDir: "/cfg" })).toEqual([
