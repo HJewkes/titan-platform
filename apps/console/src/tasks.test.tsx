@@ -6,13 +6,12 @@ import type { DataSource } from "@titan-design/rpc-client";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
-import { listPage } from "../server/task-list.js";
+import { listPage, tasksArgs } from "../server/task-list.js";
 import { App } from "./App.js";
 
 afterEach(cleanup);
 
 type TasksResult = ConsoleCommands["work.tasks"]["result"];
-type TasksArgs = ConsoleCommands["work.tasks"]["args"];
 type TaskDetail = ConsoleCommands["work.task"]["result"];
 type TaskMentions = ConsoleCommands["work.taskMentions"]["result"];
 type TaskArtifacts = ConsoleCommands["work.taskArtifacts"]["result"];
@@ -75,24 +74,28 @@ const deferred = (mentions: TaskMentions = MENTIONS, artifacts: TaskArtifacts = 
   [snapshotKey("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" })]: successEnvelope(artifacts),
 });
 
-const recorded = (tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred()): Snapshot =>
-  snapshotOf({
+/** The unfiltered `work.tasks` answer each recorded snapshot holds, which a filtered read is cut from. */
+const unfiltered = new WeakMap<Snapshot, TasksResult>();
+
+function recorded(tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred()): Snapshot {
+  const snapshot = snapshotOf({
     ...later,
     [snapshotKey("work.tasks", {})]: successEnvelope(tasks),
     [snapshotKey("work.task", { id: "OR-1" })]: successEnvelope(detail),
     [snapshotKey("work.task", { id: "OR-404" })]: errorEnvelope("No task OR-404 in any initiative", EXIT.NOINPUT),
   });
+  unfiltered.set(snapshot, tasks);
+  return snapshot;
+}
 
 /** Answers a filtered `work.tasks` from the recorded unfiltered one, through the server's own filter. */
 function snapshotSource(snapshot: Snapshot): DataSource {
   const inner = pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
   return {
     call: async (name, args, options) => {
-      if (name !== "work.tasks" || Object.keys(args ?? {}).length === 0) return inner.call(name, args, options);
-      const all = await inner.call(name, {}, options);
-      if (!all.ok) return all;
-      const unfiltered = all.data as TasksResult;
-      return successEnvelope({ ...unfiltered, ...listPage(unfiltered.tasks, args as TasksArgs) });
+      const all = unfiltered.get(snapshot);
+      if (name !== "work.tasks" || all === undefined || Object.keys(args ?? {}).length === 0) return inner.call(name, args, options);
+      return successEnvelope({ ...all, ...listPage(all.tasks, tasksArgs.parse(args)) });
     },
     subscribe: (handlers, options) => inner.subscribe(handlers, options),
   };
