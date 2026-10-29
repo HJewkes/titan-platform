@@ -120,16 +120,15 @@ export function InboxPage(): ReactNode {
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
   // A snapshot exported before TP-4044 carries no nudges.
-  const { items, gaps, fyiCount, derived, nudges = [] } = inbox.data;
+  const { items, gaps, fyiCount, derived, nudges = [], planningCount } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
-  const planning = items.filter((item) => item.section === "planning");
   return (
     <VStack gap={6}>
       <GapBanners gaps={gaps} />
       {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
-      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
+      <BlockingSection items={blocking} quiet={planningCount === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
       {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-      {planning.length > 0 ? <PlanningSection items={planning} /> : null}
+      {planningCount > 0 ? <PlanningSection count={planningCount} /> : null}
       <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
     </VStack>
   );
@@ -210,22 +209,29 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
   );
 }
 
-/** Planning can run to hundreds of rows, so it opens only when asked. */
-function PlanningSection({ items }: { items: readonly InboxItem[] }): ReactNode {
+/** Planning can run to hundreds of rows, so it opens only when asked, and only then are its rows read. */
+function PlanningSection({ count }: { count: number }): ReactNode {
   const [isOpen, setOpen] = useState(false);
   return (
     <Section testID="inbox-planning">
-      <SectionHeader title={`Planning (${items.length})`} subtitle="Answered at each item's source" />
+      <SectionHeader title={`Planning (${count})`} subtitle="Answered at each item's source" />
       <SectionContent>
         <VStack gap={3}>
           <Button variant="outline" size="sm" onPress={() => setOpen(!isOpen)}>
-            <ButtonText>{isOpen ? "Hide planning" : `Show ${items.length} planning items`}</ButtonText>
+            <ButtonText>{isOpen ? "Hide planning" : `Show ${count} planning items`}</ButtonText>
           </Button>
-          {isOpen ? <InboxRows items={items} /> : null}
+          {isOpen ? <PlanningRows /> : null}
         </VStack>
       </SectionContent>
     </Section>
   );
+}
+
+function PlanningRows(): ReactNode {
+  const planning = useQuery("inbox.list", { planning: true });
+  if (planning.status === "loading") return <Spinner size="sm" label="Loading the planning items" />;
+  if (planning.data === undefined) return <Alert status="error" message={`Could not load the planning items: ${planning.error.message}`} />;
+  return <InboxRows items={planning.data.items.filter((item) => item.section === "planning")} />;
 }
 
 function InboxRows({ items }: { items: readonly InboxItem[] }): ReactNode {

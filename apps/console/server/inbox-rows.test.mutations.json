@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a row keeps its item's context",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "const UNSHOWN_KEYS = [\"context\", \"anchors\", \"pins\"] as const;",
+      "replace": "const UNSHOWN_KEYS = [\"anchors\", \"pins\"] as const;",
+      "kills": [
+        "inboxRow keeps a heavy round's item to what the page renders"
+      ]
+    },
+    {
+      "name": "a row keeps its recommendation's rationale",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "const UNSHOWN_RECOMMENDATION_KEYS = [\"rationale\", \"cite\"] as const;",
+      "replace": "const UNSHOWN_RECOMMENDATION_KEYS = [\"cite\"] as const;",
+      "kills": [
+        "inboxRow keeps a heavy round's item to what the page renders"
+      ]
+    },
+    {
+      "name": "the default view lists the planning items",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "const shown = planning ? items : items.filter((item) => item.section !== \"planning\");",
+      "replace": "const shown = items;",
+      "kills": [
+        "viewRows counts planning items and leaves them out by default"
+      ]
+    },
+    {
+      "name": "an invalidate leaves the factory read kept",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "      needs?.invalidate();\n",
+      "replace": "",
+      "kills": [
+        "inboxReadCache reads both again after an invalidate"
+      ]
+    },
+    {
+      "name": "the finished runs are read on every view",
+      "file": "apps/console/server/inbox-rows.ts",
+      "find": "const finished = cachedRead(() => shepherd.list(\"finished\"), times, now);",
+      "replace": "const finished = { read: () => shepherd.list(\"finished\"), invalidate: () => undefined };",
+      "kills": [
+        "inboxReadCache reads the factory and the finished runs once inside the fresh window"
+      ]
+    }
+  ]
+}
