@@ -36,9 +36,7 @@ export interface RpcStats {
   bytesMax: number;
 }
 
-export interface UpstreamStats extends RpcStats {
-  timeouts: number;
-}
+type UpstreamStats = RpcStats & { timeouts: number };
 
 type SummaryWindow = "15m" | "24h";
 
@@ -46,7 +44,7 @@ export interface PerfRecorder {
   record(sample: RpcSample): void;
   recordUpstream(sample: UpstreamSample): void;
   summary(window: SummaryWindow): Promise<RpcStats[]>;
-  upstreams(window: SummaryWindow): Promise<UpstreamStats[]>;
+  upstreams(window: SummaryWindow): Promise<(RpcStats & { timeouts: number })[]>;
   /** Writes what is buffered; resolves when it is on disk. */
   flush(): Promise<void>;
   close(): Promise<void>;
@@ -105,12 +103,7 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
     if (ring.length > ringSize) ring.shift();
     log.add(row);
   }
-  async function rowsIn(window: SummaryWindow): Promise<LogRow[]> {
-    const since = now() - WINDOW_MS[window];
-    if (window === "15m") return ring.filter((row) => row.t >= since);
-    await log.flush();
-    return (await readLogs(dir, since)).filter((row) => row.t >= since);
-  }
+  const rowsIn = (window: SummaryWindow) => windowRows(window, now() - WINDOW_MS[window], ring, log.flush, dir);
 
   return {
     record(sample) {
@@ -130,6 +123,13 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
       await Promise.all([pruned, log.stop()]);
     },
   };
+}
+
+/** The last 15 minutes come from the ring; a longer window reads the day files after what is buffered is written. */
+async function windowRows(window: SummaryWindow, since: number, ring: readonly LogRow[], flush: () => Promise<void>, dir: string): Promise<LogRow[]> {
+  if (window === "15m") return ring.filter((row) => row.t >= since);
+  await flush();
+  return (await readLogs(dir, since)).filter((row) => row.t >= since);
 }
 
 /** Buffers rows and appends them to the day files every `flushMs` or once `flushRows` wait; a failed write drops that batch. */
