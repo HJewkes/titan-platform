@@ -1,6 +1,6 @@
 import { CI_POLICY_KEYS, refusedLines, visibleLines, type CiPolicy } from "@titan-design/session-read";
 
-export type CiPolicyRefusal = "ci_policy_prose" | "ci_policy_malformed";
+type CiPolicyRefusal = "ci_policy_prose" | "ci_policy_malformed";
 
 const CI_POLICY_UNCHANGED_LINE = "CI-policy: unchanged";
 const LIST_MARKER = /^(?:[-*+]|\d{1,9}[.)])\s+/;
