@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the view enum check is dropped",
+      "file": "apps/console/server/perf/commands.ts",
+      "find": "view: z.enum(VIEW_KEYS)",
+      "replace": "view: z.string()",
+      "kills": ["perf.report refuses an unknown view or command name"]
+    },
+    {
+      "name": "any command name is accepted",
+      "file": "apps/console/server/perf/commands.ts",
+      "find": "commandNames().includes(name)",
+      "replace": "true",
+      "kills": ["perf.report refuses an unknown view or command name"]
+    },
+    {
+      "name": "a row may carry fields the schema does not know",
+      "file": "apps/console/server/perf/commands.ts",
+      "find": "queries: z.number().int().nonnegative() }).strict()",
+      "replace": "queries: z.number().int().nonnegative() })",
+      "kills": ["perf.report refuses a row that carries an id or any field it does not know"]
+    },
+    {
+      "name": "the row cap is lifted",
+      "file": "apps/console/server/perf/commands.ts",
+      "find": ".max(MAX_REPORT_ROWS)",
+      "replace": ".max(10_000)",
+      "kills": ["perf.report refuses more than 100 rows in one post"]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "onSettle fires once for every listener of the query",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "observe(onSettle, { command: entry.command, ms: now() - started, ok: envelope.ok, fromCache });",
+      "replace": "for (const _ of entry.listeners) observe(onSettle, { command: entry.command, ms: now() - started, ok: envelope.ok, fromCache });",
+      "kills": [
+        "createQueryStore onSettle fires once per call with the elapsed time from the injected clock"
+      ]
+    },
+    {
+      "name": "onSettle reports the clock reading instead of the elapsed time",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "ms: now() - started",
+      "replace": "ms: now()",
+      "kills": [
+        "createQueryStore onSettle fires once per call with the elapsed time from the injected clock"
+      ]
+    },
+    {
+      "name": "onSettle also reports a superseded call",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "if (!settle(entry, controller, envelope)) return;",
+      "replace": "settle(entry, controller, envelope);",
+      "kills": [
+        "createQueryStore onSettle does not report a call that a newer call superseded"
+      ]
+    },
+    {
+      "name": "an observer that throws breaks the query",
+      "file": "packages/react-app/src/hooks/query-store.ts",
+      "find": "  } catch {\n    // Telemetry must never fail a query.\n  }",
+      "replace": "  } finally {\n    onSettle?.(settled);\n  }",
+      "kills": [
+        "createQueryStore onSettle still settles the query when the observer throws"
+      ]
+    }
+  ]
+}

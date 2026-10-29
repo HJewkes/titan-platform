@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the route's id goes out as its view",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "tracker.begin(route.view, route.id !== undefined);",
+      "replace": "tracker.begin(route.id ?? route.view, route.id !== undefined);",
+      "kills": ["route timing a detail route reports its view key and never its id"]
+    },
+    {
+      "name": "a detail route is reported as a list route",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "tracker.begin(route.view, route.id !== undefined);",
+      "replace": "tracker.begin(route.view, false);",
+      "kills": ["route timing a detail route reports its view key and never its id"]
+    },
+    {
+      "name": "the sink keeps more than 100 rows",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "rows.length >= MAX_ROWS_PER_POST",
+      "replace": "rows.length >= MAX_ROWS_PER_POST * 2",
+      "kills": ["report batching posts at most 100 rows and counts the rows it dropped"]
+    },
+    {
+      "name": "a route is reported when its window closes even with a query running",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "visit.windowOpen || visit.pending > 0 ||",
+      "replace": "visit.windowOpen ||",
+      "kills": ["route tracker waits for a query still running when its first window closes"]
+    },
+    {
+      "name": "a call after the window counts toward the page",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "if (!visit?.windowOpen) return () => {};",
+      "replace": "if (!visit) return () => {};",
+      "kills": ["route tracker does not count a call that starts after the first window"]
+    }
+  ]
+}
