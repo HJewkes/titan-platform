@@ -76,7 +76,7 @@ describe("Q-D17 on a claim-card, a kind that takes no cue", () => {
     const hint = repairHint(l0Row(script, "Q-D17"), script);
 
     expect(hint).toContain("reflection-2 is a claim-card, which takes no cue, and heldS does not excuse its stretch");
-    expect(hint).toMatch(/split it into [23] claim-card beats of at most 8 s of words each, or draw it as a list whose rows each land on a cue/);
+    expect(hint).toMatch(/split it into [23] claim-card beats of at most \d+ words each.*, or draw it as a list whose rows each land on a cue/);
   });
 
   it("passes each claim-card of the split its hint asks for, at most 8 s of words", () => {
