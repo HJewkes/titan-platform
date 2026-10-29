@@ -57,7 +57,7 @@ function homeSnapshot(answers: Answers = {}): Snapshot {
       [snapshotKey("work.portfolio", {})]:
         answers.portfolio ??
         ok({ fetchedAt: "", personalKnown: true, parseErrors: [], initiatives: [initiative("orbit-relay", "Orbit relay", 3, ago(2 * HOUR)), initiative("kiln-tools", "Kiln tools", 4, ago(72 * HOUR))] }),
-      [snapshotKey("work.tasks", {})]:
+      [snapshotKey("work.tasks", { stage: "blocked" })]:
         answers.tasks ?? ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks: [task("OR-7", "Route beacons", "blocked", "Waits on OR-3"), task("OR-8", "Tune relays", "ready", "No blockers")] }),
       [snapshotKey("agents.queue", {})]: answers.queue ?? ok({ items: [question("m-1", "Ship the relay today?\nMore context", "relay-worker")], hidden: { "notice:exit": 9 }, open: 10, generatedAt: NOW }),
       [snapshotKey("agents.roster", {})]: answers.roster ?? ok({ agents: [agent("relay-worker", "presence"), agent("old-worker", "history")], brokerUptimeMs: HOUR, reconnecting: false, generatedAt: NOW }),

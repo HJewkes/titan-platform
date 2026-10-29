@@ -1,8 +1,7 @@
 import { useSyncExternalStore } from "react";
+import { VIEW_KEYS, type ViewKey } from "./view-keys.js";
 
-/** The rail, in rail order. */
-export const VIEW_KEYS = ["home", "inbox", "initiatives", "tasks", "sessions", "agents", "knowledge", "rounds", "reviews", "theater", "shepherd", "autoresearch", "config"] as const;
-export type ViewKey = (typeof VIEW_KEYS)[number];
+export { VIEW_KEYS, type ViewKey };
 
 export interface Route {
   view: ViewKey;

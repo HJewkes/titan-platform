@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a slice step runs after a sibling cancelled the run",
+      "file": "products/factory/src/build-surface/slice-run.ts",
+      "find": "  stopIfHalted(run);\n  const stepId",
+      "replace": "  const stepId",
+      "kills": [
+        "build-surface on a toy two-slice spec with every agent step stubbed stops a sibling slice in flight when another slice's deploy fails, before its next step"
+      ]
+    },
+    {
+      "name": "an owner gate opens after a sibling cancelled the run",
+      "file": "products/factory/src/build-surface/slice-run.ts",
+      "find": "Promise<StepResult> {\n  stopIfHalted(run);\n",
+      "replace": "Promise<StepResult> {\n",
+      "kills": [
+        "build-surface on a toy two-slice spec with every agent step stubbed never opens a sibling's deploy gate once another slice's deploy has failed"
+      ]
+    },
+    {
+      "name": "a cancel records no reason for the siblings",
+      "file": "products/factory/src/build-surface/slice-run.ts",
+      "find": "  run.halt.reason ??= reason;\n",
+      "replace": "",
+      "kills": [
+        "build-surface on a toy two-slice spec with every agent step stubbed stops a sibling slice in flight when another slice's deploy fails, before its next step",
+        "build-surface on a toy two-slice spec with every agent step stubbed never opens a sibling's deploy gate once another slice's deploy has failed"
+      ]
+    },
+    {
+      "name": "the final walk takes an answer about any sha",
+      "file": "products/factory/src/build-surface/schemas.ts",
+      "find": "notes: z.string().optional() });",
+      "replace": "notes: z.string().optional() }).extend({ headSha: z.string() });",
+      "kills": [
+        "build-surface on a toy two-slice spec with every agent step stubbed refuses a final-walk acceptance given for a sha other than the last merge"
+      ]
+    }
+  ]
+}
