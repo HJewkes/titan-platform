@@ -67,17 +67,19 @@ describe("explainer run CLI", () => {
 
 describe("explainer stage and run variants CLI", () => {
   it("run --variant reruns from the varied stage, and report --compare names the cache hits", async () => {
-    const seed = await seededRun();
-    fx = cloneFixture(seed);
-    const { run, out } = cli(fakeHost(fx, fakeScriptModel(), fakeRender()));
+    fx = fixture();
+    const host = fakeHost(fx, fakeScriptModel(), fakeRender());
+    const { run, out } = cli(host);
     const variant = path.join(fx.dataDir, "render.json");
     writeFileSync(variant, JSON.stringify({ schema: "explainer.variant/v1", stage: "render", name: "w8", params: { workers: 8 } }));
-    const first = seed.result.runId;
 
+    await run("--spine", fx.spine, "--facts", fx.facts);
+    const first = /^run (\S+):/.exec(out[0] ?? "")?.[1];
+    out.length = 0;
     expect(await run("--spine", fx.spine, "--facts", fx.facts, "--variant", `render=${variant}`)).toBe(0);
     const second = /^run (\S+):/.exec(out[0] ?? "")?.[1];
     out.length = 0;
-    await run("report", second!, "--compare", first);
+    await run("report", second!, "--compare", first!);
 
     expect(out.join("")).toContain("| tts | cached | in-process |");
     expect(out.join("")).toContain(`## Compare: ${second} against ${first}`);
