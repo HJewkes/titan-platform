@@ -2,7 +2,7 @@
 import type { OwnerItem } from "@titan-design/owner-queue";
 import type { ArRunSummary } from "../autoresearch-view.js";
 import type { RpcAnswer } from "../test-support.js";
-import { draw, isoAt, pad, WORDS, type Draw } from "./random.js";
+import { draw, isoAt, pad, WORDS, type Draw } from "./random.fixture.js";
 
 export const FACTORY_SIZES = { needs: 600, activeRuns: 300, finishedRuns: 2000, autoresearchRuns: 20 } as const;
 

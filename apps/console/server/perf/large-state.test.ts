@@ -8,11 +8,11 @@ import { inProcessCaller } from "@titan-design/registry";
 import { createConsoleRegistry } from "../registry.js";
 import type { ConsoleContext } from "../owner-guard.js";
 import { createSources } from "../upstreams.js";
-import { AW_SIZES } from "./active-work-state.js";
-import { BROKER_SIZES } from "./broker-state.js";
-import { DISK_SIZES } from "./disk-state.js";
-import { FACTORY_SIZES } from "./factory-state.js";
-import { buildPerfFixture, perfState, type PerfFixture } from "./fixture.js";
+import { AW_SIZES } from "./active-work.fixture.js";
+import { BROKER_SIZES } from "./broker.fixture.js";
+import { DISK_SIZES } from "./disk.fixture.js";
+import { FACTORY_SIZES } from "./factory.fixture.js";
+import { buildPerfFixture, perfState, type PerfFixture } from "./large-state.fixture.js";
 
 const dirs: string[] = [];
 const fixtures: PerfFixture[] = [];
@@ -42,6 +42,19 @@ async function treeDigest(dir: string): Promise<string> {
   }
   return hash.digest("hex");
 }
+
+/** What a reader of the rounds dir should report: an answer outranks a withdrawal. */
+async function statusesOnDisk(roundsDir: string): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const id of await readdir(roundsDir)) {
+    const files = new Set(await readdir(path.join(roundsDir, id)));
+    const status = files.has("feedback.json") ? "sent" : files.has("withdrawn.json") ? "withdrawn" : "open";
+    counts[status] = (counts[status] ?? 0) + 1;
+  }
+  return counts;
+}
+
+const countBy = (rows: readonly { status: string }[]): Record<string, number> => Object.fromEntries([...Map.groupBy(rows, (row) => row.status)].map(([status, each]) => [status, each.length]));
 
 const call = (fixture: PerfFixture) => {
   const registry = createConsoleRegistry(createSources(fixture.config, silentLogger));
@@ -79,6 +92,7 @@ describe("the perf fixture", () => {
     const rounds = await rpc("rounds.list", {});
     expect(rounds).toMatchObject({ ok: true, data: { rounds: expect.any(Array) } });
     expect(JSON.stringify(rounds)).not.toContain('"valid":false');
+    expect(countBy((rounds as { data: { rounds: { status: string }[] } }).data.rounds)).toEqual(await statusesOnDisk(fixture.config.roundsDir));
     expect(fixture.calls.total()).toBe(0);
 
     expect(await rpc("shepherd.list", { state: "finished" })).toMatchObject({ ok: true, data: expect.arrayContaining([expect.objectContaining({ runId: "run-00300" })]) });

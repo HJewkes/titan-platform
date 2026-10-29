@@ -1,7 +1,7 @@
 import { EXIT } from "@titan-design/registry";
 import type { RpcAnswer } from "../test-support.js";
-import type { ActiveWorkState, AwNote, AwSource } from "./active-work-state.js";
-import { isoAt } from "./random.js";
+import type { ActiveWorkState, AwNote, AwSource } from "./active-work.fixture.js";
+import { isoAt } from "./random.fixture.js";
 
 type Args = Record<string, unknown>;
 

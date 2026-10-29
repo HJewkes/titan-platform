@@ -8,12 +8,12 @@ import { mkdir, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ConsoleConfig } from "../config.js";
 import { startFakeBroker, startFakeDaemon, type FakeBroker, type RpcAnswer } from "../test-support.js";
-import { activeWorkAnswer } from "./active-work-answer.js";
-import { activeWorkState, type ActiveWorkState } from "./active-work-state.js";
-import { brokerHistoryItems, brokerQueueItems, brokerState, type BrokerState } from "./broker-state.js";
-import { writeEventsDb, writeRounds, writeSpool } from "./disk-state.js";
-import { FIXTURE_EPOCH_MS } from "./random.js";
-import { factoryAnswer, factoryState, type FactoryState } from "./factory-state.js";
+import { activeWorkAnswer } from "./active-work-answer.fixture.js";
+import { activeWorkState, type ActiveWorkState } from "./active-work.fixture.js";
+import { brokerHistoryItems, brokerQueueItems, brokerState, type BrokerState } from "./broker.fixture.js";
+import { writeEventsDb, writeRounds, writeSpool } from "./disk.fixture.js";
+import { FIXTURE_EPOCH_MS } from "./random.fixture.js";
+import { factoryAnswer, factoryState, type FactoryState } from "./factory.fixture.js";
 
 export const DEFAULT_PERF_SEED = "titan-console-perf-1";
 

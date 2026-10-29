@@ -1,7 +1,7 @@
 // A synthetic agent-chat broker at the size the console's audit measured (TP-4403 §3d): 60 agents and 5,000 messages.
 import type { BrokerEvent, BrokerSession } from "@titan-design/chat-protocol/agents";
 import { BROKER_HISTORY_LIMIT, MESSAGE_KINDS } from "../broker.js";
-import { draw, FIXTURE_EPOCH_MS, pad, WORDS } from "./random.js";
+import { draw, FIXTURE_EPOCH_MS, pad, WORDS } from "./random.fixture.js";
 
 export const BROKER_SIZES = { agents: 60, messages: 5000, queue: 40 } as const;
 

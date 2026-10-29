@@ -8,8 +8,8 @@ import { WITHDRAW_LOG } from "@titan-design/owner-queue/withdraw";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { FEEDBACK_SCHEMA_ID, MANIFEST_SCHEMA_ID } from "../review-schema-0.3/index.js";
 import { FEEDBACK_FILE, WITHDRAWN_FILE, WITHDRAWN_SCHEMA_ID } from "../rounds.js";
-import type { BrokerState } from "./broker-state.js";
-import { dateAt, draw, pad, WORDS, type Draw } from "./random.js";
+import type { BrokerState } from "./broker.fixture.js";
+import { dateAt, draw, pad, WORDS, type Draw } from "./random.fixture.js";
 
 export const DISK_SIZES = { rounds: 500, deposits: 400, withdrawnDeposits: 150, answeredDeposits: 100, askers: 40 } as const;
 

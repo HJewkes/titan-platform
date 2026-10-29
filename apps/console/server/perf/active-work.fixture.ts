@@ -1,7 +1,7 @@
 // A synthetic active-work workspace at the size the console's audit measured (TP-4403 §3d). Nothing is copied from a real one.
 import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import type { WireDeliverable, WireInitiative, WireTask } from "../active-work.js";
-import { draw, isoAt, pad, WORDS, type Draw } from "./random.js";
+import { draw, isoAt, pad, WORDS, type Draw } from "./random.fixture.js";
 
 export const AW_SIZES = { initiatives: 45, tasksPerInitiative: 200, notesPerInitiative: 34, sourcesPerInitiative: 34, repos: 30, deliverables: 24 } as const;
 
