@@ -44,6 +44,8 @@ const DRAIN_PHASES: ReadonlySet<string> = new Set(["review", "merging"]);
  */
 const IDLE_WAITS: readonly string[] = ["sh-account-wait", "sh-no-reviewer-wait", "sh-await-verdict", "sh-late-verdict", "sh-seat-recheck"];
 const MERGE_STEP = "merge";
+/** The review spawn step; it is repeated on restart and finds by name any reviewer an earlier run spawned, so a restart before the spawn loses nothing. */
+const REVIEW_SPAWN_STEP = "sh-review";
 
 type RouteFor = (stepId: string) => Pick<StepRoute, "onRestart"> | undefined;
 
@@ -51,6 +53,14 @@ type RouteFor = (stepId: string) => Pick<StepRoute, "onRestart"> | undefined;
 export type HoldPredicate = (run: WorkflowRun) => boolean;
 
 const notHeld: HoldPredicate = () => false;
+
+/** True when the spawn gate deferred the run's review and has not admitted it, so no reviewer was started; a failed read answers false and the run stays busy. */
+export type QueuedPredicate = (run: WorkflowRun) => boolean;
+
+/** A review step the gate keeps waiting has started nobody, so a restart costs it nothing (TP-4474). */
+function gateQueued(isQueued: QueuedPredicate, run: WorkflowRun, busy: BusyRun): boolean {
+  return busy.phase === "review" && stepIdMatches(REVIEW_SPAWN_STEP, busy.step) && heldNow(isQueued, run);
+}
 
 function classify(run: WorkflowRun, routeFor: RouteFor): BusyRun | undefined {
   const step = run.currentStep;
@@ -81,11 +91,14 @@ function heldNow(isHeld: HoldPredicate, run: WorkflowRun): boolean {
   }
 }
 
-/** The running runs whose current step a restart would repeat mid-review or mid-merge, or park for a human; a held run in a merge step is not one, since it cannot merge until released. */
-export function busyRuns(runs: readonly WorkflowRun[], routeFor: RouteFor, isHeld: HoldPredicate = notHeld): BusyRun[] {
+/**
+ * The running runs whose current step a restart would repeat mid-review or mid-merge, or park for a human; a held run in a merge step is not one, since it cannot merge
+ * until released, nor is a review spawn the gate still queues.
+ */
+export function busyRuns(runs: readonly WorkflowRun[], routeFor: RouteFor, isHeld: HoldPredicate = notHeld, isQueued: QueuedPredicate = notHeld): BusyRun[] {
   return runs.flatMap((run) => {
     const busy = classify(run, routeFor);
-    return busy && !(busy.phase === "merging" && heldNow(isHeld, run)) ? [busy] : [];
+    return busy && !(busy.phase === "merging" && heldNow(isHeld, run)) && !gateQueued(isQueued, run, busy) ? [busy] : [];
   });
 }
 
