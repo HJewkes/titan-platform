@@ -356,7 +356,7 @@ declare const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 /** A scoped fix-round FIX_FIRST that broke the unchanged-line or no-repeat rule (TP-3735); Shepherd's scope check finds these, not the parser. */
 type ScopeRefusal = "scope_untagged" | "repeated_finding";
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "probes_missing" | ScopeRefusal;
+type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | ScopeRefusal;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
@@ -539,8 +539,9 @@ declare const isUsageLimit: (result: {
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
  * `malformed` record; silence, a foreign or earlier message, `WAIT` and the client's own usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
- * A MERGE whose CI-policy line reads malformed is refused for one correction; a weakened reading wins over malformed in the
- * parser, so a weakening is never corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
+ * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
+ * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
+ * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
  */
 declare function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult;
 
