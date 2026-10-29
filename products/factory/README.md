@@ -634,7 +634,8 @@ That install restarts serve.
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its
 current step is in Shepherd's `review` or `merging` phase (`sh-await-verdict` included), or
-its step's route has `onRestart: "park"`. When `--drain-timeout` passes (default `45m`), the
+its step's route has `onRestart: "park"`. An `sh-review` step whose spawn the spawn gate still
+queues is not busy: it has started no reviewer, and it asks again after the restart. When `--drain-timeout` passes (default `45m`), the
 restart goes ahead, because every Shepherd step repeats safely. A park-routed step that is still
 busy refuses the restart instead, because the restart would leave its run `recovery_required`;
 `--force` restarts anyway. `--no-drain` checks `/health` once and does not wait. A service

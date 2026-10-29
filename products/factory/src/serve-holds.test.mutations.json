@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the drain counts a gate-queued review spawn busy",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": " && !gateQueued(isQueued, run, busy) ? [busy]",
+      "replace": " ? [busy]",
+      "kills": [
+        "serve's spawn-gate queue check for the restart drain (TP-4474) does not wait on a run whose only active step is a review spawn the gate deferred",
+        "serve's spawn-gate queue check for the restart drain (TP-4474) waits on a run whose PR the gate never deferred, beside one it did"
+      ]
+    },
+    {
+      "name": "a queued PR skips the drain at any review-phase step",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "  return busy.phase === \"review\" && stepIdMatches(REVIEW_SPAWN_STEP, busy.step) && heldNow(isQueued, run);",
+      "replace": "  return busy.phase === \"review\" && heldNow(isQueued, run);",
+      "kills": [
+        "serve's spawn-gate queue check for the restart drain (TP-4474) waits on a queued PR's run at a step that is not the review spawn"
+      ]
+    },
+    {
+      "name": "a failed queue read throws out of the drain",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": "stepIdMatches(REVIEW_SPAWN_STEP, busy.step) && heldNow(isQueued, run);",
+      "replace": "stepIdMatches(REVIEW_SPAWN_STEP, busy.step) && isQueued(run);",
+      "kills": [
+        "serve's spawn-gate queue check for the restart drain (TP-4474) waits on a review spawn whose store cannot be read"
+      ]
+    },
+    {
+      "name": "every registered run reads as gate-queued",
+      "file": "products/factory/src/serve-holds.ts",
+      "find": "    return registration !== undefined && spawnQueuePosition(registration.repo, registration.pr) !== undefined;",
+      "replace": "    return registration !== undefined;",
+      "kills": [
+        "serve's spawn-gate queue check for the restart drain (TP-4474) waits on a run once the gate admits its review and the reviewer agent is spawned",
+        "serve's spawn-gate queue check for the restart drain (TP-4474) waits on a run whose PR the gate never deferred, beside one it did"
+      ]
+    }
+  ]
+}
