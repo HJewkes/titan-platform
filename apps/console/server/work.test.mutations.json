@@ -7,7 +7,8 @@
       "find": "if (known?.updated === item.updated) return known.prefix;",
       "replace": "if (known?.updated === item.updated && false) return known.prefix;",
       "kills": [
-        "the portfolio a portfolio read with unchanged initiatives makes no brief reads"
+        "the portfolio a portfolio read with unchanged initiatives makes no brief reads",
+        "the portfolio a portfolio read re-reads the brief of an initiative whose updated stamp moved"
       ]
     },
     {
