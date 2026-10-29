@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 import { execGh, type GhExec } from "@titan-design/github";
 import { runGit, type GitRunner } from "@titan-design/worktree";
 import { githubSlug } from "./repo-evidence.js";
@@ -81,21 +82,18 @@ async function stateOf(branch: BranchInput, git: GitRunner, repoPrs: RepoPrs): P
   return { repo: path.basename(branch.repo), name: branch.name, ...(branch.note ? { note: branch.note } : {}), present, pr: repoPrs.prs.get(branch.name) ?? null };
 }
 
-interface GhPr {
-  headRefName: string;
-  number: number;
-  state: string;
-  title: string;
-  url: string;
-  statusCheckRollup?: { conclusion?: string | null; state?: string | null }[];
-}
+const checkEntry = z.object({ conclusion: z.string().nullish(), state: z.string().nullish() });
+const ghPrs = z.array(z.object({ headRefName: z.string(), number: z.number(), state: z.string(), title: z.string(), url: z.string(), statusCheckRollup: z.array(checkEntry).nullish() }));
+type GhPr = z.infer<typeof ghPrs>[number];
 
 async function listPrs(gh: GhExec, slug: string): Promise<RepoPrs> {
   const fields = "headRefName,number,state,title,url,statusCheckRollup";
   try {
     const result = await gh(["pr", "list", "--repo", slug, "--state", "all", "--limit", String(PR_LIST_LIMIT), "--json", fields], undefined, { timeoutMs: GH_TIMEOUT_MS });
     if (result.code !== 0) return { prs: new Map(), degraded: `Pull requests in ${slug} unread: ${result.stderr.trim() || `gh exited ${result.code}`}` };
-    return { prs: newestByHead(JSON.parse(result.stdout) as GhPr[]) };
+    const parsed = ghPrs.safeParse(JSON.parse(result.stdout));
+    if (!parsed.success) return { prs: new Map(), degraded: `Pull requests in ${slug} unread: gh answered an unexpected shape` };
+    return { prs: newestByHead(parsed.data) };
   } catch (error) {
     return { prs: new Map(), degraded: `Pull requests in ${slug} unread: ${error instanceof Error ? error.message : String(error)}` };
   }
@@ -113,7 +111,7 @@ function newestByHead(prs: readonly GhPr[]): Map<string, BranchPr> {
 }
 
 /** The same summary active-work's `artifact.status` wrote, so the page reads the same words. */
-function summarizeChecks(rollup: readonly { conclusion?: string | null; state?: string | null }[]): string | undefined {
+function summarizeChecks(rollup: readonly z.infer<typeof checkEntry>[]): string | undefined {
   if (rollup.length === 0) return undefined;
   const tags = rollup.map((entry) => (entry.conclusion || entry.state || "").toUpperCase());
   const fail = tags.filter((tag) => tag === "FAILURE" || tag === "CANCELLED" || tag === "TIMED_OUT").length;
