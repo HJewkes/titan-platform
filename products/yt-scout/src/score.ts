@@ -126,22 +126,31 @@ export async function scoreVideo(deps: ScoreDeps, input: ScoreVideoInput): Promi
     appendRow(deps.rowsDir, rowFor(deps, input, prompt, attempt, startedAt, { ...usageOf(last), outcome, error_class: errorClass }));
     if (!retry) break;
   }
-  return failResult(deps, input, prompt, last!, cost);
+  return failResult({ deps, input, prompt, partial }, last!, cost);
 }
 
-function failResult(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, last: Attempt, cost: number): ScoreVideoResult {
+interface CaseContext {
+  deps: ScoreDeps;
+  input: ScoreVideoInput;
+  prompt: ScorePrompt;
+  partial: boolean;
+}
+
+function fileCase(ctx: CaseContext, label: string, output: unknown): void {
+  writeCase(ctx.deps.casesDir, {
+    step: "score",
+    video_id: ctx.input.id,
+    label,
+    inputs: { transcript_path: ctx.input.transcriptPath, transcript_sha256: ctx.prompt.inputSha, title: ctx.input.title, partial: ctx.partial },
+    prompt_sha: ctx.prompt.promptSha,
+    model: ctx.deps.model,
+    output,
+  });
+}
+
+function failResult(ctx: CaseContext, last: Attempt, cost: number): ScoreVideoResult {
   const errorClass = last.outcome.ok ? "other" : last.outcome.errorClass;
-  if (errorClass === "schema_invalid" || errorClass === "refusal") {
-    writeCase(deps.casesDir, {
-      step: "score",
-      video_id: input.id,
-      label: errorClass,
-      inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
-      prompt_sha: prompt.promptSha,
-      model: deps.model,
-      output: last.outcome.ok ? last.outcome.value.output : null,
-    });
-  }
+  if (errorClass === "schema_invalid" || errorClass === "refusal") fileCase(ctx, errorClass, last.outcome.ok ? last.outcome.value.output : null);
   return { ok: false, errorClass, droppedTechniques: [], costUsd: cost };
 }
 
@@ -159,18 +168,6 @@ function writeCardFile(file: string, stored: StoredCard): void {
   writeFileSync(file, `${JSON.stringify(stored, null, 2)}\n`);
 }
 
-function fileTsInvalidCase(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, card: ScoreCard, dropped: Technique[]): void {
-  writeCase(deps.casesDir, {
-    step: "score",
-    video_id: input.id,
-    label: "ts_invalid",
-    inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
-    prompt_sha: prompt.promptSha,
-    model: deps.model,
-    output: { card, dropped },
-  });
-}
-
 function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, f: Finish): ScoreVideoResult {
   const card = f.attemptResult.card!;
   const { kept, dropped } = checkTimestamps(card.techniques, f.transcript);
@@ -186,7 +183,7 @@ function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt
   };
   writeCardFile(input.outputPath, stored);
   const tsInvalid = dropped.length > 0;
-  if (tsInvalid) fileTsInvalidCase(deps, input, prompt, card, dropped);
+  if (tsInvalid) fileCase({ deps, input, prompt, partial: f.partial }, "ts_invalid", { card, dropped });
   appendRow(
     deps.rowsDir,
     rowFor(deps, input, prompt, f.attempt, f.startedAt, {

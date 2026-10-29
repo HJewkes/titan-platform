@@ -1,5 +1,5 @@
 import { totalOf } from "./score-card.js";
-import { outputFields, referenceTotal } from "./eval-cases.js";
+import { referenceTotal } from "./eval-cases.js";
 import { rescore, type RescoreInput } from "./rescore.js";
 import type { EvalCase } from "./step-rows.js";
 
@@ -26,11 +26,10 @@ interface ReplaySummary {
 const PER_CALL_CAP_USD = 0.25;
 const mean = (xs: number[]): number | null => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
-
 function replayOne(c: EvalCase, opts: ReplayOptions, remainingUsd: number) {
-  const out = outputFields(c);
+  const { title, transcript_path, partial } = c.inputs;
   return rescore(
-    { ...opts, title: out.title ?? c.video_id, transcriptPath: c.inputs.transcript_path, partial: out.partial === true, maxBudgetUsd: Math.min(PER_CALL_CAP_USD, remainingUsd) },
+    { ...opts, title, transcriptPath: transcript_path, partial, maxBudgetUsd: Math.min(PER_CALL_CAP_USD, remainingUsd) },
     c.inputs.transcript_sha256,
   );
 }

@@ -83,7 +83,12 @@ function fileDisagreement(opts: AuditOptions, c: AuditCandidate, stored: CardFil
     step: "score",
     video_id: c.id,
     label: "audit-disagree",
-    inputs: { transcript_path: path.resolve(c.transcriptPath), transcript_sha256: createHash("sha256").update(transcriptForScoring(transcript, stored.partial)).digest("hex") },
+    inputs: {
+      transcript_path: path.resolve(c.transcriptPath),
+      transcript_sha256: createHash("sha256").update(transcriptForScoring(transcript, stored.partial)).digest("hex"),
+      title: stored.title,
+      partial: stored.partial,
+    },
     prompt_sha: stored.prompt_sha,
     model: stored.model,
     output: { ...stored, audit: { model: opts.model, total: audit.audited, card: audit.card } },

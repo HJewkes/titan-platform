@@ -10,7 +10,7 @@ const CaseSchema = z.object({
   step: z.string(),
   video_id: z.string(),
   label: z.string(),
-  inputs: z.object({ transcript_path: z.string(), transcript_sha256: z.string() }),
+  inputs: z.object({ transcript_path: z.string(), transcript_sha256: z.string(), title: z.string(), partial: z.boolean() }),
   prompt_sha: z.string(),
   model: z.string(),
   output: z.unknown().default(null),
@@ -27,7 +27,7 @@ const StoredCardSchema = z.looseObject({
 });
 
 /** The fields eval reads from a stored card file or from the output of an automatic case. */
-const OutputSchema = z.looseObject({ title: z.string().optional(), partial: z.boolean().optional(), total: z.number().optional(), card: ScoreCardSchema.optional() });
+const OutputSchema = z.looseObject({ total: z.number().optional(), card: ScoreCardSchema.optional() });
 
 export type CardFile = z.infer<typeof StoredCardSchema>;
 
@@ -35,7 +35,7 @@ export function readStoredCard(file: string): CardFile {
   return StoredCardSchema.parse(JSON.parse(readFileSync(file, "utf8")));
 }
 
-export function outputFields(c: EvalCase): z.infer<typeof OutputSchema> {
+function outputFields(c: EvalCase): z.infer<typeof OutputSchema> {
   const parsed = OutputSchema.safeParse(c.output);
   return parsed.success ? parsed.data : {};
 }
@@ -69,20 +69,24 @@ interface FlagInput {
   note?: string;
 }
 
-/** Records the transcript's path and sha256, never its text; an existing automatic case keeps its label and gains the gold. */
-export function flagCase(casesDir: string, input: FlagInput): string {
+/** A case built from the stored card; the sha is of the text the model saw, so it uses the card's own `partial`. */
+function caseFromCard(input: FlagInput): EvalCase {
   const card = readStoredCard(input.cardPath);
   const transcript = transcriptForScoring(readFileSync(input.transcriptPath, "utf8"), card.partial);
-  const gold: Gold = { verdict: input.verdict, ...(input.goldTotal !== undefined && { total: input.goldTotal }), ...(input.note && { note: input.note }) };
-  const existing = readCases(casesDir).find((c) => c.step === "score" && c.video_id === input.id);
-  return writeCase(casesDir, {
+  return {
     step: "score",
     video_id: input.id,
-    label: existing?.label ?? input.verdict,
-    inputs: { transcript_path: path.resolve(input.transcriptPath), transcript_sha256: createHash("sha256").update(transcript).digest("hex") },
+    label: input.verdict,
+    inputs: { transcript_path: path.resolve(input.transcriptPath), transcript_sha256: createHash("sha256").update(transcript).digest("hex"), title: card.title, partial: card.partial },
     prompt_sha: card.prompt_sha,
     model: card.model,
-    output: existing?.output ?? card,
-    gold,
-  });
+    output: card,
+  };
+}
+
+/** Records the transcript's path and sha256, never its text. An existing case keeps its label and inputs and gains the gold, so it needs no card: a schema failure never wrote one. */
+export function flagCase(casesDir: string, input: FlagInput): string {
+  const gold: Gold = { verdict: input.verdict, ...(input.goldTotal !== undefined && { total: input.goldTotal }), ...(input.note && { note: input.note }) };
+  const existing = readCases(casesDir).find((c) => c.step === "score" && c.video_id === input.id);
+  return writeCase(casesDir, { ...(existing ?? caseFromCard(input)), gold });
 }

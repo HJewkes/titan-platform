@@ -5,8 +5,9 @@ import { auditCandidates, disagrees, runAudit, selectAuditSample, type AuditCand
 import { readCases } from "./eval-cases.js";
 import { replayCases, type ReplayOptions } from "./eval-replay.js";
 import { runCli } from "./cli.js";
+import { scoreVideo } from "./score.js";
 import { tempTree, VALID_WATCHLIST, type TempTree } from "./fixtures.test-helpers.js";
-import type { ScoreRunner } from "./seams.js";
+import type { ScoreCall, ScoreRunner } from "./seams.js";
 
 const RUBRIC = "## The owner's system\n\nx\n\n## Scores\n\ny\n";
 const SECRET = "Synthetic spoken sentence that must never reach a case file.";
@@ -44,6 +45,24 @@ function seedCard(id: string, total: number): void {
   tree.write(`${id}.md`, TRANSCRIPT);
   tree.write(`${id}.score.json`, JSON.stringify(cardJson(id, total)));
 }
+
+const SCORED = { actionable: 4, novelty: 3, evidence: 2, pain_points: [], summary: "s", techniques: [], caveat: "" };
+/** Past the 120k-char cut, so a replay that ignored `partial` would hash different text. */
+const LONG_TRANSCRIPT = `${TRANSCRIPT}\n${"[0:30] more words. ".repeat(8000)}`;
+
+/** Answers with this output and records each call, so a test can compare the replayed prompt with the original. */
+const recording = (output: unknown, calls: ScoreCall[]): ScoreRunner => async (call) => {
+  calls.push(call);
+  return { ok: true, value: { output, costUsd: 0.03, inputTokens: 1, outputTokens: 1, model: call.model } };
+};
+
+/** Files a case the way the score step does: a long video scored with an invented ts, or a runner whose output never parses. */
+async function scoreAutomatic(id: string, output: unknown, calls: ScoreCall[]): Promise<void> {
+  tree.write(`${id}.md`, LONG_TRANSCRIPT);
+  const deps = { runner: recording(output, calls), rubric: RUBRIC, model: "model-a", rowsDir: path.join(tree.root, "rows"), casesDir: casesPath(), runId: "r", workflowVersion: "w" };
+  await scoreVideo(deps, { id, source: null, title: `Real title ${id}`, transcriptPath: path.join(tree.root, `${id}.md`), outputPath: path.join(tree.root, `${id}.score.json`), durationSeconds: 9000 });
+}
+const tsInvalidCard = { ...SCORED, techniques: [{ ts: "0:30", what: "real" }, { ts: "5:00", what: "invented" }] };
 
 const run = (argv: string[], runner: ScoreRunner = totals()) => runCli(argv, (l) => out.push(l), (l) => out.push(`ERR ${l}`), runner);
 const flag = (id: string, ...rest: string[]) => run(["flag", id, "--transcript", path.join(tree.root, `${id}.md`), ...rest]);
@@ -88,16 +107,24 @@ describe("titan-yt-scout flag", () => {
     expect(readdirSync(tree.root)).not.toContain("scout");
   });
 
-  it("adds gold to an automatic case and keeps its label", async () => {
-    seedCard("aaaaaaaaa01", 12);
-    await flag("aaaaaaaaa01", "--verdict", "wrong-ts");
+  it("adds gold to a ts_invalid case the score step filed and keeps its label and inputs", async () => {
+    await scoreAutomatic("aaaaaaaaa01", tsInvalidCard, []);
     const file = path.join(casesPath(), "score-aaaaaaaaa01.json");
-    const auto = { ...JSON.parse(readFileSync(file, "utf8")), label: "ts_invalid", gold: undefined };
-    tree.write("scout/evals/cases/score-aaaaaaaaa01.json", JSON.stringify(auto));
+    const before = JSON.parse(readFileSync(file, "utf8"));
 
-    await flag("aaaaaaaaa01", "--verdict", "bad-why", "--note", "n");
+    const code = await flag("aaaaaaaaa01", "--verdict", "wrong-ts", "--note", "n");
 
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ label: "ts_invalid", gold: { verdict: "bad-why", note: "n" } });
+    expect(code).toBe(0);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ ...before, gold: { verdict: "wrong-ts", note: "n" } });
+  });
+
+  it("adds gold to a schema_invalid case, which has no card file", async () => {
+    await scoreAutomatic("aaaaaaaaa01", { nope: 1 }, []);
+
+    const code = await flag("aaaaaaaaa01", "--verdict", "miss", "--gold-total", "9");
+
+    expect(code).toBe(0);
+    expect(readCases(casesPath())[0]).toMatchObject({ label: "schema_invalid", inputs: { title: "Real title aaaaaaaaa01", partial: true }, gold: { verdict: "miss", total: 9 } });
   });
 });
 
@@ -138,6 +165,17 @@ describe("titan-yt-scout eval replay", () => {
     expect(out).toContain("agreement: 50% of 2 compared");
     expect(out).toContain("mean absolute difference: 4.50");
     expect(out).toContain("cost: $0.0600");
+  });
+
+  it("replays a case the score step filed with the original prompt, partial cut included", async () => {
+    const original: ScoreCall[] = [];
+    await scoreAutomatic("aaaaaaaaa01", tsInvalidCard, original);
+    const replayed: ScoreCall[] = [];
+
+    const s = await replayCases(readCases(casesPath()), opts(recording(SCORED, replayed)));
+
+    expect(s).toMatchObject({ replayed: 1, stale: 0, compared: 1, meanAbsDiff: 0 });
+    expect(replayed[0]!.prompt).toBe(original[0]!.prompt);
   });
 
   it("skips a case whose transcript changed since it was flagged", async () => {

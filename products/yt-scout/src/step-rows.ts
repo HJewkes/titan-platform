@@ -47,7 +47,8 @@ export interface EvalCase {
   step: string;
   video_id: string;
   label: string;
-  inputs: { transcript_path: string; transcript_sha256: string };
+  /** Everything replay needs to rebuild the original prompt: title and partial fill the template beside the transcript. */
+  inputs: { transcript_path: string; transcript_sha256: string; title: string; partial: boolean };
   prompt_sha: string;
   model: string;
   output: unknown;
