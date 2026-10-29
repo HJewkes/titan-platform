@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, defaultFor, defaultedNotices, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
+import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, defaultFor, defaultedNotices, defaultedSummary, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "sunset-manifest.mjs");
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,6 +27,11 @@ function sandbox(files, mapped) {
   writeFileSync(manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: mapped.map((name) => ({ ...del(`old/${name}`), repo: "agent-chat" })) }));
   return { dir, manifest };
 }
+
+const commitAll = (dir, message) => {
+  execFileSync("git", ["-C", dir, "add", "."]);
+  execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", message]);
+};
 
 const run = ({ dir, manifest }) => spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", dir, "--manifest", manifest], { encoding: "utf8" });
 
@@ -99,15 +104,44 @@ describe("sunset check defaulted notice", () => {
     expect(defaultedNotices(withDefault(del("old/a.ts"), del("old/new.ts")), listing("old/a.ts", "old/new.ts"))).toEqual([]);
   });
 
+  it("prints one count line and no per-file notice for unchanged defaulted files", () => {
+    const manifest = withDefault(del("old/a.ts"));
+
+    expect(defaultedNotices(manifest, listing("old/a.ts", "old/x.ts", "old/y.ts"), new Set())).toEqual([]);
+    expect(defaultedSummary(manifest, listing("old/a.ts", "old/x.ts", "old/y.ts"), new Set())).toContain("defaulted: 2 files");
+  });
+
+  it("prints the notice for a changed defaulted file only", () => {
+    const manifest = withDefault(del("old/a.ts"));
+
+    expect(defaultedNotices(manifest, listing("old/a.ts", "old/x.ts", "old/y.ts"), new Set(["titan-platform:old/y.ts"]))).toEqual(["defaulted: titan-platform:old/y.ts (old)"]);
+  });
+
+  it("names the agent-chat root's fate tasks in the count line, not TP-3180", () => {
+    const rules = [{ repo: "agent-chat", path: "src", fate: "delete", task: "TP-626", milestone: "fold" }, { repo: "agent-chat", path: "src/agents", fate: "delete", task: "TP-647", milestone: "fold" }];
+    const manifest = { roots: [{ repo: "agent-chat", path: "src" }], entries: [], defaults: rules };
+
+    const line = defaultedSummary(manifest, { "agent-chat:src": ["src/a.ts", "src/agents/b.ts"] }, new Set());
+
+    expect(line).toContain("agent-chat:src=TP-626");
+    expect(line).toContain("agent-chat:src/agents=TP-647");
+    expect(line).not.toContain("TP-3180");
+  });
+
   it("passes the command with a notice and the same exit code for a defaulted file", () => {
     const box = sandbox(["a.ts", "new.ts"], ["a.ts"]);
     writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [{ ...del("old/a.ts"), repo: "agent-chat" }], defaults: [{ ...rule, repo: "agent-chat" }] }));
 
-    const result = run(box);
+    commitAll(box.dir, "base");
+    writeFileSync(join(box.dir, "old", "newer.ts"), "x\n");
+    commitAll(box.dir, "add newer");
+
+    const result = spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", box.dir, "--manifest", box.manifest, "--agent-chat-base", "HEAD~1"], { encoding: "utf8" });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("::notice::defaulted: agent-chat:old/new.ts (old)");
-    expect(result.stderr).toContain("::notice::defaulted: 1 files");
+    expect(result.stderr).toContain("::notice::defaulted: agent-chat:old/newer.ts (old)");
+    expect(result.stderr).not.toContain("defaulted: agent-chat:old/new.ts");
+    expect(result.stderr).toContain("::notice::defaulted: 2 files");
   });
 });
 
@@ -255,12 +289,15 @@ describe("the checked-in manifest", () => {
     mkdirSync(join(dir, "src", "agents"), { recursive: true });
     writeFileSync(join(dir, "src", "agents", "supervisor-new.ts"), "x\n");
     execFileSync("git", ["-C", dir, "init", "-q"]);
-    execFileSync("git", ["-C", dir, "add", "."]);
+    commitAll(dir, "base");
+    writeFileSync(join(dir, "src", "agents", "supervisor-newer.ts"), "x\n");
+    commitAll(dir, "add");
 
-    const result = spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", dir, "--agent-chat-drift", "warn"], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", dir, "--agent-chat-drift", "warn", "--agent-chat-base", "HEAD~1"], { encoding: "utf8" });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("::notice::defaulted: agent-chat:src/agents/supervisor-new.ts (src/agents)");
+    expect(result.stderr).toContain("::notice::defaulted: agent-chat:src/agents/supervisor-newer.ts (src/agents)");
+    expect(result.stderr).not.toContain("defaulted: agent-chat:src/agents/supervisor-new.ts");
   });
 });
 
