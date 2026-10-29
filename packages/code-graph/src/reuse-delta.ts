@@ -101,10 +101,11 @@ export function computeDeltaAffected(
   const added = currentFileIds.size !== basis.fingerprints.size || removed.size > 0;
   if (!added) return affected; // membership unchanged → nothing forced
 
+  const membership = { removed, before: new Set(basis.fingerprints.keys()), after: currentFileIds };
   for (const [srcId, edges] of basis.edgesBySrc) {
     if (!currentFileIds.has(srcId)) continue; // src itself gone
     for (const edge of edges) {
-      if (isEdgeAffected(edge, srcId, removed, currentFileIds)) {
+      if (isEdgeAffected(edge, srcId, membership)) {
         affected.add(srcId);
         break;
       }
@@ -211,16 +212,19 @@ function reExportClosure(basis: ReuseBasis, changed: ReadonlySet<string>): Set<s
   return seen;
 }
 
-function isEdgeAffected(
-  edge: GraphEdge,
-  srcId: string,
-  removed: ReadonlySet<string>,
-  currentFileIds: ReadonlySet<string>,
-): boolean {
-  if (removed.has(targetFileId(edge))) return true;
+interface Membership {
+  removed: ReadonlySet<string>;
+  before: ReadonlySet<string>;
+  after: ReadonlySet<string>;
+}
+
+function isEdgeAffected(edge: GraphEdge, srcId: string, membership: Membership): boolean {
+  if (membership.removed.has(targetFileId(edge))) return true;
   const specifier = (edge.attrs as { specifier?: string } | undefined)?.specifier;
   if (!specifier || !isRelative(specifier)) return false;
-  // Re-resolve the relative import; if it now lands on a different file (added
-  // shadow, or the old target vanished), the file's edges must be recomputed.
-  return resolveRelativeId(srcId, specifier, currentFileIds) !== targetFileId(edge);
+  // Compare the specifier's resolution before and after the delta, not against the
+  // edge target: a `references` edge lands past a barrel on the declaring file and
+  // a `.css` import on no indexed file, so neither ever equals the re-resolution,
+  // and any added file re-parsed every such importer (TP-4436).
+  return resolveRelativeId(srcId, specifier, membership.after) !== resolveRelativeId(srcId, specifier, membership.before);
 }
