@@ -34,8 +34,8 @@ const activeWorkNeedsProcess = [
 ];
 
 // With isolate:false a worker keeps one module graph across files, so these files pay their shared imports once per
-// worker instead of once per file. In the probes collect fell over 80% for factory and explainer and about 25% for
-// console (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
+// worker instead of once per file. In the probes collect fell over 80% for factory and explainer and 25-45% for console
+// (TP-4441). Each product gets its own project, so a factory file's worker never holds the node:os another
 // product's file imported unmocked.
 const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
 const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
