@@ -18,6 +18,24 @@
       "kills": [
         "Q-D18 held beats a script with no held beat fails against pacing.held 1-2"
       ]
+    },
+    {
+      "name": "Q-D17 counts cues on a kind that takes none",
+      "file": "products/explainer/src/lint-cadence.ts",
+      "find": "(takesCues ? beatCues(voiced.visual) : [])",
+      "replace": "beatCues(voiced.visual)",
+      "kills": [
+        "Q-D17 on a claim-card, a kind that takes no cue counts no cue on a claim-card, which the emphasis gate would refuse and qa would never see move"
+      ]
+    },
+    {
+      "name": "Q-D17 hint never names the move a cue-less kind can take",
+      "file": "products/explainer/src/repair-hints-screen.ts",
+      "find": "return kind === undefined ? [] : [cuelessMove(beat, kind, failS)];",
+      "replace": "return [];",
+      "kills": [
+        "Q-D17 on a claim-card, a kind that takes no cue the repair hint offers a move the claim-card kind can take"
+      ]
     }
   ]
 }
