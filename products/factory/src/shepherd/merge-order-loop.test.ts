@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
-import { WorkflowRunStore } from "@titan-design/workflow";
+import { WorkflowRunStore, type WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -177,7 +177,7 @@ function reserveAhead(loop: Loop, ahead: string): string {
 function standIn(loop: Loop, { paths, ahead = [], waiting = false }: { paths: string[]; ahead?: string[]; waiting?: boolean }): string {
   const since = "2026-10-23T09:59:00.000Z";
   const r = "run-r-stand-in";
-  const activeSteps = waiting ? { "sh-order-wait:1": { stepId: "sh-order-wait:1", iterKey: "sh-order-wait:1:0", attempt: 0, startedAt: since, kind: "legacy" as const } } : {};
+  const activeSteps: WorkflowRun["activeSteps"] = waiting ? { "sh-order-wait:1": { stepId: "sh-order-wait:1", iterKey: "sh-order-wait:1:0", attempt: 0, startedAt: since, kind: "legacy" as const } } : {};
   new WorkflowRunStore(loop.host.db).create({ id: r, workflowName: "stand-in", params: { repo: REPO }, status: "running", currentStep: null, stepResults: {}, activeSteps, revision: 0, ownerGeneration: 0, startedAt: since, completedAt: null, error: null });
   loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths, ahead, since, reason: "R stands in" });
   return r;

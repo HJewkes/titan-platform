@@ -214,10 +214,12 @@ const before = (a: Reservation, b: Reservation): boolean => a.since < b.since ||
 
 export const withinTtl = (reservation: Reservation, rule: MergeOrderRule, now: number): boolean => now - Date.parse(reservation.since) < rule.ttlMinutes * 60_000;
 
-const nobodyWaits = (): boolean => false;
+type RunTest = (runId: string) => boolean;
+
+const nobodyWaits: RunTest = () => false;
 
 /** Whose runs still wait for their turn in order-wait (`isWaitingTurn`). */
-export const orderWaiting = (order: MergeOrder): ((runId: string) => boolean) => (runId) => order.isWaitingTurn(runId);
+export const orderWaiting = (order: MergeOrder): RunTest => (runId) => order.isWaitingTurn(runId);
 
 /**
  * The reservations `self` must wait behind: live (driving and younger than the TTL), not its own, overlapping, taken
@@ -226,7 +228,7 @@ export const orderWaiting = (order: MergeOrder): ((runId: string) => boolean) =>
  * TP-4501: a holder still waiting for its turn has no fixer at work, so it orders only other waiters, oldest
  * reservation first; waits never chain through it to a ready PR, and two waiters never wait on each other.
  */
-export function blockers(self: OrderSelf, reservations: readonly Reservation[], rule: MergeOrderRule, now: number, driving: (runId: string) => boolean, waiting: (runId: string) => boolean = nobodyWaits): Blocker[] {
+export function blockers(self: OrderSelf, reservations: readonly Reservation[], rule: MergeOrderRule, now: number, driving: RunTest, waiting: RunTest = nobodyWaits): Blocker[] {
   const own = reservations.find((reservation) => reservation.runId === self.runId);
   const selfWaits = waiting(self.runId);
   const live = (reservation: Reservation): boolean => withinTtl(reservation, rule, now) && driving(reservation.runId) && (selfWaits || !waiting(reservation.runId));
