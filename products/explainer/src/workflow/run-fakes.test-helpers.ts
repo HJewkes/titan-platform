@@ -280,6 +280,6 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender
   const harnessFor = () => routeRubric(rubric.harness, rewriter.harness);
   // No beat worker unless a test passes one: the default would spawn a real claude wherever one is installed.
   const media = { media: fakeMedia(), qaEngine: fakeQa(), qaTiming: LAX_TIMING };
-  const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, beatWorker: null };
+  const seams = { runnerFor: model.runnerFor, harnessFor, renderEngine: render.engine(fx), ttsEngine: fakeVoice().engine, ...media, evalChecks: [l0Check(true)], now, beatWorker: null, layerTextCheck: null };
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
 }
