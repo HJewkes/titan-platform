@@ -14,11 +14,15 @@ const SCAN_HZ = 2;
 /** The beat's last moment, when every element has landed and every figure has settled. */
 const SETTLED_BEFORE_END_S = 0.05;
 
-/** The moments the scan seeks: a 2 Hz sweep of each beat and the beat's settled end. */
-function scanMoments(beats: readonly ScanBeat[]): number[] {
+/**
+ * The moments the scan seeks, in order: a 2 Hz sweep of each beat and the beat's settled end. The capture clock only
+ * moves forward, so a sweep moment at or past the settled end (a beat ending just past a half second) is left out.
+ */
+export function scanMoments(beats: readonly ScanBeat[]): number[] {
   return beats.flatMap(({ startS, durationS }) => {
-    const sweep = Array.from({ length: Math.ceil(durationS * SCAN_HZ) }, (_, k) => startS + k / SCAN_HZ);
-    return [...sweep, startS + Math.max(0, durationS - SETTLED_BEFORE_END_S)];
+    const settled = startS + Math.max(0, durationS - SETTLED_BEFORE_END_S);
+    const sweep = Array.from({ length: Math.ceil(durationS * SCAN_HZ) }, (_, k) => startS + k / SCAN_HZ).filter((t) => t < settled);
+    return [...sweep, settled];
   });
 }
 
