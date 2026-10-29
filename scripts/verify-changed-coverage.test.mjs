@@ -62,6 +62,14 @@ describe("CI_COVERAGE mirrors ci.yml", () => {
     expect(unexplained).toEqual([]);
   });
 
+  it("gives each of the perf job's run steps a row that explains it", () => {
+    // Mutant caught: dropping perf from the install row leaves the perf job's install step unmatched, as #2693 did.
+    const perfSteps = ciSteps.filter((step) => step.job === "perf");
+    expect(perfSteps.map((step) => step.run)).toContain("pnpm vitest run --project perf");
+    const rows = perfSteps.map((step) => CI_COVERAGE.find((row) => matches(row, step)));
+    expect(rows.every((row) => row && (row.disposition === "local" || row.reason))).toBe(true);
+  });
+
   it("plans every labelled row's command in ci.yml order", () => {
     // Mutant caught: dropping pnpm lint from planCommands, the gap behind two review rounds.
     const ciOrder = [...new Set(ciSteps.map((step) => CI_COVERAGE.find((row) => matches(row, step))?.label))].filter(Boolean);
