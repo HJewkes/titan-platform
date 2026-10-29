@@ -10,7 +10,24 @@ import { readGraph, type Degraded, type SessionsSource } from "./sessions.js";
 export interface GraphSource {
   activeWork: ActiveWork;
   sessions: SessionsSource;
+  /** Injected so a test drives the budget without waiting on a real timer. */
+  timers?: Timers;
 }
+
+interface Timers {
+  /** Returns the cancel for the timer it starts. */
+  after(ms: number, fire: () => void): () => void;
+}
+
+/** A mentions read slower than this is dropped: the graph edges are worth more than a page held for them. */
+export const MENTIONS_BUDGET_MS = 3_000;
+
+const realTimers: Timers = {
+  after(ms, fire) {
+    const handle = setTimeout(fire, ms);
+    return () => clearTimeout(handle);
+  },
+};
 
 /** `wrap` is an active-work session record: a `session:` ref whose id is no transcript uuid, so it opens no transcript. */
 const NODE_KINDS = ["initiative", "task", "session", "wrap", "agent", "note", "source", "pr", "branch", "file"] as const;
@@ -110,7 +127,7 @@ const GRAPH_STATE = { "graph-missing": "absent", "graph-not-migrated": "not_migr
 
 async function readEgo(source: GraphSource, args: EgoArgs): Promise<EgoGraph> {
   if (kindOf(args.ref) === null) throw failure(`No node kind for ${args.ref}`, EXIT.DATAERR);
-  const mentions = await readMentions(source.activeWork, args.ref);
+  const mentions = await readMentions(source.activeWork, args.ref, source.timers ?? realTimers);
   const read = await readGraph(source.sessions.graphPath, (graph) => walk(graphReads(graph), args, mentions.edges));
   if (read.ok) return { ...read.value, sources: { graph: "ok", mentions: mentions.status }, degraded: null };
   const graph = GRAPH_STATE[read.degraded.reason as keyof typeof GRAPH_STATE] ?? "unreadable";
@@ -136,18 +153,26 @@ interface Mentions {
 }
 
 /** `context.graph` traces task ids and session ids only; any other center has no exact-id references. */
-async function readMentions(activeWork: ActiveWork, center: string): Promise<Mentions> {
+async function readMentions(activeWork: ActiveWork, center: string, timers: Timers): Promise<Mentions> {
   const tail = tailOf(center);
   const traceable = center.startsWith("session:") || (center.startsWith("task:") && TASK_ID.test(tail));
   if (!traceable) return { status: "skipped", edges: [] };
   try {
-    const { references } = await activeWork.read("context.graph", { id: tail });
+    const { references } = await withinBudget(activeWork.read("context.graph", { id: tail }), timers);
     const referrers = new Set(references.map(referrerOf));
     referrers.delete(center);
     return { status: "ok", edges: [...referrers].map((ref) => ({ source: ref, target: center, kind: "mentions", validFrom: null, via: "context.graph" })) };
   } catch {
     return { status: "unavailable", edges: [] };
   }
+}
+
+function withinBudget<T>(work: Promise<T>, timers: Timers): Promise<T> {
+  let cancel = (): void => undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    cancel = timers.after(MENTIONS_BUDGET_MS, () => reject(new Error("mentions read over budget")));
+  });
+  return Promise.race([work, expiry]).finally(cancel);
 }
 
 /** A session file's reference names its file, not its record id, so it gets a `wrap:` ref rather than a guessed `session:` one. */
