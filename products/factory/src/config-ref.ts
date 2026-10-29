@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { parseConfig, type FactoryConfig } from "./config.js";
 
 /** Which bytes the loaded config came from: `sha` is the file's sha256, null when no file was there. */
@@ -8,7 +8,10 @@ interface ConfigStamp {
   loadedAt: string;
 }
 
-/** The config file as serve holds it. Live readers go through `get()` per read; restart-class readers keep what they took at start. */
+/**
+ * The config file as serve holds it. `get()` and `stamp()` re-check the file and pick up an edit without a restart; live
+ * readers go through `get()` per read, restart-class readers keep what they took at start.
+ */
 export interface ConfigRef {
   get(): FactoryConfig;
   stamp(): ConfigStamp;
@@ -16,27 +19,75 @@ export interface ConfigRef {
   reload(): ConfigStamp;
 }
 
+/** `probe` is a cheap identity of the file's bytes (null when absent) so a read re-parses only after an edit. */
+interface ConfigFile {
+  probe(path: string): string | null;
+  read(path: string): Buffer;
+}
+
+interface ConfigRefDeps {
+  file?: ConfigFile;
+  warn?: (line: string) => void;
+}
+
+/** The inode joins size and mtime because an editor's atomic save replaces the file without growing it. */
+const diskConfigFile: ConfigFile = {
+  probe(path) {
+    const stat = statSync(path, { throwIfNoEntry: false });
+    return stat ? `${stat.ino}:${stat.size}:${stat.mtimeMs}` : null;
+  },
+  read: (path) => readFileSync(path),
+};
+
 interface Loaded {
   config: FactoryConfig;
   stamp: ConfigStamp;
+  probe: string | null;
 }
 
 /** The sha and the parse come from one read of the file, so the stamp always names the bytes the config was parsed from. */
-function loadStamped(path: string, now: () => number): Loaded {
+function loadStamped(path: string, now: () => number, file: ConfigFile): Loaded {
   const loadedAt = new Date(now()).toISOString();
-  if (!existsSync(path)) return { config: {}, stamp: { sha: null, loadedAt } };
-  const bytes = readFileSync(path);
-  return { config: parseConfig(path, bytes.toString("utf8")), stamp: { sha: createHash("sha256").update(bytes).digest("hex"), loadedAt } };
+  const probe = file.probe(path);
+  if (probe === null) return { config: {}, stamp: { sha: null, loadedAt }, probe };
+  const bytes = file.read(path);
+  return { config: parseConfig(path, bytes.toString("utf8")), stamp: { sha: createHash("sha256").update(bytes).digest("hex"), loadedAt }, probe };
 }
 
-export function configRef(path: string, now: () => number = Date.now): ConfigRef {
-  let loaded = loadStamped(path, now);
+interface Held {
+  loaded: Loaded;
+  /** The probe of an edit that failed to load, so a bad file warns once rather than on every read. */
+  rejected?: string | null;
+}
+
+function refresh(held: Held, path: string, now: () => number, deps: Required<ConfigRefDeps>): void {
+  const probe = deps.file.probe(path);
+  if (probe === held.loaded.probe || probe === held.rejected) return;
+  try {
+    held.loaded = loadStamped(path, now, deps.file);
+    held.rejected = undefined;
+  } catch (error) {
+    held.rejected = probe;
+    deps.warn(`factory config: kept the loaded config, the edited file failed to load: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export function configRef(path: string, now: () => number = Date.now, deps: ConfigRefDeps = {}): ConfigRef {
+  const resolved = { file: deps.file ?? diskConfigFile, warn: deps.warn ?? console.warn };
+  const held: Held = { loaded: loadStamped(path, now, resolved.file) };
   return {
-    get: () => loaded.config,
-    stamp: () => loaded.stamp,
+    get() {
+      refresh(held, path, now, resolved);
+      return held.loaded.config;
+    },
+    stamp() {
+      refresh(held, path, now, resolved);
+      return held.loaded.stamp;
+    },
     reload() {
-      loaded = loadStamped(path, now);
-      return loaded.stamp;
+      held.loaded = loadStamped(path, now, resolved.file);
+      held.rejected = undefined;
+      return held.loaded.stamp;
     },
   };
 }
