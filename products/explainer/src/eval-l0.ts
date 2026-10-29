@@ -69,7 +69,8 @@ export const mapLintCheck: L0Check = ({ script, layout }) => {
 export const L0_CHECKS: readonly L0Check[] = [
   mapLintCheck, whyCheck, evidenceCheck, voiceCheck, flowCheck, paceCheck, ledgerCheck, spineCheck,
   heteronymCheck, visualKindCheck, registerCheck, spokenDigitsCheck, spokenTokenCheck, headlineCheck, assertionCheck, claimsCheck, coverageCheck, reflectionCheck,
-  varietyScriptCheck, numbersSpokenCheck, frameWordsCheck, labelEchoCheck, cueGapCheck, heldCountCheck, fillFloorCheck,
+  varietyScriptCheck,
+  numbersSpokenCheck, frameWordsCheck, labelEchoCheck, cueGapCheck, heldCountCheck, fillFloorCheck,
   headingWordsCheck, firstMotionCheck,
 ];
 
