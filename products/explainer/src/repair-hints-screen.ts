@@ -46,9 +46,19 @@ function cueGapHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
 function heldHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   const [min, max] = scriptPacing(script)?.held ?? [row.threshold, row.threshold];
   const held = heldBeats(script.beats);
-  const still = bodyBeats(script.beats).filter((beat) => beatCues(beat.visual).length === 0 && !held.includes(beat.id)).map((beat) => beat.id);
   if (held.length > max) return `${held.length} beats are held (${listed(held)}), past the profile's ${min}-${max}; drop heldS from all but ${max}, and give none of the rest the "held" band`;
-  return `${held.length} beats are held, under the profile's ${min}-${max}; set heldS (the seconds its still frame holds after its words) on ${min - held.length === 1 ? "the beat" : `${min - held.length} beats`} whose point should sit with the viewer, such as a reflection or a claim (beats with no cue: ${listed(still)})`;
+  const wanted = min - held.length === 1 ? "the beat" : `${min - held.length} beats`;
+  return `${held.length} beats are held, under the profile's ${min}-${max}; set heldS (the seconds its still frame holds after its words) on ${wanted} whose point should sit with the viewer, ${holdable(script, held)}`;
+}
+
+// Holding a beat excuses no cue gap (qa's picture-change has no held exemption), so only a beat Q-D17 passes is offered.
+function holdable(script: ScriptV1, held: readonly string[]): string {
+  const failS = scriptPacing(script)?.pictureChangeFailS ?? PACING_DEFAULTS.pictureChangeFailS;
+  const candidates = bodyBeats(script.beats).filter((beat) => !held.includes(beat.id) && (longestCueGapS(beat) ?? Infinity) <= failS);
+  const pieces = `a piece of a long beat split so no stretch runs past ${failS} s`;
+  if (candidates.length === 0) return `such as ${pieces}; no beat now keeps every stretch within ${failS} s`;
+  const still = candidates.filter((beat) => beatCues(beat.visual).length === 0).map((beat) => beat.id);
+  return `such as a short reflection or claim (beats whose stretches stay within ${failS} s: ${listed(still.length > 0 ? still : candidates.map((beat) => beat.id))}), or ${pieces}`;
 }
 
 function fillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {

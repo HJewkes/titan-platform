@@ -100,6 +100,19 @@ describe("Q-D18 held beats", () => {
     expect(hint).toContain("reflection-2");
   });
 
+  it("the held-beat hint never names a beat Q-D17 fails", () => {
+    const script = dailyWith("reflection-2", { plannedS: 20, spoken: LONG_REFLECTION });
+    const ids = script.beats.map((beat) => beat.id);
+
+    const failsCueGap = l0Row(script, "Q-D17").detail_beats;
+    const hint = repairHint(l0Row(script, "Q-D18"), script) ?? "";
+    const named = ids.filter((id) => new RegExp(`\\b${id}\\b`).test(hint));
+
+    expect(failsCueGap).toContain("reflection-2");
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.filter((id) => failsCueGap.includes(id))).toEqual([]);
+  });
+
   it("passes once one beat declares the hold its hint asks for", () => {
     const script = dailyWith("reflection-2", { heldS: 3 });
 
