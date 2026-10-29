@@ -28,6 +28,20 @@
       "find": "      dropMoved(entries, undefined, options);\n",
       "replace": "",
       "kills": ["the push dispatcher starts reviews from the one queue on its three triggers never starts a queued review whose pull request moved to a new head, and tells its waiter at once"]
+    },
+    {
+      "name": "a queued review ignores its step's abort",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "    entry.signal?.addEventListener(\"abort\", abort, { once: true });\n",
+      "replace": "",
+      "kills": ["the push dispatcher starts reviews from the one queue on its three triggers rejects a queued review at once when its step aborts, never launches it, and frees its place in the queue"]
+    },
+    {
+      "name": "a review whose step already aborted is queued anyway",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "      if (start.signal?.aborted) return Promise.reject(start.signal.reason);\n",
+      "replace": "",
+      "kills": ["the push dispatcher starts reviews from the one queue on its three triggers never queues a review whose step aborted before it asked"]
     }
   ]
 }

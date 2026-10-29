@@ -4,6 +4,8 @@ import type { ReviewAsk, WaitingReview } from "./review-queue.js";
 export interface ReviewStart {
   running: () => Promise<readonly number[]>;
   launch: () => Promise<void>;
+  /** The waiting step's signal: aborting it takes the review out of the queue, so a cancelled run never launches a reviewer. */
+  signal?: AbortSignal;
 }
 
 /** The queued review's pull request moved to a new head or closed before its turn, so it never started. */
@@ -31,6 +33,7 @@ interface Waiter extends ReviewStart {
   since: number;
   resolve: () => void;
   reject: (error: unknown) => void;
+  detach: () => void;
 }
 
 /** The queued starts by name, and a tick armed only while one waits. */
@@ -42,14 +45,19 @@ function waiterBook(ports: DispatcherPorts, onTick: () => void) {
     const waiter = waiting.get(name);
     if (!waiter) return undefined;
     waiting.delete(name);
+    waiter.detach();
     ports.remove(name);
     if (waiting.size === 0) clearInterval(timer);
     if (waiting.size === 0) timer = undefined;
     if (error !== undefined) waiter.reject(error);
     return waiter;
   };
-  const add = (name: string, waiter: Waiter) => {
+  /** Queues `name`'s waiter; its signal aborting settles it with the signal's reason, unless a later queue of `name` replaced it. */
+  const add = (name: string, entry: Omit<Waiter, "detach">) => {
+    const abort = () => void (waiting.get(name) === waiter && settle(name, entry.signal?.reason));
+    const waiter: Waiter = { ...entry, detach: () => entry.signal?.removeEventListener("abort", abort) };
     waiting.set(name, waiter);
+    entry.signal?.addEventListener("abort", abort, { once: true });
     timer ??= setInterval(onTick, ports.tickMs);
     timer.unref();
   };
@@ -109,9 +117,13 @@ export function reviewDispatcher(ports: DispatcherPorts) {
   const book = waiterBook(ports, () => void pump());
   const pump = serial(() => pass(ports, book));
   return {
-    /** The enqueue trigger: resolves once the review has launched, rejects when its launch fails, it is superseded or it outwaits `holdMs`. */
+    /**
+     * The enqueue trigger: resolves once the review has launched, rejects when its launch fails, it is superseded, it outwaits
+     * `holdMs`, or its step's signal aborts.
+     */
     queue(name: string, review: ReviewAsk, start: ReviewStart): Promise<void> {
       book.settle(name, new ReviewSuperseded(`${name} was queued again`));
+      if (start.signal?.aborted) return Promise.reject(start.signal.reason);
       const started = new Promise<void>((resolve, reject) => book.add(name, { ...start, review, since: ports.now(), resolve, reject }));
       ports.enter(name, review);
       void pump();
