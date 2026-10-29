@@ -79,14 +79,38 @@ const tableShape = z.strictObject({
   priorWorkflow: z.record(z.string(), z.string()),
 });
 
-export type PriorRule = z.infer<typeof priorRuleSchema>;
-export type WorkflowRow = z.infer<typeof workflowRowSchema>;
-export type WorkflowTable = Omit<z.infer<typeof tableShape>, "paths" | "workflow" | "priorWorkflow"> & {
+/*
+ * Declared rather than inferred from the schemas: the emitted d.ts would print each enum's key order, which tsc
+ * takes from literal type creation order and which varied from build to build (PRIORS shares literals with CLASSES).
+ */
+export interface PriorRule {
+  prior: Prior;
+  owns?: PathList;
+  ownsOnly?: PathList;
+  unitsAtLeast?: number;
+  tags?: string[];
+  estimateAtMost?: number;
+  needsDoneWhen?: boolean;
+  needsOwns?: boolean;
+}
+
+export interface WorkflowRow {
+  plan: (typeof PLAN_LADDER)[number];
+  planAbove2?: (typeof PLAN_LADDER)[number];
+  implementer: Implementer;
+  implementerAbove2?: Implementer;
+  review: (typeof REVIEW_LADDER)[number];
+  merge: (typeof MERGE_LADDER)[number];
+}
+
+export interface WorkflowTable {
+  version: typeof TABLE_VERSION;
+  priors: PriorRule[];
   paths: Record<PathList, string[]>;
   workflow: Record<ShapeClass, WorkflowRow>;
   /** Which class row gives a prior its implementer; `planner` sends it to `bd-planner`. */
   priorWorkflow: Record<Prior, ShapeClass | "planner">;
-};
+}
 
 export type TableRead = { table: WorkflowTable; problems?: undefined } | { table?: undefined; problems: string[] };
 

@@ -1,5 +1,4 @@
 import { PriorRouting, PriorRouter, TableRead } from './index.js';
-import 'zod';
 
 /** The `shape-v1.yml` this package ships, with `needsOwns` on the size rows. */
 declare const DEFAULT_WORKFLOW_TABLE: string;
