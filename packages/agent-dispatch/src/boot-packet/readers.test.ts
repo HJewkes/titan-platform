@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execSafe, minimalEnv } from "../exec.js";
 import { nodeBootReaders } from "./readers.js";
 
-const GIT_BIN = ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"].find((p) => existsSync(p));
+const GIT_BIN = ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"].find((p) => existsSync(p)) ?? "";
 
 let dir: string;
 
@@ -25,9 +25,9 @@ function git(bin: string, ...args: string[]): void {
   if (r.status !== 0) throw new Error(r.stderr);
 }
 
-describe.runIf(GIT_BIN !== undefined)("nodeBootReaders", () => {
+describe.runIf(GIT_BIN !== "")("nodeBootReaders", () => {
   it("reads base and head commits, the commits ahead and the base commits naming the task", () => {
-    const bin = GIT_BIN as string;
+    const bin = GIT_BIN;
     git(bin, "init", "-q", "-b", "main");
     git(bin, "commit", "-q", "--allow-empty", "-m", "Land the header (WG-7)");
     git(bin, "branch", "base");
@@ -49,7 +49,7 @@ describe.runIf(GIT_BIN !== undefined)("nodeBootReaders", () => {
   it("gives no git state outside a repository, and null for a missing file", () => {
     writeFileSync(join(dir, "a.txt"), "hello");
 
-    const readers = nodeBootReaders({ repoRoot: dir, gitBin: GIT_BIN as string, readTask: () => null });
+    const readers = nodeBootReaders({ repoRoot: dir, gitBin: GIT_BIN, readTask: () => null });
 
     expect(readers.gitState("WG-7")).toBeNull();
     expect(readers.readFile("a.txt")).toBe("hello");

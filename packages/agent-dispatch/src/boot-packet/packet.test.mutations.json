@@ -13,8 +13,8 @@
     {
       "name": "over budget, the highest-priority section drops first",
       "file": "packages/agent-dispatch/src/boot-packet/packet.ts",
-      "find": "dropped.unshift(kept.pop() as BootSection);",
-      "replace": "dropped.push(kept.shift() as BootSection);",
+      "find": "for (let last = kept.at(-1); last !== undefined && count(join()) > budget; last = kept.at(-1)) {\n    dropped.unshift(last);\n    kept.pop();",
+      "replace": "for (let last = kept.at(0); last !== undefined && count(join()) > budget; last = kept.at(0)) {\n    dropped.push(last);\n    kept.shift();",
       "kills": [
         "drops whole sections from the lowest priority up when the budget is tight"
       ]

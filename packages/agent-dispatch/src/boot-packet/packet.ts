@@ -142,7 +142,10 @@ function fitBudget(sections: BootSection[], header: string, budget: number, coun
   const kept = [...sections];
   const dropped: BootSection[] = [];
   const join = (): string => [header, ...kept.map((s) => s.text)].join("\n\n");
-  while (kept.length > 0 && count(join()) > budget) dropped.unshift(kept.pop() as BootSection);
+  for (let last = kept.at(-1); last !== undefined && count(join()) > budget; last = kept.at(-1)) {
+    dropped.unshift(last);
+    kept.pop();
+  }
   return { kept, dropped, text: join() };
 }
 

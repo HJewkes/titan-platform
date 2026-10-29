@@ -93,12 +93,15 @@ const LOCKFILES: ReadonlyArray<[string, string]> = [
 function verifyScripts(readers: BootReaders): string[] {
   const text = readers.readFile("package.json");
   if (text === null) return [];
+  let parsed: unknown;
   try {
-    const scripts = (JSON.parse(text) as { scripts?: Record<string, string> }).scripts ?? {};
-    return ["verify:changed", "build", "typecheck", "lint", "test"].filter((s) => s in scripts);
+    parsed = JSON.parse(text);
   } catch {
     return [];
   }
+  const scripts: unknown = typeof parsed === "object" && parsed !== null && "scripts" in parsed ? parsed.scripts : null;
+  if (typeof scripts !== "object" || scripts === null) return [];
+  return ["verify:changed", "build", "typecheck", "lint", "test"].filter((s) => s in scripts);
 }
 
 function capabilityRows(points: readonly TouchPoint[], readers: BootReaders): string[] {
