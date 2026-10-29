@@ -10,7 +10,7 @@ export interface StampFs {
 
 const orNull = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);
 
-export const realStampFs: StampFs = {
+const realStampFs: StampFs = {
   readdir: async (dir) => (await orNull(fsp.readdir(dir))) ?? [],
   stat: async (file) => {
     const stats = await orNull(fsp.stat(file));
