@@ -51,7 +51,7 @@ function waiterBook(ports: DispatcherPorts, onTick: () => void) {
   const add = (name: string, waiter: Waiter) => {
     waiting.set(name, waiter);
     timer ??= setInterval(onTick, ports.tickMs);
-    timer.unref?.();
+    timer.unref();
   };
   return { waiting, settle, add };
 }
@@ -87,15 +87,15 @@ async function pass(ports: DispatcherPorts, book: Book): Promise<void> {
 /** Runs `work` one at a time; a call while it runs makes it run once more after, so no trigger is lost. */
 function serial(work: () => Promise<void>): () => Promise<void> {
   let running: Promise<void> | undefined;
-  let again = false;
+  let asked = 0;
   const loop = async () => {
-    do {
-      again = false;
+    for (let served = -1; served !== asked; ) {
+      served = asked;
       await work();
-    } while (again);
+    }
   };
   return () => {
-    again = running !== undefined;
+    asked += 1;
     running ??= loop().finally(() => (running = undefined));
     return running;
   };
