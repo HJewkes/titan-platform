@@ -1,10 +1,11 @@
-import { FILL_FLOOR, heldBeats, longestCueGapS, scriptPacing, underfilledBeats } from "./lint-cadence.js";
+import { cuelessKind, FILL_FLOOR, heldBeats, longestCueGapS, scriptPacing, underfilledBeats } from "./lint-cadence.js";
+import { PACING_DEFAULTS } from "./qa/timing-gates.js";
 import { bodyBeats } from "./lint-text.js";
 import { FRAME_MAX_WORDS, frameCounts } from "./lint-frame-words.js";
 import { HEADING_MAX_WORDS, LABEL_MAX_WORDS, overlongTexts, stillOpenings } from "./lint-direction.js";
 import { ECHO_RUN_WORDS, echoedLabels, unspokenNumbers } from "./lint-screen.js";
 import { clipped, listed, namedBeats, quoted, type Hint } from "./repair-hint.js";
-import { beatCues, type ScriptV1 } from "./script-schema.js";
+import { beatCues, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 
 const seconds = (s: number): string => `${Math.round(s * 10) / 10} s`;
 
@@ -24,10 +25,22 @@ const echoHint: Hint = (script, row) => {
   return `on-screen texts repeating ${ECHO_RUN_WORDS} or more spoken words in a row: ${named.join("; ")}. Keep the key words, not the sentence: the screen names it, the voice says it`;
 };
 
+// A kind with no emphasis targets takes no cue and heldS excuses no stretch, so its only moves are a split or a cued kind.
+function cuelessMove(beat: ScriptBeat, kind: string, failS: number): string {
+  const parts = Math.ceil((longestCueGapS(beat) ?? beat.plannedS) / failS);
+  return `${beat.id} is a ${kind}, which takes no cue, and heldS does not excuse its stretch: split it into ${parts} ${kind} beats of at most ${failS} s of words each, or draw it as a list whose rows each land on a cue`;
+}
+
 function cueGapHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
-  const failS = scriptPacing(script)?.pictureChangeFailS;
-  const named = namedBeats(script, row).map((beat) => `${beat.id} (${seconds(longestCueGapS(beat) ?? beat.plannedS)}, ${beatCues(beat.visual).length} cues)`);
-  return `beats with a planned stretch of more than ${failS ?? "the profile's"} s and no cue: ${named.join(", ")}. Add a cue on a spoken word inside each long stretch, one per item the beat reveals, or split the beat so no stretch runs past ${failS ?? "the line"} s`;
+  const failS = scriptPacing(script)?.pictureChangeFailS ?? PACING_DEFAULTS.pictureChangeFailS;
+  const beats = namedBeats(script, row);
+  const named = beats.map((beat) => `${beat.id} (${seconds(longestCueGapS(beat) ?? beat.plannedS)}, ${beatCues(beat.visual).length} cues)`);
+  const cueless = beats.flatMap((beat) => {
+    const kind = cuelessKind(beat);
+    return kind === undefined ? [] : [cuelessMove(beat, kind, failS)];
+  });
+  const fix = `Add a cue on a spoken word inside each long stretch, one per item the beat reveals, or split the beat so no stretch runs past ${failS} s`;
+  return [`beats with a planned stretch of more than ${failS} s and no cue: ${named.join(", ")}. ${fix}`, ...cueless].join("; ");
 }
 
 function heldHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
