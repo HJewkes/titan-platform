@@ -165,10 +165,7 @@ const TASK_PREFIX = /^task_prefix:\s*["']?([A-Z][A-Z0-9]*)["']?\s*$/m;
 /** Per client, so one console's prefixes never leak into another's reads. */
 const prefixMemo = new WeakMap<ActiveWork, Map<string, { updated: string; prefix: string | undefined; at: number }>>();
 
-/**
- * `updated` is a calendar day, so a same-day `set task_prefix` or a hand edit leaves it unchanged; this bounds how long such an
- * edit goes unseen when active-work sends no event for it.
- */
+/** `updated` is a calendar day, so a same-day prefix edit keeps it; this bounds how long one goes unseen when no event arrives. */
 export const PREFIX_MEMO_MS = 60_000;
 
 /** Drops every prefix kept for this client; the console calls it when active-work reports a change. */
@@ -178,8 +175,7 @@ export function forgetTaskPrefixes(activeWork: ActiveWork): void {
 
 /** Initiatives whose brief claims this task-id prefix, so one task can be read without listing every initiative's tasks. */
 export async function slugsForPrefix(activeWork: ActiveWork, prefix: string, now: number = Date.now()): Promise<string[]> {
-  const list = await activeWork.read("list");
-  const items = list.sections.flatMap((section) => section.items);
+  const items = (await activeWork.read("list")).sections.flatMap((section) => section.items);
   const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item, now)));
   return items.filter((_, index) => prefixes[index] === prefix).map((item) => item.slug);
 }
