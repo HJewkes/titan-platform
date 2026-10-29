@@ -56,6 +56,9 @@ jobs:
       # Findings at warn level never fail the job; an unreadable rule file does (exit 2). .github/merge-lint.json holds the allowlist.
       - name: Flag merge calls outside the logged wrappers
         run: pnpm merge:lint
+      # A sidecar whose find no longer occurs in its target would make fix-proof refuse a later, unrelated PR (TP-4439).
+      - name: Check mutation sidecar finds against their targets
+        run: pnpm sidecar:finds
       - run: pnpm typecheck
         env:
           TURBO_TELEMETRY_DISABLED: 1
