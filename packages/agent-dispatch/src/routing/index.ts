@@ -29,3 +29,28 @@ export {
   type PriorRouting,
   type Routed,
 } from "./prior.js";
+export {
+  FACT_NAMES,
+  FACT_SOURCES,
+  ROUTE_META_KEYS,
+  ROUTE_SOURCES,
+  routeMeta,
+  type FactName,
+  type FactSource,
+  type FactsNote,
+  type RouteDecision,
+  type RouteMetaKey,
+  type RouteSource,
+} from "./meta.js";
+export {
+  AUTO_FALLBACK,
+  AUTO_PROFILE,
+  DEFAULT_KEEP_ROLES,
+  implementerFamily,
+  inFamily,
+  routeSpawn,
+  type ImplementerFamily,
+  type RouteInput,
+  type RouteTable,
+} from "./route.js";
+export { summarizeRoutes, type RouteRow, type RouteSummary } from "./summary.js";
