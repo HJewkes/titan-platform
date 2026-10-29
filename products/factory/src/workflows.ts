@@ -81,9 +81,9 @@ import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suit
 import type { ThawAlertPorts, VisualDeliveryWatch } from "./shepherd/services.js";
 import type { VisualThreshold } from "./shepherd/visual-delta-read.js";
 import { configuredVisualDelivery } from "./shepherd/visual-delivery-sweep.js";
-import type { DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
 import type { VisualPacketPorts } from "./shepherd/visual-packet-trigger.js";
-import { configuredVisualPacket, configuredDiagnosis } from "./workflows-spawned.js";
+import type { DiagnosisPorts } from "./shepherd/no-verdict-diagnosis.js";
+import { configuredDiagnosis, configuredVisualPacket } from "./workflows-spawned.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
 export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow(), buildSurfaceWorkflow()];
