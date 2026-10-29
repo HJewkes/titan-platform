@@ -103,7 +103,7 @@ const TILES_HEAD = "89abcdef0123456789abcdef0123456789abcdef";
 
 function inboxItem(id: string, overrides: Partial<InboxItem> & Pick<InboxItem, "action">): InboxItem {
   return {
-    id, sources: [{ system: "hitl", ref: `run-${id}/approve-merge` }], kind: "approve", door: "one-way", summary: `Summary of ${id}`, context: "", keys: [],
+    id, sources: [{ system: "hitl", ref: `run-${id}/approve-merge` }], kind: "approve", door: "one-way", summary: `Summary of ${id}`, keys: [],
     personal: false, lens: "blocking-merge", unblocks: [], openedAt: at(HOUR), status: "open", section: "blocking", evidence: undefined,
     ...overrides,
   };
@@ -158,6 +158,11 @@ const INBOX_NUDGES: Served["inbox.list"]["result"]["nudges"] = [
     line: "lantern-cards-r1 has waited 9 h; open it to answer (recommended: card-density: Compact)",
   },
 ];
+
+/** The default read counts the planning items; the planning read lists them too. */
+const INBOX_VIEW = {
+  planningCount: INBOX_ITEMS.filter((item) => item.section === "planning").length, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED, nudges: INBOX_NUDGES,
+};
 
 const TIMELINE_ENTRIES = [
   { kind: "step", stepId: "sh-ci", iteration: 1, startedAt: at(3 * HOUR), completedAt: at(3 * HOUR - 10 * MINUTE), signal: null, status: "done" },
@@ -308,7 +313,8 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
   answer("work.tasks", {}, { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks: TASKS, evidence: EVIDENCE }),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
-  answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED, nudges: INBOX_NUDGES }),
+  answer("inbox.list", {}, { ...INBOX_VIEW, items: INBOX_ITEMS.filter((item) => item.section !== "planning") }),
+  answer("inbox.list", { planning: true }, { ...INBOX_VIEW, items: INBOX_ITEMS }),
   answer("shepherd.list", { state: "active" }, WATCHED),
   answer("gates.strip", { repo: "example/tiles", pr: 1 }, { status: "ok", strip: strip("example/tiles", 1, TILES_HEAD) }),
   answer("shepherd.waiting", {}, { owner: [{ gateId: "run-12/approve-merge", stepId: "approve-merge", repo: "orbit/relay", pr: 12, task: "orbit-relay/OR-12", since: at(2 * HOUR), ageHours: 2 }], seat: [] }),
