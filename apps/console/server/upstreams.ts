@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { consoleLogger, probeHealth, type Logger } from "@titan-design/daemon";
 import { activeWorkClient, type ActiveWork } from "./active-work.js";
+import { cachedActiveWork } from "./active-work-cache.js";
 import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
@@ -14,6 +15,7 @@ import { factoryNeeds } from "./factory.js";
 import type { UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
+import { createInvalidation } from "./invalidation.js";
 import { factoryOwnerAction } from "./owner-action.js";
 import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
@@ -168,10 +170,12 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
 }
 
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger, recorder?: UpstreamObserver): ConsoleSources {
-  const activeWork = activeWorkClient(config.activeWorkPort, undefined, recorder);
+  const invalidation = createInvalidation();
+  const activeWork = cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation);
   const shepherd = shepherdReader(config.factoryPort, undefined, recorder);
   return {
     upstreams: createUpstreams(config),
+    invalidation,
     activeWork,
     agents: agentsOf(config),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },

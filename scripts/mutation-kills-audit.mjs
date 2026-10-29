@@ -5,6 +5,11 @@
 // Each sidecar also goes through fix-proof's own parser, so a spec CI would refuse (a name over its length cap, too many
 // mutants) fails here first (TP-4165).
 //
+// It also checks each mutation's `find` against its target file at head with fix-proof's own `checkMutation`, so a change
+// that drifts a target out from under a sidecar fails on that PR instead of on a later unrelated one (TP-4439).
+// `--finds` runs only that check: no test runs, so it is fast enough for every PR.
+//
+//   node scripts/mutation-kills-audit.mjs --finds [sidecar...]       only the find check
 //   node scripts/mutation-kills-audit.mjs [sidecar...]               default: every tracked *.test.mutations.json
 //   node scripts/mutation-kills-audit.mjs --base <ref> [sidecar...]  default: the sidecars of test files changed since <ref>
 
@@ -13,7 +18,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseMutationSpec } from "../packages/fix-proof/dist/index.js";
+import { checkMutation, CONFIG_PATH, parseFixProofConfig, parseMutationSpec } from "../packages/fix-proof/dist/index.js";
 import { changedLines, missedChange, touchedTests } from "./mutation-kills-touched.mjs";
 
 const SUFFIX = ".mutations.json";
@@ -70,6 +75,26 @@ export function specProblem(path, text) {
   return parsed.ok ? null : `${path}: ${parsed.error}`;
 }
 
+/** One line per mutation whose target is refused or whose `find` does not occur exactly once, as fix-proof would judge it. */
+export function findProblems(path, text, readTarget, config) {
+  const parsed = parseMutationSpec(text);
+  if (!parsed.ok) return [];
+  return parsed.spec.mutations.flatMap((mutation) => {
+    const checked = checkMutation(mutation, readTarget(mutation.file), config, "head");
+    return checked.ok ? [] : [`${path}: ${checked.error}`];
+  });
+}
+
+function readTextOrNull(file) {
+  return existsSync(file) ? readFileSync(file, "utf8") : null;
+}
+
+function configAtHead() {
+  const parsed = parseFixProofConfig(readTextOrNull(CONFIG_PATH));
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.config;
+}
+
 function jsonOrNull(text) {
   try {
     return JSON.parse(text);
@@ -87,12 +112,14 @@ function killProblems(path, sidecar, base) {
   return [...unmatched, ...missedChangeOf(path, testFile, sidecar, base)];
 }
 
-function audit(path, base) {
+function audit(path, base, findsOnly, config) {
   const text = readFileSync(path, "utf8");
+  const finds = findProblems(path, text, readTextOrNull, config);
+  if (findsOnly) return finds;
   const refused = specProblem(path, text);
   const sidecar = jsonOrNull(text);
   const kills = sidecar === null ? [] : killProblems(path, sidecar, base);
-  return [...(refused === null ? [] : [refused]), ...kills];
+  return [...(refused === null ? [] : [refused]), ...finds, ...kills];
 }
 
 function trackedSidecars() {
@@ -106,11 +133,14 @@ function changedSidecars(base) {
 }
 
 function main(argv) {
-  const at = argv.indexOf("--base");
-  const base = at === -1 ? null : argv[at + 1];
-  const args = at === -1 ? argv : argv.filter((_, index) => index !== at && index !== at + 1);
+  const findsOnly = argv.includes("--finds");
+  const rest = argv.filter((arg) => arg !== "--finds");
+  const at = rest.indexOf("--base");
+  const base = at === -1 ? null : rest[at + 1];
+  const args = at === -1 ? rest : rest.filter((_, index) => index !== at && index !== at + 1);
+  const config = configAtHead();
   const sidecars = args.length > 0 ? args : base === null ? trackedSidecars() : changedSidecars(base);
-  const problems = sidecars.flatMap((path) => (existsSync(path) ? audit(path, base) : [`${path}: no sidecar beside a changed test file`]));
+  const problems = sidecars.flatMap((path) => (existsSync(path) ? audit(path, base, findsOnly, config) : [`${path}: no sidecar beside a changed test file`]));
   for (const problem of problems) console.log(problem);
   console.log(`${sidecars.length} sidecars, ${problems.length} problems`);
   process.exitCode = problems.length > 0 ? 1 : 0;

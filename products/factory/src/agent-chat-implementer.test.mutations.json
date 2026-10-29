@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a spawn-gate deferral fails the step at once",
+      "file": "products/factory/src/agent-chat-implementer.ts",
+      "find": "      if (!(error instanceof SpawnDeferred)) throw error;\n",
+      "replace": "      throw error;\n",
+      "kills": [
+        "the agent-chat implementer runner waits out a spawn-gate deferral with a doubling, capped wait, then spawns and reads the report written after admission",
+        "the agent-chat implementer runner waits out a deferral on a fix round's resume too"
+      ]
+    },
+    {
+      "name": "the wait between asks never grows",
+      "file": "products/factory/src/agent-chat-implementer.ts",
+      "find": "waitMs = Math.min(waitMs * 2, options.spawnRetry.maxMs)",
+      "replace": "waitMs = Math.min(waitMs, options.spawnRetry.maxMs)",
+      "kills": [
+        "the agent-chat implementer runner waits out a spawn-gate deferral with a doubling, capped wait, then spawns and reads the report written after admission"
+      ]
+    },
+    {
+      "name": "deferrals are retried without a bound",
+      "file": "products/factory/src/agent-chat-implementer.ts",
+      "find": "if (askedAt - firstAsk + waitMs > options.spawnRetry.totalMs) throw",
+      "replace": "if (false) throw",
+      "kills": [
+        "the agent-chat implementer runner gives up, naming the gate's reason, once the deferrals outlast the retry bound"
+      ]
+    }
+  ]
+}

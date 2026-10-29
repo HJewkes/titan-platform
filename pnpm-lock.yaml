@@ -229,6 +229,9 @@ importers:
       '@titan-design/egress-scan':
         specifier: workspace:^
         version: link:../../packages/egress-scan
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/frame-capture':
         specifier: workspace:^
         version: link:../../packages/frame-capture
@@ -1548,6 +1551,9 @@ importers:
 
   products/yt-scout:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths

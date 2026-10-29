@@ -10,10 +10,16 @@ const upstreamOutcome = z.enum(["ok", "timeout", "error"]);
 const upstreamRow = z.object({ t: z.number(), kind: z.literal("upstream"), name: z.string(), ms: z.number(), bytes: z.number(), outcome: upstreamOutcome });
 type UpstreamRow = z.infer<typeof upstreamRow>;
 const logRow = z.discriminatedUnion("kind", [rpcRow, upstreamRow]);
-type LogRow = z.infer<typeof logRow>;
 
 /** One call to an upstream daemon. `name` is `<upstream>:<command>`, taken from the RPC path. */
 export type UpstreamSample = Omit<UpstreamRow, "t" | "kind">;
+
+/** What the browser measured: a route's time to first data, one query's time, or how many rows it had to drop. Names and numbers only. */
+export type ClientRow =
+  | { kind: "route"; view: string; detail: boolean; ms: number; queries: number }
+  | { kind: "query"; command: string; ms: number; ok: boolean; fromCache: boolean }
+  | { kind: "dropped"; count: number };
+type LogRow = z.infer<typeof logRow> | (ClientRow & { t: number });
 
 interface PerfRecorderOptions {
   /** `stateDir/perf`; created on first flush. */
@@ -42,6 +48,8 @@ type SummaryWindow = "15m" | "24h";
 
 export interface PerfRecorder {
   record(sample: RpcSample): void;
+  /** Logs rows the browser reported; they join the day files but not the rpc summary. */
+  recordClient(rows: readonly ClientRow[]): void;
   recordUpstream(sample: UpstreamSample): void;
   summary(window: SummaryWindow): Promise<RpcStats[]>;
   upstreams(window: SummaryWindow): Promise<(RpcStats & { timeouts: number })[]>;
@@ -111,6 +119,9 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
     },
     recordUpstream(sample) {
       keep({ t: now(), kind: "upstream", name: sample.name, ms: sample.ms, bytes: sample.bytes, outcome: sample.outcome });
+    },
+    recordClient(rows) {
+      for (const row of rows) log.add({ ...row, t: now() });
     },
     async summary(window) {
       return statsOf((await rowsIn(window)).filter((row): row is RpcRow => row.kind === "rpc"));
