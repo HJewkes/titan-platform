@@ -86,7 +86,7 @@ describe("the rendered text check on one custom layer", { timeout: BROWSER_TIMEO
     const failure = await brokenCheck({ builder: BUILDER, layer: { beatId: PACKET.beat_id, key: "k".repeat(64), build: { module: SMALL_CAPTION, anchors: ["A1:F6"], elements: [], usage: { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 } } }, packet: PACKET }).then(() => undefined, (e: unknown) => e);
 
     rmSync(broken, { recursive: true, force: true });
-    expect(failure).toBeInstanceOf(FontLoadError);
-    expect((failure as FontLoadError).urls).toEqual([expect.stringContaining(`/page/assets/${woff2}`)]);
+    if (!(failure instanceof FontLoadError)) throw new Error(`expected a FontLoadError, got ${String(failure)}`);
+    expect(failure.urls).toEqual([expect.stringContaining(`/page/assets/${woff2}`)]);
   });
 });
