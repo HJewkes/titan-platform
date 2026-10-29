@@ -60,6 +60,18 @@ const accountFields = {
   resumeSession: z.string().optional(),
 };
 
+/** Which task the agent works and in what role; the spawn row records them. */
+const assignmentFields = {
+  task: z.string().optional(),
+  /** The plan slice of `task` this spawn runs. */
+  slice: z.string().optional(),
+  /** Why the requester keeps `profile` unrouted. */
+  routeOverride: z.string().optional(),
+  /** implementer, reviewer, fix-round-N, shepherd-review, planner or other; inferred when absent. */
+  workRole: z.string().optional(),
+  override: z.literal("fix-round").optional(),
+};
+
 function spawnSchema(mode: WireParseMode) {
   const { subscription, experiment } = sharedSchemas(mode);
   return objectFor(mode)({
@@ -67,6 +79,7 @@ function spawnSchema(mode: WireParseMode) {
     ...unregisteredCaller,
     ...placementFields,
     ...accountFields,
+    ...assignmentFields,
     t: z.literal("spawn"),
     name: z.string(),
     profile: z.string(),
@@ -82,14 +95,6 @@ function spawnSchema(mode: WireParseMode) {
     returnContract: z.literal("none").optional(),
     tier: z.number().optional(),
     spawnedAs: z.enum(["burndown", "shepherd"]).optional(),
-    task: z.string().optional(),
-    /** The plan slice of `task` this spawn runs, recorded on its spawn row. */
-    slice: z.string().optional(),
-    /** Why the requester keeps `profile` unrouted, recorded on its spawn row. */
-    routeOverride: z.string().optional(),
-    /** implementer, reviewer, fix-round-N, shepherd-review, planner or other; inferred when absent. */
-    workRole: z.string().optional(),
-    override: z.literal("fix-round").optional(),
     /** An earlier identity of the same name whose depth this spawn keeps. */
     lineageFrom: z.string().optional(),
   });

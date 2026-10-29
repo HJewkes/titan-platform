@@ -277,12 +277,12 @@ declare function buildRequestSchemas(mode: WireParseMode): {
             shepherd: "shepherd";
             burndown: "burndown";
         }>>;
+        lineageFrom: z.ZodOptional<z.ZodString>;
         task: z.ZodOptional<z.ZodString>;
         slice: z.ZodOptional<z.ZodString>;
         routeOverride: z.ZodOptional<z.ZodString>;
         workRole: z.ZodOptional<z.ZodString>;
         override: z.ZodOptional<z.ZodLiteral<"fix-round">>;
-        lineageFrom: z.ZodOptional<z.ZodString>;
         configDir: z.ZodOptional<z.ZodString>;
         account: z.ZodOptional<z.ZodString>;
         spawnerConfigDir: z.ZodOptional<z.ZodString>;
@@ -363,12 +363,12 @@ declare const SpawnRequestSchema: z.ZodObject<{
         shepherd: "shepherd";
         burndown: "burndown";
     }>>;
+    lineageFrom: z.ZodOptional<z.ZodString>;
     task: z.ZodOptional<z.ZodString>;
     slice: z.ZodOptional<z.ZodString>;
     routeOverride: z.ZodOptional<z.ZodString>;
     workRole: z.ZodOptional<z.ZodString>;
     override: z.ZodOptional<z.ZodLiteral<"fix-round">>;
-    lineageFrom: z.ZodOptional<z.ZodString>;
     configDir: z.ZodOptional<z.ZodString>;
     account: z.ZodOptional<z.ZodString>;
     spawnerConfigDir: z.ZodOptional<z.ZodString>;
