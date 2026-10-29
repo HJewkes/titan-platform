@@ -68,6 +68,14 @@ await dispatchToAgentChat(
   out gets the same argv as before.
 - `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
   longest backtick run in it (at least three), preceded by a line saying it is data.
+- `lastFencedJson(text)` parses the body of the last ```` ```json ```` block in an agent's
+  final message, the way an implementer ends its report; undefined when there is none, and
+  a `SyntaxError` when the block is not JSON, so a malformed report never reads as missing.
+- `dispatchToAgentChat` and `buildSpawnArgs` take an optional `role` (`implementer`,
+  `reviewer`, `fix-round-<n>` and the rest of agent-chat's `--role` values) and `task`, sent
+  as `--role` and `--task` so the agent's roster row records who it works for. A task id
+  outside `TASK_ID_PATTERN` throws `DispatchError` before anything runs; a caller that leaves
+  both out gets the same argv as before.
 - Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it
   cannot reach the broker, the call rejects with `BrokerUnavailableError` (a
   `DispatchError`); every other refusal stays a plain `DispatchError`. Every verb that runs

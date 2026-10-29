@@ -3,9 +3,12 @@ export {
   DispatchError,
   DispatchTimeoutError,
   PEER_NAME_PATTERN,
+  TASK_ID_PATTERN,
   agentChatEnv,
   buildSpawnArgs,
   dispatchToAgentChat,
+  type AgentRecord,
+  type AgentRole,
   type DispatchRequest,
   type DispatchResult,
   type LaunchedBy,
@@ -44,7 +47,7 @@ export {
   type ParkResult,
 } from "./park.js";
 export { buildMessageArgs, messageAgent, receivesMessages, type MessageOptions, type WakeSource } from "./message.js";
-export { dataFence } from "./fence.js";
+export { dataFence, lastFencedJson } from "./fence.js";
 export {
   buildListAgentsArgs,
   buildRetireArgs,

@@ -144,12 +144,32 @@ export interface LaunchedBy {
   launchReason?: string;
 }
 
+/** The roles agent-chat's `--role` accepts. */
+export type AgentRole = "implementer" | "reviewer" | "shepherd-review" | "planner" | "other" | `fix-round-${number}`;
+
+/** A task id such as `tp/TP-12`: caller-derived, so it is checked to a strict shape before it reaches argv. */
+export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
+
+/**
+ * What the spawn records on the agent's own row, so later readers (Shepherd's successor walk, the roster) see who the
+ * agent works for. Omitted fields leave their flags out of argv.
+ */
+export interface AgentRecord {
+  role?: AgentRole;
+  task?: string;
+}
+
+export function agentRecordArgs({ role, task }: AgentRecord): string[] {
+  if (task !== undefined && !TASK_ID_PATTERN.test(task)) throw new DispatchError(`invalid task id: '${task}'`);
+  return [...(task === undefined ? [] : ["--task", task]), ...(role === undefined ? [] : ["--role", role])];
+}
+
 export function launchedByArgs({ launchedBy, launchReason }: LaunchedBy): string[] {
   if (launchedBy === undefined) return [];
   return ["--launched-by", launchedBy, ...(launchReason === undefined ? [] : ["--launch-reason", launchReason])];
 }
 
-export interface DispatchRequest extends LaunchedBy {
+export interface DispatchRequest extends LaunchedBy, AgentRecord {
   agentChatBinPath: string;
   /** Derived by the caller, never taken from item content; unique per item, so a re-dispatch collides on purpose. */
   peerName: string;
@@ -186,7 +206,7 @@ export interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-export function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
+export function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & {
   peerName: string;
   profile: string;
   briefing?: string;
@@ -201,6 +221,7 @@ export function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
     ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
     ...placementArgs(req),
     ...launchedByArgs(req),
+    ...agentRecordArgs(req),
     "--brief-stdin",
   ];
 }
