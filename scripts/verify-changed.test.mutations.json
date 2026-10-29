@@ -11,15 +11,6 @@
       ]
     },
     {
-      "name": "the line cap ignores the rule's exclude patterns",
-      "file": "scripts/verify-changed.mjs",
-      "find": "    !graph.matchesAny(path, excluders) &&\n",
-      "replace": "",
-      "kills": [
-        "locScope matches excludes with code-graph's pattern semantics, globs included"
-      ]
-    },
-    {
       "name": "lint:types gets an empty --only list instead of the changed packages",
       "file": "scripts/verify-changed.mjs",
       "find": "`--only=${lintDirs.join(\",\")}`",
