@@ -9,7 +9,7 @@ import { chromiumQaEngine, type QaEngine, type QaPage } from "../qa/qa-engine.js
 import { defaultCompositionPage, servePage, type BuiltPage } from "./composition-page.js";
 import { stageCustomLayers, withCustomLayers } from "./custom-layers.js";
 
-export interface LayerTextCheckDeps {
+interface LayerTextCheckDeps {
   /** The composition page the render draws with; the host's cached build by default. */
   page?: () => Promise<BuiltPage>;
   engine?: Pick<QaEngine, "open">;
