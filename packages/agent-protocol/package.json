@@ -25,6 +25,10 @@
     "./pricing": {
       "types": "./dist/pricing/index.d.ts",
       "import": "./dist/pricing/index.js"
+    },
+    "./wire": {
+      "types": "./dist/wire/index.d.ts",
+      "import": "./dist/wire/index.js"
     }
   },
   "files": [
