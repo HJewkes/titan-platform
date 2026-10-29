@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OwnerOp } from "@titan-design/owner-queue";
@@ -52,6 +52,23 @@ describe("owner-ops ledger", () => {
       { actionId: "act-0", phase: "done" },
       { actionId: "act-1", phase: "started" },
       { actionId: "act-1", phase: "done", result: { outcome: "already", runId: "run-1" } },
+    ]);
+  });
+
+  it("reads back only one action's lines, oldest first, past a torn line and with none before the first append", async () => {
+    const dir = stateDir();
+    const ledger = ownerOpsLedger(dir);
+    const before = await ledger.read("act-1");
+    await runLogged(ledger, { actionId: "act-1", op: OP, now: NOW }, async () => ({ outcome: "gone", reason: "synthetic" }));
+    appendFileSync(join(dir, OWNER_OPS_LEDGER), '{"actionId":"act-1","pha');
+    await ledger.append({ at: "2026-10-18T12:00:00.000Z", actionId: "act-2", phase: "done", result: {} });
+
+    const read = await ledger.read("act-1");
+
+    expect(before).toEqual([]);
+    expect(read.map((entry) => [entry.actionId, entry.phase])).toEqual([
+      ["act-1", "started"],
+      ["act-1", "done"],
     ]);
   });
 });

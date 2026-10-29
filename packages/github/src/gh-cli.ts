@@ -5,11 +5,13 @@ import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
+import type { CheckRun, Commit, GitHubWire, IssueComment, JobStep, PrFile, PullRequest, RepoFile, SquashSource } from "./port.js";
 import type { OpenPrList } from "./pr-list.js";
 import { revalidateRef, revalidateRulesets } from "./conditional-reads.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { readContentBytes } from "./file-bytes.js";
+import { listCommitStatuses } from "./commit-status-read.js";
 import { sendMergeIntoBranch } from "./merge-into-branch.js";
 import { compareFiles, readAncestry } from "./compare.js";
 import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
@@ -51,6 +53,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     deleteRef: async (repo, branch) => void (await api.send("DELETE", `repos/${repo}/git/refs/heads/${branch}`)),
     getDefaultBranch: async (repo) => (await api.get<{ default_branch: string }>(`repos/${repo}`)).default_branch,
     getContent: (repo, path, ref) => getContent(api, repo, path, ref),
+    getContentBytes: (repo, path, ref, maxBytes) => readContentBytes(api, repo, path, ref, maxBytes),
     putContent: async (repo, request) => {
       const body = { message: request.message, content: Buffer.from(request.content, "utf8").toString("base64"), branch: request.branch, ...(request.expectedBlobSha ? { sha: request.expectedBlobSha } : {}) };
       const written = await api.send<{ content: { sha: string } }>("PUT", `repos/${repo}/contents/${request.path}`, {}, JSON.stringify(body));
@@ -67,7 +70,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
-    listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
+    listCheckRuns: (repo, sha, filter) => listCheckRuns(api, repo, sha, filter),
     createCheckRun: postCheckRun,
     getCommit: async (repo, sha) => {
       const commit = await api.get<{ sha: string; parents: { sha: string }[]; tree?: { sha: string }; committer?: { date?: string }; message?: string }>(`repos/${repo}/git/commits/${sha}`);
@@ -91,6 +94,7 @@ export function wireOver(api: Rest, postCheckRun: CheckRunPoster): GitHubWire {
     mergeIntoBranch: (repo, request) => sendMergeIntoBranch(api, repo, request),
     getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
+    rerunJob: async (repo, jobId) => void (await api.send("POST", `repos/${repo}/actions/jobs/${jobId}/rerun`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
     listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
@@ -236,6 +240,8 @@ interface GhCheckRun {
   status: string;
   conclusion: string | null;
   started_at: string | null;
+  completed_at: string | null;
+  output?: { title: string | null } | null;
   head_sha: string;
   details_url: string | null;
   html_url: string | null;
@@ -243,14 +249,17 @@ interface GhCheckRun {
   pull_requests?: { number: number; base: { ref: string } }[];
 }
 
-async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<CheckRun[]> {
-  const runs = await api.pages(`repos/${repo}/commits/${sha}/check-runs`, { per_page: "100" }, (page: { check_runs: GhCheckRun[] }) => page.check_runs);
+async function listCheckRuns(api: Rest, repo: string, sha: string, filter?: "all"): Promise<CheckRun[]> {
+  const fields: Record<string, string> = filter === undefined ? { per_page: "100" } : { per_page: "100", filter };
+  const runs = await api.pages(`repos/${repo}/commits/${sha}/check-runs`, fields, (page: { check_runs: GhCheckRun[] }) => page.check_runs);
   return runs.map((run) => ({
     id: run.id,
     name: run.name,
     status: run.status,
     conclusion: run.conclusion,
     startedAt: run.started_at,
+    completedAt: run.completed_at ?? null,
+    title: run.output?.title ?? null,
     headSha: run.head_sha,
     appId: run.app?.id ?? null,
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
@@ -267,17 +276,6 @@ async function resolveCommit(api: Rest, repo: string, sha: string): Promise<stri
     if (error instanceof GhError && (error.status === 422 || error.status === 404)) return null;
     throw error;
   }
-}
-
-/** A list shorter than `total_count` throws rather than read as complete, because a missing failure would read as green. */
-async function listCommitStatuses(api: Rest, repo: string, sha: string): Promise<CommitStatus[]> {
-  let total = 0;
-  const statuses = await api.pages(`repos/${repo}/commits/${sha}/status`, { per_page: "100" }, (page: { total_count: number; statuses: CommitStatus[] }) => {
-    total = page.total_count;
-    return page.statuses;
-  });
-  if (statuses.length !== total) throw new Error(`the combined status of ${sha} listed ${statuses.length} of ${total} statuses`);
-  return statuses.map((status) => ({ context: status.context, state: status.state }));
 }
 
 /** Actions job URLs read `.../actions/runs/<runId>/job/<jobId>`. */

@@ -281,7 +281,7 @@ describe("a ci-red wake under a frozen main", () => {
     w.freeze.get().freeze(REPO, RED);
     const runId = start(w);
 
-    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"), { timeout: 10_000 });
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"));
 
     expect(resultOf(w, runId, "sh-freeze-wait:0")).toMatchObject({ result: { thawed: false, expired: true, headSha: H1 } });
     expect(w.host.runtime.status(runId)?.status).toBe("running");
@@ -457,7 +457,7 @@ describe("a ci-red wake on a PR whose base head is red", () => {
     baseFails(w, ["validate"]);
     const runId = start(w);
 
-    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"), { timeout: 10_000 });
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"));
 
     expect(resultOf(w, runId, "sh-base-wait:0")).toMatchObject({ result: { baseMoved: false, expired: true, headSha: H1 } });
     expect(w.host.runtime.status(runId)?.status).toBe("running");

@@ -18,6 +18,47 @@
       "kills": [
         "answering a Ship round with side questions sends every side answer with the Ship pick in one rounds.submit, in the round's question order"
       ]
+    },
+    {
+      "name": "a Send back note goes out untrimmed",
+      "file": "apps/console/src/pages/RoundShip.tsx",
+      "find": "const comment = note.trim();",
+      "replace": "const comment = note;",
+      "kills": [
+        "answering a Ship round sends Send back as the other option, with the owner's note as its comment and no head sha"
+      ]
+    },
+    {
+      "name": "pressing an Addressed tick never ticks it",
+      "file": "apps/console/src/pages/ShipPriorFeedback.tsx",
+      "find": "onCheckedChange={(checked) => (locked ? undefined : onToggle(item, checked))}",
+      "replace": "onCheckedChange={() => undefined}",
+      "kills": [
+        "Ship while feedback is open (TP-3741) shows round 1's Don't ship and note, and keeps Ship off until it is ticked Addressed",
+        "frame feedback on a Ship round (TP-3773 S6b) lists an earlier round's frame feedback and holds Ship until it is ticked Addressed",
+        "an unsent Ship round's draft (TP-3870) restores the side answer and comment, the Addressed tick and the Send back note after a remount"
+      ]
+    },
+    {
+      "name": "a side choice's radio is named from a zero-based key",
+      "file": "apps/console/src/pages/RoundQuestion.tsx",
+      "find": "{index < MAX_KEYED_CHOICES ? `${index + 1}  ` : null}",
+      "replace": "{index < MAX_KEYED_CHOICES ? `${index}  ` : null}",
+      "kills": [
+        "answering a Ship round with side questions sends every side answer with the Ship pick in one rounds.submit, in the round's question order",
+        "answering a Ship round with side questions sends the side answers with Send back too, and leaves unanswered optional questions out",
+        "Ship while feedback is open (TP-3741) turns Ship off for a side pick that differs from the implemented choice",
+        "what blocks Ship, per question (TP-3345, TP-3346) names the picks that block Ship and wake the fixer, and marks the answer as it is given",
+        "what blocks Ship, per question (TP-3345, TP-3346) calls an answer with nothing to match informational, until a comment makes it block",
+        "what blocks Ship, per question (TP-3345, TP-3346) keeps This PR answers blocking as before, and ships a commented answer marked Follow-up with the mark",
+        "a Ship round that shares the round answer state (TP-3766) answers the active side question with its digit key",
+        "a sent Ship round read back after a reload (TP-3767) shows the side answer picked and locked, the Ship pick and the Addressed tick as sent",
+        "a sent Ship round read back after a reload (TP-3767) takes no digit key or press on a side answer once sent",
+        "an unsent Ship round's draft (TP-3870) restores the side answer and comment, the Addressed tick and the Send back note after a remount",
+        "an unsent Ship round's draft (TP-3870) is discarded, with a note, when the round's manifest sha has changed",
+        "an unsent Ship round's draft (TP-3870) is cleared by Send back, and nothing is restored after it",
+        "an unsent Ship round's draft (TP-3870) is never restored into a round already sent, and is dropped"
+      ]
     }
   ]
 }

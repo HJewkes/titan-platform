@@ -1,0 +1,55 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "batchRefusal lets an owner-at-head gate ride in a batch",
+      "file": "products/factory/src/gate-batch-plan.ts",
+      "find": "  if (ownerRow !== undefined) return `a ${ownerRow} gate`;\n",
+      "replace": "",
+      "kills": [
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+      ]
+    },
+    {
+      "name": "the console tap targets an owner-at-head gate",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "  if (step === MERGE_GATE) return ownerAtHeadRow(gate) === undefined ? landGate(gate) : undefined;",
+      "replace": "  if (step === MERGE_GATE) return landGate(gate);",
+      "kills": [
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused by a console tap and by merge-at-head, which starts no land-pr",
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+      ]
+    },
+    {
+      "name": "a standing answer resolves an owner-at-head gate",
+      "file": "products/factory/src/owner-ops/standing-answers.ts",
+      "find": "    if (ownerRow !== undefined) return { kind: \"pending\", actionId, runId, reason: `${pending.gate.id} is a ${ownerRow} gate, which no standing answer gives` };\n",
+      "replace": "",
+      "kills": [
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+      ]
+    },
+    {
+      "name": "a Ship answer reaches an owner-at-head gate",
+      "file": "products/factory/src/gate-answer-check.ts",
+      "find": "  if (ownerRow !== undefined) return refused(\"not-land-gate\", `gate ${gate.id} is a ${ownerRow} gate, which no Ship answer gives`);\n",
+      "replace": "",
+      "kills": [
+        "a live-shaped multi-line skill-path, ci-policy-weakened or ci-policy-malformed gate is refused in a gate batch, by a standing answer and by a Ship answer",
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+      ]
+    },
+    {
+      "name": "a multi-line gate with no marker reads as open",
+      "file": "products/factory/src/coordinator-evidence.ts",
+      "find": "  if (gate.prompt.includes(\"\\n\")) return \"pre-marker\";\n",
+      "replace": "",
+      "kills": [
+        "a live-shaped gate holding a D21 fact under another rule reads as that fact, which the console tap, merge-at-head, a batch, a standing answer and a Ship answer refuse"
+      ]
+    }
+  ]
+}

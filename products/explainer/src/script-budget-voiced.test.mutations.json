@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "draftBudgets counts the raw draft, not the spelled one",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "const voiced = { ...draft, beats: draft.beats.map(spellSpokenNumbers) };",
+      "replace": "const voiced = draft;",
+      "kills": [
+        "the script stage's word budget counts the words the voice reads fails a beat at its cap by raw tokens once its numbers are spelled, naming the spelled count"
+      ]
+    }
+  ]
+}

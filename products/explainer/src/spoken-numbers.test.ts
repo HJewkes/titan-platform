@@ -27,6 +27,19 @@ describe("spellSpokenNumbers", () => {
     expect(spell("It closed in 1905, then 2003.")).toBe("It closed in nineteen oh five, then two thousand three.");
   });
 
+  it("voices a four-digit id as digit pairs and a plain count as a cardinal", () => {
+    // Catches: reading an id as a cardinal, which says "two thousand three hundred twenty-four" for PR 2324.
+    expect(spell("PR 2324 closed.")).toBe("PR twenty-three twenty-four closed.");
+    expect(spell("See TP-4103, then issue #1152.")).toBe("See TP forty-one oh three, then issue number eleven fifty-two.");
+    expect(spell("It is #1152 or pull request 4100.")).toBe("It is number eleven fifty-two or pull request forty-one hundred.");
+    expect(spell("The table has 2,324 rows.")).toBe("The table has two thousand three hundred twenty-four rows.");
+  });
+
+  it("keeps a cue after an id on its word and puts a cue on the id at the id's first word", () => {
+    expect(cuesOf("Ship PR 2324 now.", ["now"])).toEqual(["now"]);
+    expect(cuesOf("Ship PR 2324 now.", ["2324"])).toEqual(["PR"]);
+  });
+
   it("spells percent, ordinals and decimals", () => {
     expect(spell("Half of the 2nd batch, 3.5 percent or 40% of it.")).toBe(
       "Half of the second batch, three point five percent or forty percent of it.",
@@ -94,7 +107,7 @@ describe("Q-V12 spoken digits", () => {
   };
 
   it("lists a beat that holds a digit", () => {
-    expect(rowFor("The desk keeps 3 scans.")).toMatchObject([{ check_id: "Q-V12", severity: "warning", pass: false, detail_beats: ["c2-1-stations"] }]);
+    expect(rowFor("The desk keeps 3 scans.")).toMatchObject([{ check_id: "Q-V12", severity: "error", pass: false, detail_beats: ["c2-1-stations"] }]);
   });
 
   it("passes a spelled beat and one whose only digits sit in markup", () => {

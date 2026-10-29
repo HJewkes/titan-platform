@@ -27,7 +27,19 @@ next, so an agent that hits the rule can fix the code without asking.
   `["@titan-design/"]`). `node:` builtins and third-party packages stay mockable. It matches the
   `vi` and `jest` names only, so a renamed import (`import { vi as t }`) is not seen, and it skips
   a specifier built at run time.
-- `recommended`: a flat config enabling the five rules other than `max-line-length` at `error` under the `titan` namespace.
+- `no-wall-clock-motion` (opt-in, not in `recommended`): in beat and motion code, `Date.now`,
+  `performance.now`, `Math.random`, `setTimeout`, `setInterval`, `setImmediate` and
+  `requestAnimationFrame` are reported, bare or behind `window`, `self` or `globalThis`, so a seek
+  or a second render shows the same frames. It applies only to files whose path contains one of the
+  option `paths` (default `["/ui/beats/", "/motion/"]`) and never to `*.test.*`, `*.spec.*` or
+  `__tests__/` files. It reads call syntax only, so an aliased import (`const now = Date.now`) is not seen.
+- `no-test-clock-budget` (opt-in, not in `recommended`): in a test file, an `expect(x)` compared with
+  `toBeLessThan`, `toBeGreaterThan` or their `OrEqual` forms is reported when `x` comes from a clock
+  (`Date.now`, `performance.now`, `process.hrtime`, `process.cpuUsage`, `process.threadCpuUsage`),
+  followed through arithmetic and local names and functions by scope. A loaded CI runner misses such
+  a limit or ratio; assert counted work instead, or gate the timing on a condition that names a bench
+  flag. It cannot follow a time through an imported helper (TP-4262).
+- `recommended`: a flat config enabling the five rules other than `max-line-length`, `no-test-clock-budget` and `no-wall-clock-motion` at `error` under the `titan` namespace.
 
 Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.

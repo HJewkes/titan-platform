@@ -56,8 +56,10 @@ const list = rank(mergeByKeys([gate, ask]));
 Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
 holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
 `recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
-`personal`, `unblocks`, `expiresAt`, `audience`, plus `depositId`. `asker` and `depositId` are
-required; `keys` and `unblocks` default to empty and `personal` to false.
+`personal`, `unblocks`, `unblocksNow`, `expiresAt`, `audience`, plus `depositId`. `asker` and
+`depositId` are required; `keys` and `unblocks` default to empty and `personal` to false.
+`unblocksNow` is optional: one trimmed line of at most 200 characters on what the answer
+unblocks right now. The console lists a deposit without it as planning, never blocking.
 
 `audience` is `"owner"` or `"operator"` and says which reader the item is for; an item with
 none is the owner's. It selects a view and grants no authority. `forAudience(items, audience)`
@@ -153,6 +155,45 @@ accepts both: `readSpool`, `readAnswer`, and the repeat check in `writeDeposit` 
 `writeAnswer`. Writers only ever create the current name. When a name is already taken,
 `writeDeposit` reads the file there and throws `SpoolNameCollisionError` unless it holds the
 same asker and `depositId`. It never answers `created: false` for an id it did not file.
+
+## Withdrawing a deposit
+
+The `@titan-design/owner-queue/withdraw` subpath lets a seat take back its own deposit without an
+answer. Withdrawn is its own status: nothing here writes an answer file.
+
+```ts
+import { readWithdrawal, restoreDeposit, withdrawDeposit, withdrawMatching } from "@titan-design/owner-queue/withdraw";
+
+await withdrawDeposit(dir, "deposit:<32 hex>", { reason: "obsolete", as: "agent-a", actor: "agent-b" });
+// { id, outcome: "withdrawn" }, or "already-withdrawn" with the first reason kept
+await restoreDeposit(dir, "deposit:<32 hex>", { as: "agent-a", actor: "agent-b" }); // { id, outcome: "restored" }
+await withdrawMatching(dir, { asker: "agent-a", actor: "agent-b", keys: ["my-alarm"], reason: "resolved", dryRun: true });
+```
+
+- `as` must be the deposit's asker; `actor` (required) names who runs the call, which differs
+  when a seat closes items a retired automation filed.
+- `withdrawDeposit` writes `<id>.withdrawn` (`{ reason, by, actor, at }`, `by` being the asker;
+  0600, exclusive create)
+  beside the deposit. The name has no `.json` suffix, so an older `readSpool` never takes it for
+  a deposit. `reason` is `obsolete`, `resolved` or `superseded:<id>`.
+- The id is the full `deposit:<32 hex>`, or a hex prefix of at least 8 digits, bare or after
+  `deposit:`, that starts exactly one deposit in the spool. The result's `id` is always the full
+  one, and the checks below run on the deposit it resolves to.
+- It throws `WithdrawRefusedError` with `kind: "unknown"` for an id no deposit matches (`unknown
+  id <x>; full form is deposit:<32 hex>`), and `kind: "refused"` for a bad reason, a prefix that
+  matches several deposits (the message lists their full ids), an id of another item kind
+  (`gate:…`, `round:…`), an `as` other than the deposit's `asker`, a blank `actor`, or a
+  deposit that already has an answer.
+- Every withdraw and restore appends `{ op, id, reason?, by, actor, at }` to `withdrawals.jsonl`
+  (`WITHDRAW_LOG`) in the spool. `restoreDeposit` deletes the marker and makes the same checks.
+- `withdrawMatching` withdraws every open deposit of `asker` carrying any of `keys`, and skips
+  answered, withdrawn and unreadable ones. With `dryRun` it only lists them.
+- `readWithdrawal(dir, id)` returns the marker, `undefined` when there is none, and throws on a
+  malformed one. A marker written before actors were recorded has no `actor`.
+- `WithdrawnItem` carries an optional `actor`, so a read model can show who withdrew an item.
+
+`collapseRepeats(items)` in the root export folds open items that one asker filed with the same
+`alarm:<source>` key (`alarmKey(source)`) into the newest, which carries `repeats`, the count.
 
 ## Stale rules
 
@@ -282,6 +323,43 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
 - **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
   `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
   feedback can be routed back to each item.
+
+## Plan rounds
+
+`buildPlanRound(input)` drafts the round that asks the owner a merge gate's WHAT question at
+plan time. Each ask is one gate a planned PR would hit at merge, with the exact scope the
+owner approves. The result is the whole round.json: the round@2 manifest plus the console's
+own `planApprovals` field, and `supersedes` when given.
+
+```ts
+import { buildPlanRound } from "@titan-design/owner-queue";
+
+const round = buildPlanRound({
+  unit: "plan-example-tp-1",
+  round: 1,
+  task: "example/TP-1",
+  repo: "example-org/example-repo",
+  asks: [{ gate: "skill", scope: { paths: [".claude/skills/example/SKILL.md"] }, title: "The skill file", context: "One new skill." }],
+});
+// JSON.stringify(round) is what `titan-console decisions file -` reads
+```
+
+- **One question per ask.** Each ask is a pick-one in its own section. Its options are
+  `Approve this <gate> change for <task> as pinned below` and
+  `Revise: send the plan back for <task>`. The labels name the gate and the task, and pass
+  the same normaliser as review rounds, so no label is shared or reads as a blanket sign-off.
+- **Bindings.** `planApprovals[i]` is `{ questionId, approve, task, repo, gate, scope }`, with
+  `approve` the question's first option and `scope` a copy of the ask's. The console records
+  exactly that entry when the owner picks `approve`; a Revise pick records nothing.
+- **Scopes.** `ci-policy` takes `{ ciPolicyKeys, files: [{ path, blob }] }`, with `blob` the
+  40-hex git blob sha at head or `null` for an absent file. `skill` and `visual` take
+  `{ paths }`. The builder does not validate scopes; the console and the factory each parse
+  them strictly.
+- **No recommendation.** The planner does not recommend its own approval, so the round is
+  `recommendations: "shown"` with none to show.
+- **Errors.** An empty `asks` list or a non-loopback `storybookUrl` (default
+  `http://127.0.0.1:6006/`) throws, and the manifest is parsed with `RoundSchema` before it is
+  returned.
 
 ## Relation keys
 
@@ -448,6 +526,10 @@ the item `recheck` saw, which may be a non-primary item that step 3 merged away.
   the answer. Put the source that should receive answers first.
 - `rank` returns a new array and never filters; drop closed items before ranking if you
   only want open ones.
+- Clean any author- or agent-written text with `promptLine` before it reaches an owner
+  prompt, terminal or decisions file. It strips escape sequences, C0 and C1 controls, bidi
+  and other format characters, and flattens every line break (U+2028 and U+2029 included).
+  To keep the text's own lines, split on `PROMPT_LINE_BREAK` and clean each line.
 
 ## Where it came from
 

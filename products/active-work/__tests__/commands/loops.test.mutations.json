@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "loops lists only the ledger rows of its own initiative",
+      "file": "products/active-work/src/commands/loops.ts",
+      "find": "    .filter((row) => row.initiative === slug && row.status !== 'DONE')\n",
+      "replace": "    .filter((row) => row.status !== 'DONE')\n",
+      "kills": [
+        "loops ledger rows adds the platform ledger's open rows for the slug, each row naming its source"
+      ]
+    }
+  ]
+}

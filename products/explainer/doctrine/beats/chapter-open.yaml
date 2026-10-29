@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: chapter-open
+summary: "A chapter opening at its station on the map, with its question."
+role: navigate
+component: { name: ChapterOpen, maturity: spike }
+slots: chapter
+speech: { band: held }
+durationS: [2, 4, 6]
+preset: true
+recipe: "Template fill: the chapter number, its title and the question, opened at the chapter's map station."

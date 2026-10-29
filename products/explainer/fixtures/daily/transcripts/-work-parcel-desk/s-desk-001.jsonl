@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"s-desk-001","timestamp":"2026-03-11T09:00:00.000Z","message":{"role":"user","content":"Wire the parcel scanner to the desk server."}}
+{"type":"ai-title","sessionId":"s-desk-001","timestamp":"2026-03-11T09:00:05.000Z","aiTitle":"Wire the parcel scanner"}
+{"type":"assistant","sessionId":"s-desk-001","timestamp":"2026-03-11T09:30:00.000Z","message":{"role":"assistant","content":[{"type":"text","text":"The scanner now posts to the desk server."}]}}

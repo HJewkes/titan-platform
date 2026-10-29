@@ -162,3 +162,25 @@ describe("backfillFacets", () => {
     expect(count(FACET_TABLE)).toBe(1);
   });
 });
+
+describe("backfillFacets context_block policy", () => {
+  const backfillAfterStaleFacet = async (contextBlocks: boolean | undefined) => {
+    const transcript = writeTranscript("s1", [...firstHalf("s1"), ...secondHalf("s1")]);
+    await refreshCorpus(graph, [transcript], { contextBlocks: true });
+    graph.db.prepare(`UPDATE ${FACET_TABLE} SET version = ?`).run(EXTRACT_VERSION - 1);
+    await refreshCorpus(graph, [transcript], contextBlocks === undefined ? {} : { contextBlocks });
+    return { blocks: count("context_block", idOf(transcript)), facet: facetOf(idOf(transcript)) };
+  };
+
+  it("keeps a stale facet's context_block rows when the pass opts in", async () => {
+    const { blocks, facet } = await backfillAfterStaleFacet(true);
+    expect(blocks).toBeGreaterThan(0);
+    expect(facet?.version).toBe(EXTRACT_VERSION);
+  });
+
+  it("drops a stale facet's context_block rows under the default", async () => {
+    const { blocks, facet } = await backfillAfterStaleFacet(undefined);
+    expect(blocks).toBe(0);
+    expect(facet?.version).toBe(EXTRACT_VERSION);
+  });
+});

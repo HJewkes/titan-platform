@@ -193,14 +193,19 @@ phone shows. Run it once, on the phone you review from, signed in:
 
 ## Log in
 
-Run this on the machine that runs the console, with the unit's port, state directory, token path
-and LAN names (those decide the link; the unit sets only the LAN names away from the defaults):
+Run this on the machine that runs the console, with the unit's port, state directory and token
+path (the unit leaves all three at the defaults):
 
 ```sh
-TITAN_CONSOLE_LAN_NAMES=<fqdn> node <checkout>/apps/console/dist/cli.js login-link
+node <checkout>/apps/console/dist/cli.js login-link
 ```
 
-The link is `https://<fqdn>:7500/auth/login?code=...`. It works once and for ten minutes. Open
+The link names a host the certificate covers: the first of `TITAN_CONSOLE_LAN_NAMES` it covers,
+else the first name on the certificate. The certificate is `TITAN_CONSOLE_TLS_CERT`, or with that
+unset the one `.crt` file under `~/.local/state/titan-console/tls`. With neither, `login-link`
+refuses rather than print a name that opens on a certificate warning.
+
+The link is `https://<host>.<tailnet>.ts.net:7500/auth/login?code=...`. It works once and for ten minutes. Open
 it on a tailnet device, press the sign-in button, and repeat with a fresh link on the next
 device. A restart of the daemon after minting voids an outstanding link.
 

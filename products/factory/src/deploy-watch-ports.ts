@@ -3,12 +3,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { withdrawMatching } from "@titan-design/owner-queue/withdraw";
 import { cachedAncestry, gitAncestry } from "./build-ancestry.js";
 import { buildSha } from "./build-info.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
-import { incidentDeposit, incidentMessage, type DeployIncident } from "./deploy-incident.js";
+import { DEPLOY_ALARM_ASKER, DEPLOY_ALARM_KEYS, incidentDeposit, incidentMessage, type DeployIncident } from "./deploy-incident.js";
+import { fetchingGitBehind } from "./deploy-behind.js";
 import { deployWatch, type DeployWatch } from "./deploy-watch.js";
 import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
+import { nodeWantedStore, readWanted } from "./shepherd/deploy-pacer.js";
 import { failureOf } from "./shepherd/error-class.js";
 import { REDEPLOY_LOG } from "./shepherd/redeploy.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
@@ -65,6 +68,8 @@ export function configuredDeployWatch(env: NodeJS.ProcessEnv, checkout: string):
     runningSha: () => sha,
     isAncestor: cachedAncestry(gitAncestry(checkout)),
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
+    originBehind: fetchingGitBehind(checkout),
+    deployQueued: () => readWanted(stateDir, nodeWantedStore) !== undefined,
     ...(notify && { notify }),
     escalate: async (deposit: OwnerItemDeposit) => void (await writeDeposit(inbox, deposit)),
     ...(shepherd.deployAlarm && { policy: shepherd.deployAlarm }),
@@ -90,4 +95,10 @@ export function configuredDeployIncident(env: NodeJS.ProcessEnv): (incident: Dep
     await writeDeposit(inbox, incidentDeposit(incident)).catch((error: unknown) => failures.push(`owner queue: ${failureOf(error)}`));
     if (failures.length > 0) throw new Error(failures.join("; "));
   };
+}
+
+/** After a good deploy: every open deploy alarm and incident the factory filed is resolved. */
+export function configuredDeployResolve(env: NodeJS.ProcessEnv): () => Promise<number> {
+  const inbox = ownerInboxDir(env);
+  return async () => (await withdrawMatching(inbox, { asker: DEPLOY_ALARM_ASKER, actor: DEPLOY_ALARM_ASKER, keys: DEPLOY_ALARM_KEYS, reason: "resolved" })).length;
 }

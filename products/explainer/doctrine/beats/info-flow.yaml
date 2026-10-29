@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: info-flow
+summary: "How data or work moves through the parts, left to right."
+role: explain
+component: { name: ArchMapBeat, maturity: spike }
+slots: info-flow
+speech: { band: concept }
+durationS: [8, 14, 30]
+preset: false
+emphasis: { targets: [nodes, edges], treatments: [trace, highlight] }
+recipe: "Draw the path, then move a token along it as the narration follows. No branches; a branching flow is a sequence or a request walk."

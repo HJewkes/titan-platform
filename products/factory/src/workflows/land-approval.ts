@@ -3,8 +3,9 @@ import type { RepoSlug } from "@titan-design/github";
 import type { GateRule } from "@titan-design/hitl";
 import type { OwnerBrief } from "@titan-design/review-panel";
 import { AUTHORITY_TABLE_NAME, type WorkflowContext } from "@titan-design/workflow";
-import { SEND_BACK, approveMergeDecision, ownerBriefLines, skillChangeNote } from "../gate-brief.js";
+import { SEND_BACK, approveMergeDecision, ciPolicyCardLines, ownerBriefLines, skillChangeNote, type CiPolicyCard } from "../gate-brief.js";
 import type { PolicyRule } from "../gate-policy.js";
+import { OWNER_AT_HEAD_ROWS, isOwnerAtHeadRow, ownerAtHeadNote, type OwnerAtHeadRow } from "../owner-at-head.js";
 import type { FailingCheck } from "./land-ci.js";
 
 /** The one head an approval answer may cover; land asks again at any other head. */
@@ -39,24 +40,44 @@ export type ApprovalSource = "human" | "set";
 export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => Promise<ApprovalAnswer>;
 
 /** What the approve-merge gate shows beside the policy's reason, each read at the head it asks about. */
-interface ApproveMergeFacts {
+export interface ApproveMergeFacts {
+  /** True when the reviewer's verdict at exactly this head is MERGE; only then does the brief recommend merging. */
   reviewedMerge?: (headSha: string) => boolean;
+  /** The reviewer's owner brief from a MERGE at exactly this head. */
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at this head; any one drops the merge recommendation and links the diff. */
   skillPathsAt?: (headSha: string) => readonly string[];
+  /** A weakened CI-policy line at this head, which makes the gate the D21 owner card with every changed `.github/` line. */
+  ciPolicyAt?: (headSha: string) => CiPolicyCard | undefined;
+  /** The D21 facts that hold at this head whatever the rule; each is marked on the gate, which keeps it off the remote paths. */
+  ownerAtHeadAt?: (headSha: string) => readonly OwnerAtHeadRow[];
   /** Whether this gate offers `send-back`; read once per gate, before it opens, as a step the caller records. Absent, never. */
   sendBackOffered?: (ctx: WorkflowContext) => Promise<boolean>;
+}
+
+/** The D21 facts at this head: the rule's own merge-guard row, a skill change and whatever the facts report, in table order. */
+function ownerAtHeadRows(rule: PolicyRule, facts: ApproveMergeFacts, headSha: string, skillPaths: readonly string[]): OwnerAtHeadRow[] {
+  const held = new Set<string>(facts.ownerAtHeadAt?.(headSha) ?? []);
+  if (rule.table === "shepherd-merge-guard" && isOwnerAtHeadRow(rule.rowId)) held.add(rule.rowId);
+  if (skillPaths.length > 0) held.add("skill-path");
+  return OWNER_AT_HEAD_ROWS.filter((row) => held.has(row));
 }
 
 /** The approve-merge gate's prompt, answer schema and brief at the head `question` names, each fact read at that head. */
 export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { repo, pr, headSha, reason, base }: ApprovalQuestion, sendBack = false) {
   const ownerBrief = facts.ownerBriefAt?.(headSha);
   const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
-  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths, sendBack });
+  const rows = ownerAtHeadRows(rule, facts, headSha, skillPaths);
+  const ciPolicyWeakened = rows.includes("ci-policy-weakened");
+  const reviewedMerge = facts.reviewedMerge?.(headSha) ?? false;
+  const ciPolicy = facts.ciPolicyAt?.(headSha);
+  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge, ownerBrief, skillPaths, ciPolicyWeakened, ...(ciPolicy && { ciPolicy }), sendBack });
   const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
   const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
   const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
-  return { prompt: [asked, ...skillLines, ...briefLines].join("\n"), schema, brief };
+  const cardLines = ciPolicy ? ["", ...ciPolicyCardLines(ciPolicy, repo, pr)] : [];
+  const marker = ownerAtHeadNote(rows, skillLines.length + briefLines.length + cardLines.length > 0);
+  return { prompt: [asked, ...(marker === undefined ? [] : [marker]), ...skillLines, ...briefLines, ...cardLines].join("\n"), schema, brief };
 }
 
 /** TP-1904's mechanical merges and pr-gone abandons; `deviceGateAuthorize` admits the coordinator only on that evidence. */

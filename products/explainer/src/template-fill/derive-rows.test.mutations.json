@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "list rows lose the lane slot",
+      "file": "products/explainer/src/beat-slots.ts",
+      "find": ", lane: Label.max(12).optional() }",
+      "replace": " }",
+      "kills": [
+        "template fill: list beats marks each row from its first word, takes a lane from `<lane> · <text>` and titles the rows with the chapter"
+      ]
+    },
+    {
+      "name": "issue-pin loses its title slot",
+      "file": "products/explainer/src/beat-slots.ts",
+      "find": "\"issue-pin\": z.object({ title: Line.optional(), ",
+      "replace": "\"issue-pin\": z.object({ ",
+      "kills": [
+        "template fill: verdict-card and issue-pin beats titles pinned issues by their node labels and lands each pin on its own cue"
+      ]
+    },
+    {
+      "name": "an over-long list title gives no hint",
+      "file": "products/explainer/src/template-fill/derive-rows.ts",
+      "find": "...(title.title === undefined ? { titleOmitted: true as const } : {})",
+      "replace": "...{}",
+      "kills": [
+        "template fill: list beats draws the rows untitled with a hint when the chapter label is longer than a title holds"
+      ]
+    }
+  ]
+}

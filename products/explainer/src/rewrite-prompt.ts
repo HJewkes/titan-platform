@@ -36,6 +36,7 @@ const REFUSAL_NOTES: ReadonlyMap<string, string> = new Map(
     "number-invented": "a count appeared that the original never says; add no number of your own",
     "number-vague": "a vague word stood in for a number; keep the number or cut the clause",
     "device-added": "it gained a colon, a semicolon, a tail or a \"let's\" the original did not have; say it as a plain sentence",
+    "closer-added": "it ended on a new short summing-up line the original did not have; end where the point is made",
     "label-bare": "a label held only a number; give it the noun it counts",
     "list-lost": "an item of the list left the line without a label of its own; label every item",
     "list-emptied": "keep one item of the list in the line",
@@ -55,7 +56,7 @@ const refusalLines = (refused: readonly string[]): string[] =>
   [...new Set(refused.map(refusalNote))].map((note) => `- Your last version was not used: ${note}.`);
 
 function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round"]): string[] {
-  const { numbers, triads, shape, refused } = directive;
+  const { numbers, triads, phrases, shape, refused } = directive;
   return [
     ...refusalLines(refused ?? []),
     ...(shape ? [shapeLine(shape)] : []),
@@ -65,6 +66,7 @@ function directiveLines(directive: BeatDirective, round: RegisterEditPlan["round
     ...(triads
       ? [`- Lists of three: ${quoted(triads)}. Put every item in labels_added, one each, and keep at most a single item in the line; you may say how many there are.`]
       : []),
+    ...(phrases ? [`- Stock phrases: ${quoted(phrases)}. Say what each one means in plain words of your own.`] : []),
     ...(round > 1 ? ["- Change only what the lines above name; keep the rest of the beat as written."] : []),
   ];
 }

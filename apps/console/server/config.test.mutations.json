@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a relative explainer path is dropped, so the panel cannot name it",
+      "file": "apps/console/server/config.ts",
+      "find": "return bin === null ? {} : { explainerBin: bin };",
+      "replace": "return bin === null || !path.isAbsolute(bin) ? {} : { explainerBin: bin };",
+      "kills": [
+        "console explainer binary keeps a relative path as given, so the props panel's gap names it"
+      ]
+    },
+    {
+      "name": "TITAN_CONSOLE_EXPLAINER_BIN is ignored",
+      "file": "apps/console/server/config.ts",
+      "find": "expandHome(env.TITAN_CONSOLE_EXPLAINER_BIN || \"explainer\", home)",
+      "replace": "expandHome(\"explainer\", home)",
+      "kills": [
+        "console explainer binary resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given",
+        "console explainer binary keeps a relative path as given, so the props panel's gap names it"
+      ]
+    },
+    {
+      "name": "TITAN_CONSOLE_CAP_EXEMPT_ASKERS is ignored",
+      "file": "apps/console/server/config.ts",
+      "find": "if (raw === undefined) return [...DEFAULT_CAP_EXEMPT_ASKERS];",
+      "replace": "return [...DEFAULT_CAP_EXEMPT_ASKERS];",
+      "kills": [
+        "console config exempts titan-factory from the ask cap unless TITAN_CONSOLE_CAP_EXEMPT_ASKERS names the list, and an empty one exempts nobody"
+      ]
+    }
+  ]
+}

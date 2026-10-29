@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "no punctuation is skipped after the verdict word",
+      "file": "packages/session-read/src/review-verdict.ts",
+      "find": "  while (punct < 3 && /[^\\w\\s]/.test(at(line, cursor))) {",
+      "replace": "  while (punct < 0 && /[^\\w\\s]/.test(at(line, cursor))) {",
+      "kills": [
+        "parseReviewVerdicts parses a 100 KB single-line message in under 50ms"
+      ]
+    }
+  ]
+}

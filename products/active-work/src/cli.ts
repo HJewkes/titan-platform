@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, InvalidArgumentError } from 'commander';
 import type { ZodSchema, ZodTypeAny } from 'zod';
 import { registry } from './registry/index.js';
 import './commands/index.js'; // populates the registry via side effect
@@ -9,6 +9,7 @@ import {
   successEnvelope,
   errorEnvelope,
   type AnyCommand,
+  type CliOption,
   type CliMeta,
   type CommandContext,
 } from './registry/index.js';
@@ -17,6 +18,8 @@ import { BUILD_VERSION } from './version.js';
 import { color } from './utils/color.js';
 import { appendUsage } from './utils/usage-log.js';
 import { exitAfterFlush, exitQuietlyOnBrokenPipe } from './utils/exit.js';
+import { attachSpawnCommand } from './spawn/args.js';
+import { processSpawnDeps } from './spawn/run.js';
 
 /**
  * Look up the inner zod type, skipping optional/nullable/default wrappers.
@@ -243,6 +246,34 @@ function collectRepeated(value: string, previous: string[] | undefined): string[
   return [...(previous ?? []), value];
 }
 
+/** Single-tag flags: commander would keep only the last of a repeat and drop the rest silently. */
+const SINGLE_USE_OPTIONS: ReadonlySet<string> = new Set([
+  'task.edit:add_tag',
+  'task.edit:remove_tag',
+]);
+
+function refuseRepeat(flag: string): (value: string, previous: string | undefined) => string {
+  return (value, previous) => {
+    if (previous !== undefined) {
+      throw new InvalidArgumentError(`${flag} takes one tag per call; repeat the command instead`);
+    }
+    return value;
+  };
+}
+
+function attachOption(sub: Command, cmd: AnyCommand, key: string, opt: CliOption): void {
+  const flags = buildOptionFlags(cmd, key, opt);
+  if (opt.required) {
+    sub.requiredOption(flags, opt.description);
+  } else if (unwrapZodType(fieldSchema(cmd.args, key)) === 'array') {
+    sub.option(flags, opt.description, collectRepeated);
+  } else if (SINGLE_USE_OPTIONS.has(`${cmd.name}:${key}`)) {
+    sub.option(flags, opt.description, refuseRepeat(opt.long));
+  } else {
+    sub.option(flags, opt.description);
+  }
+}
+
 /** Attach one registry command as a sub-command under its appropriate parent. */
 function attachCommand(root: Command, cmd: AnyCommand): void {
   const parts = splitName(cmd.name);
@@ -260,18 +291,8 @@ function attachCommand(root: Command, cmd: AnyCommand): void {
     sub.argument(display, `${pname}${zType ? ` (${zType})` : ''}`);
   }
 
-  if (meta.options) {
-    for (const [key, opt] of Object.entries(meta.options)) {
-      const flags = buildOptionFlags(cmd, key, opt);
-      const isArray = unwrapZodType(fieldSchema(cmd.args, key)) === 'array';
-      if (opt.required) {
-        sub.requiredOption(flags, opt.description);
-      } else if (isArray) {
-        sub.option(flags, opt.description, collectRepeated);
-      } else {
-        sub.option(flags, opt.description);
-      }
-    }
+  for (const [key, opt] of Object.entries(meta.options ?? {})) {
+    attachOption(sub, cmd, key, opt);
   }
 
   sub.action(makeAction(cmd, root));
@@ -299,6 +320,7 @@ function buildProgram(): Command {
   for (const cmd of cmds) {
     attachCommand(program, cmd);
   }
+  attachSpawnCommand(program, processSpawnDeps(exitAfterFlush));
 
   return program;
 }

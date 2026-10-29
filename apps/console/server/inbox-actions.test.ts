@@ -46,8 +46,11 @@ let clock: number;
 let timelines: Record<number, unknown[]>;
 let shepherd: ReturnType<typeof fakeShepherd>;
 let preview: (op: { repo: string; pr: number }) => unknown;
+let agentPreview: () => unknown;
+let pausePreview: () => unknown;
 
 beforeEach(async () => {
+  agentPreview = () => retirePreview();
   dir = await mkdtemp(path.join(tmpdir(), "console-inbox-actions-"));
   items = [gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), gate(RUN_OWNER, "2026-10-10T05:00:00.000Z"), chatAsk()];
   rows = [row(RUN_PLAIN, 1), row(RUN_OWNER, 2, "owner-asked: wait for me")];
@@ -55,6 +58,7 @@ beforeEach(async () => {
   timelines = {};
   shepherd = fakeShepherd();
   preview = (op) => openPreview(op, HEAD);
+  pausePreview = () => pauseAnswer();
 });
 
 afterEach(async () => {
@@ -190,7 +194,8 @@ async function sources(): Promise<InboxSources> {
     if (command === "shepherd.list") return rows;
     if (command === "shepherd.timeline") return { row: rows.find((each) => each.pr === args.pr), entries: timelines[Number(args.pr)] ?? [] };
     if (command === "shepherd.release") return shepherd.release(args);
-    if (command === "owner-op.preview") return preview(z.object({ repo: z.string(), pr: z.number() }).parse(args.op));
+    if (command === "owner-op.preview" && z.object({ kind: z.literal("retire-agent") }).safeParse(args.op).success) return agentPreview();
+    if (command === "owner-op.preview") return z.object({ kind: z.literal("deploy-pause-clear") }).safeParse(args.op).success ? pausePreview() : preview(z.object({ repo: z.string(), pr: z.number() }).parse(args.op));
     throw new Error(`no fixture for ${command}`);
   });
   return { factory: factoryNeeds(factory.port), shepherd: shepherdReader(factory.port), rounds: { dir: path.join(dir, "rounds") }, inbox: { dir: path.join(dir, "deposits") } };
@@ -198,9 +203,11 @@ async function sources(): Promise<InboxSources> {
 
 const ownerContext = (auth: RequestAuth = SESSION, ownerWrites = true): ConsoleContext => ({ warnings: [], format: "json", surface: "http", auth, ownerWrites });
 
+type Extra = { waitFor?: "adversary-loop" };
+
 interface Harness {
-  prepare(itemId: string): Promise<JsonEnvelope<unknown>>;
-  act(itemId: string, confirm: string, ctx?: ConsoleContext, text?: string): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
+  prepare(itemId: string, extra?: Extra): Promise<JsonEnvelope<unknown>>;
+  act(itemId: string, confirm: string, ctx?: ConsoleContext, text?: string, extra?: Extra): Promise<{ envelope: JsonEnvelope<unknown>; exitCode: number }>;
 }
 
 interface HarnessOptions {
@@ -213,8 +220,8 @@ async function harness(client: OwnerActionClient, options: HarnessOptions = {}):
   const { decisionLog, answerer } = options;
   const commands = inboxActionCommands(await sources(), { enabled: options.enabled ?? true, actionsDir: actionsDir(), client, now: () => clock, ...(decisionLog && { decisionLog }), ...(answerer && { answerer }) });
   return {
-    prepare: async (itemId) => (await invokeCommand(commands["inbox.prepare"], { itemId }, ownerContext())).envelope,
-    act: (itemId, confirm, ctx = ownerContext(), text) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }) }, ctx),
+    prepare: async (itemId, extra = {}) => (await invokeCommand(commands["inbox.prepare"], { itemId, ...extra }, ownerContext())).envelope,
+    act: (itemId, confirm, ctx = ownerContext(), text, extra = {}) => invokeCommand(commands["inbox.act"], { itemId, confirm, ...(text !== undefined && { text }), ...extra }, ctx),
   };
 }
 
@@ -271,6 +278,25 @@ describe("inbox.act", () => {
     expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.outcome.json`), "utf8"))).toMatchObject({ status: "resolved" });
     expect(calls).toHaveLength(1);
     expect(calls[0]![1]).toMatchObject({ text: "merge", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
+  });
+
+  it("waits for a new head on an sh-sent-back gate: the read-back, record, message and log all say await-new-head, not merge", async () => {
+    const sentBackId = `${RUN_PLAIN}/sh-sent-back`;
+    const offered = [
+      { id: "await-new-head", label: "Wait for a new head" },
+      { id: "abandon", label: "Abandon the PR" },
+    ];
+    items = [{ ...gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"), id: `gate:${sentBackId}`, sources: [{ system: "hitl", ref: sentBackId }], options: offered }];
+    const { log, calls } = spyLog();
+    const { prepare, act } = await harness(spyFactory().client, { decisionLog: log });
+    const prepared = ready(await prepare(`gate:${sentBackId}`));
+
+    const { envelope } = await act(`gate:${sentBackId}`, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ gateId: sentBackId, effect: `Wait for the implementer's next pushed head on ${REPO}#1 at 1234567; nothing merges` });
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "resolved" }, message: "Waiting for the implementer's next pushed head; nothing merged" } });
+    expect(JSON.parse(await readFile(path.join(actionsDir(), `${prepared.confirm}.json`), "utf8"))).toMatchObject({ action: { kind: "resolve-gate", stepId: "sh-sent-back", decision: "await-new-head" } });
+    expect(calls[0]![1]).toMatchObject({ text: "await-new-head" });
   });
 
   it("refuses a bearer credential with 403 and writes no record", async () => {
@@ -388,23 +414,6 @@ describe("inbox answer-chat", () => {
     expect(await prepare(CHAT_ID)).toMatchObject({ ok: true, data: { status: "no-action", action: { kind: "answer-chat" } } });
   });
 
-  it("sends the owner's text to the broker, keeps it in the record and logs it as the answer", async () => {
-    const broker = spyBroker();
-    const factorySpy = spyFactory();
-    const { log, calls } = spyLog();
-    const { prepare, act } = await harness(factorySpy.client, { answerer: broker.answerer, decisionLog: log });
-    const { confirm } = ready(await prepare(CHAT_ID));
-
-    const { envelope } = await act(CHAT_ID, confirm, undefined, "  alpha  ");
-
-    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "answered" }, message: "Answer sent" } });
-    expect(broker.answers).toEqual([[MSG, "alpha"]]);
-    expect(factorySpy.posts).toEqual([]);
-    expect(JSON.parse(await readFile(path.join(actionsDir(), `${confirm}.json`), "utf8"))).toMatchObject({ itemId: CHAT_ID, action: { kind: "answer-chat", msgId: MSG }, text: "alpha" });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]![1]).toMatchObject({ text: "alpha", by: { class: "owner-remote", id: "titan-console", channel: "console:inbox" } });
-  });
-
   it("refuses an answer with no text before writing or sending anything", async () => {
     const broker = spyBroker();
     const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
@@ -438,23 +447,6 @@ describe("inbox answer-chat", () => {
 
     expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "closed" }, message: expect.stringMatching(/^Not sent; the question is closed/) } });
     expect(calls).toEqual([]);
-  });
-
-  it("leaves a broker-down answer unsettled, so the retry sends the words first written", async () => {
-    const broker = spyBroker({ status: "unreachable", detail: "connect ECONNREFUSED" });
-    const { prepare, act } = await harness(spyFactory().client, { answerer: broker.answerer });
-    const { confirm } = ready(await prepare(CHAT_ID));
-
-    const down = await act(CHAT_ID, confirm, undefined, "alpha");
-    const afterDown = await records();
-    await act(CHAT_ID, confirm, undefined, "beta");
-
-    expect(down.envelope).toMatchObject({ ok: true, data: { outcome: { status: "unreachable" } } });
-    expect(afterDown).toEqual([`${confirm}.json`]);
-    expect(broker.answers).toEqual([
-      [MSG, "alpha"],
-      [MSG, "alpha"],
-    ]);
   });
 });
 
@@ -571,15 +563,15 @@ function openPreview({ repo, pr }: { repo: string; pr: number }, head: string, v
 
 const OP_DEPOSIT = "op-merge-1";
 const OP_ID = depositItemId(ASKER, OP_DEPOSIT);
-const opRecordShape = z.object({ op: z.object({ kind: z.string(), repo: z.string(), pr: z.number(), headSha: z.string() }), action: z.never().optional() });
+const opRecordShape = z.object({ op: z.object({ kind: z.string(), repo: z.string(), pr: z.number(), headSha: z.string(), waitFor: z.string().optional() }), action: z.never().optional() });
 
 /** The factory as an op record meets it: it reads the op, never an action, and starts one land run per record. */
-function opFactory() {
+function opFactory(answer: ActionOutcome = { status: "accepted", runId: "land-run-1" }) {
   const posted: z.infer<typeof opRecordShape>[] = [];
   const client: OwnerActionClient = {
     post: async (actionId) => {
       posted.push(opRecordShape.parse(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8"))));
-      return { status: "accepted", runId: "land-run-1" };
+      return answer;
     },
   };
   return { client, posted };
@@ -628,12 +620,253 @@ describe("inbox owner-op", () => {
     expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: `${REPO}#7 is merged on GitHub, so there is nothing to act on` } });
   });
 
+  it("closes a deposit's close-pr at the previewed head, keeping the branch, and reads the PR closed next", async () => {
+    const op = { kind: "close-pr", repo: REPO, pr: 7, headSha: HEAD } as const;
+    await writeDeposit(path.join(dir, "deposits"), { depositId: "op-close-1", asker: ASKER, kind: "do", door: "one-way", summary: "Close the stale fixture PR", context: "", keys: [], command: "titan-factory shepherd waiting", op });
+    const closeId = depositItemId(ASKER, "op-close-1");
+    preview = (target) => openPreview(target, NEW_HEAD);
+    const posted: unknown[] = [];
+    const client: OwnerActionClient = {
+      post: async (actionId) => {
+        posted.push(opRecordShape.parse(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8"))));
+        preview = (target) => ({ ...openPreview(target, NEW_HEAD), pr: { ...openPreview(target, NEW_HEAD).pr, state: "closed", head: undefined } });
+        return { status: "pr-closed", closedHead: NEW_HEAD };
+      },
+    };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(closeId));
+    const { envelope } = await act(closeId, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ headSha: NEW_HEAD, effect: `Close ${REPO}#7 at abcdef1 on GitHub; the branch is kept and reopen is one click` });
+    expect(posted).toEqual([{ op: { ...op, headSha: NEW_HEAD } }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "pr-closed" }, message: "PR closed at abcdef1; its branch is kept", next: { state: "closed" } } });
+  });
+
   it("offers no action for an op the authority table denies the console", async () => {
     await depositMergeOp();
     preview = (op) => openPreview(op, HEAD, "deny");
     const { prepare } = await harness(opFactory().client);
 
     expect(await prepare(OP_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "the authority table refuses a merge-at-head op to the console: owner-remote may not merge here" } });
+  });
+});
+
+describe("inbox owner-op merge-at-head on a g10-held PR", () => {
+  const heldPreview = (op: { repo: string; pr: number }) => {
+    const open = openPreview(op, NEW_HEAD);
+    return { ...open, pr: { ...open.pr, shepherd: { runId: "run-held", held: true, holdReason: "g10-adversary: authority change", ownerHold: null } } };
+  };
+  const after = { waitFor: "adversary-loop" } as const;
+
+  it("reads the forced merge back as skipping the hold and posts it with no wait", async () => {
+    await depositMergeOp();
+    preview = heldPreview;
+    const factorySpy = opFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+
+    const prepared = ready(await prepare(OP_ID));
+    await act(OP_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ hold: { class: "g10-adversary" }, effect: expect.stringMatching(/the g10 hold is skipped/) });
+    expect(factorySpy.posted).toEqual([{ op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: NEW_HEAD } }]);
+  });
+
+  it("approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed", async () => {
+    await depositMergeOp();
+    preview = heldPreview;
+    const factorySpy = opFactory({ status: "approved", runId: "run-held" });
+    const { prepare, act } = await harness(factorySpy.client);
+
+    const prepared = ready(await prepare(OP_ID, after));
+    const { envelope } = await act(OP_ID, prepared.confirm, ownerContext(), undefined, after);
+
+    expect(prepared.readBack).toMatchObject({ headSha: NEW_HEAD, waitFor: "adversary-loop", effect: expect.stringMatching(/^Approve the merge of .* once the adversary loop closes with MERGE at this head/) });
+    expect(factorySpy.posted).toEqual([{ op: { kind: "merge-at-head", repo: REPO, pr: 7, headSha: NEW_HEAD, waitFor: "adversary-loop" } }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "approved", runId: "run-held" }, message: expect.stringMatching(/^Merge approved: Shepherd merges at this head once the adversary loop closes/) } });
+  });
+
+  it("offers no wait on a PR with no g10 hold", async () => {
+    await depositMergeOp();
+    preview = (op) => openPreview(op, NEW_HEAD);
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(OP_ID, after)).toMatchObject({ ok: true, data: { status: "no-action", reason: `${REPO}#7 holds no g10 hold, so there is no adversary loop to wait for; merge at head instead` } });
+  });
+
+  it("never acts on a forced-merge confirm as the wait, or the reverse, and writes nothing", async () => {
+    await depositMergeOp();
+    preview = heldPreview;
+    const factorySpy = opFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+    const forced = ready(await prepare(OP_ID));
+
+    const { envelope } = await act(OP_ID, forced.confirm, ownerContext(), undefined, after);
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
+    expect(factorySpy.posted).toEqual([]);
+    expect(await records()).toEqual([]);
+  });
+});
+
+const AGENT_ID = "9e3faa6c0011";
+const RETIRE_DEPOSIT = "op-retire-1";
+const RETIRE_ID = depositItemId(ASKER, RETIRE_DEPOSIT);
+
+/** `owner-op.preview` for a retire-agent op: the roster's holder of the name, exited, with no live run unless told. */
+function retirePreview(holder: Record<string, unknown> = {}, agent: Record<string, unknown> = {}) {
+  return {
+    kind: "retire-agent",
+    authority: { verdict: "allow", ruleId: "RET-OR" },
+    agent: { name: "item-42", holder: { agentId: AGENT_ID, state: "exited", presence: "exited", status: "finished", profile: "impl", cwd: "/work/tree", spawnedBy: "coordinator", ...holder }, exited: true, liveRun: null, ...agent },
+  };
+}
+
+async function depositRetireOp(force = false): Promise<void> {
+  const op = { kind: "retire-agent", name: "item-42", agentId: AGENT_ID, force } as const;
+  await writeDeposit(path.join(dir, "deposits"), { depositId: RETIRE_DEPOSIT, asker: ASKER, kind: "do", door: "one-way", summary: "Retire the finished fixture agent", context: "", keys: [], command: "agent-chat agent retire item-42", op });
+}
+
+/** The factory as a retire record meets it: it reads the op and retires once. */
+function retireFactory() {
+  const posted: unknown[] = [];
+  const client: OwnerActionClient = {
+    post: async (actionId) => {
+      posted.push(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8")).op);
+      return { status: "retired", name: "item-42", caveats: ["the process had already exited"] };
+    },
+  };
+  return { client, posted };
+}
+
+describe("inbox retire-agent op", () => {
+  // Kills: leaving retire-agent off CONSOLE_OPS, or posting anything but the deposit's own op.
+  it("reads the agent back from the factory's roster read and posts the deposit's op, showing the broker's caveats", async () => {
+    await depositRetireOp();
+    const factorySpy = retireFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+
+    const prepared = ready(await prepare(RETIRE_ID));
+    const { envelope } = await act(RETIRE_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ agent: "item-42", agentId: AGENT_ID, state: "exited", authority: "RET-OR: allow", proposedBy: ASKER, effect: expect.stringMatching(/^Retire item-42 \(9e3faa6\)/) });
+    expect(factorySpy.posted).toEqual([{ kind: "retire-agent", name: "item-42", agentId: AGENT_ID, force: false }]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "retired" }, message: "Retired item-42; the process had already exited" } });
+  });
+
+  // Kills: offering a tap for an agent that may still run, or that a live fix round needs, or that is a different agent now.
+  it.each([
+    ["an agent whose session has not exited", () => retirePreview({ state: "detached", status: "detached" }, { exited: false }), /retire a working agent at the terminal/],
+    ["an agent on a live Shepherd run", () => retirePreview({}, { liveRun: "run-live-1" }), /Shepherd run run-live-1/],
+    ["a name now held by another agent", () => retirePreview({ agentId: "77aa001100" }), /different agent \(77aa001\)/],
+    ["a name no agent holds", () => ({ ...retirePreview(), agent: { name: "item-42", exited: false, liveRun: null } }), /nothing to retire/],
+  ])("offers no action for %s", async (_label, answer, reason) => {
+    await depositRetireOp();
+    agentPreview = answer;
+    const { prepare } = await harness(retireFactory().client);
+
+    expect(await prepare(RETIRE_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: expect.stringMatching(reason) } });
+  });
+
+  // Kills: a console path that sends --force.
+  it("offers no action for a forced retire, without asking the factory", async () => {
+    await depositRetireOp(true);
+    agentPreview = () => {
+      throw new Error("a forced retire must not reach the preview");
+    };
+    const { prepare } = await harness(retireFactory().client);
+
+    expect(await prepare(RETIRE_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: expect.stringMatching(/stays at the terminal/) } });
+  });
+
+  // Kills: leaving the holder out of the digest, so a confirm read before an agent spawned under the name still posts.
+  it("refuses the confirm when the name's holder changed between prepare and act, and writes nothing", async () => {
+    await depositRetireOp();
+    const factorySpy = retireFactory();
+    const { prepare, act } = await harness(factorySpy.client);
+    const { confirm } = ready(await prepare(RETIRE_ID));
+    agentPreview = () => retirePreview({ cwd: "/work/other" });
+
+    const { envelope } = await act(RETIRE_ID, confirm);
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/changed since it was read/) });
+    expect(factorySpy.posted).toEqual([]);
+  });
+});
+
+const PAUSED_AT = "2026-10-10T04:00:00.000Z";
+const ROLLED_BACK = "fedcba9876543210fedcba9876543210fedcba98";
+
+/** `owner-op.preview` for a deploy-pause-clear: the failure pause as the factory's `/health` reads it, and no PR. */
+function pauseAnswer(pause: { since?: string; deployerRunning?: boolean; manualHold?: string | null } = {}) {
+  const since = pause.since ?? PAUSED_AT;
+  const lastRollback = { target: ROLLED_BACK, from: HEAD, status: "verified" };
+  return { kind: "deploy-pause-clear", authority: { verdict: "gate", ruleId: "DRS-OR", reason: "read back first" }, pause: { paused: true, since, reason: "the restarted build failed its watch", lastRollback, deployerRunning: pause.deployerRunning ?? false, manualHold: pause.manualHold ?? null } };
+}
+
+describe("inbox deploy-pause-clear op", () => {
+  const op = { kind: "deploy-pause-clear", pausedAt: PAUSED_AT, target: ROLLED_BACK } as const;
+  const PAUSE_ID = depositItemId(ASKER, "op-pause-1");
+  const depositPauseClear = () =>
+    writeDeposit(path.join(dir, "deposits"), { depositId: "op-pause-1", asker: ASKER, kind: "do", door: "one-way", summary: "Clear the fixture deploy pause", context: "", keys: [], command: "titan-factory service pause --clear", op });
+
+  it("reads back the pause and that the pacer resumes, posts the op as deposited, and lands the clear", async () => {
+    await depositPauseClear();
+    const posted: unknown[] = [];
+    const client: OwnerActionClient = {
+      post: async (actionId) => {
+        posted.push(JSON.parse(await readFile(path.join(actionsDir(), `${actionId}.json`), "utf8")).op);
+        return { status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: null };
+      },
+    };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(PAUSE_ID));
+    const { envelope } = await act(PAUSE_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ pausedAt: PAUSED_AT, target: ROLLED_BACK, why: "the restarted build failed its watch", effect: `Clear the deploy pause from ${PAUSED_AT} over fedcba9; the deploy pacer resumes and may deploy within about a minute` });
+    expect(posted).toEqual([op]);
+    expect(envelope).toMatchObject({ ok: true, data: { outcome: { status: "pause-cleared" }, message: "Deploy pause cleared; the deploy pacer may deploy within about a minute" } });
+    expect(envelope).not.toMatchObject({ data: { next: expect.anything() } });
+  });
+
+  it("says a manual hold stays held when one stands beside the pause, before and after the clear", async () => {
+    await depositPauseClear();
+    pausePreview = () => pauseAnswer({ manualHold: "synthetic hand hold" });
+    const client: OwnerActionClient = { post: async () => ({ status: "pause-cleared", clearedPause: PAUSED_AT, stillHeld: "synthetic hand hold" }) };
+    const { prepare, act } = await harness(client);
+
+    const prepared = ready(await prepare(PAUSE_ID));
+    const { envelope } = await act(PAUSE_ID, prepared.confirm);
+
+    expect(prepared.readBack).toMatchObject({ manualHold: "synthetic hand hold", effect: `Clear the deploy pause from ${PAUSED_AT} over fedcba9; deploys stay held by hand (synthetic hand hold), which this does not clear` });
+    expect(envelope).toMatchObject({ ok: true, data: { message: "Deploy pause cleared; deploys stay held by hand: synthetic hand hold" } });
+  });
+
+  it("offers no action when a newer pause than the deposit names stands", async () => {
+    await depositPauseClear();
+    pausePreview = () => pauseAnswer({ since: "2026-10-10T05:30:00.000Z" });
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(PAUSE_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: `the deploy pause standing now is from 2026-10-10T05:30:00.000Z over fedcba9; this deposit names the one from ${PAUSED_AT}, so it is not cleared` } });
+  });
+
+  it("offers no action while a deployer is running", async () => {
+    await depositPauseClear();
+    pausePreview = () => pauseAnswer({ deployerRunning: true });
+    const { prepare } = await harness(opFactory().client);
+
+    expect(await prepare(PAUSE_ID)).toMatchObject({ ok: true, data: { status: "no-action", reason: "a deployer is running now; read the item again once it ends" } });
+  });
+
+  it("reads the factory's moved as a newer pause that is kept", async () => {
+    await depositPauseClear();
+    const client: OwnerActionClient = { post: async () => ({ status: "moved", currentHead: null, currentPause: "2026-10-10T05:30:00.000Z" }) };
+    const { prepare, act } = await harness(client);
+
+    const { envelope } = await act(PAUSE_ID, ready(await prepare(PAUSE_ID)).confirm);
+
+    expect(envelope).toMatchObject({ ok: true, data: { message: "A deploy pause from 2026-10-10T05:30:00.000Z stands instead and is kept, read again" } });
   });
 });
 

@@ -1,0 +1,10 @@
+schema: beat-spec/v1
+type: claim-card
+summary: "One claim, stated plainly, with its source."
+role: explain
+component: { name: TitleBeat, maturity: spike }
+slots: claim-card
+speech: { band: concept }
+durationS: [4, 8, 14]
+preset: false
+recipe: "State one claim in a single line the viewer could repeat. Quote verbatim when the claim comes from a document, and keep the quote short; show the source chip. One claim per card."

@@ -173,7 +173,8 @@ const SESSION_OWNED: { table: string; identity: string[]; key: (row: Row) => str
     identity: ['session_id', 'file_path', 'ts'],
     key: (r) => `${r.session_id}:${r.file_path}:${r.ts}`,
   },
-  // `transcript_id` is stable here: `resetIndex` rewinds the transcript table and never deletes it.
+  // `transcript_id` is stable here: `resetIndex` rewinds the transcript table and never deletes it, and
+  // `miner rebuild` carries it into the new file with its ids (`rebuild-carry.ts`).
   {
     table: 'request',
     identity: ['transcript_id', 'request_id'],

@@ -55,26 +55,82 @@ interface Owned {
   initiative: string;
 }
 
+type Relation = (typeof RELATIONS)[keyof typeof RELATIONS];
+
+interface DerivedEdge {
+  sourceRef: string;
+  relation: Relation;
+  targetRef: string;
+}
+
+interface CurrentEdge extends DerivedEdge {
+  edgeId: number;
+}
+
 /**
- * Derived edges are deleted and rewritten, not expired.
+ * Derived edges are diffed against the table, and the vanished ones deleted, not expired.
  *
  * Finding F5's rule is that an asserted edge is expired rather than deleted,
  * and never by a writer that did not create it. These three relations have
  * exactly one writer — this function — and they are a pure function of the
  * files, so their history is the files' history. Expiring instead would grow an
  * audit trail of nothing on a pass the daemon runs every sixty seconds.
+ *
+ * The wanted set is still recomputed in full (see `wantedMentions`); only the
+ * write is a diff. Deleting and re-asserting every row each pass grew
+ * `edge_id` with no workspace change, so an unchanged corpus now writes no row.
  */
 export function rebuildEdges(graph: WorkspaceGraph, notes: readonly NoteFacts[]): EdgeCounts {
+  return graph.db.transaction(() => {
+    const wanted = new Map<string, DerivedEdge>();
+    for (const edge of [
+      ...wantedHolds(graph),
+      ...wantedMentions(graph, notes),
+      ...wantedSharesTag(notes),
+    ]) {
+      wanted.set(edgeKey(edge), edge);
+    }
+    applyDiff(graph, wanted);
+    return countByRelation(wanted.values());
+  })();
+}
+
+function edgeKey(edge: DerivedEdge): string {
+  return JSON.stringify([edge.sourceRef, edge.relation, edge.targetRef]);
+}
+
+function applyDiff(graph: WorkspaceGraph, wanted: Map<string, DerivedEdge>): void {
+  const remove = graph.db.prepare('DELETE FROM edge WHERE edge_id = ?');
+  const present = new Set<string>();
+  for (const edge of currentEdges(graph)) {
+    const key = edgeKey(edge);
+    if (wanted.has(key)) present.add(key);
+    else remove.run(edge.edgeId);
+  }
+  for (const [key, edge] of wanted) {
+    if (!present.has(key)) graph.edges.assert(edge);
+  }
+}
+
+function currentEdges(graph: WorkspaceGraph): CurrentEdge[] {
   const relations = Object.values(RELATIONS);
   const placeholders = relations.map(() => '?').join(', ');
-  return graph.db.transaction(() => {
-    graph.db.prepare(`DELETE FROM edge WHERE relation IN (${placeholders})`).run(...relations);
-    return {
-      holds: assertHolds(graph),
-      mentions: assertMentions(graph, notes),
-      sharesTag: assertSharesTag(graph, notes),
-    };
-  })();
+  return graph.db
+    .prepare<string[], CurrentEdge>(
+      `SELECT edge_id AS edgeId, source_ref AS sourceRef, relation, target_ref AS targetRef
+         FROM edge WHERE relation IN (${placeholders}) AND t_expired IS NULL`,
+    )
+    .all(...relations);
+}
+
+function countByRelation(edges: Iterable<DerivedEdge>): EdgeCounts {
+  const counts: EdgeCounts = { holds: 0, mentions: 0, sharesTag: 0 };
+  for (const edge of edges) {
+    if (edge.relation === RELATIONS.HOLDS) counts.holds++;
+    else if (edge.relation === RELATIONS.MENTIONS) counts.mentions++;
+    else counts.sharesTag++;
+  }
+  return counts;
 }
 
 const OWNED_REFS = `
@@ -85,18 +141,13 @@ const OWNED_REFS = `
 `;
 
 /** `initiative:<slug> holds <ref>` — free, from the path, and it makes "which initiatives touch this" answerable. */
-function assertHolds(graph: WorkspaceGraph): number {
+function wantedHolds(graph: WorkspaceGraph): DerivedEdge[] {
   const rows = graph.db.prepare(OWNED_REFS).all() as Owned[];
-  let written = 0;
-  for (const row of rows) {
-    const inserted = graph.edges.assert({
-      sourceRef: initiativeRef(row.initiative),
-      relation: RELATIONS.HOLDS,
-      targetRef: row.ref,
-    });
-    if (inserted) written++;
-  }
-  return written;
+  return rows.map((row) => ({
+    sourceRef: initiativeRef(row.initiative),
+    relation: RELATIONS.HOLDS,
+    targetRef: row.ref,
+  }));
 }
 
 /**
@@ -106,21 +157,16 @@ function assertHolds(graph: WorkspaceGraph): number {
  * this incrementally would let a full rebuild and an incremental sequence
  * disagree, which is the one property this index has to guarantee.
  */
-function assertMentions(graph: WorkspaceGraph, notes: readonly NoteFacts[]): number {
+function wantedMentions(graph: WorkspaceGraph, notes: readonly NoteFacts[]): DerivedEdge[] {
   const index = buildRefIndex(graph);
-  let written = 0;
+  const edges: DerivedEdge[] = [];
   for (const note of notes) {
     for (const target of extractMentions(note.body, note.initiative, index)) {
       if (target === note.ref) continue;
-      const inserted = graph.edges.assert({
-        sourceRef: note.ref,
-        relation: RELATIONS.MENTIONS,
-        targetRef: target,
-      });
-      if (inserted) written++;
+      edges.push({ sourceRef: note.ref, relation: RELATIONS.MENTIONS, targetRef: target });
     }
   }
-  return written;
+  return edges;
 }
 
 function buildRefIndex(graph: WorkspaceGraph): RefIndex {
@@ -136,19 +182,17 @@ function buildRefIndex(graph: WorkspaceGraph): RefIndex {
 }
 
 /** Both directions, because a symmetric relation stored once is a half-answer to whoever expands from the other end. */
-function assertSharesTag(graph: WorkspaceGraph, notes: readonly NoteFacts[]): number {
-  let written = 0;
+function wantedSharesTag(notes: readonly NoteFacts[]): DerivedEdge[] {
+  const edges: DerivedEdge[] = [];
   for (const group of qualifyingTagGroups(notes)) {
     for (const [a, b] of crossInitiativePairs(group)) {
-      for (const edge of [
-        { sourceRef: a.ref, targetRef: b.ref },
-        { sourceRef: b.ref, targetRef: a.ref },
-      ]) {
-        if (graph.edges.assert({ ...edge, relation: RELATIONS.SHARES_TAG })) written++;
-      }
+      edges.push(
+        { sourceRef: a.ref, relation: RELATIONS.SHARES_TAG, targetRef: b.ref },
+        { sourceRef: b.ref, relation: RELATIONS.SHARES_TAG, targetRef: a.ref },
+      );
     }
   }
-  return written;
+  return edges;
 }
 
 /** Tags used in more than one initiative and carried by at most `SHARES_TAG_MAX_NOTES` notes. */

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the posted op drops the owner's wait for the adversary loop",
+      "file": "apps/console/server/inbox-op.ts",
+      "find": ", ...(readBack.waitFor && { waitFor: readBack.waitFor }) };",
+      "replace": " };",
+      "kills": [
+        "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
+      ]
+    },
+    {
+      "name": "the wait is offered on a PR with no g10 hold",
+      "file": "apps/console/server/inbox-op.ts",
+      "find": "  if (!held) return `${facts.repo}#${facts.pr} holds no g10 hold, so there is no adversary loop to wait for; merge at head instead`;\n",
+      "replace": "",
+      "kills": [
+        "inbox owner-op merge-at-head on a g10-held PR offers no wait on a PR with no g10 hold"
+      ]
+    },
+    {
+      "name": "the forced merge on a g10-held PR reads back as a plain merge",
+      "file": "apps/console/server/inbox-op.ts",
+      "find": "return held ? { ...facts, effect: `${facts.effect}${PAST_HOLD}` } : facts;",
+      "replace": "return facts;",
+      "kills": [
+        "inbox owner-op merge-at-head on a g10-held PR reads the forced merge back as skipping the hold and posts it with no wait"
+      ]
+    },
+    {
+      "name": "the act re-reads the read-back without the owner's wait",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "  const readBack = await readBackOf(ctx.sources, item, action, tap.waitFor);\n",
+      "replace": "  const readBack = await readBackOf(ctx.sources, item, action);\n",
+      "kills": [
+        "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
+      ]
+    },
+    {
+      "name": "a standing approval reads as a queued land run",
+      "file": "apps/console/server/inbox-actions.ts",
+      "find": "      return \"Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you\";\n",
+      "replace": "      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;\n",
+      "kills": [
+        "inbox owner-op merge-at-head on a g10-held PR approves now and posts the wait for the adversary loop at the previewed head, reading approved as landed"
+      ]
+    }
+  ]
+}

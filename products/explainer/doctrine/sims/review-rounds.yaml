@@ -1,0 +1,26 @@
+schema: sim-model/v1
+id: review-rounds
+summary: >-
+  Review rounds per pull request. Round 1 passes with chance p1 and every later round with chance q, so the mean
+  is 1 + (1 - p1) / q reviews and a share (1 - p1)(1 - q)^3 of PRs takes 5 or more. A review is a round: the
+  first review counts, and "5 or more reviews" means a fifth round was run.
+params:
+  p1: { default: 0.5, min: 0.01, max: 0.99 }
+  # q is set from the published share-5plus with fitLaterRoundPass, so share-5plus is in fittedFrom.
+  q: { default: 0.5, min: 0.05, max: 1 }
+  prs: { default: 20000, min: 1000, max: 200000, unit: PRs }
+statistics:
+  mean-reviews:
+    tolerance: { rel: 0.1 }
+    why: >-
+      Held out (not in fittedFrom), so it gets the code ceiling MAX_SIM_TOLERANCE_REL, fixed before any held-out
+      check: the error is the model's, one q standing for every later round, and nothing but the observed error
+      could set a tighter bound. 3 se at the default prs is under 2 % of a mean near 2, inside the noise floor.
+    unit: reviews
+  share-5plus:
+    tolerance: { rel: 0.1 }
+    why: >-
+      In fittedFrom: q is solved from it, so a claim on it is E-SIM-CIRCULAR before any tolerance applies. It
+      takes the same ceiling rather than a second rule that nothing reads.
+    unit: share of PRs
+fittedFrom: [share-5plus]

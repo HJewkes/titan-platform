@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "arm B reuses arm A's sample indices",
+      "file": "products/explainer/src/aa-floor.ts",
+      "find": "samples: sampleRange(n, n)",
+      "replace": "samples: sampleRange(0, n)",
+      "kills": [
+        "measureAaFloor runs arm A on samples 0..n-1 and arm B on n..2n-1, and pools σ within each arm"
+      ]
+    },
+    {
+      "name": "arm B gets a fresh cap",
+      "file": "products/explainer/src/aa-floor.ts",
+      "find": "samples: sampleRange(n, n), prior: a.runs",
+      "replace": "samples: sampleRange(n, n)",
+      "kills": [
+        "measureAaFloor shares one spend cap over both arms and skips arm B once arm A stopped"
+      ]
+    },
+    {
+      "name": "the floor section drops the old one's text outside the markers",
+      "file": "products/explainer/src/aa-floor.ts",
+      "find": "`${old.slice(0, start)}${floorSection(floor)}${old.slice(end + NOTES_END.length)}`",
+      "replace": "floorSection(floor)",
+      "kills": [
+        "floor notes writes notes.md and aa-floor.json, and a new floor replaces only the marked section"
+      ]
+    }
+  ]
+}

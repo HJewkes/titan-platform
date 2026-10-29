@@ -2,14 +2,20 @@ import { isDeepStrictEqual } from "node:util";
 import { isPassingConclusion } from "@titan-design/github";
 import { checkAgainstJsonSchema, type GateEvidencePolicy, type GateRecord } from "@titan-design/hitl";
 import { z } from "zod";
+import { isOwnerAtHeadRow, ownerAtHeadRowsIn } from "./owner-at-head.js";
 import { escalationReason } from "./shepherd/route-table.js";
+import { headGateAsks } from "./shepherd/stale-gates.js";
 
 /**
  * Owner decision 2026-10-07 (TP-1904), "mechanical only": a coordinator may resolve three gate classes without the
  * owner's presence dialog, each only on evidence read fresh at resolve time and stored on the gate row:
  * an approve-merge at a head a reviewer said MERGE at, with required checks green and the PR mergeable; a main-red
  * acknowledgement or main-frozen unfreeze once a green main commit contains the merge; and an abandon of a gate whose
- * PR is already merged or closed, whoever held it or whichever rule gated it, because nothing is left to merge. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
+ * PR is already merged or closed, whoever held it or whichever rule gated it, because nothing is left to merge. Owner
+ * decision 529 (2026-10-22, TP-4048) adds a fourth: an sh-sent-back `await-new-head` while the PR is open at the gate's
+ * own head, which only waits and merges nothing. Owner decision 551 (2026-10-28, TP-4285) adds a main-ci-timeout
+ * acknowledgement on the main-red evidence, read only against the base branch's required contexts. Every other gate, a
+ * visual or seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -70,15 +76,29 @@ const PrGoneEvidence = z.strictObject({
   readAt: z.string(),
 });
 
-export const CoordinatorEvidence = z.discriminatedUnion("kind", [MergeEvidence, MainGreenEvidence, PrGoneEvidence]);
+/** The PR as read at resolve time; the policy, not the read, decides whether it is open at the gate's head. */
+const PrAtHeadEvidence = z.strictObject({
+  kind: z.literal("pr-at-head"),
+  gateId: z.string(),
+  repo: REPO,
+  pr: PR,
+  state: z.enum(["open", "merged", "closed"]),
+  headSha: SHA,
+  readAt: z.string(),
+});
+
+export const CoordinatorEvidence = z.discriminatedUnion("kind", [MergeEvidence, MainGreenEvidence, PrGoneEvidence, PrAtHeadEvidence]);
 export type CoordinatorEvidence = z.infer<typeof CoordinatorEvidence>;
 export type RunFacts = z.infer<typeof RunFacts>;
 export type CheckRunFact = z.infer<typeof CheckRunFact>;
 
 export const MERGE_GATE = "approve-merge";
-export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze" } as const;
+export const MAIN_CI_TIMEOUT = "main-ci-timeout";
+export const MAIN_GATES = { "main-red": "acknowledged", "main-frozen": "unfreeze", [MAIN_CI_TIMEOUT]: "acknowledged" } as const;
 /** Gates about one PR whose `abandon` a coordinator may give once that PR is merged or closed. */
 export const PR_GATES: ReadonlySet<string> = new Set([MERGE_GATE, "stuck-behind", "sh-sent-back", "ci-failed"]);
+export const SENT_BACK_GATE = "sh-sent-back";
+export const AWAIT_NEW_HEAD = "await-new-head";
 
 /** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`. */
 export function stepOf(gateId: string): string {
@@ -104,13 +124,32 @@ export interface LandGate {
 }
 
 /**
- * A land approve-merge gate: its prompt names the PR, the head and the policy rule, and its schema pins the same head.
- * A conflict or any other approve-merge gate does not read as one.
+ * A land approve-merge gate: its prompt's first line names the PR, the head and the policy rule, and its schema pins the
+ * same head. Land puts a skill-diff link and the reviewer's owner brief on later lines (TP-4141), which never change what
+ * the gate asks. A conflict or any other approve-merge gate does not read as one.
  */
 export function landGate(gate: Pick<GateRecord, "id" | "prompt" | "schema">): LandGate | undefined {
-  const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt) : null;
+  const match = stepOf(gate.id) === MERGE_GATE ? LAND_PROMPT.exec(gate.prompt.split("\n", 1)[0]!) : null;
   if (!match || pinnedHead(gate.schema) !== match[3]) return undefined;
   return { repo: match[2]!, pr: Number(match[1]), head: match[3]!, rule: `${match[4]}/${match[5]}`, reason: match[6]! };
+}
+
+const MERGE_GUARD = "shepherd-merge-guard/";
+
+/**
+ * The D21 row of a land gate the remote paths refuse, named in their refusal; undefined for any other gate. It reads the
+ * marker land writes for each fact that holds (owner-at-head.ts), whatever the rule. A multi-line gate with no marker was
+ * opened before markers existed, and main kept every such gate off the remote paths; it stays off them. A one-line gate
+ * with no marker is read by its rule, the only fact it carries.
+ */
+export function ownerAtHeadRow(gate: Pick<GateRecord, "id" | "prompt" | "schema">): string | undefined {
+  const land = landGate(gate);
+  if (land === undefined) return undefined;
+  const marked = ownerAtHeadRowsIn(gate.prompt);
+  if (marked !== undefined) return marked[0];
+  if (gate.prompt.includes("\n")) return "pre-marker";
+  const row = land.rule.startsWith(MERGE_GUARD) ? land.rule.slice(MERGE_GUARD.length) : "";
+  return isOwnerAtHeadRow(row) ? row : undefined;
 }
 
 export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
@@ -120,9 +159,20 @@ export function pinnedHead(schema: GateRecord["schema"]): string | undefined {
 
 const MAIN_PROMPT = /^Main CI on (\S+) at merge ([0-9a-f]{40}) \(PR #(\d+)\) /;
 
-/** A main-red or main-frozen gate about one merge, whose brief points at that merge's main CI. */
-export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): { repo: string; mergeSha: string; pr: number } | undefined {
-  const match = Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? MAIN_PROMPT.exec(gate.prompt) : null;
+export interface MainMerge {
+  repo: string;
+  mergeSha: string;
+  pr: number;
+}
+
+/** A main-red, main-frozen or main-ci-timeout gate about one merge, whose brief points at that merge's main CI. */
+export function mainGate(gate: Pick<GateRecord, "id" | "prompt" | "evidenceRef">): MainMerge | undefined {
+  return Object.hasOwn(MAIN_GATES, stepOf(gate.id)) ? mainMergeOf(gate) : undefined;
+}
+
+/** The merge a post-merge gate asks about, whatever its step, when its prompt and brief both name it. */
+export function mainMergeOf(gate: Pick<GateRecord, "prompt" | "evidenceRef">): MainMerge | undefined {
+  const match = MAIN_PROMPT.exec(gate.prompt);
   if (!match || gate.evidenceRef !== `$ gh run list -R ${match[1]} -c ${match[2]}`) return undefined;
   return { repo: match[1]!, mergeSha: match[2]!, pr: Number(match[3]) };
 }
@@ -176,6 +226,7 @@ export const coordinatorEvidencePolicy: GateEvidencePolicy = (gate, resolver, pa
   const evidence = parsed.data;
   if (evidence.kind === "approve-merge") return mergeAdmits(gate, payload, evidence);
   if (evidence.kind === "main-green") return mainGreenAdmits(gate, payload, evidence);
+  if (evidence.kind === "pr-at-head") return prAtHeadAdmits(gate, payload, evidence);
   return prGoneAdmits(gate, payload, evidence);
 };
 
@@ -219,4 +270,12 @@ function prGoneAdmits(gate: GateRecord, payload: unknown, evidence: Of<"pr-gone"
   const target = gatePr(gate);
   if (!PR_GATES.has(stepOf(gate.id)) || !offersAbandon(gate) || target?.repo !== evidence.repo || target.pr !== evidence.pr) return false;
   return isDeepStrictEqual(payload, abandonOf(gate));
+}
+
+/** A wait merges nothing, but a head that moved or a PR that closed makes it an answer to a question no longer asked. */
+function prAtHeadAdmits(gate: GateRecord, payload: unknown, evidence: Of<"pr-at-head">): boolean {
+  const target = gatePr(gate);
+  const head = headGateAsks(gate);
+  if (stepOf(gate.id) !== SENT_BACK_GATE || head === undefined || target?.repo !== evidence.repo || target.pr !== evidence.pr) return false;
+  return evidence.state === "open" && evidence.headSha === head && isDeepStrictEqual(payload, { decision: AWAIT_NEW_HEAD });
 }

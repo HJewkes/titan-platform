@@ -1,7 +1,6 @@
-import { FileListTruncatedError, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
-import { pathTouches } from "@titan-design/review-panel";
+import { FileListTruncatedError, PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { SHEPHERD_ACTOR } from "./events.js";
-import { SHEPHERD_CLASS_RULES } from "./g10-class-rules.js";
+import { shepherdPathTouches } from "./g10-class-rules.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
@@ -13,6 +12,14 @@ import type { ShepherdStore } from "./store.js";
 /** Each lost compare-and-swap means another hold or release landed; the run is read again and the G10 hold restacked on it. */
 const CAS_ATTEMPTS = 5;
 
+/** GitHub's changed-files count and its file list can disagree for a moment after a push; this is the wait before the list is read again. */
+const LIST_SETTLE_MS = 2_000;
+
+/** Waits for `ms`; tests and the await-pr step inject their own clock. */
+type Pause = (ms: number) => Promise<void>;
+
+const realPause: Pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export { isUnreadRegistrationHold } from "./g10-reclass-events.js";
 
 interface HoldTarget {
@@ -21,6 +28,7 @@ interface HoldTarget {
   /** With `base`, the files come from Shepherd's git cache at this head instead of GitHub. */
   head?: string;
   base?: string;
+  pause?: Pause;
 }
 
 interface HoldFiles {
@@ -28,15 +36,17 @@ interface HoldFiles {
   local?: PrFilesRead;
   /** The head to class instead of the registered one: the PR's head as a branch registration first saw it. */
   head?: string;
+  /** The wait before a file list that disagrees with its count is read again; absent means a real timer. */
+  pause?: Pause;
 }
 
 /**
- * The panel matches a file's new path only, so a rename's old path is classed as a file of its own: renaming a policy file
- * away keeps its class. Only path touches count, so a kind alone (security or unread) names no hold.
+ * The panel matches a rename's old path too, so renaming a policy file away keeps its class. Only path touches count, so a
+ * kind alone (security or unread) names no hold.
  */
 function signoffFactsOf(files: readonly PrFile[]): { touches: string[]; paths: string[] } {
   const paths = files.flatMap(({ path, previousPath }) => (previousPath === undefined ? [path] : [path, previousPath]));
-  return { touches: pathTouches(paths.map((path) => ({ path })), SHEPHERD_CLASS_RULES), paths };
+  return { touches: shepherdPathTouches(files), paths };
 }
 
 /** Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness reviewer instead. */
@@ -46,12 +56,19 @@ function reasonFor(files: readonly PrFile[]): string | undefined {
   return `g10-adversary: ${adversaryTouches(facts.touches).join(", ")} touch`;
 }
 
-/** A failed read is tried once more, since a transient error would otherwise cost a seat review; a list past the cap stays past it. */
-async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFilesRead): Promise<PrFile[]> {
+/**
+ * A failed read is tried once more, since a transient error would otherwise cost a seat review. A list past the cap stays
+ * past it, but a count below the cap that the list falls short of is a push GitHub has not settled, so it is read again
+ * after a wait.
+ */
+async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFilesRead, pause: Pause): Promise<PrFile[]> {
   try {
     return await prFilesOf(port, target, local);
   } catch (error) {
-    if (error instanceof FileListTruncatedError) throw error;
+    if (error instanceof FileListTruncatedError) {
+      if (error.expected >= PR_FILES_CAP) throw error;
+      await pause(LIST_SETTLE_MS);
+    }
     return prFilesOf(port, target, local);
   }
 }
@@ -63,7 +80,7 @@ async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFil
  */
 export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrFilesRead = localPrFiles): Promise<string | undefined> {
   try {
-    return reasonFor(await filesWithRetry(port, target, local));
+    return reasonFor(await filesWithRetry(port, target, local, target.pause ?? realPause));
   } catch (error) {
     return `${UNREAD_FILES_PREFIX}${error instanceof Error ? error.name : "error"})`;
   }
@@ -131,7 +148,8 @@ async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, run
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
   const head = files.head ?? registration.headSha ?? undefined;
-  const target = { repo: registration.repo, pr: registration.pr, ...(head !== undefined && { head }), ...(registration.base !== null && { base: registration.base }) };
+  const { repo, pr, base } = registration;
+  const target = { repo, pr, ...(head !== undefined && { head }), ...(files.pause && { pause: files.pause }), ...(base !== null && { base }) };
   const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {

@@ -38,7 +38,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 function proofLine(head: string, verdict: ProofVerdict): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
-  return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
+  return formatResultLine({ head, mergeBase: BASE, base: "main", verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
 }
 
 const fixProofRun = (head: string): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, JOB[head]!), headSha: head, pullRequests: [{ number: 1, baseRef: "main" }] });

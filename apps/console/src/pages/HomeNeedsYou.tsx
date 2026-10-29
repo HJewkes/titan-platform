@@ -54,30 +54,32 @@ export function NeedsYouRegion(): ReactNode {
   const url = queueUrl(health.data?.upstreams.find((upstream) => upstream.id === "agents")?.target);
   const needs = needsOf(queue.data?.items ?? [], tasks.data?.tasks ?? [], health.data?.upstreams ?? [], url);
   const blockers = (inbox.data?.items ?? []).filter((item) => item.section === "blocking");
+  // A snapshot exported before TP-4044 carries no nudges.
+  const { nudges: waiting = [] } = inbox.data ?? {};
   // A failed read leaves its rows unknown, so the list may not claim nothing needs the owner; the Upstreams region reports a health failure.
   const failed = [health, queue, tasks, inbox].some((query) => query.status === "error") || (inbox.data?.gaps.length ?? 0) > 0;
   return (
     <VStack gap={3}>
       {inbox.status === "error" ? <Alert status="warning" message={`Could not load the inbox: ${inbox.error.message}`} /> : null}
-      {inbox.data !== undefined ? <InboxTop blockers={blockers} gaps={inbox.data.gaps.length} /> : null}
+      {inbox.data !== undefined ? <InboxTop blockers={blockers} waiting={waiting.length} gaps={inbox.data.gaps.length} /> : null}
       {queue.status === "error" ? <QueueUnreadable message={queue.error.message} url={url} /> : null}
       {tasks.status === "error" ? <Alert status="warning" message={`Could not load blocked tasks: ${tasks.error.message}`} /> : null}
-      {needs.length > 0 ? <NeedList needs={needs} /> : failed || blockers.length > 0 ? null : <EmptyState title="Nothing needs you" description="No open queue items, blocked tasks or unreachable upstreams." />}
+      {needs.length > 0 ? <NeedList needs={needs} /> : failed || blockers.length > 0 || waiting.length > 0 ? null : <EmptyState title="Nothing needs you" description="No open queue items, blocked tasks or unreachable upstreams." />}
     </VStack>
   );
 }
 
 const TOP_BLOCKERS = 3;
 
-/** The inbox's blocking count and its newest three; each opens the inbox, which holds the commands. */
-function InboxTop({ blockers, gaps }: { blockers: readonly InboxItem[]; gaps: number }): ReactNode {
-  if (blockers.length === 0 && gaps === 0) return null;
+/** The inbox's blocking count, its rounds waiting over six hours, and its newest three; each opens the inbox, which holds the commands. */
+function InboxTop({ blockers, waiting, gaps }: { blockers: readonly InboxItem[]; waiting: number; gaps: number }): ReactNode {
+  if (blockers.length === 0 && waiting === 0 && gaps === 0) return null;
   const openInbox = () => open({ view: "inbox" });
   return (
     <Card variant="outline" testID="home-inbox">
       <CardContent>
         <Link color="primary" onPress={openInbox}>
-          {`Inbox: ${blockers.length} blocking${gaps > 0 ? `, ${gaps} ${gaps === 1 ? "source" : "sources"} unreadable` : ""}`}
+          {`Inbox: ${blockers.length} blocking${waiting > 0 ? `, ${waiting} ${waiting === 1 ? "round" : "rounds"} waiting over 6 h` : ""}${gaps > 0 ? `, ${gaps} ${gaps === 1 ? "source" : "sources"} unreadable` : ""}`}
         </Link>
         {blockers.slice(0, TOP_BLOCKERS).map((item) => (
           <ListItem key={item.id} onPress={openInbox} testID={`home-inbox-${item.id}`}>

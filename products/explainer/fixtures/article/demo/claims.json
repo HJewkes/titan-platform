@@ -1,0 +1,42 @@
+[
+  {
+    "id": "diff-only-converges",
+    "kind": "claim",
+    "text": "Re-reviewing only the diff converges faster than re-reading the whole change.",
+    "quote": "Teams that re-review only the diff converge faster than teams that re-read the whole change."
+  },
+  {
+    "id": "rounds-after",
+    "kind": "number",
+    "text": "Mean rounds per change fell to 1.32 at a 78% one-round pass rate.",
+    "quote": "cut the mean rounds per change from 2.08 to 1.32",
+    "value": 1.32,
+    "unit": "rounds"
+  },
+  {
+    "id": "simulated-prs",
+    "kind": "number",
+    "text": "The study simulated 1200 pull requests.",
+    "quote": "Across 1,200 simulated pull requests",
+    "value": 1200
+  },
+  {
+    "id": "paraphrased",
+    "kind": "claim",
+    "text": "Rounds are independent.",
+    "quote": "The model assumes that every round is independent of the last."
+  },
+  {
+    "id": "whole-abstract",
+    "kind": "claim",
+    "text": "The abstract in full.",
+    "quote": "We model code review as a sequence of rounds, each of which passes with a fixed probability. Across 1,200 simulated pull requests, raising the one-round pass rate from 65% to 78% cut the mean rounds per change from 2.08 to 1.32."
+  },
+  {
+    "id": "wrong-number",
+    "kind": "number",
+    "text": "Mean rounds fell to 1.3.",
+    "quote": "cut the mean rounds per change from 2.08 to 1.32",
+    "value": 1.3
+  }
+]

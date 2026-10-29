@@ -1,7 +1,8 @@
 # The allowed scope values of doctrine/craft/ rules: beat types, video types and audiences.
 #
 # Beats are DIRECTION §5's catalogue plus the repo-tour beats of the video-types study (VT §2.3),
-# and the render components VT §4 scopes B rules to (chart, list). Types are VT §3's taxonomy;
+# the render components VT §4 scopes B rules to (chart, list), and the review and briefing beats of
+# the video-profiles plan (slice 4). Each beat has a spec in beats/. Types are VT §3's taxonomy;
 # audiences are the parameter packs of VT §5.2. A data slice that needs a name missing here stops
 # and reports instead of adding it, so a new beat or type is a reviewed change of its own.
 schema: doctrine-vocabulary/v1
@@ -42,6 +43,21 @@ beats:
   - fact-flash
   - chart
   - list
+  - verdict-card
+  - change-group
+  - diff-map
+  - finding-card
+  - proof
+  - frame-flow
+  - replot
+  - sim
+  - rule-diff
+  - kanban-flow
+  - gantt
+  - forecast
+  - history-why
+  - attempt
+  - companion-link
 types:
   - repo-tour
   - repo-argument
@@ -59,3 +75,51 @@ types:
 audiences:
   - owner-internal
   - public-youtube
+# Structures are the narrative structures of doctrine/structures/ (plan §A.2); a rule scoped to one
+# reaches only a video that picks it. Signals are the material-map facts a structure's fit
+# predicate reads (plan §A.3); the material map (TP-4008) computes them.
+structures:
+  - design-journey
+  - scqa
+  - scqa-c4
+  - mystery
+  - three-act
+  - abt
+  - kishotenketsu
+  - countdown
+  - attempt-journey
+  - review-saga
+  - before-after
+  - lab-report
+  - timeline
+  - board-walk
+  - bluf
+  - goal-walk
+# Beat systems are the ordered beat patterns of doctrine/beat-systems/ (plan §B, slice 3): a beat
+# order inside a structure's blocks, never a second structure. Xu's opening styles and Wei's climax
+# patterns stay out until someone reads the papers; they are known only from abstracts.
+beatSystems:
+  - bluf
+  - cl-order
+  - example-first
+  - martini-glass
+  - journey-of-attempts
+  - chapter-question
+  - countdown-rung
+  - lab-cycle
+  - board-walk
+signals:
+  - task-journey
+  - decision-pending
+  - repo-overview
+  - anomaly
+  - central-problem
+  - elegant-idea
+  - parallel-findings
+  - attempts-failed
+  - many-review-rounds
+  - before-after
+  - experiment
+  - cascade
+  - board-moved
+  - status-report

@@ -43,6 +43,15 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
   Readers still accept a deposit filed under its name from before A-Z was escaped.
+- `@titan-design/owner-queue/withdraw`: `withdrawDeposit(dir, id, { reason, as, actor })` marks
+  a seat's own deposit withdrawn with `<id>.withdrawn` beside it, never an answer file. `id` is
+  the full `deposit:<32 hex>` or a hex prefix of at least 8 that starts one deposit;
+  `restoreDeposit` undoes it, and `withdrawMatching` withdraws every open deposit of one asker
+  with given keys. Each withdraw and restore appends to `withdrawals.jsonl`, recording the asker
+  (`by`) and the `actor` who ran it. A refusal throws
+  `WithdrawRefusedError` (`unknown` or `refused`).
+- `collapseRepeats(items)` folds open items one asker filed with the same `alarm:<source>` key
+  (`alarmKey`) into the newest, with `repeats` set to the count.
 - Code anchors: an item and each option may carry `anchors` (`head/<path>#L10-L20`,
   `base/…`, `diff/…#L84-R90`) resolved against the item's `pins { repo, head, base? }`
   (40-hex commits). The deposit schema refuses anchors with no pins or bad grammar.
@@ -69,6 +78,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   canonical PR merge key.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.
+- `promptLine(text, { lineBreak })` is the one cleaner for author- or agent-written text bound
+  for an owner prompt, terminal or decisions file: it drops ANSI escape sequences, C0 and C1
+  controls and every format character (bidi overrides, embeddings, marks and isolates,
+  zero-width and tag characters), turns a tab into a space and each line break (CR, LF, CRLF,
+  NEL, U+2028, U+2029) into `lineBreak`, a space by default. Split on `PROMPT_LINE_BREAK` first
+  to keep the text's own lines.
 - `recheck(open, answered)` re-checks open items against answers already given and returns
   `{ open, dropped, flags }`, sorted so input order never changes it. An item is dropped as
   `gone-elsewhere`, with a `cite` of the newest settling answer, when an answer sharing its
@@ -124,6 +139,15 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `maxQuestions` or `firstRound` below 1) throw, and each manifest is parsed with `RoundSchema`
   before it is returned. A `binding` maps each question id to its item ids and each
   shown option label back to the item's option id.
+- Plan rounds: `buildPlanRound({ unit, round, task, repo, asks, storybookUrl?, supersedes? })`
+  returns the round.json a coordinator files with `titan-console decisions file -`: a
+  questions-only round@2 manifest plus the console's `planApprovals` (and `supersedes` when
+  given). Each ask `{ gate, scope, title, context }` (gate `ci-policy`, `skill` or `visual`)
+  becomes one pick-one in its own section, with options `Approve this <gate> change for <task>
+  as pinned below` and `Revise: send the plan back for <task>`, and one binding whose
+  `approve` is the first. The owner's approve pick records the task, repo, gate and scope
+  verbatim as a TP-4284 plan approval. No question carries a recommendation, because the
+  planner does not recommend its own approval. An empty `asks` or a non-loopback `storybookUrl` throws.
 - `fromRoundQuestions(manifest, roundId, { openedAt, bindings? })` reads each question of a
   round@2 manifest as an open OwnerItem: id `round:<roundId>/<questionId>`, source
   `round:<roundId>#<questionId>`, the question's `ask:` key, and for a merge-bound pick-one the

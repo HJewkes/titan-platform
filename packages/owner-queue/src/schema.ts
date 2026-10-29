@@ -105,6 +105,8 @@ export const ownerItemSchema = z.object({
   lens: z.enum(LENSES),
   stuckKind: z.string().optional(),
   unblocks: z.array(z.string().min(1)),
+  /** The asker's one line on what the answer unblocks right now; a deposit without it is planning, not blocking. */
+  unblocksNow: z.string().trim().min(1).max(200).regex(/^[^\n]*$/, "one line").optional(),
   /** Which reader the item is for; absent means the owner. Selects a view, grants no authority. */
   audience: z.enum(AUDIENCES).optional(),
   route: z.object({ target: z.enum(ROUTE_TARGETS), reason: z.string(), shadow: z.boolean() }).optional(),
@@ -113,6 +115,8 @@ export const ownerItemSchema = z.object({
   expiresAt: timestamp.optional(),
   status: z.enum(ITEM_STATUSES),
   answer: answerSchema.optional(),
+  /** How many open alarm deposits from one source this item stands for, itself included; set only by `collapseRepeats`. */
+  repeats: z.number().int().min(2).optional(),
   lint: z.array(z.string()).optional(),
 });
 

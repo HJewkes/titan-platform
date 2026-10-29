@@ -25,7 +25,7 @@ export const CorrectVerdictInputSchema = z.object({
 export type CorrectVerdictInput = z.infer<typeof CorrectVerdictInputSchema>;
 
 /** `asked` means the reviewer's session is running its correction turn since `startedAt`, epoch milliseconds. */
-const Corrected = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("asked"), startedAt: z.number() }), z.looseObject({ kind: z.literal("none"), reason: z.string() })]);
+export const Corrected = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("asked"), startedAt: z.number() }), z.looseObject({ kind: z.literal("none"), reason: z.string() })]);
 type NoCorrection = { kind: "none"; reason: string };
 export type CorrectedResult = { kind: "asked"; startedAt: number } | NoCorrection;
 
@@ -46,7 +46,7 @@ async function askOnce(dispatch: ReviewerDispatch, input: CorrectVerdictInput, t
   if (row.presence !== "exited") return none("the reviewer had not exited, so it was not resumed");
   if (row.sessionId !== input.reviewerSessionId) return none("the reviewer's session changed, so it was not resumed");
   const { repo, pr, head, malformed, ownerBrief } = input;
-  const prompt = correctionPrompt({ repo, pr, head, refusal: malformed.refusal, ...(ownerBrief && { ownerBrief }) });
+  const prompt = correctionPrompt({ repo, pr, head, refusal: malformed.refusal, ...(ownerBrief && { ownerBrief }), ...(malformed.quotes && { quotes: malformed.quotes }) });
   const note = (text: string) => noteReviewWait(repo, pr, `waiting for the broker to resume ${row.name} for its correction: ${text}`);
   try {
     await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, () => dispatch.resume(row.name, prompt)));

@@ -68,10 +68,14 @@ run `titan-factory service uninstall` there first.
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
 an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
-login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. A confirmed dialog
-resolves as `owner-terminal` and stores the helper's proof id as `confirmEvent`. A cancelled dialog,
-a missing helper or output that is not a UUID resolves as `coordinator`, named by `AGENT_CHAT_NAME`,
-which hitl refuses, so the command exits 1 and the gate stays pending. The command exits 2 without a
+login password dialog, reading `resolve gate <gate id>: <decision> at <head sha>`. The dialog signs a
+`titan-factory.gate-presence` statement for that gate and answer with the owner's Secure Enclave key.
+The command verifies it against `/etc/titan-factory/owner-keys`, records it in the gate batch ledger
+and resolves as `owner-terminal` with `confirmEvent: "gate-batch:<id>"`. The gate store's `authorize`
+admits that record once, for that gate only, after re-checking its signature, so a made-up
+`confirmEvent` on channel `factory-cli` is refused. A cancelled dialog, a missing helper or key, or a
+signature the key ring does not verify resolves as `coordinator`, named by `AGENT_CHAT_NAME`, which
+hitl refuses, so the command exits 1, prints why, and the gate stays pending. The command exits 2 without a
 dialog when the gate id, `decision` or `headSha` has an unexpected shape, so no field can break or
 hide a line of the dialog. A repeat of an answered resolve exits 0 before any dialog. A shell with no
 agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` does not count, because
@@ -80,15 +84,19 @@ or a helper path.
 
 Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
 coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
-gate classes, each only on evidence the command reads fresh through the GitHub port at resolve time:
+gate classes, owner decision 529 (2026-10-22, TP-4048) a fourth, and owner decision 551 (2026-10-28,
+TP-4285) a main-ci-timeout acknowledgement, each only on evidence the command
+reads fresh through the GitHub port at resolve time:
 
 | Gate and answer | Evidence the command reads |
 |---|---|
 | `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
 | `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every judged check passing (the base branch's required contexts when it has them, else every Actions run) |
-| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
+| `main-ci-timeout`: `acknowledged` (owner decision 551, TP-4285) | the same read, but only against the base branch's required contexts: a base with none is no evidence, as for Shepherd's own clear of the gate |
+| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed |
+| `sh-sent-back`: exactly `{"decision":"await-new-head"}` | the PR the gate names is open and its head is the head the gate's prompt asks about |
 
-The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
+The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state and head)
 is stored on the gate as `resolvedEvidence`, and the gate store re-checks it against the gate's own
 prompt, schema and brief before it admits the coordinator, so an audit can re-run the same check later.
 Any read that fails or comes back partial, a pending or red check, an unknown mergeable, a payload or PR
@@ -145,7 +153,8 @@ the first 16 hex characters of sha256 over the SPKI DER. `owner-presence sign --
 statement bytes on stdin, shows the dialog with the reason, and prints a base64url DER ECDSA P-256
 SHA-256 signature that `crypto.verify("sha256", bytes, { key: pem, dsaEncoding: "der" }, sig)`
 accepts. `--tag <tag>` picks `<tag>.se` instead, so a probe key never touches the owner key. In code,
-`signStatement(bytes, reason)` runs `sign` through the same path checks as `confirmOwner`.
+`signStatement(bytes, reason)` runs `sign` after the path checks above, and `ownerKeyId()` runs
+`pubkey --id` after the same checks.
 
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
@@ -228,6 +237,14 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   the registration names a `--slice`. It appends `closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the
   task's notes first, skips a task already done (so a replay adds no second note), and records an unreachable
   active-work as a caveat on the step's result instead of failing the run.
+- `shepherd.taskClose` picks when that close happens (TP-4274). `keep`, the default when absent, is the rule above.
+  Under `last-slice-only` an unsliced PR closes its task only when it is the last slice: its body has a line
+  `Last slice: yes` (any case), or it was registered with `--last-slice`, or no other open PR is registered with the
+  same `--task` and the body has no `Last slice: no` line. Otherwise the task stays open and its notes gain
+  `slice merged: <owner/repo>#<n> at <merge sha>`. A `--slice` registration closes the task only on a last-slice
+  marker, after noting its slice landed. An unreadable PR body or open-PR list leaves the task open in this mode.
+  Every close goes through active-work's `task.done`, which writes `done_at`; the only reopen path is
+  `active-work task edit <slug> <id> status open`.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
@@ -269,11 +286,15 @@ stays the local `titan-factory gate resolve`.
 `shepherd owner-release <owner/repo#N> --head <sha>` is the owner's release of an `owner-asked` hold, and the only
 verb that lifts one. Like `gate resolve`, it is local: it opens this host's database and is not in
 `SHEPHERD_COMMAND_MAP`, so no registry, MCP or `/rpc` caller reaches it. Its resolver is `ownerResolver` in
-`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner's presence
-proof and is refused with exit 77 without one; no coordinator allowance or evidence admits it. Any other shell
-is `owner-terminal`. It refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold
-(both exit 65), and lifts only the owner slot, so any other hold stays in force. The release event's actor is
-`owner-terminal:<user>`, plus `proof <id>` when presence was proved.
+`src/gate-resolve.ts`: a shell agent-chat launched (`AGENT_CHAT_AGENT_ID` set) needs the owner to sign a
+`titan-factory.hold-release` statement for this run, PR, head and owner-asked hold, and is refused with exit 77
+without one; no coordinator allowance or evidence admits it. The signed statement is recorded in the gate batch
+ledger, and `ownerRelease` re-verifies that record against the owner key ring and the live hold before it lifts
+anything (`src/owner-release-presence.ts`), then spends it. A bare UUID, a record signed by any other key and a
+statement for another PR, head or hold are all refused with exit 77. Any other shell is `owner-terminal`. It
+refuses, writing nothing, a PR not at `--head` and a run with no `owner-asked` hold (both exit 65), and lifts only
+the owner slot, so any other hold stays in force. The release event's actor is `owner-terminal:<user>`, plus
+`proof gate-batch:<id>` when the owner signed.
 
 ### Escalations
 
@@ -537,7 +558,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat), then the advisory `stale CLI` (the `titan-factory` on PATH, resolved through symlinks, carries a baked build behind the deploy checkout's HEAD and is not the deploy bin itself; `detail` names `installedCli`, `installedBuild` and `checkoutHead`; it leaves `ok` true and exits 0, because callers stop work on a failing check and a restart does not change the CLI); `--json` adds `cause`, `pid`, `health` and `detail`; it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured; a `stale CLI` alone still exits 0 |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`unreadable` (on Linux, `systemctl --user show` itself failed; the line carries its stderr, `detail` its `exitCode` and `stderr`), `not loaded`, `stale pid` (the pid is dead, a foreign pid answers the port, or there is no process), `crash loop`, `unresponsive` (the pid is alive but every `/health` probe timed out; `detail.probeLatenciesMs` lists each), `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat), then the advisory `stale CLI` (the `titan-factory` on PATH, resolved through symlinks, carries a baked build behind the deploy checkout's HEAD and is not the deploy bin itself; `detail` names `installedCli`, `installedBuild` and `checkoutHead`; it leaves `ok` true and exits 0, because callers stop work on a failing check and a restart does not change the CLI); `--json` adds `cause`, `pid`, `health` and `detail`; when `/health`'s `deployPending` carries a pacer `waiting`, the line, whatever its cause, ends with `; deploy <sha> waits: <why> until <time>` (no `until` for the pause) and `detail` adds `deployWaitSha`, `deployWaitWhy` and `deployWaitUntil` (null when the wait has no end); it always prints within 20 s (`SERVICE_CHECK_BUDGET_MS`) | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured; a `stale CLI` alone still exits 0 |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, clears a foreign `titan-factory serve` off the port, restarts without blocking on the stop and fences a process that outlives it (see [The restart fence](#the-restart-fence)), then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -809,6 +830,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.minFreeBytes` | Optional, default 5 GiB. The spawn gate defers a reviewer while the filesystem that holds review checkouts (the app data dir's `checkouts/reviews`) has fewer free bytes |
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
+| `shepherd.taskClose` | Optional, `keep` (default) or `last-slice-only`, read live. When a merged PR closes its `--task`; see `sh-cleanup` above |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
@@ -1037,6 +1059,74 @@ serve logs one `factory: ops-alarm bot-token-expiry fingerprint=<12 hex> expires
 token fingerprint (the A17 fingerprint above, never the token). The set of alarmed fingerprints lives in
 memory, so a restart raises it once more. serve reads the token once at start, so a rotation needs a restart:
 follow [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md).
+
+### The bot token file
+
+serve reads the bot's token from `BOT_TOKEN_PATH` (`src/bot-identity.ts`):
+`~/.config/titan-factory/secrets/github-bot.token`, where `~` is the home dir in serve's passwd entry, not
+`$HOME`. No environment variable, flag or config moves it. The file is 0600 in a 0700 dir, both owned by serve's
+OS user (TP-3094 option B: serve runs as the owner's user), outside every worktree. A missing file leaves the bot
+`absent`; a symlink, a group or other bit, another owner or a non-token shape leaves it `refused`. Either way serve
+still starts. The constant lives alone in `src/bot-token-path.ts`. Under vitest, a setup file
+(`src/test-support/vitest-setup.ts`) gives `userInfo()` a fresh home under the run's temp root, and the forked serve
+child's resolve hook swaps the module for one with no path. So no test resolves the passwd home or reads the real
+token, even when it starts serve with no `bot` option.
+
+The owner writes the token; no agent reads, writes or prints it. Run one line at a time in the owner's own
+terminal, not in an agent session:
+
+```sh
+mkdir -m 700 -p ~/.config/titan-factory/secrets
+chmod 700 ~/.config/titan-factory/secrets
+umask 077
+read -rs BOT_TOKEN
+printf '%s\n' "$BOT_TOKEN" > ~/.config/titan-factory/secrets/github-bot.token.new
+unset BOT_TOKEN
+chmod 600 ~/.config/titan-factory/secrets/github-bot.token.new
+mv ~/.config/titan-factory/secrets/github-bot.token.new ~/.config/titan-factory/secrets/github-bot.token
+ls -ld ~/.config/titan-factory/secrets ~/.config/titan-factory/secrets/github-bot.token
+```
+
+Paste the token at the `read -rs` prompt; nothing shows. The `ls` lines must start with `drwx------` and
+`-rw-------`. Then `titan-factory service restart`, check that `curl -s http://127.0.0.1:7410/health | jq .bot`
+shows `state: "ok"`, and that `titan-factory bot-token scan` exits 0. Rotation, including the E16 classic-token
+check, follows [`ops/runbooks/bot-token-rotation.md`](../../ops/runbooks/bot-token-rotation.md), option B.
+
+### Bot token security
+
+Owner decision 2026-10-22 (TP-3094 option B, TP-3420): serve stays the owner's OS user, so the token file is
+readable by every process running as that user, agents included. The owner accepted this same-user residual
+rather than move serve to its own OS user (option A). Agents already hold the owner's admin GitHub token through
+the `gh` CLI, so the bot token adds three things: an approval that counts as not the author's, writes that look
+like the factory's, and a credential that works off the box until it expires.
+
+What an agent running as the owner's user could still do:
+
+- read the token by any route the tool guard misses, for example a script it writes or an interpreter that
+  builds the path at run time;
+- approve, merge, push `shepherd-train/**` branches and post statuses as the bot, directly;
+- drain the bot's rate budget and stall every factory read (a denial of service, not a breach);
+- copy the token off the box, where it works until it expires or is revoked;
+- edit serve's deploy checkout or config and wait for a restart, so serve itself misuses the token;
+- read serve's memory with ptrace, unless the kernel's Yama `ptrace_scope` is 1 or more.
+
+What limits it:
+
+- **The tool guard.** `**/titan-factory/**/*.token` is a secret path in `@titan-design/tool-guard`, so a `Read`,
+  `cat`, `cp` or `base64` of the file is refused as `secret-read` (TP-3406). It stops direct reads, not every route.
+- **No accidental exposure.** The token never enters an environment, brief, log, step output, trace or the store:
+  serve holds it in memory, reaches GitHub through octokit in-process, and hands steps only the
+  `github-bot` capability. The unit sets `LimitCORE=0`, and the file sits outside every worktree.
+- **I5 and the audit.** Agents never merge; only logged paths do, and `pnpm merge:lint` flags any other merge.
+  The reconciler raises `ops-alarm BotActionUnlogged` for a bot review, merge, status or train push with no
+  factory intent row, and never counts that review as the factory's approval. Attribution is by the merge log, so
+  a move as the bot is caught at M3's walk over main, not prevented. The detector needs `BOT_LOGIN` set.
+- **The A17 scan and expiry.** `titan-factory bot-token scan` finds a copy in any agent's environment, briefs,
+  logs, transcripts or the store. A 90-day expiry and the 14-day alarm bound a copied token, and the token keeps
+  the scopes of the bot's setup packet.
+
+Option A, with serve as its own OS user and its code, config and unit unwritable by agents, is what would close the
+read, the direct use and the misuse rows above.
 
 ## Writing a gate brief
 

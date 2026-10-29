@@ -3,13 +3,16 @@ import type { GitHubPort } from "@titan-design/github";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
-import { ownerOpsLedger } from "../owner-ops/ledger.js";
+import { doneResults, ownerOpsLedger } from "../owner-ops/ledger.js";
+import type { PauseClearPorts } from "../owner-ops/pause-clear.js";
+import type { AgentChatRetirePort } from "../owner-ops/retire-agent.js";
 import { standingAnswers, type StandingAnswers } from "../owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "../resolve-proof.js";
 import type { FreezeStoreRef } from "../shepherd/freeze.js";
 import type { ShepherdStoreRef } from "../shepherd/store.js";
 import { resolveGate } from "./gate.js";
 import { actOnOp, OP_EFFECTS, type OpDeps } from "./op.js";
+import { recordPlanApproval } from "./plan-approval.js";
 import { statusOf, type Outcome, type Status } from "./outcome.js";
 import { readRecord } from "./record.js";
 import { releaseHold } from "./release.js";
@@ -36,13 +39,18 @@ interface ConsoleActionDeps {
   actionsDir: string;
   /** Serve's state directory, which holds the owner-ops ledger. */
   stateDir: string;
+  /** The agent-chat CLI a retire-agent op runs through; absent, such an op answers 503. */
+  agentChat?: AgentChatRetirePort;
+  /** The deployer's state directory and its lock and pause-file ports, which a deploy-pause-clear reads and writes. */
+  deploy: { stateDir: string; ports: PauseClearPorts };
   now: () => number;
   log: Logger;
 }
 
 /**
  * A console inbox tap as an owner-remote resolve of the approve-merge gate the owner confirmed, as an owner-remote release
- * of the owner-asked hold on the PR the owner confirmed, or as a typed owner op the authority table admits. Mounted on serve
+ * of the owner-asked hold on the PR the owner confirmed, as the owner's plan-time approval of a task's scope (the only write to
+ * `shepherd_plan_approval`), or as a typed owner op the authority table admits. Mounted on serve
  * through the daemon's `mountRoutes`, behind its Host, Origin, client-header and JSON guards, and kept out of the registry so it
  * is never an MCP tool or RPC command. No token: the trust boundary is the OS account, as for answer-ship. The body names only
  * the action id; what to do comes from the console's record file, and the live state must agree with it.
@@ -76,12 +84,13 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps,
 type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
 
 async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
-  const { host, port, store, freeze, now } = deps;
+  const { host, port, store, freeze, deploy, now, agentChat, stateDir } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
-  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, now });
+  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, done: (id) => doneResults(stateDir, id) });
   const { action, confirmEvent } = read;
-  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get()) : resolveGate({ action, confirmEvent }, port, host);
+  if (action.kind === "plan-approval") return recordPlanApproval({ action, confirmEvent }, store.get(), host);
+  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host);
 }
 
 function failure(status: Status, message: string): Answer {

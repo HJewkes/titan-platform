@@ -6,7 +6,7 @@ import { onCiFailed, rerunsFirst, type LandPrState } from "../workflows/land-pr.
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import type { UnsettledMerge } from "../workflows/land-settle.js";
 import { failureOf } from "./error-class.js";
-import { runSeat, type ExitNoticePorts } from "./exit-notice.js";
+import { liveRoute, runSeat, toldDetail, type ExitNoticePorts } from "./exit-notice.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { ownerSentBackPrompt } from "./owner-send-back.js";
 
@@ -24,7 +24,7 @@ type SeatGate = (typeof SEAT_GATES)[number];
  * seat instead of waking a fixer, a mergeability GitHub left unsettled past the wait's bound, or a runaway whose
  * convergence review still said FIX_FIRST, which is the planner's to redesign or split.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed", "order-expired"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -43,6 +43,7 @@ const NEXT: Record<SeatNotice, string> = {
   "seat-held": `Nothing waits on the owner: the seat's hold on Shepherd's MERGE is the seat's to settle. ${WAITS} Next: release or answer the hold, push to the PR, or close it to end the run.`,
   conflict: `Nothing waits on the owner: two fixer attempts left the conflict in place. ${WAITS} Next: resolve the conflict on the PR's branch yourself or with a successor, split the PR, or close it to end the run.`,
   unreviewed: `Nothing waits on the owner: Shepherd asks the owner to merge only a head a reviewer said MERGE at. ${WAITS} Next: check why the reviewers gave no MERGE here, push to the PR, or register it again to review it afresh.`,
+  "order-expired": "Nothing waits on the owner, and Shepherd keeps landing the PR as before. An overlapping PR may now merge first and conflict it again. Next: see what keeps it from landing (titan-factory shepherd timeline), or close it to end the run.",
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
@@ -96,9 +97,12 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
   try {
     seat = await addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
+    const route = await liveRoute(ports, input.repo, seat);
+    if ("none" in route) return { sent: false, seat, detail: route.none };
+    seat = route.seat;
     const to = seat;
     await sendWithRetry(() => ports.send(to, seatNoticeText(input)), sleep, signal);
-    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
+    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: toldDetail(route, `told ${seat}`) };
   } catch (error) {
     signal.throwIfAborted();
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
@@ -185,7 +189,7 @@ export function ciFailedRoute(run: GateRun & { state: LandPrState }, red: RedHea
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"})`).join(", ") || "no failing check named";
   return seatOrGate(
     () => noticeGate(run, "ci-failed", red.headSha, `CI failed (${checks}) and no fixer took the ci-red wake`),
-    () => awaitNewHead(run, red.headSha, true),
+    () => awaitNewHead(run, red.headSha, true, red.failing),
     (unsent) => onCiFailed(run.ctx, run.target, red, run.state, unsent),
   );
 }

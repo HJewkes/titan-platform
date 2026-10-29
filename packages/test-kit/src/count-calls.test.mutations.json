@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "callMeter counts past the cap without stopping the run",
+      "file": "packages/test-kit/src/count-calls.ts",
+      "find": "      if (calls > cap) throw new CallCapExceeded(`more than ${cap} calls`);\n",
+      "replace": "",
+      "kills": [
+        "countCalls stops a run at the first call past the cap and reports a count above it"
+      ]
+    },
+    {
+      "name": "countCalls reports the cap instead of the count past it",
+      "file": "packages/test-kit/src/count-calls.ts",
+      "find": "  return meter.calls();\n}",
+      "replace": "  return Math.min(meter.calls(), cap);\n}",
+      "kills": [
+        "countCalls stops a run at the first call past the cap and reports a count above it",
+        "countCalls keeps throwing past the cap when the code under test catches the first throw"
+      ]
+    }
+  ]
+}

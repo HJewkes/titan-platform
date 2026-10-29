@@ -56,12 +56,35 @@ const found = await discoverTranscripts();  // defaults to ~/.claude/projects
 
 `SessionEvent` is a discriminated union on `kind`:
 
-`fact` (one per line, typed by event), `span` (search text for prompt / assistant_response /
+`fact` (one per line, typed by event, except the echo lines below), `span` (search text for prompt / assistant_response /
 tool_input / tool_result), `session` (descriptive fields and turn/commit/push deltas),
 `turn`, `usage` (per-model tokens with an estimated thinking share), `phase`, `human_edit`,
 `file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict` (below), `branch`, `file`,
 `task`, `subagent`, `subagent_transcript`, `artifact`, and `edge` (`session:… touched
 file:…` and friends; vocabulary in `RELATIONS`).
+
+## Emit policy and echo lines
+
+Two `ReadOptions` flags gate the bulk classes. Both default to true, so a direct reader sees
+every event. `toolSpans` covers the `tool_input` and `tool_result` spans; off, their text is
+never built. `contextBlocks` covers the `context_block` audit rows from user, assistant and
+attachment lines alike. `LineReader` takes the same `EmitPolicy` as an optional last
+constructor argument.
+
+Some lines echo state that the host rewrites whether or not it changed. Their `fact` carries
+`state: { key, value }`, and a store keeps the fact only when the value differs from the last
+one it stored under that key:
+
+| line | fact `eventType`, also the state key | value from |
+|---|---|---|
+| `ai-title` | `ai_title` | `aiTitle` |
+| `custom-title`, `agent-name` | the line type | `customTitle`, `agentName` |
+| `mode`, `permission-mode` | `mode`, `permission_mode` | `mode`, `permissionMode` |
+| `cost-state` | `cost-state` | `totalCostUSD`, as written |
+
+A line missing its value carries no state, so every copy of it is kept. `atis-latch`,
+`bridge-session` and `last-prompt` emit no fact; `last-prompt` still sets the session's
+`seedPrompt`. `pr-link` is unchanged.
 
 ## File refs and code ids
 
@@ -177,10 +200,11 @@ of a reviewer's message (review-panel's `parseFollowUps`) agree with the verdict
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 8) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 9) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 Version 8 added the channel tag's `broadcast` flag to `inbound`; session-graph's `backfillFacets`
-re-extracts the inbound rows of every transcript indexed under 7 or earlier.
+re-extracts the inbound rows of every transcript indexed under 7 or earlier. Version 9 added the
+`contextBlocks` emit policy, so a store that turns `context_block` rows off drops them on re-extraction.
 
 | kind | list | emitted for |
 |---|---|---|

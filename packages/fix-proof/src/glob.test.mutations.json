@@ -1,0 +1,58 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a question mark matches a slash",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "token.kind === \"one\" && inSegment",
+      "replace": "token.kind === \"one\"",
+      "kills": [
+        "compileGlobs on hostile globs matches a?c like the backtracking compiler did",
+        "compileGlobs on hostile globs agrees with the backtracking compiler on 300 random globs over every path up to 5 characters"
+      ]
+    },
+    {
+      "name": "a globstar segment may be empty",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "token.kind === \"segments\" && state !== at",
+      "replace": "token.kind === \"segments\"",
+      "kills": [
+        "compileGlobs on hostile globs matches **/**/a like the backtracking compiler did",
+        "compileGlobs on hostile globs agrees with the backtracking compiler on 300 random globs over every path up to 5 characters"
+      ]
+    },
+    {
+      "name": "expandBraces bounds the glob only after expanding it",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "  assertBounded(glob);\n  const out: string[] = [];\n  collect(glob, out, glob);\n",
+      "replace": "  const out: string[] = [];\n  collect(glob, out, glob);\n  assertBounded(glob);\n",
+      "kills": [
+        "compileGlobs rejects 2000 single-choice groups before expanding",
+        "compileGlobs rejects 20000 single-choice groups before expanding"
+      ]
+    },
+    {
+      "name": "expandBraces checks the expansion cap only past 65536 alternatives",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "if (out.length > MAX_EXPANSIONS) throw tooMany(original);",
+      "replace": "if (out.length > MAX_EXPANSIONS ** 2) throw tooMany(original);",
+      "kills": [
+        "compileGlobs rejects a huge brace product before building it",
+        "compileGlobs rejects nested groups early"
+      ]
+    },
+    {
+      "name": "globMatcher tests a backtracking RegExp built from the glob",
+      "file": "packages/fix-proof/src/glob.ts",
+      "find": "  const accept = tokens.length * 2;\n  return (path) => {",
+      "replace": "  const accept = tokens.length * 2;\n  const native = new RegExp(`^${glob.replaceAll(\"**/\", \"\\u0000\").replaceAll(\"**\", \"\\u0001\").replaceAll(\"*\", \"[^/]*\").replaceAll(\"\\u0000\", \"(?:[^/]+/)*\").replaceAll(\"\\u0001\", \".*\")}$`);\n  if (accept >= 0) return (path) => native.test(path);\n  return (path) => {",
+      "kills": [
+        "compileGlobs on hostile globs rejects a non-matching path in steps linear in its length for d/ and 20 stars",
+        "compileGlobs on hostile globs rejects a non-matching path in steps linear in its length for 12 globstar segments",
+        "compileGlobs on hostile globs rejects a non-matching path in steps linear in its length for 10 globstar-a runs",
+        "compileGlobs on hostile globs rejects a non-matching path in steps linear in its length for 10 star-a runs",
+        "compileGlobs on hostile globs rejects a non-matching path in steps linear in its length for alternating globstar and star segments"
+      ]
+    }
+  ]
+}

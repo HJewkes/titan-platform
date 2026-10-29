@@ -1,7 +1,10 @@
 import type { GateBrief, GateQuestion } from "@titan-design/hitl";
 import type { OwnerBrief } from "@titan-design/review-panel";
+import type { CiPolicyKey } from "@titan-design/session-read";
 import { z } from "zod";
+import { CI_POLICY_UNREAD_PREFIX, shownLine, type CiPolicyFileChange } from "./shepherd/ci-policy-changes.js";
 import type { Verdict } from "./shepherd/phases.js";
+import { CiPolicyChangesSchema, CiPolicySchema } from "./shepherd/review-schemas.js";
 import type { FailingCheck } from "./workflows/land-ci.js";
 
 const MAX_SUMMARY = 280;
@@ -69,6 +72,55 @@ export function ownerBriefLines(ownerBrief: OwnerBrief): string[] {
   return [`What: ${ownerBrief.what}`, `Why: ${ownerBrief.why}`, "Pros:", ...bullets(ownerBrief.pros), "Cons:", ...bullets(ownerBrief.cons), `Door: ${ownerBrief.doorType}`];
 }
 
+/** A weakened CI-policy line at one head: its keys, the changed `.github/` lines Shepherd read (absent when none were stored) and the files it could not read. */
+export interface CiPolicyCard {
+  keys: readonly CiPolicyKey[];
+  changes?: readonly CiPolicyFileChange[];
+  unread?: readonly string[];
+}
+
+const StoredCard = z.looseObject({
+  head: z.string(),
+  ciPolicy: CiPolicySchema,
+  record: z.looseObject({ ciPolicyChanges: CiPolicyChangesSchema }).optional().catch(undefined),
+  unreadFacts: z.array(z.string()).optional().catch(undefined),
+  changedFilesUnread: z.string().optional().catch("the changed files are unknown"),
+});
+
+/**
+ * The D21 card of the MERGE evidence collected at exactly this head. Only an empty list read from a readable changed-file
+ * list says none changed; an unread list, or stored lines of another shape, read as none read, never as none weakened.
+ */
+export function ciPolicyAt(verdict: Verdict | undefined, headSha: string): CiPolicyCard | undefined {
+  if (verdict?.kind !== "MERGE" || verdict.headSha !== headSha) return undefined;
+  const stored = StoredCard.safeParse(verdict.evidence).data;
+  if (stored?.head !== headSha || stored.ciPolicy?.kind !== "weakened") return undefined;
+  const filesUnread = stored.changedFilesUnread;
+  const changes = filesUnread === undefined ? stored.record?.ciPolicyChanges : undefined;
+  const unread = [...(filesUnread === undefined ? [] : [filesUnread]), ...(stored.unreadFacts ?? []).filter((fact) => fact.startsWith(CI_POLICY_UNREAD_PREFIX))];
+  return { keys: stored.ciPolicy.keys, ...(changes && { changes }), ...(unread.length > 0 && { unread }) };
+}
+
+const d21Line = (keys: readonly CiPolicyKey[]): string => `Class D21 (CI policy weakened): ${keys.join(", ")}.`;
+
+function fileLines(change: CiPolicyFileChange, diff: string): string[] {
+  const path = shownLine(change.path);
+  const lines = change.lines.map(({ side, n, text }) => `${side} L${n}: ${shownLine(text)}`);
+  return [`${path}:`, ...lines, ...(change.omitted > 0 ? [`${change.omitted} more changed lines in ${path}; read the diff: ${diff}`] : [])];
+}
+
+/**
+ * Every stored line of each changed `.github/` file, or its count, with no filter on what a line says. Stored text is
+ * stripped and capped again, so it can never pose as a line of the prompt; unlike `oneLine`, this keeps a YAML line's indent.
+ */
+export function ciPolicyCardLines(card: CiPolicyCard, repo: string, pr: number): string[] {
+  const diff = prFilesEvidence(repo, pr);
+  const unread = (card.unread ?? []).map((fact) => `${shownLine(fact)}.`);
+  if (!card.changes) return [d21Line(card.keys), ...unread, `No changed lines were read; read the diff: ${diff}`];
+  if (card.changes.length === 0 && unread.length === 0) return [d21Line(card.keys), `No .github/ file changed; the weakening is outside .github/: read the diff: ${diff}`];
+  return [d21Line(card.keys), ...card.changes.flatMap((change) => fileLines(change, diff)), ...unread, `Read the diff: ${diff}`];
+}
+
 interface PrHead {
   repo: string;
   pr: number;
@@ -93,6 +145,10 @@ interface ApproveMergeTarget extends PrHead {
   carriedFrom?: string;
   ownerBrief?: OwnerBrief;
   skillPaths?: readonly string[];
+  /** The merge guard's D21 row: the reviewer judged CI policy weakened, so their MERGE recommends nothing. */
+  ciPolicyWeakened?: boolean;
+  /** A weakened CI-policy line at this head: the question and summary name the class and its keys. */
+  ciPolicy?: CiPolicyCard;
   /** Offers `send-back`, whose answer must carry the owner's note; only `shepherd.consoleAnswers` turns it on. */
   sendBack?: boolean;
 }
@@ -131,12 +187,13 @@ const sendBackNeedsNote = (answer: { decision: string; note?: unknown }, ctx: z.
  */
 export function approveMergeDecision(target: ApproveMergeTarget) {
   const skills = target.skillPaths ?? [];
-  const asked = skills.length > 0 ? `Land ${target.headSha}? ${skillChangeNote(target.repo, target.pr, skills)}` : `Land ${target.headSha}?`;
+  const d21 = target.ciPolicy ? ` ${d21Line(target.ciPolicy.keys)}` : "";
+  const asked = skills.length > 0 ? `Land ${target.headSha}?${d21} ${skillChangeNote(target.repo, target.pr, skills)}` : `Land ${target.headSha}?${d21}`;
   const sendBack = target.sendBack ? [{ id: SEND_BACK, label: "Send back to the implementer with your note" } as const] : [];
   const { schema, questions } = decisionGate({
     question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : oneLine(asked, MAX_QUESTION),
     options: [
-      { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge && skills.length === 0 },
+      { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge && skills.length === 0 && !target.ciPolicyWeakened },
       { id: "abandon", label: "Abandon the PR" },
       ...sendBack,
     ],
@@ -146,10 +203,21 @@ export function approveMergeDecision(target: ApproveMergeTarget) {
   return { schema: checked, brief: skills.length > 0 ? skillMergeBrief(target, skills, questions) : mergeBrief(target, questions) };
 }
 
-function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
+const CI_POLICY_WEAKENED_VERDICT = "The reviewer judged CI policy weakened; read the card and the diff; no recommendation.";
+
+function mergeVerdict(target: ApproveMergeTarget): string {
+  if (target.ciPolicyWeakened) return CI_POLICY_WEAKENED_VERDICT;
   const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
-  const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
-  return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
+  return target.reviewedMerge ? `${said}; recommend merge.` : "Shepherd holds no complete MERGE review at this head (one panel member's MERGE is not one); no recommendation.";
+}
+
+/** The class sits in the fixed lead and the keys open the detail, so a long reason is cut before either, and the field's bound always holds. */
+const leadD21 = (target: ApproveMergeTarget): string => (target.ciPolicy ? " Class D21." : "");
+const detailD21 = (target: ApproveMergeTarget, detail: string): string => (target.ciPolicy ? `CI policy weakened: ${target.ciPolicy.keys.join(", ")}. ${detail}` : detail);
+
+function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): GateBrief {
+  const verdict = mergeVerdict(target);
+  return brief(summarize(`Merge ${where(target)}? CI green.${leadD21(target)}`, detailD21(target, target.reason), verdict), prEvidence(target.repo, target.pr), questions);
 }
 
 /**
@@ -158,7 +226,8 @@ function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): Gate
  */
 function skillMergeBrief(target: ApproveMergeTarget, skills: readonly string[], questions: GateQuestion[]): GateBrief {
   const files = prFilesEvidence(target.repo, target.pr);
-  const summary = summarize(`Merge ${where(target)}? CI green.`, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`, `Review the diff: ${files}; no recommendation.`);
+  const detail = detailD21(target, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`);
+  const summary = summarize(`Merge ${where(target)}? CI green.${leadD21(target)}`, detail, `Review the diff: ${files}; no recommendation.`);
   return brief(summary, prEvidence(target.repo, target.pr), questions);
 }
 
@@ -206,7 +275,7 @@ export function stuckBehindDecision(target: { repo: string; pr: number; headSha:
 export const WAIVE_PROOF = "waive-proof";
 
 /**
- * `waivable` marks a fix-proof send-back (NO_REPRO), the only kind that offers the owner's `waive-proof`, never recommended. Its
+ * `waivable` marks a fix-proof send-back (NO_REPRO, or a fixer's exit from its wake), the only kind that offers the owner's `waive-proof`, never recommended. Its
  * answer must name the gate's head, which only the `anyOf` shapes pin: a top-level `headSha.const` would change the abandon a
  * coordinator's pr-gone evidence must match.
  */

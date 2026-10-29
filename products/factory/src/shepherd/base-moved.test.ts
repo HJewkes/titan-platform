@@ -125,7 +125,7 @@ describe("supersedeRebasedGates", () => {
 
     await supersedeRebasedGates(w.host, w.services);
 
-    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toMatch(/^base-wait/), { timeout: 10_000, interval: 5 });
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toMatch(/^base-wait/), { interval: 5 });
     expect(w.host.pendingGates().filter((pending) => pending.runId === w.runId)).toEqual([]);
     expect(w.fake.effects.merge).toBe(0);
   });

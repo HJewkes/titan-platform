@@ -5,7 +5,7 @@ import { USAGE_LIMIT_REASON } from "@titan-design/review-panel";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, workflowMigration, workflowOwnershipMigration, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { ReviewStatsStore, REVIEW_STATS_DB } from "./review-stats-store.js";
+import { ReviewStatsStore, REVIEW_STATS_DB, REVIEW_STATS_MIGRATIONS } from "./review-stats-store.js";
 import { ledgerRuns, readRetireCosts, refreshReviewStats } from "./review-stats.js";
 import type { SessionRead, TranscriptPort } from "./stats-cost.js";
 
@@ -150,6 +150,77 @@ describe("refreshReviewStats", () => {
     await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: readRetireCosts(logsWith([retireRow(SESSION.b, 9)])), transcripts: port });
 
     expect(reviewRows(store)).toEqual([expect.objectContaining({ usd: 5, cost_source: "transcript" }), expect.objectContaining({ usd: 5, cost_source: "transcript" })]);
+  });
+});
+
+const intent = (head: string, cause: string) => ({ kind: "intent", head, reviewer: `rv-${head}`, mode: "spawn", cause: { cause } });
+const labelRows = (store: ReviewStatsStore) => store.db.prepare("SELECT round, head_sha, session_id, verdict, cause, shape, scoped FROM review ORDER BY round").all();
+
+/** A panel at h1 (first review) and at h2 (fix round, its correctness brief scoped): each member dispatched before any verdict. */
+const panelRounds = (): Step[] => [
+  ["sh-review-intent:h1:0", 0, intent("h1", "first")],
+  ["sh-review:h1:0", 1, dispatched(SESSION.a, "h1", 0, 1)],
+  ["sh-review:h1:adversary:0", 1, dispatched(SESSION.b, "h1", 0, 1)],
+  ["sh-await-verdict:h1:0", 5, verdict(SESSION.a, "h1", "FIX_FIRST")],
+  ["sh-await-verdict:h1:adversary:0", 6, verdict(SESSION.b, "h1", "MERGE")],
+  ["sh-review-intent:h2:0", 10, intent("h2", "fix-round")],
+  ["sh-review:h2:0", 11, { ...dispatched(SESSION.c, "h2", 10, 11), scoped: true }],
+  ["sh-review:h2:adversary:0", 11, dispatched(SESSION.b, "h2", 10, 11)],
+  ["sh-await-verdict:h2:0", 15, verdict(SESSION.c, "h2", "MERGE")],
+  ["sh-await-verdict:h2:adversary:0", 16, verdict(SESSION.b, "h2", "FIX_FIRST")],
+];
+
+describe("review labels", () => {
+  it("labels each round with its member's shape, its head's intent cause and its scope, and gives each member its own verdict", async () => {
+    const store = storeFile();
+
+    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", panelRounds())])), retire: new Map(), transcripts: portOf({}) });
+
+    expect(labelRows(store)).toEqual([
+      { round: 0, head_sha: "h1", session_id: SESSION.a, verdict: "FIX_FIRST", cause: "first", shape: "correctness", scoped: null },
+      { round: 1, head_sha: "h1", session_id: SESSION.b, verdict: "MERGE", cause: "first", shape: "adversary", scoped: null },
+      { round: 2, head_sha: "h2", session_id: SESSION.c, verdict: "MERGE", cause: "fix-round", shape: "correctness", scoped: 1 },
+      { round: 3, head_sha: "h2", session_id: SESSION.b, verdict: "FIX_FIRST", cause: "fix-round", shape: "adversary", scoped: null },
+    ]);
+  });
+
+  it("labels D8's convergence review at a head as convergence, and a later head by its own intent", async () => {
+    const store = storeFile();
+    const steps: Step[] = [
+      ["sh-review-intent:h1:0", 0, intent("h1", "first")],
+      ...reviewed("h1", SESSION.a, 0, 1, 5, "FIX_FIRST"),
+      ["sh-auto-pass:D8-convergence-review:h1:0", 6, { kind: "passed" }],
+      ["sh-review-intent:h1:1", 7, intent("h1", "fix-round")],
+      ["sh-review:h1:1", 8, dispatched(SESSION.b, "h1", 7, 8)],
+      ["sh-await-verdict:h1:1", 12, verdict(SESSION.b, "h1", "FIX_FIRST")],
+      ["sh-review-intent:h2:0", 20, intent("h2", "fix-round")],
+      ...reviewed("h2", SESSION.c, 20, 21, 25, "MERGE"),
+    ];
+
+    await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", steps)])), retire: new Map(), transcripts: portOf({}) });
+
+    expect(labelRows(store)).toEqual([
+      expect.objectContaining({ round: 0, cause: "first" }),
+      expect.objectContaining({ round: 1, cause: "convergence", shape: "correctness" }),
+      expect.objectContaining({ round: 2, cause: "fix-round" }),
+    ]);
+  });
+
+  it("migrates a v1 store and fills its stored rows' labels on the next refresh without pricing them again", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "review-stats-")), REVIEW_STATS_DB);
+    const v1 = openDatabase(file);
+    runMigrations(v1, REVIEW_STATS_MIGRATIONS.slice(0, 1));
+    v1.prepare("INSERT INTO review (run_id, round, repo, pr, head_sha, session_id, requested_at, verdict, usd, cost_source) VALUES ('r1', 2, 'acme/widgets', 7, 'h2', ?, 0, 'MERGE', 0.25, 'retire')").run(SESSION.c);
+    v1.prepare("INSERT INTO review_meta (key, value) VALUES ('refreshed_through', ?)").run(iso(999));
+    v1.close();
+    const store = ReviewStatsStore.open(file);
+    const port = portOf({});
+
+    const result = await refreshReviewStats({ store, runs: ledgerRuns(ledger([runOf("r1", panelRounds())])), retire: new Map(), transcripts: port });
+
+    expect(result.added).toBe(3);
+    expect(port.paths).not.toContain(`/t/${SESSION.c}.jsonl`);
+    expect(store.db.prepare("SELECT usd, cost_source, cause, shape, scoped FROM review WHERE round = 2").get()).toEqual({ usd: 0.25, cost_source: "retire", cause: "fix-round", shape: "correctness", scoped: 1 });
   });
 });
 

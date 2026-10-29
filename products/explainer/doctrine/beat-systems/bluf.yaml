@@ -1,0 +1,11 @@
+schema: beat-system/v1
+id: bluf
+version: 0.1.0
+source: "video-profiles plan §B.4 (BLUF) [W45]; the order follows the bluf structure and the §B.4 example spine"
+summary: "The bottom line first, then what the viewer must decide, the facts behind it, and the rest only on demand."
+steps:
+  - { beats: [verdict-card], does: "The bottom line in one sentence, with the count of items that need the viewer." }
+  - { beats: [list, claim-card], does: "What the viewer must decide, each with its recommendation." }
+  - { beats: [stat, metrics-panel, chart, forecast], does: "The two or three facts behind the bottom line." }
+  - { beats: [fact-flash, chart, metrics-panel, forecast], does: "Background on demand: the remaining segments at speed, ranked by change.", optional: true }
+  - { beats: [button], does: "The button to the full digest." }

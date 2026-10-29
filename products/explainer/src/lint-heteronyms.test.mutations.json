@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-V10 places a heteronym skipping the numbers before it",
+      "file": "products/explainer/src/lint-heteronyms.ts",
+      "find": "matchAll(PLACE)",
+      "replace": "matchAll(WORD)",
+      "kills": [
+        "Q-V10 heteronym declarations places a heteronym by counting the numbers before it as words"
+      ]
+    }
+  ]
+}

@@ -6,7 +6,7 @@ import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 
 const DELETE_THE_COPY =
   "review-schema >= 0.3 is installed: delete server/review-schema-0.3/, point round-schema.ts at the package, " +
-  "bump owner-queue to it, drop the owner-queue gap in approval-items.ts and delete this test (TP-3232)";
+  "bump owner-queue to it, drop manifestFor01 and the owner-queue gaps in approval-items.ts and delete this test (TP-3232)";
 
 describe("the vendored review-schema 0.3 sunset", () => {
   it("fails once the installed review-schema reads a round only 0.3 knows", () => {

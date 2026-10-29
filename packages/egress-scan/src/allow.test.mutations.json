@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "allow entries compile a backtracking RegExp instead of fix-proof's glob NFA",
+      "file": "packages/egress-scan/src/allow.ts",
+      "find": "return compileGlobs([glob]);",
+      "replace": "return ((re) => (path: string) => re.test(path))(new RegExp(`^${glob.replaceAll(\"*\", \"[^/]*\")}$`));",
+      "kills": [
+        "allow globs checks a non-matching path in linear work for d/ and 20 stars",
+        "allow globs checks a non-matching path in linear work for 12 globstar segments"
+      ]
+    }
+  ]
+}

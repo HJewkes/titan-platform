@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openGate } from "@titan-design/hitl";
 import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -16,6 +16,7 @@ import type { PolicyRule } from "./gate-policy.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
+import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 import { OWNER } from "./test-support/resolver.js";
 import { SHEPHERD_MIGRATIONS } from "./workflows.js";
 import { LAND_STEPS } from "./workflows/land.js";
@@ -46,7 +47,9 @@ const approval = defineWorkflow({
   },
 });
 
-const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 } };
+// The owner never confirms presence here, so no test can open the real helper's dialog.
+beforeEach(() => void fakeOwnerHelper(undefined));
 
 async function cli(dbPath: string, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   return cliWithEnv(dbPath, {}, ...argv);
@@ -220,7 +223,7 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46]);
   });
 });
 

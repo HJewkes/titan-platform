@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the duration check is dropped from the render",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "    assertDurationAgreement(frames.pageDurationS, mixDurationS(input.timeline));\n",
+      "replace": "",
+      "kills": [
+        "renderVideo refuses the page-longer-than-mix fixture and leaves no mp4 and no manifest"
+      ]
+    },
+    {
+      "name": "the manifest hard-codes the worker count",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "workers: input.workers, fps",
+      "replace": "workers: 3, fps",
+      "kills": [
+        "renderVideo records the worker count it was given"
+      ]
+    },
+    {
+      "name": "a silent render is not marked draft",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "draft: !input.audio || input.timeline.provisional",
+      "replace": "draft: input.timeline.provisional",
+      "kills": [
+        "renderVideo renders a silent draft with an AAC track, a header-only VTT and no words sha"
+      ]
+    },
+    {
+      "name": "a stale manifest survives a failed render",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "rm(paths.manifest, { force: true }), ",
+      "replace": "",
+      "kills": [
+        "renderVideo removes a manifest left by an earlier render when this one fails"
+      ]
+    },
+    {
+      "name": "beat starts are not passed to the capture",
+      "file": "products/explainer/src/render/render-video.ts",
+      "find": "beatStartsS: input.timeline.beats.map((beat) => beat.startS), ",
+      "replace": "",
+      "kills": [
+        "renderVideo passes every beat start to the capture so chunks split on beats"
+      ]
+    }
+  ]
+}

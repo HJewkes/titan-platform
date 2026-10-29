@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the first draft goes to the plan retry without a re-time",
+      "file": "products/explainer/src/workflow/script-draft.ts",
+      "find": "const result = retimedReply(reader.check(first), reader);",
+      "replace": "const result = { ...reader.check(first), retimed: [] };",
+      "kills": [
+        "the script stage's plan retry re-times a draft whose only fault is a beat a word or two over its cap, with no plan retry"
+      ]
+    },
+    {
+      "name": "planFaults drops the draft's template-fill faults",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": ", ...draftFillFaults(draft)];",
+      "replace": "];",
+      "kills": [
+        "the script stage's plan retry retries once naming a 7-label list resolve's template fill refuses, and keeps the reply that moves rows to the continuation"
+      ]
+    },
+    {
+      "name": "the single-call repair rounds no longer answer template-fill rows",
+      "file": "products/explainer/src/workflow/model-stages.ts",
+      "find": "const failing = (script: ScriptV1) => [...failingErrors(lint.rows(script)), ...fillRows(script)];",
+      "replace": "const failing = (script: ScriptV1) => failingErrors(lint.rows(script));",
+      "kills": [
+        "the script stage's plan retry answers a fill fault the plan retry left in an L0 repair round, naming the refused beat, and keeps the repair"
+      ]
+    },
+    {
+      "name": "draftRuntime names no episode split past the split line",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "if (plannedTotal(draft) <= splitAboveS) return \"\";",
+      "replace": "return \"\";",
+      "kills": [
+        "the script stage's word-budget and runtime gates fails a public plan past its split line with the episodes to split it into, by chapter, rather than trimming it"
+      ]
+    },
+    {
+      "name": "an episode over the band no longer names its chapter to split",
+      "file": "products/explainer/src/script-budget.ts",
+      "find": "${seconds > maxS ? `, so split ${chapters[0]} by section` : \"\"}",
+      "replace": "",
+      "kills": [
+        "the script stage's word-budget and runtime gates names a chapter too long for one episode as the one to split by section"
+      ]
+    }
+  ]
+}

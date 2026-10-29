@@ -17,7 +17,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, isRefName, successorBrief, wantsFreshFixer } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, isRefName, successorBrief, wantsFreshFixer, withMergeBaseException } from "./wake-brief.js";
 import { exitedOn, latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { noticeSpawner, type SpawnerNotice } from "./wake-notice.js";
@@ -125,11 +125,15 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
+  return successorChoice(deps, wiring, task, newest.name, roster);
+}
+
+function successorChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, predecessor: string, roster: readonly AgentRow[]): Choice | string {
   if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent, lineageSeat(task, roster)), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor, message: successorBrief(task, predecessor, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -251,7 +255,8 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
 
 /**
  * A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the
- * ask a poll under its own deadline, so the ask deadline restarts after it.
+ * ask a poll under its own deadline, so the ask deadline restarts after it. A lineage gone from the roster still has the
+ * repo's checkout, so a successor takes over from the registered implementer (TP-4045).
  */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
   let asked: Asked | undefined, waiting: Waiting | undefined;
@@ -262,8 +267,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     const settled = asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, waiting);
     if (settled !== undefined) return settled;
     const newest = newestAgent(task, roster);
-    if (newest === undefined) return unhandled(`no agent of ${task.implementer}'s lineage is on the roster, so no checkout is known to start a successor in`);
-    const live = newest.presence !== "exited";
+    const live = newest !== undefined && newest.presence !== "exited";
     const read: HeadRead = live ? await headMoved(deps.port, task.input) : { moved: false };
     if ("error" in read) {
       const gaveUp = await unreadable.failed(read.error);
@@ -272,8 +276,8 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
       continue;
     }
     unreadable.read();
-    if (read.moved) return wokenBy(liveChoice(task, newest));
-    const choice = live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
+    if (read.moved && newest !== undefined) return wokenBy(liveChoice(task, newest));
+    const choice = newest === undefined ? successorChoice(deps, wiring, task, task.implementer, roster) : live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
     if (typeof choice === "string") return unhandled(choice);
     const reask = sameAsk(asked?.choice, choice);
     asked = { choice, at: deps.now() };
@@ -290,7 +294,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  return { input, pr, ...(await describeWake(deps.port, input, pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors };
+  return { input, pr, ...(await describeWake(deps.port, withMergeBaseException(input, deps.store), pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors };
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {

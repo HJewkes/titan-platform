@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a green factory CI at an older head clears the CI gate",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "if (factory?.atHead === true && factory.verdict === \"green\") return [];",
+      "replace": "if (factory?.verdict === \"green\") return [];",
+      "kills": ["gateStrip reads a green CI at an older head as unmet"]
+    },
+    {
+      "name": "a strip with an unknown row is kept and never re-read",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "if (strip.unmet.every((gate) => !gate.key.startsWith(\"unknown:\"))) kept.set(",
+      "replace": "kept.set(",
+      "kills": ["gateStripReader re-reads a strip that had an unknown row"]
+    },
+    {
+      "name": "a kept strip is never reused inside its window",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "now() - hit.at < ttlMs",
+      "replace": "now() - hit.at < 0",
+      "kills": ["gateStripReader reads one PR head at most once per window"]
+    },
+    {
+      "name": "the owner's own approve-merge counts as another pending gate",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "baseStep(gate.stepId) !== OWNER_STEP",
+      "replace": "true",
+      "kills": ["gateStrip a pending ci-failed gate on the PR is an unmet other gate"]
+    }
+  ]
+}

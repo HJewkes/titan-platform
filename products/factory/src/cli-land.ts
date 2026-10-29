@@ -1,6 +1,6 @@
-import { probeHealth } from "@titan-design/daemon";
 import type { Command } from "commander";
 import type { CliIo, Verbs } from "./cli.js";
+import { refusedInProcess } from "./cli-agent-env.js";
 import { formatGate } from "./cli-host-verbs.js";
 import { parsePort } from "./cli-options.js";
 import { postRpc } from "./cli-shepherd-rpc.js";
@@ -8,6 +8,7 @@ import { EXIT } from "./exit-codes.js";
 import { untilSettledOrGated, type FactoryHost } from "./host.js";
 import { parsePrRef, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { FACTORY_PORT } from "./serve.js";
+import { probeServe } from "./serve-probe.js";
 
 export function registerLand(program: Command, verbs: Verbs): void {
   program
@@ -26,7 +27,9 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
     verbs.io.stderr(`error: ${err instanceof Error ? err.message : String(err)}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
-  if (await probeHealth(opts.port)) return verbs.setExit(await landOnServer(verbs.io, opts.port, args));
+  const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
+  if (probe.state === "up") return verbs.setExit(await landOnServer(verbs.io, opts.port, args));
+  if (refusedInProcess(verbs, probe, opts.port, "land")) return;
   await verbs.withHost((host) => landInProcess(host, verbs, args, opts.port));
 }
 

@@ -2,9 +2,9 @@ import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import type { CleanupPorts } from "./cleanup.js";
+import type { CleanupPorts, TaskClose } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
-import type { FixFirstEntry } from "./fix-first-trail.js";
+import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
@@ -54,6 +54,8 @@ export interface ReviewRequest extends PhaseTarget {
   seatHeld?: SeatHeld;
   /** The run's FIX_FIRST trail, set only on D8's convergence review of a runaway head (TP-3734). */
   convergence?: readonly FixFirstEntry[];
+  /** A fix round after a reviewer's FIX_FIRST, which `shepherd.review.scopedRereview` may scope to the fix diff (TP-3735). */
+  fixRound?: FixRound;
 }
 
 /**
@@ -150,6 +152,10 @@ export interface ShepherdDeps {
   heldRepair?: "off" | "on";
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
+  /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */
+  nonSourceNoRepro?: "keep-owner" | "record-fact";
+  /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`. */
+  taskClose?: TaskClose;
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */

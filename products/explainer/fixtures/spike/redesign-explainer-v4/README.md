@@ -56,7 +56,7 @@ beats of `durations.json`, not only the subset in `script.json`.
 ## `spine.md`
 
 The v4 story spine, planner-written per TP-3804 from the script content alone, following
-`doctrine/guides/spine-template.md` (sections 3 to 6, 8 and 9). It was not tuned against eval output or `labels.json`.
+the spine template, now the `design-journey` structure's spine (sections 3 to 6, 8 and 9). It was not tuned against eval output or `labels.json`.
 Section 8 gives the order a planner would derive (the journey chapter before the architecture chapter), not the
 script's own chapter order. Kinds in section 6 are the planner's judgement per entry. TP-3822 brought them in line
 with the template's corrected `part`: the seven model nouns are `concept`, the three left-out details are

@@ -1,0 +1,51 @@
+/* The headline, source and chapter chrome and the stage box, from the daily spike's explainer.css (SOURCE_REV 6a09ca2).
+   The map rules stay behind until a map kind is ported. Every size is a beat-scale token of 40 px or more (beats.css). */
+
+/* The chrome is three rows: headline band, stage slot, source and chapter band. .xp-stage takes the same band
+   tokens, so stage content sits between the bands by construction and only an overflow can reach them. */
+.xp-chrome, .xp-stage {
+  --xp-edge: 60px;
+  --xp-band-top: calc(26px + var(--beat-body) * 1.3 * 1.1 * 2 + var(--beat-gap));
+  --xp-band-bottom: calc(var(--beat-gap) + var(--beat-label) * 1.3 * 2 + var(--beat-gap-sm) + 20px);
+}
+.xp-chrome {
+  position: absolute; inset: 0; display: grid; grid-template-rows: var(--xp-band-top) 1fr var(--xp-band-bottom);
+  pointer-events: none; font-family: var(--font-family-body); color: var(--color-text-primary);
+}
+.xp-band-top { padding: 26px var(--xp-edge) 0; overflow: hidden; }
+.xp-band-bottom {
+  display: flex; flex-direction: column; justify-content: flex-end; gap: var(--beat-gap-sm);
+  padding: 0 var(--xp-edge) 20px; overflow: hidden;
+}
+.xp-headline {
+  margin: 0; font-family: var(--font-family-heading);
+  font-size: calc(var(--beat-body) * 1.3); line-height: 1.1; text-wrap: balance;
+}
+.xp-chips, .xp-chapter {
+  margin: 0; font-size: var(--beat-label); line-height: 1.3; white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+.xp-chips { font-family: var(--font-family-mono); }
+.xp-chip-kind, .xp-chip-more, .xp-chapter-count {
+  padding: 0 14px; border-radius: 999px; font-family: var(--font-family-body);
+  background: var(--color-surface-raised); color: var(--color-text-secondary);
+}
+.xp-chip-kind { margin-right: 16px; }
+.xp-chip-more { margin-left: 16px; }
+.xp-chip-kind[data-kind='verified'], .xp-chip-kind[data-kind='measured'] {background: var(--color-status-success-subtle); color: var(--color-status-success); }
+.xp-chip-kind[data-kind='computed'] { background: var(--color-status-info-subtle); color: var(--color-status-info); }
+.xp-chip-kind[data-kind='docs-claim'], .xp-chip-kind[data-kind='our-framing'],
+.xp-chip-kind[data-kind='estimated'], .xp-chip-kind[data-kind='target'] {background: var(--color-status-warning-subtle); color: var(--color-status-warning); }
+.xp-chapter { font-family: var(--font-family-heading); }
+.xp-chapter-count { margin-right: 16px; background: var(--color-brand-primary); color: var(--color-background-base); }
+
+/* A stat label stays on one line, so every card's number sits at the same height. */
+.xp-stage .beat-stat-label { white-space: nowrap; }
+/* Preset beats sit in the stage box between the bands; the presets' own headlines would repeat the assertion.
+   The box is a flex column so react-ui's BeatFrame (a flex-1 view) fills it and the .beat-frame inside has a size. */
+.xp-stage { position: absolute; left: 0; right: 0; top: var(--xp-band-top); bottom: var(--xp-band-bottom); display: flex; flex-direction: column; }
+.xp-stage .ex-headline, .xp-stage .beat-eyebrow { display: none; }
+/* A list beat that opens on a spoken question shows it as its heading (visual.heading); empty headings stay hidden. */
+.xp-stage .ex-headline:not(:empty) { display: block; }
+/* The spread paints the frame's background under the bands without adding to the box the stage-fit check measures. */
+.xp-stage .beat-frame { padding: 0; box-shadow: 0 0 0 max(var(--xp-band-top), var(--xp-band-bottom)) var(--color-background-base); }

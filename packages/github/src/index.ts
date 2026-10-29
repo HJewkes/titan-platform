@@ -1,6 +1,7 @@
 export type { CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeIntoBranchRequest, MergeIntoBranchResult, MergeMessage, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, SquashSource, WriteResult } from "./port.js";
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
 export { WriteRetriesExhaustedError } from "./write-read-back.js";
+export { BlobTooLargeError } from "./file-bytes.js";
 export type { Ancestry } from "./compare.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 export type { RefRead, RulesetList } from "./conditional-reads.js";
@@ -40,7 +41,7 @@ export { GitHubInputError, isRepo } from "./validate.js";
 export type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake.js";
 export { FAKE_APP_ID, FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
 export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.js";
-export { formatSquashMessage } from "./squash-message.js";
+export { defangCiSkip, formatSquashMessage } from "./squash-message.js";
 export type { CallClass, GitHubFailure, GitHubFailureInput, ResetSource } from "./github-failure.js";
 export { RATE_LIMIT_PHRASES, classifyGitHubFailure, nextResetAt } from "./github-failure.js";
 export { parseGitHubToken } from "./github-token.js";

@@ -7,6 +7,7 @@ export const RULE_IDS: readonly RuleId[] = ["home-path", "aw-data-path", "privat
 /** A compiled private term. It exposes its line number, never its text or pattern. */
 export interface TermRule {
   readonly index: number;
+  readonly category?: string;
   matches(text: string): boolean;
   /** Offset of the first match, or -1. Optional so a bare matcher still works; a hit then reports column 1. */
   search?(text: string): number;
@@ -15,6 +16,7 @@ export interface TermRule {
 export interface RuleHit {
   readonly rule: RuleId;
   readonly termIndex?: number;
+  readonly category?: string;
   readonly kind?: TokenKind;
 }
 
@@ -73,6 +75,10 @@ export function matchesAwDataPath(text: string): boolean {
   return AW_DATA_PATH.test(text);
 }
 
+function termFields(term: TermRule): { termIndex: number; category?: string } {
+  return { termIndex: term.index, ...(term.category === undefined ? {} : { category: term.category }) };
+}
+
 /** Like `matchRules`, with the 0-based offset of each hit in `text`. */
 export function locateRules(text: string, terms: readonly TermRule[] = []): (RuleHit & { readonly offset: number })[] {
   const hits: (RuleHit & { readonly offset: number })[] = [];
@@ -81,7 +87,9 @@ export function locateRules(text: string, terms: readonly TermRule[] = []): (Rul
   const aw = AW_DATA_PATH.exec(text);
   if (aw) hits.push({ rule: "aw-data-path", offset: aw.index });
   for (const term of terms) {
-    if (term.matches(text)) hits.push({ rule: "private-term", termIndex: term.index, offset: Math.max(term.search?.(text) ?? 0, 0) });
+    if (term.matches(text)) {
+      hits.push({ rule: "private-term", ...termFields(term), offset: Math.max(term.search?.(text) ?? 0, 0) });
+    }
   }
   for (const { kind, offset } of locateTokens(text)) hits.push({ rule: "credential-token", kind, offset });
   return hits;
@@ -92,7 +100,7 @@ export function matchRules(text: string, terms: readonly TermRule[] = []): RuleH
   if (matchesHomePath(text)) hits.push({ rule: "home-path" });
   if (matchesAwDataPath(text)) hits.push({ rule: "aw-data-path" });
   for (const term of terms) {
-    if (term.matches(text)) hits.push({ rule: "private-term", termIndex: term.index });
+    if (term.matches(text)) hits.push({ rule: "private-term", ...termFields(term) });
   }
   for (const { kind } of locateTokens(text)) hits.push({ rule: "credential-token", kind });
   return hits;

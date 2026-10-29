@@ -221,12 +221,22 @@ interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-declare function buildSpawnArgs(req: LaunchedBy & {
+declare function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
     peerName: string;
     profile: string;
     briefing?: string;
     configDir?: string;
 }): string[];
+/** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
+interface SpawnPlacement {
+    /** A configured alias or hostname; omitted means the broker's own host. */
+    host?: string;
+    /** An account name, or `least-used` for the broker's pick. */
+    account?: string;
+    /** Overrides the profile's surface. */
+    surface?: string;
+    remoteControl?: boolean;
+}
 /**
  * Start the agent and return the name it was started under.
  *
@@ -237,6 +247,45 @@ declare function buildSpawnArgs(req: LaunchedBy & {
  * close from agent-chat's own event stream.
  */
 declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, allowedProfiles: readonly string[]): Promise<DispatchResult>;
+
+/**
+ * A spawn made on behalf of whoever runs this process, a human in a terminal
+ * or an agent in its Bash tool, rather than on behalf of a daemon.
+ *
+ * `dispatchToAgentChat` reaches the broker as the human on purpose: its
+ * callers are daemons whose environment says nothing about who asked. Here the
+ * caller's identity is the point. agent-chat's CLI reads `AGENT_CHAT_NAME` or
+ * `AGENT_CHAT_AGENT_ID` to name the spawner, which keeps the coordinator depth
+ * cap and the Remote Control rule on an agent's spawn, and `CLAUDE_CONFIG_DIR`
+ * as the spawner's account, which a least-used pick prefers on a tie. Those
+ * three are forwarded when set, and nothing else from the caller's
+ * environment is.
+ *
+ * No profile allowlist or headless check: the caller names the profile, and
+ * the broker applies the same gates to it as to any spawn the caller makes
+ * with the CLI directly. The brief still travels on stdin.
+ */
+
+declare const CALLER_IDENTITY_VARS: readonly ["AGENT_CHAT_NAME", "AGENT_CHAT_AGENT_ID", "CLAUDE_CONFIG_DIR"];
+interface SpawnAsCallerRequest extends SpawnPlacement {
+    agentChatBinPath: string;
+    name: string;
+    profile: string;
+    brief: string;
+    /** The directory the CLI sends to the broker as the spawn location. */
+    cwd: string;
+    /** active-work slug whose orientation agent-chat prepends to the brief. */
+    briefing?: string;
+}
+interface SpawnAsCallerResult {
+    name: string;
+    /** agent-chat's stdout, one entry per non-empty line, such as the account choice and the `Spawned` line. */
+    lines: string[];
+}
+/** `agentChatEnv()` plus each identity variable the caller's environment has a non-empty value for. */
+declare function callerEnv(source?: NodeJS.ProcessEnv): Record<string, string>;
+/** Starts the agent as the caller; a zero exit means the broker accepted the spawn, not that the work is done. */
+declare function spawnAsCaller(req: SpawnAsCallerRequest, timeoutMs: number): Promise<SpawnAsCallerResult>;
 
 /**
  * Duration of each agent-chat CLI call, reported to opt-in observers so a
@@ -347,25 +396,6 @@ declare function buildParkArgs(name: string, options?: ParkOptions): string[];
 declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs: number, options?: ParkOptions): Promise<ParkResult>;
 
 /**
- * Message a live agent through `agent-chat debug send`: the broker delivers the
- * text as one channel message, which starts a turn in an idle session. Use it
- * for a live agent; `resumeAgent` is for an ended one. The CLI connects
- * unregistered, so the broker delivers the text from the human seat. Like
- * `resumeAgent`, the text is in argv, where `ps` shows it.
- */
-/** `--` ends the options, so a text that begins with a dash stays one operand. */
-declare function buildMessageArgs(name: string, text: string): string[];
-/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
-declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): Promise<void>;
-
-/**
- * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
- * data. Ported from agent-chat's burndown `dataFence`.
- */
-/** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
-declare function dataFence(label: string, text: string): string;
-
-/**
  * Read agent-chat's roster and retire an agent, through the same CLI boundary
  * and `execSafeAsync` discipline as dispatch.ts: absolute binary, argv array,
  * minimal env, no shell.
@@ -403,26 +433,88 @@ interface AgentRow {
     account?: string | null;
     generation: number;
     teleportFrom?: string | null;
+    /**
+     * The agent this one took over from; null when the broker says it took over
+     * from no one. Absent when the broker does not report it, which proves nothing.
+     */
+    predecessor?: string | null;
+    /** True on a row only `--include-retired` returns: an ended generation whose name the broker freed. */
+    retired?: boolean;
+}
+/**
+ * Every row the broker's log holds, retired generations included. `complete` is false when the installed agent-chat
+ * predates `--include-retired`, so `rows` lacks the retired generations and cannot prove who spawned whom.
+ */
+interface AgentLineage {
+    rows: AgentRow[];
+    complete: boolean;
 }
 interface RetireResult {
     name: string;
     /** What the broker could not do on a successful retire, verbatim. */
     caveats: string[];
 }
-declare function buildListAgentsArgs(): string[];
+declare function buildListAgentsArgs(options?: {
+    includeRetired?: boolean;
+}): string[];
 declare function buildRetireArgs(name: string, force?: boolean): string[];
-/** Every agent the broker's log knows, live or ended. */
-declare function listAgents(agentChatBinPath: string, timeoutMs: number): Promise<AgentRow[]>;
+/** Every agent the broker's log knows, live or ended; retired generations only with `includeRetired`. */
+declare function listAgents(agentChatBinPath: string, timeoutMs: number, options?: {
+    includeRetired?: boolean;
+}): Promise<AgentRow[]>;
+/**
+ * The roster with retired generations, for a lineage walk. An agent-chat that predates the flag gets the plain roster,
+ * marked incomplete, so a caller can refuse to prove independence instead of failing the read.
+ */
+declare function listAgentLineage(agentChatBinPath: string, timeoutMs: number): Promise<AgentLineage>;
+interface RetireOptions {
+    force?: boolean;
+    /**
+     * Who the broker's `agent_retired` event names as the actor. The CLI reads
+     * it from `AGENT_CHAT_NAME`; absent, the broker records `human`.
+     */
+    caller?: string;
+}
 /**
  * Release the agent's isolation, end its process and free its name. `force`
  * discards uncommitted or unmerged work its worktree holds. Rejects with
  * `DispatchError` when the broker refuses.
  */
-declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: {
-    force?: boolean;
-}): Promise<RetireResult>;
+declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: RetireOptions): Promise<RetireResult>;
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
+
+/**
+ * Message a live agent through `agent-chat debug send`: the broker delivers the
+ * text as one channel message, which starts a turn in an idle session. Use it
+ * for a live agent; `resumeAgent` is for an ended one. The CLI connects
+ * unregistered, so the broker delivers the text from the human seat; a `source`
+ * labels it as that wake source, without human provenance. Like
+ * `resumeAgent`, the text is in argv, where `ps` shows it.
+ */
+
+/** Mirrors agent-chat's `WAKE_SOURCES`: the label a recipient sees instead of the owner typing. */
+type WakeSource = "watchdog" | "shepherd" | "console";
+interface MessageOptions {
+    /** Sent as `--source`, so the message arrives labelled `wake_source=<source>` rather than as the owner's words. */
+    source?: WakeSource;
+}
+/** `--` ends the options, so a text that begins with a dash stays one operand; `--source` must come before it. */
+declare function buildMessageArgs(name: string, text: string, options?: MessageOptions): string[];
+/**
+ * Whether `messageAgent` can reach the agent a roster row names. An unregistered sender reaches only a connected
+ * session, so a `detached` row (not exited, but nothing connected) is as unreachable as an `exited` one.
+ */
+declare function receivesMessages(row: Pick<AgentRow, "presence">): boolean;
+/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
+declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number, options?: MessageOptions): Promise<void>;
+
+/**
+ * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
+ * data. Ported from agent-chat's burndown `dataFence`.
+ */
+/** The fence is one backtick longer than the longest run in `text`, at least three, so `text` cannot close it. */
+declare function dataFence(label: string, text: string): string;
 
 /** The label shape agent-chat's broker accepts, checked before a call is spent on it. */
 declare const ASK_LABEL_PATTERN: RegExp;
@@ -465,4 +557,4 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };

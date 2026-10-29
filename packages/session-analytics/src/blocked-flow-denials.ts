@@ -1,3 +1,5 @@
+import { decodeClaudeToolLines } from "@titan-design/session-read";
+
 /** One action the auto-mode classifier refused, read from a seat's transcript. */
 export interface DenialRecord {
   seat: string;
@@ -39,35 +41,19 @@ function bashAction(command: string): string {
   return BASH_ACTIONS.find(([, pattern]) => pattern.test(command))?.[0] ?? "bash-other";
 }
 
-interface TranscriptEntry {
-  timestamp?: string;
-  message?: { content?: unknown };
-}
-
-interface ContentBlock {
-  type?: string;
-  id?: string;
-  name?: string;
-  input?: unknown;
-  tool_use_id?: string;
-  content?: unknown;
-}
-
 /** Scans transcript JSONL for classifier refusals and joins each to the tool call it refused. */
 export function parseDenials(lines: Iterable<string>, seat: string): DenialRecord[] {
   const calls = new Map<string, { tool: string; input: unknown }>();
   const denials: DenialRecord[] = [];
-  for (const line of lines) {
-    if (!line.includes('"tool_use"') && !line.includes("auto mode classifier")) continue;
-    const entry = parseLine(line);
-    for (const block of blocksOf(entry)) {
-      if (block.type === "tool_use" && block.id) calls.set(block.id, { tool: block.name ?? "unknown", input: block.input });
-      const reason = block.type === "tool_result" ? DENIAL.exec(resultText(block.content))?.[1] : undefined;
-      if (reason === undefined) continue;
-      const call = calls.get(block.tool_use_id ?? "") ?? { tool: "unknown", input: null };
-      const toolUseId = block.tool_use_id ? { toolUseId: block.tool_use_id } : {};
-      denials.push({ seat, at: entry?.timestamp ?? "", reason, action: classifyDeniedAction(call.tool, call.input), tool: call.tool, ...toolUseId });
+  for (const observation of decodeClaudeToolLines(lines)) {
+    if (observation.kind === "tool_call") {
+      calls.set(observation.callId, { tool: observation.name, input: observation.input });
+      continue;
     }
+    const reason = DENIAL.exec(resultText(observation.output))?.[1];
+    if (reason === undefined) continue;
+    const call = calls.get(observation.callId) ?? { tool: "unknown", input: null };
+    denials.push({ seat, at: observation.timestamp ?? "", reason, action: classifyDeniedAction(call.tool, call.input), tool: call.tool, toolUseId: observation.callId });
   }
   return denials;
 }
@@ -82,19 +68,6 @@ export function dedupeDenials(denials: readonly DenialRecord[]): DenialRecord[] 
     seen.add(key);
     return true;
   });
-}
-
-function parseLine(line: string): TranscriptEntry | null {
-  try {
-    return JSON.parse(line) as TranscriptEntry;
-  } catch {
-    return null;
-  }
-}
-
-function blocksOf(entry: TranscriptEntry | null): ContentBlock[] {
-  const content = entry?.message?.content;
-  return Array.isArray(content) ? (content as ContentBlock[]) : [];
 }
 
 function resultText(content: unknown): string {

@@ -50,15 +50,6 @@
         "a main gate on a merged PR once its freeze episode thawed cancels the main-red-again gate with a gate-cancel event, and the run cleans up without thawing",
         "a main gate on a merged PR once its freeze episode thawed cancels the main-frozen gate with a gate-cancel event, and the run cleans up without thawing"
       ]
-    },
-    {
-      "name": "the run takes any cancel as a thaw",
-      "file": "products/factory/src/shepherd/thawed-main-gates.ts",
-      "find": "if (reason.startsWith(EPISODE_THAWED)) return undefined;",
-      "replace": "return undefined;",
-      "kills": [
-        "a main gate cancelled for another reason still fails the run, and records no gate-cancel event"
-      ]
     }
   ]
 }

@@ -19,15 +19,15 @@ import { z } from "zod";
 import { isLoopbackUrl } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
-import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
-import { gateAnswer, readAnswer, type GateAnswer } from "./round-answer.js";
+import { FeedbackSchema, ROUND_ID, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
+import { readAnswer, type GateAnswer } from "./round-answer.js";
 import { hasUnboundMergeOffer } from "./round-merge-binding.js";
-import { priorFeedbackList, readPriorFeedback } from "./prior-feedback.js";
+import { readPriorFeedback } from "./prior-feedback.js";
 import { readFollowUps } from "./round-follow-ups.js";
-import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, roundNotes, type RoundNotes } from "./round-notes.js";
-import { UNWIRED_LINEAGE, shipLineage, type LineageReader, type ShipLineage } from "./ship-lineage.js";
+import { ADDRESSED_FILE, MAX_ADDRESSED_BYTES, addressedOf, notesOf, type RoundNotes } from "./round-notes.js";
+import { UNWIRED_LINEAGE, type LineageReader, type ShipLineage } from "./ship-lineage.js";
 import type { LiveReader } from "./round-live.js";
-import { roundLive } from "./storybook-build.js";
+import type { RoundDetail, RoundStatus, RoundSummary } from "./round-summary.js";
 
 export interface RoundsSource {
   dir: string;
@@ -40,7 +40,7 @@ export interface RoundsSource {
 export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
 const MAX_ROUNDS = 500;
-export const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export { ROUND_ID };
 export const ROUND_FILE = "round.json";
 export const FEEDBACK_FILE = "feedback.json";
 export const WITHDRAWN_FILE = "withdrawn.json";
@@ -49,64 +49,8 @@ const MAX_WITHDRAWN_BYTES = 4096;
 const MAX_REASON_ISSUES = 5;
 export const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
-const roundStatus = z.enum(["open", "sent", "withdrawn"]);
-type RoundStatus = z.infer<typeof roundStatus>;
-
-const roundHead = { id: z.string(), status: roundStatus, updatedAt: z.string().nullable() };
-
-const invalidRound = z.object({ ...roundHead, valid: z.literal(false), reason: z.string() });
-
-export const roundSummary = z.discriminatedUnion("valid", [
-  z.object({
-    ...roundHead,
-    valid: z.literal(true),
-    unit: z.string(),
-    round: z.number(),
-    questions: z.number(),
-    design: z.boolean(),
-    ship: z.boolean(),
-    /** Present when a pick-one offers a merge with no binding: it is answerable, but its answer taps no merge. */
-    unbound: z.literal(true).optional(),
-    recommendations: z.enum(["after-answer", "shown"]),
-  }),
-  invalidRound,
-]);
-
-export const roundDetail = z.discriminatedUnion("valid", [
-  z.object({
-    ...roundHead,
-    valid: z.literal(true),
-    /** A round with frames and no merge-bound question is a design round, answered in the harness. */
-    design: z.boolean(),
-    /** A round with a merge-bound pick-one: the console shows its frames and answers it with Ship or Send back. */
-    ship: z.boolean(),
-    /** The sha256 of the round.json shown, which `rounds.submit` binds an answer to. */
-    manifestSha256: z.string(),
-    /** True while an after-answer round is unsent: every question's recommendation is stripped. */
-    recommendationsWithheld: z.boolean(),
-    /** While withheld, the questions that have a recommendation `rounds.reveal` can hand back; empty otherwise. */
-    revealable: z.array(z.string()),
-    /** Null unless the manifest's Storybook host is loopback. */
-    storybookUrl: z.string().nullable(),
-    manifest: z.custom<Manifest>(),
-    answer: gateAnswer.optional(),
-    /** A Ship round's proven head against its PR base now; absent on any other round. */
-    lineage: shipLineage.optional(),
-    /** A sent round's free text from its feedback.json; absent while unsent or when that file does not parse. */
-    notes: roundNotes.optional(),
-    /** An open or sent Ship round's earlier feedback on its unit, each to be ticked Addressed before Ship; absent when there is none. */
-    priorFeedback: priorFeedbackList.optional(),
-    /** A sent Ship round's side questions filed as follow-ups (TP-3346); absent when there are none. */
-    followUps: z.array(z.string()).optional(),
-    /** A round that carries a Storybook build: each story variant's url on the story origin, or why it shows its PNG (TP-3793). */
-    live: roundLive.optional(),
-  }),
-  invalidRound,
-]);
-
+export { roundDetail, roundSummary, type RoundDetail, type RoundSummary } from "./round-summary.js";
 export type { RoundNotes, SentAnswer } from "./round-notes.js";
-export type RoundSummary = z.infer<typeof roundSummary>;
-export type RoundDetail = z.infer<typeof roundDetail>;
 
 type Parsed = { ok: true; manifest: Manifest; sha256: string } | { ok: false; reason: string };
 
@@ -259,7 +203,16 @@ async function lineageOf(source: RoundsSource, parsed: Parsed): Promise<ShipLine
   return source.lineage ? source.lineage(binding) : UNWIRED_LINEAGE;
 }
 
-const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
+/** The list names why a withdrawn round left the queue, so the page can show it beside the round. */
+async function listedRound(dir: string, id: string): Promise<RoundSummary> {
+  const round = await loadRound(dir, id);
+  const summary = summaryOf(round);
+  if (round.status !== "withdrawn") return summary;
+  const withdrawal = await readWithdrawal(path.join(dir, id));
+  return withdrawal === null ? summary : { ...summary, withdrawnReason: withdrawal.reason };
+}
+
+const newestFirst =(a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
 
 /**
  * A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it.
@@ -271,8 +224,8 @@ export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: Round
     throw failure("the rounds dir could not be read", EXIT.UNAVAILABLE);
   });
   const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
-  const loaded = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => loadRound(dir, id)));
-  return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
+  const rounds = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => listedRound(dir, id)));
+  return { rounds: rounds.sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
 export async function getRound(source: RoundsSource, id: string, { remote = false }: { remote?: boolean } = {}): Promise<RoundDetail> {
@@ -297,6 +250,7 @@ export interface QueueRound {
   id: string;
   updatedAt: string;
   manifest: Manifest;
+  manifestSha256: string;
   feedback: Feedback | null;
   withdrawn: Withdrawal | null;
   /** The questions its feedback filed as follow-ups; empty while unsent. */
@@ -362,14 +316,14 @@ async function readWithdrawal(roundDir: string): Promise<Withdrawal | null> {
   return parsed?.success ? { reason: parsed.data.reason, at: parsed.data.at } : { reason: "unreadable", at: null };
 }
 
-/** A feedback.json that cannot be read is a gap, and the round stays open so its questions are still asked. */
+/** An unreadable feedback.json is a gap and the round stays open; a withdrawn round's bad round.json is none, as nobody waits on it. */
 async function queueRound(dir: string, id: string): Promise<{ round?: QueueRound; gap?: string }> {
   const roundDir = path.join(dir, id);
   const [{ parsed, updatedAt }, read, withdrawn] = await Promise.all([readManifest(roundDir), readFeedback(roundDir), readWithdrawal(roundDir)]);
-  if (!parsed.ok) return { gap: `${id}: ${parsed.reason}` };
+  if (!parsed.ok) return withdrawn === null ? { gap: `${id}: ${parsed.reason}` } : {};
   if (updatedAt === null) return { gap: `${id}: ${ROUND_FILE} has no modified time` };
   const feedback = read.ok ? read.feedback : null;
-  const round = { id, updatedAt, manifest: parsed.manifest, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
+  const round = { id, updatedAt, manifest: parsed.manifest, manifestSha256: parsed.sha256, feedback, withdrawn, followUps: feedback === null ? [] : await readFollowUps(roundDir) };
   return read.ok ? { round } : { round, gap: `${id}: ${read.reason}` };
 }
 

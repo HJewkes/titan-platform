@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { BrokerUnavailableError, DispatchError } from "./dispatch.js";
-import { messageAgent } from "./message.js";
+import { messageAgent, receivesMessages } from "./message.js";
 import { installExecutable } from "./test-support.js";
 
 let dir: string;
@@ -39,6 +39,14 @@ describe("messageAgent", () => {
     expect(recordedArgv()).toEqual(["debug", "send", "--", "impl-a", "--fix the parser\nthen push"]);
   });
 
+  it("passes --source console ahead of --, so the text stays one operand", async () => {
+    const bin = fakeAgentChat(`echo "Delivered to impl-a (msg_id m1)."\n`);
+
+    await messageAgent(bin, "impl-a", "--fix the parser", 10_000, { source: "console" });
+
+    expect(recordedArgv()).toEqual(["debug", "send", "--source", "console", "--", "impl-a", "--fix the parser"]);
+  });
+
   it("leaves the caller's event loop free while the broker works", async () => {
     const bin = fakeAgentChat(`sleep 1\necho "Delivered to impl-a (msg_id m1)."\n`);
     let ticks = 0;
@@ -67,5 +75,15 @@ describe("messageAgent", () => {
     await expect(messageAgent(bin, "--force", "wake up", 10_000)).rejects.toThrow(DispatchError);
     await expect(messageAgent(bin, "impl-a", "  ", 10_000)).rejects.toThrow(DispatchError);
     expect(() => readFileSync(join(dir, "argv"))).toThrow();
+  });
+});
+
+describe("receivesMessages", () => {
+  it.each([
+    ["live", true],
+    ["detached", false],
+    ["exited", false],
+  ])("reads a %s agent as reachable: %s, since only a connected session takes an unregistered send", (presence, reachable) => {
+    expect(receivesMessages({ presence })).toBe(reachable);
   });
 });

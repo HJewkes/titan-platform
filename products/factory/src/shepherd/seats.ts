@@ -5,6 +5,7 @@ import { parse } from "yaml";
 import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import { isRepo } from "@titan-design/github";
 import { z } from "zod";
+import type { VisualBaselines } from "./visual-gate.js";
 
 export { isRepo as isRepoKey } from "@titan-design/github";
 
@@ -113,7 +114,7 @@ export interface Seat {
   /** Repo-relative globs a PR must touch none of to merge without the owner; absent means the seat has not opted in. */
   visualPaths?: string[];
   /** The check and baseline globs that let a visual-path PR changing no baseline merge on a green check; absent keeps the glob gate. */
-  visualBaselines?: { check: string; paths: string[] };
+  visualBaselines?: VisualBaselines;
 }
 
 export interface SeatBook {
@@ -165,6 +166,12 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   if (book.denied.includes(remote) || book.denied.includes(name)) return { kind: "denied", reason: `${repo} is on a seat deny list or a charter hard stop` };
   const seats = book.seats.filter((s) => s.remotes.includes(remote));
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
+}
+
+/** The check name the seat that owns `repo` declares for its visual baselines, if any. */
+export function seatBaselineCheck(book: SeatBook, repo: string): string | undefined {
+  const found = lookupSeat(book, repo);
+  return found.kind === "seat" ? found.seat.visualBaselines?.check : undefined;
 }
 
 /** The checkout a seat binds to `repo`; a repo no seat lists takes the one `unseated` names, keyed by owner/name in any case; a denied repo has none. */

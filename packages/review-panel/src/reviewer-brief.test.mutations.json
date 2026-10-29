@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a scope refusal opens like a malformed verdict",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "if (!isScopeRefusal(refusal)) return `Your last message",
+      "replace": "if (refusal) return `Your last message",
+      "kills": [
+        "correctionPrompt tells a scope_untagged FIX_FIRST the rule it broke and that its reply stands",
+        "correctionPrompt tells a repeated_finding FIX_FIRST the rule it broke and that its reply stands"
+      ]
+    },
+    {
+      "name": "a scope refusal is told a fresh reviewer follows",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "isScopeRefusal(refusal) ? \"This is your only correction. Shepherd takes",
+      "replace": "false ? \"This is your only correction. Shepherd takes",
+      "kills": [
+        "correctionPrompt does not parse as a verdict and stays within the cap for scope_untagged, owner brief true",
+        "correctionPrompt tells a scope_untagged FIX_FIRST the rule it broke and that its reply stands",
+        "correctionPrompt tells a repeated_finding FIX_FIRST the rule it broke and that its reply stands"
+      ]
+    },
+    {
+      "name": "the unchanged-line sentence drops the Class: tag",
+      "file": "packages/review-panel/src/reviewer-brief.ts",
+      "find": "and lacks \\`${IMPORTANT_TAG}\\` and a \\`${CLASS_TAG}\\` line",
+      "replace": "and lacks \\`${IMPORTANT_TAG}\\`",
+      "kills": [
+        "correctionPrompt names both tags in the unchanged-line sentence"
+      ]
+    },
+    {
+      "name": "a non-source head gets the generic unverified rule",
+      "file": "packages/review-panel/src/briefs/tests.ts",
+      "find": "proceeds === undefined ? UNVERIFIED_RULE : PROCEED_RULE[proceeds]",
+      "replace": "proceeds === \"test-only\" ? PROCEED_RULE[proceeds] : UNVERIFIED_RULE",
+      "kills": [
+        "reviewerBrief a non-source head sent on without a base-failing test is told to judge its tests, deletions and workflow edits, not to show one fail on the base"
+      ]
+    }
+  ]
+}

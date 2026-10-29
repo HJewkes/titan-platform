@@ -2196,6 +2196,15 @@ describe("reviewPhase", () => {
         expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`]);
       });
 
+      it("quotes a prose CI policy heading above a canonical block in the resume brief (tp#2442)", async () => {
+        const dispatch = fakeDispatch();
+        const heading = "**CI policy:** nothing under .github/ changed in this PR.";
+
+        await review({ dispatch, files: CI_FILES, read: correcting(`${heading}\n\n${verdictAt(H1)}CI-policy: unchanged`, (head) => `${verdictAt(head)}CI-policy: unchanged`), policy: AUTO });
+
+        expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining(`\n> ${heading}\n`) }]);
+      });
+
       it("never corrects a weakened line, which still gates ci-policy-weakened", async () => {
         const dispatch = fakeDispatch();
 

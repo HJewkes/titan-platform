@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a verb in first place counts as subject and verb",
+      "file": "products/explainer/src/lint-headline.ts",
+      "find": "some((each, i) => i > 0 && FINITE_VERB_TAGS",
+      "replace": "some((each, i) => i >= 0 && FINITE_VERB_TAGS",
+      "kills": ["Q-D7 assertion headlines fails a topic label and a bare imperative, naming the beat"]
+    },
+    {
+      "name": "a headline of eleven words passes",
+      "file": "products/explainer/src/lint-headline.ts",
+      "find": "length > ASSERTION_MAX_WORDS)",
+      "replace": "length > ASSERTION_MAX_WORDS + 1)",
+      "kills": ["Q-D7 assertion headlines fails a claim of eleven words and passes one of ten"]
+    },
+    {
+      "name": "authored times compare as text, not instants",
+      "file": "products/explainer/src/lint-headline.ts",
+      "find": "Date.parse(beat.authored.assertion_at) > Date.parse(beat.authored.spoken_at)",
+      "replace": "beat.authored.assertion_at > beat.authored.spoken_at",
+      "kills": ["Q-D7 assertion headlines fails a headline written after its narration and passes one written before"]
+    },
+    {
+      "name": "the Q-D7 hint drops each headline's defects",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "(${assertionDefects(beat).join(\", \")})",
+      "replace": "()",
+      "kills": ["Q-D7 assertion headlines hints each failing headline with what keeps it from asserting"]
+    }
+  ]
+}

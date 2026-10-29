@@ -6,12 +6,14 @@ import type { EvalCliDeps } from "./eval-cli.js";
 import { LabelsSchema, type Labels } from "./eval-calibrate.js";
 import { agreedOddOnes, COLD_EVAL_ID, COLD_TERMS_EVAL_ID, COLD_TERMS_RUBRIC, coldEvalVersion, coldTerms, runCold, type ColdInput, type ColdResult } from "./eval-cold.js";
 import { readerGapScores } from "./eval-cold-gaps.js";
+import { COLD_RUBRIC_EVAL_ID, readColdRubric, rubricBeatsFromPace, runColdRubric, seriesFromScripts, type ColdRubricResult, type SeriesVideo } from "./eval-cold-rubric.js";
 import { readRubric } from "./eval-evidence.js";
 import { createJudgeHarness, JudgeConfigSchema, judgeLabel } from "./eval-harness.js";
-import { CANARY_COLUMNS } from "./eval-judge-cli.js";
+import { CANARY_COLUMNS, SCRIPT_SCORE_COLUMNS } from "./eval-judge-cli.js";
 import { paceInput, type ScriptFormat } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, freezeScript, judgedRun, rulesSha, type BenchLayout, type DeterministicRun } from "./eval-store.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry } from "./rules.js";
+import { ScriptSchema } from "./script-schema.js";
 import { readTiming } from "./timing.js";
 
 const EXIT = { OK: 0, UNTRUSTED: 1, USAGE: 2 } as const;
@@ -33,6 +35,7 @@ interface ColdFlags {
   parent?: string;
   runs: string;
   labels?: string;
+  series?: string[];
 }
 
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"));
@@ -43,7 +46,12 @@ interface Prepared {
   input: Omit<ColdInput, "run">;
   runs: number;
   readerGaps: Labels["items"] | null;
+  series: SeriesVideo[];
 }
+
+/** A script/v1 beat's on-screen assertion by id; a spike script has no such field, so its run asks no assertion question. */
+const assertionsOf = (raw: unknown, format: ScriptFormat): Record<string, string> =>
+  format === "v1" ? Object.fromEntries(ScriptSchema.parse(raw).beats.map((beat) => [beat.id, beat.visual.assertion])) : {};
 
 function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const raw = readJson(file);
@@ -55,9 +63,10 @@ function prepare(file: string, flags: ColdFlags, deps: EvalCliDeps): Prepared {
   const bench = benchLayout(flags.bench);
   const scriptSha = freezeScript(bench, raw, flags.parent ?? null);
   const record = { configId: flags.config, scriptSha, parentSha: flags.parent ?? null, rulesSha: rulesSha(registry), evalId: COLD_EVAL_ID };
-  const input = { scriptSha, beats, glossary, rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
+  const input = { scriptSha, beats, glossary, assertions: assertionsOf(raw, flags.format), rubric: readRubric("l1-cold.md"), judge, harness: (deps.harness ?? createJudgeHarness)(judge) };
   const readerGaps = flags.labels ? LabelsSchema.parse(readJson(flags.labels)).items : null;
-  return { bench, record, input, runs, readerGaps };
+  const series = seriesFromScripts((flags.series ?? []).map((path) => ScriptSchema.parse(readJson(path))));
+  return { bench, record, input, runs, readerGaps, series };
 }
 
 function writeRows(p: Prepared, result: ColdResult, run: number): void {
@@ -79,6 +88,32 @@ function report(p: Prepared, run: number, r: ColdResult): void {
   const rates = { undefined_per_minute: perMinute((c) => c.undefined_per_minute), undefined_terms_per_minute: perMinute((c) => c.undefined_terms_per_minute) };
   const verdict = { trusted: r.trusted, ...rates, failed_canaries: failedCanaries, failures: r.failures, ...gaps, usd: r.spend.usd };
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, run, eval_version: r.eval_version, judge: r.judge, ...verdict }));
+}
+
+function writeRubric(p: Prepared, result: ColdRubricResult, run: number, started: Date, finished: Date): void {
+  const key = { config_id: p.record.configId, script_sha: p.record.scriptSha, eval_id: COLD_RUBRIC_EVAL_ID, eval_version: result.eval_version, judge: result.judge, run };
+  const rows = result.dims.map(({ dim, verdict: v }) => ({ ...key, dim, score: v.score ?? "", evidence: v.evidence, void_reason: v.void_reason ?? "" }));
+  appendTsv(join(p.bench.evals, "cold-rubric-scores.tsv"), SCRIPT_SCORE_COLUMNS, rows);
+  appendTsv(join(p.bench.evals, "canaries.tsv"), CANARY_COLUMNS, [{ ...key, ...result.canary }]);
+  appendRun(p.bench, judgedRun({ ...p.record, evalId: COLD_RUBRIC_EVAL_ID, evalVersion: result.eval_version, judge: result.judge, run, spend: result.spend, started, finished }));
+}
+
+/**
+ * J8 to J12, reported only (owner answer Q5 A): rows and a line are written, but neither a score, a missed canary nor
+ * a failed call reaches the command's exit code.
+ */
+async function reportRubric(p: Prepared, run: number, now: () => Date): Promise<void> {
+  const line = { script_sha: p.record.scriptSha, run, eval_id: COLD_RUBRIC_EVAL_ID, reported_only: true };
+  const started = now();
+  try {
+    const beats = rubricBeatsFromPace(p.input.beats);
+    const result = await runColdRubric({ subjectSha: p.record.scriptSha, beats, rubric: readColdRubric(), series: p.series, judge: p.input.judge, harness: p.input.harness, run });
+    writeRubric(p, result, run, started, now());
+    const scores = Object.fromEntries(result.dims.map((d) => [d.dim, d.verdict.score]));
+    console.log(JSON.stringify({ ...line, eval_version: result.eval_version, scores, canary: result.canary, trusted: result.trusted, usd: result.spend.usd }));
+  } catch (error) {
+    console.log(JSON.stringify({ ...line, error: error instanceof Error ? error.message : String(error) }));
+  }
 }
 
 /** The viewers' agreed undefined terms are asked beside the glossary; a failed call leaves the questions short, so it untrusts. */
@@ -105,6 +140,7 @@ async function evalCold(file: string, flags: ColdFlags, deps: EvalCliDeps): Prom
     writeRows(p, result, run);
     appendRun(p.bench, judgedRun({ ...p.record, evalVersion: result.eval_version, judge: result.judge, run, spend: result.spend, started, finished }));
     report(p, run, result);
+    await reportRubric(p, run, now);
     results.push(result);
   }
   console.log(JSON.stringify({ script_sha: p.record.scriptSha, agreed_odd_ones: agreedOddOnes(results) }));
@@ -113,7 +149,7 @@ async function evalCold(file: string, flags: ColdFlags, deps: EvalCliDeps): Prom
 
 export function coldCommand(deps: EvalCliDeps, onResult: (code: number) => void): Command {
   return new Command("cold")
-    .description("Stream a spike or script/v1 file to a fresh cold viewer chapter by chapter; append cold-scores, cold-chapters and canaries rows")
+    .description("Stream a spike or script/v1 file to a fresh cold viewer chapter by chapter; append cold-scores, cold-chapters and canaries rows, and the reported-only J8 to J12 rows to cold-rubric-scores")
     .argument("<script>", "script JSON file")
     .requiredOption("--judge <file>", "judge config JSON: provider (claude-print or codex), model, optional reasoning_effort, max_budget_usd, wall_time_s")
     .addOption(new Option("--format <format>", "script shape: a Python-emitted spike script.json, or strict script/v1").choices(["spike", "v1"]).default("spike"))
@@ -124,6 +160,7 @@ export function coldCommand(deps: EvalCliDeps, onResult: (code: number) => void)
     .option("--parent <sha>", "script_sha this script was derived from")
     .option("--labels <file>", "labels/v1 file; each run's line adds its reader-gap group scores")
     .option("--runs <n>", "independent cold viewers; two of three must agree to flag an odd one out", String(COLD_RUNS))
+    .option("--series <files...>", "script/v1 files of the series' earlier videos, oldest first; the novelty row (J10) compares against the last five")
     .exitOverride()
     .action(async (file: string, flags: ColdFlags) => {
       try {

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the occupancy file is written inside a qa.json directory",
+      "file": "products/explainer/src/occupancy-file.ts",
+      "find": "return join(dirname(qaJsonPath), OCCUPANCY_FILE);",
+      "replace": "return join(qaJsonPath, OCCUPANCY_FILE);",
+      "kills": [
+        "the occupancy file lives in the same directory as qa.json"
+      ]
+    },
+    {
+      "name": "the file is written without validation",
+      "file": "products/explainer/src/occupancy-file.ts",
+      "find": "const file = OccupancyFileSchema.parse({ schema: \"occupancy/v1\", stage, tables });",
+      "replace": "const file = { schema: \"occupancy/v1\", stage, tables };",
+      "kills": [
+        "the occupancy file refuses a table with a cell off the grid and writes nothing"
+      ]
+    }
+  ]
+}

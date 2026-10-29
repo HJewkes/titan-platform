@@ -52,6 +52,9 @@ runtime.signal(runId, "approve", { signal: "approved" }, {
 });
 ```
 
+Every event `onEvent` receives carries `at`, the ISO time the runtime emitted
+it by its `now` clock. Events recorded before 0.14 have no `at`.
+
 ## Database upgrade
 
 `workflowMigration` creates new tables with revision and ownership columns.
@@ -88,8 +91,13 @@ resolver afterwards. Gates resolved before it keep `resolvedBy` undefined.
   runner reported cost for, so a step that fails once and then succeeds
   reports both attempts. The active step persists the earlier attempts' cost as
   `priorUsage`, so a run resumed after a crash counts each attempt once.
+  The result also keeps the step's timing: `startedAt` (the try that
+  succeeded), `firstStartedAt` (its first attempt, across retries and restarts)
+  and `restarts`. Results stored before 0.14 lack them; read `firstStartedAt`
+  as `startedAt` and `restarts` as 0. `projectRunTrace` places an attempt at
+  its `startedAt`, and at `completedAt` for an older result.
 - `seed(stepId, fn)` runs deterministic work once per call and merges its data
-  into the workflow parameters.
+  into the workflow parameters. Its result records `startedAt`.
 - `assisted(stepId, prompt)` opens a durable gate and waits for
   `runtime.signal` to resolve it. Like `dispatch`, it counts calls per `stepId`
   and advances `ctx.iteration(stepId)`, so calling it in a loop opens a new gate
@@ -242,7 +250,10 @@ schema)` dispatches the input as JSON and returns the stored record's
 parses the input, stores `fn`'s answer as `{ result }`, and repeats on a
 restart, so a code step must read before it writes. A throw is recorded once
 as a non-retryable failure. `codeRecordRoute` is the same for a body that
-returns the whole record, with trace keys beside `result`.
+returns the whole record, with trace keys beside `result`. A body that calls a
+model can return `usage` (a `StepUsage`) beside `result`: the route takes it off
+the stored record and reports it as the step's usage, so `mapItems` sums it and
+budgets against it like a dispatch's.
 
 Two options let a host shape what is stored. `envelope(record, step)` wraps
 the record, for example in an evidence envelope with a kind, a time and trace

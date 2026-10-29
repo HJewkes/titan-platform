@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EXIT } from "@titan-design/registry";
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
@@ -46,7 +47,10 @@ const LIST_STATES = ["active", "finished", "all"] as const;
 
 const released = z.object({ runId: z.string(), held: z.object({ reason: z.string() }).passthrough().nullable() }).passthrough();
 
-/** The factory's `owner-op.preview` for a PR op, pinned to the fields the read-back shows; `head` is there only while the PR is open. */
+/**
+ * The factory's `owner-op.preview`, pinned to the fields the read-back shows: a PR op's PR, where `head` is there only while
+ * the PR is open, a retire-agent's agent, or a deploy-pause-clear's failure pause as `/health` reads it.
+ */
 const opPreview = z
   .object({
     kind: z.string(),
@@ -66,6 +70,30 @@ const opPreview = z
       })
       .passthrough()
       .optional(),
+    /** For a retire-agent op: the agent holding the name now, as agent-chat's roster reads, and the live run that would stop it. */
+    agent: z
+      .object({
+        name: z.string(),
+        holder: z
+          .object({ agentId: z.string(), state: z.string(), presence: z.string(), status: z.string(), profile: z.string(), cwd: z.string(), spawnedBy: z.string().nullable() })
+          .passthrough()
+          .optional(),
+        exited: z.boolean(),
+        liveRun: z.string().nullable(),
+      })
+      .passthrough()
+      .optional(),
+    pause: z
+      .object({
+        paused: z.boolean().nullable(),
+        since: z.string().nullable(),
+        reason: z.string().nullable(),
+        lastRollback: z.object({ target: z.string(), from: z.string(), status: z.string() }).passthrough().nullable(),
+        deployerRunning: z.boolean(),
+        manualHold: z.string().nullable(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -78,10 +106,21 @@ interface ReleaseAt {
   actor: string;
 }
 
+/** GitHub's check-runs page as `shepherd.ghRead` relays it; only the fields the gate strip reads are pinned. */
+const checkRunsPage = z.object({
+  total_count: z.number().int(),
+  check_runs: z.array(z.object({ name: z.string(), status: z.string(), conclusion: z.string().nullable() }).passthrough()),
+});
+
+const ghAnswer = z.object({ status: z.number().int(), body: z.unknown() }).passthrough();
+
+const CHECK_RUNS_PAGE = 100;
+
 type WatchRow = z.infer<typeof watchRow>;
 type PrTimeline = z.infer<typeof prTimeline>;
 type Waiting = z.infer<typeof waiting>;
 type Released = z.infer<typeof released>;
+export type CheckRunsPage = z.infer<typeof checkRunsPage>;
 export type OpPreview = z.infer<typeof opPreview>;
 type ListState = (typeof LIST_STATES)[number];
 
@@ -90,6 +129,8 @@ export interface ShepherdSource {
   list(state: ListState): Promise<WatchRow[]>;
   timeline(repo: string, pr: number): Promise<PrTimeline>;
   waiting(): Promise<Waiting>;
+  /** GitHub's check runs at one commit, through serve's throttled, ETag-cached gateway. */
+  checkRuns(repo: string, sha: string): Promise<CheckRunsPage>;
   /** The one write: only `inbox.act` calls it, after the owner confirmed a g10 hold's release. */
   release(at: ReleaseAt): Promise<Released>;
   /** The factory's live read-back for a typed owner op: only `inbox.prepare` and `inbox.act` call it, and it reads only. */
@@ -114,10 +155,19 @@ export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS
     if (!parsed.success) throw unexpectedShape(`factory ${command}`);
     return parsed.data;
   }
+  async function checkRuns(repo: string, sha: string): Promise<CheckRunsPage> {
+    const path = `repos/${repo}/commits/${sha}/check-runs?per_page=${CHECK_RUNS_PAGE}`;
+    const answer = await read("shepherd.ghRead", { path, caller: "titan-console", raw: true }, ghAnswer);
+    if (answer.status !== 200) throw failure(`factory shepherd.ghRead: GitHub answered ${answer.status} for ${path}`, EXIT.UNAVAILABLE);
+    const page = checkRunsPage.safeParse(answer.body);
+    if (!page.success) throw unexpectedShape("factory shepherd.ghRead check-runs");
+    return page.data;
+  }
   return {
     list: (state) => read("shepherd.list", { state }, z.array(watchRow)),
     timeline: (repo, pr) => read("shepherd.timeline", { repo, pr }, prTimeline),
     waiting: () => read("shepherd.waiting", {}, waiting),
+    checkRuns,
     release: ({ repo, pr, head, holdClass, actor }) => read("shepherd.release", { repo, pr, head, holdClass, actor }, released),
     previewOp: (op) => read("owner-op.preview", { op }, opPreview),
   };

@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a changesets <pkg>@<digit> destination is not read as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.|v\\d|(?:@[^/@:]+\\/)?[^@:/]+@\\d)/;",
+      "replace": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.|v\\d)/;",
+      "kills": [
+        "a changesets release tag reads a scoped package tag as a release",
+        "handle: a tag push the release shapes spell denies git push origin @scope/pkg@0.3.1"
+      ]
+    },
+    {
+      "name": "only a scoped changesets tag is read as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "|(?:@[^/@:]+\\/)?[^@:/]+@\\d)/;",
+      "replace": "|@[^/@:]+\\/[^@:/]+@\\d)/;",
+      "kills": [
+        "a changesets release tag reads an unscoped package tag as a release"
+      ]
+    },
+    {
+      "name": "-c push.followTags is not read",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "hasFlag(options, \"--tags\", \"--follow-tags\") || configTrue(config, \"push.followtags\")",
+      "replace": "hasFlag(options, \"--tags\", \"--follow-tags\")",
+      "kills": [
+        "push.followTags set with git -c reads it set to true as a tag push",
+        "handle: a tag push the release shapes spell denies git -c push.followTags=true push origin feat/x"
+      ]
+    },
+    {
+      "name": "the -c key is matched in its exact letter case",
+      "file": "packages/tool-guard/src/shell/git-verbs.ts",
+      "find": "  const entry = [...config].reverse().find((item) => configKey(item).toLowerCase() === key);",
+      "replace": "  const entry = [...config].reverse().find((item) => configKey(item) === \"push.followTags\");",
+      "kills": [
+        "push.followTags set with git -c reads it in another letter case as a tag push"
+      ]
+    },
+    {
+      "name": "a false or empty -c value still turns followTags on",
+      "file": "packages/tool-guard/src/shell/git-verbs.ts",
+      "find": "  return eq < 0 || (value !== \"\" && !OFF_BOOLEANS.has(value));",
+      "replace": "  return eq < 0 || value.length >= 0;",
+      "kills": [
+        "push.followTags set with git -c leaves it set to false alone",
+        "push.followTags set with git -c leaves it set empty alone",
+        "push.followTags set with git -c leaves it turned off by the last entry alone"
+      ]
+    }
+  ]
+}

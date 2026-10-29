@@ -10,6 +10,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
+import { isolateAgentChatHome } from "../test-support/agent-chat-home.js";
 import { TEST_BRIEF } from "../test-support/brief.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -28,6 +29,7 @@ import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeSte
 import type { Warmth } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
 
 const REPO = "octo/demo";
@@ -71,7 +73,7 @@ function fakeAgents(rows: AgentRow[]) {
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), mergeBaseExceptionMigration(42)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -175,11 +177,7 @@ describe("sh-wake-implementer: who is woken", () => {
     const rows = JSON.stringify([row("impl-a")]);
     writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '%s' '${rows}'\n`);
     chmodSync(bin, 0o755);
-    // agent-dispatch refuses a spawn unless $HOME/.agent-chat/profiles/<profile>.json is headless.
-    mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
-    writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
-    vi.stubEnv("HOME", SCRATCH);
-    vi.stubEnv("AGENT_CHAT_HOME", join(SCRATCH, ".agent-chat"));
+    isolateAgentChatHome(SCRATCH, ["bd-implementer"]);
     try {
       const { run } = wakeStep({ ...scene, noAgents: true, agentChatBin: bin, warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
       await run("review", fixFirst("fix the parser"));
@@ -305,6 +303,26 @@ describe("sh-wake-implementer: who is woken", () => {
     const { result } = await scene.run("review", fixFirst("fix it"));
 
     expect(result).toEqual({ kind: "unhandled", reason: "the checkout path for octo/demo is not absolute: repos/demo, so a successor has no checkout to start in" });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
+  it("starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)", async () => {
+    const scene = wakeStep({ rows: [] });
+
+    const { result } = await scene.run("review", fixFirst("fix the parser"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
+    expect(scene.agents.asked).toMatchObject([{ verb: "spawn", name: "impl-a-s1", cwd: MAIN_CHECKOUT }]);
+    expect(scene.agents.asked[0]!.message).toContain("taking over octo/demo#1 from impl-a");
+    expect(scene.store.get().authorsOf("run-1")).toMatchObject([{ name: "impl-a-s1", role: "successor", predecessor: "impl-a" }]);
+  });
+
+  it("still returns unhandled for a lineage gone from the roster when no checkout of the repo is bound (TP-4045)", async () => {
+    const scene = wakeStep({ rows: [], checkoutFor: () => undefined });
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "no checkout path is configured for octo/demo, so a successor has no checkout to start in" });
     expect(scene.agents.asked).toEqual([]);
   });
 

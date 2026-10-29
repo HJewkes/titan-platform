@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "slot-overrides reads cut beats against resolved.beats",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "const beats = keptBeats(ScriptSchema.parse(readJson(input, \"script\")).beats, resolved);",
+      "replace": "const beats = ScriptSchema.parse(readJson(input, \"script\")).beats;",
+      "kills": [
+        "resolve checks over a cut sim beat cuts a failing sim whose slots come from visual.slots, and every resolve gate still passes"
+      ]
+    },
+    {
+      "name": "slot-overrides checks no beat at all",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "const beats = keptBeats(ScriptSchema.parse(readJson(input, \"script\")).beats, resolved);",
+      "replace": "const beats = keptBeats([] as ScriptV1[\"beats\"], resolved);",
+      "kills": [
+        "resolve checks over a cut sim beat holds a kept sim beat's visual.slots to the sim beat spec"
+      ]
+    },
+    {
+      "name": "emphasis-target falls back to visual.beat for cut beats",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "const beats = keptBeats(script.beats, resolved).map(",
+      "replace": "const beats = script.beats.map(",
+      "kills": [
+        "resolve checks over a cut sim beat leaves a cut beat's emphasis cues out of the emphasis-target gate"
+      ]
+    },
+    {
+      "name": "emphasis-target checks no beat at all",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "const beats = keptBeats(script.beats, resolved).map(",
+      "replace": "const beats = keptBeats([] as ScriptV1[\"beats\"], resolved).map(",
+      "kills": [
+        "resolve checks over a cut sim beat still holds a kept sim beat's emphasis cues to its elements"
+      ]
+    },
+    {
+      "name": "the kept set keeps cut beats",
+      "file": "products/explainer/src/resolve-stage.ts",
+      "find": "return beats.filter((beat) => !cut.has(beat.id));",
+      "replace": "return [...beats];",
+      "kills": [
+        "resolve checks over a cut sim beat cuts a failing sim whose slots come from visual.slots, and every resolve gate still passes",
+        "resolve checks over a cut sim beat leaves a cut beat's emphasis cues out of the emphasis-target gate"
+      ]
+    }
+  ]
+}

@@ -3,9 +3,12 @@ import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { verdictAt } from "./verdict-at.js";
 import {
+  AWAIT_NEW_HEAD,
+  MAIN_CI_TIMEOUT,
   MAIN_GATES,
   MERGE_GATE,
   PR_GATES,
+  SENT_BACK_GATE,
   coordinatorEvidencePolicy,
   gatePr,
   landGate,
@@ -16,6 +19,7 @@ import {
   type CheckRunFact,
   type CoordinatorEvidence,
   type LandGate,
+  type MainMerge,
   type RunFacts,
 } from "./coordinator-evidence.js";
 import type { FactoryHost } from "./host.js";
@@ -58,6 +62,7 @@ function readFor(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun, p
   if (step === MERGE_GATE && payload.decision === "merge") return readMerge(sources, gate, run, payload);
   if (Object.hasOwn(MAIN_GATES, step)) return readMainGreen(sources, gate);
   if (PR_GATES.has(step) && payload.decision === "abandon") return readPrGone(sources, gate, run);
+  if (step === SENT_BACK_GATE && payload.decision === AWAIT_NEW_HEAD) return readPrAtHead(sources, gate, run);
   return undefined;
 }
 
@@ -116,10 +121,19 @@ export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { state: findings.length > 0 ? "pending" : "green", failing: [] };
 }
 
-/** The base branch's tip, when it contains the merge sha and every check that judges main passed (the required contexts when the base has them, else every Actions run). */
-async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> {
+/** A main-ci-timeout gate asks the question Shepherd's own clear answers, so it needs the same required contexts. */
+function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> | undefined {
   const main = mainGate(gate);
-  if (!main) return undefined;
+  return main && mainGreenAt(sources, gate.id, main, { required: stepOf(gate.id) === MAIN_CI_TIMEOUT });
+}
+
+export type MainGreenEvidence = Extract<CoordinatorEvidence, { kind: "main-green" }>;
+
+/**
+ * The base branch's tip, when it contains the merge sha and every check that judges main passed: the required contexts when
+ * the base has them, else every Actions run. With `required`, a base with no readable required contexts is no evidence.
+ */
+export async function mainGreenAt(sources: Pick<EvidenceSources, "port" | "now">, gateId: string, main: MainMerge, { required }: { required: boolean }): Promise<MainGreenEvidence | undefined> {
   const { port } = sources;
   const pull = await port.getPr(main.repo, main.pr);
   const tip = pull.merged && pull.mergeSha === main.mergeSha ? await port.getHeadSha(main.repo, pull.baseRef) : null;
@@ -127,28 +141,44 @@ async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promis
   const mergeBaseSha = tip === main.mergeSha ? tip : (await port.compareFiles(main.repo, main.mergeSha, tip)).mergeBaseSha;
   const all = await port.checkRuns(main.repo, tip);
   const { rules } = await readMainRules(port, main.repo, pull.baseRef);
+  if (required && rules === undefined) return undefined;
   const judged = judgeMain(tip, all, rules);
   if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.length > 0) return undefined;
   const runs = withoutSupersededCancels(actionsRunsAt(all, tip)).filter((run) => rules === undefined || rules.contexts.includes(run.name));
-  return { kind: "main-green", gateId: gate.id, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
+  return { kind: "main-green", gateId, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
 }
 
-async function readPrGone(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): Promise<CoordinatorEvidence | undefined> {
+/** The PR the gate names, when it is the run's own PR. */
+function runsPr(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): { repo: string; pr: number } | undefined {
   const target = gatePr(gate);
   const registration = sources.registration(run.id);
   const runPr = run.params.pr === undefined ? registration?.pr : Number(run.params.pr);
-  if (!target || !offersAbandon(gate) || run.params.repo !== target.repo || runPr !== target.pr) return undefined;
+  return target && run.params.repo === target.repo && runPr === target.pr ? target : undefined;
+}
+
+async function readPrGone(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): Promise<CoordinatorEvidence | undefined> {
+  const target = runsPr(sources, gate, run);
+  if (!target || !offersAbandon(gate)) return undefined;
   const pull = await sources.port.getPr(target.repo, target.pr);
   const state = pull.merged ? "merged" : pull.state === "closed" ? "closed" : undefined;
   if (!state) return undefined;
   return { kind: "pr-gone", gateId: gate.id, ...target, state, readAt: readAt(sources) };
 }
 
+/** Records the PR's state and head as read; the policy alone compares them with the gate's head, so an audit re-runs the same check. */
+async function readPrAtHead(sources: EvidenceSources, gate: GateRecord, run: WorkflowRun): Promise<CoordinatorEvidence | undefined> {
+  const target = runsPr(sources, gate, run);
+  if (!target) return undefined;
+  const pull = await sources.port.getPr(target.repo, target.pr);
+  const state = pull.merged ? "merged" : pull.state === "open" ? "open" : "closed";
+  return { kind: "pr-at-head", gateId: gate.id, ...target, state, headSha: pull.headSha, readAt: readAt(sources) };
+}
+
 function runFact({ id, name, conclusion, headSha }: CheckRun): CheckRunFact {
   return { id, name, conclusion: conclusion ?? "none", headSha };
 }
 
-const readAt = (sources: EvidenceSources): string => new Date(sources.now()).toISOString();
+const readAt = (sources: Pick<EvidenceSources, "now">): string => new Date(sources.now()).toISOString();
 
 /** The live sources: Shepherd's port, registration store and freeze store; an unbound freeze store throws, which reads as no evidence. */
 export function evidenceSources(services: ShepherdServices): EvidenceSources {

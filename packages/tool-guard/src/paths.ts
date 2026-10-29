@@ -1,3 +1,4 @@
+import { LinearRegExp } from "@titan-design/fix-proof/linear-regexp";
 import { resolveFrom } from "./shell/path.js";
 
 /**
@@ -140,9 +141,25 @@ export function toAbsolute(value: string, dir: string | null, home: string): str
   return [resolveFrom(home, expanded), resolveFrom("/", expanded)];
 }
 
-/** The entry covering an absolute, wildcard-free path. Matching is by whole segment. */
+/** Answers by list, then home and path; bounded, since every path a script names lands here. */
+const GUARDED_CACHE = new WeakMap<GuardedList, Map<string, GuardedPath | null>>();
+const MAX_GUARDED_ANSWERS = 1024;
+
+/**
+ * The entry covering an absolute, wildcard-free path. Matching is by whole segment. A script of N commands asks
+ * about the same few paths N times in each case pass, and testing them against every pattern each time made a
+ * 34 KiB script take seconds once the patterns ran as an NFA (TP-4255).
+ */
 export function matchGuarded(path: string, list: GuardedList, home: string): GuardedPath | null {
-  return list.paths.find((entry) => covers(entry, path, home)) ?? null;
+  const answers = GUARDED_CACHE.get(list) ?? new Map<string, GuardedPath | null>();
+  GUARDED_CACHE.set(list, answers);
+  const key = `${home}\u0000${path}`;
+  const known = answers.get(key);
+  if (known !== undefined) return known;
+  const entry = list.paths.find((candidate) => covers(candidate, path, home)) ?? null;
+  if (answers.size >= MAX_GUARDED_ANSWERS) answers.clear();
+  answers.set(key, entry);
+  return entry;
 }
 
 /** The first entry one of whose samples the glob `pattern` (absolute) would expand to. */
@@ -204,20 +221,22 @@ function absoluteGlob(pattern: string, home: string): string {
 /** Never throws: `onFail` is the safe reading for the call site if the source still does not compile. */
 function globRegExp(glob: string, onFail: RegExp): RegExp {
   let src = "";
+  // Found once: searching for each `[`'s close would read to the end per unterminated `[`, quadratic in them (TP-4051).
+  const lastClose = glob.lastIndexOf("]");
   for (let i = 0; i < glob.length; ) {
-    const [piece, width] = globPiece(glob, i);
+    const [piece, width] = globPiece(glob, i, lastClose);
     src += piece;
     i += width;
   }
   try {
-    return new RegExp(`^${src}$`);
+    return new LinearRegExp(`^${src}$`);
   } catch {
     return onFail;
   }
 }
 
 /** Regex source for the glob syntax starting at `i`, and how many characters it consumed. */
-function globPiece(glob: string, i: number): [string, number] {
+function globPiece(glob: string, i: number, lastClose: number): [string, number] {
   const rest = glob.slice(i);
   if (rest.startsWith("/**/")) return ["(?:/.*)?/", 4];
   if (rest === "/**") return ["(?:/.*)?", 3];
@@ -225,17 +244,17 @@ function globPiece(glob: string, i: number): [string, number] {
   if (c === "*") return ["[^/]*", 1];
   if (c === "?") return ["[^/]", 1];
   if (c === "[") {
-    const cls = bracketClass(glob, i);
+    const cls = bracketClass(glob, i, lastClose);
     if (cls) return cls;
   }
   return [c.replace(/[.+^${}()|[\]\\]/g, "\\$&"), 1];
 }
 
 /** A bash bracket expression at `i` as a regex class, or null when unterminated (the `[` is then literal). */
-function bracketClass(glob: string, i: number): [string, number] | null {
+function bracketClass(glob: string, i: number, lastClose: number): [string, number] | null {
   const negated = glob[i + 1] === "!" || glob[i + 1] === "^";
   const start = i + (negated ? 2 : 1);
-  const end = glob.indexOf("]", start + 1);
+  const end = lastClose > start ? glob.indexOf("]", start + 1) : -1;
   if (end < 0) return null;
   const body = glob.slice(start, end);
   let members = "";

@@ -14,7 +14,6 @@ import { configuredConsoleAnswers, type ConsoleAnswersOptions } from "./gate-ans
 import { configuredGateNotify, type GateNotifyOptions } from "./gate-notify-sweep.js";
 import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { EXIT } from "./exit-codes.js";
-import type { OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
@@ -27,6 +26,7 @@ import { openFactoryHost, type FactoryHost, type FactoryRoutes, type FactoryHost
 import type { StepRoute } from "@titan-design/workflow";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
 import { registerScorecard } from "./cli-scorecard.js";
+import { registerContextAudit } from "./context-audit/command.js";
 import { registerBotToken } from "./cli-bot-token.js";
 import { registerToolchain } from "./cli-toolchain.js";
 import type { CheckPorts } from "./service-check.js";
@@ -70,8 +70,6 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
-  /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
-  presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
@@ -144,7 +142,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerOwnerGates, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard, registerContextAudit, registerOwnerGates, registerBotToken, registerPlanner, registerAutoresearch]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

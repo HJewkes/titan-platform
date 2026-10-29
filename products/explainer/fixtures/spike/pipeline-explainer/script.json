@@ -340,7 +340,7 @@
    "mode": "explain",
    "band": "diagram",
    "connector_in": "and",
-   "spoken": "Then implementers, which write each change in their own checkout. And Shepherd, which waits for CI, gets a review, and merges to main.",
+   "spoken": "Then implementers, which write each change in their own checkout. And Shepherd, which takes each pull request, waits for CI, gets a review, and merges to main.",
    "fact_ids": [
     "F5"
    ],

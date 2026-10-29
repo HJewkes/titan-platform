@@ -1,6 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
+import { AGENT_CHAT_NOT_FOUND, DEFAULT_CAP_EXEMPT_ASKERS, DEFAULT_CONSOLE_PORT, DEFAULT_STORY_PORT, resolveConfig, type Machine } from "./config.js";
+import { seatNotifier } from "./round-notice-transport.js";
 
 const HOME = "/srv/tester";
 
@@ -95,6 +96,12 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_DECISIONS_FILE: "d.md" }, HOME)).toThrow(/TITAN_CONSOLE_DECISIONS_FILE must be an absolute/);
   });
 
+  it("exempts titan-factory from the ask cap unless TITAN_CONSOLE_CAP_EXEMPT_ASKERS names the list, and an empty one exempts nobody", () => {
+    expect(resolveConfig({}, HOME).capExemptAskers).toEqual([...DEFAULT_CAP_EXEMPT_ASKERS]);
+    expect(resolveConfig({ TITAN_CONSOLE_CAP_EXEMPT_ASKERS: " deploy-bot , titan-factory ," }, HOME).capExemptAskers).toEqual(["deploy-bot", "titan-factory"]);
+    expect(resolveConfig({ TITAN_CONSOLE_CAP_EXEMPT_ASKERS: "" }, HOME).capExemptAskers).toEqual([]);
+  });
+
   it("reads no autonomy tree unless one is named, and materializes into titan-coordinator's config dir", () => {
     expect(resolveConfig({}, HOME, "linux").configStore).toEqual({ autonomyTree: null, coordinatorFile: path.join(HOME, ".config", "titan-coordinator", "coordinator.json") });
     expect(resolveConfig({ TITAN_CONSOLE_AUTONOMY_DIR: "~/tree", TITAN_CONSOLE_COORDINATOR_FILE: "/cfg/c.json" }, HOME).configStore).toEqual({ autonomyTree: path.join(HOME, "tree"), coordinatorFile: "/cfg/c.json" });
@@ -125,6 +132,62 @@ describe("console config", () => {
       { seat: "beta", prefix: "be" },
     ]);
     expect(() => resolveConfig({ TITAN_CONSOLE_SEATS: "alpha" }, HOME)).toThrow(/seat=prefix/);
+  });
+});
+
+describe("console agent-chat binary", () => {
+  const machine = (...executables: string[]): Machine => ({ hostname: () => "box", addresses: () => [], isExecutable: (file) => executables.includes(file) });
+  const PATH = ["/opt/none/bin", "/opt/chat/bin"].join(path.delimiter);
+
+  it("resolves the bare default on PATH to an absolute path, with no warning", () => {
+    const config = resolveConfig({ PATH }, HOME, "linux", machine("/opt/chat/bin/agent-chat"));
+
+    expect(config.agentChatBin).toBe("/opt/chat/bin/agent-chat");
+    expect(config.startupWarnings).toEqual([]);
+  });
+
+  it("keeps an absolute or ~/ TITAN_CONSOLE_AGENT_CHAT_BIN as given", () => {
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_AGENT_CHAT_BIN: "/srv/chat/agent-chat" }, HOME, "linux", machine()).agentChatBin).toBe("/srv/chat/agent-chat");
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_AGENT_CHAT_BIN: "~/bin/agent-chat" }, HOME, "linux", machine()).agentChatBin).toBe(path.join(HOME, "bin", "agent-chat"));
+  });
+
+  it("turns seat notices off with one warning naming TITAN_CONSOLE_AGENT_CHAT_BIN when the name is not on PATH", () => {
+    const config = resolveConfig({ PATH }, HOME, "linux", machine("/opt/chat/bin/other"));
+
+    expect(config.agentChatBin).toBeUndefined();
+    expect(config.startupWarnings).toEqual([expect.stringContaining(AGENT_CHAT_NOT_FOUND)]);
+    expect(AGENT_CHAT_NOT_FOUND).toMatch(/TITAN_CONSOLE_AGENT_CHAT_BIN/);
+  });
+
+  it("keeps a relative path with a slash, which the send still refuses", async () => {
+    const config = resolveConfig({ PATH, TITAN_CONSOLE_AGENT_CHAT_BIN: "bin/agent-chat" }, HOME, "linux", machine("/opt/chat/bin/agent-chat"));
+
+    expect(config.agentChatBin).toBe("bin/agent-chat");
+    await expect(seatNotifier("bin/agent-chat")("alpha", "answered")).rejects.toThrow(/binary path must be absolute, got 'bin\/agent-chat'/);
+  });
+});
+
+describe("console explainer binary", () => {
+  const machine = (...executables: string[]): Machine => ({ hostname: () => "box", addresses: () => [], isExecutable: (file) => executables.includes(file) });
+  const PATH = ["/opt/none/bin", "/opt/video/bin"].join(path.delimiter);
+
+  it("resolves the bare default on PATH and keeps an absolute or ~/ TITAN_CONSOLE_EXPLAINER_BIN as given", () => {
+    expect(resolveConfig({ PATH }, HOME, "linux", machine("/opt/video/bin/explainer")).explainerBin).toBe("/opt/video/bin/explainer");
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "/srv/video/explainer" }, HOME, "linux", machine()).explainerBin).toBe("/srv/video/explainer");
+    expect(resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "~/bin/explainer" }, HOME, "linux", machine()).explainerBin).toBe(path.join(HOME, "bin", "explainer"));
+  });
+
+  it("leaves the binary unset when the name is not on PATH, with no start-up warning of its own", () => {
+    const missing = resolveConfig({ PATH }, HOME, "linux", machine("/opt/video/bin/other"));
+
+    expect(missing.explainerBin).toBeUndefined();
+    expect(missing.startupWarnings).toEqual([expect.stringContaining(AGENT_CHAT_NOT_FOUND)]);
+  });
+
+  it("keeps a relative path as given, so the props panel's gap names it", () => {
+    const relative = resolveConfig({ PATH, TITAN_CONSOLE_EXPLAINER_BIN: "bin/explainer" }, HOME, "linux", machine("/opt/video/bin/explainer"));
+
+    expect(relative.explainerBin).toBe("bin/explainer");
   });
 });
 

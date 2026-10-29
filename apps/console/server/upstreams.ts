@@ -6,8 +6,9 @@ import { activeWorkClient, type ActiveWork } from "./active-work.js";
 import { autoresearchReader } from "./autoresearch.js";
 import { brokerReader } from "./broker.js";
 import { brokerAnswerer } from "./broker-answer.js";
+import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
-import type { ConsoleConfig } from "./config.js";
+import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
 import { factoryGateAnswer } from "./gate-answer.js";
@@ -16,7 +17,7 @@ import { factoryOwnerAction } from "./owner-action.js";
 import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
-import { shepherdReader } from "./shepherd.js";
+import { shepherdReader, type ShepherdSource } from "./shepherd.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
@@ -125,6 +126,7 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
     actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR),
     client: factoryOwnerAction(config.factoryPort),
     answerer: brokerAnswerer({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    verdicter: brokerVerdicter({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
   };
 }
 
@@ -139,7 +141,7 @@ function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
 /** The sources that read dirs on this machine, which other processes write. */
 function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
-    inbox: { dir: config.inboxDir },
+    inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
     rounds: {
       dir: config.roundsDir,
       lineage: shipLineageReader(),
@@ -149,6 +151,19 @@ function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" 
     videos: videoCatalog({ roots: config.videoRoots ?? [] }),
     ...(config.reviewsDir !== undefined && { reviews: { dir: config.reviewsDir } }),
   };
+}
+
+function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Logger): ConsoleSources["listeners"] {
+  return createRoundListeners({
+    enabled: config.gateAnswers,
+    roundsDir: config.roundsDir,
+    shepherd,
+    answer: factoryGateAnswer(config.factoryPort),
+    ...(config.inboxActions === true && { planApproval: { actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) } }),
+    ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
+    subscriptionsDir: subscriptionsDirOf(config.stateDir),
+    logger,
+  });
 }
 
 export function createSources(config: ConsoleConfig, logger: Logger = consoleLogger): ConsoleSources {
@@ -166,15 +181,9 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     factory: factoryNeeds(config.factoryPort),
     hostSurfaces: config.hostSurfaces,
     decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
-    listeners: createRoundListeners({
-      enabled: config.gateAnswers,
-      roundsDir: config.roundsDir,
-      shepherd,
-      answer: factoryGateAnswer(config.factoryPort),
-      ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
-      subscriptionsDir: subscriptionsDirOf(config.stateDir),
-      logger,
-    }),
+    listeners: listenersOf(config, shepherd, logger),
+    ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
+    ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
   };

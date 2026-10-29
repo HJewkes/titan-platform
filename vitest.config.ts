@@ -3,6 +3,7 @@ import { setFlagsFromString } from "node:v8";
 import { defineConfig } from "vitest/config";
 import { strayDependency } from "./scripts/own-node-modules.mjs";
 import { forceRerunTriggers, REPO_TIER_INCLUDE } from "./scripts/test-affected.mjs";
+import { WAIT_BUDGET_MS } from "./scripts/wait-budget.mjs";
 
 // Refuse rather than run a parent checkout's vitest, which can be a major version behind this lockfile.
 const strayVitest = strayDependency(fileURLToPath(new URL(".", import.meta.url)), "vitest");
@@ -19,6 +20,23 @@ const needsProcess = [
   "products/session-miner/src/insights/define.test.ts",
   "products/session-miner/src/memory/discover.test.ts",
 ];
+
+// active-work kept its tests in a __tests__ tree when it was folded in (TP-3535). Its sandbox-home setup redirects
+// os.homedir() to a temp dir per file, so a test that forgets to stub home cannot touch the operator's files.
+const activeWorkTests = ["products/active-work/__tests__/**/*.test.ts"];
+const activeWorkSetup = ["products/active-work/__tests__/setup/sandbox-home.ts"];
+// These assign process.env.HOME or spy on os.homedir() in-process.
+const activeWorkNeedsProcess = [
+  "products/active-work/__tests__/commands/setup.test.ts",
+  "products/active-work/__tests__/integration/end-to-end.test.ts",
+  "products/active-work/__tests__/server/session-index-watch.test.ts",
+  "products/active-work/__tests__/setup/test-helpers-guard.test.ts",
+];
+
+// Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
+// worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
+// this process, which its threads share and its forks inherit.
+process.env.TZ = "UTC";
 
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
 // workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
@@ -41,12 +59,20 @@ export default defineConfig({
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
+    // In-test waits get their own budget below testTimeout; scripts/wait-budget.mjs says why.
+    setupFiles: ["products/factory/src/test-support/vitest-setup.ts", "scripts/vitest-wait-budget.mjs"],
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
     maxWorkers: 4,
+    // Vitest's 5 s default is a wall budget, and a loaded runner stretches wall time 10x or more: CI puts 4 workers on
+    // 4 vCPUs beside the main thread's imports and every git, bash and node child the tests spawn. Tests that take
+    // 0.3 s idle reached 5.2 s there (TP-3976, TP-3973, TP-3974, TP-3977). 30 s matches the fix-proof judge's
+    // --testTimeout and still catches a hang.
+    testTimeout: 30_000,
+    expect: { poll: { timeout: WAIT_BUDGET_MS } },
     forceRerunTriggers: forceRerunTriggers(),
     projects: [
       {
@@ -85,6 +111,27 @@ export default defineConfig({
           maxWorkers: 1,
           execArgv: forksHeap,
           include: needsProcess,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "active-work",
+          pool: "threads",
+          include: activeWorkTests,
+          exclude: ["**/node_modules/**", ...activeWorkNeedsProcess],
+          setupFiles: activeWorkSetup,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "active-work-forks",
+          pool: "forks",
+          maxWorkers: 1,
+          execArgv: forksHeap,
+          include: activeWorkNeedsProcess,
+          setupFiles: activeWorkSetup,
         },
       },
     ],

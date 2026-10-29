@@ -1,0 +1,13 @@
+schema: beat-system/v1
+id: example-first
+version: 0.1.0
+source: "video-profiles plan §B.2 (example before generality) [W46, W18]"
+summary: "A concrete example before any generality, then the key idea, how it was shown, the result, its limits, and what it changes for us."
+steps:
+  - { beats: [hook, user-flow, stat], does: "One concrete example, before any general statement." }
+  - { beats: [claim-card], does: "The one key idea the example shows." }
+  - { beats: [info-flow, schema, sequence, sim], does: "How it was shown, as a diagram the pointer follows.", optional: true }
+  - { beats: [replot, stat, compare], does: "The result, with its interval and grade." }
+  - { beats: [claim-card, list], does: "Its limits: how far to trust it." }
+  - { beats: [takeaways, rule-diff, compare], does: "So for us: what it changes here." }
+  - { beats: [button], does: "The button." }

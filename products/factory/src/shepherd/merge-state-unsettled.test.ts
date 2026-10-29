@@ -127,7 +127,7 @@ function start(host: FactoryHost, w: World): string {
 
 /** The run goes on to read main CI after the merge, which this fake never reports, so the merge is what a test waits on. */
 async function merged(w: World): Promise<void> {
-  await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 10_000 });
+  await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true));
 }
 
 function settleRecords(host: FactoryHost, runId: string): { headSha: string; since: number; at: number; spent: boolean }[] {
@@ -154,7 +154,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(host, gateId(runId, "approve-merge"));
 
     const prompt = host.gates.get(gateId(runId, "approve-merge"))!.prompt;
     expect(prompt).toContain("shepherd-merge-guard/merge-state-unsettled");
@@ -175,7 +175,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const runId = start(host, w);
 
     const pendingApproval = () => host.pendingGates().find((pending) => pending.runId === runId && pending.stepId.startsWith("approve-merge"));
-    await vi.waitFor(() => expect(pendingApproval()).toBeDefined(), { timeout: 10_000 });
+    await vi.waitFor(() => expect(pendingApproval()).toBeDefined());
     const { gate } = pendingApproval()!;
 
     expect(gate.prompt).toMatch(/unsettled for 2\d min/);
@@ -191,7 +191,7 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await gateOpened(host, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(host, gateId(runId, "approve-merge"));
 
     expect(settleRecords(host, runId)).toEqual([]);
     expect(w.collections.get(H1)).toBe(1);
@@ -219,14 +219,14 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const w = world(() => "unknown");
     const first = open(w, dbPath);
     const runId = start(first, w);
-    await vi.waitFor(() => expect(settleRecords(first, runId).length).toBeGreaterThanOrEqual(3), { timeout: 10_000 });
+    await vi.waitFor(() => expect(settleRecords(first, runId).length).toBeGreaterThanOrEqual(3));
     first.close();
     hosts.splice(hosts.indexOf(first), 1);
     const second = open(w, dbPath);
     const since = settleRecords(second, runId)[0]!.since;
 
     await second.adopt();
-    await gateOpened(second, gateId(runId, "approve-merge"), 10_000);
+    await gateOpened(second, gateId(runId, "approve-merge"));
 
     expect(new Set(settleRecords(second, runId).map((settle) => settle.since))).toEqual(new Set([since]));
     expect(second.gates.get(gateId(runId, "approve-merge"))!.prompt).toMatch(/unsettled for 2\d min/);
@@ -251,7 +251,7 @@ describe("a MERGE whose mergeability stays unsettled past the bound, with a seat
     const host = open(w);
     const runId = start(host, w);
 
-    await vi.waitFor(() => expect(w.clock.now).toBeGreaterThanOrEqual(45 * MINUTE), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.clock.now).toBeGreaterThanOrEqual(45 * MINUTE));
 
     expect(w.notices).toHaveLength(1);
     expect(w.notices[0]!.seat).toBe("trusted-seat");
@@ -283,7 +283,7 @@ describe("a MERGE whose mergeability stays unsettled past the bound, with a seat
     const host = open(w);
     const runId = start(host, w);
 
-    await vi.waitFor(() => expect(w.notices).toHaveLength(2), { timeout: 10_000 });
+    await vi.waitFor(() => expect(w.notices).toHaveLength(2));
 
     expect(w.notices.map((notice) => notice.text.includes(`at head ${H2}`))).toEqual([false, true]);
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();

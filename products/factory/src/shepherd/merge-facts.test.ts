@@ -779,6 +779,80 @@ describe("a fact that cannot be read", () => {
   });
 });
 
+describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => {
+  const CI = ".github/workflows/ci.yml";
+  const WEAKENED = { ciPolicy: { kind: "weakened" as const, keys: ["permissions" as const] } };
+  const seeded = () => {
+    const fake = world([{ path: CI, status: "modified" }, { path: "src/a.ts", status: "modified" }]);
+    fake.files.set(`main:${CI}`, { content: "permissions:\n  contents: write\n", blobSha: "b1" });
+    fake.files.set(`${HEAD}:${CI}`, { content: "permissions:\n  contents: read\n", blobSha: "b2" });
+    return fake;
+  };
+
+  /** `count` changed .github/ files at long paths, each with 30 changed lines that JSON escapes to twice their length. */
+  const manyFiles = (count: number) => {
+    const paths = Array.from({ length: count }, (_, i) => `.github/workflows/${"p".repeat(150)}-${i}.yml`);
+    const fake = world(paths.map((path) => ({ path, status: "modified" })));
+    const content = (side: string) => Array.from({ length: 15 }, (_, j) => `k${j}: ${side}${'"\\'.repeat(200)}`).join("\n");
+    for (const path of paths) {
+      fake.files.set(`main:${path}`, { content: content("a"), blobSha: "b1" });
+      fake.files.set(`${HEAD}:${path}`, { content: content("b"), blobSha: "b2" });
+    }
+    return fake;
+  };
+
+  it("reads each changed .github/ file at the base and the head and records its changed lines", async () => {
+    const evidence = await collect(seeded(), WEAKENED);
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.ciPolicyChanges).toEqual([{ path: CI, lines: [{ side: "-", n: 2, text: "  contents: write" }, { side: "+", n: 2, text: "  contents: read" }], omitted: 0 }]);
+  });
+
+  it("records the head blob of every changed path, .github/ or not, null for one absent at head", async () => {
+    const evidence = await collect(seeded(), WEAKENED);
+
+    expect(evidence.record.headBlobs).toEqual({ [CI]: "b2", "src/a.ts": null });
+  });
+
+  it("reads the first 10 of 300 changed .github/ files, names the rest unread and keeps the comment under 60,000 characters", async () => {
+    const fake = manyFiles(300);
+    const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(port.getFile).toHaveBeenCalledTimes(20);
+    expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read", "the head blobs of the changed files are unread: 300 changed files, more than the 20 a plan approval pins"]);
+    expect(evidence.record).not.toHaveProperty("headBlobs");
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.ciPolicyChanges?.reduce((sum, change) => sum + change.lines.length, 0)).toBe(120);
+    expect(evidenceComment(evidence.record).length).toBeLessThan(60_000);
+  });
+
+  it("reads no file for an unchanged line", async () => {
+    const fake = seeded();
+    const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
+
+    const evidence = await mergeEvidence(port, { ...input, ciPolicy: { kind: "unchanged" } }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(port.getFile).not.toHaveBeenCalled();
+    expect(evidence.record).not.toHaveProperty("ciPolicyChanges");
+    expect(evidence.record).not.toHaveProperty("headBlobs");
+  });
+
+  it("still gates when a file read fails, naming the unread file in unreadFacts and not the error's text", async () => {
+    const port = { ...githubPort(seeded().wire), getFile: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
+
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+
+    expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`, "the head blobs of the changed files are unread: HTTP 502"]);
+    expect(evidence.record).not.toHaveProperty("headBlobs");
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "ci-policy-weakened" } });
+    expect(evidence.record.decision.reason).toContain(CI);
+    expect(evidence.record.decision.reason).not.toContain("/internal");
+    expect(evidence.record.ciPolicyChanges).toEqual([]);
+  });
+});
+
 describe("approve-merge under merge:auto", () => {
   it("merges with one merge-policy record naming authority/MRG-AU-RV, the evidence record, no hitl row and one comment", async () => {
     const fake = world();

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
-import { FAILED_ROUND_WORDS, INFRA_FAILURES, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { isCorrectionFailure } from "./correct-verdict.js";
+import { FAILED_ROUND_WORDS, INFRA_FAILURES, MALFORMED_ROUND, MAX_FAILED_ROUNDS, MAX_SEAT_HELD_ROUNDS, MAX_THROTTLED_ROUNDS, SEAT_HELD_ROUNDS_WORDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { onEscalated, type FailedRoundsRun } from "./failed-rounds-demotion.js";
 import { onFixFirstEscalated, type FixFirstDemotionRun } from "./fix-first-demotion.js";
@@ -53,6 +54,7 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
+  if (routed.verdict.kind === "MERGE") run.openFrom = run.fixFirstTrail.length;
   if (kind === "fix-first" && routed.verdict.kind === "NO_REPRO" && !recordedNoReproAsFixFirst(run.ctx)) return undefined;
   if (kind === "fix-first") {
     run.fixFirstTrail.push(routed.verdict.kind === "FIX_FIRST" ? fixFirstEntry(headSha, routed.verdict.text) : { headSha, text: "", noRepro: true });
@@ -63,7 +65,7 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;
-  run.failedOutcomes.push(route === "wake-fixer" ? `${outcome} at a conflict` : outcome);
+  run.failedOutcomes.push(route === "wake-fixer" ? `${outcome} at a conflict` : failedRoundLabel(routed));
   const repeated = outcome === "no-verdict" && route === "fresh-reviewer" && repeatsLastPanel(run, headSha) && !recordedAnotherReview(run.ctx, headSha);
   countFailedReviewers(run, headSha);
   if (repeated) return repeatedNoVerdictEscalation(routed);
@@ -75,6 +77,10 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
 function recordedAnotherReview(ctx: WorkflowContext, headSha: string): boolean {
   const next = ctx.historyNext();
   return next !== undefined && next !== autoPassStepId(DIAGNOSIS_RULE, headSha);
+}
+
+function failedRoundLabel({ verdict, outcome }: Routed): string {
+  return verdict.kind === "none" && isCorrectionFailure(verdict.reason) ? MALFORMED_ROUND : outcome;
 }
 
 function lastRoundDetail({ verdict, outcome, headSha }: Routed): string {

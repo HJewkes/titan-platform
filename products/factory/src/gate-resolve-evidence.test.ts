@@ -10,10 +10,11 @@ import { z } from "zod";
 import type { EvidenceSources } from "./coordinator-evidence-read.js";
 import { defineWorkflow } from "./definition.js";
 import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecision, sentBackDecision, stuckBehindDecision } from "./gate-brief.js";
-import { resolveGate, type OwnerPresence } from "./gate-resolve.js";
+import { resolveGate } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./shepherd/policy.js";
 import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
+import { fakeOwnerHelper } from "./test-support/owner-edges.js";
 import { codeRoute, step } from "./workflows/land.js";
 import { tableGateRule } from "./workflows/land-approval.js";
 
@@ -28,7 +29,7 @@ const NOW = Date.parse("2026-10-07T18:00:00Z");
 const MECHANICAL = authorityGateReason(HEAD, pendingCheck(HEAD));
 
 interface Scenario {
-  gate: "merge" | "sent-back" | "ci-failed" | "main-red" | "main-frozen";
+  gate: "merge" | "sent-back" | "ci-failed" | "main-red" | "main-frozen" | "main-ci-timeout";
   rule?: string;
   /** The recorded merge decision's reason; defaults to MRG-AU gating only on a required check still running. */
   reason?: string;
@@ -54,17 +55,22 @@ const shepherdPr = defineWorkflow({
     { id: "ci-failed", kind: "assisted" },
     { id: "main-red", kind: "assisted" },
     { id: "main-frozen", kind: "assisted" },
+    { id: "main-ci-timeout", kind: "assisted" },
     { id: "stuck-behind", kind: "assisted" },
   ],
   run: async (ctx) => {
     const scenario = JSON.parse(ctx.param("scenario")!) as Scenario;
     if (scenario.gate === "main-red") return void (await ctx.assisted("main-red", `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. Acknowledge.`, { schema: OwnerAck, brief: acknowledgeBrief({ repo: REPO, mergeSha: MERGE_SHA, headline: "Main CI is red", detail: "failed: validate" }) }));
+    if (scenario.gate === "main-ci-timeout") {
+      const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is not red, but unread: no completed main run containing it. Acknowledge.`;
+      return void (await ctx.assisted("main-ci-timeout", prompt, { schema: OwnerAck, brief: acknowledgeBrief({ repo: REPO, mergeSha: MERGE_SHA, headline: "No completed main CI run contains the merge", detail: "unread" }) }));
+    }
     if (scenario.gate === "main-frozen") {
       const prompt = `Main CI on ${REPO} at merge ${MERGE_SHA} (PR #1) is red: failed: validate. The repo is frozen. Stay frozen, or unfreeze?`;
       return void (await ctx.assisted("main-frozen", prompt, frozenDecision({ repo: REPO, mergeSha: MERGE_SHA, situation: prompt })));
     }
     if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: 1, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
-    if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", "Sent back.", sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
+    if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", `The review of PR #1 in ${REPO} at head ${HEAD} said FIX_FIRST. Await a new head or abandon?`, sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table = "", rowId = ""] = (scenario.rule ?? "authority/MRG-AU").split("/");
     const reason = scenario.reason ?? MECHANICAL;
@@ -128,19 +134,14 @@ function mergedPr(gh: FakeGitHub): void {
   Object.assign(gh.pr(1), { state: "closed", merged: true, mergeSha: MERGE_SHA });
 }
 
-function presenceStub(): { presence: OwnerPresence; reasons: string[] } {
-  const reasons: string[] = [];
-  return { reasons, presence: async (reason) => (reasons.push(reason), undefined) };
-}
-
-const STEPS: Record<Scenario["gate"] | "stuck-behind", string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen", "stuck-behind": "stuck-behind" };
+const STEPS: Record<Scenario["gate"] | "stuck-behind", string> = { merge: "approve-merge", "sent-back": "sh-sent-back", "ci-failed": "ci-failed", "main-red": "main-red", "main-frozen": "main-frozen", "main-ci-timeout": "main-ci-timeout", "stuck-behind": "stuck-behind" };
 
 async function resolveAs(world: World, gate: Scenario["gate"] | "stuck-behind", payload: object) {
-  const { presence, reasons } = presenceStub();
+  const { reasons } = fakeOwnerHelper(undefined);
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: AGENT_SHELL };
-  const code = await resolveGate(world.host, io, world.runId, STEPS[gate], JSON.stringify(payload), presence, world.sources).catch((error: Error) => ((err += error.message), 1));
+  const code = await resolveGate(world.host, io, world.runId, STEPS[gate], JSON.stringify(payload), world.sources).catch((error: Error) => ((err += error.message), 1));
   return { code, out, err, reasons, gate: world.host.gates.get(`${world.runId}/${STEPS[gate]}`) };
 }
 
@@ -267,8 +268,9 @@ describe("coordinator resolve of an approve-merge gate on fresh evidence", () =>
   it("an owner terminal resolves as the owner and reads no evidence", async () => {
     const world = await paused({ gate: "merge" });
     const io = { stdout: () => undefined, stderr: () => undefined, env: {} };
+    fakeOwnerHelper(undefined);
 
-    await resolveGate(world.host, io, world.runId, "approve-merge", JSON.stringify(MERGE), presenceStub().presence, world.sources);
+    await resolveGate(world.host, io, world.runId, "approve-merge", JSON.stringify(MERGE), world.sources);
 
     expect(world.gh.calls).toEqual([]);
     expect(world.host.gates.get(`${world.runId}/approve-merge`)).toMatchObject({ resolvedBy: { class: "owner-terminal" }, resolvedEvidence: undefined });
@@ -377,6 +379,76 @@ describe("coordinator abandon of a gate whose PR is gone", () => {
   });
 });
 
+describe("coordinator resolve of a sent-back gate (owner decision 529)", () => {
+  const AWAIT = { decision: "await-new-head" };
+
+  it("waits for a new head while the PR is open at the gate's head, storing the PR read", async () => {
+    const world = await paused({ gate: "sent-back" });
+
+    const result = await resolveAs(world, "sent-back", AWAIT);
+
+    expect(result.reasons).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("as coordinator tc-synthetic on pr-at-head evidence");
+    expect(result.gate).toMatchObject({
+      status: "resolved",
+      payload: AWAIT,
+      resolvedBy: { class: "coordinator", id: "tc-synthetic" },
+      resolvedEvidence: { kind: "pr-at-head", repo: REPO, pr: 1, state: "open", headSha: HEAD, readAt: "2026-10-07T18:00:00.000Z" },
+    });
+  });
+
+  it("falls back on await-new-head once the PR moved off the gate's head", async () => {
+    const world = await paused({ gate: "sent-back" });
+    world.gh.pushHead(1, fakeSha("pushed"));
+
+    expectFellBack(await resolveAs(world, "sent-back", AWAIT));
+  });
+
+  it("falls back on await-new-head once the PR closed unmerged", async () => {
+    const world = await paused({ gate: "sent-back" });
+    world.gh.pr(1).state = "closed";
+
+    expectFellBack(await resolveAs(world, "sent-back", AWAIT));
+  });
+
+  it("falls back on await-new-head carrying anything beside the decision", async () => {
+    const world = await paused({ gate: "sent-back" });
+
+    expectFellBack(await resolveAs(world, "sent-back", { decision: "await-new-head", headSha: HEAD }));
+  });
+
+  it("abandons once the PR closed unmerged, and falls back on an abandon while it is open", async () => {
+    const closed = await paused({ gate: "sent-back" });
+    closed.gh.pr(1).state = "closed";
+    const open = await paused({ gate: "sent-back" });
+
+    expect((await resolveAs(closed, "sent-back", { decision: "abandon" })).gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "closed" } });
+    expectFellBack(await resolveAs(open, "sent-back", { decision: "abandon" }));
+  });
+
+  it("still refuses a coordinator's approve-merge whose evidence fails, and every other gate's await-style answer", async () => {
+    const merge = await paused({ gate: "merge" });
+    merge.gh.pushHead(1, fakeSha("pushed"));
+    const ciFailed = await paused({ gate: "ci-failed" });
+
+    expectFellBack(await resolveAs(merge, "merge", MERGE));
+    expectFellBack(await resolveAs(ciFailed, "ci-failed", { decision: "await-fix", headSha: HEAD }));
+  });
+
+  it.each([
+    ["an approve-merge merge", "merge", "approve-merge", MERGE],
+    ["a sent-back abandon", "sent-back", "sh-sent-back", { decision: "abandon" }],
+  ] as const)("refuses open-at-head evidence written straight to the store for %s", async (_case, gate, step, payload) => {
+    const world = await paused({ gate });
+    const gateId = `${world.runId}/${step}`;
+    const evidence = { kind: "pr-at-head", gateId, repo: REPO, pr: 1, state: "open", headSha: HEAD, readAt: "2026-10-07T18:00:00.000Z" };
+
+    expect(() => world.host.gates.resolve(gateId, payload, { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" }, evidence)).toThrow(GateResolverRefused);
+    expect(world.host.gates.get(gateId)?.status).toBe("pending");
+  });
+});
+
 describe("coordinator acknowledgement of a red main a green main commit contains", () => {
   it("acknowledges main-red and stores the green sha, merge base and run ids", async () => {
     const world = await paused({ gate: "main-red" });
@@ -436,6 +508,62 @@ describe("coordinator acknowledgement of a red main a green main commit contains
     world.gh.setRuns(TIP, [successRun("validate", 21, undefined, "failure")]);
 
     expectFellBack(await resolveAs(world, "main-red", { decision: "acknowledged", mergeSha: MERGE_SHA }));
+  });
+});
+
+describe("coordinator acknowledgement of a main-ci-timeout gate (owner decision 551)", () => {
+  const ACK = { decision: "acknowledged", mergeSha: MERGE_SHA };
+
+  async function timedOut(mergeBaseSha = MERGE_SHA): Promise<World> {
+    const world = await paused({ gate: "main-ci-timeout" });
+    mergedPr(world.gh);
+    world.gh.compares.set(`${MERGE_SHA}...${TIP}`, { mergeBaseSha, files: [] });
+    return world;
+  }
+
+  it("acknowledges once a later main commit containing the merge is green on every required context, storing that read", async () => {
+    const world = await timedOut();
+
+    const result = await resolveAs(world, "main-ci-timeout", ACK);
+
+    expect(result.reasons).toEqual([]);
+    expect(result.code).toBe(0);
+    expect(result.gate).toMatchObject({
+      status: "resolved",
+      payload: ACK,
+      resolvedBy: { class: "coordinator", id: "tc-synthetic" },
+      resolvedEvidence: { kind: "main-green", mergeSha: MERGE_SHA, greenSha: TIP, mergeBaseSha: MERGE_SHA, runs: [{ id: 21, conclusion: "success" }, { id: 22, conclusion: "success" }] },
+    });
+  });
+
+  it("falls back when the green main commit does not contain the merge", async () => {
+    expectFellBack(await resolveAs(await timedOut(fakeSha("elsewhere")), "main-ci-timeout", ACK));
+  });
+
+  it("falls back while a required context on main's tip is red or has not reported", async () => {
+    const red = await timedOut();
+    red.gh.setRuns(TIP, [successRun("validate", 21), successRun("dag-check", 22, undefined, "failure")]);
+    const missing = await timedOut();
+    missing.gh.setRuns(TIP, [successRun("validate", 21)]);
+
+    expectFellBack(await resolveAs(red, "main-ci-timeout", ACK));
+    expectFellBack(await resolveAs(missing, "main-ci-timeout", ACK));
+  });
+
+  it("falls back when the base requires no context, though main-red would take every Actions run there", async () => {
+    const timeout = await timedOut();
+    timeout.gh.rules = { contexts: [], strict: true };
+    const red = await paused({ gate: "main-red" });
+    mergedPr(red.gh);
+    red.gh.compares.set(`${MERGE_SHA}...${TIP}`, { mergeBaseSha: MERGE_SHA, files: [] });
+    red.gh.rules = { contexts: [], strict: true };
+
+    expectFellBack(await resolveAs(timeout, "main-ci-timeout", ACK));
+    expect((await resolveAs(red, "main-red", ACK)).gate?.status).toBe("resolved");
+  });
+
+  it("falls back on an acknowledgement naming another merge", async () => {
+    expectFellBack(await resolveAs(await timedOut(), "main-ci-timeout", { decision: "acknowledged", mergeSha: fakeSha("other") }));
   });
 });
 

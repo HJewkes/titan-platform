@@ -1,0 +1,63 @@
+# The owner's journey (owner-FB1): open on the problem, follow one task through the design with
+# each step's why, then show the architecture that carries it. Its spine is the spine/v1 template
+# that lint-spine and the spine eval items read, so a section rename here is a spine/v1 change.
+schema: narrative-structure/v1
+id: design-journey
+version: 0.1.0
+source: "owner-feedback FB1; the spine/v1 story-spine template"
+summary: "A design explained through one task's journey: the problem, each step with its why, then the architecture that carries the steps."
+fit:
+  ask: "Is the material a design whose parts each carry a step of one task the viewer can follow end to end?"
+  all: [task-journey]
+blocks:
+  - { id: problem, goal: "What hurts today, in the viewer's units, with one fact.", share: 0.15 }
+  - { id: journey, goal: "One task followed step by step; each step says what goes wrong without it.", share: 0.4 }
+  - { id: architecture, goal: "The parts that carry the steps, each with the invariant it keeps.", share: 0.25 }
+  - { id: constraints, goal: "The fixed constraints and the mechanisms they force.", share: 0.1 }
+  - { id: takeaway, goal: "What the viewer can now do or decide.", share: 0.1 }
+hook: "Open on the problem the task hits today; no architecture before the first journey chapter."
+ending: "takeaways+button"
+spine:
+  - title: Viewer
+    body: |-
+      - Who: <persona>. Knows: <list>. Needs, after watching: <1-3 outcomes>.
+  - title: Problem (two sentences at most)
+    body: |-
+      <What hurts today, in the viewer's units, with one fact id.>
+  - title: 'Journey: one task from "<thing we want to build>" to "<merged / deployed>"'
+    body: |-
+      | # | Step | What happens (one clause) | Why it is needed (what goes wrong without it) | Invariant it must keep | Today: how it breaks (fact id) |
+      |---|---|---|---|---|---|
+      | 1 | ... | ... | ... | <invariant id> or — | <fact id> or — |
+  - title: Architecture that carries the task
+    body: |-
+      | Part (map node) | Carries step(s) | Mechanism for each invariant it keeps | Constraint that forces it |
+      |---|---|---|---|
+  - title: Constraints (fixed, not chosen)
+    body: |-
+      | Constraint | The mechanism it forces (a part from §4) |
+      |---|---|
+  - title: "Item ledger: every name the viewer will meet"
+    body: |-
+      | Item | Kind (step / property / constraint / invariant / part / number / concept / left-out) | Defined in beat | Reused in beats |
+      |---|---|---|---|
+
+      Kinds: `part` is only a §4 map node, or a mechanism the design removes or keeps. Declare a removed mechanism
+      `part` whatever its label's wording ("no coordinator in the loop"). A noun of the model that is not a map node is a
+      `concept`. An item named only to say it is left out (§7) is `left-out`.
+  - title: Cut list
+    body: |-
+      <Items in the source doc this video deliberately does not name, and why.>
+  - title: Chapter order (derived from §2-§5, not from the source doc)
+    body: |-
+      | Ch | Question | Spine rows it covers |
+      |---|---|---|
+  - title: "List shapes (optional: a beat not named here is `parallel`)"
+    body: |-
+      | Beat | Shape (parallel / contrast) |
+      |---|---|
+      | <beat id> | contrast |
+
+      A `parallel` list sets out entries of one kind, and its kinds are compared. A `contrast` beat sets an old thing
+      against its replacement and the reason (a removal card), or old pins against new on a split map. Its entries
+      differ in kind by design, so they are never compared.

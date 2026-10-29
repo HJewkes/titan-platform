@@ -78,8 +78,11 @@ export const ESCALATIONS = {
 } as const;
 export type Escalation = keyof typeof ESCALATIONS;
 
+/** How the failed-round list names a round whose one correction came to no verdict; its outcome reads `timeout` (TP-3237). */
+export const MALFORMED_ROUND = "malformed";
+
 /** Round outcomes that say nothing about the head: the reviewer never answered, so a standing MERGE still speaks for it (TP-3697). */
-export const INFRA_FAILURES: ReadonlySet<string> = new Set<ReviewOutcome>(["no-verdict", "timeout", "throttled"]);
+export const INFRA_FAILURES: ReadonlySet<string> = new Set<string>([...(["no-verdict", "timeout", "throttled"] satisfies ReviewOutcome[]), MALFORMED_ROUND]);
 
 /** How a failed-rounds gate names the outcome of its last round. */
 export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {

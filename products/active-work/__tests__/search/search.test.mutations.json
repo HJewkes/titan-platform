@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "transcript search reads tool spans again",
+      "file": "products/active-work/src/search/classes.ts",
+      "find": "const TRANSCRIPT_FIELDS = ['prompt', 'assistant_response'];",
+      "replace": "const TRANSCRIPT_FIELDS = ['prompt', 'assistant_response', 'tool_input', 'tool_result'];",
+      "kills": [
+        "search finds a transcript by its prompt or reply but never by a tool span a graph still holds"
+      ]
+    }
+  ]
+}

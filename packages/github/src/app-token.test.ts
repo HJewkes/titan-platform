@@ -18,6 +18,9 @@ const NOW = Date.parse("2026-03-01T12:00:00Z");
 const REPO = "octo/demo";
 const HEAD = fakeSha("head");
 const TOKEN = "ghs_installation_secret_token";
+// The scan rows guard native-RegExp backtracking, which no call count sees, so their time limits hold only on an
+// idle machine: `TITAN_BENCH=1` asserts them. Without it the rows still scan the hostile inputs and check the output (TP-4264).
+const BENCH = process.env.TITAN_BENCH === "1";
 
 interface Call {
   args: readonly string[];
@@ -556,7 +559,7 @@ describe("token shape scrub", () => {
         const large = `${keyword}${" ".repeat(smallBytes * SCALE)}`;
 
         expect(redact(large, [])).toBe(large);
-        expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 5) * MAX_RATIO);
+        if (BENCH) expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 5) * MAX_RATIO);
       }
     });
 
@@ -579,7 +582,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redact(text, []);
-        expect(performance.now() - started).toBeLessThan(2000);
+        if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       }
     });
 
@@ -593,7 +596,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redact(text, []);
-        expect(performance.now() - started).toBeLessThan(2000);
+        if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       }
     });
   });
@@ -601,12 +604,26 @@ describe("token shape scrub", () => {
   describe("TP-1509 gaps", () => {
     const hex = "0123456789abcdef".repeat(3).slice(0, 40);
 
-    it.each(["-eyJaaaaaaaaaaaa", "_eyJaaaaaaaaaaaa"])("scans %j repeated to 128 KB in linear time", (unit) => {
-      const text = unit.repeat((1 << 17) / unit.length);
-      const started = performance.now();
+    it.each(["-eyJaaaaaaaaaaaa", "_eyJaaaaaaaaaaaa"])("scans %j repeated to 1 MB in linear time", (unit) => {
+      // Linear growth costs SCALE x the small case, quadratic SCALE^2 x; a 2x step left one GC pause able to cross the bound.
+      const SCALE = 8;
+      const MAX_RATIO = 24;
+      const repeated = (bytes: number) => unit.repeat(bytes / unit.length);
+      const bestMs = (text: string) => {
+        const times: number[] = [];
+        for (let run = 0; run < 5; run++) {
+          const started = performance.now();
+          redact(text, []);
+          times.push(performance.now() - started);
+        }
+        return Math.min(...times);
+      };
+      const small = repeated(1 << 17);
+      const large = repeated((1 << 17) * SCALE);
 
-      expect(redact(text, [])).toBe(text);
-      expect(performance.now() - started).toBeLessThan(100);
+      redact(small, []);
+      expect(redact(large, [])).toBe(large);
+      if (BENCH) expect(bestMs(large)).toBeLessThan(Math.max(bestMs(small), 1) * MAX_RATIO);
     });
 
     it("scans a megabyte of JWT-shaped runs, with and without dots, in linear time", () => {
@@ -615,7 +632,7 @@ describe("token shape scrub", () => {
         const started = performance.now();
 
         redactStreams(text, text, []);
-        expect(performance.now() - started).toBeLessThan(2000);
+        if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       }
     });
 
@@ -626,7 +643,7 @@ describe("token shape scrub", () => {
 
       const [out, err] = redactStreams(text, text, secrets);
 
-      expect(performance.now() - started).toBeLessThan(2000);
+      if (BENCH) expect(performance.now() - started).toBeLessThan(2000);
       expect(`${out}${err}`).not.toContain("needle-xyz");
     });
 

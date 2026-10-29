@@ -20,13 +20,17 @@ import {
   answerFileNames,
   depositFileName,
   depositFileNames,
+  withdrawnFileName,
   writeDeposit,
 } from "@titan-design/owner-queue/spool";
 import { EXIT } from "@titan-design/registry";
 import { readSessionEventText } from "@titan-design/session-read";
 import { depositCommand } from "./owner-guard.js";
 
-export const MAX_OPEN_DEPOSITS_PER_ASKER = 200;
+/** TP-4353: a seat holds at most five open owner asks, so it merges or withdraws one before it files another. */
+export const MAX_OPEN_DEPOSITS_PER_ASKER = 5;
+/** The owner's own deposits are notes to self, never a seat's asks, so no per-asker cap applies to them. */
+export const OWNER_ASKERS: ReadonlySet<string> = new Set(["hjewkes", "owner"]);
 export const MAX_OPEN_DEPOSITS = 2000;
 export const INBOX_DEPOSIT = "inbox.deposit";
 
@@ -46,6 +50,8 @@ export interface InboxSource {
   dir: string;
   /** Open deposits across every asker before a new one gets 429; defaults to {@link MAX_OPEN_DEPOSITS}. */
   maxOpenDeposits?: number;
+  /** Automation askers the per-asker cap skips, by exact name; defaults to none. */
+  capExemptAskers?: readonly string[];
   /** Checks a recommendation's locator cite against its transcript line; defaults to session-read's Claude transcripts. */
   events?: SessionEventTextSource;
 }
@@ -105,24 +111,30 @@ function parseDepositName(name: string): FiledDeposit {
   return { asker: decodedPart(stem.slice(0, separator)), depositId: decodedPart(stem.slice(separator + 1)) };
 }
 
-/** An undecodable name counts as open, so a strange file can only tighten a cap. */
-function isAnswered(present: ReadonlySet<string>, { asker, depositId }: FiledDeposit): boolean {
+/** Answered or withdrawn; an undecodable name counts as open, so a strange file can only tighten a cap. */
+function isClosed(present: ReadonlySet<string>, { asker, depositId }: FiledDeposit): boolean {
   if (asker === undefined || depositId === undefined) return false;
   try {
-    return answerFileNames(depositItemId(asker, depositId)).some((name) => present.has(name));
+    const id = depositItemId(asker, depositId);
+    return [...answerFileNames(id), withdrawnFileName(id)].some((name) => present.has(name));
   } catch {
     return false;
   }
 }
 
-/** The asker of every deposit file with no answer beside it, under either the current or the legacy name. */
-function openDepositAskers(names: readonly string[]): (string | undefined)[] {
+/** Every deposit file with no answer or withdrawal beside it, under either the current or the legacy name. */
+function openDeposits(names: readonly string[]): FiledDeposit[] {
   const present = new Set(names);
   return names
     .filter((name) => !name.startsWith(".") && name.endsWith(DEPOSIT_SUFFIX) && !name.endsWith(ANSWER_SUFFIX))
     .map(parseDepositName)
-    .filter((filed) => !isAnswered(present, filed))
-    .map((filed) => filed.asker);
+    .filter((filed) => !isClosed(present, filed));
+}
+
+/** The item ids of one asker's open deposits, so a refusal can name what to merge or withdraw. */
+function openIdsOf(open: readonly FiledDeposit[], asker: string): string[] {
+  const ids = open.filter((filed) => filed.asker === asker && filed.depositId !== undefined).map((filed) => depositItemId(asker, filed.depositId!));
+  return [...new Set(ids)].sort();
 }
 
 /** Size and name checks first, so an oversized or unnameable deposit is the caller's 400, never a 500. */
@@ -137,12 +149,21 @@ function assertNameable(deposit: OwnerItemDeposit): void {
   }
 }
 
-function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposits: number): void {
-  const askers = openDepositAskers(names);
-  if (askers.filter((each) => each === asker).length >= MAX_OPEN_DEPOSITS_PER_ASKER) {
-    throw new DepositRefusedError(`this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits`, EXIT.TEMPFAIL);
-  }
-  if (askers.length >= maxOpenDeposits) {
+function assertUnderAskerCap(open: readonly FiledDeposit[], asker: string, exempt: readonly string[]): void {
+  if (OWNER_ASKERS.has(asker) || exempt.includes(asker)) return;
+  const ids = openIdsOf(open, asker);
+  if (ids.length < MAX_OPEN_DEPOSITS_PER_ASKER) return;
+  throw new DepositRefusedError(
+    `this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits; merge or withdraw one ` +
+      `(titan-console inbox withdraw <id> --reason ... --as <asker> --actor <seat>): ${ids.join(" ")}`,
+    EXIT.TEMPFAIL,
+  );
+}
+
+function assertUnderCaps(names: readonly string[], asker: string, { maxOpenDeposits, capExemptAskers }: Required<InboxSource>): void {
+  const open = openDeposits(names);
+  assertUnderAskerCap(open, asker, capExemptAskers);
+  if (open.length >= maxOpenDeposits) {
     throw new DepositRefusedError(`the inbox already has ${maxOpenDeposits} open deposits`, EXIT.TEMPFAIL);
   }
 }
@@ -151,12 +172,13 @@ function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposit
  * A repeat of a filed depositId returns its id even at a cap, since it adds nothing to the spool.
  * The repeat still goes through writeDeposit, which proves the file under that name is this deposit.
  */
-async function fileOnce({ dir, maxOpenDeposits, events }: Required<InboxSource>, deposit: OwnerItemDeposit): Promise<DepositResult> {
+async function fileOnce(source: Required<InboxSource>, deposit: OwnerItemDeposit): Promise<DepositResult> {
+  const { dir, events } = source;
   assertNameable(deposit);
   const id = depositItemId(deposit.asker, deposit.depositId);
   const names = await spoolNames(dir);
   const isRepeat = depositFileNames(deposit.asker, deposit.depositId).some((name) => names.includes(name));
-  if (!isRepeat) assertUnderCaps(names, deposit.asker, maxOpenDeposits);
+  if (!isRepeat) assertUnderCaps(names, deposit.asker, source);
   const { created } = await writeDeposit(dir, deposit, { events });
   return { id, created };
 }
@@ -171,7 +193,7 @@ function serializer(): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
-export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, events = readSessionEventText }: InboxSource) {
+export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, capExemptAskers = [], events = readSessionEventText }: InboxSource) {
   const serialize = serializer();
   return {
     [INBOX_DEPOSIT]: depositCommand({
@@ -179,7 +201,7 @@ export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS, events
       description: "File one owner item into the owner inbox; a repeat depositId returns the item id it already has",
       args: ownerItemDepositSchema,
       result: depositResult,
-      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce({ dir, maxOpenDeposits, events }, deposit).catch(withoutSpoolPath)),
+      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce({ dir, maxOpenDeposits, capExemptAskers, events }, deposit).catch(withoutSpoolPath)),
     }),
   };
 }

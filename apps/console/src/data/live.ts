@@ -8,9 +8,11 @@ import { useEvents, useInvalidate } from "./rpc.js";
 const RELAY_INVALIDATES = {
   "active-work": ["work.portfolio", "work.initiative", "work.tasks", "work.task", "graph.ego"],
   "agent-chat": ["agents.roster", "agents.graph", "agents.messages", "agents.queue"],
+  // The factory names its frames `shepherd` for every workflow run, autoresearch's too, so any of them may have moved a run.
+  factory: ["autoresearch.runs", "autoresearch.run"],
 } as const satisfies Record<RelaySource, readonly CommandName<ConsoleCommands>[]>;
 
-const ALL_RELAYED_READS = [...RELAY_INVALIDATES["active-work"], ...RELAY_INVALIDATES["agent-chat"]];
+const ALL_RELAYED_READS = Object.values(RELAY_INVALIDATES).flat();
 
 /** A burst of broker appends refetches once per window, so the refetch rate never tracks the append rate. */
 const RELAY_COALESCE_MS = 300;
@@ -34,6 +36,25 @@ export function useRelayInvalidation(coalesceMs: number = RELAY_COALESCE_MS): vo
     if (wasOpen.current) invalidate(ALL_RELAYED_READS);
     wasOpen.current = true;
   }, [status, invalidate]);
+}
+
+/** The CLI withdraws rounds from another process, which no relayed stream reports, so the list refetches whenever the owner returns to the tab. */
+const RETURN_INVALIDATES = ["rounds.list"] as const satisfies readonly CommandName<ConsoleCommands>[];
+
+/** Mounted once by the shell: window focus, or the tab turning visible, refetches the reads only a return can catch up. */
+export function useReturnInvalidation(): void {
+  const invalidate = useInvalidate();
+  useEffect(() => {
+    const refetch = (): void => {
+      if (document.visibilityState !== "hidden") invalidate(RETURN_INVALIDATES);
+    };
+    window.addEventListener("focus", refetch);
+    document.addEventListener("visibilitychange", refetch);
+    return () => {
+      window.removeEventListener("focus", refetch);
+      document.removeEventListener("visibilitychange", refetch);
+    };
+  }, [invalidate]);
 }
 
 /** One pending timer per source at most; cleared on unmount. */

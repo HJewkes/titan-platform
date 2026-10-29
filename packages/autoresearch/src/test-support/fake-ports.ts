@@ -11,6 +11,7 @@ import type { Digest } from "../digest.js";
 import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
 import { fakeMergeOnto } from "./fake-integrate.js";
+import { fakeSnapshotPorts, type SnapshotCalls, type SnapshotOptions } from "./fake-snapshot.js";
 
 const run = promisify(execFile);
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures");
@@ -174,7 +175,7 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
       : { exempt: { bold: "script ends after round one", followup: "script ends after round one" } };
 }
 
-interface FakeCalls {
+interface FakeCalls extends SnapshotCalls {
   plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
   implement: string[];
   /** Every implement input but the brief, in call order. */
@@ -196,7 +197,7 @@ interface FakeCalls {
 const FIXTURE_FROZEN_HASH = "f".repeat(64);
 const runPinIn = ({ runId, pin, frozenHash }: RunPin): RunPin => ({ runId, pin, frozenHash });
 
-export interface FakeOptions {
+export interface FakeOptions extends SnapshotOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
   target?: Target;
   bounds?: Bounds;
@@ -349,7 +350,7 @@ function movePorts(calls: FakeCalls, options: FakeOptions): Pick<ArPorts, "ratch
 
 /** Fake effects over a real fixture repo: scripted planner and implementer, shell-out evaluator, a push ratchet. */
 export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOptions): FakeArPorts {
-  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], integrate: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
+  const calls: FakeCalls = { plans: [], implement: [], implementInputs: [], evals: [], micro: [], microInputs: [], ratchet: [], integrate: [], snapshot: [], sync: [], released: [], archives: [], runPins: [], inbox: [], looks: [], registry: [] };
   const ideaOfTree = new Map<string, string>();
   const target = options.target ?? FIXTURE_TARGET;
   const now = () => Date.parse("2026-10-21T00:00:00Z");
@@ -368,6 +369,7 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
     ...movePorts(calls, options),
+    ...fakeSnapshotPorts(calls, options),
     ...recordPorts(repo, calls, options),
     ...validatePort(calls, options, now),
     ...treePorts(repo, calls, ideaOfTree, policy, options),

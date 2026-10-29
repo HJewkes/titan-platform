@@ -186,7 +186,7 @@ export interface DispatchResult {
  * caller quotes — which is the whole difference between a structural guarantee
  * and a practice.
  */
-export function buildSpawnArgs(req: LaunchedBy & {
+export function buildSpawnArgs(req: LaunchedBy & SpawnPlacement & {
   peerName: string;
   profile: string;
   briefing?: string;
@@ -199,8 +199,29 @@ export function buildSpawnArgs(req: LaunchedBy & {
     req.profile,
     ...(req.briefing === undefined ? [] : ["--briefing", req.briefing]),
     ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
+    ...placementArgs(req),
     ...launchedByArgs(req),
     "--brief-stdin",
+  ];
+}
+
+/** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
+export interface SpawnPlacement {
+  /** A configured alias or hostname; omitted means the broker's own host. */
+  host?: string;
+  /** An account name, or `least-used` for the broker's pick. */
+  account?: string;
+  /** Overrides the profile's surface. */
+  surface?: string;
+  remoteControl?: boolean;
+}
+
+function placementArgs({ host, account, surface, remoteControl }: SpawnPlacement): string[] {
+  return [
+    ...(host === undefined ? [] : ["--host", host]),
+    ...(account === undefined ? [] : ["--account", account]),
+    ...(surface === undefined ? [] : ["--surface", surface]),
+    ...(remoteControl === true ? ["--remote-control"] : []),
   ];
 }
 
@@ -228,7 +249,21 @@ export async function dispatchToAgentChat(
     throw new DispatchError(`unknown profile: '${req.profile}'`);
   }
   assertInstalledHeadless(req.profile, req.profilesDir);
+  await runSpawn(req, buildSpawnArgs(req), agentChatEnv(), timeoutMs);
+  return { peerName: req.peerName };
+}
 
+/**
+ * Runs `agent-chat agent spawn` and maps every failure to a `DispatchError`,
+ * for each entry that spawns: they differ in argv and env, never in how a
+ * refusal reads.
+ */
+export async function runSpawn(
+  req: { agentChatBinPath: string; brief: string; cwd: string },
+  args: string[],
+  env: Record<string, string>,
+  timeoutMs: number,
+): Promise<SafeExecResult> {
   // Resolution is INSIDE the try: a missing or non-executable `agent-chat`
   // throws `ExecError` too, and letting that escape would crash `loop.ts`'s
   // tick with the item still claimed and nothing reported — the exact
@@ -236,43 +271,42 @@ export async function dispatchToAgentChat(
   let result;
   try {
     const bin = resolveBinaryPath(req.agentChatBinPath, "agent-chat");
-    const args = buildSpawnArgs(req);
     result = await timeAgentChatCall(args, () =>
-      execSafeAsync(bin, args, agentChatEnv(), timeoutMs, req.brief, req.cwd),
+      execSafeAsync(bin, args, env, timeoutMs, req.brief, req.cwd),
     );
   } catch (err) {
     if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);
     if (err instanceof ExecError) throw new DispatchError(err.message);
     throw err;
   }
+  if (result.status !== 0) throw spawnRefusal(result);
+  return result;
+}
 
-  if (result.status !== 0) {
-    // The CLI splits its failures across both streams, so both are read. A
-    // BROKER refusal prints on stdout — including the name collision ("the name
-    // X is held by a live agent; retire it or choose another"), the expected
-    // outcome of re-dispatching an item whose previous agent has not retired.
-    // A USAGE error goes through `fail()` on stderr, and that is the one an
-    // agent-chat too old to know `--brief-stdin` produces; reading only stdout
-    // reported it as an unexplained "exited 1".
-    //
-    // Reported verbatim either way: relay cannot resolve it, and inventing a
-    // friendlier message would hide which of the supervisor's several preflight
-    // gates actually refused.
-    if (isBrokerUnavailable(result)) throw brokerUnavailable("agent spawn", result);
-    if (isBrokerReplyTimeout(result)) {
-      throw new DispatchTimeoutError(
-        `agent-chat refused the spawn: ${result.stderr.trim()}`,
-      );
-    }
-    const reason = result.stdout.trim() || result.stderr.trim();
-    throw new DispatchError(
-      reason === ""
-        ? `agent-chat agent spawn exited ${result.status}`
-        : `agent-chat refused the spawn: ${reason}`,
+function spawnRefusal(result: SafeExecResult): DispatchError {
+  // The CLI splits its failures across both streams, so both are read. A
+  // BROKER refusal prints on stdout — including the name collision ("the name
+  // X is held by a live agent; retire it or choose another"), the expected
+  // outcome of re-dispatching an item whose previous agent has not retired.
+  // A USAGE error goes through `fail()` on stderr, and that is the one an
+  // agent-chat too old to know `--brief-stdin` produces; reading only stdout
+  // reported it as an unexplained "exited 1".
+  //
+  // Reported verbatim either way: relay cannot resolve it, and inventing a
+  // friendlier message would hide which of the supervisor's several preflight
+  // gates actually refused.
+  if (isBrokerUnavailable(result)) return brokerUnavailable("agent spawn", result);
+  if (isBrokerReplyTimeout(result)) {
+    return new DispatchTimeoutError(
+      `agent-chat refused the spawn: ${result.stderr.trim()}`,
     );
   }
-
-  return { peerName: req.peerName };
+  const reason = result.stdout.trim() || result.stderr.trim();
+  return new DispatchError(
+    reason === ""
+      ? `agent-chat agent spawn exited ${result.status}`
+      : `agent-chat refused the spawn: ${reason}`,
+  );
 }
 
 export function brokerUnavailable(

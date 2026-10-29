@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a runtime shutdown keeps its live runs' leases for a successor to wait out",
+      "file": "packages/workflow/src/runtime.ts",
+      "find": "      this.release(live.ctx.run);",
+      "replace": "      void live.ctx.run;",
+      "kills": [
+        "a serve stopped mid-step hands its run to the next serve a serve stopped with SIGTERM mid-step releases its lease, so the successor adopts the run and completes it"
+      ]
+    }
+  ]
+}

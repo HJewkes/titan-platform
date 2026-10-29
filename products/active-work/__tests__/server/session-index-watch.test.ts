@@ -12,7 +12,9 @@ import type * as RefreshModule from '../../src/session-index/refresh.js';
 import type { RefreshOptions, RefreshSummary } from '../../src/session-index/refresh.js';
 import { RefreshScheduler } from '../../src/session-index/scheduler.js';
 import { createDirtySet } from '../../src/session-index/dirty-set.js';
-import type { WorkspaceGraph } from '../../src/session-index/graph.js';
+import { defaultGraphPath, type WorkspaceGraph } from '../../src/session-index/graph.js';
+import { rebuildGraph } from '../../src/session-index/rebuild.js';
+import { graphTotals } from '../../src/session-index/rebuild-carry.js';
 
 const probe = vi.hoisted(() => ({
   reads: [] as { swapUsedPct: number; pressureLevel: number }[],
@@ -93,18 +95,21 @@ describe('startSessionIndexWatch', () => {
       await new Promise<void>((resolve) => (letGo = resolve));
     });
     await inside;
-    const releaseLater = setTimeout(() => letGo(), 3_000);
+    let releasedByTimer = false;
+    const releaseLater = setTimeout(() => {
+      releasedByTimer = true;
+      letGo();
+    }, 3_000);
     const watcher = startSessionIndexWatch(log);
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const started = Date.now();
     await watcher!.close();
-    const elapsedMs = Date.now() - started;
+    const closedWhileHeld = !releasedByTimer;
     clearTimeout(releaseLater);
     letGo();
     await held;
 
-    expect(elapsedMs).toBeLessThan(1_000);
+    expect(closedWhileHeld).toBe(true);
     expect(log.warn).not.toHaveBeenCalled();
   });
 
@@ -199,7 +204,7 @@ describe('startSessionIndexWatch', () => {
     const { passRunner } = await import('../../src/server/session-index-watch.js');
     const dirty = createDirtySet();
     dirty.add(root, path.join('demo', 't1.jsonl'));
-    const runner = passRunner({} as WorkspaceGraph, dirty, log, new AbortController().signal);
+    const runner = passRunner(async () => ({}) as WorkspaceGraph, dirty, log, new AbortController().signal);
 
     await expect(runner.run('delta')).rejects.toMatchObject({ code: 'ELOCKED' });
     const sizeAfterSkip = dirty.size;
@@ -227,7 +232,7 @@ describe('startSessionIndexWatch', () => {
     }));
     const { passRunner } = await import('../../src/server/session-index-watch.js');
     const dirty = createDirtySet();
-    const runner = passRunner({} as WorkspaceGraph, dirty, log, new AbortController().signal);
+    const runner = passRunner(async () => ({}) as WorkspaceGraph, dirty, log, new AbortController().signal);
     const onIndexed = vi.fn();
 
     await runner.run('delta', onIndexed);
@@ -248,7 +253,7 @@ describe('startSessionIndexWatch', () => {
     });
     await inside;
     const abort = new AbortController();
-    const runner = passRunner({} as WorkspaceGraph, createDirtySet(), log, abort.signal);
+    const runner = passRunner(async () => ({}) as WorkspaceGraph, createDirtySet(), log, abort.signal);
     const waiting = vi.fn();
     const scheduler = new RefreshScheduler(
       (kind, onIndexed, onLockWait) =>
@@ -261,26 +266,34 @@ describe('startSessionIndexWatch', () => {
     scheduler.trigger();
     await vi.waitFor(() => expect(waiting).toHaveBeenCalled());
 
-    const started = Date.now();
-    const freshness = await scheduler.runNow(800);
-    const elapsedMs = Date.now() - started;
+    // A read that waited for the budget's timer would still be pending at the next loop turn.
+    const nextTurn = new Promise((resolve) => setImmediate(() => resolve('still waiting')));
+    const freshness = await Promise.race([scheduler.runNow(800), nextTurn]);
     abort.abort(new Error('test over'));
-    await scheduler.close();
     letGo();
     await held;
+    await scheduler.close();
 
     expect(freshness).toBe('stale');
-    expect(elapsedMs).toBeLessThan(50);
   });
 
   describe('with transcripts on disk', () => {
+    const project = () => path.join(home, '.claude', 'projects', 'demo');
+
+    /** Each copy gets its own prompt and request ids, so no two sessions share a turn or a request. */
+    const writeWatchTranscript = (n: number): void => {
+      const lines = FIXTURE_LINES.map((fixture, i) => ({
+        ...fixture,
+        ...(typeof fixture.uuid === 'string' ? { uuid: `${fixture.uuid}-${n}` } : {}),
+        ...(fixture.type === 'assistant' ? { requestId: `req-${n}-${i}` } : {}),
+      }));
+      const body = renderTranscript(lines).replaceAll(SESSION, `sess-watch-${n}`);
+      writeFileSync(path.join(project(), `t${n}.jsonl`), body, 'utf8');
+    };
+
     beforeEach(() => {
-      const project = path.join(home, '.claude', 'projects', 'demo');
-      mkdirSync(project, { recursive: true });
-      for (const n of [1, 2, 3]) {
-        const body = renderTranscript(FIXTURE_LINES).replaceAll(SESSION, `sess-watch-${n}`);
-        writeFileSync(path.join(project, `t${n}.jsonl`), body, 'utf8');
-      }
+      mkdirSync(project(), { recursive: true });
+      for (const n of [1, 2, 3]) writeWatchTranscript(n);
       vi.stubEnv('CLAUDE_CONFIG_DIRS', path.join(home, '.claude'));
       vi.stubEnv('AW_INDEX_POLL_MS', '3600000');
     });
@@ -290,7 +303,7 @@ describe('startSessionIndexWatch', () => {
 
     it('logs one session index pass line with what the pass opened and read', async () => {
       const watcher = startSessionIndexWatch(log);
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
       expect(passLines()[0]).toMatchObject({
@@ -299,16 +312,22 @@ describe('startSessionIndexWatch', () => {
         scanned: 3,
         filesOpened: 3,
         bytesRead: expect.any(Number),
+        rowsWritten: expect.any(Number),
+        dbBytes: expect.any(Number),
         durationMs: expect.any(Number),
         maxStallMs: expect.any(Number),
         phases: expect.objectContaining({
           discover: expect.any(Number),
           corpus: expect.any(Number),
         }),
+        prsPolled: 0,
         errors: [],
         errorCount: 0,
       });
-      expect((passLines()[0] as { bytesRead: number }).bytesRead).toBeGreaterThan(0);
+      const line = passLines()[0] as { bytesRead: number; rowsWritten: number; dbBytes: number };
+      expect(line.bytesRead).toBeGreaterThan(0);
+      expect(line.rowsWritten).toBeGreaterThan(0);
+      expect(line.dbBytes).toBeGreaterThan(0);
     });
 
     it('logs the pass kind the refresh reports', async () => {
@@ -328,7 +347,7 @@ describe('startSessionIndexWatch', () => {
         await import('../../src/server/session-index-watch.js');
 
       const watcher = start(log);
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
       vi.doUnmock('../../src/session-index/refresh.js');
 
@@ -344,7 +363,7 @@ describe('startSessionIndexWatch', () => {
       );
 
       const watcher = startSessionIndexWatch(log);
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
       await watcher!.close();
 
       const messages = log.info.mock.calls.map(([, msg]) => msg as string);
@@ -368,18 +387,45 @@ describe('startSessionIndexWatch', () => {
           return () => {};
         },
       });
-      await vi.waitFor(() => expect(passLines()).toHaveLength(1), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
 
       const transcript = path.join(home, '.claude', 'projects', 'demo', 't1.jsonl');
       appendFileSync(transcript, renderTranscript(FIXTURE_LINES.slice(0, 1)), 'utf8');
       await new Promise((resolve) => setTimeout(resolve, 3 * debounceMs));
       const afterAppend = passLines().length;
       pollTick();
-      await vi.waitFor(() => expect(passLines()).toHaveLength(2), { timeout: 10_000 });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(2));
       await watcher!.close();
 
       expect(afterAppend).toBe(1);
       expect(passLines()[1]).toMatchObject({ kind: 'full' });
+    });
+
+    it('after a miner rebuild swap the watcher writes its next pass to the new file, whose turn and request totals equal the old one', async () => {
+      vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
+      let pollTick: () => void = () => {};
+      const watcher = startSessionIndexWatch(log, {
+        startPoll: (tick) => {
+          pollTick = tick;
+          return () => {};
+        },
+      });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
+
+      const rebuilt = await rebuildGraph();
+      writeWatchTranscript(4);
+      pollTick();
+      await vi.waitFor(() => expect(passLines()).toHaveLength(2));
+      await watcher!.close();
+
+      expect(rebuilt).toMatchObject({ swapped: true, nextTotals: rebuilt.liveTotals });
+      expect(rebuilt.liveTotals.turns).toBeGreaterThan(0);
+      expect(rebuilt.liveTotals.requestCount).toBeGreaterThan(0);
+      const backup = graphTotals(rebuilt.backupPath!);
+      expect(backup).toEqual(rebuilt.liveTotals);
+      const swapped = graphTotals(defaultGraphPath());
+      expect(swapped.turns).toBe(backup.turns + backup.turns / 3);
+      expect(swapped.requestCount).toBe(backup.requestCount + backup.requestCount / 3);
     });
   });
 });

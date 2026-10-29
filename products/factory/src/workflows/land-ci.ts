@@ -3,6 +3,7 @@ import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassingConclusion, latestPe
 import type { CiSnapshotResult } from "./land-steps.js";
 import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import type { HeadObserver } from "../head-guard/head-regression.js";
+import type { OrphanedCheck } from "./land-orphan.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
@@ -36,7 +37,14 @@ export interface CiSnapshot {
   readAt?: number;
   /** The required contexts this read was judged on: the base's live list, or the recorded one when the live read failed. */
   contexts?: string[];
+  /** On a `pending` read: jobs still open under a completed workflow run past the grace, which land reruns once per head. */
+  orphaned?: OrphanedCheck[];
+  /** On a `pending` read: the window ran out on a wait only GitHub ends, so land may wait again; `reason` is the last observation. */
+  timedOut?: { afterMs: number; reason: string };
 }
+
+/** What an open repo's first or changed run set waits on: a second poll that sees the same runs. */
+export const SECOND_READ = "a second read that sees the same check-runs";
 
 export interface CiInput {
   repo: string;
@@ -141,7 +149,7 @@ async function judgeOpenPr(port: GitHubPort, input: CiInput, pr: PullRequest, re
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState, baseRef: pr.baseRef };
   const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
   const findings = findingsAt(input, pr.headSha, runs);
-  if (findings.length === 0 && awaitsSecondRead(input, options, pr.headSha, runs)) return { ...base, verdict: "pending", waitingOn: ["a second read that sees the same check-runs"] };
+  if (findings.length === 0 && awaitsSecondRead(input, options, pr.headSha, runs)) return { ...base, verdict: "pending", waitingOn: [SECOND_READ] };
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft, options.missingSettled?.(pr.headSha) ?? false);
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };

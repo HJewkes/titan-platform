@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "timing report drops early-reveal",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "    earlyReveal(input), holdThroughReference(input),",
+      "replace": "    holdThroughReference(input),",
+      "kills": [
+        "reports early-reveal and hold-through-reference without gating the qa stage on them"
+      ]
+    },
+    {
+      "name": "timing report drops hold-through-reference",
+      "file": "products/explainer/src/qa/timing-gates.ts",
+      "find": "    earlyReveal(input), holdThroughReference(input),",
+      "replace": "    earlyReveal(input),",
+      "kills": [
+        "reports early-reveal and hold-through-reference without gating the qa stage on them"
+      ]
+    }
+  ]
+}

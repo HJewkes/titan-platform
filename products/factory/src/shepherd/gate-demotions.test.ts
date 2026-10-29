@@ -220,6 +220,23 @@ describe("D7 residual: a failed fallback reviewer goes to ops (TP-3734)", () => 
     expect(run).toMatchObject({ failedRounds: 0, failedOutcomes: [], fallbackReviewed: false });
   });
 
+  it("names a round whose correction did not parse malformed, not timeout, in the failed-round list and the ops notice", async () => {
+    const run = { ...d7Run({ fallbackReviewed: true, failedRounds: 0, failedOutcomes: [] }), ...noticeCtx(true) };
+    const counts = { ...run, throttledRounds: 1, closer: { streak: 0 }, seatHeldRounds: new Map(), fixFirstTrail: [] };
+    const unparsed: Routed = { ...silentRound, verdict: { kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (ci_policy_malformed)" } };
+    const heardRound = (routed: Routed) => (noteReviewerStep(counts, `sh-await-verdict:${HEAD}:adversary`, { kind: "verdict" }), countRound(counts, routed));
+    await heardRound(unparsed);
+    await heardRound(silentRound);
+    const escalated = await heardRound(unparsed);
+
+    await onEscalated({ ...run, failedRounds: counts.failedRounds, failedOutcomes: counts.failedOutcomes }, HEAD, escalated!).catch(() => undefined);
+
+    expect(counts.failedOutcomes).toEqual(["malformed", "timeout", "malformed"]);
+    expect(escalated).toMatchObject({ escalation: "failed-rounds", infraOnly: true });
+    expect(run.steps.map((recorded) => recorded.stepId)).toContain("sh-seat-notice");
+    expect(run.steps.find((recorded) => recorded.stepId === "sh-seat-notice")?.input["why"]).toContain("failed rounds: malformed, timeout, malformed");
+  });
+
   it("tells the seat of a seat-held run-out instead of the owner, under D7/seat-notice", async () => {
     const run = { ...d7Run(), ...noticeCtx(true) };
 

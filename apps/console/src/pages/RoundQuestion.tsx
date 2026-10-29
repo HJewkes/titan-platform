@@ -1,6 +1,8 @@
 import { useEffect, type ReactNode } from "react";
 import { Card, CardContent, Checkbox, CheckboxGroup, HStack, Input, Pill, Radio, RadioGroup, Typography, VStack } from "@titan-design/react-ui";
 import type { Question } from "../../server/round-schema.js";
+import { MergeGates } from "./GateStrip.js";
+import { PlanApprovalScope } from "./PlanApprovalScope.js";
 import { OptionCard, hasOptionCards, type OptionNoting } from "./OptionCard.js";
 import { QuestionAB, offersBuiltInRevision, type ABAnswering } from "./QuestionAB.js";
 import { InlineMarkdown, plainText } from "./RoundMarkdown.js";
@@ -72,7 +74,7 @@ interface RoundQuestionProps {
   position: number;
   answer: QuestionAnswer | undefined;
   onChoose: (choice: string) => void;
-  /** The active question is the one digit keys answer; pressing the card or one of its options activates it. */
+  /** The active question is the one digit keys answer; a click anywhere in the card, or choosing one of its options, activates it. */
   active: boolean;
   onActivate: () => void;
   /** Present only where the page submits text answers; without it a text question shows a placeholder. */
@@ -89,26 +91,29 @@ export function RoundQuestion({ question, position, answer, onChoose, active, on
   const sides = useABSides(question);
   const shown = useRecommendation(question, answer);
   useRevealKey(active, shown.toggle);
-  // A pressed option does not reach the card's own press handler, so choosing activates the question too.
+  // A choice can arrive with no click on the card (arrow keys in a radio group), so choosing activates the question too.
   const choose = (choice: string): void => {
     onActivate();
     onChoose(choice);
   };
+  // A pressable Card scales on :active, which holds while any control inside it is pressed, so the radio slid off the tap (TP-3989).
   return (
-    <Card variant={active ? "outline" : "subtle"} onPress={onActivate} testID={`round-question-${question.id}`}>
-      <CardContent>
-        <VStack gap={3}>
-          <QuestionFrames question={question} omit={ab && sides ? sides.map((side) => side.key) : []} />
-          <QuestionHeading question={question} position={position} active={active} />
-          {ab && sides ? (
-            <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
-          ) : (
-            <Choices question={question} answer={answer} onChoose={choose} onText={onText} onRevise={ab?.onNeither} noting={ab} recommended={recommendedChoices(shown)} />
-          )}
-          <QuestionFacts question={question} answer={answer} />
-        </VStack>
-      </CardContent>
-    </Card>
+    <div onClick={onActivate}>
+      <Card variant={active ? "outline" : "subtle"} testID={`round-question-${question.id}`}>
+        <CardContent>
+          <VStack gap={3}>
+            <QuestionFrames question={question} omit={ab && sides ? sides.map((side) => side.key) : []} />
+            <QuestionHeading question={question} position={position} active={active} />
+            {ab && sides ? (
+              <QuestionAB question={question} sides={sides} answer={answer} onChoose={choose} {...ab} />
+            ) : (
+              <Choices question={question} answer={answer} onChoose={choose} onText={onText} onRevise={ab?.onNeither} noting={ab} recommended={recommendedChoices(shown)} />
+            )}
+            <QuestionFacts question={question} answer={answer} />
+          </VStack>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -234,7 +239,7 @@ function PickOne({ question, answer, onChoose, onRevise, noting, choices, frameO
   );
 }
 
-/** A question's sign-off, merge binding, and its recommendation: sent by the server, or revealed on demand (TP-3774). */
+/** A question's sign-off, merge binding with its live gate strip, and its recommendation: sent by the server, or revealed on demand (TP-3774). */
 export function QuestionFacts({ question, answer }: { question: Question; answer?: QuestionAnswer }): ReactNode {
   const shown = useRecommendation(question, answer);
   useRevealTracking(question, answer, shown.visible);
@@ -243,8 +248,10 @@ export function QuestionFacts({ question, answer }: { question: Question; answer
   return (
     <VStack gap={1}>
       <QuestionFrameLinks question={question} />
+      <PlanApprovalScope questionId={question.id} />
       {signsOff ? <Typography variant="caption" color="secondary">{`Signs off: ${signsOff}`}</Typography> : null}
       {merge ? <Typography variant="caption" color="secondary">{`Ships ${merge.repo}#${merge.pr} at ${merge.headSha.slice(0, 7)}`}</Typography> : null}
+      {merge ? <MergeGates repo={merge.repo} pr={merge.pr} headSha={merge.headSha} /> : null}
       <RevealControl question={question} shown={shown} />
       <RecommendationBox question={question} answer={answer} shown={shown} />
     </VStack>

@@ -1,7 +1,7 @@
 import { CONFIG_PATH } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, PR_FILES_CAP, type GitHubPort, type PrFile } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
-import { MAX_PROBED_PATHS, testOnlyDiff } from "./test-only-diff.js";
+import { MAX_PROBED_PATHS, sourceFreeDiff, testOnlyDiff } from "./test-only-diff.js";
 
 const REPO = "o/r";
 const REPO_CONFIG = JSON.stringify({
@@ -88,6 +88,37 @@ describe("testOnlyDiff", () => {
     const port = scene([modified("packages/x/src/a.test.ts"), { path: "packages/x/src/a.mutations.json", status: "added" }]);
 
     expect(await testOnlyDiff(port, REPO, 1, HEAD)).toEqual({ kind: "test-only" });
+  });
+
+  describe("a PR that changes only a mutation spec", () => {
+    const SPEC = "apps/console/src/frame.test.mutations.json";
+    const SIBLING = "apps/console/src/frame.test.tsx";
+
+    it("reads the spec beside a test at head as test-only", async () => {
+      const fake = sceneFake([modified(SPEC)]);
+      seedBlob(fake, HEAD, SIBLING);
+
+      expect(await testOnlyDiff(githubPort(fake.wire), REPO, 1, HEAD)).toEqual({ kind: "test-only" });
+    });
+
+    it("flags the spec when no test sits beside it at head", async () => {
+      expect(await testOnlyDiff(scene([modified(SPEC)]), REPO, 1, HEAD)).toEqual({ kind: "flagged", reason: "the PR adds or changes no test", paths: [] });
+    });
+
+    it("flags the spec when its sibling's read fails", async () => {
+      const fake = sceneFake([modified(SPEC)]);
+      seedBlob(fake, HEAD, SIBLING);
+
+      const diff = await testOnlyDiff(gitlinkAt(githubPort(fake.wire), SIBLING, HEAD), REPO, 1, HEAD);
+
+      expect(diff).toMatchObject({ kind: "flagged", reason: "the PR adds or changes no test" });
+    });
+
+    it("refuses to probe the siblings of more specs than the path cap allows", async () => {
+      const specs = Array.from({ length: MAX_PROBED_PATHS }, (_, n) => modified(`packages/x/src/t${n}.test.mutations.json`));
+
+      expect(await testOnlyDiff(scene(specs), REPO, 1, HEAD)).toMatchObject({ kind: "unread", reason: expect.stringContaining("sibling probes") });
+    });
   });
 
   it("names the source path when a test PR also changes source", async () => {
@@ -310,5 +341,27 @@ describe("testOnlyDiff", () => {
 
   it("fails closed when the registration names no PR", async () => {
     expect(await testOnlyDiff(scene([]), REPO, null, HEAD)).toMatchObject({ kind: "unread" });
+  });
+});
+
+describe("sourceFreeDiff (TP-4275)", () => {
+  const added = (path: string): PrFile => ({ path, status: "added" });
+  const TESTS_AND_SUPPORT = [added("packages/x/src/__tests__/parse.test.ts"), removed("packages/x/src/parse.test.ts"), added("packages/x/src/test-support/cases.ts"), added(".changeset/convert.md")];
+
+  it("reads tests, a deleted test, test support and a changeset as free of source", async () => {
+    expect(await sourceFreeDiff(scene(TESTS_AND_SUPPORT, { baseConfig: RUNTIME_CONFIG }), REPO, 1, HEAD)).toBe(true);
+  });
+
+  it.each([".changeset/config.json", "packages/x/src/docs/render.ts", "packages/x/src/a.test.helpers.ts", "apps/console/fixtures/rounds/a.md", "site/guides/parse.md", ".github/workflows/ci.yml"])(
+    "reads a diff with %s, which the fix-proof plan sorts as source, as not free of source",
+    async (path) => {
+      expect(await sourceFreeDiff(scene([...TESTS_AND_SUPPORT, modified(path)], { baseConfig: RUNTIME_CONFIG }), REPO, 1, HEAD)).toBe(false);
+    },
+  );
+
+  it("fails closed when a carried path's blob is not read inline", async () => {
+    const port = gitlinkAt(scene(TESTS_AND_SUPPORT, { baseConfig: RUNTIME_CONFIG }), "packages/x/src/test-support/cases.ts", HEAD);
+
+    expect(await sourceFreeDiff(port, REPO, 1, HEAD)).toBe(false);
   });
 });

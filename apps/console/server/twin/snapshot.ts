@@ -37,7 +37,7 @@ function recordingSources(roundsDir: string): ConsoleSources {
     activeWork: fixtureActiveWork(),
     inbox: { dir: NOWHERE },
     rounds: { dir: roundsDir },
-    shepherd: { list: unreachable, timeline: unreachable, waiting: unreachable, release: unreachable, previewOp: unreachable },
+    shepherd: { list: unreachable, timeline: unreachable, waiting: unreachable, checkRuns: unreachable, release: unreachable, previewOp: unreachable },
     work: { now: () => TWIN_NOW },
   };
 }

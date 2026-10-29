@@ -30,6 +30,8 @@ export {
   type FactOptions,
 } from "./summary-facts.js";
 export { digestFacts } from "./digest-facts.js";
+export { historyFacts } from "./history-facts.js";
+export { skimFacts } from "./skim-facts.js";
 export {
   gatherReview,
   gitHead,
@@ -39,3 +41,33 @@ export {
   type GatherProfile,
   type GatherResult,
 } from "./gather.js";
+export {
+  EDGE_SOURCES,
+  STRUCTURE_SOURCES,
+  StructureSchema,
+  type BoxSummary,
+  type CallPath,
+  type EdgeSource,
+  type EntryPoint,
+  type FileCentrality,
+  type FocusGraph,
+  type Structure,
+  type StructureSource,
+} from "./structure-schema.js";
+export { REVIEW_GRAPH_DB, openStructureGraph, type GraphSourceOptions, type GraphSourceResult, type StructureGraph } from "./graph-source.js";
+export { reviewScopeFiles, scopedSource } from "./review-scope.js";
+export { enrichStructure, type EnrichOptions, type EnrichResult } from "./enrich.js";
+export {
+  COMPANION_FILE,
+  COMPANION_SECTIONS,
+  companionChapters,
+  factAnchor,
+  renderCompanion,
+  reviewFacts,
+  type ChapterLink,
+  type ChapterLinks,
+  type CompanionChapter,
+  type CompanionResult,
+  type CompanionSection,
+  type FactLink,
+} from "./companion.js";

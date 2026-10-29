@@ -1,0 +1,11 @@
+schema: beat-spec/v1
+type: reading-list
+summary: "The files to read first, and why."
+role: close
+component: { name: ListBeat, maturity: spike }
+slots: reading-list
+speech: { band: takeaways }
+durationS: [6, 10, 18]
+preset: false
+emphasis: { targets: [items], treatments: [highlight, pointer] }
+recipe: "One to six files, each with one reason to read it. Light each on the map as it is named."

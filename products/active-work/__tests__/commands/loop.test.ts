@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import loopBoardCmd from '../../src/commands/loop-board.js';
 import loopOpenCmd from '../../src/commands/loop-open.js';
 import loopResolveCmd from '../../src/commands/loop-resolve.js';
 import { NotFoundError, UsageError, ValidationError } from '../../src/errors.js';
@@ -125,6 +126,28 @@ describe('loop.open', () => {
       await expect(loopOpenCmd.run(args, makeCtx(root))).rejects.toBeInstanceOf(NotFoundError);
     });
   });
+
+  it('files a handoff loop the board lists with its source and owning seat', async () => {
+    await withTempActiveRoot(async (root) => {
+      const opened = await open(root, { id: 'loop-a', origin: 'handoff', seat: 'seat-k' });
+
+      const board = await loopBoardCmd.run(loopBoardCmd.args.parse({}), makeCtx(root));
+
+      expect(opened).toMatchObject({ origin: 'handoff', seat: 'seat-k' });
+      expect(board.loops.find((loop) => loop.id === opened.ref)).toMatchObject({
+        source: 'handoff',
+        ownerSeat: 'seat-k',
+        sessionRef: opened.ref,
+      });
+    });
+  });
+
+  it('refuses an origin that is not handoff, teleport or wrap', () => {
+    const result = loopOpenCmd.args.safeParse({ slug: SLUG, text: 'x', origin: 'spawn' });
+
+    expect(result.success).toBe(false);
+  });
+
   it.each(BAD_SLUGS)('refuses the slug %j before touching the filesystem', async (slug) => {
     await withTempActiveRoot(async (root) => {
       await fs.mkdir(path.join(root, 'a', 'b'), { recursive: true });

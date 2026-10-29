@@ -21,14 +21,17 @@ import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
+import type { SeatNotifier } from "./round-notice-transport.js";
 import { roundsCommands } from "./rounds-commands.js";
 import type { RoundsSource } from "./rounds.js";
-import { roundsSubmitCommands } from "./rounds-submit.js";
+import { roundsAnswerRecCommands } from "./round-rec-answer.js";
+import { roundsSubmitCommands, submitPipeline } from "./rounds-submit.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { shepherdCommands, type ShepherdSource } from "./shepherd.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
+import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
 import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
@@ -67,6 +70,10 @@ export interface ConsoleSources {
   hostReports?: HostReportsSource;
   /** Optional so test sources need not build one; absent, `videos.list` answers that no roots are set. */
   videos?: VideoCatalog;
+  /** Optional so test sources need not build one; absent, `videos.note` stores comments and tells no seat. */
+  videoNotify?: SeatNotifier;
+  /** Optional so test sources need not set one; absent, `videos.props`, `videos.edit-check`, `videos.edit` and `videos.edits` answer one gap naming the setting. */
+  explainerBin?: string;
   /** Optional so test sources need not build one; absent, `reviews.list` is not served. */
   reviews?: ReviewsSource;
   work?: WorkOptions;
@@ -120,7 +127,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -136,6 +143,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundFramesCommands(rounds),
     ...roundsRevealCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
+    ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir)),
     ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
     ...shepherdCommands(shepherd),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
@@ -143,7 +151,8 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...configDriftCommands(configReaders),
     ...(hostReports === undefined ? {} : hostReportsCommands(hostReports)),
     ...videosCommands(videos, summarizeNotes),
-    ...videoNotesCommands(videos),
+    ...videoNotesCommands(videos, videoNotify),
+    ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
   };

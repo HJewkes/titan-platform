@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the client reads the factory's approved as unreachable",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "if ((outcome === \"accepted\" || outcome === \"approved\") && runId)",
+      "replace": "if (outcome === \"accepted\" && runId)",
+      "kills": [
+        "factoryOwnerAction reads a 200 {\"outcome\":\"approved\",\"runId\":\"22222222-0000-4000-8000-000000000002\"} as its pinned outcome"
+      ]
+    },
+    {
+      "name": "the client reads an approved with no run id as landed",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "if ((outcome === \"accepted\" || outcome === \"approved\") && runId) return { status: outcome, runId };",
+      "replace": "if (outcome === \"accepted\" || outcome === \"approved\") return { status: outcome, runId: runId ?? \"\" };",
+      "kills": [
+        "factoryOwnerAction reads an approved with no run id as unreachable, so a retry may land"
+      ]
+    },
+    {
+      "name": "a pause-cleared with no still-held answer reads as settled",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "if (outcome === \"pause-cleared\" && clearedPause && stillHeld !== undefined)",
+      "replace": "if (outcome === \"pause-cleared\" && clearedPause)",
+      "kills": [
+        "factoryOwnerAction reads a pause-cleared with no still-held answer as unreachable, so a retry may land"
+      ]
+    },
+    {
+      "name": "an already with only the cleared pause reads as unreachable",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "(gateId || runId || closedHead || clearedPause)",
+      "replace": "(gateId || runId || closedHead)",
+      "kills": [
+        "factoryOwnerAction reads a deploy-pause-clear's answers with the pause each names"
+      ]
+    },
+    {
+      "name": "a moved drops the newer pause it names",
+      "file": "apps/console/server/owner-action.ts",
+      "find": "currentHead: body.currentHead ?? null, ...(body.currentPause !== undefined && { currentPause: body.currentPause }) };",
+      "replace": "currentHead: body.currentHead ?? null };",
+      "kills": [
+        "factoryOwnerAction reads a deploy-pause-clear's answers with the pause each names"
+      ]
+    }
+  ]
+}

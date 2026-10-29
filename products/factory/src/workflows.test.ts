@@ -13,6 +13,7 @@ import { shepherdPrWorkflow } from "./shepherd/pr.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
 import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
+import { isolateAgentChatHome } from "./test-support/agent-chat-home.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
 import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "./workflows.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
@@ -151,10 +152,7 @@ function writeTranscript(dir: string, lastWords: string): string {
 function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-review-")));
   dirs.push(dir);
-  vi.stubEnv("HOME", dir);
-  vi.stubEnv("AGENT_CHAT_HOME", join(dir, ".agent-chat"));
-  mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
-  for (const profile of [PROFILE, "rv-other"]) writeFileSync(join(dir, ".agent-chat", "profiles", `${profile}.json`), JSON.stringify({ surface: "headless" }));
+  isolateAgentChatHome(dir, [PROFILE, "rv-other"]);
   const checkout = join(dir, "checkouts", "demo");
   mkdirSync(checkout, { recursive: true });
   mkdirSync(join(dir, "seats"));

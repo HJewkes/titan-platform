@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a repeat register without lastSlice clears the stored mark",
+      "file": "products/factory/src/shepherd/registration-facts.ts",
+      "find": "  if (facts.lastSlice !== undefined) db",
+      "replace": "  if (true) db",
+      "kills": [
+        "shepherd.register slice a re-register without lastSlice keeps the stored last-slice mark"
+      ]
+    }
+  ]
+}

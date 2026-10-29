@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a red that stood its wait is never checked for a green descendant",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "const green = await greenContaining(read, redSha, rules, now).catch(() => undefined);",
+      "replace": "const green = undefined;",
+      "kills": [
+        "readMainCi on a red that main has moved past while its tip still runs reads the red as stale when a commit between it and the tip is green on every required context",
+        "shepherd-pr on a main red that is stale or only cancelled freezes nothing and files no task for a red at the merge once a descendant went green"
+      ]
+    },
+    {
+      "name": "a green commit that does not contain the red sha makes it stale",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "if ((await contains(port, repo, sha, redSha)) && (await contains(port, repo, tip, sha))) return sha;",
+      "replace": "if (await contains(port, repo, tip, sha)) return sha;",
+      "kills": [
+        "readMainCi on a red that main has moved past while its tip still runs keeps the red when the green commit does not contain the red sha"
+      ]
+    },
+    {
+      "name": "a green commit off the base branch's line to its tip makes the red stale",
+      "file": "products/factory/src/shepherd/stale-red.ts",
+      "find": "if ((await contains(port, repo, sha, redSha)) && (await contains(port, repo, tip, sha))) return sha;",
+      "replace": "if (await contains(port, repo, sha, redSha)) return sha;",
+      "kills": [
+        "readMainCi on a red that main has moved past while its tip still runs keeps the red when the green commit is not on the base branch's line to its tip"
+      ]
+    },
+    {
+      "name": "a required job skipped behind a cancel reads as red",
+      "file": "products/factory/src/shepherd/main-verdict.ts",
+      "find": "failed.every((run) => run.conclusion === \"cancelled\" || isPassing(run))",
+      "replace": "failed.every((run) => run.conclusion === \"cancelled\")",
+      "kills": [
+        "shepherd-pr on a main red that is stale or only cancelled freezes nothing when the merge's run was cancelled and a required job skipped behind the cancel"
+      ]
+    },
+    {
+      "name": "the freeze names the merge sha, not the newer push the red was read at",
+      "file": "products/factory/src/shepherd/post-merge.ts",
+      "find": "mergeSha: result.verdict === \"red\" ? (result.readSha ?? target.mergeSha) : target.mergeSha,",
+      "replace": "mergeSha: target.mergeSha,",
+      "kills": [
+        "shepherd-pr on a main red that is stale or only cancelled freezes the newer push the red was read at, not the merge sha whose run concurrency cancelled"
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
 import { z } from "zod";
 import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
+import { historyCommand } from "./history/command.js";
 import { defaultPolicy, selfTest } from "./private/exclusion.js";
 import { buildReviewPrCases } from "./review-pr/build-cases.js";
 import { localCloneGit } from "./review-pr/bundle.js";
@@ -161,6 +162,7 @@ export function buildProgram(onResult: (code: number) => void = () => undefined)
     .description("Eval registry for units of work: specs, content hashes, and (in later slices) trials and scorecards")
     .addCommand(validateCommand(onResult))
     .addCommand(corpusCommand(onResult))
+    .addCommand(historyCommand(onResult))
     .addCommand(reviewPrCommand(onResult))
     .exitOverride()
     .showHelpAfterError();

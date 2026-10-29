@@ -3,7 +3,7 @@ import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { toJSONSchema } from "zod";
-import { coordinatorEvidencePolicy } from "../coordinator-evidence.js";
+import { coordinatorEvidencePolicy, landGate } from "../coordinator-evidence.js";
 import { decisionClassOf } from "../decision-class.js";
 import { approveMergeDecision } from "../gate-brief.js";
 import { authorityGateReason, pendingCheck } from "../test-support/authority-reason.js";
@@ -126,28 +126,65 @@ describe("isSkillPath", () => {
 
 describe("resolving a skill-path gate", () => {
   const COORDINATOR: GateResolver = { class: "coordinator", id: "tc-synthetic", channel: "factory-cli" };
+  const LIVE_REPO = "synth-org/synth-repo";
+  const LIVE_PR = 41;
+  const LIVE_SKILLS = [".claude/skills/synth-skill/SKILL.md", ".claude/skills/synth-skill/reference.md"];
+  const SKILL_REASON = `the authority policy did not allow an automated merge: the owner reviews repo skill changes: ${LIVE_SKILLS.join(", ")}`;
+  const asked = (rule: string, reason: string) => `Merge PR #${LIVE_PR} in ${LIVE_REPO} at head ${HEAD} into main? CI is green. Policy ${rule}: ${reason}`;
+  /** The shape a live skill-path gate is stored in: the policy line, the skill-diff link line, then the reviewer's owner brief. */
+  const livePrompt = (rule: string, reason: string) =>
+    [
+      asked(rule, reason),
+      "",
+      `Review the repo skill diff: https://github.com/${LIVE_REPO}/pull/${LIVE_PR}/files. Repo skill changes: ${LIVE_SKILLS.join(", ")}.`,
+      "",
+      "Reviewer's owner brief:",
+      "What: Adds a synthetic skill that teaches agents a made-up workflow.",
+      "Why: It changes how every agent that loads the skill behaves.",
+      "Pros:",
+      "- The skill is small and self-contained.",
+      "Cons:",
+      "- Agents follow skill text without review, so a wrong step spreads.",
+      "Door: two-way",
+    ].join("\n");
   const check = (id: number, name: string) => ({ id, name, conclusion: "success", headSha: HEAD });
 
-  /** A coordinator merge on a gate under `rule`, with fresh evidence that matches the gate in every field. */
-  function coordinatorMerge(rule: string, reason: string): boolean {
-    const { schema, brief } = approveMergeDecision({ repo: "o/r", pr: 1, headSha: HEAD, reason, reviewedMerge: true });
-    const record: GateRecord = {
-      ...{ id: "run-1/approve-merge", prompt: `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy ${rule}: ${reason}`, schema: toJSONSchema(schema), ...brief },
+  function gateWith(prompt: string): GateRecord {
+    const { schema, brief } = approveMergeDecision({ repo: LIVE_REPO, pr: LIVE_PR, headSha: HEAD, reason: SKILL_REASON, reviewedMerge: true, skillPaths: LIVE_SKILLS });
+    return {
+      ...{ id: "run-1/approve-merge", prompt, schema: toJSONSchema(schema), ...brief },
       ...{ status: "pending", payload: undefined, reason: undefined, createdAt: "2026-10-12T00:00:00.000Z", resolvedAt: undefined, expiresAt: undefined },
       ...{ resolvedBy: undefined, resolvedEvidence: undefined, rule: undefined, summary: undefined, evidenceRef: undefined, questions: undefined },
     };
+  }
+
+  /** A coordinator merge on `gate`, with fresh evidence that matches the run behind it in every field. */
+  function coordinatorMerge(gate: GateRecord, rule: string, reason: string): boolean {
     const evidence = {
-      ...{ kind: "approve-merge", gateId: "run-1/approve-merge", repo: "o/r", pr: 1, headSha: HEAD },
-      ...{ run: { workflow: "shepherd-pr", repo: "o/r", pr: 1, rule, reason, merge: "auto", visualPaths: false, held: false, frozen: false } },
+      ...{ kind: "approve-merge", gateId: gate.id, repo: LIVE_REPO, pr: LIVE_PR, headSha: HEAD },
+      ...{ run: { workflow: "shepherd-pr", repo: LIVE_REPO, pr: LIVE_PR, rule, reason, merge: "auto", visualPaths: false, held: false, frozen: false } },
       ...{ verdict: { step: `sh-await-verdict:${HEAD}`, verdict: "MERGE", head: HEAD, reviewer: "rv-synthetic" } },
       ...{ checks: { base: "main", required: ["validate", "dag-check"], runs: [check(11, "validate"), check(12, "dag-check")] } },
       ...{ pull: { state: "open", headSha: HEAD, mergeableState: "clean", mergeable: "MERGEABLE" }, readAt: "2026-10-12T18:00:00.000Z" },
     };
-    return coordinatorEvidencePolicy(record, COORDINATOR, { decision: "merge", headSha: HEAD }, evidence);
+    return coordinatorEvidencePolicy(gate, COORDINATOR, { decision: "merge", headSha: HEAD }, evidence);
   }
 
-  it("refuses a coordinator merge with evidence that admits the same merge on a mechanical authority gate", () => {
-    expect(coordinatorMerge("authority/MRG-AU", authorityGateReason(HEAD, pendingCheck(HEAD)))).toBe(true);
-    expect(coordinatorMerge("shepherd-merge-guard/skill-path", `the owner reviews repo skill changes: ${SKILL_FILE}`)).toBe(false);
+  it("refuses a coordinator merge on the live-shaped multi-line prompt with its skill-diff link line, which landGate reads by its policy line", () => {
+    const gate = gateWith(livePrompt("shepherd-merge-guard/skill-path", SKILL_REASON));
+
+    const land = landGate(gate);
+
+    expect(land).toEqual({ repo: LIVE_REPO, pr: LIVE_PR, head: HEAD, rule: "shepherd-merge-guard/skill-path", reason: SKILL_REASON });
+    expect(coordinatorMerge(gate, "shepherd-merge-guard/skill-path", SKILL_REASON)).toBe(false);
+  });
+
+  it("refuses a coordinator merge on the policy line alone, with evidence that admits the same merge on a mechanical authority gate", () => {
+    const mechanicalReason = authorityGateReason(HEAD, pendingCheck(HEAD));
+    const skill = gateWith(asked("shepherd-merge-guard/skill-path", SKILL_REASON));
+
+    expect(landGate(skill)).toEqual({ repo: LIVE_REPO, pr: LIVE_PR, head: HEAD, rule: "shepherd-merge-guard/skill-path", reason: SKILL_REASON });
+    expect(coordinatorMerge(gateWith(asked("authority/MRG-AU", mechanicalReason)), "authority/MRG-AU", mechanicalReason)).toBe(true);
+    expect(coordinatorMerge(skill, "shepherd-merge-guard/skill-path", SKILL_REASON)).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { resolveCommand } from "../registry.js";
+import { clearCiWaitHead, noteCiWaitHead } from "../workflows/ci-wait-head.js";
 import { formatShepherd } from "./format.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
@@ -91,6 +92,28 @@ describe("a run parked in recovery after it recorded its outcome", () => {
 
     expect(row).toMatchObject({ phase: "post-merge", outcome: { kind: "merged" } });
     expect(row.totalMinutes).toBeGreaterThan(60);
+  });
+
+  it("says a running run past its main CI read is cleaning up, not watching main CI", () => {
+    const run = parkedWith("running", "sh-cleanup", { "sh-landed": { mergeSha: "def5678" }, "sh-main-ci": { verdict: "green", mergeSha: "def5678" } });
+
+    const row = watchRow({ registration, run, now });
+
+    expect(row).toMatchObject({ phase: "post-merge", nextAction: "cleaning up after the merge: head branch, task and agents" });
+  });
+
+  it("says none for a completed merged run whose last step was sh-cleanup", () => {
+    const run = { ...parkedWith("completed", "sh-cleanup", { "sh-landed": { mergeSha: "def5678" } }), completedAt: ENDED };
+
+    const row = watchRow({ registration, run, now });
+
+    expect(row).toMatchObject({ phase: "done", nextAction: "none" });
+  });
+
+  it("still says a run in sh-main-ci is watching main CI", () => {
+    const row = watchRow({ registration, run: parkedWith("running", "sh-main-ci", { "sh-landed": { mergeSha: "def5678" } }), now });
+
+    expect(row.nextAction).toBe("watching main CI after the merge");
   });
 });
 
@@ -431,7 +454,7 @@ describe("shepherd view stalls", () => {
     });
 
     it("gives every declared Shepherd step id an explicit phase, never the ci fallback", () => {
-      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait", "sh-base-wait", "sh-head-origin"].includes(id));
+      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "ci-orphan-rerun", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait", "sh-base-wait", "sh-head-origin"].includes(id));
 
       expect(unmapped).toEqual([]);
     });
@@ -567,5 +590,35 @@ describe("a held run whose wait saw a pushed head", () => {
 
     expect(row).toMatchObject({ phase: "ci", headSha: H2 });
     expect(row.nextAction).toContain(H2.slice(0, 7));
+  });
+});
+
+describe("a run whose PR moved while its ci-wait runs (TP-4092)", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+  const waitingAt = (currentStep: string) => {
+    const run = { ...pausedAt(currentStep), status: "running" } as WorkflowRun;
+    run.stepResults["await-new-head:1:0"] = { stepId: "await-new-head:1", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { headSha: H1 } } };
+    return run;
+  };
+
+  it("names the head the live ci-wait is judging, not the last recorded one", () => {
+    noteCiWaitHead("acme/widgets", 1, H2);
+    try {
+      const row = watchRow({ registration, run: waitingAt("ci-wait:r5:0") });
+
+      expect(row).toMatchObject({ phase: "ci", headSha: H2, nextAction: `waiting for CI on ${H2.slice(0, 7)}` });
+    } finally {
+      clearCiWaitHead("acme/widgets", 1);
+    }
+  });
+
+  it("keeps the recorded head once the run has left ci-wait", () => {
+    noteCiWaitHead("acme/widgets", 1, H2);
+    try {
+      expect(watchRow({ registration, run: waitingAt("ci-orphan-rerun:r5:0") }).headSha).toBe(H1);
+    } finally {
+      clearCiWaitHead("acme/widgets", 1);
+    }
   });
 });

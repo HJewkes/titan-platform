@@ -26,7 +26,19 @@ import { roundsInSet, setFromQuery } from "./round-set.js";
 
 const COUNT_WIDTH = 96;
 
-/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then the sent ones. */
+const SUPERSEDED_BY = "superseded-by:";
+
+type RoundStatus = RoundSummary["status"];
+
+const STATUS_ORDER: readonly RoundStatus[] = ["open", "sent", "withdrawn"];
+
+const SECTIONS: Record<RoundStatus, { title: string; subtitle: string; empty: string }> = {
+  open: { title: "Open rounds", subtitle: "Waiting for your answers", empty: "No open rounds" },
+  sent: { title: "Sent rounds", subtitle: "Answered; the feedback sits beside the round", empty: "No sent rounds" },
+  withdrawn: { title: "Withdrawn rounds", subtitle: "Superseded or closed before an answer; nothing to answer", empty: "No withdrawn rounds" },
+};
+
+/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then the sent ones, then the withdrawn ones. */
 export function RoundsPage({ query }: { query?: string }): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
@@ -39,8 +51,9 @@ export function RoundsPage({ query }: { query?: string }): ReactNode {
     <VStack gap={6}>
       {truncated ? <Alert status="warning" message={`Showing the first ${list.data.rounds.length} rounds; the rounds dir holds more.`} /> : null}
       {set === null ? null : <SetFilter set={set} count={rounds.length} />}
-      <RoundsSection title="Open rounds" subtitle="Waiting for your answers" rounds={rounds.filter((round) => round.status === "open")} empty="No open rounds" />
-      <RoundsSection title="Sent rounds" subtitle="Answered; the feedback sits beside the round" rounds={rounds.filter((round) => round.status === "sent")} empty="No sent rounds" />
+      {STATUS_ORDER.map((status) => (
+        <RoundsSection key={status} status={status} rounds={rounds.filter((round) => round.status === status)} />
+      ))}
     </VStack>
   );
 }
@@ -62,9 +75,10 @@ function SetFilter({ set, count }: { set: string; count: number }): ReactNode {
   );
 }
 
-function RoundsSection({ title, subtitle, rounds, empty }: { title: string; subtitle: string; rounds: readonly RoundSummary[]; empty: string }): ReactNode {
+function RoundsSection({ status, rounds }: { status: RoundStatus; rounds: readonly RoundSummary[] }): ReactNode {
+  const { title, subtitle, empty } = SECTIONS[status];
   return (
-    <Section>
+    <Section testID={`rounds-${status}`}>
       <SectionHeader title={title} subtitle={subtitle} />
       <SectionContent>{rounds.length === 0 ? <EmptyState title={empty} /> : <RoundsResponsive rounds={rounds} />}</SectionContent>
     </Section>
@@ -173,8 +187,36 @@ function kindOf(round: RoundSummary): string {
   return round.design ? "design" : "questions";
 }
 
-/** An invalid round has no unit to show, so its row carries the schema's reason instead. */
+/** A withdrawn round also says why it left the queue. */
 function UnitOrReason({ round }: { round: RoundSummary }): ReactNode {
+  if (round.withdrawnReason === undefined) return <UnitLine round={round} />;
+  return (
+    <VStack gap={1}>
+      <UnitLine round={round} />
+      <WithdrawnReason id={round.id} reason={round.withdrawnReason} />
+    </VStack>
+  );
+}
+
+/** A superseded round links to the round that replaced it, so the owner answers that one instead. */
+function WithdrawnReason({ id, reason }: { id: string; reason: string }): ReactNode {
+  const by = reason.startsWith(SUPERSEDED_BY) ? reason.slice(SUPERSEDED_BY.length) : null;
+  return (
+    <HStack gap={1} align="center" wrap testID={`round-withdrawn-${id}`}>
+      <Typography variant="caption" color="secondary">
+        {by === null ? `Withdrawn: ${reason}` : "Superseded by"}
+      </Typography>
+      {by === null ? null : (
+        <Link color="primary" onPress={() => open({ view: "rounds", id: by })}>
+          {by}
+        </Link>
+      )}
+    </HStack>
+  );
+}
+
+/** An invalid round has no unit to show, so its row carries the schema's reason instead. */
+function UnitLine({ round }: { round: RoundSummary }): ReactNode {
   if (!round.valid) {
     return (
       <Typography variant="caption" color="error">

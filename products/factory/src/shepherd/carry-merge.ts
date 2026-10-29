@@ -14,6 +14,7 @@ import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
 import { CiPolicySchema } from "./review-schemas.js";
 import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
+import { REVIEW_SCOPE_STEP, reviewScopeRoute } from "./review-scope.js";
 import { OWN_MERGE_UP_STEP, ownMergeUpRoute } from "./own-merge-up.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
 import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
@@ -29,6 +30,7 @@ export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SEAT_STEP, kind: "dispatch" },
   { id: REMERGE_STEP, kind: "dispatch" },
   { id: FIX_CARRY_STEP, kind: "dispatch" },
+  { id: REVIEW_SCOPE_STEP, kind: "dispatch" },
   { id: OWN_MERGE_UP_STEP, kind: "dispatch" },
   { id: SET_CARRY_STEP, kind: "dispatch" },
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
@@ -195,7 +197,7 @@ const Evidence = z.looseObject({
     dispatchedReviewer: z.looseObject({ agentId: z.string().min(1), sessionId: z.string().min(1) }),
     seatGrants: z.array(z.string()),
   }),
-  record: z.looseObject({ verdictLocator: z.looseObject({}), proofUnverified: z.string().optional() }),
+  record: z.looseObject({ verdictLocator: z.looseObject({}), proofUnverified: z.string().optional(), proofBase: z.string().optional() }),
   ciPolicy: CiPolicySchema,
   grantWithheld: z.object({ policy: z.string().nullable(), proof: z.string().nullable() }).optional(),
 });
@@ -266,6 +268,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     ...(source.ciPolicy && { ciPolicy: source.ciPolicy }),
     ...(source.grantWithheld && { grantWithheld: source.grantWithheld }),
     ...(source.record.proofUnverified !== undefined && { proofUnverified: source.record.proofUnverified }),
+    ...(source.record.proofBase !== undefined && { proofBase: source.record.proofBase }),
   });
   return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }
@@ -277,6 +280,7 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, 
     carrySeatRoute(deps, wiring),
     remergeRoute(deps.now, wiring?.carry),
     fixCarryRoute(deps.now, wiring?.carry),
+    reviewScopeRoute(deps.now, wiring?.carry),
     ownMergeUpRoute(deps.now, wiring?.carry),
     setCarryRoute(deps.now, wiring?.carry),
     codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),

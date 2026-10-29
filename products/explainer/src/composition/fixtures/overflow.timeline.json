@@ -1,0 +1,6 @@
+{
+  "durationS": 1,
+  "beats": [
+    { "id": "too-wide", "kind": "held", "startS": 0, "durationS": 1, "slots": { "line": "UnbreakableSyntheticIdentifierThatNoStageBoxCanHoldOnOneLineAtTheHeadingSize" } }
+  ]
+}

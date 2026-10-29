@@ -1,0 +1,26 @@
+schema: narrative-structure/v1
+id: board-walk
+version: 0.1.0
+source: "video-profiles plan §B.4 (the board walk)"
+summary: "Work moving across the board, column by column, then the decisions it leaves."
+fit:
+  ask: "Is the period best told as work moving across the board?"
+  all: [board-moved]
+blocks:
+  - { id: bottom-line, goal: "The verdict and how much moved.", share: 0.15 }
+  - { id: board, goal: "Work moving across the board, column by column.", share: 0.5 }
+  - { id: decisions, goal: "The decisions the board leaves.", share: 0.25 }
+  - { id: ask, goal: "What to do next.", share: 0.1 }
+hook: "Open on the board as it stands, then replay the moves."
+ending: "button"
+spine:
+  - title: Bottom line
+    body: |-
+      <The verdict, and how much moved.>
+  - title: Moves
+    body: |-
+      | Item | From | To | Why | Fact id |
+      |---|---|---|---|---|
+  - title: Decisions left
+    body: |-
+      <Each decision with its recommendation.>

@@ -13,6 +13,7 @@ const VERDICT_READING: Record<Verdict, string> = {
   vacuous: "No added test fails on the base, so none proves the change. That is blocking unless you show why no test can fail there.",
   "no-tests": "The change adds or edits no test. That is blocking unless you show why no test can fail on the base.",
   error: "fix-proof could not finish, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
+  refused: "fix-proof ran nothing, since the PR's base is not the default branch, so nothing proves the change. That is blocking unless you name an added test and show it fails on the base.",
 };
 
 const MUTANTS_READING =
@@ -24,19 +25,37 @@ function verdictLine(result: FixProofResult): string {
 }
 
 /** Why Shepherd could not verify this head's fix-proof; a head can force each of these, so none may pass on its own. */
-export type FixProofUnverified = "error" | "untrusted" | "unread" | "no-repro-test-only";
+export type FixProofUnverified = "error" | "refused" | "untrusted" | "unread" | "no-repro-test-only" | "no-repro-non-source";
 
 /** A closed map, so the caller's reason picks a sentence and never reaches the prompt itself. */
 const UNVERIFIED_READING: Record<FixProofUnverified, string> = {
   error: "Shepherd marks this head's fix-proof unverified: the run ended in an error, which a head can cause on purpose.",
+  refused: "Shepherd marks this head's fix-proof unverified: the run refused a base that is not the default branch, so it tested nothing.",
   untrusted: "Shepherd marks this head's fix-proof unverified: its run did not come from a trusted, successful fix-proof job, so its result is not evidence.",
   unread: "Shepherd marks this head's fix-proof unverified: it could not read a fix-proof result for this head although one was due.",
   "no-repro-test-only": "Shepherd marks this head's fix-proof unverified: the PR changes only tests, so its proof found no test that fails on the base, and the review goes ahead.",
+  "no-repro-non-source":
+    "Shepherd marks this head's fix-proof unverified: the PR changes no source, only tests, test support, mutation specs, changesets or workflows, so its proof reproduced nothing, and the review goes ahead.",
 };
+
+/** What a head proceeding to review on a NO_REPRO changes: tests alone, or no source at all (TP-4275). */
+export type NoReproProceed = "test-only" | "non-source";
+
+const NO_REPRO_PROCEEDS: Partial<Record<FixProofUnverified, NoReproProceed>> = { "no-repro-test-only": "test-only", "no-repro-non-source": "non-source" };
+
+/** The one reading of which unverified standings proceed to review on a NO_REPRO, and on what; every other reason, or none, is undefined. */
+export function noReproProceedOf(why: FixProofUnverified | undefined): NoReproProceed | undefined {
+  return why === undefined || !Object.hasOwn(NO_REPRO_PROCEEDS, why) ? undefined : NO_REPRO_PROCEEDS[why];
+}
 
 const UNVERIFIED_RULE = "Say FIX_FIRST unless you name an added test and show it fails on the base; a MERGE here merges on green with the unverified standing recorded.";
 
-const TEST_ONLY_RULE = "Judge each added test on its own: say FIX_FIRST unless it asserts behavior the code has; a MERGE here merges on green with the unverified standing recorded.";
+/** A proceeding head has no test that can fail on the base, so its rule judges what it does change instead of asking for one. */
+const PROCEED_RULE: Record<NoReproProceed, string> = {
+  "test-only": "Judge each added test on its own: say FIX_FIRST unless it asserts behavior the code has; a MERGE here merges on green with the unverified standing recorded.",
+  "non-source":
+    "Judge each changed test on its own and each workflow edit against the checks it runs: say FIX_FIRST unless every changed test asserts behavior the code has, each deleted test covered nothing still live, and no workflow edit weakens, skips or renames a check; a MERGE here merges on green with the unverified standing recorded.",
+};
 
 const JUDGE_YOURSELF = "Read each added test against the base code and say which would fail there.";
 
@@ -95,8 +114,23 @@ export function workflowCiLines(head: string, proof: WorkflowCiProof | undefined
   ];
 }
 
+const TEST_ONLY_MEMBER =
+  "This head changes only tests, so none can fail on the base. For each changed test, name the code change it covers and say whether the test would fail without that change, as when that code is reverted or broken. Say FIX_FIRST when any changed test would still pass without it.";
+
+const NON_SOURCE_MEMBER =
+  "This head changes no source, so nothing can fail on the base. For each changed test, name the code change it covers and say whether the test would fail without that change; for each deleted test, say whether it covered behavior still live; for each workflow edit, say whether it weakens, skips or renames a check. Say FIX_FIRST when any answer is yes, or a changed test would still pass without its code.";
+
+const PROCEED_MEMBER: Record<NoReproProceed, string> = { "test-only": TEST_ONLY_MEMBER, "non-source": NON_SOURCE_MEMBER };
+
+/** The tests member's question for a head proceeding on a NO_REPRO, which Shepherd plans it to answer in place of the proof (TP-4058). */
+export function testOnlyMemberLines(why: FixProofUnverified | undefined): string[] {
+  const proceeds = noReproProceedOf(why);
+  return proceeds === undefined ? [] : [PROCEED_MEMBER[proceeds]];
+}
+
 /** The unverified section; an unknown reason, as from stored JSON, yields nothing rather than echoing it. */
 export function unverifiedLines(why: FixProofUnverified | undefined): string[] {
   const reading = why === undefined || !Object.hasOwn(UNVERIFIED_READING, why) ? undefined : UNVERIFIED_READING[why];
-  return reading === undefined ? [] : [reading, why === "no-repro-test-only" ? TEST_ONLY_RULE : UNVERIFIED_RULE];
+  const proceeds = noReproProceedOf(why);
+  return reading === undefined ? [] : [reading, proceeds === undefined ? UNVERIFIED_RULE : PROCEED_RULE[proceeds]];
 }

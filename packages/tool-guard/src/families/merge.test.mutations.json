@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a tags/ or v<digit> segment anywhere in a destination reads as a tag",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "const TAG_REF_RE = /^(?:(?:refs\\/)?tags\\/.|v\\d|(?:@[^/@:]+\\/)?[^@:/]+@\\d)/;",
+      "replace": "const TAG_REF_RE = /(?:(?:refs\\/)?tags\\/.|v\\d|(?:@[^/@:]+\\/)?[^@:/]+@\\d)/;",
+      "kills": [
+        "normal work classifies nothing git push to a branch whose name holds tags/"
+      ]
+    },
+    {
+      "name": "a readHead that throws reads as no branch checked out",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "  } catch {\n    return UNKNOWN;\n  }",
+      "replace": "  } catch {\n    return null;\n  }",
+      "kills": [
+        "one fixture per bash.merge spelling a readHead that throws reads as an unknown protected head git push origin HEAD",
+        "one fixture per bash.merge spelling a readHead that throws reads as an unknown protected head git merge x"
+      ]
+    },
+    {
+      "name": "config routes only a push with no refspec",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "    return spec === null ? [UNKNOWN] : spec.includes(\":\") ? [] : [spec];",
+      "replace": "    return [];",
+      "kills": [
+        "a push the command's own -c or --config-env config routes onto a protected branch a remote push refspec mapping the named branch reads as a push to main"
+      ]
+    },
+    {
+      "name": "config routes an explicit src:dst refspec too",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "    return spec === null ? [UNKNOWN] : spec.includes(\":\") ? [] : [spec];",
+      "replace": "    return spec === null ? [UNKNOWN] : [spec];",
+      "kills": [
+        "a push the command's own -c or --config-env config routes onto a protected branch an explicit src:dst refspec, which git does not map pushes no protected branch"
+      ]
+    },
+    {
+      "name": "any branch upstream satisfies push.default=upstream",
+      "file": "packages/tool-guard/src/families/merge.ts",
+      "find": "sources.some((s) => s === UNKNOWN || !config.merges.has(s))",
+      "replace": "config.merges.size === 0",
+      "kills": [
+        "a push the command's own -c or --config-env config routes onto a protected branch push.default=upstream with another branch's upstream reads as a push to an unknown branch"
+      ]
+    }
+  ]
+}

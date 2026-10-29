@@ -10,7 +10,7 @@ const CONFIRM = `action:${"d".repeat(64)}`;
 
 function memoryLedger(): OwnerOpsLedger & { entries: LedgerEntry[] } {
   const entries: LedgerEntry[] = [];
-  return { entries, append: async (entry) => void entries.push(entry) };
+  return { entries, append: async (entry) => void entries.push(entry), read: async (actionId) => entries.filter((entry) => entry.actionId === actionId) };
 }
 
 /** The effects these tests run read no context. */
@@ -39,6 +39,15 @@ describe("actOnOp", () => {
 
     expect(outcome).toEqual(answer);
     expect(ledger.entries.map((entry) => entry.phase)).toEqual(["started", "done"]);
+  });
+
+  // Kills: mapping retire-agent back onto destructive-local, whose DSL-OR row denies every console retire.
+  it("admits a retire-agent op under RET-OR and runs its effect", async () => {
+    const answer: Outcome = { outcome: "retired", name: "item-42", caveats: [] };
+
+    const outcome = await act({ kind: "retire-agent", name: "item-42", agentId: "9e3faa6c", force: false }, async () => answer);
+
+    expect(outcome).toEqual(answer);
   });
 
   it("refuses with class an admitted op whose kind has no effect yet", async () => {

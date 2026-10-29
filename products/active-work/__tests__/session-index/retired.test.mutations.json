@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a sealed transcript seals whatever its facet version",
+      "file": "products/active-work/src/session-index/retired.ts",
+      "find": "      current.has(row.sourceId) &&\n",
+      "replace": "",
+      "kills": [
+        "sealed transcripts of retired agents backfills a sealed transcript whose audit facet is behind, then seals it again (TP-877)"
+      ]
+    }
+  ]
+}

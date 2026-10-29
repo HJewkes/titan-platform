@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { L0Check, L0Result } from "./eval-l0.js";
 import { ruleRow } from "./lint-text.js";
 
@@ -20,9 +21,12 @@ const FIRST_PLURAL = /\b(?:we|we['’](?:re|ve|ll|d)|us|our|ours)\b/gi;
 const CONTRACTION = /\b\w+['’](?:s|t|re|ve|ll|d|m)\b/gi;
 const TRIAD = /\b[\w'’-]+(?: [\w'’-]+){0,2}, [\w'’-]+(?: [\w'’-]+){0,2},? (?:and|or) [\w'’-]+(?: [\w'’-]+){0,2}[.,;:!?]/gi;
 const COLON_REVEAL = /(?<!\d):\s+[^.!?:\n]{1,60}[.!?]/gi;
-const NOT_X_TAIL = /[,;:]\s+not (?:by |the |a |an |its |their |from |as )?[\w'’-]+(?: [\w'’-]+){0,4}\s*[.!?]/gi;
+const NOT_X_TAIL = /[,;:]\s+(?:not|never|no) (?:by |the |a |an |its |their |from |as )?[\w'’-]+(?: [\w'’-]+){0,4}\s*[.!?]/gi;
 const SEMICOLON = /;/g;
 const LETS = /\blet['’]?s\b|\blet us\b/gi;
+// TP-4306's regexes as written, which agree with the Biber tagger at P 0.90 / R 0.89 and P 1.00 / R 1.00.
+const NEG_SYNTHETIC = /\bno\s+(?!longer\b|one\b|matter\b|doubt\b|more\b|less\b|way\b)[A-Za-z]|\b(?:neither|nor)\b/gi;
+const DOWNTONER = /\b(?:almost|barely|hardly|merely|mildly|nearly|only|partially|partly|practically|scarcely|slightly|somewhat)\b/gi;
 
 /** Below this many spoken words a script's rates are too coarse to judge: its rows report but never warn. */
 export const MIN_REGISTER_WORDS = 150;
@@ -62,6 +66,23 @@ export const numberSpans = (text: string): TextSpan[] => spans(NUM_RUN, text);
 /** The lists of three the `triads` row counts, in order. */
 export const triadSpans = (text: string): TextSpan[] => spans(TRIAD, text);
 
+/** The doctrine's over-represented phrases (TP-4305), read once on first use. */
+let voicePhrases: RegExp | undefined;
+
+/** Each phrase's words in order, joined by anything that is not a word, so "the catch." and "The catch" both match. */
+function phrasePattern(phrases: readonly string[]): RegExp {
+  const words = (phrase: string) => phrase.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^A-Za-z0-9]+");
+  return new RegExp(`(?<![A-Za-z0-9'’])(?:${phrases.map(words).join("|")})(?![A-Za-z0-9]|['’][A-Za-z])`, "gi");
+}
+
+const phrasesRegExp = (): RegExp => {
+  voicePhrases ??= phrasePattern(JSON.parse(readFileSync(new URL("../doctrine/voice-phrases.json", import.meta.url), "utf8")).phrases);
+  return voicePhrases;
+};
+
+/** The over-represented phrases the `phrases` row counts, in order. */
+export const phraseSpans = (text: string): TextSpan[] => spans(phrasesRegExp(), text);
+
 const DEVICE_PATTERNS = { "colon-reveals": COLON_REVEAL, "not-x-tails": NOT_X_TAIL, semicolons: SEMICOLON, lets: LETS } as const;
 
 /** The style devices a rewrite must not add, each a register row that caps near zero. */
@@ -93,7 +114,7 @@ function sentenceCv(s: SpokenText): number | undefined {
 
 export const REGISTER_METRICS = [
   "numbers", "second-person", "we", "sentence-mean", "sentence-cv", "contractions",
-  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets",
+  "triads", "colon-reveals", "not-x-tails", "semicolons", "lets", "phrases", "neg-synthetic", "downtoners",
 ] as const;
 export type RegisterMetric = (typeof REGISTER_METRICS)[number];
 
@@ -110,6 +131,9 @@ export const REGISTER_MEASURES: Record<RegisterMetric, (s: SpokenText) => number
   "not-x-tails": punctuatedOnly((s) => count(NOT_X_TAIL, s.text)),
   semicolons: per1k(SEMICOLON),
   lets: per1k(LETS),
+  phrases: (s) => (1000 * phraseSpans(s.text).length) / Math.max(s.words.length, 1),
+  "neg-synthetic": per1k(NEG_SYNTHETIC),
+  downtoners: per1k(DOWNTONER),
 };
 
 export interface Band {
@@ -118,9 +142,10 @@ export interface Band {
 }
 
 /**
- * Human-creator explainer scripts, per script, P25 to P90 (TP-3765 synthesis). Rates are per 1k words except the
- * sentence shape and "not-x-tails", which counts per script. Devices the research caps without a floor (triads,
- * colon reveals, tails, semicolons, let's) have no min, so a script is never told to add one.
+ * Human-creator explainer scripts, per script, P25 to P90 (TP-3765 synthesis; `phrases` from TP-4305's measure on the
+ * same scripts). Rates are per 1k words except the sentence shape and "not-x-tails", which counts per script. Devices
+ * the research caps without a floor (triads, colon reveals, tails, semicolons, let's, phrases) have no min, so a
+ * script is never told to add one. `neg-synthetic` and `downtoners` cap at the human-punct P90 of TP-4306's corpus.
  */
 export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   numbers: { min: 11.92, max: 25.62 },
@@ -134,7 +159,13 @@ export const REGISTER_BANDS: Record<RegisterMetric, Band> = {
   "not-x-tails": { max: 1 },
   semicolons: { max: 0.6 },
   lets: { max: 3.21 },
+  phrases: { max: 0.58 },
+  "neg-synthetic": { max: 2.5 },
+  downtoners: { max: 3.6 },
 };
+
+/** Rows reported against their band but never warned on: downtoners' length-matched effect is unconfirmed (TP-4306). */
+const REPORTED_ONLY_METRICS: ReadonlySet<RegisterMetric> = new Set(["downtoners"]);
 
 /** A beat may speak one number; the rest belong on screen (TP-3813). A beat over this is "crowded". */
 export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
@@ -144,17 +175,28 @@ export const MAX_SPOKEN_NUMBERS_PER_BEAT = 1;
  * P25 5.5%, median 8.5%, P75 16% and P90 23.7%; the cap is P90 rounded, so it asks for a human script's worst tenth,
  * not for zero crowded beats.
  */
-const MAX_CROWDED_BEAT_SHARE = 0.24;
+export const MAX_CROWDED_BEAT_SHARE = 0.24;
 const NUMBERS_PER_BEAT_ID = "register:numbers-per-beat";
+const SHORTEST_LAST_ID = "register:shortest-last";
 
-export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID];
+export const REGISTER_CHECK_IDS: readonly string[] = [...REGISTER_METRICS.map((metric) => `register:${metric}`), NUMBERS_PER_BEAT_ID, SHORTEST_LAST_ID];
+
+/** A line's sentence lengths in words, in spoken order. */
+const lineSentenceLengths = (spoken: string): number[] => sentenceLengths(spokenText([spoken]));
+
+/** Whether a line of two or more sentences ends on its one shortest sentence: the cadence of a button or a moral. */
+export function endsOnShortest(spoken: string): boolean {
+  const lengths = lineSentenceLengths(spoken);
+  const last = lengths.at(-1)!;
+  return lengths.length >= 2 && lengths.slice(0, -1).every((n) => n > last);
+}
 
 const below = (value: number, band: Band): boolean => band.min !== undefined && value < band.min;
 
 function registerRow(metric: RegisterMetric, s: SpokenText): L0Result {
   const band = REGISTER_BANDS[metric];
   const value = REGISTER_MEASURES[metric](s);
-  const judged = value !== undefined && s.words.length >= MIN_REGISTER_WORDS;
+  const judged = value !== undefined && s.words.length >= MIN_REGISTER_WORDS && !REPORTED_ONLY_METRICS.has(metric);
   const pass = !judged || (!below(value, band) && value <= band.max);
   const threshold = value !== undefined && below(value, band) ? (band.min ?? band.max) : band.max;
   return ruleRow(`register:${metric}`, { value: value ?? 0, threshold, pass, mode: "heuristic", severity: "warning" });
@@ -169,8 +211,22 @@ function numbersPerBeatRow(beats: readonly { id: string; spoken: string }[], s: 
   });
 }
 
+/**
+ * The share of multi-sentence beats that end on their shortest sentence, against the share chance gives (1 in k for a
+ * beat of k sentences). Reported only: no human band exists at beat level, so it never warns (TP-4308).
+ */
+function shortestLastRow(beats: readonly { id: string; spoken: string }[]): L0Result {
+  const multi = beats.filter((beat) => lineSentenceLengths(beat.spoken).length >= 2);
+  const ending = multi.filter((beat) => endsOnShortest(beat.spoken));
+  const chance = multi.reduce((sum, beat) => sum + 1 / lineSentenceLengths(beat.spoken).length, 0);
+  const share = (n: number): number => (multi.length === 0 ? 0 : n / multi.length);
+  return ruleRow(SHORTEST_LAST_ID, {
+    value: share(ending.length), threshold: share(chance), pass: true, mode: "heuristic", severity: "warning", beats: ending.map((beat) => beat.id),
+  });
+}
+
 /** Q-V11: how far the spoken register sits from human explainers, one warning row a metric; never a gate. */
 export const registerCheck: L0Check = ({ script }) => {
   const parsed = spokenText(script.beats.map((beat) => beat.spoken));
-  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats, parsed)];
+  return [...REGISTER_METRICS.map((metric) => registerRow(metric, parsed)), numbersPerBeatRow(script.beats, parsed), shortestLastRow(script.beats)];
 };

@@ -14,22 +14,28 @@ import { ownUpdatedHeads } from "./merge-up-release.js";
 import { ReleaseHeadArg, releaseAtHead, updateBranchRunning } from "./release-head.js";
 import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
-import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
+import { prsCommand } from "./prs-command.js";
 import { kindMove, testOnlyHint, type KindMove } from "./register-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { orderCommand, statusOrder, type StatusOrder } from "./merge-order-command.js";
 import { repairStopCommand } from "./repair-stop-command.js";
+import { mergeBaseCommand } from "./merge-base-command.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
 import { reviewCommand } from "./review-request.js";
+import { thawCommand } from "./thaw-command.js";
+import { fixPrCommand } from "./fix-pr-command.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { waitingCommand } from "./waiting.js";
+import { visualDeltaCommand } from "./visual-delta-command.js";
+import { watchCommand } from "./watch-command.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows } from "./watch-rows.js";
 import { stackFrozen } from "./stack-cascade.js";
@@ -74,7 +80,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
   const { task, implementer, registrant, reviewer, kind, head: headSha, base } = args;
-  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base };
+  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
@@ -244,7 +250,7 @@ const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>(
 });
 
 /** `stackFrozen` is read by agent-chat, which stacks no new child on a parent past its fix-round limit. */
-export type StatusRow = WatchRow & { stackFrozen: boolean };
+export type StatusRow = WatchRow & StatusOrder & { stackFrozen: boolean };
 
 interface StatusArgs {
   repo?: string;
@@ -267,7 +273,7 @@ const statusCommand = defineCommand<StatusArgs, StatusRow[], FactoryContext>({
   description: "One row per shepherded PR whose run has not finished, optionally narrowed to a repo or a PR (which lists its finished runs too): phase, head, next action, blockers, and whether new stacking on it is frozen; all lists every finished run as well",
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional(), all: z.boolean().optional() }),
   result: z.custom<StatusRow[]>(),
-  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...row, stackFrozen: stackFrozen(run) })),
+  run: (args, ctx) => mapRows(ctx.host, servicesOf(ctx), statusFilter(args), ({ row, run }) => ({ ...row, ...statusOrder(servicesOf(ctx).mergeOrder, row), stackFrozen: stackFrozen(run) })),
 });
 
 const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
@@ -277,8 +283,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   description: "The watch list: every shepherded PR whose run is active (default), finished, or all of them",
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
-  run: async ({ state }, ctx) =>
-    watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
+  run: async ({ state }, ctx) => watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
@@ -347,19 +352,6 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
-/** Answers from the snapshot alone: a host with none wired refuses rather than reading GitHub per call. */
-const prsCommand = defineCommand<{ repo?: string }, PrRow[], FactoryContext>({
-  name: "shepherd.prs",
-  description: "Every open PR of each seat repo (or of --repo) from Shepherd's snapshot, plus the PRs Shepherd merged in the last 24 h, with head, base, run and cached CI; no GitHub call while the list is under a minute old",
-  args: z.object({ repo: RepoArg.optional() }),
-  result: z.custom<PrRow[]>(),
-  async run({ repo }, ctx) {
-    const services = servicesOf(ctx);
-    if (!services.snapshot) throw coded("shepherd prs reads the PR snapshot, and this host was opened without one", EXIT.UNAVAILABLE);
-    return shepherdPrs(hostPrsSources(ctx.host, services, services.snapshot), repo);
-  },
-});
-
 /** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
 export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
@@ -371,10 +363,16 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.release": releaseCommand,
   "shepherd.repair-stop": repairStopCommand,
   "shepherd.freeze": repoFreezeCommand,
+  "shepherd.thaw": thawCommand,
+  "shepherd.order": orderCommand,
+  "shepherd.fix-pr": fixPrCommand,
+  "shepherd.merge-base": mergeBaseCommand,
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
   "shepherd.prs": prsCommand,
+  "shepherd.watch": watchCommand,
+  "shepherd.visual-delta": visualDeltaCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

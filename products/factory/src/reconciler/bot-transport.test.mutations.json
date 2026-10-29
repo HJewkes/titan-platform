@@ -11,22 +11,6 @@
       ]
     },
     {
-      "name": "a 304 drops the ETag it answered",
-      "file": "products/factory/src/reconciler/bot-transport.ts",
-      "find": "(read.notModified ? (etags[key] ?? null) :",
-      "replace": "(read.notModified ? null :",
-      "kills": [
-        "bot transport gates (TP-3431) answers unchanged and keeps the ETags when all three reads answer 304"
-      ]
-    },
-    {
-      "name": "a failure answers without GitHub's headers",
-      "file": "products/factory/src/reconciler/bot-transport.ts",
-      "find": "return { status: seen.status, headers: seen.headers, message };",
-      "replace": "return { status: seen.status, headers: {}, message };",
-      "kills": ["bot transport failures, for the pool to classify (TP-3431) answers GitHub's status, lower-cased headers and message, and no read"]
-    },
-    {
       "name": "GraphQL's primary limit throws instead of answering 403",
       "file": "products/factory/src/reconciler/bot-transport.ts",
       "find": "if (RATE_LIMIT_PHRASES.some((phrase) => phrase.test(message))) return { status: 403, headers: seen.headers, message };",
