@@ -85,7 +85,7 @@ const fits = (o: Overflow) => o.top + o.right + o.bottom + o.left === 0;
  * from 1 on every render so the scale depends on this frame alone, never on seek history. Returns what is still past
  * the stage box at the floor, or nothing when some scale fits.
  */
-export function fitToStage(frame: HTMLElement): Overflow | undefined {
+function fitToStage(frame: HTMLElement): Overflow | undefined {
   if (fits(overflowAt(frame, 1))) return undefined;
   const floor = overflowAt(frame, FIT_MIN);
   if (!fits(floor)) return floor;

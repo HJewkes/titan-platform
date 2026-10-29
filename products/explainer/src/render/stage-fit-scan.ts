@@ -15,7 +15,7 @@ const SCAN_HZ = 2;
 const SETTLED_BEFORE_END_S = 0.05;
 
 /** The moments the scan seeks: a 2 Hz sweep of each beat and the beat's settled end. */
-export function scanMoments(beats: readonly ScanBeat[]): number[] {
+function scanMoments(beats: readonly ScanBeat[]): number[] {
   return beats.flatMap(({ startS, durationS }) => {
     const sweep = Array.from({ length: Math.ceil(durationS * SCAN_HZ) }, (_, k) => startS + k / SCAN_HZ);
     return [...sweep, startS + Math.max(0, durationS - SETTLED_BEFORE_END_S)];
