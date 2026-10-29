@@ -72,7 +72,7 @@ const located = (shell: string): string | null => {
 
 // Concurrent, so the four shells' drivers overlap instead of queueing (TP-4453).
 describe("the option reader agrees with each real shell on a generated table (TP-3221)", () => {
-  it.concurrent.for(["bash", "zsh", "dash", "sh"])("reads every line %s runs as it runs it", async (shell, { expect }) => {
+  it.concurrent.for(["bash", "zsh", "dash", "sh"])("reads every line %s runs as it runs it", { timeout: 120_000 }, async (shell, { expect }) => {
     const at = located(shell);
     if (at === null) return;
     const runs = await observed(at);
@@ -82,5 +82,5 @@ describe("the option reader agrees with each real shell on a generated table (TP
     });
     expect(missed).toEqual([]);
     expect(runs.filter((r) => r.length > 0).length).toBeGreaterThan(LINES.length / 4);
-  }, 120_000);
+  });
 });
