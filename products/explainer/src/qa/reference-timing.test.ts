@@ -125,6 +125,14 @@ describe("text spans", () => {
     expect(spans).toEqual([expect.objectContaining({ text: "32", fromS: 0, untilS: 1.5 })]);
   });
 
+  it("sibling numbers sharing an element description keep separate spans", () => {
+    const probed = [moment(0, [["12", "span.fig"], ["40", "span.fig"]]), moment(1, [])];
+
+    const spans = textSpans(probed);
+
+    expect(spans.map((s) => s.text)).toEqual(["12", "40"]);
+  });
+
   it("words replacing words in one element stay separate spans", () => {
     const probed = [moment(0, [["Queue", "div.t"]]), moment(0.5, [["Cache", "div.t"]]), moment(1, [])];
 

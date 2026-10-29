@@ -22,7 +22,7 @@
     {
       "name": "PR and task ids are no longer citations",
       "file": "products/explainer/src/qa/narration-facts.ts",
-      "find": "|\\bPRs?\\s?#?\\d+\\b|#\\d+\\b|\\b[A-Z]{2,}-\\d+\\b/gi",
+      "find": "|\\bPRs?\\s?#?\\d+\\b|#\\d+\\b/gi",
       "replace": "/gi",
       "kills": [
         "scaffolding and citations a PR number in a row cites its source"
@@ -38,12 +38,12 @@
       ]
     },
     {
-      "name": "counting figures are judged on every step",
+      "name": "task ids match any case and digit count",
       "file": "products/explainer/src/qa/narration-facts.ts",
-      "find": "unspokenFacts(beat, settledTexts(texts), spoken(beat))",
-      "replace": "unspokenFacts(beat, texts, spoken(beat))",
+      "find": "[A-Z]{2,}-\\d{3,}",
+      "replace": "[A-Za-z]{2,}-\\d+",
       "kills": [
-        "narration facts report a counting figure is judged by the value it settles on"
+        "scaffolding and citations only an upper-case task id cites a task"
       ]
     }
   ]

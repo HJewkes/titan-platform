@@ -11,6 +11,7 @@
  * where the next one starts, and a beat's last word ends at its own start.
  */
 import type { ProbedMoment } from "@titan-design/render-qa";
+import { countingElements, PLAIN_NUMBER } from "./counting-figures.js";
 import type { TimingGate, TimingInput } from "./timing-gates.js";
 
 /** RW-12's margin past the last referring word. */
@@ -31,16 +32,24 @@ export interface TextSpan {
   untilS: number | null;
 }
 
-const PLAIN_NUMBER = /^[£$€]?\d[\d,]*(?:\.\d+)?\s?(?:k|K|M|bn|B|%)?$/;
 /** A number counting up in its element is one text, so it is keyed by the element alone. */
-const spanKey = (t: { element: string; text: string }): string => `${t.element}\u0000${PLAIN_NUMBER.test(t.text.trim()) ? "#number" : t.text}`;
+const spanKey = (counting: ReadonlySet<string>, beat: string, t: { element: string; text: string }): string =>
+  `${t.element}\u0000${counting.has(`${beat}\u0000${t.element}`) && PLAIN_NUMBER.test(t.text.trim()) ? "#number" : t.text}`;
+
+/** The counting elements of each beat, as "beat NUL element". */
+function countingBy(probed: readonly ProbedMoment[]): Set<string> {
+  const beats = new Map<string, ProbedMoment[]>();
+  for (const moment of probed) beats.set(moment.beat, [...(beats.get(moment.beat) ?? []), moment]);
+  return new Set([...beats].flatMap(([beat, moments]) => [...countingElements(moments)].map((element) => `${beat}\u0000${element}`)));
+}
 
 /** Each text's runs of consecutive samples on screen, keyed by element and text; a counting number keeps its settled value. */
 export function textSpans(probed: readonly ProbedMoment[]): TextSpan[] {
   const open = new Map<string, TextSpan>();
   const spans: TextSpan[] = [];
+  const counting = countingBy(probed);
   for (const moment of probed) {
-    const shown = new Map(moment.texts.map((t) => [spanKey(t), t]));
+    const shown = new Map(moment.texts.map((t) => [spanKey(counting, moment.beat, t), t]));
     for (const [key, span] of open) {
       if (shown.has(key)) continue;
       spans.push({ ...span, untilS: moment.t });

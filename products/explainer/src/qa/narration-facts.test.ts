@@ -142,6 +142,14 @@ describe("scaffolding and citations", () => {
     expect(found).toEqual([]);
   });
 
+  it("only an upper-case task id cites a task", () => {
+    const texts = [label("top-10 lanes"), label("COVID-19 sorts"), label("ABC-4467 closed")];
+
+    const found = facts(texts, "the desk sorts parcels");
+
+    expect(found).toEqual(["number:10", "number:19"]);
+  });
+
   it("a shown zero is still flagged when the narration says neither zero nor nothing", () => {
     const found = facts([label("Guardrails 0")], "the guardrails goal moved");
 
@@ -160,6 +168,45 @@ describe("narration facts report", () => {
 
     // Assert
     expect(report.findings).toEqual([]);
+  });
+
+  it("sibling figures sharing an element description are each judged", () => {
+    // Arrange
+    const figure = (value: string) => ({ ...label(value, "ex-stat"), element: "span.ex-stat" });
+    const moments = [{ beat: "b1", texts: [figure("12"), figure("40"), figure("7")] }];
+
+    // Act
+    const report = narrationFactsReport(moments, () => "seven lanes");
+
+    // Assert
+    expect(report.findings.map((finding) => finding.fact)).toEqual(["12", "40"]);
+  });
+
+  it("a chart's largest bar stays the claim when smaller bars follow it", () => {
+    const bar = (value: string) => ({ ...label(value, "ex-bar-value"), element: "span.ex-bar-value" });
+    const moments = [{ beat: "b1", texts: [bar("48"), bar("12"), bar("30")] }];
+
+    const report = narrationFactsReport(moments, () => "the parcel lane is slowest");
+
+    expect(report.findings.map((finding) => finding.fact)).toEqual(["48"]);
+  });
+
+  it("figures that appear one after another in one element are all judged", () => {
+    const figure = (value: string) => ({ ...label(value, "ex-stat"), element: "span.ex-stat" });
+    const moments = [{ beat: "b1", texts: [figure("12")] }, { beat: "b1", texts: [figure("12"), figure("40")] }];
+
+    const report = narrationFactsReport(moments, () => "forty lanes");
+
+    expect(report.findings.map((finding) => finding.fact)).toEqual(["12"]);
+  });
+
+  it("figures at different places in one element are not one counting figure", () => {
+    const at = (value: string, x: number) => ({ ...label(value, "ex-stat"), element: "span.ex-stat", lines: [{ x, y: 100, width: 40, height: 20 }] });
+    const moments = [{ beat: "b1", texts: [at("12", 100)] }, { beat: "b1", texts: [at("40", 600)] }];
+
+    const report = narrationFactsReport(moments, () => "forty lanes");
+
+    expect(report.findings.map((finding) => finding.fact)).toEqual(["12"]);
   });
 
   it("a counting figure that settles on an unspoken value is flagged once", () => {
