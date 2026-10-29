@@ -663,7 +663,8 @@ names a pick-one (`questionId`), the option that approves (`approve`), and the f
 verbatim: `task`, `repo`, `gate`, and `scope`. For `ci-policy` the scope is
 `{ciPolicyKeys, files: [{path, blob}]}`, where `blob` is `git hash-object` of the intended file, or
 null for a file absent at head. For `skill` or `visual` it is `{paths}`. A round whose entry names no
-pick-one, or an option the question lacks, is refused.
+pick-one, or an option the question lacks, is refused. `titan-factory shepherd plan-round` drafts
+such a round from a plan's file list; the Shepherd guide's "Asking at plan time" covers it.
 
 - **Shown before it is approved.** The round page draws each binding beside its question: the
   approve option, the gate, task and repo, then the CI-policy keys and each pinned file (its blob

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "skill paths matched by a case-sensitive prefix, not the guard's predicate",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "const skill = skillPathsIn(paths);",
+      "replace": "const skill = paths.filter((path) => path.startsWith(\".claude/skills/\"));",
+      "kills": [
+        "predicting the skill and visual gates names exactly the skill paths, case folded as the guard folds them"
+      ]
+    },
+    {
+      "name": "the blob header counts UTF-16 code units instead of bytes",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "update(`blob ${bytes.byteLength}\\0`)",
+      "replace": "update(`blob ${bytes.toString(\"utf8\").length}\\0`)",
+      "kills": [
+        "pinning a planned file's bytes pins the git blob sha of the UTF-8 bytes, as git hash-object does"
+      ]
+    },
+    {
+      "name": "an absent file is pinned as the empty blob instead of null",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "blob: file.content === undefined ? null : blobOf(Buffer.from(file.content, \"utf8\"))",
+      "replace": "blob: blobOf(Buffer.from(file.content ?? \"\", \"utf8\"))",
+      "kills": [
+        "pinning a planned file's bytes pins an absent file as null"
+      ]
+    },
+    {
+      "name": "a policy plan with a file lacking content is no longer refused",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "if (unpinned.length > 0) throw",
+      "replace": "if (unpinned.length > 1) throw",
+      "kills": [
+        "predicting the ci-policy gate refuses a policy plan with a file it gives no content for"
+      ]
+    },
+    {
+      "name": "a .github/ plan with no ciPolicyKeys reads as weakening nothing",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "const keys = plan.ciPolicyKeys;",
+      "replace": "const keys = plan.ciPolicyKeys ?? [];",
+      "kills": [
+        "predicting the ci-policy gate refuses a .github/ plan that names no ciPolicyKeys, naming the keys"
+      ]
+    }
+  ]
+}

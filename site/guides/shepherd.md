@@ -1944,6 +1944,62 @@ threshold, `files-unread`, `github-path` and `ci-policy-malformed` rows never co
 approvals. An allow that rests on an approval names its plan round. A gate the run holds an
 approval of that gate for says "unplanned change".
 
+**Asking at plan time (TP-4360).** `titan-factory shepherd plan-round <plan>` drafts the round
+that asks those questions. It reads one PR's planned file list and prints a questions-only
+`round.json` whose `planApprovals` bind one question per WHAT gate the guard would hold at
+merge. It only drafts: it reaches no serve, store or console, so the owner's approve pick stays
+the one path to a row. The coordinator files it:
+
+```
+titan-factory shepherd plan-round <plan.md> | titan-console decisions file - --seat <coordinator> --initiative <slug>
+```
+
+`<plan>` is a JSON file, `-` for stdin, or a markdown plan holding exactly one fenced block whose
+info string is `plan-round`; zero or two fences are refused. The block names one PR:
+
+```json
+{
+  "task": "titan-platform/TP-1234-s2",
+  "repo": "owner/name",
+  "summary": "Add a merge-lint entry",
+  "files": [
+    { "path": ".github/merge-lint.json", "content": "...the exact final bytes...\n" },
+    { "path": ".github/old.yml", "absent": true }
+  ],
+  "ciPolicyKeys": ["other"],
+  "why": { ".github/merge-lint.json": "plan section R7 agreed this entry" }
+}
+```
+
+List every path the PR changes, rename sources included. Each gate is predicted with the
+guard's own predicate:
+
+- **`ci-policy`** when a path is under `.github/` and `ciPolicyKeys` is non-empty, or when
+  `"ciPolicy": true` binds a weakening outside `.github/`, such as package.json scripts. The
+  scope pins every planned file to the `git hash-object` sha of its `content`, or `null` when
+  `absent`. `ciPolicyKeys: []` says the PR weakens nothing and asks no question; a `.github/` plan
+  with no `ciPolicyKeys` at all is refused. So is a policy plan with a file that has neither
+  `content` nor `absent`, because the approval must pin everything the PR merges: split the
+  policy edit into its own PR. More than 20 files is refused too. The owner sees each pinned
+  file's changed lines against `--base` (default `origin/main`, read in `--checkout`, default the
+  current directory), drawn by the same differ as the D21 card.
+- **`skill`** for the planned paths the skill-path row matches, case folded. The scope is those
+  paths; their content may still change.
+- **`visual`** for the planned paths matching the `visual_paths` of the seat that owns `repo`,
+  less tests and markdown, as the visual-path row reads them.
+
+With no gate predicted it prints nothing, writes "no WHAT gate predicted; file no round" to
+stderr and exits 0. A refusal exits 65 and prints no round. The authority table
+(`packages/authority/src/table.json`) is noted on stderr and never bound: no plan approval covers
+it yet, so its owner sign-off stays at merge. A release is not a file-list fact, and the
+`release-merge` grant already moves it to plan time. `--round <n>` and `--supersedes <round id>`
+set the round's number and the console round it replaces.
+
+A registration claims every unclaimed approval of its task. Give each PR of a multi-PR task its
+own plan round with a slice task such as `titan-platform/TP-1234-s2`, and register that PR with
+the same `--task`. Two PRs under one task string fail closed: the first to register claims both
+approvals, and the second gates.
+
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
 a replay finds it instead of posting again. It leads with a readable summary: a one-line outcome (merged, gated or refused, with the reason and the short head sha), a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record follows inside a collapsed `Machine evidence` block, unchanged:

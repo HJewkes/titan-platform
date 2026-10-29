@@ -7,6 +7,7 @@ import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerOwnerRelease } from "./cli-owner-release.js";
 import { callerOf, parsePort, parsePositiveInt, parseTarget, statusArgs, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { localEnvelope, postRpc, unansweredMessage } from "./cli-shepherd-rpc.js";
+import { registerShepherdPlanRound } from "./cli-shepherd-plan-round.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
@@ -57,6 +58,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerShepherdWait(shepherd, verbs);
   registerShepherdWatch(verb, verbs, runShepherd);
   registerOwnerRelease(shepherd, verbs);
+  registerShepherdPlanRound(shepherd, verbs);
   registerRefVerbs(verb, verbs);
 }
 
