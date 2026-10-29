@@ -1,4 +1,5 @@
-import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
+import { runL0, type L0Result } from "./eval-l0.js";
+import { ScriptSchema, type ScriptBeat, type ScriptV1 } from "./script-schema.js";
 
 // Synthetic: an invented parcel floor's day; nothing here quotes a real script, video, cost or repo.
 type Cue = { action: "V6"; target: string; atCue: string };
@@ -78,3 +79,14 @@ export function dailyScript(labels: Record<string, string[]> = {}): ScriptV1 {
     beats: BEATS.map(scriptBeat).map((beat) => (labels[beat.id] ? { ...beat, visual: { ...beat.visual, labels: labels[beat.id] } } : beat)),
   });
 }
+
+type Patch = Partial<Omit<ScriptBeat, "visual">> & { visual?: Partial<ScriptBeat["visual"]> };
+
+/** The synthetic daily script with one beat's fields and visual fields replaced. */
+export function dailyWith(id: string, patch: Patch, script: ScriptV1 = dailyScript()): ScriptV1 {
+  const beats = script.beats.map((beat) => (beat.id === id ? { ...beat, ...patch, visual: { ...beat.visual, ...patch.visual } } : beat));
+  return { ...script, beats };
+}
+
+/** One row of the shipped L0 set, as the script stage runs it. */
+export const l0Row = (script: ScriptV1, checkId: string): L0Result => runL0(script).find((row) => row.check_id === checkId)!;

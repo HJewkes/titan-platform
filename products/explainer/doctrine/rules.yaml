@@ -400,6 +400,48 @@ rules:
     rubric_dims: [B4]
     owner_support: none
     judge: { layer: L2, status: pending, owner: SQ7 }
+  - id: Q-D14
+    rule: "Every number the assertion, a label or a chip shows is said in the beat's spoken text"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.chips, beats.spoken]
+    related: [narration-facts]
+    owner_support: none
+    note: "TP-4470, rolled out on daily-overview first: the register rewrite still moves numbers it stops saying onto labels, which this rule and qa refuse, so the other types wait on that policy. qa's narration-facts hard gate at script time, through its own unspokenFacts: citations and ordering numbers are exempt, and a chart's labels count only their largest value."
+    l0: { severity: error, status: implemented, checks: ["Q-D14"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D15
+    rule: "A beat's assertion, labels and chips hold at most 20 words together"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.chips]
+    related: [words-per-frame]
+    owner_support: none
+    note: "TP-4470. qa's words-per-frame gate at script time; the frame chrome is not in the script, so the count is the beat's own text."
+    l0: { severity: error, status: implemented, checks: ["Q-D15"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D16
+    rule: "No label or chip repeats 5 or more of the beat's spoken words in a row"
+    fields: [beats.visual.labels, beats.visual.chips, beats.spoken]
+    related: [G10]
+    owner_support: none
+    note: "TP-4470. qa's G10 at script time, tokenised as G10 tokenises."
+    l0: { severity: error, status: implemented, checks: ["Q-D16"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D17
+    rule: "No planned stretch of a beat without a cue runs past the profile's pacing.pictureChangeFailS"
+    fields: [beats.visual.cues, beats.visual.map_state, beats.spoken, beats.plannedS]
+    related: [picture-change]
+    owner_support: none
+    note: "TP-4470. Cue times are word positions at the beat type's voiced band rate, numbers spelled; a stretch runs from the cut in, between cues, to the end of the voiced words."
+    l0: { severity: error, status: implemented, checks: ["Q-D17"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D18
+    rule: "The count of held beats (heldS, or the held band) is within the profile's pacing.held"
+    fields: [beats.heldS, beats.band]
+    related: [G12, static-window]
+    owner_support: none
+    note: "TP-4470. qa's G12 at script time; a held beat is where static-window allows a still frame."
+    l0: { severity: error, status: implemented, checks: ["Q-D18"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary] }
+  - id: Q-D19
+    rule: "Every body beat speaks at least 80 % of its word cap"
+    fields: [beats.spoken, beats.plannedS]
+    related: [Q-F8]
+    owner_support: none
+    note: "TP-4470, the owner's fill floor: truing ends a beat after its last word, so words near the cap, not tails, keep the runtime near target. Chapter opens, the close and held beats are exempt."
+    l0: { severity: error, status: implemented, checks: ["Q-D19"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
 
   - id: Q-E1
     rule: "Every claim maps to a fact id with a correct status; atomic claims are supported"
