@@ -176,7 +176,9 @@ jobs:
 
   # Main's full suite as three parallel shards beside validate, so main's wall time is the slowest of them (TP-4401).
   # Pull requests keep the scoped single-job run in validate. Branch protection requires validate, which a pull request
-  # still runs; this job is main-only, so no required context changes. Each shard repeats install, a turbo-cached build,
+  # still runs. Shepherd judges main by the required contexts, so each shard is listed under mainContexts in
+  # .github/required-checks.json and a red shard still freezes main; renaming the job or the matrix must update that list.
+  # Each shard repeats install, a turbo-cached build,
   # the debs and Chromium; the restore-key fallback to the previous main's turbo cache makes the build a replay.
   test-shard:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
