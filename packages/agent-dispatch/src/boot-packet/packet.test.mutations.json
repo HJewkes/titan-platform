@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the budget counts characters as tokens one for one",
+      "file": "packages/agent-dispatch/src/boot-packet/packet.ts",
+      "find": "const CHARS_PER_TOKEN = 4;",
+      "replace": "const CHARS_PER_TOKEN = 1;",
+      "kills": [
+        "counts tokens, not characters, so a packet longer than the budget in characters keeps every section"
+      ]
+    },
+    {
+      "name": "over budget, the highest-priority section drops first",
+      "file": "packages/agent-dispatch/src/boot-packet/packet.ts",
+      "find": "dropped.unshift(kept.pop() as BootSection);",
+      "replace": "dropped.push(kept.shift() as BootSection);",
+      "kills": [
+        "drops whole sections from the lowest priority up when the budget is tight"
+      ]
+    }
+  ]
+}
