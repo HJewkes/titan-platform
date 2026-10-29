@@ -267,6 +267,8 @@ jobs:
           TURBO_TELEMETRY_DISABLED: 1
       - name: Check the console's read budgets
         run: pnpm vitest run --project perf
+        env:
+          TITAN_BENCH: "1"
 
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:

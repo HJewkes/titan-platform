@@ -11,7 +11,9 @@ import { budgetFor, RPC_BUDGETS, type RpcBudget } from "./budgets.js";
 import { buildPerfFixture, type PerfFixture } from "./large-state.fixture.js";
 
 const TIMED_RUNS = 7;
-// Eight runs of the slowest read, twice on a miss, outlast the 30 s default a caller such as fix-proof passes.
+// Wall time only under the CI perf job's bench flag, alone on its runner; bytes and calls are checked everywhere (TP-4262).
+const BENCH = process.env.TITAN_BENCH === "1";
+// Eight runs of the slowest read, twice on a miss, outlast the 30 s default test timeout.
 const TIME_TEST_TIMEOUT_MS = 300_000;
 
 let dir: string;
@@ -80,7 +82,7 @@ describe("console read budgets on the large-state fixture", () => {
   });
 
   // Wall time is the one noisy kind: a second median is taken before a miss counts.
-  it.each(rows)("%s answers within its time budget", async (_rpc, budget) => {
+  it.runIf(BENCH).each(rows)("%s answers within its time budget", async (_rpc, budget) => {
     const first = await medianMs(budget);
     const median = first <= budget.maxMs ? first : await medianMs(budget);
 
