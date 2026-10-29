@@ -3,10 +3,12 @@ import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { gitOrNull } from "./git.js";
 import { readMergedTipProof } from "./gh-landing.js";
-import type { ReleaseProof } from "./options.js";
+import { DEFAULT_GH_TIMEOUT_MS, type ReleaseProof } from "./options.js";
 import { observeUnsavedWork, type UnsavedObservation } from "./unsaved-work.js";
 
 const execFileAsync = promisify(execFile);
+
+interface ProofPolicy { mode: ReleaseProof; ghTimeoutMs: number }
 
 export interface ReleaseCheck {
   name: "dirty" | "pushed" | "landed" | "gh";
@@ -59,15 +61,13 @@ async function landedOn(gitRoot: string, branch: string, targets: readonly strin
   return null;
 }
 
-const GH_TIMEOUT_MS = 3_000;
-
 /** Advisory only: never required, never allowed to change the git answer. */
-async function ghPrState(gitRoot: string, branch: string): Promise<string | null> {
+async function ghPrState(gitRoot: string, branch: string, timeoutMs: number): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("gh", ["pr", "view", branch, "--json", "state", "--jq", ".state"], {
       cwd: gitRoot,
       encoding: "utf8",
-      timeout: GH_TIMEOUT_MS,
+      timeout: timeoutMs,
     });
     return stdout.trim() || null;
   } catch {
@@ -104,7 +104,7 @@ async function inspectReleaseSafety(
   worktreePath: string,
   branch: string,
   baseRef: string,
-  releaseProof: ReleaseProof,
+  proof: ProofPolicy,
   observations: UnsavedObservation[]
 ): Promise<WorktreeReleaseSafety> {
   const unsaved = await recordUnsaved(worktreePath, observations);
@@ -123,7 +123,7 @@ async function inspectReleaseSafety(
   checked.push(landedCheck(target, targets));
   const safety = { dirty, unmerged: target === null, landed: target !== null, ahead, checked };
   return target === null
-    ? withExternalLanding(safety, { gitRoot, worktreePath, branch }, releaseProof, observations)
+    ? withExternalLanding(safety, { gitRoot, worktreePath, branch }, proof, observations)
     : safety;
 }
 
@@ -147,17 +147,17 @@ async function recordUnsaved(worktree: string, observations: UnsavedObservation[
 async function withExternalLanding(
   safety: WorktreeReleaseSafety,
   ref: { gitRoot: string; worktreePath: string; branch: string },
-  proofMode: ReleaseProof,
+  policy: ProofPolicy,
   observations: UnsavedObservation[]
 ): Promise<WorktreeReleaseSafety> {
-  if (proofMode === "git-or-merged-pr-tip") {
-    const proof = await readMergedTipProof(ref.gitRoot, ref.branch);
+  if (policy.mode === "git-or-merged-pr-tip") {
+    const proof = await readMergedTipProof(ref.gitRoot, ref.branch, policy.ghTimeoutMs);
     if (proof !== null) {
       safety.checked.push(proof.check);
       return withPostProofFileSafety({ ...safety, unmerged: !proof.merged, landed: proof.merged }, ref.worktreePath, observations);
     }
   } else {
-    const state = await ghPrState(ref.gitRoot, ref.branch);
+    const state = await ghPrState(ref.gitRoot, ref.branch, policy.ghTimeoutMs);
     if (state !== null) safety.checked.push({ name: "gh", ok: true, detail: `gh reports the PR as ${state}` });
   }
   return safety;
@@ -169,10 +169,12 @@ export async function inspectReleaseDetails(
   worktreePath: string,
   branch: string,
   baseRef: string,
-  proofMode: ReleaseProof = "git"
+  proofMode: ReleaseProof = "git",
+  ghTimeoutMs = DEFAULT_GH_TIMEOUT_MS
 ): Promise<{ safety: WorktreeReleaseSafety; refusalCode?: "unsaved-changes" }> {
   const observations: UnsavedObservation[] = [];
-  const safety = await inspectReleaseSafety(gitRoot, worktreePath, branch, baseRef, proofMode, observations);
+  const policy = { mode: proofMode, ghTimeoutMs };
+  const safety = await inspectReleaseSafety(gitRoot, worktreePath, branch, baseRef, policy, observations);
   const ordinaryOnly = safety.dirty && !safety.unmerged && observations.every(observation => observation.kind === "changes");
   return { safety, ...(ordinaryOnly ? { refusalCode: "unsaved-changes" as const } : {}) };
 }
@@ -199,9 +201,10 @@ export async function inspectForRelease(
   worktreePath: string,
   branch: string,
   baseRef: string,
-  releaseProof: ReleaseProof = "git"
+  releaseProof: ReleaseProof = "git",
+  ghTimeoutMs = DEFAULT_GH_TIMEOUT_MS
 ): Promise<WorktreeReleaseSafety> {
-  return (await inspectReleaseDetails(gitRoot, worktreePath, branch, baseRef, releaseProof)).safety;
+  return (await inspectReleaseDetails(gitRoot, worktreePath, branch, baseRef, releaseProof, ghTimeoutMs)).safety;
 }
 
 /** The failed checks, as one line a coordinator can act on. */

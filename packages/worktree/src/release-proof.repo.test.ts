@@ -15,10 +15,13 @@ const git = (args: readonly string[], cwd: string): string => execFileSync(realG
 const quote = (value: string): string => "'" + value.replaceAll("'", "'\\''") + "'";
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 
+// The gh shims finish in milliseconds; the default 3s bound reads a loaded CI runner as no proof (TP-4367).
+const ghTimeoutMs = 120_000;
+
 async function fixture(proof = "head", mode: "git" | "git-or-merged-pr-tip" = "git-or-merged-pr-tip") {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "merged-tip-"))); roots.push(root);
   const repo = path.join(root, "repo"); fs.mkdirSync(repo); seedRepo(repo);
-  const allocator = createWorktreeAllocator({ releaseProof: mode });
+  const allocator = createWorktreeAllocator({ releaseProof: mode, ghTimeoutMs });
   const allocation = await allocator.allocate({ baseCwd: repo, agentName: "alice" });
   fs.writeFileSync(path.join(allocation.cwd, "feature.ts"), "branch\n");
   git(["add", "feature.ts"], allocation.cwd); git(["commit", "-m", "feature"], allocation.cwd);
@@ -54,6 +57,13 @@ describe("explicit merged PR tip release proof", () => {
     const f = await fixture(); fs.writeFileSync(f.response, JSON.stringify({ ...f.pr, commits: [] }));
     expect(await f.allocator.release({}, f.allocation)).toEqual({ released: true });
     expect(fs.existsSync(f.allocation.cwd)).toBe(false);
+  });
+  it("reads a merged tip proof from a gh that outlives the given timeout as no proof", async () => {
+    const f = await fixture(); const provider = path.join(f.bin, "gh");
+    fs.writeFileSync(provider, fs.readFileSync(provider, "utf8").replace("#!/bin/sh\n", "#!/bin/sh\nsleep 1\n"));
+    const impatient = createWorktreeAllocator({ releaseProof: "git-or-merged-pr-tip", ghTimeoutMs: 100 });
+    expect((await impatient.release({}, f.allocation)).released).toBe(false); retained(f);
+    expect(await f.allocator.release({}, f.allocation)).toEqual({ released: true });
   });
   it.each(["head", "member"])("keeps default git-only refusal for the same %s observation", async proof => {
     const f = await fixture(proof, "git");
@@ -92,7 +102,7 @@ describe("explicit merged PR tip release proof", () => {
       if (danger === "ignored") { fs.appendFileSync(path.join(f.repo, ".git/info/exclude"), "\nnotes.txt\n"); fs.writeFileSync(path.join(f.allocation.cwd, "notes.txt"), "private fixture\n"); }
       if (danger === "status-error") shim(f, '[ "$1" = status ]', "exit 1");
       if (danger === "ignored-error") shim(f, '[ "$1" = ls-files ]', "exit 1");
-      const safety = await inspectForRelease(f.repo, f.allocation.cwd, "agent-chat/alice", f.allocation.ref.base ?? "HEAD", "git-or-merged-pr-tip");
+      const safety = await inspectForRelease(f.repo, f.allocation.cwd, "agent-chat/alice", f.allocation.ref.base ?? "HEAD", "git-or-merged-pr-tip", ghTimeoutMs);
       expect(safety.landed).toBe(true); expect(safety.dirty).toBe(true);
       expect((await f.allocator.release({}, f.allocation)).released).toBe(false); retained(f);
     });

@@ -13,7 +13,6 @@ import {
   RECLAIM_GRACE_MS,
   slug,
   type WorktreeOptions,
-  type ReleaseProof,
 } from "./options.js";
 import { readoptWorktree, setupTarget, type WorktreeAllocation, type WorktreeRecord } from "./reattach.js";
 import { describeRefusal, inspectForRelease, inspectReleaseDetails } from "./release-safety.js";
@@ -104,11 +103,11 @@ async function attachWorktree(
 async function refuseRelease(
   exitedAt: number | undefined,
   ref: { gitRoot: string; worktree: string; branch: string; base: string },
-  releaseProof: ReleaseProof = "git"
+  proof: Pick<WorktreeOptions, "releaseProof" | "ghTimeoutMs">
 ): Promise<{ refusal: string; refusalCode?: "unsaved-changes" } | null> {
   if (exitedAt !== undefined && Date.now() - exitedAt < RECLAIM_GRACE_MS)
     return { refusal: `agent exited less than ${RECLAIM_GRACE_MS / 1000}s ago; inside the reclaim grace window` };
-  const { safety, refusalCode } = await inspectReleaseDetails(ref.gitRoot, ref.worktree, ref.branch, ref.base, releaseProof);
+  const { safety, refusalCode } = await inspectReleaseDetails(ref.gitRoot, ref.worktree, ref.branch, ref.base, proof.releaseProof, proof.ghTimeoutMs);
   return safety.dirty || safety.unmerged
     ? { refusal: describeRefusal(safety), ...(refusalCode === undefined ? {} : { refusalCode }) }
     : null;
@@ -231,7 +230,7 @@ async function release(
   req: Pick<WorktreeRequest, "exitedAt">,
   alloc: { ref?: Record<string, string> },
   opts: { force?: boolean; keepBranch?: boolean } = {},
-  releaseProof: ReleaseProof = "git"
+  proof: Pick<WorktreeOptions, "releaseProof" | "ghTimeoutMs"> = {}
 ): Promise<WorktreeReleaseOutcome> {
   const ref = alloc.ref;
   if (!ref?.branch || !ref.worktree || !ref.gitRoot)
@@ -248,7 +247,7 @@ async function release(
   }
 
   if (!opts.force) {
-    const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, releaseProof);
+    const refusal = await refuseRelease(req.exitedAt, { gitRoot, worktree, branch, base: ref.base ?? "HEAD" }, proof);
     if (refusal !== null) return { released: false, ...refusal };
   }
   const refused = await removeWorktree(gitRoot, worktree, branch, opts);
@@ -260,6 +259,6 @@ export function createWorktreeAllocator(opts: WorktreeOptions = {}): WorktreeAll
   return {
     check: (req) => check(req, opts),
     allocate: (req) => allocate(req, opts),
-    release: (req, alloc, releaseOpts) => release(req, alloc, releaseOpts, opts.releaseProof),
+    release: (req, alloc, releaseOpts) => release(req, alloc, releaseOpts, opts),
   };
 }
