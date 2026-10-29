@@ -3,7 +3,7 @@ import { execGh, type GhExec } from "@titan-design/github";
 import { runGit, type GitRunner } from "@titan-design/worktree";
 import { githubSlug } from "./repo-evidence.js";
 
-export interface BranchPr {
+interface BranchPr {
   number: number;
   state: string;
   title: string;
@@ -11,7 +11,7 @@ export interface BranchPr {
   checks?: string;
 }
 
-export interface BranchState {
+interface BranchState {
   /** Directory name of the clone; never an absolute path. */
   repo: string;
   name: string;
@@ -44,7 +44,7 @@ interface BranchPrOptions {
 
 const PR_TTL_MS = 60_000;
 /** The newest PRs per repository; a branch whose PR is older than these reads as having none. */
-export const PR_LIST_LIMIT = 200;
+const PR_LIST_LIMIT = 200;
 const GH_TIMEOUT_MS = 8_000;
 
 type RepoPrs = { prs: Map<string, BranchPr>; degraded?: string };
