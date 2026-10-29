@@ -26,7 +26,7 @@ describe("createQueryStore gcMs", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  const sourceOf = (call: ReturnType<typeof vi.fn>): DataSource => ({ call }) as unknown as DataSource;
+  const sourceOf = (call: DataSource["call"]): DataSource => ({ call, subscribe: () => ({ close() {} }) });
 
   it("serves kept data and refetches once for a query re-watched within gcMs", async () => {
     const call = vi.fn(async () => ({ ok: true as const, data: "v" }));
