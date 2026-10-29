@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 const stat = z.object({ files: z.number(), bytes: z.number(), newest_mtime: z.string().nullable() });
 
@@ -136,10 +137,10 @@ export function unexpectedShape(upstream: string): Error {
 }
 
 /** Calls the active-work daemon's `/rpc` on loopback. It never starts the daemon. */
-export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_MS): ActiveWork {
+export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_MS, recorder?: UpstreamObserver): ActiveWork {
   const source = liveSource({
     origin: `http://127.0.0.1:${port}`,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
+    fetch: timedFetch("active-work", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
   return {
     async read(command, args = {}) {
