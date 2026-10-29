@@ -15,11 +15,11 @@ export const REPO = "example-org/example-repo";
 export const H = "a".repeat(40);
 const RV = { agentId: "agent-rv", sessionId: "session-rv" };
 const LOCATOR = { source: { sourceId: "synthetic:session" }, evidence: { line: { byteOffset: 0 } } };
-export const SOURCE = "src/synthetic.ts";
+const SOURCE = "src/synthetic.ts";
 export const SKILL = ".claude/skills/synthetic-skill/SKILL.md";
 export const WORKFLOW = ".github/workflows/ci.yml";
 export const MERGE_BASE = "b".repeat(40);
-export const CI_WEAKENED = "shepherd-merge-guard/ci-policy-weakened";
+const CI_WEAKENED = "shepherd-merge-guard/ci-policy-weakened";
 export const BEFORE_OPEN = "2020-01-01T00:00:00.000Z";
 export const AFTER_OPEN = "2999-01-01T00:00:00.000Z";
 
