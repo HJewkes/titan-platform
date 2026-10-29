@@ -1,0 +1,146 @@
+{
+  "profile": {
+    "name": "implementer",
+    "description": "Writes code in a worktree.",
+    "harness": "claude-code",
+    "model": "example-model",
+    "allowedTools": [
+      "Read",
+      "Edit"
+    ],
+    "disallowedTools": [
+      "WebFetch"
+    ],
+    "isolation": "worktree",
+    "surface": "headless",
+    "surfaceLifetime": "close-on-exit",
+    "role": "worker",
+    "remoteControl": false,
+    "returnContract": "implementer",
+    "effort": "high",
+    "cacheTtl": "1h",
+    "pushPolicy": "no-rewrite",
+    "promptPrelude": "Be brief.",
+    "mcpServers": {
+      "example": {
+        "command": "example-server"
+      }
+    },
+    "strictMcpConfig": true,
+    "settingSources": [
+      "project",
+      "local"
+    ],
+    "disableSlashCommands": true,
+    "env": {
+      "EXAMPLE_FLAG": "1"
+    },
+    "warnings": [
+      "unknown key: colour"
+    ]
+  },
+  "remote_launch": {
+    "agentId": "agent-0003",
+    "sessionId": "00000000-0000-4000-8000-000000000003",
+    "name": "example-worker",
+    "profile": {
+      "name": "implementer",
+      "description": "Writes code in a worktree.",
+      "harness": "claude-code",
+      "model": "example-model",
+      "allowedTools": [
+        "Read",
+        "Edit"
+      ],
+      "disallowedTools": [
+        "WebFetch"
+      ],
+      "isolation": "worktree",
+      "surface": "headless",
+      "surfaceLifetime": "close-on-exit",
+      "role": "worker",
+      "remoteControl": false,
+      "returnContract": "implementer",
+      "effort": "high",
+      "cacheTtl": "1h",
+      "pushPolicy": "no-rewrite",
+      "promptPrelude": "Be brief.",
+      "strictMcpConfig": true,
+      "settingSources": [
+        "project",
+        "local"
+      ],
+      "disableSlashCommands": true
+    },
+    "brief": "Fix the widget.",
+    "preamble": "You are a peer.",
+    "adopted": true,
+    "surface": "headless",
+    "tags": [
+      "example"
+    ],
+    "subscriptions": [
+      {
+        "selector": {
+          "tag": "example"
+        },
+        "kinds": [
+          "registered"
+        ]
+      }
+    ],
+    "remoteControl": false,
+    "channels": [
+      "example-channel"
+    ],
+    "permissionMode": "default",
+    "anchor": "example-anchor",
+    "landToken": "synthetic-not-a-credential",
+    "successorFirst": true,
+    "cwd": "/work/example-repo",
+    "configDir": "/home/example/.claude",
+    "configDirUnset": true,
+    "resume": true
+  },
+  "agent_record": {
+    "agentId": "agent-0002",
+    "name": "example-worker",
+    "profile": "implementer",
+    "state": "exited",
+    "origin": "spawned",
+    "spawnedBy": "example-coord",
+    "launchedBy": "shepherd",
+    "spawnedAt": 1700000000000,
+    "brief": "Fix the widget.",
+    "cwd": "/work/example-repo",
+    "isolation": "worktree",
+    "surface": "headless",
+    "sessionId": "00000000-0000-4000-8000-000000000004",
+    "configDir": "/home/example/.claude",
+    "configDirUnset": false,
+    "host": "example-host",
+    "provisionalName": true,
+    "repo": "example-org/example-repo",
+    "branch": "feat/example",
+    "base": {
+      "sha": "0123456789abcdef0123456789abcdef01234567",
+      "ref": "origin/main"
+    },
+    "task": "EX-1",
+    "workRole": "implementer",
+    "workRoleInferred": true,
+    "lastEventAt": 1700000100000,
+    "exitedAt": 1700000100000,
+    "detachedAt": 1700000050000,
+    "generation": 2,
+    "teleportFrom": "agent-0001",
+    "predecessor": null,
+    "exit": {
+      "code": 0,
+      "summary": "done",
+      "costUsd": 1.5,
+      "failedToStart": false,
+      "inferred": false
+    }
+  }
+}
