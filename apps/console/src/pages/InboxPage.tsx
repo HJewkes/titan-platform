@@ -9,6 +9,7 @@ import { GateStripView } from "./GateStrip.js";
 import { openExternal } from "./homeLinks.js";
 import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, useIsFocused } from "./InboxFocus.js";
 import { NudgeSection } from "./InboxNudges.js";
+import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
 
@@ -28,8 +29,6 @@ export function ageOf(openedAt: string, now: number = Date.now()): string {
 }
 
 const RELEASE_GATE = /shepherd-release\//;
-/** `inbox.list` lists the planning items only when asked; the default read counts them. */
-const PLANNING_READ = { planning: true };
 
 /** The source badge: what kind of thing is waiting, read from where the item came from. */
 export function badgeOf(item: InboxItem): { label: string; color: "info" | "warning" | "error" | "primary" | "secondary" | "default" } {
@@ -135,7 +134,7 @@ export function InboxPage({ route }: { route?: Route }): ReactNode {
         {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
         <BlockingSection items={blocking} quiet={planningCount === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
         {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-        {planningCount > 0 ? <PlanningSection count={planningCount} startOpen={holdsFocus(planning, route?.id)} /> : null}
+        {planningCount > 0 ? <PlanningSection count={planningCount} startOpen={holdsFocus(planning, route?.id)} renderRows={(rows) => <InboxRows items={rows} />} /> : null}
         <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
       </VStack>
     </InboxFocusProvider>
@@ -215,31 +214,6 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
       </CardContent>
     </Card>
   );
-}
-
-/** Planning can run to hundreds of rows, so it opens only when asked, or when a link names one of them; only then are its rows read. */
-function PlanningSection({ count, startOpen }: { count: number; startOpen: boolean }): ReactNode {
-  const [isOpen, setOpen] = useState(startOpen);
-  return (
-    <Section testID="inbox-planning">
-      <SectionHeader title={`Planning (${count})`} subtitle="Answered at each item's source" />
-      <SectionContent>
-        <VStack gap={3}>
-          <Button variant="outline" size="sm" onPress={() => setOpen(!isOpen)}>
-            <ButtonText>{isOpen ? "Hide planning" : `Show ${count} planning items`}</ButtonText>
-          </Button>
-          {isOpen ? <PlanningRows /> : null}
-        </VStack>
-      </SectionContent>
-    </Section>
-  );
-}
-
-function PlanningRows(): ReactNode {
-  const planning = useQuery("inbox.list", PLANNING_READ);
-  if (planning.status === "loading") return <Spinner size="sm" label="Loading the planning items" />;
-  if (planning.data === undefined) return <Alert status="error" message={`Could not load the planning items: ${planning.error.message}`} />;
-  return <InboxRows items={planning.data.items.filter((item) => item.section === "planning")} />;
 }
 
 function InboxRows({ items }: { items: readonly InboxItem[] }): ReactNode {
