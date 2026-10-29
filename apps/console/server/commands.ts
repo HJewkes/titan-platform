@@ -35,7 +35,7 @@ import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { summarizeNotes, videoNotesCommands } from "./video-notes.js";
 import { videoPropsCommands } from "./video-props.js";
 import { videosCommands, type VideoCatalog } from "./videos.js";
-import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
+import { forgetTaskPrefixes, initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
 const upstreamHealth = z.object({
   id: z.enum(UPSTREAM_IDS),
@@ -106,7 +106,8 @@ function ownerQueueCommands(sources: InboxSources, actions: InboxActionOptions, 
   return { ...approvalsCommands({ ...sources, ...(cache.factory !== undefined && { factory: cache.factory }) }), ...inboxViewCommands(sources, cache), ...inboxActionCommands(sources, actions, cache.invalidate) };
 }
 
-function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
+function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined, invalidation: Invalidation | undefined) {
+  invalidation?.on("active-work", () => forgetTaskPrefixes(activeWork));
   return {
     "work.portfolio": readCommand({
       name: "work.portfolio",
@@ -160,7 +161,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...videoNotesCommands(videos, videoNotify),
     ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
-    ...workCommands(activeWork, work),
+    ...workCommands(activeWork, work, invalidation),
   };
 }
 

@@ -79,7 +79,7 @@ export interface WorkOptions {
   excludePersonal?: boolean;
   /** Open tasks sent for one initiative. Defaults to 200. */
   taskLimit?: number;
-  /** The clock each read's `fetchedAt` comes from; the twin capture pins it. Defaults to Date.now. */
+  /** The clock each read's `fetchedAt` and the prefix memo's age come from; the twin capture pins it. Defaults to Date.now. */
   now?: () => number;
 }
 
@@ -137,7 +137,8 @@ export async function readPortfolio(activeWork: ActiveWork, options: WorkOptions
   ]);
   const bySlug = new Map(inventory.initiatives.map((entry) => [entry.slug, entry]));
   const items = list.sections.flatMap((section) => section.items);
-  const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item)));
+  const now = (options.now ?? Date.now)();
+  const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item, now)));
   const rows = items.map((item, index) =>
     rowOf(item, tasks.tasks.filter((task) => task.slug === item.slug), bySlug.get(item.slug), inventory.human_only_known, prefixes[index]),
   );
@@ -162,7 +163,18 @@ async function readHead(activeWork: ActiveWork, slug: string): Promise<{ initiat
 const TASK_PREFIX = /^task_prefix:\s*["']?([A-Z][A-Z0-9]*)["']?\s*$/m;
 
 /** Per client, so one console's prefixes never leak into another's reads. */
-const prefixMemo = new WeakMap<ActiveWork, Map<string, { updated: string; prefix: string | undefined }>>();
+const prefixMemo = new WeakMap<ActiveWork, Map<string, { updated: string; prefix: string | undefined; at: number }>>();
+
+/**
+ * `updated` is a calendar day, so a same-day `set task_prefix` or a hand edit leaves it unchanged; this bounds how long such an
+ * edit goes unseen when active-work sends no event for it.
+ */
+export const PREFIX_MEMO_MS = 60_000;
+
+/** Drops every prefix kept for this client; the console calls it when active-work reports a change. */
+export function forgetTaskPrefixes(activeWork: ActiveWork): void {
+  prefixMemo.delete(activeWork);
+}
 
 function parsePrefix(content: string): string | undefined {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1];
@@ -171,17 +183,18 @@ function parsePrefix(content: string): string | undefined {
 
 /**
  * active-work's `list` does not carry the prefix, so it comes from the brief's frontmatter. The answer is kept per slug while the
- * initiative's `updated` is unchanged, so an unchanged portfolio reads no brief. An unreadable brief has none and is not kept.
+ * initiative's `updated` is unchanged, for at most PREFIX_MEMO_MS, so an unchanged portfolio reads no brief. An unreadable
+ * brief has none and is not kept.
  */
-async function taskPrefixOf(activeWork: ActiveWork, item: WireInitiative): Promise<string | undefined> {
+async function taskPrefixOf(activeWork: ActiveWork, item: WireInitiative, now: number): Promise<string | undefined> {
   const memo = prefixMemo.get(activeWork) ?? new Map();
   prefixMemo.set(activeWork, memo);
   const known = memo.get(item.slug);
-  if (known?.updated === item.updated) return known.prefix;
+  if (known?.updated === item.updated && now - known.at < PREFIX_MEMO_MS) return known.prefix;
   const brief = await activeWork.read("source.read", { slug: item.slug, path: "brief.md" }).catch(() => null);
   if (!brief) return undefined;
   const prefix = parsePrefix(brief.content);
-  memo.set(item.slug, { updated: item.updated, prefix });
+  memo.set(item.slug, { updated: item.updated, prefix, at: now });
   return prefix;
 }
 

@@ -4,11 +4,12 @@ import { snapshotKey } from "@titan-design/rpc-client";
 import { activeWorkClient } from "./active-work.js";
 import { cachedActiveWork } from "./active-work-cache.js";
 import { brokerReader } from "./broker.js";
+import { createInvalidation } from "./invalidation.js";
 import { fixtureActiveWork, fixtureAnswer, type FixtureOptions } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
 import { shepherdReader } from "./shepherd.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
-import { readInitiative, readNotes, readPortfolio, readRecord, searchRecords, type Portfolio } from "./work.js";
+import { PREFIX_MEMO_MS, readInitiative, readNotes, readPortfolio, readRecord, searchRecords, type Portfolio } from "./work.js";
 
 /** The export records no agents call, so this broker is never read. */
 const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), eventsDbPath: "/nonexistent/events.db", seatPrefixes: [] };
@@ -30,6 +31,24 @@ async function fakeActiveWork(options: FixtureOptions = {}) {
     return fixtureAnswer(command, args, options);
   });
   return activeWorkClient(daemon.port);
+}
+
+/** A daemon whose orbit-relay brief prefix and day stamp a test can change between reads. */
+async function editableBrief() {
+  const state = { stamp: "2031-03-04", prefix: "OR" };
+  daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+    calls.push(command);
+    if (command === "source.read" && args.slug === "orbit-relay") {
+      const content = `---\nstate: focused\ntask_prefix: ${state.prefix}\n---\n\n# orbit-relay\n`;
+      return { path: args.path, content, truncated: false, bytes: content.length };
+    }
+    const answer = fixtureAnswer(command, args);
+    if (command === "list" && typeof answer === "object" && answer !== null && "sections" in answer && Array.isArray(answer.sections)) {
+      for (const section of answer.sections) for (const item of section.items) if (item.slug === "orbit-relay") item.updated = state.stamp;
+    }
+    return answer;
+  });
+  return Object.assign(state, { activeWork: activeWorkClient(daemon.port) });
 }
 
 describe("the portfolio", () => {
@@ -83,21 +102,34 @@ describe("the portfolio", () => {
   });
 
   it("a portfolio read re-reads the brief of an initiative whose updated stamp moved", async () => {
-    let stamp = "2031-03-04T16:20:00Z";
-    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
-      calls.push(command);
-      const answer = fixtureAnswer(command, args);
-      if (command === "list" && typeof answer === "object" && answer !== null && "sections" in answer && Array.isArray(answer.sections)) {
-        for (const section of answer.sections) for (const item of section.items) if (item.slug === "orbit-relay") item.updated = stamp;
-      }
-      return answer;
-    });
-    const activeWork = activeWorkClient(daemon.port);
-    await readPortfolio(activeWork);
+    const brief = await editableBrief();
+    await readPortfolio(brief.activeWork);
     calls = [];
-    stamp = "2031-03-05T09:00:00Z";
-    await readPortfolio(activeWork);
+    brief.stamp = "2031-03-05";
+    await readPortfolio(brief.activeWork);
     expect(calls.filter((command) => command === "source.read")).toHaveLength(1);
+  });
+
+  it("a prefix set on the day the brief was last touched shows once the memo ages out", async () => {
+    const brief = await editableBrief();
+    await readPortfolio(brief.activeWork, { now: () => 0 });
+    brief.prefix = "OX";
+    const held = await readPortfolio(brief.activeWork, { now: () => PREFIX_MEMO_MS - 1 });
+    const { initiatives } = await readPortfolio(brief.activeWork, { now: () => PREFIX_MEMO_MS });
+    expect(held.initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OR");
+    expect(initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OX");
+  });
+
+  it("a prefix set on the day the brief was last touched shows on the next read after active-work reports a change", async () => {
+    const brief = await editableBrief();
+    const invalidation = createInvalidation();
+    const registry = createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, rounds: { dir: "/nonexistent/rounds" }, shepherd: shepherdReader(1), activeWork: brief.activeWork, invalidation });
+    await recordFirstPaint(registry);
+    brief.prefix = "OX";
+    invalidation.emit("active-work");
+    const snapshot = await recordFirstPaint(registry);
+    const envelope = snapshot.calls[snapshotKey("work.portfolio", {})] as { ok: true; data: Portfolio };
+    expect(envelope.data.initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OX");
   });
 
   it("a read of one initiative through the cached client reads the inventory once across repeats", async () => {
