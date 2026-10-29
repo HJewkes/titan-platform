@@ -1,16 +1,11 @@
 import { appendFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { RpcSample } from "@titan-design/daemon";
+import { z } from "zod";
 
 /** One logged call. Name, timing, size and status only: never arguments, ids or the body. */
-interface RpcRow {
-  t: number;
-  kind: "rpc";
-  name: string;
-  ms: number;
-  bytes: number;
-  status: number;
-}
+const rpcRow = z.object({ t: z.number(), kind: z.literal("rpc"), name: z.string(), ms: z.number(), bytes: z.number(), status: z.number() });
+type RpcRow = z.infer<typeof rpcRow>;
 
 interface PerfRecorderOptions {
   /** `stateDir/perf`; created on first flush. */
@@ -151,9 +146,9 @@ async function readLogs(dir: string, since: number): Promise<RpcRow[]> {
 }
 
 function parseRow(line: string): RpcRow[] {
-  if (line === "") return [];
   try {
-    return [JSON.parse(line) as RpcRow];
+    const parsed = rpcRow.safeParse(JSON.parse(line));
+    return parsed.success ? [parsed.data] : [];
   } catch {
     return [];
   }
