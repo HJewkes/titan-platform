@@ -1,7 +1,7 @@
 import type { ScriptBeat } from "../script-schema.js";
 import { chapterTitle } from "./derive-rows.js";
-import { chartPoint, cueWords, dayLabel, isDateName, itemReveals } from "./label-parse.js";
-import type { BeatScope, Derivation } from "./types.js";
+import { chartPoint, dayLabel, isDateName, itemReveals } from "./label-parse.js";
+import type { BeatScope, Derivation, Reveal } from "./types.js";
 
 const FIGURE = /(-?\d[\d,]*(?:\.\d+)?)\s*(%)?/;
 // A trend needs three points; fewer by day still read as bars (the sample builder's GRAPH_POINTS_MIN).
@@ -30,9 +30,13 @@ export function deriveStakes(beat: ScriptBeat): Derivation {
   return { slots: { cost: beat.visual.assertion, figures }, reveals: itemReveals(beat, "figures", figures.length) };
 }
 
+/** Bars grow from the first bar's cue; a later bar with a cue word of its own grows on that word instead. */
+const barReveals = (beat: ScriptBeat, count: number): Reveal[] =>
+  itemReveals(beat, "series", count).filter((reveal, i, all) => i === 0 || reveal.atCue !== all[i - 1]!.atCue);
+
 /**
  * `name: number` labels as a chart: a line when there are 3 or more points and every name is a date (ISO days read
- * `MM-DD`), each point on its cue; else bars, revealed on the first bar's cue only, as the sample builder cues them.
+ * `MM-DD`), each point on its cue; else bars, each cued bar on its own cue.
  */
 export function deriveChart(beat: ScriptBeat, scope: BeatScope): Derivation {
   const { labels } = beat.visual;
@@ -42,5 +46,5 @@ export function deriveChart(beat: ScriptBeat, scope: BeatScope): Derivation {
   const line = pairs.length >= GRAPH_POINTS_MIN && pairs.every((point) => isDateName(point.name));
   const series = pairs.map((point, i) => ({ id: `series-${i + 1}`, label: line ? dayLabel(point.name) : point.name, value: point.value }));
   if (line) return { slots: { kind: "line", ...chapterTitle(scope), series }, reveals: itemReveals(beat, "series", series.length) };
-  return { slots: { kind: "bar", series }, reveals: [{ target: "series-1", atCue: cueWords(beat, 1)[0]! }] };
+  return { slots: { kind: "bar", series }, reveals: barReveals(beat, series.length) };
 }

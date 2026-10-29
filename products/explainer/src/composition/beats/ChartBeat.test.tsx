@@ -16,12 +16,12 @@ const DEPOTS = [
 /** Every bar has finished growing well before this beat-local second. */
 const SETTLED_S = 8;
 
-function drawChart(slots: Record<string, unknown>): string {
+function drawChart(slots: Record<string, unknown>, at: { t?: number; reveals?: Parameters<typeof revealFrom>[0] } = {}): string {
   const parsed = BEAT_SLOTS.chart.parse({ series: DEPOTS, ...slots });
   return renderToStaticMarkup(
-    <MotionProvider clock={seekClock(SETTLED_S)}>
+    <MotionProvider clock={seekClock(at.t ?? SETTLED_S)}>
       <Beat startS={0} durationS={10}>
-        <ChartKindBeat slots={parsed} reveal={revealFrom([])} hints={{}} />
+        <ChartKindBeat slots={parsed} reveal={revealFrom(at.reveals ?? [])} hints={{}} />
       </Beat>
     </MotionProvider>,
   );
@@ -58,6 +58,24 @@ describe("a chart drawn from its frame slots", () => {
     const dense = (count: number) => /class="ex-bars" data-dense="true"/.test(drawChart({ kind: "bar", series: depots(count) }));
 
     assert.deepEqual([9, 10, 12].map(dense), [false, true, true]);
+  });
+
+  test("a bar with a cue of its own stays empty until its cue while the bars before it grow", () => {
+    const reveals = [{ target: "north", atS: 1 }, { target: "south", atS: 5 }];
+
+    const early = barWidths(drawChart({ kind: "bar" }, { t: 4, reveals }));
+    const late = barWidths(drawChart({ kind: "bar" }, { t: SETTLED_S, reveals }));
+
+    assert.deepEqual(early, ["40", "70", "0"]);
+    assert.deepEqual(late, ["40", "70", "100"]);
+  });
+
+  test("a bar with no cue below a cued bar waits for that cue", () => {
+    const reveals = [{ target: "north", atS: 1 }, { target: "east", atS: 5 }];
+
+    const early = barWidths(drawChart({ kind: "bar" }, { t: 4, reveals }));
+
+    assert.deepEqual(early, ["40", "0", "0"]);
   });
 
   test("a broken axis draws the break mark at the origin", () => {

@@ -4,6 +4,7 @@ import type { OwnerOp } from "@titan-design/owner-queue";
 import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 /**
  * The console does not depend on titan-factory, so it pins only the WatchRow fields it shows and
@@ -143,10 +144,10 @@ const READ_TIMEOUT_MS = 10_000;
  * Calls Shepherd's read commands, and `shepherd.release`, on titan-factory's loopback port. It sends only the client header
  * `liveSource` adds: never the browser's cookie or Host, and no token, so 7410 keeps its own guards.
  */
-export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS): ShepherdSource {
+export function shepherdReader(port: number, timeoutMs: number = READ_TIMEOUT_MS, recorder?: UpstreamObserver): ShepherdSource {
   const source = liveSource({
     origin: `http://127.0.0.1:${port}`,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
+    fetch: timedFetch("factory", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
   async function read<T>(command: string, args: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
     const envelope = await source.call(command, args);

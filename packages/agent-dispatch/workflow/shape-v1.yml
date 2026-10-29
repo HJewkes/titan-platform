@@ -1,0 +1,100 @@
+# The workflow table: which prior a task's facts give, and which implementer, review and merge rung each class
+# takes. Every value is a closed enum in @titan-design/agent-dispatch/routing (src/routing/table.ts), so a typo is a
+# lint problem rather than a row that silently matches nothing.
+version: shape-v1
+
+# Globs matched against a slice's owns, repo-relative.
+paths:
+  # The door facts that are paths.
+  door:
+    - .github/**
+    - '**/migrations/**'
+    - '**/*.migration.*'
+    - packages/authority/src/conditions.ts
+  # The shared entries plus agent-chat's broker, permission, guard and seat sources.
+  safety:
+    - products/factory/src/shepherd/**
+    - packages/authority/**
+    - packages/tool-guard/**
+    - packages/egress-scan/**
+    - packages/hitl/**
+    - packages/fix-proof/**
+    - packages/evidence/**
+    - .codewatch/check.json
+    - '**/eslint.config.*'
+    - '**/.eslintrc*'
+    - src/leak-guard/**
+    - '**/hooks/**'
+    - src/broker/**
+    - src/cli/verbs/permission-hook.ts
+    - src/agents/hooks.ts
+    - src/agents/*-guard*.ts
+    - src/agents/seats/**
+  visual:
+    - '**/*.stories.tsx'
+    - packages/ui/src/components/**
+    - apps/console/src/**/*.tsx
+    - '**/*.css'
+    - '**/__screenshots__/**'
+  agentText:
+    - '**/CLAUDE.md'
+    - '**/AGENTS.md'
+    - '**/SKILL.md'
+    - '**/skills/**'
+    - '**/prompts/**'
+    - profiles/**
+
+# In order; the first match wins. A row matches when its estimate, done_when and owns conditions hold and, if it
+# names owns, ownsOnly, unitsAtLeast or tags, at least one of those does. needsOwns keeps a task whose files are
+# unknown from routing down: the risk rows cannot fire without owns, so a size row must not either.
+priors:
+  - { prior: one-way, owns: door, tags: [one-way] }
+  - { prior: safety-path, owns: safety, tags: ['kind:security'] }
+  - { prior: ui-round, owns: visual }
+  - { prior: cross-package, unitsAtLeast: 2 }
+  - { prior: agent-text, ownsOnly: agentText }
+  - {
+      prior: small,
+      estimateAtMost: 1,
+      needsDoneWhen: true,
+      needsOwns: true,
+      tags: ['kind:docs', 'kind:nit', 'cos:intangible'],
+    }
+  - { prior: standard, estimateAtMost: 2, needsDoneWhen: true, needsOwns: true }
+  - { prior: needs-plan }
+
+# One row per class. implementerAbove2 and planAbove2, when set, apply past estimate 2.
+workflow:
+  generated: { plan: none, implementer: code, review: ci, merge: MRG-AU-RV }
+  release: { plan: none, implementer: code, review: ci, merge: release-path }
+  inert: { plan: none, implementer: bd-implementer-lite, review: reviewer, merge: MRG-AU-RV }
+  mechanical: { plan: none, implementer: bd-implementer-lite, review: bd-reviewer, merge: MRG-AU-RV }
+  agent-text: { plan: none, implementer: bd-implementer, review: bd-reviewer, merge: MRG-AU-RV }
+  local-fix:
+    plan: none
+    implementer: bd-implementer-lite
+    implementerAbove2: bd-implementer
+    review: bd-reviewer
+    merge: MRG-AU-RV
+  feature-slice:
+    plan: explore
+    planAbove2: bd-planner
+    implementer: bd-implementer-lite
+    implementerAbove2: bd-implementer
+    review: bd-reviewer
+    merge: MRG-AU-RV
+  cross-package: { plan: bd-planner, implementer: bd-implementer, review: fable-reviewer, merge: MRG-AU-RV }
+  safety-path: { plan: bd-planner, implementer: bd-implementer, review: fable-reviewer, merge: MRG-AU-RV }
+  ui-round: { plan: titan-component-workflow, implementer: bd-implementer, review: bd-reviewer, merge: owner }
+  one-way: { plan: fable-architect, implementer: bd-implementer, review: fable-reviewer, merge: owner }
+
+# Which class row gives each prior its implementer. small and standard share the size classes' rule.
+priorWorkflow:
+  one-way: one-way
+  safety-path: safety-path
+  ui-round: ui-round
+  cross-package: cross-package
+  agent-text: agent-text
+  small: local-fix
+  standard: local-fix
+  needs-plan: planner

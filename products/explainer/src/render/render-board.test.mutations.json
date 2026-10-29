@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pinned beat drops its derived reveals",
+      "file": "products/explainer/src/template-fill/fill.ts",
+      "find": "return { slots: pinned, reveals: isDerived(own) ? own.reveals : [] };",
+      "replace": "return { slots: pinned, reveals: [] };",
+      "kills": [
+        "renderBoard under a slots pin a beat filled from the generated-slots pin keeps its cue reveals"
+      ]
+    },
+    {
+      "name": "a pinned beat ignores its derivation's named fallback",
+      "file": "products/explainer/src/template-fill/fill.ts",
+      "find": "const to = (isDerived(own) ? undefined : own.fallback) ?? { spec: LIST, derived: deriveList(beat, scope) };",
+      "replace": "const to = (isDerived(own) || isRecord(pinned) ? undefined : own.fallback) ?? { spec: LIST, derived: deriveList(beat, scope) };",
+      "kills": [
+        "renderBoard under a slots pin a pinned beat that fell back at resolve renders as the same fallback kind"
+      ]
+    }
+  ]
+}

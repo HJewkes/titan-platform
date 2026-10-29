@@ -18,9 +18,13 @@ const CARD_EACH_S = 0.25;
 
 const places = (value: number) => (Number.isInteger(value) ? 0 : 1);
 
-/** The value shown `local` seconds after the card lands: a spring from 0 that overshoots slightly and settles. */
+/**
+ * The value shown `local` seconds after the card lands: a spring from 0 that settles on the figure. The spring
+ * overshoots, and the count stops at the figure, so the card never shows a number the figure is not.
+ */
 function statDisplay(local: number, value: number): string {
-  return spring(local - COUNT_START_S, { ...COUNT_SPRING, to: value }).toFixed(places(value));
+  const counted = spring(local - COUNT_START_S, { ...COUNT_SPRING, to: value });
+  return (value < 0 ? Math.max(counted, value) : Math.min(counted, value)).toFixed(places(value));
 }
 
 function StatCard({ figure, t, atS }: { figure: Figure; t: number; atS: number }) {

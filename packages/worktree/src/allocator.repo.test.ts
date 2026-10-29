@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { WorktreeAddRunner } from "./add.js";
 import { createWorktreeAllocator, type WorktreeReleaseOutcome, type WorktreeRequest } from "./allocator.js";
@@ -10,8 +11,6 @@ import { WorktreeBudgetExhaustedError, WorktreeInUseError } from "./errors.js";
 import { findGitRoot, pinGitProtocols } from "./git.js";
 import { RECLAIM_GRACE_MS } from "./options.js";
 import type { WorktreeAllocation } from "./reattach.js";
-import { seedRepo } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
 vi.setConfig({ testTimeout: 20_000 });

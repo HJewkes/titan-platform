@@ -108,3 +108,12 @@ describe("autoresearch milestone and start", () => {
     expect(unconfigured).toMatchObject({ code: EXIT.FAILURE, err: expect.stringContaining("[no-config]") });
   });
 });
+
+describe("autoresearch plan-dry-run", () => {
+  it("fails without spawning when the factory has no autoresearch config", async () => {
+    const { code, err, out } = await cli(["autoresearch", "plan-dry-run", "fixture"]);
+
+    expect({ code, out }).toEqual({ code: EXIT.FAILURE, out: "" });
+    expect(err).toContain("[no-config] autoresearch is not configured");
+  });
+});

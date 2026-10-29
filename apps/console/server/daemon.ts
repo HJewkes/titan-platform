@@ -51,10 +51,10 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const remote = lanListener(config);
   const logger = options.logger ?? consoleLogger;
   const ports = { console: config.port, story: config.storyPort ?? null };
-  const sources = withStoryOrigin(createSources(config, logger), config, ports);
+  const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
+  const sources = withStoryOrigin(createSources(config, logger, perf), config, ports);
   const { upstreams } = sources;
   const build = readBuildInfo();
-  const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
   const registry: CommandRegistry<ConsoleContext> = createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf, () => registry.list().map(({ name }) => name))]);
   const handle = await startDaemon({
     registry,
