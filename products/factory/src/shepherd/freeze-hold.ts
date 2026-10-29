@@ -8,6 +8,7 @@ import { UpdateResultResult } from "../workflows/land-steps.js";
 import { UPDATE_RESENDS } from "../workflows/land-update.js";
 import { failingNotIn, failureReader, redRunsAt, type FailureReader } from "./failing-step.js";
 import { FREEZE_RECHECK_MS, actionsRunsAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
+import { fixPrStallRoute } from "./fix-pr-stall.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun, PrTarget } from "./gates.js";
 import { singleSeat } from "./held-repair.js";
@@ -271,5 +272,6 @@ export function freezeHoldRoutes(deps: ShepherdDeps, freezes: (() => FreezeStore
     codeRoute(FREEZE_HOLD_STEP, deps.now, async (input: HoldInput) => decideHoldOrPass(deps, freezes, input)),
     codeRoute(FREEZE_WAIT_STEP, deps.now, async (input: WaitInput, signal) => (freezes ? awaitThaw(deps, freezes(), input, signal) : { thawed: true, headSha: input.headSha })),
     codeRoute(BASE_WAIT_STEP, deps.now, async (input: BaseWaitInput, signal) => awaitBaseMove(deps, input, signal)),
+    fixPrStallRoute(deps, freezes),
   ];
 }

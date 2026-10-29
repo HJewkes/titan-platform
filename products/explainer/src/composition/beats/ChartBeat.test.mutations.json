@@ -4,8 +4,8 @@
     {
       "name": "line columns rise from zero whatever the baseline",
       "file": "products/explainer/src/composition/beats/GraphBeat.tsx",
-      "find": "return axisShare(value, axis.floor, axis.max) * GRAPH_PLOT_PX",
-      "replace": "return axisShare(value, 0, axis.max) * GRAPH_PLOT_PX",
+      "find": "return axisShare(value, axis.floor, axis.max) * axis.px",
+      "replace": "return axisShare(value, 0, axis.max) * axis.px",
       "kills": ["a chart drawn from its frame slots a line chart's columns rise from its baseline, which the axis names"]
     },
     {

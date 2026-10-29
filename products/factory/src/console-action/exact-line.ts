@@ -4,8 +4,13 @@
  * `\u{HEX}`, a backslash as `\\`, and `unexactLine` gives back the exact string.
  */
 
-/** Controls (C0, DEL, C1), format characters (bidi and zero-width marks, the BOM), line and paragraph separators, lone surrogates, and the backslash itself. */
-const HIDDEN = /[\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\p{Cs}/gu;
+/**
+ * Controls (C0, DEL, C1), format characters (bidi and zero-width marks, the BOM), line and paragraph separators, lone
+ * surrogates, default-ignorable characters (variation selectors, Hangul fillers, tags), every space but U+0020, the
+ * braille blank, and the backslash itself. A variation-selector run can smuggle a payload past the eye, and `run:\u{A0}x`
+ * reads as `run: x` while YAML parses it as a plain string.
+ */
+const HIDDEN = /[\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}\u2800]|(?! )\p{Zs}|\p{Cs}/gu;
 const ESCAPE = /\\(?:\\|u\{([0-9A-F]{1,6})\})/g;
 
 export function exactLine(raw: string): string {

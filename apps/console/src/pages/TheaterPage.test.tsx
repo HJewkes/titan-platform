@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "../App.js";
 import { ROOTS_UNSET } from "../../server/videos.js";
 import { startTimeOf } from "./TheaterPlayer.js";
 import { DayFeedSection } from "./TheaterFeed.js";
 import { dayKeyOf, feedStateOf, groupByDay, purposeOf, type VideoRow } from "./theater-feed.js";
+import { renderPage } from "../render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -63,14 +63,9 @@ function snapshotOf(list: unknown): Snapshot {
 
 const LISTED = snapshotOf({ videos: VIDEOS, truncated: false, gaps: [] });
 
-function renderConsole(hash: string, snapshot: Snapshot = LISTED): void {
+function renderConsole(hash: string, snapshot: Snapshot = LISTED, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 /** jsdom never loads media, so a test says when the metadata has arrived. */
@@ -105,7 +100,7 @@ describe("the theater list", () => {
   });
 
   it("hides old takes and clips by default, and points at both", async () => {
-    renderConsole("#/theater");
+    renderConsole("#/theater", LISTED, { inApp: true });
     await screen.findByTestId(`theater-video-${WITHOUT_CAPTIONS}`);
     expect(screen.queryByTestId(`theater-video-${OLD_TAKE}`)).toBeNull();
     expect(screen.queryByTestId(`theater-video-${CLIP}`)).toBeNull();
@@ -121,7 +116,7 @@ describe("the theater list", () => {
   });
 
   it("filters by a purpose chip into ?tag=, and counts each purpose", async () => {
-    renderConsole("#/theater");
+    renderConsole("#/theater", LISTED, { inApp: true });
     fireEvent.click(await screen.findByText("Repo review 1"));
     await waitFor(() => expect(window.location.hash).toBe("#/theater?tag=repo-review"));
     await waitFor(() => expect(screen.queryByTestId(`theater-video-${WITH_CAPTIONS}`)).toBeNull());
@@ -129,7 +124,7 @@ describe("the theater list", () => {
   });
 
   it("searches into ?q= and bolds the match", async () => {
-    renderConsole("#/theater");
+    renderConsole("#/theater", LISTED, { inApp: true });
     fireEvent.change(await screen.findByLabelText("Search videos"), { target: { value: "lantern" } });
     await waitFor(() => expect(window.location.hash).toBe("#/theater?q=lantern"));
     await waitFor(() => expect(screen.queryByTestId(`theater-video-${WITHOUT_CAPTIONS}`)).toBeNull());
@@ -137,7 +132,7 @@ describe("the theater list", () => {
   });
 
   it("offers Clear when nothing matches", async () => {
-    renderConsole("#/theater?q=zzz&tag=plan");
+    renderConsole("#/theater?q=zzz&tag=plan", LISTED, { inApp: true });
     expect(await screen.findByText("No matches")).toBeTruthy();
     expect(screen.getByText("“zzz” in Plan")).toBeTruthy();
     fireEvent.click(screen.getByText("Clear"));
@@ -145,7 +140,7 @@ describe("the theater list", () => {
   });
 
   it("opens the player from a video's title", async () => {
-    renderConsole("#/theater");
+    renderConsole("#/theater", LISTED, { inApp: true });
     fireEvent.click(await screen.findByText("kiln-sample.webm"));
     await waitFor(() => expect(window.location.hash).toBe(`#/theater/${WITHOUT_CAPTIONS}`));
   });

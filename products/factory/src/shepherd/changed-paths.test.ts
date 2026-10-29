@@ -1,27 +1,18 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isCarryFencedPath } from "@titan-design/authority";
+import { gitIn, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { changedPathsBetween } from "./changed-paths.js";
 import { CarryRefusal, systemGit } from "./tree-carry.js";
 
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 let root: string;
 let repo: string;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(repo)(...args);
 }
 
 function commit(file: string, text: string): string {
@@ -45,7 +36,7 @@ const body = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n") + "\n"
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "changed-paths-"));
   repo = join(root, "repo");
-  execFileSync("git", ["init", "-q", "-b", "main", repo], { env: TEST_GIT_ENV });
+  seedRepo(repo, {});
   git("config", "diff.renames", "true");
   commit("README.md", "seed\n");
 });

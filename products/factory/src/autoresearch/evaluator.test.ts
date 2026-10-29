@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { IdeaSchema, OutcomeSchema, type Idea, type RoundRecord } from "@titan-design/autoresearch";
 import { partialFake } from "@titan-design/test-kit";
+import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { evaluatorPorts, type EvaluatorOptions } from "./evaluator.js";
 import { execGit } from "./ratchet.js";
@@ -69,18 +70,12 @@ function writeFiles(dir: string, files: Record<string, string>): void {
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
 
-/** A bare `origin`, a clone of it for the evaluator, and the adapter at the pin. */
+/** A bare `origin`, a checkout of it for the evaluator, and the adapter at the pin. */
 async function fixture(bounds: object = BOUNDS, host: Partial<EvaluatorOptions> = {}) {
   const root = mkdtempSync(join(tmpdir(), "ar-evaluator-"));
   roots.push(root);
-  const [seed, bare, clone] = [join(root, "seed"), join(root, "origin.git"), join(root, "clone")];
-  mkdirSync(seed);
-  await git(seed, "init", "--quiet", "-b", "main");
-  writeFiles(seed, { ...SEED, ...ADAPTER, "ar/target.json": JSON.stringify(TARGET), "ar/bounds.json": JSON.stringify(bounds) });
-  await git(seed, "add", "--all");
-  await git(seed, "commit", "--quiet", "-m", "fixture");
-  await git(root, "clone", "--quiet", "--bare", seed, bare);
-  await git(root, "clone", "--quiet", bare, clone);
+  const [bare, clone] = [join(root, "origin.git"), join(root, "clone")];
+  seedRepoWithOrigin(clone, bare, { ...SEED, ...ADAPTER, "ar/target.json": JSON.stringify(TARGET), "ar/bounds.json": JSON.stringify(bounds) });
   const options = { clone, workRoot: join(root, "work"), archiveDir: join(root, "archive"), adapterDir: "ar", caseNames: ["t-alpha"], ...host };
   const pin = await git(clone, "rev-parse", "HEAD");
   /** A second host over the same clone and work root, as the factory is after a restart. */

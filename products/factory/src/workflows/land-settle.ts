@@ -31,7 +31,12 @@ export interface UnsettledMerge {
    * wait going with no owner gate; an unsent one gates, naming why. Absent, the bound gates.
    */
   notice?: (headSha: string, reason: string) => Promise<{ sent: boolean; detail: string } | undefined>;
+  /** Called once per head when a `thaw` wait reaches `THAW_STALL_ROUNDS` there, so a freeze that may never thaw for this PR is looked at. */
+  stalled?: (headSha: string) => Promise<void>;
 }
+
+/** Thaw rounds at one head before `stalled` runs: about six minutes of waits at the backoff above. */
+export const THAW_STALL_ROUNDS = 4;
 
 /** What GitHub's mergeability stands in for, read locally; it names the result in a gate's reason. */
 export type MergeTreeProbe = (input: { repo: string; baseRef: string; headSha: string }, signal: AbortSignal) => Promise<string>;
@@ -97,6 +102,7 @@ export async function settleOrGate(holder: SettleHold, decision: GateDecision, u
   const boundMs = kind === "once" && prior ? 0 : UNSETTLED_BOUND_MS;
   const settled = await record({ headSha, ...(prior && { since: prior.since }), waitMs: settleWaitMs(attempt), boundMs, ...(quiet && { told: true }) });
   holder.settle = { headSha, since: settled.since, attempt, ...(told && { told }) };
+  if (kind === "thaw" && attempt === THAW_STALL_ROUNDS) await unsettled.stalled?.(headSha);
   if (!settled.spent || quiet) return undefined;
   const reason = unsettledReason(decision.reason, settled, kind);
   const notice = unsettled.notice && (await unsettled.notice(headSha, reason));

@@ -5,7 +5,7 @@ import type { GateAuthorize, GateRecord, GateResolver } from "@titan-design/hitl
 import type { GateBatchStore } from "./gate-batch-store.js";
 import { loadOwnerKeys } from "./owner-keys.js";
 import { ownerKeyId, signStatement } from "./owner-presence.js";
-import { verifyGatePresence, type ProofInput } from "./presence-proof.js";
+import { verifyGatePresence, type GatePresenceStatement, type ProofInput } from "./presence-proof.js";
 
 /** The channel `gate resolve` stamps on its resolvers; a confirmEvent on it must name a presence record. */
 const CLI_CHANNEL = "factory-cli";
@@ -41,16 +41,23 @@ export async function mintPresenceRecord(batches: GateBatchStore, gateId: string
   return opened ? { confirmEvent: `${RECORD_PREFIX}${batchId}`, batchId } : { refusal: "the presence statement's nonce was already used" };
 }
 
-/** Why a signed presence statement does not prove the owner answered `gateId` (with `payload`, when given) now. */
-function proofRefusal(proof: ProofInput, gateId: string, now: () => number, payload?: Record<string, unknown>): string | undefined {
+type Presence = { statement: GatePresenceStatement; keyId: string } | { refusal: string };
+
+/** The owner's signed statement that they answered `gateId` (with `payload`, when given) now, or why the proof does not show it. */
+export function verifiedPresence(proof: ProofInput, gateId: string, now: () => number, payload?: Record<string, unknown>): Presence {
   const keys = loadOwnerKeys();
-  if (!keys.ok) return `owner keys are not installed: ${keys.refusal}`;
+  if (!keys.ok) return { refusal: `owner keys are not installed: ${keys.refusal}` };
   const verified = verifyGatePresence(proof, keys.ring, Math.floor(now() / 1000), hostname());
-  if (!verified.ok) return `the presence statement was refused: ${verified.refusal}`;
+  if (!verified.ok) return { refusal: `the presence statement was refused: ${verified.refusal}` };
   const [item] = verified.statement.items;
-  if (item.gate !== gateId) return `the presence statement was signed for gate ${item.gate}`;
-  if (payload !== undefined && !isDeepStrictEqual(item.payload, payload)) return "the presence statement was signed for another answer";
-  return undefined;
+  if (item.gate !== gateId) return { refusal: `the presence statement was signed for gate ${item.gate}` };
+  if (payload !== undefined && !isDeepStrictEqual(item.payload, payload)) return { refusal: "the presence statement was signed for another answer" };
+  return { statement: verified.statement, keyId: verified.keyId };
+}
+
+function proofRefusal(proof: ProofInput, gateId: string, now: () => number, payload?: Record<string, unknown>): string | undefined {
+  const presence = verifiedPresence(proof, gateId, now, payload);
+  return "refusal" in presence ? presence.refusal : undefined;
 }
 
 /**

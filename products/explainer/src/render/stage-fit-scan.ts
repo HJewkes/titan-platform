@@ -1,4 +1,5 @@
-import { launch, openCapturePage } from "@titan-design/frame-capture";
+import { withBrowser, withCapturePage } from "@titan-design/frame-capture";
+import type { Browser, Page } from "playwright-core";
 import { formatRow, type OverflowRow } from "../composition/beats/stage/overflow-row.js";
 
 interface ScanBeat {
@@ -14,11 +15,15 @@ const SCAN_HZ = 2;
 /** The beat's last moment, when every element has landed and every figure has settled. */
 const SETTLED_BEFORE_END_S = 0.05;
 
-/** The moments the scan seeks: a 2 Hz sweep of each beat and the beat's settled end. */
-function scanMoments(beats: readonly ScanBeat[]): number[] {
+/**
+ * The moments the scan seeks, in order: a 2 Hz sweep of each beat and the beat's settled end. The capture clock only
+ * moves forward, so a sweep moment at or past the settled end (a beat ending just past a half second) is left out.
+ */
+export function scanMoments(beats: readonly ScanBeat[]): number[] {
   return beats.flatMap(({ startS, durationS }) => {
-    const sweep = Array.from({ length: Math.ceil(durationS * SCAN_HZ) }, (_, k) => startS + k / SCAN_HZ);
-    return [...sweep, startS + Math.max(0, durationS - SETTLED_BEFORE_END_S)];
+    const settled = startS + Math.max(0, durationS - SETTLED_BEFORE_END_S);
+    const sweep = Array.from({ length: Math.ceil(durationS * SCAN_HZ) }, (_, k) => startS + k / SCAN_HZ).filter((t) => t < settled);
+    return [...sweep, settled];
   });
 }
 
@@ -28,25 +33,25 @@ const reportUrl = (pageUrl: string): string => {
   return url.toString();
 };
 
-/** Seeks the page in report mode through every beat and reads back each beat's overflow past the type floor, in beat order. */
-export const chromiumStageFitScan: StageFitScan = async (pageUrl, timeline, viewport) => {
-  const browser = await launch();
-  try {
-    const { page } = await openCapturePage(browser, reportUrl(pageUrl), viewport);
-    for (const t of scanMoments(timeline.beats)) {
-      await page.evaluate(async (seconds) => {
-        window.__virtualTime.advanceTo(seconds * 1000);
-        window.__titanMotion?.seek(seconds);
-        await window.__titanMotion?.ready();
-      }, t);
-    }
-    const rows = await page.evaluate(() => Object.values(window.__stageOverflows ?? {}));
-    const order = new Map(timeline.beats.map((beat, i) => [beat.id, i]));
-    return rows.sort((a, b) => (order.get(a.beat) ?? 0) - (order.get(b.beat) ?? 0));
-  } finally {
-    await browser.close();
+/** Seeks every scan moment in turn, then reads back each beat's overflow past the type floor, in beat order. */
+async function overflowRows(page: Page, beats: readonly ScanBeat[]): Promise<OverflowRow[]> {
+  for (const t of scanMoments(beats)) {
+    await page.evaluate(async (seconds) => {
+      window.__virtualTime.advanceTo(seconds * 1000);
+      window.__titanMotion?.seek(seconds);
+      await window.__titanMotion?.ready();
+    }, t);
   }
-};
+  const rows = await page.evaluate(() => Object.values(window.__stageOverflows ?? {}));
+  const order = new Map(beats.map((beat, i) => [beat.id, i]));
+  return rows.sort((a, b) => (order.get(a.beat) ?? 0) - (order.get(b.beat) ?? 0));
+}
+
+/** The scan of the page in report mode through every beat; in `browser` when one is lent, else in one launched per scan. */
+export function chromiumStageFitScan(browser?: Browser): StageFitScan {
+  return (pageUrl, timeline, viewport) =>
+    withBrowser(browser, (scanIn) => withCapturePage(scanIn, reportUrl(pageUrl), viewport, ({ page }) => overflowRows(page, timeline.beats)));
+}
 
 /** Thrown before any mix or frame: every beat still past its stage box at the type floor, one row each. */
 export class StageOverflow extends Error {

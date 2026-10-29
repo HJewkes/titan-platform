@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import { runGit, type GitRunner } from "@titan-design/worktree";
 import { gitEvidenceReader } from "./repo-evidence.js";
@@ -31,20 +32,35 @@ function git(args: string[], cwd: string, at = 1_000): string {
  * after it, and `pc-xy-3-new` is a fresh worktree on main. Remote refs are written directly, so nothing is pushed.
  */
 function seedRepository(): void {
-  git(["init", "-b", "main", clone], dir);
-  git(["commit", "--allow-empty", "-m", "Start"], clone, 1_000);
-  git(["switch", "-c", "pc-xy-1-old"], clone);
-  git(["commit", "--allow-empty", "-m", "Part one"], clone, 1_500);
-  git(["switch", "main"], clone);
-  git(["commit", "--allow-empty", "-m", "XY-1: Land part one (#1)"], clone, 2_000);
-  git(["switch", "-c", "pc-xy-2-live"], clone);
-  git(["commit", "--allow-empty", "-m", "Part two"], clone, 3_000);
-  git(["switch", "main"], clone);
-  for (const branch of ["main", "pc-xy-1-old", "pc-xy-2-live"]) git(["update-ref", `refs/remotes/origin/${branch}`, branch], clone);
-  git(["branch", "-D", "pc-xy-1-old", "pc-xy-2-live"], clone);
-  git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"], clone);
-  git(["remote", "add", "origin", "https://github.com/example/orbit.git"], clone);
+  cpSync(repositoryTemplate(), clone, { recursive: true });
   git(["worktree", "add", "-q", "-b", "pc-xy-3-new", path.join(dir, "tree")], clone);
+}
+
+// Built once per file and copied: only the worktree, whose paths are absolute, is added per test.
+let template: string | undefined;
+
+afterAll(() => {
+  if (template) rmSync(path.dirname(template), { recursive: true, force: true });
+});
+
+function repositoryTemplate(): string {
+  if (template) return template;
+  const repo = path.join(mkdtempSync(path.join(tmpdir(), "console-evidence-template-")), "orbit");
+  git(["init", "-b", "main", repo], path.dirname(repo));
+  git(["commit", "--allow-empty", "-m", "Start"], repo, 1_000);
+  git(["switch", "-c", "pc-xy-1-old"], repo);
+  git(["commit", "--allow-empty", "-m", "Part one"], repo, 1_500);
+  git(["switch", "main"], repo);
+  git(["commit", "--allow-empty", "-m", "XY-1: Land part one (#1)"], repo, 2_000);
+  git(["switch", "-c", "pc-xy-2-live"], repo);
+  git(["commit", "--allow-empty", "-m", "Part two"], repo, 3_000);
+  git(["switch", "main"], repo);
+  for (const branch of ["main", "pc-xy-1-old", "pc-xy-2-live"]) git(["update-ref", `refs/remotes/origin/${branch}`, branch], repo);
+  git(["branch", "-D", "pc-xy-1-old", "pc-xy-2-live"], repo);
+  git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"], repo);
+  git(["remote", "add", "origin", "https://github.com/example/orbit.git"], repo);
+  template = repo;
+  return repo;
 }
 
 describe("repository evidence", () => {

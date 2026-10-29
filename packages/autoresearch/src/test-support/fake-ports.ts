@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { BoundsSchema, type Bounds } from "../bounds.js";
 import { parseUnifiedDiff } from "../diff.js";
 import { postCheck } from "../post-check.js";
+import type { QuotaContext } from "../queue.js";
 import type { Digest } from "../digest.js";
 import type { ArPorts, ImplementRequest, IntegrateRequest, LookAggregate, LookRequest, MicroRequest, RatchetRequest, RegistryRow, RoundRecord, RunPin } from "../ports.js";
 import { ArMicroSchema, ArResultSchema, TargetSchema, type Idea, type Proposal, type QueueOps, type Target } from "../schemas.js";
@@ -71,18 +73,12 @@ export function writeFiles(dir: string, files: Record<string, string>): void {
   }
 }
 
+/** A copy of the policy's template repo and its bare origin, which already holds the seed commit. */
 export async function fixtureRepo(policy: Policy): Promise<FixtureRepo> {
   const root = mkdtempSync(join(tmpdir(), "ar-fixture-"));
   const bare = join(root, "origin.git");
   const work = join(root, "work");
-  mkdirSync(work);
-  await git(work, "init", "--quiet", "-b", "main");
-  writeFiles(work, { ...SEED_FILES, "policy.json": JSON.stringify(policy, null, 2) });
-  await git(work, "add", ".");
-  await git(work, "commit", "--quiet", "-m", "fixture");
-  await git(root, "clone", "--quiet", "--bare", work, bare);
-  await git(work, "remote", "add", "origin", bare);
-  await git(work, "fetch", "--quiet", "origin");
+  seedRepoWithOrigin(work, bare, { ...SEED_FILES, "policy.json": JSON.stringify(policy, null, 2) });
   return { root, bare, work, policyPath: join(work, "policy.json"), pin: await git(work, "rev-parse", "HEAD") };
 }
 
@@ -176,7 +172,7 @@ export function scriptedPlanner(mechanisms: readonly string[]): (input: { round:
 }
 
 interface FakeCalls extends SnapshotCalls {
-  plans: { round: number; violations: string[]; digest: Digest; mode: string }[];
+  plans: { round: number; violations: string[]; digest: Digest; quota: QuotaContext; mode: string }[];
   implement: string[];
   /** Every implement input but the brief, in call order. */
   implementInputs: Omit<ImplementRequest, "brief">[];
@@ -199,6 +195,8 @@ const runPinIn = ({ runId, pin, frozenHash }: RunPin): RunPin => ({ runId, pin, 
 
 export interface FakeOptions extends SnapshotOptions {
   planner: (input: { round: number; violations: string[]; digest: Digest }) => Partial<QueueOps>;
+  /** A parse error to answer instead of ops, as a planner whose final message held no JSON does. */
+  plannerMalformed?: (input: { round: number; violations: string[] }) => string | undefined;
   target?: Target;
   bounds?: Bounds;
   /** Case names the L0 post-check refuses in an added line. */
@@ -366,7 +364,9 @@ export function fakeArPorts(repo: FixtureRepo, policy: Policy, options: FakeOpti
       calls.plans.push(input);
       await options.beforePlan?.(input.round);
       const agent = `planner-${input.runId}`;
-      return { ops: options.planner(input), agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
+      const malformed = options.plannerMalformed?.(input);
+      const answer = malformed === undefined ? { ops: options.planner(input) } : { ops: {}, malformed };
+      return { ...answer, agent, sessionId: `session-${agent}`, mode: input.mode, usage: { usd: 0.25, cacheReadTokens: 40, retries: 0 } };
     },
     ...movePorts(calls, options),
     ...fakeSnapshotPorts(calls, options),

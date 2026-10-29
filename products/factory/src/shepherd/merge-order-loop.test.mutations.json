@@ -8,7 +8,9 @@
       "replace": "  return wake();",
       "kills": [
         "TP-4098 slice C: the #2301 loop lets a PR already in its merge step land first, then wakes the conflicted PR once at the base it leaves",
-        "TP-4098 slice C: the #2301 loop skips the wake when the head moves during the order wait, and lands the next round"
+        "TP-4098 slice C: the #2301 loop skips the wake when the head moves during the order wait, and lands the next round",
+        "TP-4501: a run waiting for its turn orders only other waiters a run waiting in order-wait does not block a ready overlapping PR",
+        "TP-4501: a run waiting for its turn orders only other waiters two overlapping waiters resolve in reservation order without deadlock"
       ]
     },
     {
@@ -27,15 +29,6 @@
       "replace": "if (headSha !== undefined && (await heldByOrder(",
       "kills": [
         "TP-4098 slice C: the #2301 loop stops waiting on a run it let merge first once that run leaves its merge step unmerged"
-      ]
-    },
-    {
-      "name": "a run that ends keeps its reservation",
-      "file": "products/factory/src/shepherd/pr.ts",
-      "find": "    if (final) await releaseOrder(run);\n",
-      "replace": "",
-      "kills": [
-        "TP-4098 slice C: the #2301 loop releases the reservation when its run lands"
       ]
     },
     {

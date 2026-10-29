@@ -12,6 +12,7 @@ export const MAX_ACTION_RECORD_BYTES = 64 * 1024;
 const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 const hex = (length: number) => z.string().regex(new RegExp(`^[0-9a-f]{${length}}$`));
+const base64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
 const GateActionSchema = z.strictObject({
   kind: z.literal("resolve-gate"),
   gateId: z.string().min(1).max(512),
@@ -24,6 +25,8 @@ const GateActionSchema = z.strictObject({
   decision: z.string().regex(/^[a-z][a-z-]{0,63}$/),
   /** TP-4404: the digest of the owner-at-head evidence card the owner was shown; `gate.ts` reads it again and resolves only on a match. */
   evidenceDigest: hex(64).optional(),
+  /** TP-4491: the owner's signed `titan-factory.gate-presence` statement over this gate and answer, digest included; `gate.ts` verifies and spends it. */
+  presence: z.strictObject({ statementB64: base64url, signatureB64: base64url }).optional(),
 });
 /** No resolver field: the release is always the console's owner-remote, whatever else the record says. */
 const ReleaseActionSchema = z.strictObject({

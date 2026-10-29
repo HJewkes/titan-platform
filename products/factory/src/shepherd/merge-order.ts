@@ -7,7 +7,9 @@ import { appendEvent } from "./events.js";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
 import { holdBarsMerge, type GateEvidenceSource, type HoldFacts } from "./lan-gates.js";
-import { lastCiHead } from "./stats.js";
+import { lastCiHead, stepName } from "./stats.js";
+
+export const ORDER_WAIT_STEP = "sh-order-wait";
 
 /**
  * A conflicted PR's reservation of the paths it changes, so an overlapping PR waits at its merge until the conflicted
@@ -111,6 +113,12 @@ export class MergeOrder {
     return run !== undefined && DRIVING.has(run.status);
   }
 
+  /** In its order-wait step: reserved at a conflict, still waiting for its turn, with no fixer at work yet (TP-4501). */
+  isWaitingTurn(runId: string): boolean {
+    const run = this.runs.get(runId);
+    return run !== undefined && Object.keys(run.activeSteps).some((key) => stepName(key) === ORDER_WAIT_STEP);
+  }
+
   /** The head the run's merge step is at, which a lan-gates hold is read at. */
   mergeHead(runId: string): string | undefined {
     const run = this.runs.get(runId);
@@ -206,14 +214,24 @@ const before = (a: Reservation, b: Reservation): boolean => a.since < b.since ||
 
 export const withinTtl = (reservation: Reservation, rule: MergeOrderRule, now: number): boolean => now - Date.parse(reservation.since) < rule.ttlMinutes * 60_000;
 
+type RunTest = (runId: string) => boolean;
+
+const nobodyWaits: RunTest = () => false;
+
+/** Whose runs still wait for their turn in order-wait (`isWaitingTurn`). */
+export const orderWaiting = (order: MergeOrder): RunTest => (runId) => order.isWaitingTurn(runId);
+
 /**
  * The reservations `self` must wait behind: live (driving and younger than the TTL), not its own, overlapping, taken
  * before self's own reservation when it holds one, and not one self was already merging ahead of (`ahead`). Whether
  * each blocker's PR is still open is read after this.
+ * TP-4501: a holder still waiting for its turn has no fixer at work, so it orders only other waiters, oldest
+ * reservation first; waits never chain through it to a ready PR, and two waiters never wait on each other.
  */
-export function blockers(self: OrderSelf, reservations: readonly Reservation[], rule: MergeOrderRule, now: number, driving: (runId: string) => boolean): Blocker[] {
+export function blockers(self: OrderSelf, reservations: readonly Reservation[], rule: MergeOrderRule, now: number, driving: RunTest, waiting: RunTest = nobodyWaits): Blocker[] {
   const own = reservations.find((reservation) => reservation.runId === self.runId);
-  const live = (reservation: Reservation): boolean => withinTtl(reservation, rule, now) && driving(reservation.runId);
+  const selfWaits = waiting(self.runId);
+  const live = (reservation: Reservation): boolean => withinTtl(reservation, rule, now) && driving(reservation.runId) && (selfWaits || !waiting(reservation.runId));
   return reservations
     .filter((reservation) => reservation.runId !== self.runId && !reservation.ahead.includes(self.runId) && (own === undefined || before(reservation, own)) && live(reservation))
     .map((reservation) => ({ reservation, shared: self.unread ? [] : overlapping(self.repo, self.paths, reservation.paths, rule) }))
