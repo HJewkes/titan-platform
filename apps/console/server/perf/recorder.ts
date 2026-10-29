@@ -22,7 +22,7 @@ interface PerfRecorderOptions {
   retentionDays?: number;
 }
 
-interface RpcStats {
+export interface RpcStats {
   name: string;
   count: number;
   errors: number;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { readCommand } from "../owner-guard.js";
-import type { PerfRecorder } from "./recorder.js";
+import type { PerfRecorder, RpcStats } from "./recorder.js";
 
 const rpcStats = z.object({
   name: z.string(),
@@ -13,6 +13,10 @@ const rpcStats = z.object({
   bytesMax: z.number(),
 });
 
+function slowestFirst(rows: readonly RpcStats[]): RpcStats[] {
+  return [...rows].sort((a, b) => b.p95 - a.p95);
+}
+
 export function perfCommands(recorder: PerfRecorder | undefined) {
   return {
     "perf.summary": readCommand({
@@ -20,7 +24,7 @@ export function perfCommands(recorder: PerfRecorder | undefined) {
       description: "Per console command over the last 15 minutes or 24 hours: count, errors, p50, p95 and max milliseconds, and response bytes",
       args: z.object({ window: z.enum(["15m", "24h"]).default("15m") }),
       result: z.object({ window: z.enum(["15m", "24h"]), rpcs: z.array(rpcStats) }),
-      run: async ({ window }) => ({ window, rpcs: ((await recorder?.summary(window)) ?? []).sort((a, b) => b.p95 - a.p95) }),
+      run: async ({ window }) => ({ window, rpcs: slowestFirst((await recorder?.summary(window)) ?? []) }),
     }),
   };
 }
