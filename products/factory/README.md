@@ -250,7 +250,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
-  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked` or `owner-review`, and a reason in one of the
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary`, `owner-asked`, `owner-review` or `lan-gates`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
   - `g10-review` releases itself unless it names a `--reviewer` or has no hold event on record (an unreadable history
     counts as none), since either may be a review the owner assigned. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
@@ -266,6 +266,13 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
   - `owner-review` records that the owner assigned the review to a person; no Shepherd MERGE releases it, only
     `shepherd release`.
+  - `lan-gates` waits on gates that cannot run in GitHub Actions. The reason names them,
+    `lan-gates: <gate>, <gate>; <detail>`, and `shepherd hold` refuses with exit 65 a list that is empty, badly spelled
+    or names a gate never declared in `shepherd_external_gate` (migration 47, `src/shepherd/gate-evidence.ts`). The
+    factory appends each gate's conclusion at a head to `shepherd_gate_evidence`. The merge wait and the merge port, at
+    the PR's head as read just then, release the hold, with the event at that head, once every named gate's newest
+    record at exactly that head is `success`. A record at any other head, a red newest record, or a hold that names a
+    `--reviewer` keeps it held. `shepherd release` still lifts it by hand.
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
