@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "L0 never runs the on-screen number, word and echo rows",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "numbersSpokenCheck, frameWordsCheck, labelEchoCheck, ",
+      "replace": "",
+      "kills": [
+        "Q-D14 on-screen numbers are spoken a label number the beat never speaks fails and names the number"
+      ]
+    },
+    {
+      "name": "the script preflight hints are not registered",
+      "file": "products/explainer/src/l0-repair-hints.ts",
+      "find": "  ...SCREEN_HINTS,\n",
+      "replace": "",
+      "kills": [
+        "Q-D16 labels that echo the narration a label repeating five spoken words fails"
+      ]
+    }
+  ]
+}

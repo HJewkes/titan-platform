@@ -50,7 +50,9 @@ jobs:
         with:
           path: .turbo/cache
           key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
       - run: pnpm build
         env:
           TURBO_TELEMETRY_DISABLED: 1
@@ -65,6 +67,9 @@ jobs:
       # Findings at warn level never fail the job; an unreadable rule file does (exit 2). .github/merge-lint.json holds the allowlist.
       - name: Flag merge calls outside the logged wrappers
         run: pnpm merge:lint
+      # A sidecar whose find no longer occurs in its target would make fix-proof refuse a later, unrelated PR (TP-4439).
+      - name: Check mutation sidecar finds against their targets
+        run: pnpm sidecar:finds
       - run: pnpm typecheck
         env:
           TURBO_TELEMETRY_DISABLED: 1
@@ -93,11 +98,14 @@ jobs:
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
       # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
+      # On a PR, --base limits the per-file defaulted notices to files the PR adds or changes; the agent-chat clone is a depth-1 main, so it has no base.
       - name: Check the sunset manifest against agent-chat main
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git clone --depth 1 https://github.com/HJewkes/agent-chat "$RUNNER_TEMP/agent-chat"
           echo "agent-chat main: $(git -C "$RUNNER_TEMP/agent-chat" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn
+          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn ${BASE_SHA:+--base "$BASE_SHA"}
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -229,7 +237,9 @@ jobs:
         with:
           path: .turbo/cache
           key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
       - run: pnpm build
         env:
           TURBO_TELEMETRY_DISABLED: 1
@@ -248,7 +258,8 @@ jobs:
             vitest-results-${{ runner.os }}-
       # redirect-corpus.test.ts needs real bash and zsh; the explainer render tests spawn real ffmpeg/ffprobe.
       # The debs are cached per runner image, so a hit installs from disk with no apt-get update or download (TP-4400).
-      # A miss downloads once and the first shard saves, so later runs, including pull requests, hit.
+      # A miss downloads; only main's first shard saves, because a hit installs the debs as root with no signature check,
+      # so a pull request must never write the cache a later run trusts. Pull requests hit main's save.
       - name: Read the runner image version
         id: image
         run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
@@ -268,7 +279,7 @@ jobs:
       - name: Install zsh and ffmpeg
         run: sudo dpkg -i "$HOME"/apt-debs/*.deb
       - name: Save the zsh and ffmpeg debs
-        if: steps.debs.outputs.cache-hit != 'true' && matrix.index == 1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.debs.outputs.cache-hit != 'true' && matrix.index == 1
         uses: actions/cache/save@v4
         with:
           path: ~/apt-debs
@@ -297,7 +308,7 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-      # The five projects and the CI reporters of scripts/test-scope.mjs, so a hang still fails and names its file.
+      # The projects and the CI reporters of scripts/test-scope.mjs, so a hang still fails and names its file.
       - name: Run this shard
         env:
           SHARD_INDEX: ${{ matrix.index }}
@@ -310,6 +321,14 @@ jobs:
           path: ${{ runner.temp }}/shard-results/vitest-results-${{ matrix.index }}.json
           retention-days: 7
           if-no-files-found: warn
+      # Per-file collect, setup and test time from scripts/vitest-file-timing.mjs.
+      - name: Upload the vitest file timing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-file-timing-${{ matrix.index }}-${{ github.run_attempt }}
+          path: vitest-file-timing.json
+          if-no-files-found: ignore
 
   dag-check:
     runs-on: ubuntu-latest
@@ -330,7 +349,9 @@ jobs:
         with:
           path: .turbo/cache
           key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
       - name: Build
         id: build
         run: pnpm build
@@ -401,6 +422,32 @@ jobs:
       - name: Lint with type-aware rules
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm lint:types
+
+  # Per-RPC budgets for the console's reads (TP-4403 d1), alone on a runner so no other test's CPU skews the medians.
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Check the console's read budgets
+        run: pnpm vitest run --project perf
+        env:
+          TITAN_BENCH: "1"
 
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:

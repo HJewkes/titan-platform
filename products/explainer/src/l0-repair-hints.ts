@@ -14,6 +14,7 @@ import { COVERAGE_HINTS } from "./repair-hints-coverage.js";
 import { FLOW_HINTS } from "./repair-hints-flow.js";
 import { VOICE_HINTS } from "./repair-hints-voice.js";
 import { WHY_HINTS } from "./repair-hints-why.js";
+import { SCREEN_HINTS } from "./repair-hints-screen.js";
 
 // The beats past the cap each get the least-used connector the cap still allows; with none left, a shared word links.
 function connectorEdits({ word, linked, beats, counts }: Overuse): string[] {
@@ -94,6 +95,7 @@ const HINTS: Readonly<Record<string, Hint>> = {
   ...VOICE_HINTS,
   ...FLOW_HINTS,
   ...COVERAGE_HINTS,
+  ...SCREEN_HINTS,
   "Q-F1": linkHint,
   "Q-F3": threadHint,
   "Q-F4": (script) => thesisDefects(script).join("; "),

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(() => {
   cleanup();
@@ -96,14 +96,9 @@ function recorded(overrides: Snapshot["calls"] = {}): Snapshot {
 const listWith = (result: ListResult): Snapshot["calls"] => ({ [snapshotKey("sessions.list", { limit: 50 })]: successEnvelope(result) });
 const timelineWith = (result: TimelineResult): Snapshot["calls"] => ({ [snapshotKey("sessions.timeline", { sessionId: NEWEST })]: successEnvelope(result) });
 
-function renderConsole(hash: string, data: Snapshot): void {
+function renderConsole(hash: string, data: Snapshot, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", data), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const cells = (testId: string): string[] => within(screen.getByTestId(testId)).getAllByRole("cell").map((cell) => cell.textContent ?? "");
@@ -131,7 +126,7 @@ describe("the sessions list", () => {
   });
 
   it("filters by the agent in the query string and clears it from the chip", async () => {
-    renderConsole("#/sessions?agent=kiln-reviewer", recorded());
+    renderConsole("#/sessions?agent=kiln-reviewer", recorded(), { inApp: true });
     expect(await screen.findByText("agent: kiln-reviewer")).toBeTruthy();
     expect(screen.getAllByTestId(/^session-row-/)).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /remove|delete|dismiss/i }));
@@ -139,14 +134,14 @@ describe("the sessions list", () => {
   });
 
   it("filters to an agent from its cell", async () => {
-    renderConsole("#/sessions", recorded());
+    renderConsole("#/sessions", recorded(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId(`session-row-${OLDER}`)).getByText("kiln-reviewer"));
     await waitFor(() => expect(window.location.hash).toBe("#/sessions?agent=kiln-reviewer"));
     expect(await screen.findByText("agent: kiln-reviewer")).toBeTruthy();
   });
 
   it("opens a session from its start time", async () => {
-    renderConsole("#/sessions", recorded());
+    renderConsole("#/sessions", recorded(), { inApp: true });
     fireEvent.click(await screen.findByTestId(`session-link-${NEWEST}`));
     await waitFor(() => expect(window.location.hash).toBe(`#/sessions/${NEWEST}`));
     expect(await screen.findByText("Conversation (2)")).toBeTruthy();
@@ -243,7 +238,7 @@ describe("a session's detail", () => {
   });
 
   it("returns to the list from the breadcrumb", async () => {
-    renderConsole(`#/sessions/${NEWEST}`, recorded());
+    renderConsole(`#/sessions/${NEWEST}`, recorded(), { inApp: true });
     fireEvent.click(await screen.findByRole("link", { name: "Sessions" }));
     await waitFor(() => expect(window.location.hash).toBe("#/sessions"));
   });

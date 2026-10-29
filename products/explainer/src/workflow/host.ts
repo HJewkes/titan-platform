@@ -6,6 +6,8 @@ import { routedRunner, WorkflowRunStore, WorkflowRuntime, workflowMigration, wor
 import { createJudgeHarness, JudgeConfigSchema, type JudgeConfig } from "../eval-harness.js";
 import type { BeatWorker, LayerRepairer } from "../build/beat-worker.js";
 import { beatWorkerFor } from "../build/claude-print-worker.js";
+import type { LayerTextCheck } from "../build/layer-text.js";
+import { chromiumLayerTextCheck } from "../render/layer-text-check.js";
 import type { L0Check } from "../eval-l0.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import type { StylePack } from "../style-pack-schema.js";
@@ -32,10 +34,11 @@ import type { TtsEngine } from "./tts-stage.js";
 import type { GatherDeps, GatherRequest } from "./run-gather.js";
 
 // Repairs only when the host passes a repairer: the installed beat-builder profile predates TP-2608's TSX variant.
-function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer } {
+function layerRunners(host: RunHost): { worker?: BeatWorker; repairer?: LayerRepairer; textCheck?: LayerTextCheck } {
   const repairer = host.layerRepairer ? { repairer: host.layerRepairer } : {};
   const worker = beatWorkerFor(host.beatWorker);
-  return { ...(worker ? { worker } : {}), ...repairer };
+  const textCheck = host.layerTextCheck === undefined ? chromiumLayerTextCheck() : host.layerTextCheck;
+  return { ...(worker ? { worker } : {}), ...repairer, ...(textCheck ? { textCheck } : {}) };
 }
 
 export interface RunHost {
@@ -68,6 +71,8 @@ export interface RunHost {
   beatWorker?: BeatWorker | null;
   /** Repairs a layer that fails the compile gate; none unless the host passes one (no default until TP-2608's profile). */
   layerRepairer?: LayerRepairer;
+  /** Renders each built layer against qa's text rules before it is stored; Chromium by default, `null` for none. */
+  layerTextCheck?: LayerTextCheck | null;
   reflection?: StageDeps["reflection"]; leaseMs?: number;
   onEvent?: (event: WorkflowEvent) => void;
   signal?: AbortSignal;

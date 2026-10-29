@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { EgoGraph } from "../server/graph.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -15,6 +15,7 @@ const SESSION = "session:00000000-0000-4000-8000-000000000007";
 const LONELY = "task:OR-9";
 const BUSY = "task:OR-11";
 const FALLBACK = "task:OR-12";
+const SLOW = "task:OR-13";
 
 const node = (ref: string, kind: EgoGraph["nodes"][number]["kind"], depth: 0 | 1 | 2, label: string) => ({ ref, kind, depth, label, degree: 1, expanded: depth < 2 });
 
@@ -48,19 +49,15 @@ function snapshot(): Snapshot {
       [egoKey(LONELY)]: successEnvelope(ego(LONELY, { nodes: [node(LONELY, "task", 0, "OR-9")], edges: [], counts: {} })),
       [egoKey(BUSY)]: successEnvelope(ego(BUSY, { counts: { note: 40, session: 12, file: 9 }, truncated: { nodeCap: 150, edgeCap: 300, omitted: { note: 39, session: 11 }, omittedEdges: 0, collapsed: [{ kind: "file", via: "touched", count: 9 }] } })),
       [egoKey(FALLBACK)]: successEnvelope(ego(FALLBACK, { depth: 1, sources: { graph: "absent", mentions: "ok", fallback: "mentions" } })),
+      [egoKey(SLOW)]: successEnvelope(ego(SLOW, { sources: { graph: "ok", mentions: "unavailable" } })),
       [egoKey("task:OR-404")]: errorEnvelope("graph unreadable", 65),
     },
   };
 }
 
-function renderConsole(hash: string): void {
+function renderConsole(hash: string, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot()), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const graphRoute = (ref: string): string => `#/knowledge/${encodeURIComponent(ref)}?tab=graph`;
@@ -78,7 +75,7 @@ describe("the knowledge graph tab", () => {
   });
 
   it("opens a pressed node's record", async () => {
-    renderConsole(graphRoute(TASK));
+    renderConsole(graphRoute(TASK), { inApp: true });
     fireEvent.click(await screen.findByRole("button", { name: /^Cap the backoff, Note/ }));
     await waitFor(() => expect(window.location.hash).toBe(`#/knowledge/${encodeURIComponent(NOTE)}`));
   });
@@ -100,13 +97,18 @@ describe("the knowledge graph tab", () => {
     expect(screen.queryByText(/^Showing \d+ of/)).toBeNull();
   });
 
+  it("says plainly when mentions did not load in time", async () => {
+    renderConsole(graphRoute(SLOW));
+    expect(await screen.findByText("Mentions did not load in time; showing session links only.")).toBeTruthy();
+  });
+
   it("says so when the graph cannot be read", async () => {
     renderConsole(graphRoute("task:OR-404"));
     expect(await screen.findByText("Could not load graph: graph unreadable")).toBeTruthy();
   });
 
   it("switches a record to its graph through the query string", async () => {
-    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`);
+    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`, { inApp: true });
     fireEvent.click(await screen.findByRole("tab", { name: "Graph" }));
     await waitFor(() => expect(window.location.hash).toBe(graphRoute(NOTE)));
     expect(await screen.findByRole("application", { name: /^Records linked to note:orbit-relay/ })).toBeTruthy();

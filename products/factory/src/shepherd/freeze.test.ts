@@ -435,6 +435,29 @@ describe("the freeze store", () => {
     expect([unfrozen, stale]).toEqual([false, false]);
     expect(r.freezes.get(A)).toMatchObject({ episode: 2, fixTask: null, fixer: null });
   });
+
+  it("setFixer does not overwrite an episode's fixer", () => {
+    const r = rig();
+    const { episode } = r.freezes.freeze(A, RED);
+    r.freezes.setFixer(A, episode, "fix-a-aaaaaaa");
+
+    const second = r.freezes.setFixer(A, episode, "fix-a-bbbbbbb");
+    const repeat = r.freezes.setFixer(A, episode, "fix-a-aaaaaaa");
+
+    expect([second, repeat]).toEqual([false, true]);
+    expect(r.freezes.get(A)).toMatchObject({ fixer: "fix-a-aaaaaaa" });
+  });
+
+  it("names the sha that opened the live episode as its first red, not a later red in it", () => {
+    const r = rig();
+    r.freezes.freeze(A, fakeSha("old"));
+    r.freezes.unfreeze(A, GREEN);
+    const { episode } = r.freezes.freeze(A, RED);
+    r.freezes.freeze(A, fakeSha("red2"));
+
+    expect(r.freezes.episodes.firstRed(A, episode)).toBe(RED);
+    expect(r.freezes.episodes.firstRed(A, episode - 1)).toBeUndefined();
+  });
 });
 
 describe("redOnlyFromCancels", () => {
@@ -587,8 +610,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 46]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 46]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 46, 48]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 31, 32, 33, 38, 39, 40, 41, 42, 43, 44, 45, 46, 48]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });

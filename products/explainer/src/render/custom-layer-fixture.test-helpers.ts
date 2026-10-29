@@ -3,9 +3,9 @@ import path from "node:path";
 
 // Synthetic: a hand-written layer for an invented parcel desk; no builder wrote it.
 
-/** The cells the synthetic layer declares, and the box it draws over them on the 1920×1080 stage. */
+/** The cells the synthetic layer declares, and the box it draws in the stage box: from the band's foot, B2 to E5 of the 1920×1080 frame. */
 export const SYNTHETIC_ANCHORS = ["B2:E5"];
-const SYNTHETIC_BOX = { x: 320, y: 180, width: 1280, height: 720 };
+const SYNTHETIC_BOX = { x: 320, y: 0, width: 1280, height: 540 };
 export const SYNTHETIC_ELEMENT = "parcel-hold";
 
 /** A custom layer as a builder would write one: a default-export component on the motion clock, allowlisted imports only. */

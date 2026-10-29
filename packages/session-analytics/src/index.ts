@@ -173,6 +173,8 @@ export { REVIEW_FILL_COMPARISON, SUCCESSOR_REWORK_COMPARISON, compareWindows } f
 export { renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText } from "./render-guardrails.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
+export type { EstimateBand, RouteAgreement, RouteOutcomeGroup, RouteOutcomesOptions } from "./route-outcomes.js";
+export { routeOutcomes } from "./route-outcomes.js";
 export type { PrDiff, PrFeatures } from "./task-actuals-pr.js";
 export { listMergedPrRefs, parsePrRef, prFeaturesFor } from "./task-actuals-pr.js";
 export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
@@ -189,3 +191,5 @@ export { seatOf } from "./coord-duty/transcript.js";
 export type { Outcome, Trigger } from "./coord-duty/turn-signals.js";
 export type { DispatchRecord, ScorecardJournalInput, ScorecardJournalRowId, ScorecardRow } from "./scorecard-rows.js";
 export { MIN_COST_COVERAGE, NOT_MEASURED, readDispatchJournal, scorecardJournalRows, scorecardRowText } from "./scorecard-rows.js";
+export type { Divergence, DivergenceGroup, PrefixReuse, PrefixReuseOptions, PrefixRow } from "./prefix-reuse.js";
+export { firstDivergence, prefixReuse } from "./prefix-reuse.js";

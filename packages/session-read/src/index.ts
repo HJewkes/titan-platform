@@ -9,8 +9,8 @@ export type { Relation, RepoRelativePath } from "./refs.js";
 export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, parseFileRef, prRef, repoForCwd, sessionRef, taskRef, toRepoRelative } from "./refs.js";
 export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
 export { parseReviewVerdicts } from "./review-verdict.js";
-export type { CiPolicy, CiPolicyKey, VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
-export { CI_POLICY_KEYS, parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
+export type { CiPolicy, CiPolicyKey, CiPolicyLabelledLine, VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
+export { CI_POLICY_KEYS, ciPolicyLabelledLines, parseVerdictBlock, refusedLines, visibleLines } from "./verdict-block.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
@@ -98,3 +98,5 @@ export { INJECTED_MARKERS, MARKER_SCAN_CHARS, findInjectedMarker, hasMarker, par
 export { MIN_ATTACHMENT_CHARS, sourceForCause } from "./audit-context.js";
 export { bashSignals, toolUseSignals, type AuditSignal } from "./audit-signal.js";
 export { ORIENTATION_HEADER, assignedTaskIds, orientationEnd, type Assignment, type AssignmentInput, type AssignmentSource } from "./spawn-assignment.js";
+export type { CacheBreakpoint, FirstRequest, FirstRequestUsage, RequestBlock, RequestSection } from "./first-request.js";
+export { readFirstRequest } from "./first-request.js";

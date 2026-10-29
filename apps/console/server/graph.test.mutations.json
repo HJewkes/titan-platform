@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the mentions read is awaited with no budget",
+      "file": "apps/console/server/graph.ts",
+      "find": "await withinBudget(activeWork.read(\"context.graph\", { id: tail }), timers);",
+      "replace": "await activeWork.read(\"context.graph\", { id: tail });",
+      "kills": [
+        "graph.ego mentions budget a mentions read slower than its budget still answers the graph within the budget"
+      ]
+    }
+  ]
+}

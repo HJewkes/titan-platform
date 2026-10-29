@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
-import { App } from "./App.js";
 import { toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // An unsent round keeps its draft in localStorage, so each test starts from none.
 afterEach(() => {
@@ -18,7 +18,7 @@ afterEach(() => {
 const ROUND = "kiln-schedule-r2";
 const NOTES = "Anything else the report should say?";
 
-async function renderRound(): Promise<void> {
+async function renderRound({ inApp = false } = {}): Promise<void> {
   const round = await getRound(source, ROUND);
   if (!round.valid) throw new Error(round.reason);
   const snapshot: Snapshot = {
@@ -27,12 +27,7 @@ async function renderRound(): Promise<void> {
     calls: { [snapshotKey("rounds.get", { id: ROUND })]: successEnvelope(round), [snapshotKey("rounds.list", {})]: successEnvelope({ rounds: [], truncated: false, dir: "/state/rounds" }) },
   };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
-  window.location.hash = `#/rounds/${ROUND}`;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), `#/rounds/${ROUND}`, { inApp });
   await screen.findByTestId("round-question-ramp-default");
 }
 
@@ -55,7 +50,7 @@ const radio = (label: string): HTMLElement => {
 
 describe("pressing on the rounds screen", () => {
   it("selects a radio on the first click, and neither the question card nor the option moves", async () => {
-    await renderRound();
+    await renderRound({ inApp: true });
 
     fireEvent.click(radio("2 Single slope"));
 

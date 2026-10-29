@@ -1,6 +1,6 @@
-import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, type AgentRow } from "@titan-design/agent-dispatch";
+import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, retire, type AgentRecord, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
-import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
+import type { SpawnGate } from "./spawn-gate.js";
 
 export const AGENT_CALL_TIMEOUT_MS = 90_000;
 
@@ -16,15 +16,11 @@ export interface AgentChatOptions {
   gate?: SpawnGate;
 }
 
-export interface SpawnRequest {
+export interface SpawnRequest extends AgentRecord {
   name: string;
   profile: string;
   brief: string;
   cwd: string;
-  /** Epoch-ms start of each review already running; those under five minutes old count against the build-capable load limit. */
-  runningReviews?: readonly number[];
-  /** Set for a reviewer's spawn only, so the gate can put a red main's fix ahead of other reviews. */
-  review?: ReviewAsk;
   /** This spawn's Claude config directory, picked per spawn; absent means the adapter's own `configDir`. */
   configDir?: string;
 }
@@ -34,9 +30,11 @@ export interface AgentChatAgents {
   roster(): Promise<readonly AgentRow[]>;
   spawn(request: SpawnRequest): Promise<void>;
   /** Resuming an exited agent starts a process like a spawn does, so it passes the same gate. */
-  resume(name: string, message: string, runningReviews?: readonly number[], review?: ReviewAsk): Promise<void>;
+  resume(name: string, message: string): Promise<void>;
   /** Delivers `message` to a live agent as one chat message. */
   message(name: string, message: string): Promise<void>;
+  /** Never forced, so agent-chat refuses it while the agent's worktree holds work that is not pushed; absent on adapters that never retire. */
+  retire?(name: string): Promise<void>;
 }
 
 /** The check `spawn` makes before agent-chat runs, asked ahead of time, so a panel plan can refuse a profile its dispatch would. */
@@ -54,16 +52,18 @@ export function agentChatAgents(agentChatBin: string, options: AgentChatOptions 
   const { timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
   return {
     roster: () => roster.rows(),
-    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir = options.configDir }) =>
+    spawn: ({ name, profile, brief, cwd, configDir = options.configDir, role, task }) =>
       mutating(roster, async () => {
-        gate?.admit(name, runningReviews, review);
-        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }, timeoutMs, [profile]);
+        gate?.admit(name);
+        const record = { ...(configDir !== undefined && { configDir }), ...(role !== undefined && { role }), ...(task !== undefined && { task }) };
+        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...record }, timeoutMs, [profile]);
       }),
-    resume: (name, message, runningReviews, review) =>
+    resume: (name, message) =>
       mutating(roster, async () => {
-        gate?.admit(name, runningReviews, review);
+        gate?.admit(name);
         await resumeAgent(agentChatBin, name, message, timeoutMs, SHEPHERD_LAUNCH);
       }),
     message: (name, message) => mutating(roster, async () => { await messageAgent(agentChatBin, name, message, timeoutMs); }),
+    retire: (name) => mutating(roster, async () => void (await retire(agentChatBin, name, timeoutMs))),
   };
 }

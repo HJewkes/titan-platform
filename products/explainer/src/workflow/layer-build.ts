@@ -4,8 +4,11 @@ import { z } from "zod";
 import { BuilderRefSchema, LayerBuildSchema, packetKey, type BeatWorker, type BuilderRef, type LayerBuild, type LayerRepair, type LayerRepairer, type RepairRequest } from "../build/beat-worker.js";
 import { LayerBuildCache } from "../build/build-cache.js";
 import { compileLayer } from "../build/compile-gate.js";
+import { formatUntimed, untimedCueHint, untimedCues } from "../build/layer-cues.js";
 import { missingCueElements, missingElementsHint } from "../build/layer-elements.js";
 import { buildLayerPacket, type BuiltLayerPacket, type LayerPacket } from "../build/layer-packet.js";
+import { fontFindings, fontHint } from "../build/layer-fonts.js";
+import { formatLayerRow, layerTextHint, type LayerTextCheck } from "../build/layer-text.js";
 import { layerTreeFiles, writeLayerTree, type BuiltLayer } from "../build/layer-tree.js";
 import { claimFacts } from "../claim-facts.js";
 import { canonicalJson } from "../eval-store.js";
@@ -22,6 +25,8 @@ const BUILD_STEP = "build";
 const TREE_STEP = "layer-tree";
 const STAGE = "resolve";
 export const CUSTOM_LAYERS = "custom-layers";
+/** A failed resolve's record points here at the sources of every layer that was built, so a failure can be inspected. */
+export const UNBUILT_LAYERS = "custom-layers-unbuilt";
 /** Under the data dir: the cross-run build cache's pointers, by packet key. */
 export const LAYER_BUILDS_DIR = "layer-builds";
 /** Under a run's dir: one scratch dir per repaired build, by packet key, that the repair agent writes into. */
@@ -29,6 +34,14 @@ const LAYER_REPAIRS_DIR = "layer-repairs";
 const BUILD_CONCURRENCY = 4;
 // The same input variable `codeStep` uses: an item step needs the whole StepResult, usage included, for the budget.
 const INPUT_VAR = "CODE_STEP_INPUT";
+const CHECK_UNAVAILABLE = "layer check could not run, not a layer defect";
+
+/** The $0 check threw instead of answering: an infrastructure fault, carrying the build it was checking so nothing built is lost. */
+class CheckUnavailable extends Error {
+  constructor(error: unknown, readonly build: LayerBuild) {
+    super(error instanceof Error ? error.message : String(error));
+  }
+}
 
 /** The step ids `explainer.resolve` dispatches besides its body and checks; the host asserts each has a route. */
 export const LAYER_STEP_IDS = [`${PACKETS_STEP}:${STAGE}`, `${BUILD_STEP}:${STAGE}`, `${TREE_STEP}:${STAGE}`] as const;
@@ -38,9 +51,13 @@ type BuildItem = z.infer<typeof BuildItemSchema>;
 const PacketsSchema = z.object({ items: z.array(BuildItemSchema), notes: z.array(z.string()) });
 type Packets = z.infer<typeof PacketsSchema>;
 const BuildInputSchema = BuildItemSchema.extend({ builder: BuilderRefSchema });
-/** `needsRepair`: the build failed the compile gate, with the error a repair round starts from. `cached`: no worker ran. */
+/**
+ * `needsRepair`: the build failed a gate, with the error a repair round starts from. `unchecked`: the $0 check could not
+ * run, which says nothing about the layer. `cached`: no worker ran.
+ */
 const BuildResultSchema = z.looseObject({
-  result: LayerBuildSchema, needsRepair: z.object({ error: z.string() }).optional(), cached: z.literal(true).optional(),
+  result: LayerBuildSchema, needsRepair: z.object({ error: z.string() }).optional(), unchecked: z.object({ error: z.string() }).optional(),
+  cached: z.literal(true).optional(),
 });
 const BuiltLayerSchema = z.object({ beatId: z.string(), key: z.string(), build: LayerBuildSchema, cached: z.literal(true).optional() });
 const TreeInputSchema = z.object({
@@ -48,7 +65,7 @@ const TreeInputSchema = z.object({
   body: StageRecordSchema,
   notes: z.array(z.string()),
   built: z.array(BuiltLayerSchema),
-  unbuilt: z.array(z.object({ beatId: z.string(), reason: z.string(), build: LayerBuildSchema.optional() })),
+  unbuilt: z.array(z.object({ beatId: z.string(), reason: z.string(), key: z.string().optional(), build: LayerBuildSchema.optional() })),
 });
 const PacketsInputSchema = z.object({ spec: StageSpecSchema, body: StageRecordSchema });
 // The packet step built this JSON from typed values; the check only refuses a payload that is not a packet at all.
@@ -67,9 +84,10 @@ export async function buildCustomLayers(ctx: WorkflowContext, spec: StageSpec, b
     key: (item) => item.key, concurrency: BUILD_CONCURRENCY, budgetUsd: spec.remainingUsd,
   });
   const outcomes = mapped.results.map(({ item, result }) => ({ item, ...BuildResultSchema.parse(result.data) }));
-  const built = outcomes.filter((o) => !o.needsRepair).map(({ item, result, cached }) => ({ beatId: item.beatId, key: item.key, build: result, ...(cached ? { cached } : {}) }));
+  const built = outcomes.filter((o) => !o.needsRepair && !o.unchecked).map(({ item, result, cached }) => ({ beatId: item.beatId, key: item.key, build: result, ...(cached ? { cached } : {}) }));
   const unbuilt = [
-    ...outcomes.flatMap(({ item, result, needsRepair }) => (needsRepair ? [{ beatId: item.beatId, reason: `needs repair: ${needsRepair.error}`, build: result }] : [])),
+    ...outcomes.flatMap(({ item, result, needsRepair }) => (needsRepair ? [{ beatId: item.beatId, reason: `needs repair: ${needsRepair.error}`, key: item.key, build: result }] : [])),
+    ...outcomes.flatMap(({ item, result, unchecked }) => (unchecked ? [{ beatId: item.beatId, reason: `${CHECK_UNAVAILABLE}: ${unchecked.error}`, key: item.key, build: result }] : [])),
     ...mapped.failed.map(({ item, error }) => ({ beatId: item.beatId, reason: error })),
     ...mapped.skipped.map(({ item }) => ({ beatId: item.beatId, reason: `not launched (${mapped.stoppedBy ?? "stopped"})` })),
   ];
@@ -110,6 +128,8 @@ interface LayerRouteDeps {
   worker?: BeatWorker;
   /** Runs one repair round on a build that fails the compile gate; absent, the build stays marked for repair. */
   repairer?: LayerRepairer;
+  /** Renders a built layer against qa's text rules at $0; absent, no layer is rendered before the render stage. */
+  textCheck?: LayerTextCheck;
   signal?: AbortSignal;
 }
 
@@ -135,19 +155,28 @@ function buildRoute(deps: LayerRouteDeps): StepRoute {
     const verdict = await compileLayer(build.module);
     const scratchDir = path.join(runPaths(deps.dataDir, step.runId).runDir, LAYER_REPAIRS_DIR, key);
     const compiled = verdict.ok ? { build } : await repairOnce(deps, { packet, key, module: build.module, error: verdict.error, scratchDir }, build);
-    const gated = compiled.error === undefined ? await exposingCueTargets(deps, worker, packet, compiled.build) : compiled;
+    const exposed = compiled.error === undefined ? await exposingCueTargets(deps, worker, packet, compiled.build) : compiled;
+    const fonted = exposed.error === undefined ? await themeFontsOnly(deps, worker, packet, exposed.build) : exposed;
+    const timed = fonted.error === undefined ? await timedFromCues(deps, worker, packet, fonted.build) : fonted;
+    const gated = timed.error === undefined ? await passingTextRules(deps, worker, packet, { beatId, key, build: timed.build }).catch(uncheckedBuild) : timed;
+    if ("unchecked" in gated) return { result: gated.build, unchecked: { error: gated.unchecked }, usage: stepUsage(gated.build.usage) };
     if (gated.error !== undefined) return { result: gated.build, needsRepair: { error: gated.error }, usage: stepUsage(gated.build.usage) };
     cache.put(key, gated.build, { runId: step.runId, stage: STAGE });
     return { result: gated.build, usage: stepUsage(gated.build.usage) };
   });
 }
 
+const uncheckedBuild = (error: unknown): { build: LayerBuild; unchecked: string } => {
+  if (error instanceof CheckUnavailable) return { build: error.build, unchecked: error.message };
+  throw error;
+};
+
 const workerBuild = async (deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket): Promise<LayerBuild> =>
   LayerBuildSchema.parse(await worker.build(packet, deps.signal ? { signal: deps.signal } : {}));
 
-/** The packet again, with a field naming the cue targets the last build left without an element. */
-function hintedPacket(packet: BuiltLayerPacket, missing: readonly string[]): BuiltLayerPacket {
-  const json = `${JSON.stringify({ ...packet.packet, rebuild: missingElementsHint(missing) }, null, 2)}\n`;
+/** The packet again, with a field telling the rebuild what the last build got wrong. */
+function hintedPacket(packet: BuiltLayerPacket, hint: string): BuiltLayerPacket {
+  const json = `${JSON.stringify({ ...packet.packet, rebuild: hint }, null, 2)}\n`;
   return { packet: packet.packet, json, bytes: Buffer.byteLength(json) };
 }
 
@@ -159,12 +188,73 @@ async function exposingCueTargets(deps: LayerRouteDeps, worker: BeatWorker, pack
   const targets = packet.packet.cues.map((cue) => cue.target);
   const missing = missingCueElements(targets, build);
   if (missing.length === 0) return { build };
-  const again = await workerBuild(deps, worker, hintedPacket(packet, missing));
+  const again = await workerBuild(deps, worker, hintedPacket(packet, missingElementsHint(missing)));
   const rebuilt: LayerBuild = { ...again, usage: addUsage(build.usage, again.usage) };
   const verdict = await compileLayer(rebuilt.module);
   if (!verdict.ok) return { build: rebuilt, error: `rebuilt to expose cue targets ${missing.join(", ")}, the layer does not compile: ${verdict.error}` };
   const still = missingCueElements(targets, rebuilt);
   return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer exposes no element for cue targets ${still.join(", ")} after one rebuild` };
+}
+
+/**
+ * The $0 font check after the cue check: a layer that loads a font or names one outside the theme's tokens is rebuilt
+ * once, told each line. A page cannot load a font the layer brings, so this is a layer defect, unlike a font the page fails to load.
+ */
+async function themeFontsOnly(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, build: LayerBuild): Promise<{ build: LayerBuild; error?: string }> {
+  const findings = fontFindings(build.module);
+  if (findings.length === 0) return { build };
+  const again = await workerBuild(deps, worker, hintedPacket(packet, fontHint(findings)));
+  const rebuilt: LayerBuild = { ...again, usage: addUsage(build.usage, again.usage) };
+  const verdict = await compileLayer(rebuilt.module);
+  if (!verdict.ok) return { build: rebuilt, error: `rebuilt to use the theme fonts, the layer does not compile: ${verdict.error}` };
+  const missing = missingCueElements(packet.packet.cues.map((cue) => cue.target), rebuilt);
+  if (missing.length > 0) return { build: rebuilt, error: `rebuilt to use the theme fonts, the layer exposes no element for cue targets ${missing.join(", ")}` };
+  const still = fontFindings(rebuilt.module);
+  if (still.length === 0) return { build: rebuilt };
+  const lines = still.map(({ line, rule }) => `line ${line} (${rule})`).join(", ");
+  return { build: rebuilt, error: `the layer still sets its own fonts after one rebuild: ${lines}` };
+}
+
+/**
+ * The $0 cue-timing check after the font check (TP-4469): a layer that does not read every cue word with `useCue` times
+ * its targets from the plan's seconds, which the voice never keeps, so it is rebuilt once, told each cue word.
+ */
+async function timedFromCues(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, build: LayerBuild): Promise<{ build: LayerBuild; error?: string }> {
+  const { cues } = packet.packet;
+  const untimed = untimedCues(build.module, cues);
+  if (untimed.length === 0) return { build };
+  const again = await workerBuild(deps, worker, hintedPacket(packet, untimedCueHint(untimed)));
+  const rebuilt: LayerBuild = { ...again, usage: addUsage(build.usage, again.usage) };
+  const verdict = await compileLayer(rebuilt.module);
+  if (!verdict.ok) return { build: rebuilt, error: `rebuilt to time its cues with useCue, the layer does not compile: ${verdict.error}` };
+  const missing = missingCueElements(cues.map((cue) => cue.target), rebuilt);
+  if (missing.length > 0) return { build: rebuilt, error: `rebuilt to time its cues with useCue, the layer exposes no element for cue targets ${missing.join(", ")}` };
+  const still = untimedCues(rebuilt.module, cues);
+  return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer still times cue words without useCue after one rebuild: ${formatUntimed(still)}` };
+}
+
+/**
+ * The $0 text check after the cue check (TP-4418): a layer that draws text under qa's floor, under the chrome or as
+ * `NaN` is rebuilt once, told each element and rule. The rebuild's spend joins the build's; a rebuild that does not
+ * compile, drops a cue target or still breaks a rule fails the beat with a row per element.
+ */
+async function passingTextRules(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, layer: BuiltLayer): Promise<{ build: LayerBuild; error?: string }> {
+  const { textCheck } = deps;
+  if (!textCheck) return { build: layer.build };
+  const check = (build: LayerBuild) =>
+    textCheck({ builder: worker.builder, layer: { ...layer, build }, packet: packet.packet }).catch((error: unknown) => {
+      throw new CheckUnavailable(error, build);
+    });
+  const rows = await check(layer.build);
+  if (rows.length === 0) return { build: layer.build };
+  const again = await workerBuild(deps, worker, hintedPacket(packet, layerTextHint(rows)));
+  const rebuilt: LayerBuild = { ...again, usage: addUsage(layer.build.usage, again.usage) };
+  const verdict = await compileLayer(rebuilt.module);
+  if (!verdict.ok) return { build: rebuilt, error: `rebuilt to pass qa's text rules, the layer does not compile: ${verdict.error}` };
+  const missing = missingCueElements(packet.packet.cues.map((cue) => cue.target), rebuilt);
+  if (missing.length > 0) return { build: rebuilt, error: `rebuilt to pass qa's text rules, the layer exposes no element for cue targets ${missing.join(", ")}` };
+  const still = await check(rebuilt);
+  return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer breaks qa's text rules after one rebuild: ${still.map(formatLayerRow).join("; ")}` };
 }
 
 /**
@@ -196,6 +286,14 @@ function builtNote(built: readonly (BuiltLayer & { cached?: true })[]): string {
   return `${built.length} custom layers built${cached > 0 ? ` (${cached} from the build cache)` : ""}`;
 }
 
+/** The sources of every layer that was built, stored as a tree; none when nothing was built. */
+function storeSources(deps: LayerRouteDeps, runId: string, builder: BuilderRef, layers: readonly BuiltLayer[]): Record<string, string> {
+  if (layers.length === 0) return {};
+  const dir = path.join(runPaths(deps.dataDir, runId).runDir, UNBUILT_LAYERS);
+  writeLayerTree(dir, layerTreeFiles(builder, layers));
+  return { [UNBUILT_LAYERS]: deps.store.putTree(dir, UNBUILT_LAYERS, { runId, stage: STAGE }) };
+}
+
 /** Stores the `custom-layers` tree; any beat left unbuilt fails the stage, with what every build spent in its record. */
 function treeRoute(deps: LayerRouteDeps): StepRoute {
   return codeRecordRoute(TREE_STEP, async (raw: z.input<typeof TreeInputSchema>, step) => {
@@ -204,7 +302,8 @@ function treeRoute(deps: LayerRouteDeps): StepRoute {
     const record: StageRecord = { ...body, usage: addUsage(body.usage, spent), notes: [...body.notes, ...notes] };
     if (unbuilt.length > 0) {
       const message = `resolve: custom layers not built: ${unbuilt.map(({ beatId, reason }) => `${beatId} (${reason})`).join("; ")}`;
-      writeJson(runPaths(deps.dataDir, step.runId).failed(STAGE), { ...record, notes: [...record.notes, message] });
+      const sources = storeSources(deps, step.runId, spec.config.builder!, [...built, ...unbuilt.flatMap(({ beatId, key, build }) => (build && key ? [{ beatId, key, build }] : []))]);
+      writeJson(runPaths(deps.dataDir, step.runId).failed(STAGE), { ...record, outputs: { ...record.outputs, ...sources }, notes: [...record.notes, message] });
       throw new Error(message);
     }
     const dir = path.join(runPaths(deps.dataDir, step.runId).runDir, CUSTOM_LAYERS);
