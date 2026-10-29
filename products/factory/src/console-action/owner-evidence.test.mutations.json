@@ -4,8 +4,8 @@
     {
       "name": "the headline is the last labelled line, not the stored reading",
       "file": "products/factory/src/console-action/owner-evidence.ts",
-      "find": "return { fact, ciPolicy, verdictText: text, labelledLines: ciPolicyLabelledLines(text) };",
-      "replace": "return { fact, ciPolicy: ciPolicyLabelledLines(text).at(-1)!.reading, verdictText: text, labelledLines: ciPolicyLabelledLines(text) };",
+      "find": "return { fact, ciPolicy, verdictLines",
+      "replace": "return { fact, ciPolicy: labelledLines.at(-1)!.reading, verdictLines",
       "kills": [
         "the owner-at-head evidence card heads a decorated weakened line before a canonical unchanged one with the stored reading, listing both lines"
       ]

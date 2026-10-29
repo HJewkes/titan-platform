@@ -22,6 +22,7 @@ import { MergeEvidenceSchema } from "../shepherd/review-schemas.js";
 import { skillPathsIn } from "../shepherd/skill-paths.js";
 import { ownerAtHeadRows } from "../workflows/land-approval.js";
 import { exactFile, type ExactFile } from "./exact-file.js";
+import { exactLine } from "./exact-line.js";
 
 /** A longer verdict is cut nowhere: the owner reads it at the terminal instead, and the card stays inside the action record's cap. */
 const MAX_VERDICT_CHARS = 20_000;
@@ -34,11 +35,11 @@ type CiPolicyFact = Extract<OwnerAtHeadRow, "ci-policy-weakened" | "ci-policy-ma
 const CI_POLICY_FACT: Readonly<Record<CiPolicy["kind"], CiPolicyFact | undefined>> = { weakened: "ci-policy-weakened", malformed: "ci-policy-malformed", unchanged: undefined };
 const isCiPolicyFact = (fact: OwnerAtHeadRow): fact is CiPolicyFact => fact === "ci-policy-weakened" || fact === "ci-policy-malformed";
 
-/** The evidence's own reading as the headline, the verdict text it came from, and every labelled line that reading folds. */
+/** The evidence's own reading as the headline, the verdict text it came from, and every labelled line that reading folds; text through `exactLine`. */
 interface CiPolicySection {
   fact: CiPolicyFact;
   ciPolicy: CiPolicy;
-  verdictText: string;
+  verdictLines: string[];
   labelledLines: CiPolicyLabelledLine[];
 }
 
@@ -194,5 +195,6 @@ function ciPolicySection(fact: CiPolicyFact, evidence: Pick<MergeEvidence, "ciPo
   const block = parseVerdictBlock(text);
   const read = "ciPolicy" in block ? block.ciPolicy : undefined;
   if (!isDeepStrictEqual(read, ciPolicy)) return "the reviewer's verdict text does not read as the evidence's CI-policy reading";
-  return { fact, ciPolicy, verdictText: text, labelledLines: ciPolicyLabelledLines(text) };
+  const labelledLines = ciPolicyLabelledLines(text).map(({ raw, reading }) => ({ raw: exactLine(raw), reading }));
+  return { fact, ciPolicy, verdictLines: text.split("\n").map(exactLine), labelledLines };
 }

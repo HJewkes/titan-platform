@@ -139,6 +139,9 @@ function countingShepherd() {
     previewOp: async () => {
       throw new Error("the strip never previews an op");
     },
+    ownerEvidence: async () => {
+      throw new Error("the strip never reads a gate's evidence");
+    },
   };
   return { shepherd, calls };
 }
