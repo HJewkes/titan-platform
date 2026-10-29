@@ -22,15 +22,19 @@ function pointColours(slots: ChartSlots): (string | undefined)[] {
   return scaleColours(slots.scale, slots.series.map((point) => point.value), slots.baseline ?? 0);
 }
 
-/** bar: one row a point, all growing from the first bar's cue; a chart cap marks every row. */
+/** bar: one row a point, cascading from the first bar's cue, a row with its own cue growing on it; a chart cap marks every row. */
 function BarChart({ slots, reveal, colours }: ChartViewProps) {
-  const rows = slots.series.map((point, i) => ({
-    id: point.id,
-    label: point.label,
-    value: point.value,
-    ...(slots.cap === undefined ? {} : { cap: slots.cap }),
-    ...(colours[i] === undefined ? {} : { colour: colours[i] }),
-  }));
+  const rows = slots.series.map((point, i) => {
+    const atS = i === 0 ? undefined : reveal(point.id);
+    return {
+      id: point.id,
+      label: point.label,
+      value: point.value,
+      ...(slots.cap === undefined ? {} : { cap: slots.cap }),
+      ...(colours[i] === undefined ? {} : { colour: colours[i] }),
+      ...(atS === undefined ? {} : { atS }),
+    };
+  });
   return <BarChartFrame rows={rows} growAtS={growAt(slots, reveal)} frame={axisFrame(slots)} />;
 }
 

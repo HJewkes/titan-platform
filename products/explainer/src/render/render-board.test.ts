@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ScriptSchema } from "../script-schema.js";
-import { rawFixture, resolvedFor } from "../template-fill/fill-fixtures.test-helpers.js";
+import { fill, filledBeat, fixtureScript, rawFixture, resolvedFor } from "../template-fill/fill-fixtures.test-helpers.js";
 import { renderBoard } from "./render-board.js";
 
 // Synthetic: the template-fill fixture's invented parcel desk, with beat b2 resolved to a custom kanban layer.
@@ -51,5 +51,29 @@ describe("renderBoard custom beats", () => {
 
     // Assert
     expect(board.beats.map((beat) => beat.id)).toEqual([...ids.values()]);
+  });
+});
+
+/** The fixture's artifacts with resolve's `generated-slots` layer stored beside them, as render reads them. */
+function pinnedInputs() {
+  const script = fixtureScript();
+  const generated = Object.fromEntries(fill(script).beats.map((beat) => [beat.id, beat.generated]));
+  const resolved = { schema: "explainer.resolved/v1", profile: "tour", beats: resolvedFor(script).beats, budgets: [] };
+  const texts = new Map([["s", JSON.stringify(rawFixture())], ["r", JSON.stringify(resolved)], ["g", JSON.stringify(generated)]]);
+  return { artifacts: { script: "s", resolved: "r", "generated-slots": "g" }, store: { readText: (sha: string) => texts.get(sha)! } };
+}
+
+describe("renderBoard under a slots pin", () => {
+  it("a beat filled from the generated-slots pin keeps its cue reveals", () => {
+    // Arrange
+    const input = pinnedInputs();
+    const unpinned = filledBeat(fill(fixtureScript()), "b8").reveals;
+
+    // Act
+    const { extras, ids } = renderBoard(input);
+
+    // Assert
+    expect(unpinned.map((reveal) => reveal.atCue)).toEqual(["five", "seven", "six"]);
+    expect(extras.get(ids.get("b8")!)?.reveals).toEqual(unpinned);
   });
 });

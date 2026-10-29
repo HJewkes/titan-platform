@@ -83,10 +83,16 @@ function tryParse(specs: ReadonlyMap<string, BeatSpec>, type: string, raw: unkno
   }
 }
 
+/**
+ * The derived layer, or the pinned entry in its place. A pin replaces slots only: the script's cues still time the
+ * beat, so the derived reveals stay, and `keptReveals` drops those whose target the pinned slots no longer hold.
+ */
 function derivation(beat: ScriptBeat, row: ResolvedRow, ref: BeatSlotRef, scope: BeatScope, pinned: unknown): Derivation {
-  if (pinned !== undefined) return isRecord(pinned) ? { slots: pinned, reveals: [] } : { reason: `the slots pin's entry for ${beat.id} is not an object` };
+  if (pinned !== undefined && !isRecord(pinned)) return { reason: `the slots pin's entry for ${beat.id} is not an object` };
   const own = DERIVERS[ref](beat, scope);
-  return scope.lead?.spec === row.beat ? deriveContinuation(beat, scope, scope.lead, own) : own;
+  const derived = scope.lead?.spec === row.beat ? deriveContinuation(beat, scope, scope.lead, own) : own;
+  if (pinned === undefined) return derived;
+  return { slots: pinned, reveals: isDerived(derived) ? derived.reveals : [] };
 }
 
 /** Reveals of elements the final slots still hold: an override that replaces a list drops the derived items' cues. */
