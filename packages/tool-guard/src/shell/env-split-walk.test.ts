@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 import { expectLinearWork } from "../test-support/work-count.js";
 import type { ClassifyContext } from "../types.js";
 
@@ -141,15 +141,16 @@ const envArgv0 = spawnSync("env", ["-S", "-a x true"]).status === 0;
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 
 describe.skipIf(!envSplits)("env runs the command after its own -S options (TP-3210)", () => {
-  function runs(split: string): boolean {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "env-split-"));
-    try {
-      spawnSync("env", ["-S", split], { cwd: dir, stdio: ["ignore", "ignore", "ignore"] });
-      return fs.existsSync(path.join(dir, "mk"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("env-split-", (dir, split: string) => ({
+    run: { program: "env", args: ["-S", split] },
+    read: () => fs.existsSync(path.join(dir, "mk")),
+  }));
+  const runs = (split: string): boolean => oracle.get(split);
+  const ARGV0S = [`-a "sh"`, `-a 'sh'`, `-a s"h"`, "-a sh"];
+  const asSh = (argv0: string) => `${argv0} zsh -f -c "[[ -o shwordsplit ]] && touch mk"`;
+  for (const split of ["-u X touch mk", "-i /usr/bin/env touch mk", ...(envArgv0 && zsh ? ARGV0S.map(asSh) : [])]) oracle.add(split);
+  oracle.beforeAll();
 
   it("runs the command after -u X", () => {
     expect(runs("-u X touch mk")).toBe(true);
@@ -159,7 +160,7 @@ describe.skipIf(!envSplits)("env runs the command after its own -S options (TP-3
     expect(runs("-i /usr/bin/env touch mk")).toBe(true);
   });
 
-  it.skipIf(!envArgv0 || !zsh).each([`-a "sh"`, `-a 'sh'`, `-a s"h"`, "-a sh"])("runs zsh as sh behind %s (GNU, uutils)", (argv0) => {
-    expect(runs(`${argv0} zsh -f -c "[[ -o shwordsplit ]] && touch mk"`)).toBe(true);
+  it.skipIf(!envArgv0 || !zsh).each(ARGV0S)("runs zsh as sh behind %s (GNU, uutils)", (argv0) => {
+    expect(runs(asSh(argv0))).toBe(true);
   });
 });

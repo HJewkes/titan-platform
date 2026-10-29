@@ -7,7 +7,7 @@ const PLAIN = [
   "--changed",
   "origin/main",
   "--passWithNoTests",
-  ...["threads", "forks", "active-work", "active-work-forks"].flatMap((project) => ["--project", project]),
+  ...["threads", "forks", "perf", "active-work", "active-work-forks"].flatMap((project) => ["--project", project]),
 ];
 
 describe("project selection", () => {

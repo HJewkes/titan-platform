@@ -55,3 +55,16 @@ describe("the layer check's rows", () => {
     expect(hint).toBe("the last build broke qa's text rules: small-text on div.label \"held\" (draw it at 40 px or larger)");
   });
 });
+
+describe("the rebuild hint for qa's narration rules", () => {
+  it("tells the rebuild which number the narration never says", () => {
+    // Arrange
+    const row: LayerTextRow = { beat: "b1", element: "div#more", rule: "unspoken-fact", text: "+ 4 late scans", atS: 9.95, fact: "4" };
+
+    // Act
+    const hint = layerTextHint([row]);
+
+    // Assert
+    expect(hint).toBe("the last build broke qa's text rules: unspoken-fact on div#more \"+ 4 late scans\" (the narration never says 4: draw no number or name the narration does not say; drop it or show only what is spoken)");
+  });
+});

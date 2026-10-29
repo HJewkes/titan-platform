@@ -9,9 +9,9 @@ import type { Question } from "../server/round-schema.js";
 import { getFrame } from "../server/round-frames.js";
 import { getRound, listRounds, type RoundDetail } from "../server/rounds.js";
 import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { getButton, getByRoleFast } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const SHIP = "ship-tile-r1";
 // Each test renders the whole App and presses through it: about 0.5 s alone, and a loaded full-suite CI run stretched
@@ -92,14 +92,7 @@ async function renderShip(options: { answers?: boolean; detail?: Partial<RoundDe
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, callOptions) => (calls.push({ name, args }), replies[name] ? Promise.resolve(replies[name]) : inner.call(name, args, callOptions)),
   };
-  window.location.hash = `#/rounds/${SHIP}`;
-  render(
-    <RpcProvider source={counting}>
-      <AnswerSourceProvider value={options.answers ? counting : null}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(counting, { view: "rounds", id: SHIP }, { answers: options.answers ? counting : null });
   await screen.findByTestId("montage-tile-light");
   return { calls };
 }

@@ -27,6 +27,15 @@
       "kills": [
         "the rendered text check on one custom layer fails as an infra error naming the face and the URL when a font file is missing from the page"
       ]
+    },
+    {
+      "name": "the rendered layer check reads no narration rules",
+      "file": "products/explainer/src/render/layer-text-check.ts",
+      "find": ", ...narrationRows(beat, packet.spoken, probed)]",
+      "replace": "]",
+      "kills": [
+        "the rendered text check on one custom layer flags a settled number the narration never says with the unspoken-fact rule"
+      ]
     }
   ]
 }

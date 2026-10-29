@@ -31,8 +31,8 @@
     {
       "name": "gcMs defaults to a keep window instead of zero",
       "file": "packages/react-app/src/hooks/query-store.ts",
-      "find": "{ gcMs = 0 }",
-      "replace": "{ gcMs = 1000 }",
+      "find": "{ gcMs = 0,",
+      "replace": "{ gcMs = 1000,",
       "kills": [
         "createQueryStore gcMs drops a query a tick after its last unwatch when gcMs is unset"
       ]

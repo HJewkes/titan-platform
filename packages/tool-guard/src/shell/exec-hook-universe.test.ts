@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXEC_HOOKS, PROTECTED } from "./protected-params.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 type Tag = "exec-hook" | "modelled" | "inert";
 
@@ -89,33 +89,39 @@ describe.skipIf(!bash)("every variable of the live bash is tagged (TP-3293)", ()
   });
 });
 
-/** Runs `script` in a scratch directory and says whether it created the `marker` file. */
-function marks(shell: string, args: string[], script: string): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-hook-"));
-  try {
-    run(shell, [...args, script], dir);
-    return fs.existsSync(path.join(dir, "marker"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+/** Runs `script` in a scratch directory and says whether it created the `marker` file; a describe runs its rows through one driver (TP-4453). */
+const marksOracle = () =>
+  shellOracle("exec-hook-", (dir, shell: string, args: string[], script: string) => ({
+    run: { program: shell, args: [...args, script], env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, input: "" },
+    read: () => fs.existsSync(path.join(dir, "marker")),
+  }));
 
 describe.skipIf(!zsh)("zsh really runs a marker through the refused forms (TP-3293)", () => {
-  it.each([
+  const rows = [
     ["chpwd_functions", "d=$PWD; f(){ : > $d/marker; }; : ${(A)chpwd_functions::=f}; cd /"],
     ["fpath with autoload", "mkdir fd; print ': > marker' > fd/f; : ${fpath::=fd}; autoload -U f; f"],
     ["dis_aliases with enable -a", "builtin : ${dis_aliases[ls]::=': > marker'}; enable -a ls; eval ls"],
     ["NULLCMD", "printf '#!/bin/sh\\n: > marker\\n' > x; chmod +x x; : ${NULLCMD::=./x}; > f"],
-  ])("%s", (_name, script) => {
-    expect(marks("zsh", ["-f", "-c"], script)).toBe(true);
+  ];
+  const marks = marksOracle();
+  for (const [, script = ""] of rows) marks.add("zsh", ["-f", "-c"], script);
+  marks.beforeAll();
+
+  it.each(rows)("%s", (_name, script) => {
+    expect(marks.get("zsh", ["-f", "-c"], script)).toBe(true);
   });
 });
 
 describe.skipIf(!bash)("bash really runs a marker through the refused forms (TP-3293)", () => {
-  it.each([
+  const rows = [
     ["BASH_ENV with bash -c", "printf ': > marker\\n' > rc; : ${BASH_ENV:=rc}; export BASH_ENV; bash --norc --noprofile -c true"],
     ["PROMPT_COMMAND with bash -i", ": ${PROMPT_COMMAND:=': > marker'}; export PROMPT_COMMAND; bash --norc --noprofile -i </dev/null"],
-  ])("%s", (_name, script) => {
-    expect(marks("bash", ["--norc", "--noprofile", "-c"], script)).toBe(true);
+  ];
+  const marks = marksOracle();
+  for (const [, script = ""] of rows) marks.add("bash", ["--norc", "--noprofile", "-c"], script);
+  marks.beforeAll();
+
+  it.each(rows)("%s", (_name, script) => {
+    expect(marks.get("bash", ["--norc", "--noprofile", "-c"], script)).toBe(true);
   });
 });

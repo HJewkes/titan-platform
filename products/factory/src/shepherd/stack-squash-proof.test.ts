@@ -1,7 +1,8 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fixtureEnv, gitIn, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { restackOnto } from "./stack-restack.js";
 import type { Git } from "./tree-carry.js";
@@ -9,20 +10,6 @@ import type { Git } from "./tree-carry.js";
 // TP-2528 slice a: proves that a stack of PRs (P <- C <- G) squash-merged one
 // level at a time takes a clean merge-up of main at each level, and that each
 // child's diff against main is exactly its own delta. Real git, local bare origin.
-
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  // Agent worktrees inject core.hooksPath through GIT_CONFIG_COUNT; the temp repos must not run those push hooks.
-  GIT_CONFIG_COUNT: "1",
-  GIT_CONFIG_KEY_0: "core.hooksPath",
-  GIT_CONFIG_VALUE_0: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 const lines = (tag: string, count = 12): string => Array.from({ length: count }, (_, i) => `${tag} ${i}`).join("\n") + "\n";
 
@@ -36,25 +23,14 @@ interface Scratch {
 let root: string;
 
 function scratch(): Scratch {
-  const seed = join(root, "seed");
-  const bare = join(root, "origin.git");
   const work = join(root, "work");
-  const run = (cwd: string, args: string[]): string =>
-    execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
-  // Seeded and cloned rather than pushed to an empty bare repo: the push hook refuses an
-  // origin with no default branch, and a clone of a populated origin has origin/HEAD.
-  mkdirSync(seed);
-  run(seed, ["init", "-q", "--initial-branch=main"]);
-  writeFileSync(join(seed, "base.txt"), lines("base"));
-  run(seed, ["add", "base.txt"]);
-  run(seed, ["commit", "-q", "-m", "main base"]);
-  run(root, ["clone", "-q", "--bare", seed, bare]);
-  run(root, ["clone", "-q", bare, work]);
+  seedRepoWithOrigin(work, join(root, "origin.git"), { "base.txt": lines("base") });
+  const git = gitIn(work);
   return {
-    git: (...args) => run(work, args),
+    git,
     gitResult: (...args) => {
       try {
-        return { ok: true, out: run(work, args) };
+        return { ok: true, out: git(...args) };
       } catch (error) {
         const output = error instanceof Error && "stdout" in error ? `${String(error.stdout)}${String("stderr" in error ? error.stderr : "")}` : String(error);
         return { ok: false, out: output };
@@ -63,9 +39,9 @@ function scratch(): Scratch {
     commitFile(file, text, message) {
       mkdirSync(dirname(join(work, file)), { recursive: true });
       writeFileSync(join(work, file), text);
-      run(work, ["add", file]);
-      run(work, ["commit", "-q", "-m", message]);
-      run(work, ["push", "-q", "origin", "HEAD"]);
+      git("add", file);
+      git("commit", "-q", "-m", message);
+      git("push", "-q", "origin", "HEAD");
     },
     read: (file) => readFileSync(join(work, file), "utf8"),
   };
@@ -193,7 +169,7 @@ describe("a 3-deep stack squash-merged in order", () => {
 
 const testGit: Git = (gitDir, args) =>
   new Promise((resolve) => {
-    execFile("git", ["--git-dir", gitDir, ...args], { encoding: "utf8", env: TEST_GIT_ENV }, (error, stdout, stderr) => {
+    execFile("git", ["--git-dir", gitDir, ...args], { encoding: "utf8", env: fixtureEnv() }, (error, stdout, stderr) => {
       resolve({ code: error ? (typeof error.code === "number" ? error.code : 128) : 0, stdout, stderr });
     });
   });
@@ -202,7 +178,7 @@ const workGitDir = (): string => join(root, "work", ".git");
 
 function restackScratch(): Scratch {
   const s = scratch();
-  execFileSync("git", ["--git-dir", join(root, "origin.git"), "config", "receive.denyNonFastForwards", "true"], { env: TEST_GIT_ENV });
+  gitIn(join(root, "origin.git"))("config", "receive.denyNonFastForwards", "true");
   return s;
 }
 

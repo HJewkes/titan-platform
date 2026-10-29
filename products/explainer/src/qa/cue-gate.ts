@@ -1,15 +1,19 @@
 import { addLateFill, classify, DEFAULT_OPTIONS, type Held, type InspectOptions, type Moment, type ProbedMoment, type SampledFrame } from "@titan-design/render-qa";
+import { forwardOnly } from "./forward-clock.js";
 import type { QaEngine, QaPage } from "./qa-engine.js";
 import type { QaGate } from "./gate-profile.js";
 import { qaCues, qaSampleMoments, type QaTimeline } from "./qa-timeline.js";
 
-async function sampleFrames(page: QaPage, moments: readonly Moment[], options: InspectOptions): Promise<SampledFrame[]> {
+/** One forward walk: each moment is inspected, then probed, before the clock moves on to the next. */
+async function sampleFrames(page: QaPage, moments: readonly Moment[], options: InspectOptions, probe: boolean): Promise<{ frames: SampledFrame[]; probed: ProbedMoment[] }> {
   const frames: SampledFrame[] = [];
+  const probed: ProbedMoment[] = [];
   for (const moment of moments) {
     const { contentRuns, findings } = await page.inspectAt(moment.t, options);
     frames.push({ beat: moment.beat, local: moment.local, t: moment.t, kind: moment.kind, contentRuns, findings });
+    if (probe) probed.push(...(await page.probe([moment])));
   }
-  return frames;
+  return { frames, probed };
 }
 
 export interface CueGateResult {
@@ -42,13 +46,13 @@ export async function cueGate(engine: Pick<QaEngine, "open">, url: string, timel
   const cues = qaCues(timeline);
   const moments = qaSampleMoments(timeline, opts.sweep === true);
   const lead = opts.lead ?? new Set<string>();
-  const page = await engine.open(url, options, cues);
+  const page = forwardOnly(await engine.open(url, options, cues));
   try {
-    const frames = await sampleFrames(page, moments, options);
+    const { frames, probed } = await sampleFrames(page, moments, options, opts.probe === true);
     addLateFill(frames.filter((frame) => !lead.has(frame.beat)), cues, new Map(timeline.beats.map((beat) => [beat.id, beat.durationS])));
     const held = classify(frames, { gate: gate.gate });
     if (opts.cropDir !== undefined && held.errors.length > 0) await page.crops(held.errors, opts.cropDir, options);
-    return { held, moments: moments.length, sampled: moments, probed: opts.probe === true ? await page.probe(moments) : [] };
+    return { held, moments: moments.length, sampled: moments, probed };
   } finally {
     await page.close();
   }
