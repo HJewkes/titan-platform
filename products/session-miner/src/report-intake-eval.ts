@@ -10,9 +10,9 @@ import { isCloseout, type IntakeRow } from "./report-intake.js";
  * only resumes logged under the coordinator's own name.
  */
 
-export const GOLD_HORIZON_MS = 12 * 3_600_000;
+const GOLD_HORIZON_MS = 12 * 3_600_000;
 
-export const NEXT_ACTION_SQL = [
+const NEXT_ACTION_SQL = [
   `SELECT kind, actor FROM events WHERE id > @id AND ts < @until AND target = @agent`,
   `AND ((kind = 'message' AND actor = @coordinator) OR kind IN ('agent_resumed', 'agent_retired')) ORDER BY id LIMIT 1`,
 ].join(" ");
@@ -22,9 +22,9 @@ const NEXT_REPORT_SQL = `SELECT min(ts) AS ts FROM events WHERE id > @id AND kin
 const nextAction = z.object({ kind: z.string(), actor: z.string() }).optional();
 const nextReport = z.object({ ts: z.number().nullable() });
 
-export type Gold = "retired" | "resumed" | "messaged" | "left";
+type Gold = "retired" | "resumed" | "messaged" | "left";
 
-export interface GoldRow {
+interface GoldRow {
   eventId: number;
   closeout: boolean;
   gold: Gold;

@@ -56,7 +56,7 @@ const agreementLine = (label: string, a: Agreement) =>
   `${label}: ${a.reports} reports, strict ${percent(a.strict, a.reports)}, attributed ${percent(a.attributed, a.reports)} ` +
   `(retired ${a.gold.retired}, resumed ${a.gold.resumed}, messaged ${a.gold.messaged}, left ${a.gold.left})`;
 
-export function renderIntakeResult(result: IntakeResult): string {
+function renderIntakeResult(result: IntakeResult): string {
   const counts = new Map<string, number>();
   for (const row of result.rows) for (const key of [`status ${row.status}`, ...row.concerns.map((c) => `concern ${c.class}`)]) counts.set(key, (counts.get(key) ?? 0) + 1);
   const lines = [
