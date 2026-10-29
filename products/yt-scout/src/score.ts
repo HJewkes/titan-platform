@@ -5,7 +5,7 @@ import { buildScorePrompt, type ScorePrompt } from "./score-prompt.js";
 import type { ScoreCallOutput, ScoreRunner, StepErrorClass, StepOutcome } from "./seams.js";
 import { appendRow, writeCase, type RowOutcome, type StepRow } from "./step-rows.js";
 
-const SYSTEM_PROMPT = "You score video transcripts against a rubric. Reply with one JSON object and nothing else.";
+export const SYSTEM_PROMPT = "You score video transcripts against a rubric. Reply with one JSON object and nothing else.";
 const MAX_BUDGET_USD = 0.25;
 const MAX_ATTEMPTS = 2;
 /** Plan section 3: past 2 h the score sees the first ~30k tokens and says so. */
@@ -32,7 +32,7 @@ interface ScoreVideoInput {
   durationSeconds?: number;
 }
 
-interface StoredCard extends ScoreCard {
+export interface StoredCard extends ScoreCard {
   id: string;
   title: string;
   total: number;
@@ -52,6 +52,12 @@ interface ScoreVideoResult {
 /** Drops the YAML front matter the extractor writes; the description in the body stays. */
 function stripFrontMatter(text: string): string {
   return text.replace(/^---\n[\s\S]*?\n---\n/, "");
+}
+
+/** What the model sees: front matter dropped, and a long video cut to its start. Shared with eval so a case's sha matches the original call. */
+export function transcriptForScoring(raw: string, partial: boolean): string {
+  const full = stripFrontMatter(raw);
+  return partial ? full.slice(0, PARTIAL_CHARS) : full;
 }
 
 const RETRYABLE: StepErrorClass[] = ["schema_invalid", "refusal"];
@@ -103,9 +109,8 @@ function usageOf(a: Attempt): Pick<StepRow, "input_tokens" | "output_tokens" | "
 
 export async function scoreVideo(deps: ScoreDeps, input: ScoreVideoInput): Promise<ScoreVideoResult> {
   const now = deps.now ?? (() => new Date());
-  const full = stripFrontMatter(readFileSync(input.transcriptPath, "utf8"));
   const partial = (input.durationSeconds ?? 0) > PARTIAL_AFTER_SECONDS;
-  const transcript = partial ? full.slice(0, PARTIAL_CHARS) : full;
+  const transcript = transcriptForScoring(readFileSync(input.transcriptPath, "utf8"), partial);
   const prompt = buildScorePrompt({ title: input.title, transcript, rubric: deps.rubric, partial });
   let cost = 0;
   let last: Attempt | undefined;

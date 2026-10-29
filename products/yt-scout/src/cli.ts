@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Command, CommanderError } from "commander";
+import { addEvalCommands } from "./eval-cli.js";
 import { isOnTrial, type Watchlist } from "./config.js";
 import { claudeScoreRunner } from "./claude-runner.js";
 import { casesDir, configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
@@ -123,6 +124,7 @@ export async function runCli(
   addConfigCommand(program, write);
   addSeenCommand(program, write);
   addScoreCommand(program, write, scoreRunner);
+  addEvalCommands(program, write, scoreRunner);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;

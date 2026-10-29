@@ -33,7 +33,17 @@ export function appendRow(rowsDir: string, row: StepRow): void {
   appendFileSync(path.join(rowsDir, `steps-${row.started_at.slice(0, 7)}.jsonl`), `${JSON.stringify(row)}\n`);
 }
 
-interface EvalCase {
+export const VERDICTS = ["over", "under", "miss", "wrong-ts", "bad-why"] as const;
+export type Verdict = (typeof VERDICTS)[number];
+
+/** The owner's label. `total` is what the card should have scored; absent, the recorded card stands as the reference. */
+export interface Gold {
+  verdict: Verdict;
+  total?: number;
+  note?: string;
+}
+
+export interface EvalCase {
   step: string;
   video_id: string;
   label: string;
@@ -41,6 +51,7 @@ interface EvalCase {
   prompt_sha: string;
   model: string;
   output: unknown;
+  gold?: Gold;
 }
 
 export function writeCase(casesDir: string, c: EvalCase): string {
