@@ -32,7 +32,7 @@ const ReleaseActionSchema = z.strictObject({
 });
 /** The owner's plan-time answer; no actor field, so the row's actor is always the console's owner-remote. */
 const planApprovalFields = { kind: z.literal("plan-approval"), task: z.string().min(1).max(256), repo: z.string().min(1).max(256), round: z.string().min(1).max(512) };
-const PlanApprovalActionSchema = z.discriminatedUnion("gate", [
+export const PlanApprovalActionSchema = z.discriminatedUnion("gate", [
   z.strictObject({ ...planApprovalFields, gate: z.literal("ci-policy"), scope: CiPolicyScopeSchema }),
   z.strictObject({ ...planApprovalFields, gate: z.enum(["skill", "visual"]), scope: PathScopeSchema }),
 ]);

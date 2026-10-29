@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the ci-policy scope pins only the plan's .github/ files",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "return { ciPolicyKeys: keys, files: pinFiles(plan) };",
+      "replace": "return { ciPolicyKeys: keys, files: pinFiles(plan).filter((file) => isGithubPath(file.path)) };",
+      "kills": [
+        "a CI-policy PR drafted with plan-round and approved at plan time merges with no owner gate when the PR's files are exactly the plan's bytes"
+      ]
+    },
+    {
+      "name": "the blob is hashed without git's object header",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "createHash(\"sha1\").update(`blob ${bytes.byteLength}\\0`).update(bytes)",
+      "replace": "createHash(\"sha1\").update(bytes)",
+      "kills": [
+        "a CI-policy PR drafted with plan-round and approved at plan time merges with no owner gate when the PR's files are exactly the plan's bytes"
+      ]
+    },
+    {
+      "name": "a predicted skill gate asks no question",
+      "file": "products/factory/src/shepherd/plan-round.ts",
+      "find": "if (predicted.skill) asks.push(pathAsk(plan, \"skill\", predicted.skill));",
+      "replace": "",
+      "kills": [
+        "a skill PR drafted with plan-round and approved at plan time merges with no owner gate when the PR adds exactly the planned skill path"
+      ]
+    }
+  ]
+}
