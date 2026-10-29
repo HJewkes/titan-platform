@@ -56,7 +56,7 @@ function gateRefusal(gate: GateRecord, action: GateAction): GateTarget | Outcome
   const target = targetOf(gate);
   if (target === undefined) return refused("class", `${gate.id} is ${batchRefusal(gate) ?? "not on the console's step allowlist"}`);
   const ownerRow = ownerAtHeadOf(gate);
-  if (ownerRow !== undefined && action.evidenceDigest === undefined) return refused("class", `${gate.id} is a ${ownerRow} gate, which the console answers only with its evidence shown; run ${terminalCommand(gate.id, target.head)}`);
+  if (ownerRow !== undefined && action.evidenceDigest === undefined) return refused("class", noEvidence(gate.id, ownerRow, target.head));
   if (!consoleDecisions(gate).includes(action.decision)) return refused("class", `the console may not answer ${action.decision} on ${gate.id}`);
   const samePr = target.repo.toLowerCase() === action.repo.toLowerCase() && target.pr === action.pr;
   return samePr ? target : refused("mismatch", `${gate.id} asks about ${target.repo}#${target.pr}, the record names ${action.repo}#${action.pr}`);
@@ -70,6 +70,9 @@ function targetOf(gate: GateRecord): GateTarget | undefined {
   const head = headGateAsks(gate);
   return pr && head ? { ...pr, head } : undefined;
 }
+
+const noEvidence = (gateId: string, row: string, head: string): string =>
+  `${gateId} is a ${row} gate, which the console answers only with its evidence shown; run ${terminalCommand(gateId, head)}`;
 
 const ownerAtHeadOf = (gate: GateRecord): string | undefined => (stepOf(gate.id) === MERGE_GATE ? ownerAtHeadRow(gate) : undefined);
 

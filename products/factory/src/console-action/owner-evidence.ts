@@ -20,25 +20,25 @@ import { LocatorSchema } from "../shepherd/review-schemas.js";
 import { skillPathsIn } from "../shepherd/skill-paths.js";
 
 /** Each file costs two reads and a phone screen; past this the owner reads the diff at the terminal. */
-export const MAX_EVIDENCE_FILES = 10;
+const MAX_EVIDENCE_FILES = 10;
 /** A longer verdict is cut nowhere: the owner reads it at the terminal instead. */
-export const MAX_REVIEW_CHARS = 20_000;
+const MAX_REVIEW_CHARS = 20_000;
 
 export type ReadReviewerText = (locator: SourceTextLocator) => Promise<string | null>;
 
-export interface EvidenceDeps {
+interface EvidenceDeps {
   host: Pick<FactoryHost, "runs">;
   port: GitHubPort;
   readText?: ReadReviewerText;
 }
 
 /** The reviewer's `CI-policy:` line as written, and the whole verdict message it ends, which holds the rationale. */
-export interface ReviewerText {
+interface ReviewerText {
   line: string;
   text: string;
 }
 
-export interface EvidenceSection {
+interface EvidenceSection {
   fact: OwnerAtHeadRow;
   files: CiPolicyFileChange[];
   reviewer?: ReviewerText;
