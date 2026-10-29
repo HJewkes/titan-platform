@@ -1,29 +1,20 @@
-import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { partialFake } from "@titan-design/test-kit";
+import { gitIn, seedRepo, withHistory } from "@titan-design/test-kit/git";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { reviewScope, reviewScopeStep, scopeFromDiff, type ReviewScopeResult } from "./review-scope.js";
 
 const REPO = "acme/widgets";
-const TEST_GIT_ENV = {
-  ...process.env,
-  GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_GLOBAL: "/dev/null",
-  GIT_AUTHOR_NAME: "Test",
-  GIT_AUTHOR_EMAIL: "test@example.com",
-  GIT_COMMITTER_NAME: "Test",
-  GIT_COMMITTER_EMAIL: "test@example.com",
-};
 
 let root: string;
 let origin: string;
 let stateDir: string;
 
 function git(...args: string[]): string {
-  return execFileSync("git", ["-C", origin, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitIn(origin)(...args);
 }
 
 function commit(file: string, text: string): string {
@@ -39,9 +30,11 @@ const reviewedA = body(60, "a").replace("a 1\n", "a one\n");
 
 /** A reviewed head on `feature` that changed src/a.ts; main has not moved since the branch point. */
 function reviewed(): string {
-  commit("src/a.ts", body(60, "a"));
-  git("checkout", "-q", "-B", "feature", "HEAD");
-  return commit("src/a.ts", reviewedA);
+  const [, head = ""] = withHistory(origin, [
+    { files: { "src/a.ts": body(60, "a") }, message: "edit src/a.ts" },
+    { branch: "feature", from: "main", files: { "src/a.ts": reviewedA }, message: "edit src/a.ts" },
+  ]);
+  return head;
 }
 
 function mergeMain(file: string, text: string): void {
@@ -58,7 +51,7 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "review-scope-"));
   origin = join(root, "origin");
   stateDir = join(root, "state");
-  execFileSync("git", ["init", "-q", "-b", "main", origin], { env: TEST_GIT_ENV });
+  seedRepo(origin, {});
   git("config", "uploadpack.allowAnySHA1InWant", "true");
 });
 
