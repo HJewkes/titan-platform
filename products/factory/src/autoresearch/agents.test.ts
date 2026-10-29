@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -7,8 +7,10 @@ import type { Digest, Idea, ImplementRequest } from "@titan-design/autoresearch"
 import { parseLimits } from "@titan-design/agent-dispatch/limits";
 import { priceRequest } from "@titan-design/session-analytics";
 import { partialFake } from "@titan-design/test-kit";
+import { seedRepo, withHistory } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arAgentPorts, plannerName, type ArAgentsOptions } from "./agents.js";
+import { installAgentChatFake } from "../test-support/agent-chat-fake.js";
 import { loadWaitPort } from "./load-wait.js";
 
 let dir: string;
@@ -22,35 +24,6 @@ const OPEN = { version: 1, pools: { agents: { config_dir: "/accounts/agents", ce
 
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...args], { cwd, encoding: "utf8" }).trim();
-
-/**
- * A fake `agent-chat`: logs each call, serves `agent ls --json` from `roster.json`, and on a spawn or resume plays the
- * agent scripted in `behave/<name>.json`: an optional commit in its cwd, then transcript turns naming the commit.
- */
-const FAKE = `
-const fs = require("fs"), path = require("path"), cp = require("child_process");
-const dir = process.env.AGENT_CHAT_HOME, args = process.argv.slice(2);
-const rosterPath = path.join(dir, "roster.json");
-const roster = fs.existsSync(rosterPath) ? JSON.parse(fs.readFileSync(rosterPath, "utf8")) : [];
-const log = (extra) => fs.appendFileSync(path.join(dir, "calls.jsonl"), JSON.stringify({ args, ...extra }) + "\\n");
-if (args[1] === "ls") { log({}); process.stdout.write(JSON.stringify(roster)); process.exit(0); }
-const name = args[2];
-const behave = JSON.parse(fs.readFileSync(path.join(dir, "behave", name + ".json"), "utf8"));
-let row = roster.find((r) => r.name === name);
-if (args[1] === "spawn") {
-  fs.readFileSync(0);
-  row = { name, agentId: name, state: "exited", presence: "exited", status: "finished", profile: args[3], surface: "headless",
-    cwd: process.cwd(), sessionId: "s-" + name, generation: 1, transcriptPath: path.join(dir, "t-" + name + ".jsonl") };
-  roster.push(row);
-}
-const g = (...a) => cp.execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...a], { cwd: row.cwd, encoding: "utf8" }).trim();
-log({ head: g("rev-parse", "HEAD") });
-if (behave.commit) { fs.writeFileSync(path.join(row.cwd, name + ".txt"), args[1]); g("add", "-A"); g("commit", "-qm", "work"); }
-const head = g("rev-parse", "HEAD");
-if (behave.pending) { row.presence = "live"; row.state = "live"; }
-for (const turn of behave.turns || []) fs.appendFileSync(row.transcriptPath, turn.replace("{HEAD}", head) + "\\n");
-fs.writeFileSync(rosterPath, JSON.stringify(roster));
-`;
 
 function assistantLine(requestId: string, text: string, cache: { read: number; w5m: number; w1h: number }): string {
   const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: cache.read, cache_creation_input_tokens: cache.w5m + cache.w1h,
@@ -89,22 +62,11 @@ const nameFor = (tree: string, round: number, id: string) => basename(tree).repl
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "ar-agents-"));
-  mkdirSync(join(dir, "behave"));
-  mkdirSync(join(dir, "profiles"));
-  for (const profile of ["impl", "planner"]) writeFileSync(join(dir, "profiles", `${profile}.json`), JSON.stringify({ surface: "headless" }));
-  writeFileSync(join(dir, "agent-chat.staging"), `#!${process.execPath}\n${FAKE}`);
-  chmodSync(join(dir, "agent-chat.staging"), 0o755);
-  cpSync(join(dir, "agent-chat.staging"), join(dir, "agent-chat"));
+  installAgentChatFake(dir, ["impl", "planner"]);
   vi.stubEnv("AGENT_CHAT_HOME", dir);
   clone = join(dir, "clone");
-  mkdirSync(clone);
-  git(clone, "init", "-q", "-b", "main");
-  bases = ["one", "two"].map((text) => {
-    writeFileSync(join(clone, "file.txt"), text);
-    git(clone, "add", "-A");
-    git(clone, "commit", "-qm", text);
-    return git(clone, "rev-parse", "HEAD");
-  });
+  seedRepo(clone, {});
+  bases = withHistory(clone, ["one", "two"].map((text) => ({ files: { "file.txt": text }, message: text })));
 });
 
 afterEach(() => {
