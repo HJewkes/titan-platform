@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { partialFake } from "@titan-design/test-kit";
 import { inboxReadCache, inboxRow, viewRows } from "./inbox-rows.js";
 import type { InboxItem, InboxSources, WatchRow } from "./inbox-view.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -28,10 +29,7 @@ describe("inboxRow", () => {
   });
 
   it("drops an item's anchors and pins", () => {
-    const anchors = [{ path: "src/a.ts", line: 1 }] as unknown as InboxItem["anchors"];
-    const pins = { repo: "example/repo", sha: "0".repeat(40) } as unknown as InboxItem["pins"];
-
-    const row = inboxRow(roundItem("q1", { anchors, pins }));
+    const row = inboxRow(roundItem("q1", { anchors: ["head/src/a.ts#L1"], pins: { repo: "example/repo", head: "0".repeat(40) } }));
 
     expect(row).not.toHaveProperty("anchors");
     expect(row).not.toHaveProperty("pins");
@@ -57,12 +55,12 @@ describe("inboxReadCache", () => {
   function counted(): { sources: InboxSources; needsCalls: () => number; finishedCalls: () => number } {
     let needs = 0;
     let finished = 0;
-    const shepherd = {
-      list: (state: string) => {
+    const shepherd = partialFake<ShepherdSource>({
+      list: (state) => {
         if (state === "finished") finished += 1;
         return Promise.resolve([] as WatchRow[]);
       },
-    } as unknown as ShepherdSource;
+    });
     const factory = { list: () => Promise.resolve({ items: [], gaps: [`read ${++needs}`] }) };
     const sources = { factory, shepherd, rounds: { dir: "/synthetic/rounds" }, inbox: { dir: "/synthetic/inbox" }, now: () => 0 };
     return { sources, needsCalls: () => needs, finishedCalls: () => finished };

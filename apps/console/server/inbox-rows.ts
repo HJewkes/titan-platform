@@ -10,14 +10,14 @@ import type { FactoryNeeds } from "./approvals.js";
 import { cachedRead, type CacheTimes, type CachedRead } from "./read-cache.js";
 
 /** Long enough that a page and its taps share one needs read, short enough that a gate answered elsewhere leaves soon. */
-export const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };
+const INBOX_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };
 
 const UNSHOWN_KEYS = ["context", "anchors", "pins"] as const;
 const UNSHOWN_RECOMMENDATION_KEYS = ["rationale", "cite"] as const;
 
 type Recommendation = NonNullable<OwnerItem["recommended"]>;
 
-export type InboxRow = Omit<InboxItem, (typeof UNSHOWN_KEYS)[number] | "recommended"> & {
+type InboxRow = Omit<InboxItem, (typeof UNSHOWN_KEYS)[number] | "recommended"> & {
   recommended?: Omit<Recommendation, (typeof UNSHOWN_RECOMMENDATION_KEYS)[number]>;
 };
 

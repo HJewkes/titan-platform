@@ -11,7 +11,7 @@ import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
-import { actionFor, DIVERGED_HOLD, inboxItems, type InboxItem, type InboxView, type WatchRow } from "./inbox-view.js";
+import { actionFor, DIVERGED_HOLD, inboxItems, type InboxView, type WatchRow } from "./inbox-view.js";
 import { closedPort, send, startFakeBroker, startFakeDaemon, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
 const REPO = "example/repo";

@@ -8,6 +8,7 @@ export interface TwinRoute {
 export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "home", hash: "#/" },
   { name: "inbox", hash: "#/inbox" },
+  { name: "inbox-focused", hash: "#/inbox/gate-12" },
   { name: "initiatives", hash: "#/initiatives" },
   { name: "initiative-detail", hash: "#/initiatives/orbit-relay" },
   { name: "tasks", hash: "#/tasks" },

@@ -4,7 +4,7 @@
     {
       "name": "a stale value is served with no refresh behind it",
       "file": "apps/console/server/read-cache.ts",
-      "find": "if (age >= freshMs) refresh().catch(() => undefined);",
+      "find": "if (age >= freshMs) refresh(state, load, now).catch(() => undefined);",
       "replace": "",
       "kills": [
         "cachedRead serves a stale value at once and refreshes it behind the read"
@@ -13,8 +13,8 @@
     {
       "name": "a value of any age is served while it refreshes",
       "file": "apps/console/server/read-cache.ts",
-      "find": "if (age >= staleMs) return refresh();",
-      "replace": "if (kept === undefined) return refresh();",
+      "find": "if (kept === undefined || age >= staleMs) return refresh(state, load, now);",
+      "replace": "if (kept === undefined) return refresh(state, load, now);",
       "kills": [
         "cachedRead waits for a fresh read once the kept value is too old to serve"
       ]
@@ -22,8 +22,8 @@
     {
       "name": "a read running when an invalidate came is kept",
       "file": "apps/console/server/read-cache.ts",
-      "find": "if (started.generation === generation) kept = { at: started.at, value };",
-      "replace": "kept = { at: started.at, value };",
+      "find": "if (started.generation === state.generation) state.kept = { at: started.at, value };",
+      "replace": "state.kept = { at: started.at, value };",
       "kills": [
         "cachedRead reads again after an invalidate, and never keeps a read that was running when it came"
       ]

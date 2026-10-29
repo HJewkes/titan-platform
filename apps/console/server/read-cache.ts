@@ -15,34 +15,43 @@ export interface CacheTimes {
   staleMs: number;
 }
 
+interface CacheState<T> {
+  kept?: { at: number; value: T };
+  running?: Promise<T>;
+  /** Bumped by each invalidate, so a read started before it is returned to its caller but never kept. */
+  generation: number;
+}
+
+/** One read at a time; callers that arrive while it runs share it. */
+function refresh<T>(state: CacheState<T>, load: () => Promise<T>, now: () => number): Promise<T> {
+  if (state.running !== undefined) return state.running;
+  const started = { at: now(), generation: state.generation };
+  const run = load().then((value) => {
+    if (started.generation === state.generation) state.kept = { at: started.at, value };
+    return value;
+  });
+  const settled = () => {
+    if (state.running === run) state.running = undefined;
+  };
+  state.running = run;
+  run.then(settled, settled);
+  return run;
+}
+
 export function cachedRead<T>(load: () => Promise<T>, { freshMs, staleMs }: CacheTimes, now: () => number = Date.now): CachedRead<T> {
-  let kept: { at: number; value: T } | undefined;
-  let running: Promise<T> | undefined;
-  let generation = 0;
-  function refresh(): Promise<T> {
-    if (running !== undefined) return running;
-    const started = { at: now(), generation };
-    const run = load().then((value) => {
-      if (started.generation === generation) kept = { at: started.at, value };
-      return value;
-    });
-    running = run;
-    void run.finally(() => {
-      if (running === run) running = undefined;
-    }).catch(() => undefined);
-    return run;
-  }
+  const state: CacheState<T> = { generation: 0 };
   return {
     read() {
+      const { kept } = state;
       const age = kept === undefined ? Infinity : now() - kept.at;
-      if (age >= staleMs) return refresh();
-      if (age >= freshMs) refresh().catch(() => undefined);
-      return Promise.resolve(kept!.value);
+      if (kept === undefined || age >= staleMs) return refresh(state, load, now);
+      if (age >= freshMs) refresh(state, load, now).catch(() => undefined);
+      return Promise.resolve(kept.value);
     },
     invalidate() {
-      kept = undefined;
-      running = undefined;
-      generation += 1;
+      state.kept = undefined;
+      state.running = undefined;
+      state.generation += 1;
     },
   };
 }
