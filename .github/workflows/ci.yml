@@ -105,7 +105,7 @@ jobs:
         run: |
           mkdir -p ~/apt-debs/partial
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends --download-only -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
+          sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
           sudo chmod -R a+rX ~/apt-debs
       - name: Install zsh and ffmpeg
         run: sudo apt-get install -y -qq --no-install-recommends --no-download "$HOME"/apt-debs/*.deb
