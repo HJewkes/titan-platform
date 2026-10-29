@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { OPS } from "./ops.js";
+import { agentChatOldPaths } from "./old-paths.js";
 import { lintSlices, sliceWarnings } from "./slice-lint.js";
 
 /**
@@ -137,6 +138,8 @@ const PlannedSlice = z.object({
   ops: z.array(z.enum(OPS)).optional(),
   /** The semantic reason a slice waits on one whose owns it does not share. */
   dependsWhy: z.string().optional(),
+  /** Why a slice may grow agent-chat `src` old path: `superseded-at:<TP-id>` or `survives:<area>`. */
+  carveOut: z.string().optional(),
 });
 /** `contracts` is optional on the type so fixtures built by hand stay valid; `readSlices` always fills it. */
 export type PlannedSlice = Omit<z.infer<typeof PlannedSlice>, "contracts"> & { contracts?: Contract[] };
@@ -161,7 +164,7 @@ export function readSlices(planText: string): SliceRead {
   const parsed = z.array(PlannedSlice).min(1).safeParse(json);
   if (!parsed.success) return { problems: parsed.error.issues.map(shapeProblem) };
   const problems = lintSlices(parsed.data);
-  return problems.length === 0 ? { slices: parsed.data, warnings: sliceWarnings(parsed.data) } : { problems };
+  return problems.length === 0 ? { slices: parsed.data, warnings: sliceWarnings(parsed.data, agentChatOldPaths()) } : { problems };
 }
 
 const shapeProblem = (issue: z.core.$ZodIssue): string =>
