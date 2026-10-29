@@ -55,6 +55,7 @@ Reusable machinery over the primitives.
 | [`speech-g2p`](/reference/speech-g2p) | English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger | none |
 | [`speech-stt`](/reference/speech-stt) | Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler | none |
 | [`speech-tts`](/reference/speech-tts) | Swappable text-to-speech provider contract, registry and command/HTTP adapters | `app-paths` |
+| [`test-timing`](/reference/test-timing) | titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store | `store-sqlite` |
 | [`worktree`](/reference/worktree) | Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep | none |
 
 ## Tier 2 — domain

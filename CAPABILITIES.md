@@ -54,6 +54,7 @@ Before adding code:
 | [`speech-g2p`](#cap-speech-g2p) | 1 | You turn English text into misaki 0.9.4 phoneme tokens without Python, for Kokoro or for vetting pronunciations: `misakiEnglish()` gives per-token phonemes, the joined string and a cache `version`, honours `[word](/phonemes/)` overrides, and `ttsTokens` hands them to speech-tts. |
 | [`speech-stt`](#cap-speech-stt) | 1 | You compare a script with what a recogniser heard, or port Python that calls `difflib`: a CPython-parity `SequenceMatcher` and `roundHalfEven` (Python's `round`), `align` to time script words from a transcript, `diff` and `normalize` to score a take, the `Word` and `Transcript` schemas, and a pure TS `resample` (24 kHz to 16 kHz without ffmpeg). |
 | [`speech-tts`](#cap-speech-tts) | 1 | You need speech audio and the engine must differ per deployment: an in-process model, a GPU box behind a command or ssh, or a hosted HTTP API. |
+| [`test-timing`](#cap-test-timing) | 1 | You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). |
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. |
 | [`autoresearch`](#cap-autoresearch) | 2 | An agent loop should propose changes to a system, measure each against a frozen evaluator, and keep only those that beat the best by more than run-to-run noise, with the metric, guards and gates read from the target's own config. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
@@ -857,6 +858,22 @@ Key exports:
 - `capabilities`: `assertSupported`, `languageMatches`, `missingCapabilities`, `requirementsOf`
 - `wav`: `decodeWav`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/speech-tts)
+
+<a id="cap-test-timing"></a>
+
+### [`test-timing`](https://hjewkes.github.io/titan-platform/reference/test-timing)
+
+Tier 1, `@titan-design/test-timing@0.0.0`. titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store
+
+**Use this when:**
+
+You keep vitest per-file timing over many runs: `timingArtifactSchema` validates the `titan.test-timing/v1` record a reporter writes (unknown keys refused) and `parseTimingArtifact` reads one (unknown keys kept). `openTimingStore` and `ingestArtifact` keep each record as one `runs` row and a `files` row per test file in SQLite, idempotent on the run id, with a `runner_class` per row so a CI runner is never compared with a bigger host. For service health samples use health; for the SQLite primitives use store-sqlite.
+
+Key exports:
+
+- `artifact`: `TimingArtifact`, `TimingFile`, `TimingRun`, `TIMING_SCHEMA_ID`, `parseTimingArtifact`, `timingArtifactReadSchema`, `timingArtifactSchema`
+- `store`: `TIMING_MIGRATIONS`, `ingestArtifact`, `openTimingStore`, `runnerClass`, `storeStats`
+- More in the [reference page](https://hjewkes.github.io/titan-platform/reference/test-timing)
 
 <a id="cap-worktree"></a>
 

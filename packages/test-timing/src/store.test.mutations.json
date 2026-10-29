@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "re-ingesting a run id is ignored rather than stored again",
+      "file": "packages/test-timing/src/store.ts",
+      "find": "INSERT OR IGNORE INTO runs",
+      "replace": "INSERT INTO runs",
+      "kills": ["is a no-op when the same run is ingested twice"]
+    },
+    {
+      "name": "runner class keeps the core count",
+      "file": "packages/test-timing/src/store.ts",
+      "find": "return `${run.runner}-${run.cpus}c`;",
+      "replace": "return run.runner;",
+      "kills": ["separates a 4-vCPU CI runner from a 48-core local host by runner class"]
+    }
+  ]
+}
