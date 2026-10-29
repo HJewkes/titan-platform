@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launch, openCapturePage } from "@titan-design/frame-capture";
-import { afterAll, beforeAll, describe, test } from "vitest";
+import type { Browser } from "playwright-core";
+import { afterAll, afterEach, beforeAll, describe, test } from "vitest";
 import { cueGate } from "../qa/cue-gate.js";
 import { loadQaGate } from "../qa/gate-profile.js";
 import { chromiumQaEngine } from "../qa/qa-engine.js";
@@ -27,14 +28,22 @@ const KINDS_URL = "/fixtures/kinds.timeline.json";
 let pageDir: string;
 let server: PageServer;
 let baked: Render;
+let browser: Browser;
 
 beforeAll(async () => {
   pageDir = await buildPage();
   server = await servePage(pageDir, SLOW_TIMELINE_MS);
-  baked = await renderFrames(server.url("baked.html"));
+  browser = await launch();
+  baked = await renderFrames(server.url("baked.html"), browser);
 }, BROWSER_TIMEOUT_MS);
 
+// openCapturePage leaves its context open once the open succeeds, so each test's pages close here.
+afterEach(async () => {
+  await Promise.all(browser.contexts().map((context) => context.close()));
+});
+
 afterAll(async () => {
+  await browser.close();
   await server.close();
   rmSync(pageDir, { recursive: true, force: true });
 });
@@ -50,20 +59,15 @@ interface KindsPage {
 
 /** The kinds timeline on the page, seekable, with every page error it throws on the way. */
 async function withKindsPage(use: (kinds: KindsPage) => Promise<void>): Promise<void> {
-  const browser = await launch();
-  try {
-    const { page } = await openCapturePage(browser, server.url("index.html", KINDS_URL), STAGE);
-    const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
-    const seek = (t: number) =>
-      page.evaluate(async (seconds) => {
-        window.__titanMotion?.seek(seconds);
-        await window.__titanMotion?.ready();
-      }, t);
-    await use({ page, seek, errors });
-  } finally {
-    await browser.close();
-  }
+  const { page } = await openCapturePage(browser, server.url("index.html", KINDS_URL), STAGE);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const seek = (t: number) =>
+    page.evaluate(async (seconds) => {
+      window.__titanMotion?.seek(seconds);
+      await window.__titanMotion?.ready();
+    }, t);
+  await use({ page, seek, errors });
 }
 
 /** How visible slot element `target` of a beat is: its most opaque leaf (a row, a title word), through every ancestor. */
@@ -98,7 +102,7 @@ function shownRowTexts(beat: string): string[] {
 
 describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   test("a timeline loaded at runtime renders the same frames as the fixture imported at build time", async () => {
-    const runtime = await renderFrames(server.url("index.html", "/timelines/fixture.timeline.json"));
+    const runtime = await renderFrames(server.url("index.html", "/timelines/fixture.timeline.json"), browser);
 
     assert.equal(runtime.pageDurationS, fixtureDurationS("fixture.timeline.json"));
     assert.equal(framesSha(runtime), framesSha(baked));
@@ -107,7 +111,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   // Mutation: mount MotionProvider before the timeline resolves (a provisional duration, beats filled in later);
   // the capture reads frame 0 before the held response lands, frame 0 is empty and the frames differ.
   test("a slowly served timeline still renders frame 0 and the build-time frames", async () => {
-    const slow = await renderFrames(server.url("index.html", "/slow/fixture.timeline.json"));
+    const slow = await renderFrames(server.url("index.html", "/slow/fixture.timeline.json"), browser);
 
     assert.equal(sha(slow.frames[0] ?? Buffer.alloc(0)), sha(baked.frames[0] ?? Buffer.alloc(1)));
     assert.equal(framesSha(slow), framesSha(baked));
@@ -116,123 +120,88 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   test("one build renders three different timelines, each at its own duration", async () => {
     const names = ["fixture.timeline.json", "second.timeline.json", "third.timeline.json"];
 
-    const renders = await Promise.all(names.map((name) => renderFrames(server.url("index.html", `/timelines/${name}`))));
+    const renders = await Promise.all(names.map((name) => renderFrames(server.url("index.html", `/timelines/${name}`), browser)));
 
     assert.deepEqual(renders.map((r) => r.pageDurationS), names.map(fixtureDurationS));
     assert.equal(new Set(renders.map(framesSha)).size, names.length);
   });
 
   test("a beat kind the registry does not know fails the page", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/unknown-kind.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/unknown-kind.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: unknown beat kind "hologram"/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: unknown beat kind "hologram"/);
   });
 
   // Mutation: draw every chart kind past bar as a line; a gauge then renders as a line chart and the page opens.
   test("a chart of a kind with no view (gauge) fails the page and names the kind", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/gauge-chart.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/gauge-chart.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: chart kind "gauge" is not drawn yet; drawn kinds: bar, line/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: chart kind "gauge" is not drawn yet; drawn kinds: bar, line/);
   });
 
   // Mutation: let the arch-map take any node count; six nodes then fail as a stage overflow, not as this refusal.
   test("an arch-map of six nodes is refused, since the path holds two to five", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/six-node-map.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/six-node-map.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: arch-map draws 2 to 5 nodes, not 6/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: arch-map draws 2 to 5 nodes, not 6/);
   });
 
   // Mutation: skip the edge check; the map_state map with no edges then draws Ledger -> Scanner and the page opens.
   test("an arch-map whose edges are not the node path is refused, so no link is drawn that the map lacks", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
   });
 
   test("a provisional timeline is stamped DRAFT and a spoken one is not", async () => {
-    const browser = await launch();
-    try {
-      const badgeOn = async (name: string) => {
-        const { page } = await openCapturePage(browser, server.url("index.html", `/timelines/${name}`), STAGE);
-        return page.evaluate(() => document.querySelector('[data-testid="draft-badge"]')?.textContent ?? null);
-      };
+    const badgeOn = async (name: string) => {
+      const { page } = await openCapturePage(browser, server.url("index.html", `/timelines/${name}`), STAGE);
+      return page.evaluate(() => document.querySelector('[data-testid="draft-badge"]')?.textContent ?? null);
+    };
 
-      const badges = [await badgeOn("second.timeline.json"), await badgeOn("fixture.timeline.json")];
+    const badges = [await badgeOn("second.timeline.json"), await badgeOn("fixture.timeline.json")];
 
-      assert.deepEqual(badges, ["DRAFT", null]);
-    } finally {
-      await browser.close();
-    }
+    assert.deepEqual(badges, ["DRAFT", null]);
   });
 
   test("a stage beat draws its headline, source and chapter in the chrome, and a page beat draws no chrome", async () => {
-    const browser = await launch();
-    try {
-      const { page } = await openCapturePage(browser, server.url("index.html", "/fixtures/kinds.timeline.json"), STAGE);
-      const chromeAt = (t: number) =>
-        page.evaluate(async (seconds) => {
-          window.__titanMotion?.seek(seconds);
-          await window.__titanMotion?.ready();
-          const shown = [...document.querySelectorAll<HTMLElement>(".xp-chrome")].filter((el) => el.style.visibility === "visible");
-          const text = (selector: string) => shown[0]?.querySelector(selector)?.textContent ?? null;
-          return { count: shown.length, headline: text(".xp-headline"), source: text(".xp-chips"), chapter: text(".xp-chapter") };
-        }, t);
+    const { page } = await openCapturePage(browser, server.url("index.html", "/fixtures/kinds.timeline.json"), STAGE);
+    const chromeAt = (t: number) =>
+      page.evaluate(async (seconds) => {
+        window.__titanMotion?.seek(seconds);
+        await window.__titanMotion?.ready();
+        const shown = [...document.querySelectorAll<HTMLElement>(".xp-chrome")].filter((el) => el.style.visibility === "visible");
+        const text = (selector: string) => shown[0]?.querySelector(selector)?.textContent ?? null;
+        return { count: shown.length, headline: text(".xp-headline"), source: text(".xp-chips"), chapter: text(".xp-chapter") };
+      }, t);
 
-      const chrome = { hook: await chromeAt(1), held: await chromeAt(3.5), catalogue: await chromeAt(6) };
+    const chrome = { hook: await chromeAt(1), held: await chromeAt(3.5), catalogue: await chromeAt(6) };
 
-      assert.deepEqual(chrome, {
-        hook: { count: 0, headline: null, source: null, chapter: null },
-        held: { count: 1, headline: "The router lane shipped its matcher rewrite", source: "verifiedmatch.ts:12-40+1", chapter: "2/4Lanes" },
-        catalogue: { count: 0, headline: null, source: null, chapter: null },
-      });
-    } finally {
-      await browser.close();
-    }
+    assert.deepEqual(chrome, {
+      hook: { count: 0, headline: null, source: null, chapter: null },
+      held: { count: 1, headline: "The router lane shipped its matcher rewrite", source: "verifiedmatch.ts:12-40+1", chapter: "2/4Lanes" },
+      catalogue: { count: 0, headline: null, source: null, chapter: null },
+    });
   });
 
   // Mutation: keep the 48 px column gap on a dense chart; twelve labels then run past the stage box and the page fails.
   test("a line chart of twelve points fits its stage box with and without a legend, through every frame", async () => {
-    const render = await renderFrames(server.url("index.html", "/timelines/dense-line.timeline.json"));
+    const render = await renderFrames(server.url("index.html", "/timelines/dense-line.timeline.json"), browser);
 
     assert.equal(render.pageDurationS, fixtureDurationS("dense-line.timeline.json"));
   });
 
   // Mutation: make useStageFit return before measuring; the too-wide line renders under the chrome and the page opens.
   test("a held line too wide for its stage box fails the page with the overflow", async () => {
-    const browser = await launch();
-    try {
-      const open = openCapturePage(browser, server.url("index.html", "/timelines/overflow.timeline.json"), STAGE);
+    const open = openCapturePage(browser, server.url("index.html", "/timelines/overflow.timeline.json"), STAGE);
 
-      await assert.rejects(open, /page error while loading: too-wide overflows its stage box by \d+ px \(right \d+\)/);
-    } finally {
-      await browser.close();
-    }
+    await assert.rejects(open, /page error while loading: too-wide overflows its stage box by \d+ px \(right \d+\)/);
   });
 
   test("the kind sheet writes a first and a settled frame of each kind, none of them blank", async () => {
     const outDir = mkdtempSync(join(tmpdir(), "explainer-kind-sheet-"));
     try {
-      const sheet = await writeParitySheet(pageDir, kindsTimeline(), outDir);
+      const sheet = await writeParitySheet(pageDir, kindsTimeline(), outDir, { browser });
 
       const kinds = [...new Set(kindsTimeline().beats.map(sheetKind))];
       assert.deepEqual(sheet.frames.map((f) => f.file), kinds.flatMap((k) => [`kind-${k}-first.png`, `kind-${k}-settled.png`]));
@@ -250,7 +219,7 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const stage = { ...timeline, beats: timeline.beats.filter((beat) => resolveBeat(beat.kind).stage) };
     const lead = new Set(stage.beats.filter((beat) => beat.hints?.qaLeadLine).map((beat) => beat.id));
 
-    const result = await cueGate(chromiumQaEngine(), server.url("index.html", KINDS_URL), timelineFromArtifact(stage), loadQaGate("daily-overview"), { lead });
+    const result = await cueGate(chromiumQaEngine(undefined, browser), server.url("index.html", KINDS_URL), timelineFromArtifact(stage), loadQaGate("daily-overview"), { lead });
 
     assert.deepEqual(result.held.errors.map(({ kind, beat, reason }) => ({ kind, beat, reason })), []);
   });
@@ -306,23 +275,18 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
   });
 
   test("the catalogue beat renders react-ui's FileCard, SchemaCard and Annotate live", async () => {
-    const browser = await launch();
-    try {
-      const { page } = await openCapturePage(browser, server.url("index.html", "/timelines/third.timeline.json"), STAGE);
-      await page.evaluate(async () => {
-        window.__titanMotion?.seek(1.4);
-        await window.__titanMotion?.ready();
-      });
+    const { page } = await openCapturePage(browser, server.url("index.html", "/timelines/third.timeline.json"), STAGE);
+    await page.evaluate(async () => {
+      window.__titanMotion?.seek(1.4);
+      await window.__titanMotion?.ready();
+    });
 
-      const shown = await page.evaluate(() => ({
-        fileCard: document.body.textContent.includes("lib/cache/store.ts"),
-        schemaCard: document.querySelector('[aria-label="Cache entry table"]') !== null,
-        annotate: document.body.textContent.includes("entries expire") && document.querySelector('[data-testid="catalogue-annotate"] svg path') !== null,
-      }));
+    const shown = await page.evaluate(() => ({
+      fileCard: document.body.textContent.includes("lib/cache/store.ts"),
+      schemaCard: document.querySelector('[aria-label="Cache entry table"]') !== null,
+      annotate: document.body.textContent.includes("entries expire") && document.querySelector('[data-testid="catalogue-annotate"] svg path') !== null,
+    }));
 
-      assert.deepEqual(shown, { fileCard: true, schemaCard: true, annotate: true });
-    } finally {
-      await browser.close();
-    }
+    assert.deepEqual(shown, { fileCard: true, schemaCard: true, annotate: true });
   });
 });

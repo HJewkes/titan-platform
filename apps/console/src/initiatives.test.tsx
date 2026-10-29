@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { fixtureActiveWork, type FixtureOptions } from "../server/fixtures.js";
 import { readInitiative, readPortfolio } from "../server/work.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -25,14 +25,9 @@ async function recorded(options: FixtureOptions = {}): Promise<Snapshot> {
   };
 }
 
-function renderConsole(hash: string, snapshot: Snapshot): void {
+function renderConsole(hash: string, snapshot: Snapshot, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const row = (slug: string): HTMLElement => screen.getByTestId(`initiative-row-${slug}`);
@@ -66,7 +61,7 @@ describe("the initiatives view", () => {
   });
 
   it("opens an initiative's detail from its row", async () => {
-    renderConsole("#/initiatives", await recorded());
+    renderConsole("#/initiatives", await recorded(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId("initiative-row-orbit-relay")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/initiatives/orbit-relay"));
     expect(await screen.findByText("Why this exists")).toBeTruthy();
@@ -113,7 +108,7 @@ describe("an initiative's detail", () => {
   });
 
   it("returns to the portfolio from the breadcrumb", async () => {
-    renderConsole("#/initiatives/orbit-relay", await recorded());
+    renderConsole("#/initiatives/orbit-relay", await recorded(), { inApp: true });
     fireEvent.click(await screen.findByRole("link", { name: "Initiatives" }));
     await waitFor(() => expect(window.location.hash).toBe("#/initiatives"));
   });

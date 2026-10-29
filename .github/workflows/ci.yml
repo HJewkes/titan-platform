@@ -143,11 +143,14 @@ jobs:
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
       # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
+      # On a PR, --base limits the per-file defaulted notices to files the PR adds or changes; the agent-chat clone is a depth-1 main, so it has no base.
       - name: Check the sunset manifest against agent-chat main
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git clone --depth 1 https://github.com/HJewkes/agent-chat "$RUNNER_TEMP/agent-chat"
           echo "agent-chat main: $(git -C "$RUNNER_TEMP/agent-chat" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn
+          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn ${BASE_SHA:+--base "$BASE_SHA"}
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -255,6 +258,32 @@ jobs:
       - name: Lint with type-aware rules
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm lint:types
+
+  # Per-RPC budgets for the console's reads (TP-4403 d1), alone on a runner so no other test's CPU skews the medians.
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Check the console's read budgets
+        run: pnpm vitest run --project perf
+        env:
+          TITAN_BENCH: "1"
 
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:

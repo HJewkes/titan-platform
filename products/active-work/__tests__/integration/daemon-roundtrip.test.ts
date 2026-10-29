@@ -14,6 +14,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { captureStderr, waitForHealth } from './child-startup.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TSX_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
@@ -35,21 +36,6 @@ function findFreePort(): Promise<number> {
     });
     sock.on('error', reject);
   });
-}
-
-async function waitForHealth(port: number, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastErr: unknown = null;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`);
-      if (res.ok) return;
-    } catch (err) {
-      lastErr = err;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`daemon never became healthy on port ${port}: ${String(lastErr)}`);
 }
 
 async function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
@@ -134,12 +120,9 @@ describe('integration: live daemon roundtrip on a random port', () => {
     });
 
     try {
-      child.stderr?.on('data', (chunk: Buffer) => {
-        // Surface daemon logs only when something fails.
-        process.stderr.write(`[daemon] ${chunk.toString()}`);
-      });
+      const stderr = captureStderr(child.stderr, '[daemon]');
 
-      await waitForHealth(port, 15_000);
+      await waitForHealth(port, 15_000, child, stderr);
 
       // /health
       const healthRes = await fetch(`http://127.0.0.1:${port}/health`);

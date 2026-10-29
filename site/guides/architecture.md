@@ -283,7 +283,9 @@ graph TD
   sessionMiner --> workflow
   titan --> daemon
   titan --> health
+  ytScout --> agent
   ytScout --> appPaths
+  ytScout --> ownerQueue
   ytScout --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp

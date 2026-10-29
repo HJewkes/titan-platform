@@ -20,6 +20,8 @@ export interface PrSnapshot extends PrReads {
   openList(repo: RepoSlug): Promise<OpenList>;
   /** The runs and statuses the snapshot already holds for `sha`, and when they were read; never reads GitHub. */
   cachedRuns(repo: RepoSlug, sha: string): CachedRuns | undefined;
+  /** The open list as some poll last read it, and when; never reads GitHub, and undefined before the first read. */
+  cachedOpen?(repo: RepoSlug): OpenList | undefined;
 }
 
 interface OpenList {
@@ -104,6 +106,10 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
     cachedRuns: (repo, sha) => {
       const checks = repos.get(repo.toLowerCase())?.checks.get(sha);
       return checks && { sha, runs: [...checks.runs], statuses: checks.statuses && [...checks.statuses], at: checks.readAt, settled: checks.settled };
+    },
+    cachedOpen: (repo) => {
+      const list = repos.get(repo.toLowerCase())?.list;
+      return list && { prs: [...list.rows.values()].map((pr) => ({ ...pr })), at: list.at };
     },
     invalidate: (repo) => {
       const state = repos.get(repo.toLowerCase());

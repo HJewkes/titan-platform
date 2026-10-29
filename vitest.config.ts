@@ -50,6 +50,10 @@ const forksHeap = [`--max-old-space-size=${workerHeapMb}`];
 // The heap cap probe allocates until it hits that cap, so it runs only on request.
 const heapProbe = process.env.VITEST_HEAP_PROBE ? ["scripts/heap-cap.probe.mjs"] : [];
 
+// Per-RPC time budgets (TP-4403 d1) run alone in one fork, as their own CI job, so other tests' CPU does not leak into
+// their medians.
+const perfTests = ["apps/*/server/**/*.perf.test.ts"];
+
 export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
@@ -94,7 +98,7 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests],
         },
       },
       {
@@ -114,6 +118,17 @@ export default defineConfig({
           maxWorkers: 1,
           execArgv: forksHeap,
           include: needsProcess,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "perf",
+          pool: "forks",
+          maxWorkers: 1,
+          fileParallelism: false,
+          execArgv: forksHeap,
+          include: perfTests,
         },
       },
       {

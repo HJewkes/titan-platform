@@ -2,10 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sweepWorktrees, type SweepOptions, type SweepOwner } from "./sweep.js";
-import { seedRepo } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 
 type SafetyView = Readonly<{ dirty: boolean; unmerged: boolean }>;
 const roots: string[] = [];

@@ -7,12 +7,9 @@ import {
   locRuleFrom,
   locScope,
   locViolations,
-  packageDirOf,
   planCommands,
   relatedTestArgs,
   roleClassifier,
-  touchedPackageDirs,
-  typecheckDirs,
 } from "./verify-changed.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -121,25 +118,6 @@ describe("locViolations", () => {
   });
 });
 
-describe("package mapping", () => {
-  it("maps paths to package dirs and dedupes", () => {
-    // Mutants caught: wrong depth for the dir, duplicates, root files counted as packages.
-    expect(packageDirOf("packages/a/src/x.ts")).toBe("packages/a");
-    expect(packageDirOf("scripts/x.mjs")).toBeNull();
-    expect(touchedPackageDirs(["packages/b/x.ts", "packages/a/y.ts", "packages/a/z.ts", "README.md"])).toEqual([
-      "packages/a",
-      "packages/b",
-    ]);
-  });
-
-  it("typechecks only packages with type-affecting files and a typecheck script", () => {
-    // Mutants caught: tsc for docs-only packages; tsc for packages lacking the script.
-    const has = (dir) => dir !== "packages/noscript";
-    const changed = ["packages/a/src/x.ts", "packages/docs/README.md", "packages/noscript/src/y.ts", "packages/c/tsconfig.json"];
-    expect(typecheckDirs(changed, has)).toEqual(["packages/a", "packages/c"]);
-  });
-});
-
 describe("relatedTestArgs", () => {
   it("passes source files to vitest related and is null without any", () => {
     // Mutants caught: passing non-source files; running vitest with no files (would run everything).
@@ -150,17 +128,18 @@ describe("relatedTestArgs", () => {
 
 describe("planCommands", () => {
   const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
-  const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], workspace, hasTypecheckScript: () => true, hasTimeout: true });
+  const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], workspace, hasTimeout: true });
+  const vitestOf = (commands) => commands.find((c) => c.label.startsWith("vitest related"));
 
-  it("orders changeset status, tsc, lint:types, then bounded vitest", () => {
-    // Mutants caught: wrong base ref, missing per-package tsc, reordered steps.
-    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "lint:types", "vitest related"]);
-    expect(plan[0].args).toContain("--since=origin/main");
+  it("checks changesets and the INDEX_VERSION bump against the base", () => {
+    // Mutants caught: wrong base ref for either guard.
+    expect(plan.find((c) => c.label === "changeset status").args).toContain("--since=origin/main");
+    expect(plan.find((c) => c.label === "index-version:check").env).toEqual({ BASE_REF: "origin/main" });
   });
 
   it("caps vitest heap and time", () => {
     // Mutants caught: dropping NODE_OPTIONS or the timeout wrapper.
-    const vitest = plan.at(-1);
+    const vitest = vitestOf(plan);
     expect(vitest.env.NODE_OPTIONS).toBe("--max-old-space-size=4096");
     expect(vitest.cmd).toBe("timeout");
     expect(vitest.args[0]).toBe("600");
@@ -168,21 +147,27 @@ describe("planCommands", () => {
 
   it("still runs vitest, unbounded and labelled so, without a timeout command", () => {
     // Mutant caught: spawning a missing timeout binary, which fails the gate on stock macOS.
-    const bare = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace, hasTypecheckScript: () => true, hasTimeout: false });
-    const vitest = bare.at(-1);
+    const bare = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace, hasTimeout: false });
+    const vitest = vitestOf(bare);
     expect(vitest.cmd).toBe("pnpm");
     expect(vitest.args.slice(0, 3)).toEqual(["exec", "vitest", "related"]);
     expect(vitest.label).toMatch(/no timeout/);
   });
 
   it("spools a verify-changed timing record from the vitest run", () => {
-    const spooled = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace, hasTypecheckScript: () => true, spool: "/spool" });
-    expect(spooled.at(-1).env).toMatchObject({ TITAN_TEST_TIMING_SPOOL: "/spool", TITAN_TEST_TIMING_RUNNER: "verify-changed" });
+    const plan = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace, spool: "/spool" });
+    const vitest = plan.find((c) => c.label.startsWith("vitest"));
+    expect(vitest.env).toMatchObject({ TITAN_TEST_TIMING_SPOOL: "/spool", TITAN_TEST_TIMING_RUNNER: "verify-changed" });
   });
 
-  it("omits vitest, tsc and lint:types for a docs-only change", () => {
+  it("omits vitest and lint:types for a docs-only change", () => {
     // Mutant caught: running vitest unscoped when nothing is testable.
-    const docs = planCommands({ base: "b", changed: ["README.md"], workspace, hasTypecheckScript: () => true });
-    expect(docs.map((c) => c.label)).toEqual(["changeset status"]);
+    const labels = planCommands({ base: "b", changed: ["README.md"], workspace }).map((c) => c.label);
+    expect(labels).not.toContain("lint:types");
+    expect(labels.some((label) => label.startsWith("vitest"))).toBe(false);
+  });
+
+  it("plans nothing when nothing changed", () => {
+    expect(planCommands({ base: "b", changed: [], workspace })).toEqual([]);
   });
 });
