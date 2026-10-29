@@ -264,6 +264,9 @@ export interface CliRun {
   stderr: string;
 }
 
+// Read through a call, so the reset to undefined before the verb runs does not narrow the read after it.
+const exitCodeNow = (): number => Number(process.exitCode ?? 0);
+
 /**
  * Runs one titan-console verb handler in process and reports it the way the spawned bin would: console.log and
  * console.error lines become stdout and stderr, and process.exitCode the exit code.
@@ -278,7 +281,7 @@ export async function runConsoleCli(verb: () => Promise<void>): Promise<CliRun> 
   process.exitCode = undefined;
   try {
     await verb();
-    return { code: Number(process.exitCode ?? 0), stdout: stdout.join(""), stderr: stderr.join("") };
+    return { code: exitCodeNow(), stdout: stdout.join(""), stderr: stderr.join("") };
   } finally {
     Object.assign(console, { log, error });
     process.exitCode = exitCode;
