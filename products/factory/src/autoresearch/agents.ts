@@ -9,11 +9,14 @@ import { createWorktreeAllocator, type WorktreeAllocator } from "@titan-design/w
 import { z } from "zod";
 import { awaitAgent, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
 import { loadWaitPort, staggerLatch, type LoadWaitOptions } from "./load-wait.js";
+import { plannerResumeBrief, plannerSpawnBrief } from "./planner-brief.js";
 import { execGit } from "./ratchet.js";
 
 export interface ArAgentsOptions {
   /** The target repo checkout idea trees are cut from. */
   clone: string;
+  /** The target's name and adapter directory, which the planner's brief points it at. */
+  target: { name: string; adapterDir: string };
   agentChat: AgentChat;
   /** The agents account's Claude config directory; every spawn runs on it. */
   configDir: string;
@@ -135,11 +138,10 @@ async function implement(host: Host, input: ImplementRequest, signal: AbortSigna
 /** Round 1 spawns the planner; later rounds resume the same agent so its prompt prefix is read from cache. */
 async function plan(host: Host, input: Parameters<ArPorts["plan"]>[0], signal: AbortSignal) {
   const name = plannerName(input.runId);
-  const { profiles, plannerCwd } = host.options;
-  const brief = JSON.stringify({ round: input.round, digest: input.digest, violations: input.violations });
+  const { profiles, plannerCwd, clone, target } = host.options;
   let from: From = { offset: 0 };
-  if (input.mode === "spawn") await spawnOrJoin(host, name, profiles.planner, plannerCwd, brief);
-  else from = await resumeOrJoin(host, name, profiles.planner, brief);
+  if (input.mode === "spawn") await spawnOrJoin(host, name, profiles.planner, plannerCwd, plannerSpawnBrief({ ...target, clone }, input));
+  else from = await resumeOrJoin(host, name, profiles.planner, plannerResumeBrief(input));
   const done = await awaitAgent(host.chat, name, signal, from);
   const session = done.row.sessionId === "" ? {} : { sessionId: done.row.sessionId };
   return { ops: done.final, agent: name, ...session, mode: input.mode, usage: done.usage };

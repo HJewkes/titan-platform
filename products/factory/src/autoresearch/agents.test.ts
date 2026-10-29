@@ -10,6 +10,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { arAgentPorts, plannerName, type ArAgentsOptions } from "./agents.js";
 import { loadWaitPort } from "./load-wait.js";
+import { resumeContract } from "./planner-brief.js";
 
 let dir: string;
 let clone: string;
@@ -37,14 +38,15 @@ if (args[1] === "ls") { log({}); process.stdout.write(JSON.stringify(roster)); p
 const name = args[2];
 const behave = JSON.parse(fs.readFileSync(path.join(dir, "behave", name + ".json"), "utf8"));
 let row = roster.find((r) => r.name === name);
+let brief;
 if (args[1] === "spawn") {
-  fs.readFileSync(0);
+  brief = fs.readFileSync(0, "utf8");
   row = { name, agentId: name, state: "exited", presence: "exited", status: "finished", profile: args[3], surface: "headless",
     cwd: process.cwd(), sessionId: "s-" + name, generation: 1, transcriptPath: path.join(dir, "t-" + name + ".jsonl") };
   roster.push(row);
 }
 const g = (...a) => cp.execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...a], { cwd: row.cwd, encoding: "utf8" }).trim();
-log({ head: g("rev-parse", "HEAD") });
+log({ head: g("rev-parse", "HEAD"), brief });
 if (behave.commit) { fs.writeFileSync(path.join(row.cwd, name + ".txt"), args[1]); g("add", "-A"); g("commit", "-qm", "work"); }
 const head = g("rev-parse", "HEAD");
 if (behave.pending) { row.presence = "live"; row.state = "live"; }
@@ -63,7 +65,7 @@ const final = (requestId: string, body: string, cache = { read: 0, w5m: 0, w1h: 
 const implemented = (requestId = "r-final") => final(requestId, '{"head": "{HEAD}", "lesson": "smaller is better"}');
 const behave = (name: string, script: { commit?: boolean; pending?: boolean; turns?: string[] }) => writeFileSync(join(dir, "behave", `${name}.json`), JSON.stringify(script));
 
-const calls = (): { args: string[]; head?: string }[] =>
+const calls = (): { args: string[]; head?: string; brief?: string }[] =>
   existsSync(join(dir, "calls.jsonl")) ? readFileSync(join(dir, "calls.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line)) : [];
 const spawns = () => calls().filter((call) => call.args[1] === "spawn" || call.args[1] === "resume");
 const roster = (): Record<string, unknown>[] => (existsSync(join(dir, "roster.json")) ? JSON.parse(readFileSync(join(dir, "roster.json"), "utf8")) : []);
@@ -73,7 +75,7 @@ const row = (name: string, cwd: string, presence = "exited") => ({ name, agentId
 function ports(overrides: Partial<ArAgentsOptions> = {}) {
   const bin = join(dir, "agent-chat");
   return arAgentPorts({
-    clone, configDir: "/accounts/agents", account: "agents", plannerCwd: clone,
+    clone, target: { name: "demo", adapterDir: "adapter" }, configDir: "/accounts/agents", account: "agents", plannerCwd: clone,
     agentChat: { bin, timeoutMs: 10_000, pollMs: 5 },
     profiles: { implementer: "impl", planner: "planner" },
     limits: { pool: "agents", read: () => parseLimits(OPEN) },
@@ -336,6 +338,21 @@ describe("the planner", () => {
     expect(await p.plan({ ...input, round: 2, mode: "resume" }, signal)).toMatchObject({ ops: { add: [], close: [] }, agent: name, mode: "resume" });
 
     expect(spawns().map((call) => call.args.slice(0, 3))).toEqual([["agent", "spawn", name], ["agent", "resume", name]]);
+  });
+
+  it("is spawned with the program path and the ops contract, and resumed with the contract line", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    behave(name, { turns: [final("p1", '{"add": []}')] });
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [] };
+
+    await p.plan({ ...input, round: 1, mode: "spawn" }, signal);
+    await p.plan({ ...input, round: 2, mode: "resume" }, signal);
+
+    const [spawned, resumed] = spawns();
+    expect(spawned!.brief).toContain(join(clone, "adapter", "program.md"));
+    expect(spawned!.brief).toContain("End contract:");
+    expect(resumed!.args[resumed!.args.indexOf("--message") + 1]).toContain(resumeContract);
   });
 
   it("reports its session and the cache reads of its turn beside the ops", async () => {
