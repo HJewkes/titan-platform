@@ -14,7 +14,7 @@ export interface GraphSource {
   timers?: Timers;
 }
 
-export interface Timers {
+interface Timers {
   /** Returns the cancel for the timer it starts. */
   after(ms: number, fire: () => void): () => void;
 }
