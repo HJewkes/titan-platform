@@ -36,6 +36,8 @@ export interface AgentChatReviewerDispatchOptions {
   cwdFor: (repo: string) => string | undefined;
   /** Claude config directory for the reviewer; absent means agent-chat's default. */
   configDir?: string;
+  /** Read per spawn: the accounts a spawn refused at `configDir`'s account limit moves to, in order; absent means none. */
+  fallbackConfigDirs?: () => readonly string[];
   rosterTimeoutMs?: number;
   spawnTimeoutMs?: number;
   /** The serve process's shared roster reader; absent means one of this dispatch's own. */
@@ -229,7 +231,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const targets = new Map<string, ReviewTarget>();
   const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string, intentAt?: number) => {
     targets.set(name, target);
-    await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer, intentAt), ...(options.gate && { runningReviews: await runningReviews() }) });
+    await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer, intentAt), fallbackConfigDirs: options.fallbackConfigDirs?.() ?? [], ...(options.gate && { runningReviews: await runningReviews() }) });
   };
   return {
     roster: () => askBroker(async () => rosterRows(await roster.rows())),

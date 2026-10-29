@@ -1,4 +1,5 @@
 import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, retire, type AgentRecord, type AgentRow } from "@titan-design/agent-dispatch";
+import { spawnOnAccounts } from "./account-fallback.js";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
 import type { ReviewAsk } from "./review-queue.js";
 import type { SpawnGate } from "./spawn-gate.js";
@@ -28,7 +29,12 @@ export interface SpawnRequest extends AgentRecord {
   review?: ReviewAsk;
   /** This spawn's Claude config directory, picked per spawn; absent means the adapter's own `configDir`. */
   configDir?: string;
+  /** Tried in order, inside the one admission, only while the broker refuses the spawn at its account limit (TP-4507). */
+  fallbackConfigDirs?: readonly string[];
 }
+
+/** The accounts one spawn may bill: its own, then its fallbacks. */
+export type SpawnAccounts = Pick<SpawnRequest, "configDir" | "fallbackConfigDirs">;
 
 /** Shepherd's one adapter over the `agent-chat` CLI; each caller picks its profile per spawn. */
 export interface AgentChatAgents {
@@ -57,11 +63,13 @@ export function agentChatAgents(agentChatBin: string, options: AgentChatOptions 
   const { timeoutMs = AGENT_CALL_TIMEOUT_MS, roster = agentChatRoster(agentChatBin), gate } = options;
   return {
     roster: () => roster.rows(),
-    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir = options.configDir, role, task }) =>
+    spawn: ({ name, profile, brief, cwd, runningReviews, review, configDir: own = options.configDir, fallbackConfigDirs = [], role, task }) =>
       mutating(roster, async () => {
         gate?.admit(name, runningReviews, review);
-        const record = { ...(configDir !== undefined && { configDir }), ...(role !== undefined && { role }), ...(task !== undefined && { task }) };
-        await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...record }, timeoutMs, [profile]);
+        await spawnOnAccounts(name, [own, ...fallbackConfigDirs], async (configDir) => {
+          const record = { ...(configDir !== undefined && { configDir }), ...(role !== undefined && { role }), ...(task !== undefined && { task }) };
+          await dispatchToAgentChat({ agentChatBinPath: agentChatBin, peerName: name, profile, brief, cwd, ...SHEPHERD_LAUNCH, ...record }, timeoutMs, [profile]);
+        });
       }),
     resume: (name, message, runningReviews, review) =>
       mutating(roster, async () => {

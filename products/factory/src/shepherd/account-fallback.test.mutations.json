@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "any refusal moves the spawn to the next account",
+      "file": "products/factory/src/shepherd/account-fallback.ts",
+      "find": "if (index === accounts.length - 1 || !isAccountLimitRefusal(error)) throw error;",
+      "replace": "if (index === accounts.length - 1) throw error;",
+      "kills": ["the account-limit fallback (TP-4507) a non-account refusal does not fall back"]
+    },
+    {
+      "name": "any coded refusal reads as the account limit",
+      "file": "products/factory/src/shepherd/account-fallback.ts",
+      "find": "CODE_TRAILER.exec(at.message.trim())?.[1] === ACCOUNT_LIMIT_CODE",
+      "replace": "CODE_TRAILER.exec(at.message.trim())?.[1] !== undefined",
+      "kills": ["the account-limit fallback (TP-4507) a non-account refusal does not fall back"]
+    },
+    {
+      "name": "the agent-chat adapter tries only the spawn's own account",
+      "file": "products/factory/src/shepherd/agents.ts",
+      "find": "await spawnOnAccounts(name, [own, ...fallbackConfigDirs],",
+      "replace": "await spawnOnAccounts(name, [own],",
+      "kills": [
+        "the account-limit fallback (TP-4507) a reviewer refused at the account limit spawns on the first fallback config dir",
+        "the account-limit fallback (TP-4507) a fixer successor refused at the account limit spawns on the fallback"
+      ]
+    },
+    {
+      "name": "a reviewer spawn passes no fallback accounts",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "fallbackConfigDirs: options.fallbackConfigDirs?.() ?? []",
+      "replace": "fallbackConfigDirs: []",
+      "kills": ["the account-limit fallback (TP-4507) a reviewer refused at the account limit spawns on the first fallback config dir"]
+    },
+    {
+      "name": "a successor's fallbacks skip the next account in the rotation",
+      "file": "products/factory/src/shepherd/account-hold.ts",
+      "find": "configDir ?? DEFAULT_ACCOUNT).slice(1);",
+      "replace": "configDir ?? DEFAULT_ACCOUNT).slice(2);",
+      "kills": ["the account-limit fallback (TP-4507) a fixer successor refused at the account limit spawns on the fallback"]
+    }
+  ]
+}
