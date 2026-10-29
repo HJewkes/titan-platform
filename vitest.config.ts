@@ -54,8 +54,11 @@ export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
-    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
-    env: { TITAN_SPEECH_OFFLINE: "1" },
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights. A test that
+    // spawns vitest would otherwise spool its nested run as a timing record beside the real one.
+    env: { TITAN_SPEECH_OFFLINE: "1", TITAN_TEST_TIMING_SPOOL: "" },
+    // A local runner opts in to a timing record by naming a spool (TP-4465); CI passes its reporters on the command line.
+    ...(process.env.TITAN_TEST_TIMING_SPOOL ? { reporters: ["default", "./scripts/vitest-file-timing.mjs"] } : {}),
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
