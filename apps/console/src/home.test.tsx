@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 // Local noon, so "today" and "the last 24 hours" never straddle midnight whatever zone the test runs in.
 const NOW = new Date(2031, 2, 5, 12, 0, 0).getTime();
@@ -57,7 +57,7 @@ function homeSnapshot(answers: Answers = {}): Snapshot {
       [snapshotKey("work.portfolio", {})]:
         answers.portfolio ??
         ok({ fetchedAt: "", personalKnown: true, parseErrors: [], initiatives: [initiative("orbit-relay", "Orbit relay", 3, ago(2 * HOUR)), initiative("kiln-tools", "Kiln tools", 4, ago(72 * HOUR))] }),
-      [snapshotKey("work.tasks", {})]:
+      [snapshotKey("work.tasks", { stage: "blocked" })]:
         answers.tasks ?? ok({ fetchedAt: "", evidence: { repos: [], degraded: [] }, tasks: [task("OR-7", "Route beacons", "blocked", "Waits on OR-3"), task("OR-8", "Tune relays", "ready", "No blockers")] }),
       [snapshotKey("agents.queue", {})]: answers.queue ?? ok({ items: [question("m-1", "Ship the relay today?\nMore context", "relay-worker")], hidden: { "notice:exit": 9 }, open: 10, generatedAt: NOW }),
       [snapshotKey("agents.roster", {})]: answers.roster ?? ok({ agents: [agent("relay-worker", "presence"), agent("old-worker", "history")], brokerUptimeMs: HOUR, reconnecting: false, generatedAt: NOW }),
@@ -78,17 +78,12 @@ const quiet = (): Answers => ({
 });
 
 /** Renders Home from an embedded snapshot and records every command it calls. */
-function renderHome(snapshot: Snapshot): string[] {
+function renderHome(snapshot: Snapshot, { inApp = false } = {}): string[] {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
   const inner = pageDataSource({ doc: page });
   const called: string[] = [];
   const source: DataSource = { subscribe: inner.subscribe.bind(inner), call: (name, args, options) => (called.push(name), inner.call(name, args, options)) };
-  window.location.hash = "#/";
-  render(
-    <RpcProvider source={source}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(source, "#/", { inApp });
   return called;
 }
 
@@ -133,7 +128,7 @@ describe("the home page", () => {
   });
 
   it("opens a blocked task's page from its row", async () => {
-    renderHome(homeSnapshot());
+    renderHome(homeSnapshot(), { inApp: true });
     fireEvent.click(await screen.findByText("OR-7 Route beacons"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-7"));
   });
@@ -153,14 +148,14 @@ describe("the home page", () => {
   });
 
   it("issues only reads", async () => {
-    const called = renderHome(homeSnapshot());
+    const called = renderHome(homeSnapshot(), { inApp: true });
     await screen.findByText("OR-7 Route beacons");
     expect(new Set(called)).toEqual(new Set(["upstreams.health", "work.portfolio", "work.tasks", "agents.queue", "agents.roster", "sessions.list", "inbox.list", "console.build"]));
   });
 
   it("shows the inbox's blocking count and its newest three, each opening the inbox", async () => {
     const blockers = [1, 2, 3, 4].map((n) => blocker(`b-${n}`, `Merge example/repo#${n}`, ago(n * HOUR)));
-    renderHome(homeSnapshot({ inbox: inbox(blockers) }));
+    renderHome(homeSnapshot({ inbox: inbox(blockers) }), { inApp: true });
     expect(await screen.findByText("Inbox: 4 blocking")).toBeTruthy();
     expect(screen.getAllByTestId(/^home-inbox-/).map((row) => row.getAttribute("data-testid"))).toEqual(["home-inbox-b-1", "home-inbox-b-2", "home-inbox-b-3"]);
     fireEvent.click(screen.getByText("Merge example/repo#2"));

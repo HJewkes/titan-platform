@@ -2,12 +2,13 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import path from "node:path";
 import { captureFrames, mixAudio, startEncoder, type Encoder, type FramesOptions, type FramesResult } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { z } from "zod";
 import { canonicalJson } from "../eval-store.js";
 import { sha256 } from "../workflow/artifacts.js";
 import { toVtt, type CaptionWord } from "./captions.js";
 import { assertDurationAgreement } from "./duration-check.js";
-import { defaultQaGate, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
+import { chromiumQaGate, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
 import { collectRenderHost, renderManifestJson, type RenderHost, type RenderManifest } from "./render-manifest.js";
 import { silentMix } from "./silent-mix.js";
 import { chromiumStageFitScan, StageOverflow, type StageFitScan } from "./stage-fit-scan.js";
@@ -61,10 +62,16 @@ export interface RenderDeps {
   stageFit: StageFitScan;
 }
 
-export const defaultRenderDeps: RenderDeps = {
-  captureFrames, startEncoder, mixAudio, silentMix, host: collectRenderHost, now: () => performance.now(), qaGate: defaultQaGate,
-  stageFit: chromiumStageFitScan,
-};
+/** The real deps, with every Chromium step in `browser` when one is lent; without one each step launches its own. */
+export function chromiumRenderDeps(browser?: Browser): RenderDeps {
+  return {
+    captureFrames: (options, sink) => captureFrames({ ...options, browser }, sink),
+    startEncoder, mixAudio, silentMix, host: () => collectRenderHost(browser), now: () => performance.now(), qaGate: chromiumQaGate(browser),
+    stageFit: chromiumStageFitScan(browser),
+  };
+}
+
+export const defaultRenderDeps: RenderDeps = chromiumRenderDeps();
 
 export interface RenderResult {
   mp4: string;

@@ -10,7 +10,8 @@ import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
 import { HOME_PREFIXES } from "./seats.js";
 import { ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
-import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
+import type { ReviewAsk } from "./review-queue.js";
+import { SpawnDeferred, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
@@ -205,9 +206,15 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
   return runningReviewStarts(rows, firstSeen, now);
 }
 
-/** A resume names only the reviewer, so its PR is known only when this process spawned it. */
+/** A spawn's ask carries the head it reviews, which the gate drops it on once the PR lists another. */
 function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"], intentAt?: number): ReviewAsk {
-  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr }, ...(intentAt !== undefined && { intentAt }) };
+  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr, head: target.head }, ...(intentAt !== undefined && { intentAt }) };
+}
+
+/** A resume names only the reviewer, so its PR is known only when this process spawned it, and the head of that spawn is usually stale by the resume's review. */
+function resumeAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"]): ReviewAsk {
+  const ask = reviewAsk(target, isFixer);
+  return ask.target === undefined ? ask : { ...ask, target: { repo: ask.target.repo, pr: ask.target.pr } };
 }
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
@@ -228,6 +235,6 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
     roster: () => askBroker(async () => rosterRows(await roster.rows())),
     lineage: () => askBroker(async () => toLineage(await lineage.rows())),
     spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
-    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer)), options.onMachineHold),
+    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), resumeAsk(targets.get(name), options.isFixer)), options.onMachineHold),
   };
 }

@@ -3,6 +3,9 @@ import { HOLD_CLASSES, TASKLESS_CLASSES, HoldReasonSchema, checkHoldReason } fro
 
 const DEFECT_CLASSES = HOLD_CLASSES.filter((holdClass) => !TASKLESS_CLASSES.has(holdClass));
 
+/** A lan-gates reason names its gates before its detail; every other class takes the detail as it is. */
+const reasonOf = (holdClass: string, detail: string): string => (holdClass === "lan-gates" ? `${holdClass}: demo-gate; ${detail}` : `${holdClass}: ${detail}`);
+
 function refusalOf(reason: string): string {
   const check = checkHoldReason(reason);
   if (check.ok) throw new Error(`expected "${reason}" to be refused`);
@@ -10,17 +13,17 @@ function refusalOf(reason: string): string {
 }
 
 describe("checkHoldReason", () => {
-  it("names the nine hold classes, five of them taskless", () => {
-    expect(HOLD_CLASSES).toEqual(["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked", "owner-review"]);
-    expect([...TASKLESS_CLASSES]).toEqual(["visual-gate2", "g10-review", "g10-adversary", "owner-asked", "owner-review"]);
+  it("names the ten hold classes, six of them taskless", () => {
+    expect(HOLD_CLASSES).toEqual(["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked", "owner-review", "lan-gates"]);
+    expect([...TASKLESS_CLASSES]).toEqual(["visual-gate2", "g10-review", "g10-adversary", "owner-asked", "owner-review", "lan-gates"]);
   });
 
   it.each(HOLD_CLASSES)("accepts a %s hold that cites a task", (holdClass) => {
-    expect(checkHoldReason(`${holdClass}: the step recorded none at abc1234; TP-1948`)).toEqual({ ok: true, holdClass });
+    expect(checkHoldReason(reasonOf(holdClass, "the step recorded none at abc1234; TP-1948"))).toEqual({ ok: true, holdClass });
   });
 
   it.each([...TASKLESS_CLASSES])("accepts a %s hold with no task ID", (holdClass) => {
-    expect(checkHoldReason(`${holdClass}: owner sign-off quoted in the body at abc1234`)).toEqual({ ok: true, holdClass });
+    expect(checkHoldReason(reasonOf(holdClass, "owner sign-off quoted in the body at abc1234"))).toEqual({ ok: true, holdClass });
   });
 
   it.each(DEFECT_CLASSES)("refuses a %s hold with no task ID and names the task-ID rule", (holdClass) => {

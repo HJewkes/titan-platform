@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import type { DataSource } from "@titan-design/rpc-client";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ConsoleCommands } from "../server/commands.js";
-import { App } from "./App.js";
+import { listPage, tasksArgs } from "../server/task-list.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -18,26 +19,32 @@ type Row = TasksResult["tasks"][number];
 
 // Synthetic rows in `work.tasks` shape; nothing here comes from a real workspace.
 const row = (id: string, fields: Partial<Row>): Row => ({
-  slug: "orbit-relay", id, title: `Task ${id}`, priority: 1, updated: "2031-03-01", status: "open",
-  stage: "ready", stageRule: "default", stageReason: "No pull request, live branch, worktree, open dependency or hold found", stageGuessed: true, parent: null, dep: [], deliverables: [], ...fields,
+  slug: "orbit-relay", id, title: `Task ${id}`, stage: "ready", stageReason: "No pull request, live branch, worktree, open dependency or hold found", stageGuessed: true, ...fields,
 });
 
-const TASKS: TasksResult = {
+const ROWS = [
+  row("OR-1", { title: "Retry a dropped handshake", severity: "critical", stage: "review", stageReason: "PR example/orbit#41 is open (head pc-or-1-retry)", stageGuessed: false }),
+  row("OR-2", { title: "Report queue depth", severity: "high", stage: "blocked", stageReason: "Depends on OR-5 (open)", stageGuessed: false }),
+  row("OR-4", { title: "Document the routing table", severity: "low" }),
+  row("LD-3", { slug: "lantern-docs", title: "Merge the battery chapters", severity: "medium", stage: "in-progress", stageReason: "Worktree on branch pc-ld-3 in example/lantern", stageGuessed: false }),
+];
+
+const tasksOf = (rows: readonly Row[], perStage?: number): TasksResult => ({
   fetchedAt: "2031-03-05T00:00:00.000Z",
   evidence: { repos: ["example/orbit"], degraded: [] },
-  tasks: [
-    row("OR-1", { title: "Retry a dropped handshake", severity: "critical", stage: "review", stageRule: "open-pr", stageReason: "PR example/orbit#41 is open (head pc-or-1-retry)", stageGuessed: false }),
-    row("OR-2", { title: "Report queue depth", severity: "high", stage: "blocked", stageRule: "dependency", stageReason: "Depends on OR-5 (open)", stageGuessed: false }),
-    row("OR-4", { title: "Document the routing table", severity: "low" }),
-    row("LD-3", { slug: "lantern-docs", title: "Merge the battery chapters", severity: "medium", stage: "in-progress", stageRule: "live-ref", stageReason: "Worktree on branch pc-ld-3 in example/lantern", stageGuessed: false }),
-  ],
-};
+  ...listPage(rows, perStage === undefined ? {} : { perStage }),
+});
+
+const TASKS = tasksOf(ROWS);
 
 const SESSION = "0a1b2c3d-0000-4000-8000-0000000000aa";
 
 const DETAIL: TaskDetail = {
   fetchedAt: "2031-03-05T00:00:00.000Z",
-  task: { ...TASKS.tasks[0]!, notes: "Backoff caps at thirty seconds.", doneWhen: "A dropped handshake retries with backoff." },
+  task: {
+    ...ROWS[0]!, priority: 1, updated: "2031-03-01", status: "open", stageRule: "open-pr", parent: null, dep: [], deliverables: [],
+    notes: "Backoff caps at thirty seconds.", doneWhen: "A dropped handshake retries with backoff.",
+  },
   refs: [],
   openPrs: [{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }],
   sessions: [{
@@ -67,16 +74,31 @@ const deferred = (mentions: TaskMentions = MENTIONS, artifacts: TaskArtifacts = 
   [snapshotKey("work.taskArtifacts", { id: "OR-1", slug: "orbit-relay" })]: successEnvelope(artifacts),
 });
 
-const recorded = (tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred()): Snapshot =>
-  snapshotOf({
+/** The unfiltered `work.tasks` answer each recorded snapshot holds, which a filtered read is cut from. */
+const unfiltered = new WeakMap<Snapshot, TasksResult>();
+
+function recorded(tasks: TasksResult = TASKS, detail: TaskDetail = DETAIL, later: Snapshot["calls"] = deferred()): Snapshot {
+  const snapshot = snapshotOf({
     ...later,
     [snapshotKey("work.tasks", {})]: successEnvelope(tasks),
     [snapshotKey("work.task", { id: "OR-1" })]: successEnvelope(detail),
     [snapshotKey("work.task", { id: "OR-404" })]: errorEnvelope("No task OR-404 in any initiative", EXIT.NOINPUT),
   });
+  unfiltered.set(snapshot, tasks);
+  return snapshot;
+}
 
+/** Answers a filtered `work.tasks` from the recorded unfiltered one, through the server's own filter. */
 function snapshotSource(snapshot: Snapshot): DataSource {
-  return pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
+  const inner = pageDataSource({ doc: new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html") });
+  return {
+    call: async (name, args, options) => {
+      const all = unfiltered.get(snapshot);
+      if (name !== "work.tasks" || all === undefined || Object.keys(args ?? {}).length === 0) return inner.call(name, args, options);
+      return successEnvelope({ ...all, ...listPage(all.tasks, tasksArgs.parse(args)) });
+    },
+    subscribe: (handlers, options) => inner.subscribe(handlers, options),
+  };
 }
 
 /** Holds the deferred task reads until `release`, so a test sees what the page shows while they are still loading. */
@@ -98,13 +120,8 @@ function heldSource(snapshot: Snapshot): { source: DataSource; held: string[]; r
   return { source, held, release: () => release() };
 }
 
-function renderConsole(hash: string, snapshot: Snapshot | DataSource): void {
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={"format" in snapshot ? snapshotSource(snapshot) : snapshot}>
-      <App />
-    </RpcProvider>,
-  );
+function renderConsole(hash: string, snapshot: Snapshot | DataSource, { inApp = false } = {}): void {
+  renderPage("format" in snapshot ? snapshotSource(snapshot) : snapshot, hash, { inApp });
 }
 
 const group = (stage: string): HTMLElement => screen.getByTestId(`stage-group-${stage}`);
@@ -137,14 +154,14 @@ describe("the tasks list", () => {
   });
 
   it("keeps typed filter text in the query string", async () => {
-    renderConsole("#/tasks?stage=ready", recorded());
+    renderConsole("#/tasks?stage=ready", recorded(), { inApp: true });
     fireEvent.change(await screen.findByLabelText("Filter by id or title"), { target: { value: "routing" } });
     await waitFor(() => expect(window.location.hash).toBe("#/tasks?stage=ready&q=routing"));
     expect(shownIds()).toEqual(["OR-4"]);
   });
 
   it("offers to clear filters that match nothing", async () => {
-    renderConsole("#/tasks?q=nothing-like-this", recorded());
+    renderConsole("#/tasks?q=nothing-like-this", recorded(), { inApp: true });
     expect(await screen.findByText("No tasks match these filters")).toBeTruthy();
     fireEvent.click(screen.getByText("Clear filters"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks"));
@@ -152,7 +169,7 @@ describe("the tasks list", () => {
   });
 
   it("opens a task's detail from its row", async () => {
-    renderConsole("#/tasks", recorded());
+    renderConsole("#/tasks", recorded(), { inApp: true });
     fireEvent.click(within(await screen.findByTestId("task-row-OR-1")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-1"));
     expect(await screen.findByText("A dropped handshake retries with backoff.")).toBeTruthy();
@@ -162,12 +179,20 @@ describe("the tasks list", () => {
     renderConsole("#/tasks", recorded());
     expect(screen.getByLabelText("Loading tasks")).toBeTruthy();
     cleanup();
-    renderConsole("#/tasks", recorded({ ...TASKS, tasks: [] }));
+    renderConsole("#/tasks", recorded(tasksOf([])));
     expect(await screen.findByText("No open tasks")).toBeTruthy();
     expect(screen.getByText("No initiative has an open task.")).toBeTruthy();
     cleanup();
     renderConsole("#/tasks", snapshotOf({}));
     expect(await screen.findByText(/Could not load tasks/)).toBeTruthy();
+  });
+
+  it("titles a capped stage with every match and says the rest are filtered out", async () => {
+    renderConsole("#/tasks", recorded(tasksOf([...ROWS, row("OR-5", { title: "Name the relays" })], 1)));
+    await screen.findByTestId("stage-group-ready");
+    expect(within(group("ready")).getByText("Ready (2)")).toBeTruthy();
+    expect(within(group("ready")).getByText("Showing the first 1 by priority; filter to see the rest.")).toBeTruthy();
+    expect(within(group("review")).queryByText(/Showing the first/)).toBeNull();
   });
 
   it("warns when stage evidence is degraded", async () => {
@@ -220,13 +245,13 @@ describe("a task's detail", () => {
   });
 
   it("links a mention to the task that makes it", async () => {
-    renderConsole("#/tasks/OR-1", recorded());
+    renderConsole("#/tasks/OR-1", recorded(), { inApp: true });
     fireEvent.click(await screen.findByText("orbit-relay OR-7"));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks/OR-7"));
   });
 
   it("links each linked session and its agent", async () => {
-    renderConsole("#/tasks/OR-1", recorded());
+    renderConsole("#/tasks/OR-1", recorded(), { inApp: true });
     const session = await screen.findByTestId(`session-${SESSION}`);
     fireEvent.click(within(session).getByText("impl-a"));
     await waitFor(() => expect(window.location.hash).toBe("#/agents/impl-a"));
@@ -261,7 +286,7 @@ describe("a task's detail", () => {
   });
 
   it("returns to the list from the breadcrumb", async () => {
-    renderConsole("#/tasks/OR-1", recorded());
+    renderConsole("#/tasks/OR-1", recorded(), { inApp: true });
     fireEvent.click(await screen.findByRole("link", { name: "Tasks" }));
     await waitFor(() => expect(window.location.hash).toBe("#/tasks"));
   });

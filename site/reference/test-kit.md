@@ -34,6 +34,17 @@ For a fake with behaviour, such as an in-memory GitHub, use the owning package's
 | `callMeter(methods, cap?)` | the same count as a running total with `restore()`, for `linearWork`'s `meter` |
 | `hostileGlobs(separator?)` | the hostile rows of tp#2491 as `[name, row]` pairs for `it.each`: `d/` and twenty `*`, and twelve `**/`, each with a path of a given size it does not match and the `steady` size from which a linear matcher's work per character stops growing |
 
+The `@titan-design/test-kit/git` subpath holds real-git fixtures. It imports `vitest` for its `afterAll` cleanup.
+
+| Export | What it does |
+|---|---|
+| `seedRepo(dir, files?)` | copies a repository on `main` with one seed commit of `files` (default `README.md`) into `dir`; `{}` leaves `main` unborn. The template is built once per test file, with auto-maintenance and gc off, `core.fsync=none` and an empty hooks directory |
+| `seedRepoWithOrigin(dir, origin, files?)` | the same, plus a bare `origin` already holding `main`, set as the copy's `origin` remote |
+| `withHistory(dir, commits)` | writes `{ files, message?, branch?, from? }` commits with one `git fast-import`, checks out the last commit's branch and returns the shas; dates are pinned, so shas repeat across runs, and a `null` file deletes the path |
+| `fixtureEnv()` | `process.env` without injected `GIT_CONFIG_*` entries or system and global config, with a fixed author and committer |
+| `gitIn(cwd)` | `(...args) => string`: `git -C cwd` under `fixtureEnv`, trimmed stdout |
+| `removeTemplates()`, `templateDirectory()` | the per-file template cleanup `afterAll` runs, for a test of that cleanup |
+
 No test asserts milliseconds: counts are the same on every machine and under any load, where a timing ratio read 415 on a loaded hosted runner (TP-4262). The `titan/no-test-clock-budget` lint rule refuses a new clock comparison in a test outside a bench gate.
 
 A glob compiler's growth test, from review-panel:

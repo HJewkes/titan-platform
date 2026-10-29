@@ -50,6 +50,7 @@ const sharedGraphNeedsIsolation = [
   "apps/console/server/round-frames.test.ts",
   "apps/console/server/rounds.test.ts",
   "products/explainer/src/collect/history.test.ts",
+  "products/explainer/src/yaml-dir.test.ts",
   "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
   "products/factory/src/remote-factory.test.ts",
@@ -59,7 +60,11 @@ const sharedGraphNeedsIsolation = [
   "products/factory/src/shepherd/spawn-profile.test.ts",
   "products/factory/src/shepherd/visual-packet-trigger.test.ts",
 ];
-const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...sharedGraphNeedsIsolation];
+// Per-RPC time budgets (TP-4403 d1) run alone in one fork, as their own CI job, so other tests' CPU does not leak into
+// their medians.
+const perfTests = ["apps/*/server/**/*.perf.test.ts"];
+
+const notShared = ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...sharedGraphNeedsIsolation];
 
 // Date rendering must not depend on the host zone. A project's test.env cannot pin it: vitest applies that inside the
 // worker, and a worker thread keeps the zone its process started with. Set here, before the pools start, it re-zones
@@ -82,8 +87,11 @@ export default defineConfig({
   // Apps render @titan-design/react-ui, which is written against React Native primitives; no package imports react-native.
   resolve: { alias: { "react-native": "react-native-web" } },
   test: {
-    // The speech loaders refuse an uncached model before any network call, so no test can download weights.
-    env: { TITAN_SPEECH_OFFLINE: "1" },
+    // The speech loaders refuse an uncached model before any network call, so no test can download weights. A test that
+    // spawns vitest would otherwise spool its nested run as a timing record beside the real one.
+    env: { TITAN_SPEECH_OFFLINE: "1", TITAN_TEST_TIMING_SPOOL: "" },
+    // A local runner opts in to a timing record by naming a spool (TP-4465); CI passes its reporters on the command line.
+    ...(process.env.TITAN_TEST_TIMING_SPOOL ? { reporters: ["default", "./scripts/vitest-file-timing.mjs"] } : {}),
     // Inlined so the alias above applies; left external, Node would load react-native's Flow source.
     server: { deps: { inline: [/@titan-design\/react-ui/] } },
     globalSetup: ["scripts/vitest-tmpdir.mjs"],
@@ -119,7 +127,7 @@ export default defineConfig({
             "scripts/**/*.test.mjs",
             ...heapProbe,
           ],
-          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...factoryTests, ...explainerTests, ...consoleTests],
+          exclude: ["**/node_modules/**", ...REPO_TIER_INCLUDE, ...needsProcess, ...perfTests, ...factoryTests, ...explainerTests, ...consoleTests],
         },
       },
       {
@@ -159,6 +167,17 @@ export default defineConfig({
           maxWorkers: 1,
           execArgv: forksHeap,
           include: needsProcess,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "perf",
+          pool: "forks",
+          maxWorkers: 1,
+          fileParallelism: false,
+          execArgv: forksHeap,
+          include: perfTests,
         },
       },
       {

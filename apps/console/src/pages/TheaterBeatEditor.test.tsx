@@ -2,12 +2,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import PROPS_JSON from "../../fixtures/explainer/props.json?raw";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "../App.js";
-import { AnswerSourceProvider } from "../data/submit.js";
+import { renderPage } from "../render-page.test-helpers.js";
 
 const VIDEO_ID = "v_0123456789abcdef0123";
 const VIDEO = { id: VIDEO_ID, title: "relay-explainer.mp4", group: "orbit/render", bytes: 5_500_000, modifiedAt: "2031-03-05T10:00:00.000Z", captions: false, renderNotes: false, noteCount: 0, verdict: null };
@@ -37,7 +36,7 @@ const SAVED = successEnvelope({ saved: { editId: "edit-00000000000000bb", script
 const SAVE_ON = { ...PROPS, saveBack: { enabled: true } };
 
 /** The player over recorded reads; `videos.edit-check` and `videos.edit` answer as `tap` and `save` say, and every call is recorded. */
-function renderPlayer({ props = { mp4Sha: MP4_SHA, props: PROPS, gaps: [] }, tap = () => Promise.resolve(verdict([], [])), save = () => Promise.resolve(SAVED), hash = `#/theater/${VIDEO_ID}`, notes = [], edits = [] }: Setup = {}): Call[] {
+function renderPlayer({ props = { mp4Sha: MP4_SHA, props: PROPS, gaps: [] }, tap = () => Promise.resolve(verdict([], [])), save = () => Promise.resolve(SAVED), hash = `#/theater/${VIDEO_ID}`, notes = [], edits = [] }: Setup = {}, { inApp = false } = {}): Call[] {
   const snapshot: Snapshot = {
     format: SNAPSHOT_FORMAT,
     createdAt: "2031-03-05T12:00:00.000Z",
@@ -55,14 +54,7 @@ function renderPlayer({ props = { mp4Sha: MP4_SHA, props: PROPS, gaps: [] }, tap
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (calls.push({ name, args }), taps[name]?.(args) ?? inner.call(name, args, options)),
   };
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={source}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, hash, { answers: source, inApp });
   return calls;
 }
 
@@ -79,7 +71,7 @@ const checks = (calls: Call[]) => calls.filter((call) => call.name === "videos.e
 
 describe("Edit this beat", () => {
   it("opens the beat whose [startS, endS) holds the paused playhead and seeks the player to its still", async () => {
-    renderPlayer();
+    renderPlayer({}, { inApp: true });
     const element = await pauseAt(6.4);
 
     fireEvent.click(await screen.findByText("Edit this beat (b-list)"));
