@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a submitted round leaves the inbox view's kept reads in place",
+      "file": "apps/console/server/rounds-submit.ts",
+      "find": "  onChange();\n",
+      "replace": "",
+      "kills": [
+        "inbox.list after a round is submitted drops the submitted round and the gate its answer settled on the next call"
+      ]
+    },
+    {
+      "name": "rounds.submit is wired to no inbox cache",
+      "file": "apps/console/server/commands.ts",
+      "find": "...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, cache.invalidate),",
+      "replace": "...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),",
+      "kills": [
+        "inbox.list after a round is submitted drops the submitted round and the gate its answer settled on the next call"
+      ]
+    },
+    {
+      "name": "approvals.flow reads the factory on every call",
+      "file": "apps/console/server/commands.ts",
+      "find": "...approvalsCommands({ ...sources, factory: cache.factory }),",
+      "replace": "...approvalsCommands(sources),",
+      "kills": [
+        "approvals.flow beside the inbox reads the factory once across two flows inside the fresh window"
+      ]
+    }
+  ]
+}

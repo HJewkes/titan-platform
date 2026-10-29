@@ -10,6 +10,7 @@ import { assertDurationAgreement } from "./duration-check.js";
 import { defaultQaGate, QaRefused, writeGateReport, type GateBeat, type RenderQa, type RenderQaGate } from "./qa-gate.js";
 import { collectRenderHost, renderManifestJson, type RenderHost, type RenderManifest } from "./render-manifest.js";
 import { silentMix } from "./silent-mix.js";
+import { chromiumStageFitScan, StageOverflow, type StageFitScan } from "./stage-fit-scan.js";
 
 export const RENDER_FPS = 30;
 const VIEWPORT = { width: 1920, height: 1080 };
@@ -57,10 +58,12 @@ export interface RenderDeps {
   host: () => Promise<RenderHost>;
   now: () => number;
   qaGate: RenderQaGate;
+  stageFit: StageFitScan;
 }
 
 export const defaultRenderDeps: RenderDeps = {
   captureFrames, startEncoder, mixAudio, silentMix, host: collectRenderHost, now: () => performance.now(), qaGate: defaultQaGate,
+  stageFit: chromiumStageFitScan,
 };
 
 export interface RenderResult {
@@ -166,13 +169,16 @@ async function encodeChecked(input: RenderInput, paths: OutPaths, deps: RenderDe
 
 /**
  * Renders a served timeline page to `<stem>.mp4` (H.264 + AAC), `captions.vtt` and `render-manifest.json` in
- * `outDir`. The manifest is written last, so a render that failed leaves none behind. With `qa` in gate mode the
- * page is QA-gated first, and held errors throw `QaRefused` before any mix or frame exists.
+ * `outDir`. The manifest is written last, so a render that failed leaves none behind. Every beat still past its stage
+ * box at the type floor throws one `StageOverflow` first; then, with `qa` in gate mode, held errors throw `QaRefused`,
+ * both before any mix or frame exists.
  */
 export async function renderVideo(input: RenderInput, deps: RenderDeps = defaultRenderDeps): Promise<RenderResult> {
   const paths = outPaths(input);
   await mkdir(input.outDir, { recursive: true });
   await Promise.all([rm(paths.manifest, { force: true }), rm(paths.qa, { force: true })]);
+  const overflows = await deps.stageFit(input.pageUrl, input.timeline, VIEWPORT);
+  if (overflows.length > 0) throw new StageOverflow(overflows);
   const qa = await gateQa(input, paths.qa, deps);
   const started = deps.now();
   const frames = await encodeChecked(input, paths, deps);
