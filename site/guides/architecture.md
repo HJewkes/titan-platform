@@ -98,6 +98,7 @@ graph TD
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
     titan["titan"]
+    ytScout["yt-scout"]
     codewatch["codewatch"]
     console["console"]
   end
@@ -268,6 +269,7 @@ graph TD
   sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
+  sessionMiner --> ownerQueue
   sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
@@ -279,6 +281,8 @@ graph TD
   sessionMiner --> workflow
   titan --> daemon
   titan --> health
+  ytScout --> appPaths
+  ytScout --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp
   codewatch --> rpcClient
@@ -357,14 +361,14 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds ten units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
+The `product` tier holds eleven units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->seventeen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->eighteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

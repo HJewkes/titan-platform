@@ -1,0 +1,45 @@
+{
+  "name": "@titan-design/yt-scout",
+  "version": "0.0.0",
+  "description": "Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "products/yt-scout"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true,
+  "bin": {
+    "titan-yt-scout": "./dist/bin.js"
+  },
+  "dependencies": {
+    "@titan-design/app-paths": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
+    "commander": "^14.0.3",
+    "yaml": "^2.9.1",
+    "zod": "^4.4.3"
+  }
+}

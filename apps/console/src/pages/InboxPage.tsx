@@ -4,9 +4,10 @@ import type { ConsoleCommands } from "../../server/commands.js";
 import type { MergeWait } from "../../server/inbox-op.js";
 import { useQuery } from "../data/rpc.js";
 import { useAnswerSource } from "../data/submit.js";
-import { open, parseRoute } from "../router.js";
+import { open, parseRoute, type Route } from "../router.js";
 import { GateStripView } from "./GateStrip.js";
 import { openExternal } from "./homeLinks.js";
+import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, useIsFocused } from "./InboxFocus.js";
 import { NudgeSection } from "./InboxNudges.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
@@ -114,8 +115,8 @@ function followEvidence(evidence: string): void {
   else openExternal(evidence);
 }
 
-/** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs. */
-export function InboxPage(): ReactNode {
+/** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs; `#/inbox/<id>` focuses one item. */
+export function InboxPage({ route }: { route?: Route }): ReactNode {
   const inbox = useQuery("inbox.list");
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
@@ -124,14 +125,17 @@ export function InboxPage(): ReactNode {
   const blocking = items.filter((item) => item.section === "blocking");
   const planning = items.filter((item) => item.section === "planning");
   return (
-    <VStack gap={6}>
-      <GapBanners gaps={gaps} />
-      {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
-      <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
-      {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-      {planning.length > 0 ? <PlanningSection items={planning} /> : null}
-      <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
-    </VStack>
+    <InboxFocusProvider value={route?.id}>
+      <VStack gap={6}>
+        <FocusNotice items={items} focusId={route?.id} gapped={gaps.length > 0} />
+        <GapBanners gaps={gaps} />
+        {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
+        <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
+        {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
+        {planning.length > 0 ? <PlanningSection items={planning} startOpen={holdsFocus(planning, route?.id)} /> : null}
+        <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
+      </VStack>
+    </InboxFocusProvider>
   );
 }
 
@@ -210,9 +214,9 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
   );
 }
 
-/** Planning can run to hundreds of rows, so it opens only when asked. */
-function PlanningSection({ items }: { items: readonly InboxItem[] }): ReactNode {
-  const [isOpen, setOpen] = useState(false);
+/** Planning can run to hundreds of rows, so it opens only when asked, or when a link names one of them. */
+function PlanningSection({ items, startOpen }: { items: readonly InboxItem[]; startOpen: boolean }): ReactNode {
+  const [isOpen, setOpen] = useState(startOpen);
   return (
     <Section testID="inbox-planning">
       <SectionHeader title={`Planning (${items.length})`} subtitle="Answered at each item's source" />
@@ -232,7 +236,9 @@ function InboxRows({ items }: { items: readonly InboxItem[] }): ReactNode {
   return (
     <VStack gap={3}>
       {items.map((item) => (
-        <InboxRow key={item.id} item={item} />
+        <FocusTarget key={item.id} itemId={item.id}>
+          <InboxRow item={item} />
+        </FocusTarget>
       ))}
     </VStack>
   );
@@ -241,12 +247,14 @@ function InboxRows({ items }: { items: readonly InboxItem[] }): ReactNode {
 function InboxRow({ item }: { item: InboxItem }): ReactNode {
   const badge = badgeOf(item);
   const recommendation = recommendationOf(item);
+  const focused = useIsFocused(item.id);
   return (
-    <Card variant="outline" testID={`inbox-row-${item.id}`}>
+    <Card variant={focused ? "accent" : "outline"} testID={`inbox-row-${item.id}`}>
       <CardContent>
         <VStack gap={2}>
           <Typography variant="subtitle2">{item.summary}</Typography>
           <HStack gap={2} align="center" wrap>
+            {focused ? <FocusBadge /> : null}
             <Badge color={badge.color} variant="subtle" size="sm">
               <BadgeText>{badge.label}</BadgeText>
             </Badge>
