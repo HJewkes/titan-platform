@@ -22,8 +22,8 @@
     {
       "name": "a convergence pass labels every later head convergence",
       "file": "products/factory/src/shepherd/review-stats.ts",
-      "find": "converging.delete(head) ? \"convergence\"",
-      "replace": "converging.size > 0 ? \"convergence\"",
+      "find": "converging.delete(head) ? \"convergence\"ADD COLUMN scoped INTEGER;",
+      "replace": "converging.size > 0 ? \"convergence\"  DELETE FROM review_meta WHERE key = 'refreshed_through';`;\n\n/**\n * Schema v3 adds a scoped fix round's check counts (`scope_untagged`, `scope_repeated`; null when no check ran), and reads\n * every run again so a shadow-scoped round stored as scoped is written again as full.\n */\nconst V3 = `\n  ALTER TABLE review ADD COLUMN scope_untagged INTEGER;\n  ALTER TABLE review ADD COLUMN scope_repeated INTEGER;`;",
       "kills": [
         "review labels labels D8's convergence review at a head as convergence, and a later head by its own intent"
       ]
@@ -31,8 +31,8 @@
     {
       "name": "the v2 migration keeps the watermark, so v1 rows are never read again",
       "file": "products/factory/src/shepherd/review-stats-store.ts",
-      "find": "  DELETE FROM review_meta WHERE key = 'refreshed_through';",
-      "replace": "",
+      "find": "  ALTER TABLE review ADD COLUMN scoped INTEGER;\n  DELETE FROM review_meta WHERE key = 'refreshed_through';`;\n\n/**\n * Schema v3 adds a scoped fix round's check counts (`scope_untagged`, `scope_repeated`; null when no check ran), and reads\n * every run again so a shadow-scoped round stored as scoped is written again as full.\n */\nconst V3 = `\n  ALTER TABLE review ADD COLUMN scope_untagged INTEGER;\n  ALTER TABLE review ADD COLUMN scope_repeated INTEGER;\n  DELETE FROM review_meta WHERE key = 'refreshed_through';`;",
+      "replace": "  ALTER TABLE review ADD COLUMN scoped INTEGER;`;\n\n/**\n * Schema v3 adds a scoped fix round's check counts (`scope_untagged`, `scope_repeated`; null when no check ran), and reads\n * every run again so a shadow-scoped round stored as scoped is written again as full.\n */\nconst V3 = `\n  ALTER TABLE review ADD COLUMN scope_untagged INTEGER;\n  ALTER TABLE review ADD COLUMN scope_repeated INTEGER;`;",
       "kills": [
         "review labels migrates a v1 store and fills its stored rows' labels on the next refresh without pricing them again"
       ]
