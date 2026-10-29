@@ -41,7 +41,8 @@ const factoryTests = ["products/factory/src/**/*.test.{ts,tsx}"];
 const explainerTests = ["products/explainer/src/**/*.test.{ts,tsx}"];
 const consoleTests = ["apps/console/{src,scripts,server}/**/*.test.{ts,tsx}"];
 // vi.mock replaces only a module the worker has not loaded yet, so in a shared graph these files' mocks miss; a HOME
-// stub would outlive its file. They run isolated.
+// stub would outlive its file. bot-identity asserts on @titan-design/github's process-wide rate budget, which another
+// file's client has already moved. They run isolated.
 const sharedGraphNeedsIsolation = [
   "apps/console/server/config-writers.test.ts",
   "apps/console/server/daemon.test.ts",
@@ -49,6 +50,7 @@ const sharedGraphNeedsIsolation = [
   "apps/console/server/round-frames.test.ts",
   "apps/console/server/rounds.test.ts",
   "products/explainer/src/collect/history.test.ts",
+  "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
   "products/factory/src/remote-factory.test.ts",
   "products/factory/src/shepherd/merge-facts.test.ts",
