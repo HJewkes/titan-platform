@@ -104,4 +104,4 @@ the same for rows that must share one shell, each in a subshell (`redirect-corpu
 
 A built-bin shape matrix calls `runBuiltHook` in `built-hook.ts`. A file's first call spawns `dist/bin.js hook`; the
 rest run the same built bundle's `handle` in process. A test whose point is a fresh process (the deadline worker,
-`built-hook.test.ts`; a FIFO open that blocks; the main thread's stack depth) spawns every row with `spawnBuiltHook`.
+`built-hook.test.ts`; a FIFO open that blocks, `by-path-script`; the main thread's stack depth, `nesting-limit`) keeps a spawn per row.
