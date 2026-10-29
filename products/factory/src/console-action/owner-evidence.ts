@@ -4,8 +4,8 @@
  * files against the merge base beside the reviewer's own verdict text (its `CI-policy:` line and rationale); a skill change
  * shows the repo skill files; unread files show every changed file. A rename counts both its paths, so the old one shows as
  * deleted. The console shows the sections and posts their digest; the factory reads them again at the tap and resolves only
- * on the same digest. Anything the card could not show in full (a moved head, a capped diff, a line the card cut or
- * stripped, an unreadable verdict) reads as missing, and the gate stays on the terminal.
+ * on the same digest. Anything the card could not show in full (a moved head, a capped diff, a listed path whose change
+ * shows no line or a cut, stripped or re-broken one, an unreadable verdict) reads as missing, and the gate stays on the terminal.
  */
 import { createHash } from "node:crypto";
 import type { GitHubPort } from "@titan-design/github";
@@ -142,10 +142,8 @@ async function readSection(fact: OwnerAtHeadRow, changed: readonly string[], { p
   if (paths.length > MAX_EVIDENCE_FILES) return `${fact} covers ${paths.length} files, more than the ${MAX_EVIDENCE_FILES} the card shows`;
   const read = await readFiles(port, refs, paths);
   const files = ciPolicyChanges(read);
-  const capped = files.find((file) => file.omitted > 0);
-  if (capped !== undefined) return `${capped.path} changes more lines than the card shows`;
-  const cut = files.find((file, index) => !shownWhole(file, read[index]!));
-  if (cut !== undefined) return `${cut.path} has a changed line the card cuts or strips`;
+  const hidden = read.find((file, index) => !shownInFull(files[index]!, file));
+  if (hidden !== undefined) return `${hidden.path} changes more than the card can show`;
   if (!CI_POLICY_FACTS.has(fact)) return { fact, files };
   const text = await reviewer();
   return typeof text === "string" ? text : { fact, files, reviewer: text };
@@ -162,12 +160,21 @@ async function readFiles(port: GitHubPort, { repo, base, head }: Refs, paths: re
 }
 
 /**
- * The shared diff cuts each line at 160 characters and strips control characters, which is fine for a notice but not for
- * a merge: the owner must see every character the gate covers, so any line or path shown other than as written fails closed.
+ * "Listed as changed" and "shown in full" are one condition, whatever the rendering loses: the shared diff cuts lines at
+ * 160 characters, strips control characters, splits on any line break, and reads text decoded as UTF-8, so a path GitHub
+ * lists must show at least one changed line, none omitted or rewritten, in text whose breaks and bytes the lines carry
+ * whole. A mode, symlink, line-ending or undecodable-byte change then fails closed instead of showing as nothing.
  */
-function shownWhole(change: CiPolicyFileChange, file: CiPolicyFile): boolean {
+function shownInFull(change: CiPolicyFileChange, file: CiPolicyFile): boolean {
   const sides = { "-": linesOf(file.before), "+": linesOf(file.after) };
-  return change.path === file.path && change.lines.every((line) => line.text === sides[line.side][line.n - 1]);
+  const rewritten = change.lines.some((line) => line.text !== sides[line.side][line.n - 1]);
+  return change.path === file.path && change.lines.length > 0 && change.omitted === 0 && !rewritten && splitsWhole(file);
+}
+
+/** Only LF breaks, the same final break on both sides, and no replacement character standing in for an undecodable byte. */
+function splitsWhole({ before, after }: CiPolicyFile): boolean {
+  const finalBreaks = new Set([before, after].filter((text) => text !== "").map((text) => text.endsWith("\n")));
+  return finalBreaks.size <= 1 && !/[\r\u{fffd}]/u.test(before + after);
 }
 
 const MergeEvidenceStep = z.looseObject({ result: z.looseObject({ head: z.string(), record: z.looseObject({ verdictLocator: LocatorSchema }) }) });

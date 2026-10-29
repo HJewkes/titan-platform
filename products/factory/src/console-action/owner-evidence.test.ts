@@ -171,7 +171,7 @@ describe("owner-at-head evidence for a console tap", () => {
 
     const evidence = await ownerEvidence(gate, { host: w.host, port: w.port, readText });
 
-    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} has a changed line the card cuts or strips` });
+    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} changes more than the card can show` });
   });
 
   it("reads as missing when a changed line differs only in characters the card strips", async () => {
@@ -181,7 +181,25 @@ describe("owner-at-head evidence for a console tap", () => {
 
     const evidence = await ownerEvidence(gate, { host: w.host, port: w.port, readText });
 
-    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} has a changed line the card cuts or strips` });
+    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} changes more than the card can show` });
+  });
+
+  it.each([
+    ["a mode-only change", "jobs:\n  test:\n    required: true\n"],
+    ["a CRLF-only change", "jobs:\r\n  test:\r\n    required: true\r\n"],
+    ["a dropped final newline beside a shown change", "jobs:\n  test:\n    required: false"],
+    ["an undecodable byte", "jobs:\n  test:\n    required: \u{fffd}\n"],
+  ])("reads %s as missing and refuses its tap, so a listed path the card shows less of never merges", async (_, content) => {
+    const w = world([WORKFLOW]);
+    w.fixture.fake.files.set(`${H}:${WORKFLOW}`, { blobSha: "9", content });
+    const { pr, runId, gateId, gate } = await gatedPr(w, CI_WEAKENED, ["ci-policy-weakened"]);
+
+    const evidence = await ownerEvidence(gate, { host: w.host, port: w.port, readText });
+    const outcome = await resolveGate(tap(runId, gateId, pr, "e".repeat(64)), w.port, w.host, readText);
+
+    expect(evidence).toMatchObject({ status: "missing", reason: `${WORKFLOW} changes more than the card can show` });
+    expect(outcome).toMatchObject({ outcome: "refused", reason: "evidence" });
+    expect(w.host.gates.get(gateId)?.status).toBe("pending");
   });
 
   it("shows a renamed file's old path as deleted, so a workflow moved out of .github/ still shows on the card", async () => {
