@@ -179,6 +179,8 @@ export interface OrderRun {
   reserved?: boolean;
   /** Set once a reservation was released short of landing, so the run's next landable head takes it again. */
   retake?: boolean;
+  /** Set when a conflict leaves a resolved head to land, so the round it ended keeps the reservation. */
+  resolving?: boolean;
 }
 
 /**
@@ -209,6 +211,18 @@ export async function releaseUnlandable(run: OrderRun): Promise<void> {
   if (!run.reserved) return;
   await releaseOrder(run);
   run.retake = true;
+}
+
+/** A conflict that leaves a resolved head to land keeps the reservation through the land round it ended (TP-4497). */
+export async function resolvedConflict(run: OrderRun, left: Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
+  const read = await left;
+  run.resolving = read === undefined;
+  return read;
+}
+
+/** A land round that ends unmerged releases the reservation, unless a conflict inside it left a resolved head to land. */
+export async function endOrderRound(run: OrderRun, outcome: LandOutcome | undefined): Promise<void> {
+  if (outcome?.kind !== "merged" && !run.resolving) await releaseUnlandable(run);
 }
 
 /** Runs `wait`, which no fixer works through, holding no reservation. */

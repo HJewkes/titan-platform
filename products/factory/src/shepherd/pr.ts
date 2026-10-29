@@ -45,7 +45,7 @@ import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gate
 import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
-import { orderedConflict, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved, type OrderRun } from "./merge-order-steps.js";
+import { endOrderRound, orderedConflict, releasedUnlessWoken, releaseOrder, releaseUnlandable, resolvedConflict, retakeOrder, unreserved, type OrderRun } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -122,9 +122,10 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : shepherdOptions(run, verdictFor, checked.base);
   const reviewing = checked.tapping(reviewingContext(run));
   for (;;) {
+    run.resolving = false;
     const outcome = await landRound(reviewing, run, options);
     await leaveTrain(ctx, params.repo, run.state.round);
-    if (outcome?.kind !== "merged") await releaseUnlandable(run);
+    await endOrderRound(run, outcome);
     const final = outcome && (await afterLand(run, outcome));
     if (final) await releaseOrder(run);
     if (final) return final.kind === "merged" ? landed(ctx, run, final, params.after) : recordStopped(ctx, final);
@@ -307,7 +308,7 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
 
 /** Merge order first (TP-4098), then one fixer wake at the base the overlapping PRs leave behind. */
 const onConflict = (run: ShepherdRun, headSha: string): Promise<LandOutcome | undefined> =>
-  orderedConflict(run, headSha, () => fixConflict(run, headSha, (payload) => woken(run, "conflict", headSha, payload)));
+  resolvedConflict(run, orderedConflict(run, headSha, () => fixConflict(run, headSha, (payload) => woken(run, "conflict", headSha, payload))));
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {

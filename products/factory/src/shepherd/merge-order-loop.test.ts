@@ -53,6 +53,8 @@ interface Loop {
   duringWake: () => Promise<void>;
   /** Runs before Z's review; the scenario holds Z there until X's conflict is under way. */
   beforeZReview: () => Promise<void>;
+  /** Runs before each review of X, with the head it reviews. */
+  beforeXReview: (headSha: string) => Promise<void>;
   /** Runs inside each merge call, before GitHub merges `pr`. */
   beforeMerge: (pr: number) => Promise<void>;
   /** X's heads whose review sends X back with FIX_FIRST; X's fixer answers with a push that merges nothing. */
@@ -131,6 +133,7 @@ function loopWorld(enabled: boolean, ttlMinutes?: number): Loop {
   const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: tick, holdPollMs: 1, registry: async () => "trusted" as const, mergeOrderRules: ORDER(enabled, ttlMinutes), park: async () => ({ lines: [] }), exitNotice });
   const review: ShepherdPhases["review"] = async (ctx, request) => {
     if (request.pr === Z) await late.loop!.beforeZReview();
+    if (request.pr === X) await late.loop!.beforeXReview(request.headSha);
     if (request.pr === X && late.loop!.fixFirstAt.has(request.headSha)) return { kind: "FIX_FIRST", headSha: request.headSha, text: "missing test" };
     return merges(ctx, request);
   };
@@ -138,7 +141,7 @@ function loopWorld(enabled: boolean, ttlMinutes?: number): Loop {
   hosts.push(host);
   const noop = async () => undefined;
   const advance = (ms: number) => void (clock += ms);
-  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop, beforeMerge: noop, fixFirstAt: new Set(), advance, told });
+  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop, beforeXReview: noop, beforeMerge: noop, fixFirstAt: new Set(), advance, told });
 }
 
 function shepherd(loop: Loop, pr: number): string {
@@ -425,5 +428,30 @@ describe("TP-4497: a reservation is held only through a conflict round or at a l
     expect(reasons).toEqual([`merge order: waiting behind #${X} (${CAPABILITY})`]);
     expect(loop.merged).toEqual([X, Z]);
     expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release", "order-reserve", "order-release"]);
+  });
+
+  it("a conflict that ends the land round during review keeps the reservation through the resolved head's round", async () => {
+    const loop = loopWorld(true);
+    const reasons: (string | undefined)[] = [];
+    const first = loop.fake.pr(X).headSha;
+    loop.beforeXReview = async (headSha) => {
+      if (headSha === first) {
+        shepherd(loop, Y);
+        await vi.waitFor(() => expect(loop.merged).toEqual([Y]), WAIT);
+      }
+      if (headSha !== RESOLVED) return;
+      shepherd(loop, Z);
+      await vi.waitFor(() => expect(loop.merged.includes(Z) || /^merge:/.test(currentStep(loop, Z) ?? "")).toBe(true), WAIT);
+      reasons.push(await orderReasonForZ(loop));
+    };
+
+    const x = shepherd(loop, X);
+    await finish(loop, X);
+    await finish(loop, Z);
+
+    expect(reasons).toEqual([`merge order: waiting behind #${X} (${CAPABILITY})`]);
+    expect(loop.merged).toEqual([Y, X, Z]);
+    expect(loop.wakes.map((wake) => wake.kind)).toEqual(["conflict"]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release"]);
   });
 });
