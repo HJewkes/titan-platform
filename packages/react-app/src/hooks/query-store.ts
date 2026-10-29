@@ -32,18 +32,40 @@ export interface QueryStore {
   invalidate(commands?: readonly string[]): void;
 }
 
-export function createQueryStore(source: DataSource): QueryStore {
+export interface QueryStoreOptions {
+  /** How long an unwatched query keeps its result for a later watcher; 0 drops it a tick after the last unwatch. */
+  gcMs?: number;
+  /** Told once per call that finishes without being superseded or aborted; a throwing observer cannot break a query. */
+  onSettle?: (settled: QuerySettled) => void;
+  /** Milliseconds clock for `onSettle`'s `ms`; injectable for tests. */
+  now?: () => number;
+}
+
+/** What `onSettle` learns about one call. It carries the command name only, never its arguments or result. */
+export interface QuerySettled {
+  command: string;
+  /** Elapsed time from the call's start to its answer. */
+  ms: number;
+  ok: boolean;
+  /** True when the entry already held data as the call began, so the user saw that data while this call ran. */
+  fromCache: boolean;
+}
+
+export function createQueryStore(source: DataSource, { gcMs = 0, onSettle, now = () => performance.now() }: QueryStoreOptions = {}): QueryStore {
   const entries = new Map<string, Entry>();
 
   const run = (entry: Entry): void => {
     entry.controller?.abort();
     const controller = new AbortController();
     entry.controller = controller;
+    const started = now();
+    const fromCache = entry.state.data !== undefined;
     if (!entry.state.isFetching) update(entry, { ...entry.state, isFetching: true });
-    source.call(entry.command, entry.args, { signal: controller.signal }).then(
-      (envelope) => settle(entry, controller, envelope),
-      (err: unknown) => settle(entry, controller, rejection(entry.command, err)),
-    );
+    const done = (envelope: JsonEnvelope<unknown>): void => {
+      if (!settle(entry, controller, envelope)) return;
+      observe(onSettle, { command: entry.command, ms: now() - started, ok: envelope.ok, fromCache });
+    };
+    source.call(entry.command, entry.args, { signal: controller.signal }).then(done, (err: unknown) => done(rejection(entry.command, err)));
   };
 
   const drop = (key: string, entry: Entry): void => {
@@ -57,13 +79,17 @@ export function createQueryStore(source: DataSource): QueryStore {
     watch(command, args, listener) {
       const key = snapshotKey(command, args);
       const entry = entries.get(key) ?? adopt(entries, key, command, args, run);
+      const kept = entry.dropTimer !== undefined;
       clearTimeout(entry.dropTimer);
+      entry.dropTimer = undefined;
       entry.listeners.add(listener);
+      // A kept entry shows its old data at once; the refetch runs behind it.
+      if (kept && gcMs > 0 && !entry.controller) run(entry);
       return () => {
         entry.listeners.delete(listener);
         if (entry.listeners.size > 0) return;
-        // Deferred a tick so a StrictMode unmount-remount keeps the in-flight call instead of redialling.
-        entry.dropTimer = setTimeout(() => drop(key, entry), 0);
+        // gcMs 0 defers a tick so a StrictMode unmount-remount keeps the in-flight call instead of redialling.
+        entry.dropTimer = setTimeout(() => drop(key, entry), gcMs);
       };
     },
     state: (key) => entries.get(key)?.state ?? LOADING,
@@ -88,16 +114,26 @@ function adopt(entries: Map<string, Entry>, key: string, command: string, args: 
   return entry;
 }
 
-function settle(entry: Entry, controller: AbortController, envelope: JsonEnvelope<unknown>): void {
+/** Returns false for a stale answer, which changes nothing. */
+function settle(entry: Entry, controller: AbortController, envelope: JsonEnvelope<unknown>): boolean {
   // Every newer call and every drop aborts this controller first, so an aborted answer is a stale one.
-  if (controller.signal.aborted) return;
+  if (controller.signal.aborted) return false;
   entry.controller = undefined;
   if (envelope.ok) {
     update(entry, { status: "success", data: envelope.data, error: undefined, isFetching: false });
-    return;
+    return true;
   }
   const error = new RpcError(entry.command, envelope.error, envelope.code);
   update(entry, { status: "error", data: entry.state.data, error, isFetching: false });
+  return true;
+}
+
+function observe(onSettle: ((settled: QuerySettled) => void) | undefined, settled: QuerySettled): void {
+  try {
+    onSettle?.(settled);
+  } catch {
+    // Telemetry must never fail a query.
+  }
 }
 
 /** A source rejects only on abort, which `settle` ignores; anything else broke that contract. */

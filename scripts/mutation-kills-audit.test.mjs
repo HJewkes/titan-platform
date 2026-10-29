@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MAX_MUTATION_NAME, MAX_MUTATIONS } from "../packages/fix-proof/dist/index.js";
-import { specProblem, testFileOf, testNamesOf, unmatchedKills } from "./mutation-kills-audit.mjs";
+import { findProblems, specProblem, testFileOf, testNamesOf, unmatchedKills } from "./mutation-kills-audit.mjs";
 
 const report = (...fullNames) => ({ testResults: [{ name: "/repo/src/a.test.ts", assertionResults: fullNames.map((fullName) => ({ fullName, status: "passed" })) }] });
 const sidecar = (...kills) => ({ v: 1, mutations: [{ name: "flip", file: "src/a.ts", find: "x", replace: "y", kills }] });
@@ -35,6 +35,29 @@ describe("specProblem", () => {
   });
 });
 
+describe("findProblems", () => {
+  const config = { tests: [], carry: [] };
+  const text = specText("flip");
+
+  it("a sidecar whose find is absent from its target fails the audit", () => {
+    const problems = findProblems(PATH, text, () => "const y = 1;", config);
+
+    expect(problems).toEqual([`${PATH}: mutation flip: find does not occur in src/a.ts at head`]);
+  });
+
+  it("names a target that does not exist", () => {
+    expect(findProblems(PATH, text, () => null, config)).toEqual([`${PATH}: mutation flip: src/a.ts does not exist at head`]);
+  });
+
+  it("refuses a find that occurs more than once", () => {
+    expect(findProblems(PATH, text, () => "x x", config)).toEqual([`${PATH}: mutation flip: find occurs more than once in src/a.ts at head`]);
+  });
+
+  it("accepts a find that occurs once in its target", () => {
+    expect(findProblems(PATH, text, () => "const x = 1;", config)).toEqual([]);
+  });
+});
+
 describe("the audit command", () => {
   it("fails a sidecar fix-proof refuses and still reports its kill problems", () => {
     const dir = mkdtempSync(join(tmpdir(), "mutation-kills-audit-test-"));
@@ -51,6 +74,23 @@ describe("the audit command", () => {
         "1 sidecars, 2 problems",
         "",
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the --finds run", () => {
+  it("fails a tracked-style sidecar whose find is absent from its target, without running tests", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mutation-kills-audit-test-"));
+    try {
+      const path = join(dir, "a.test.mutations.json");
+      writeFileSync(path, specText("flip"));
+
+      const run = spawnSync(process.execPath, [fileURLToPath(new URL("./mutation-kills-audit.mjs", import.meta.url)), "--finds", path], { encoding: "utf8" });
+
+      expect(run.status).toBe(1);
+      expect(run.stdout.split("\n")).toEqual([`${path}: mutation flip: src/a.ts does not exist at head`, "1 sidecars, 1 problems", ""]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

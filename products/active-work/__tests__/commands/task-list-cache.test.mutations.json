@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the cache is keyed on path only",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "if (previous?.mtimeMs === mtimeMs && previous.size === size && previous.ino === ino) {",
+      "replace": "if (previous) {",
+      "kills": ["task.list parse cache an edited task file is re-read"]
+    },
+    {
+      "name": "every call re-parses every file",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "if (previous?.mtimeMs === mtimeMs && previous.size === size && previous.ino === ino) {",
+      "replace": "if (false) {",
+      "kills": [
+        "task.list parse cache an unchanged task file is not parsed again",
+        "task.list parse cache an edited task file is re-read"
+      ]
+    },
+    {
+      "name": "cached tasks skip the filter",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "if (keep(entry.task)) tasks.push(",
+      "replace": "tasks.push(",
+      "kills": ["task.list parse cache a filter applied to cached tasks still narrows the result"]
+    }
+  ]
+}

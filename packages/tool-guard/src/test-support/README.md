@@ -93,3 +93,15 @@ no clock.
 TP-3850's "Reached heap limit" lines are a different matter. They come from the deliberate
 32 MB child in `scripts/dag-check-lock.test.mjs`: the failing heap is 31.2 of 64 MB, not a
 2 GB worker, and every file passed in that job.
+
+## Real-shell oracles and the built hook (TP-4453)
+
+A test that asks a real shell what a line does adds its rows to `shellOracle` in `shell-rows.ts` and reads them back
+with `get`. One bash driver per describe runs every row, each in a fresh process with the argv, cwd, environment and
+stdin its own `spawnSync` had, in its own process group that is killed when the row exits (`spawnInGroup`'s rule). A
+row past `ROW_TIMEOUT_MS` is killed and fails alone, by name, and the rows after it still run. `runSubshellRows` is
+the same for rows that must share one shell, each in a subshell (`redirect-corpus`).
+
+A built-bin shape matrix calls `runBuiltHook` in `built-hook.ts`. A file's first call spawns `dist/bin.js hook`; the
+rest run the same built bundle's `handle` in process. A test whose point is a fresh process (the deadline worker,
+`built-hook.test.ts`; a FIFO open that blocks, `by-path-script`; the main thread's stack depth, `nesting-limit`) keeps a spawn per row.

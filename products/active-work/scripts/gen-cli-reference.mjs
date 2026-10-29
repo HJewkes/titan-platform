@@ -45,8 +45,16 @@ if (srcMtime > distMtime) {
   process.exit(1);
 }
 
-/** Run the built CLI and return its stdout (help is written to stdout by commander). */
+const helpCache = new Map();
+
+/** Run the built CLI and return its stdout (help is written to stdout by commander). Each path is spawned once. */
 function runHelp(args) {
+  const key = args.join(' ');
+  if (!helpCache.has(key)) helpCache.set(key, spawnHelp(args));
+  return helpCache.get(key);
+}
+
+function spawnHelp(args) {
   const result = spawnSync(process.execPath, [CLI, ...args, '--help'], {
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },

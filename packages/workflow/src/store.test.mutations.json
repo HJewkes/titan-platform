@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "listByWorkflow reads every workflow's runs",
+      "file": "packages/workflow/src/store.ts",
+      "find": "\"workflow_name = ? AND status IN (SELECT value FROM json_each(?))\", workflowName",
+      "replace": "\"? IS NOT NULL AND status IN (SELECT value FROM json_each(?))\", workflowName",
+      "kills": [
+        "WorkflowRunStore listByWorkflow returns only that workflow's runs in the asked statuses, in start order",
+        "WorkflowRunStore listByWorkflow never parses another workflow's step results"
+      ]
+    },
+    {
+      "name": "a new table is created without the workflow-and-status index",
+      "file": "packages/workflow/src/store.ts",
+      "find": "    ${workflowNameIndexDdl(name)}\n  `;",
+      "replace": "  `;",
+      "kills": [
+        "WorkflowRunStore listByWorkflow is answered through the workflow-and-status index",
+        "WorkflowRunStore listByWorkflow adds the index to an existing table, and a second run is a no-op"
+      ]
+    },
+    {
+      "name": "the index migration does nothing",
+      "file": "packages/workflow/src/store.ts",
+      "find": "up: (db) => db.exec(workflowNameIndexDdl(name)) };",
+      "replace": "up: () => undefined };",
+      "kills": ["WorkflowRunStore listByWorkflow adds the index to an existing table, and a second run is a no-op"]
+    }
+  ]
+}

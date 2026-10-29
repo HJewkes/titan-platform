@@ -103,7 +103,7 @@ const TILES_HEAD = "89abcdef0123456789abcdef0123456789abcdef";
 
 function inboxItem(id: string, overrides: Partial<InboxItem> & Pick<InboxItem, "action">): InboxItem {
   return {
-    id, sources: [{ system: "hitl", ref: `run-${id}/approve-merge` }], kind: "approve", door: "one-way", summary: `Summary of ${id}`, context: "", keys: [],
+    id, sources: [{ system: "hitl", ref: `run-${id}/approve-merge` }], kind: "approve", door: "one-way", summary: `Summary of ${id}`, keys: [],
     personal: false, lens: "blocking-merge", unblocks: [], openedAt: at(HOUR), status: "open", section: "blocking", evidence: undefined,
     ...overrides,
   };
@@ -159,6 +159,11 @@ const INBOX_NUDGES: Served["inbox.list"]["result"]["nudges"] = [
   },
 ];
 
+/** The default read counts the planning items; the planning read lists them too. */
+const INBOX_VIEW = {
+  planningCount: INBOX_ITEMS.filter((item) => item.section === "planning").length, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED, nudges: INBOX_NUDGES,
+};
+
 const TIMELINE_ENTRIES = [
   { kind: "step", stepId: "sh-ci", iteration: 1, startedAt: at(3 * HOUR), completedAt: at(3 * HOUR - 10 * MINUTE), signal: null, status: "done" },
   { kind: "verdict", stepId: "sh-review", verdict: "MERGE", headSha: HEAD.slice(0, 16), locator: null, reviewer: "relay-reviewer" },
@@ -187,7 +192,8 @@ The widget kit's layout engine is already covered; its theme tokens are worth a 
 
 const topic = (topic_id: string, priority: string, verdict: string, line: number) => ({ topic_id, tier: "core", title: `Topic ${topic_id}`, verdict, priority, titan_evidence: "", reason: `Why ${topic_id}`, line, extra: {} });
 
-type TaskRow = Served["work.tasks"]["result"]["tasks"][number];
+type TaskRow = Served["work.task"]["result"]["task"];
+type TasksResult = Served["work.tasks"]["result"];
 
 function task(id: string, title: string, overrides: Partial<TaskRow>): TaskRow {
   return {
@@ -206,11 +212,16 @@ const TASKS = [
 
 const EVIDENCE = { repos: ["orbit/relay"], degraded: [] };
 
+function tasksAnswer(rows: readonly TaskRow[]): TasksResult {
+  const counts: TasksResult["counts"] = { blocked: 0, ready: 0, "in-progress": 0, review: 0, done: 0 };
+  for (const row of rows) counts[row.stage] += 1;
+  const tasks = rows.map(({ slug, id, title, severity, stage, stageReason, stageGuessed }) => ({ slug, id, title, ...(severity ? { severity } : {}), stage, stageReason, stageGuessed }));
+  return { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks, counts, initiatives: [...new Set(TASKS.map((row) => row.slug))].sort(), evidence: EVIDENCE };
+}
+
 const TASK_DETAIL: Served["work.task"]["result"] = {
   fetchedAt: new Date(TWIN_NOW).toISOString(),
   task: { ...TASKS[0]!, doneWhen: "A dropped handshake retries with capped backoff and a test drops it twice" },
-  mentions: [],
-  artifacts: { branches: [], worktrees: [] },
   refs: [],
   openPrs: [],
   sessions: [],
@@ -306,9 +317,13 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.list", { limit: 50 }, { sessions: SESSIONS, nextBefore: null, degraded: null }),
   answer("sessions.list", { agent: "relay-builder", limit: 50 }, { sessions: SESSIONS.slice(0, 1), nextBefore: null, degraded: null }),
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
-  answer("work.tasks", {}, { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks: TASKS, evidence: EVIDENCE }),
+  answer("work.tasks", {}, tasksAnswer(TASKS)),
+  answer("work.tasks", { stage: "blocked" }, tasksAnswer(TASKS.filter((row) => row.stage === "blocked"))),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
-  answer("inbox.list", {}, { items: INBOX_ITEMS, gaps: [], fyiCount: 3, readAt: new Date(TWIN_NOW).toISOString(), derived: INBOX_DERIVED, nudges: INBOX_NUDGES }),
+  answer("work.taskMentions", { id: "OR-12" }, { mentions: [], degraded: null }),
+  answer("work.taskArtifacts", { id: "OR-12", slug: TASK_DETAIL.task.slug }, { branches: [], degraded: [] }),
+  answer("inbox.list", {}, { ...INBOX_VIEW, items: INBOX_ITEMS.filter((item) => item.section !== "planning") }),
+  answer("inbox.list", { planning: true }, { ...INBOX_VIEW, items: INBOX_ITEMS }),
   answer("shepherd.list", { state: "active" }, WATCHED),
   answer("gates.strip", { repo: "example/tiles", pr: 1 }, { status: "ok", strip: strip("example/tiles", 1, TILES_HEAD) }),
   answer("shepherd.waiting", {}, { owner: [{ gateId: "run-12/approve-merge", stepId: "approve-merge", repo: "orbit/relay", pr: 12, task: "orbit-relay/OR-12", since: at(2 * HOUR), ageHours: 2 }], seat: [] }),

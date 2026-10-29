@@ -9,7 +9,7 @@ import type { ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef } from "./store.js";
-import { awaitFixerHead } from "./wake.js";
+import { awaitFixerHead } from "./wake-phase.js";
 
 const H2 = fakeSha("head2");
 const hosts: FactoryHost[] = [];

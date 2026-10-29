@@ -68,6 +68,14 @@ await dispatchToAgentChat(
   out gets the same argv as before.
 - `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
   longest backtick run in it (at least three), preceded by a line saying it is data.
+- `lastFencedJson(text)` parses the body of the last ```` ```json ```` block in an agent's
+  final message, the way an implementer ends its report; undefined when there is none, and
+  a `SyntaxError` when the block is not JSON, so a malformed report never reads as missing.
+- `dispatchToAgentChat` and `buildSpawnArgs` take an optional `role` (`implementer`,
+  `reviewer`, `fix-round-<n>` and the rest of agent-chat's `--role` values) and `task`, sent
+  as `--role` and `--task` so the agent's roster row records who it works for. A task id
+  outside `TASK_ID_PATTERN` throws `DispatchError` before anything runs; a caller that leaves
+  both out gets the same argv as before.
 - Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it
   cannot reach the broker, the call rejects with `BrokerUnavailableError` (a
   `DispatchError`); every other refusal stays a plain `DispatchError`. Every verb that runs
@@ -100,6 +108,16 @@ await dispatchToAgentChat(
   is `agent <sub>` or the first argv word, so no peer name or briefing is ever reported.
   `outcome` is `ok`, `refused` (non-zero exit), `timeout` or `error`. An observer that
   throws is ignored, and nothing is timed while no observer is registered.
+- `bootPacket({ task, plan?, repo, touchPoints?, readers, options? })` builds an
+  implementer's first-turn packet: git state labelled with its capture time, the task card,
+  the plan slice's excerpt, ±15-line excerpts of up to 8 touch points (by default the
+  backticked paths in the slice) and readiness (install command, scripts, CAPABILITIES
+  rows). Each section has a token cap, and the packet a 6k-token budget; over budget,
+  whole sections drop from the end of `options.priority`. A source that cannot be read
+  leaves its section out and is listed in `omitted`, never thrown. Every read goes through
+  the injected `BootReaders`; `nodeBootReaders({ repoRoot, gitBin, readTask })` reads a
+  local checkout, and the caller maps its task store (for example `@titan-design/pm`) to a
+  `TaskCard`.
 
 Profile names, peer-name derivation and profile installation are the caller's policy and
 are not in this package.
@@ -121,3 +139,19 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.
+
+## Routing (`./routing`, `./routing/node`)
+
+The workflow table (`shape-v1`) that maps a task's facts to a prior and an implementer
+profile, shipped as `workflow/shape-v1.yml`.
+
+- `parseWorkflowTable(text)` gives the table or one problem line per lint failure; every
+  value is a closed enum.
+- `classifyTask(table, facts)` gives the first matching prior and its reason;
+  `profileFor(table, prior, estimate)` gives the profile its class row dispatches.
+- A rule with `needsOwns: true` cannot match a task with no owns, so missing facts never
+  route down. The shipped table sets it on `small` and `standard`.
+- `priorRoute(router, facts, today, label)` keeps or changes a profile in `shadow` or `on`
+  mode; `planFacts(planText, slice?)` reads owns and points from a `burndown-slices` block.
+- `./routing/node` has `DEFAULT_WORKFLOW_TABLE`, `readWorkflowTable(root)` and
+  `readPriorRouter(mode, root)`.
