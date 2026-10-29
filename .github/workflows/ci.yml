@@ -90,7 +90,8 @@ jobs:
           restore-keys: vitest-results-${{ runner.os }}-
       # redirect-corpus.test.ts needs real bash and zsh; the explainer render tests spawn real ffmpeg/ffprobe.
       # The debs are cached per runner image, so a hit installs from disk with no apt-get update or download (TP-4400).
-      # A miss downloads once and saves, so the first run on a new image pays and later runs, including pull requests, hit.
+      # A miss downloads; only main saves, because a hit installs the debs as root with no signature check,
+      # so a pull request must never write the cache a later run trusts. Pull requests hit main's save.
       - name: Read the runner image version
         id: image
         run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
@@ -110,7 +111,7 @@ jobs:
       - name: Install zsh and ffmpeg
         run: sudo dpkg -i "$HOME"/apt-debs/*.deb
       - name: Save the zsh and ffmpeg debs
-        if: steps.debs.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.debs.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/apt-debs
