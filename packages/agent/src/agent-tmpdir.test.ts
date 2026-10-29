@@ -1,0 +1,767 @@
+import nodeFs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  type LaunchRow as AgentIdentity,
+  agentTmpPath,
+  agentTmpSweepRoots,
+  ensureAgentTmpDir,
+  realTmpFs,
+  removeAgentTmpDir,
+  removeOwnTmpDir,
+  sweepAgentTmpDirs,
+  type TmpFs,
+  type TmpProcessTable,
+  SWEEP_GRACE_MS,
+  type TmpStat,
+} from "./index.js";
+
+const UID = 1000;
+
+interface FakeNode {
+  kind: "dir" | "file" | "symlink";
+  uid: number;
+  mode?: number;
+}
+
+/** An in-memory fs keyed by absolute path; nothing touches the real /tmp. */
+class FakeFs implements TmpFs {
+  readonly removed: string[] = [];
+  readonly made: Array<[string, number]> = [];
+  /** Paths whose rm throws EACCES after removing nothing, as a 0555 subdir makes a real rm do. */
+  readonly denied = new Set<string>();
+  constructor(readonly nodes = new Map<string, FakeNode>([["/tmp", { kind: "dir", uid: 0 }]])) {}
+
+  add(path: string, kind: FakeNode["kind"] = "dir", uid = UID): this {
+    this.nodes.set(path, { kind, uid });
+    return this;
+  }
+  lstat(path: string): TmpStat | undefined {
+    const node = this.nodes.get(path);
+    if (node === undefined) return undefined;
+    return {
+      uid: node.uid,
+      isDirectory: () => node.kind === "dir",
+      isSymbolicLink: () => node.kind === "symlink",
+    };
+  }
+  readdir(path: string): string[] {
+    return [...this.nodes.keys()]
+      .filter(p => p.startsWith(`${path}/`) && !p.slice(path.length + 1).includes("/"))
+      .map(p => p.slice(path.length + 1));
+  }
+  mkdir(path: string, mode: number, recursive = false): void {
+    if (this.nodes.has(path) && recursive) return;
+    if (this.nodes.has(path)) throw Object.assign(new Error("exists"), { code: "EEXIST" });
+    this.made.push([path, mode]);
+    this.nodes.set(path, { kind: "dir", uid: UID, mode });
+  }
+  chmod(path: string, mode: number): void {
+    const node = this.nodes.get(path);
+    if (node !== undefined) node.mode = mode;
+  }
+  rm(path: string): void {
+    if (this.denied.has(path)) {
+      throw Object.assign(new Error(`EACCES: permission denied, rmdir '${path}/ro'`), { code: "EACCES" });
+    }
+    this.removed.push(path);
+    for (const p of [...this.nodes.keys()]) if (p === path || p.startsWith(`${path}/`)) this.nodes.delete(p);
+  }
+}
+
+interface FakeProc {
+  env?: Record<string, string>;
+  command?: string;
+  ppid?: number;
+  cwd?: string;
+  fds?: string[];
+}
+
+const procTable = (entries: Record<number, FakeProc>): TmpProcessTable => {
+  const procs = new Map(Object.entries(entries).map(([pid, p]) => [Number(pid), p]));
+  return {
+    pids: () => [...procs.keys()],
+    environ: pid => procs.get(pid)?.env,
+    command: pid => procs.get(pid)?.command ?? "",
+    parentOf: pid => procs.get(pid)?.ppid,
+    isAlive: pid => procs.has(pid),
+    cwd: pid => procs.get(pid)?.cwd,
+    fds: pid => procs.get(pid)?.fds ?? [],
+  };
+};
+
+const launch = (agentId: string, launcher: number) => ({
+  AGENT_CHAT_AGENT_ID: agentId,
+  AGENT_CHAT_NAME: "worker",
+  AGENT_CHAT_LAUNCHER_PID: String(launcher),
+});
+
+const DIR = "/tmp/ac-worker-4242";
+const DISK_ROOT = "/home/example/.cache/agent-chat/tmp";
+const DISK_DIR = `${DISK_ROOT}/ac-worker-4242`;
+const target = { name: "worker", pid: 4242, agentIds: new Set(["a1"]) };
+const deps = (fs: FakeFs, table = procTable({})) => ({ fs, table, uid: UID, self: 1 });
+
+describe("the per-agent tmp path", () => {
+  it("is /tmp/ac-<name>-<pid>", () => {
+    expect(agentTmpPath("worker", 4242)).toBe(DIR);
+  });
+
+  it("refuses a name that could leave /tmp or widen the match", () => {
+    for (const name of ["", ".", "..", "../etc", "a/b", "a\\b", "*", "a b", "x\nb", "-lead", "a".repeat(65)]) {
+      expect(agentTmpPath(name, 4242), JSON.stringify(name)).toBeUndefined();
+    }
+  });
+
+  it("refuses a pid that is not a positive integer", () => {
+    for (const pid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(agentTmpPath("worker", pid), String(pid)).toBeUndefined();
+    }
+  });
+});
+
+describe("making the per-agent TMPDIR", () => {
+  it("creates the dir 0700 on Linux", () => {
+    const fs = new FakeFs();
+
+    expect(ensureAgentTmpDir({ name: "worker", pid: 4242, platform: "linux", fs, uid: UID })).toBe(DIR);
+    expect(fs.made).toEqual([[DIR, 0o700]]);
+  });
+
+  it("makes nothing on macOS", () => {
+    const fs = new FakeFs();
+
+    expect(ensureAgentTmpDir({ name: "worker", pid: 4242, platform: "darwin", fs, uid: UID })).toBeUndefined();
+    expect(fs.made).toEqual([]);
+  });
+
+  it("reuses a leftover dir it owns and tightens it to 0700", () => {
+    const fs = new FakeFs().add(DIR);
+
+    expect(ensureAgentTmpDir({ name: "worker", pid: 4242, platform: "linux", fs, uid: UID })).toBe(DIR);
+    expect(fs.nodes.get(DIR)?.mode).toBe(0o700);
+  });
+
+  it("will not adopt a planted symlink or another user’s dir", () => {
+    const link = new FakeFs().add(DIR, "symlink");
+    const foreign = new FakeFs().add(DIR, "dir", 0);
+
+    expect(ensureAgentTmpDir({ name: "worker", pid: 4242, platform: "linux", fs: link, uid: UID })).toBeUndefined();
+    expect(ensureAgentTmpDir({ name: "worker", pid: 4242, platform: "linux", fs: foreign, uid: UID })).toBeUndefined();
+  });
+
+  it("makes nothing for an invalid name", () => {
+    const fs = new FakeFs();
+
+    expect(ensureAgentTmpDir({ name: "../etc", pid: 4242, platform: "linux", fs, uid: UID })).toBeUndefined();
+    expect(fs.made).toEqual([]);
+  });
+});
+
+describe("a per-agent TMPDIR under the on-disk root (CC-1184)", () => {
+  const request = (fs: FakeFs, root: string) =>
+    ({ name: "worker", pid: 4242, root, platform: "linux", fs, uid: UID } as const);
+
+  it("creates the root and then the dir, both 0700", () => {
+    const fs = new FakeFs();
+
+    expect(ensureAgentTmpDir(request(fs, DISK_ROOT))).toBe(DISK_DIR);
+    expect(fs.made).toEqual([
+      [DISK_ROOT, 0o700],
+      [DISK_DIR, 0o700],
+    ]);
+  });
+
+  it("reuses an existing root it owns", () => {
+    const fs = new FakeFs().add(DISK_ROOT);
+
+    expect(ensureAgentTmpDir(request(fs, DISK_ROOT))).toBe(DISK_DIR);
+    expect(fs.made).toEqual([[DISK_DIR, 0o700]]);
+  });
+
+  it("will not use a root that is a symlink or another user’s", () => {
+    expect(ensureAgentTmpDir(request(new FakeFs().add(DISK_ROOT, "symlink"), DISK_ROOT))).toBeUndefined();
+    expect(ensureAgentTmpDir(request(new FakeFs().add(DISK_ROOT, "dir", 0), DISK_ROOT))).toBeUndefined();
+  });
+
+  it("refuses any other root without touching the fs", () => {
+    for (const root of [
+      "/etc",
+      "home/example/.cache/agent-chat/tmp",
+      "/home/example/../../etc/.cache/agent-chat/tmp",
+      "/home/example/.cache/agent-chat/tmp/",
+      "/home/example/.cache/other",
+    ]) {
+      const fs = new FakeFs();
+      expect(ensureAgentTmpDir(request(fs, root)), root).toBeUndefined();
+      expect(agentTmpPath("worker", 4242, root), root).toBeUndefined();
+      expect(fs.made, root).toEqual([]);
+    }
+  });
+
+  it("removes exactly the disk dir at exit and leaves the /tmp one", () => {
+    const fs = new FakeFs().add(DISK_ROOT).add(DISK_DIR).add(DIR);
+
+    removeOwnTmpDir("worker", "a1", 4242, { ...deps(fs), platform: "linux", log: () => undefined }, DISK_ROOT);
+
+    expect(fs.removed).toEqual([DISK_DIR]);
+    expect(fs.nodes.has(DIR)).toBe(true);
+  });
+
+  it("leaves the dir at exit when the disk root is a symlink (CC-1321)", () => {
+    const fs = new FakeFs().add(DISK_ROOT, "symlink").add(DISK_DIR);
+    const events: Array<[string, Record<string, unknown>]> = [];
+
+    removeOwnTmpDir(
+      "worker",
+      "a1",
+      4242,
+      { ...deps(fs), platform: "linux", log: (e, d) => events.push([e, d]) },
+      DISK_ROOT
+    );
+
+    expect(fs.removed).toEqual([]);
+    expect(events).toEqual([
+      ["tmpdir_kept", { source: "exit", agentId: "a1", path: DISK_DIR, reason: "root symlink" }],
+    ]);
+  });
+});
+
+describe("a per-agent harness dir under the on-disk harness root (CC-1266)", () => {
+  const HARNESS_ROOT = "/home/example/.cache/agent-chat/harness";
+  const HARNESS_DIR = `${HARNESS_ROOT}/ac-worker-4242`;
+  const request = (fs: FakeFs, root: string) =>
+    ({ name: "worker", pid: 4242, root, platform: "linux", fs, uid: UID } as const);
+
+  it("builds the leaf under the harness root", () => {
+    expect(agentTmpPath("worker", 4242, HARNESS_ROOT)).toBe(HARNESS_DIR);
+  });
+
+  it("creates the root and then the dir, both 0700", () => {
+    const fs = new FakeFs();
+
+    expect(ensureAgentTmpDir(request(fs, HARNESS_ROOT))).toBe(HARNESS_DIR);
+    expect(fs.made).toEqual([
+      [HARNESS_ROOT, 0o700],
+      [HARNESS_DIR, 0o700],
+    ]);
+  });
+
+  it("refuses a root that only resembles the harness root", () => {
+    for (const root of [`${HARNESS_ROOT}X`, `${HARNESS_ROOT}/../tmp`, `${HARNESS_ROOT}/`]) {
+      const fs = new FakeFs();
+      expect(ensureAgentTmpDir(request(fs, root)), root).toBeUndefined();
+      expect(agentTmpPath("worker", 4242, root), root).toBeUndefined();
+      expect(fs.made, root).toEqual([]);
+    }
+  });
+});
+
+describe("removing a per-agent TMPDIR", () => {
+  it("removes the dir and counts every inode in it", () => {
+    const fs = new FakeFs()
+      .add(DIR)
+      .add(`${DIR}/a.txt`, "file")
+      .add(`${DIR}/sub`)
+      .add(`${DIR}/sub/b.txt`, "file")
+      .add(`${DIR}/link`, "symlink");
+
+    expect(removeAgentTmpDir(target, deps(fs))).toEqual({ removed: true, path: DIR, inodes: 5 });
+    expect(fs.removed).toEqual([DIR]);
+  });
+
+  it("treats a missing dir as nothing to do", () => {
+    const fs = new FakeFs();
+
+    expect(removeAgentTmpDir(target, deps(fs))).toEqual({ removed: false, path: DIR, reason: "missing" });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses a symlink", () => {
+    const fs = new FakeFs().add(DIR, "symlink");
+
+    expect(removeAgentTmpDir(target, deps(fs))).toMatchObject({ removed: false, reason: "symlink" });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses something that is not a directory", () => {
+    const fs = new FakeFs().add(DIR, "file");
+
+    expect(removeAgentTmpDir(target, deps(fs))).toMatchObject({ removed: false, reason: "not a directory" });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses a dir another user owns", () => {
+    const fs = new FakeFs().add(DIR, "dir", 0);
+
+    expect(removeAgentTmpDir(target, deps(fs))).toMatchObject({ removed: false, reason: "owned by uid 0" });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses an invalid name or pid without looking at the fs", () => {
+    const fs = new FakeFs().add("/etc");
+
+    expect(removeAgentTmpDir({ ...target, name: "../../etc" }, deps(fs))).toMatchObject({
+      removed: false,
+      reason: "invalid name or pid",
+    });
+    expect(removeAgentTmpDir({ ...target, pid: 0 }, deps(fs))).toMatchObject({ removed: false });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("keeps the dir while a live process has its cwd inside it", () => {
+    const fs = new FakeFs().add(DIR).add(`${DIR}/work`);
+    const table = procTable({ 900: { cwd: `${DIR}/work` } });
+
+    expect(removeAgentTmpDir(target, deps(fs, table))).toMatchObject({
+      removed: false,
+      reason: "in use by pid 900",
+    });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("keeps the dir while a live process holds an open fd inside it", () => {
+    const fs = new FakeFs().add(DIR);
+    const table = procTable({ 901: { cwd: "/home/example", fds: ["/dev/null", `${DIR}/log (deleted)`] } });
+
+    expect(removeAgentTmpDir(target, deps(fs, table))).toMatchObject({
+      removed: false,
+      reason: "in use by pid 901",
+    });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("does not mistake a sibling dir sharing the prefix for the agent’s own", () => {
+    const fs = new FakeFs().add(DIR);
+    const table = procTable({ 902: { cwd: `${DIR}5` } });
+
+    expect(removeAgentTmpDir(target, deps(fs, table))).toMatchObject({ removed: true });
+  });
+
+  it("keeps the dir while a process of that launch is still alive", () => {
+    const fs = new FakeFs().add(DIR);
+    const table = procTable({ 903: { env: launch("a1", 4242), cwd: "/home/example" } });
+
+    expect(removeAgentTmpDir(target, deps(fs, table))).toMatchObject({
+      removed: false,
+      reason: "launch process 903 alive",
+    });
+  });
+
+  it("ignores its own process and ancestors when judging liveness", () => {
+    const fs = new FakeFs().add(DIR);
+    const table = procTable({ 4242: { env: launch("a1", 4242), cwd: "/home/example", ppid: 1 } });
+
+    expect(removeAgentTmpDir(target, { ...deps(fs, table), self: 4242 })).toMatchObject({ removed: true });
+  });
+});
+
+describe("removing a per-agent TMPDIR under an unsafe disk root (CC-1321)", () => {
+  const rootTarget = { ...target, root: DISK_ROOT };
+
+  it("refuses to remove through a symlinked disk root", () => {
+    const fs = new FakeFs().add(DISK_ROOT, "symlink").add(DISK_DIR);
+
+    expect(removeAgentTmpDir(rootTarget, deps(fs))).toEqual({
+      removed: false,
+      path: DISK_DIR,
+      reason: "root symlink",
+    });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses to remove under a disk root another user owns", () => {
+    const fs = new FakeFs().add(DISK_ROOT, "dir", 0).add(DISK_DIR);
+
+    expect(removeAgentTmpDir(rootTarget, deps(fs))).toMatchObject({
+      removed: false,
+      reason: "root owned by uid 0",
+    });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses to remove under a disk root that is not a directory", () => {
+    const fs = new FakeFs().add(DISK_ROOT, "file").add(DISK_DIR);
+
+    expect(removeAgentTmpDir(rootTarget, deps(fs))).toMatchObject({
+      removed: false,
+      reason: "root not a directory",
+    });
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("treats a missing disk root as nothing to do", () => {
+    const fs = new FakeFs();
+
+    expect(removeAgentTmpDir(rootTarget, deps(fs))).toEqual({
+      removed: false,
+      path: DISK_DIR,
+      reason: "missing",
+    });
+  });
+
+  it("still removes under /tmp, whose owner is root", () => {
+    const fs = new FakeFs().add(DIR);
+
+    expect(removeAgentTmpDir(target, deps(fs))).toMatchObject({ removed: true, path: DIR });
+  });
+
+  it("removes under an own disk root", () => {
+    const fs = new FakeFs().add(DISK_ROOT).add(DISK_DIR);
+
+    expect(removeAgentTmpDir(rootTarget, deps(fs))).toMatchObject({ removed: true, path: DISK_DIR });
+    expect(fs.removed).toEqual([DISK_DIR]);
+  });
+});
+
+describe("removing the TMPDIR at run-agent exit", () => {
+  it("removes the launch’s own dir and logs the inode count", () => {
+    const fs = new FakeFs().add(DIR).add(`${DIR}/x`, "file");
+    const events: Array<[string, Record<string, unknown>]> = [];
+
+    removeOwnTmpDir("worker", "a1", 4242, {
+      ...deps(fs),
+      self: 4242,
+      platform: "linux",
+      log: (e, d) => events.push([e, d]),
+    });
+
+    expect(events).toEqual([["tmpdir_removed", { source: "exit", agentId: "a1", path: DIR, inodes: 2 }]]);
+  });
+
+  it("logs why it kept the dir", () => {
+    const fs = new FakeFs().add(DIR);
+    const events: Array<[string, Record<string, unknown>]> = [];
+
+    removeOwnTmpDir("worker", "a1", 4242, {
+      ...deps(fs, procTable({ 77: { env: launch("a1", 4242) } })),
+      self: 4242,
+      platform: "linux",
+      log: (e, d) => events.push([e, d]),
+    });
+
+    expect(events).toEqual([
+      ["tmpdir_kept", { source: "exit", agentId: "a1", path: DIR, reason: "launch process 77 alive" }],
+    ]);
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("does nothing off Linux", () => {
+    const fs = new FakeFs().add(DIR);
+    const events: unknown[] = [];
+
+    removeOwnTmpDir("worker", "a1", 4242, { ...deps(fs), platform: "darwin", log: e => events.push(e) });
+
+    expect(fs.removed).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  it("logs a failed removal with its error code instead of throwing out of the exit handler", () => {
+    const fs = new FakeFs().add(DIR);
+    fs.denied.add(DIR);
+    const events: Array<[string, Record<string, unknown>]> = [];
+    const exitCode = process.exitCode;
+    process.exitCode = 3;
+
+    try {
+      expect(() =>
+        removeOwnTmpDir("worker", "a1", 4242, {
+          ...deps(fs),
+          self: 4242,
+          platform: "linux",
+          log: (e, d) => events.push([e, d]),
+        })
+      ).not.toThrow();
+      expect(process.exitCode).toBe(3);
+    } finally {
+      process.exitCode = exitCode;
+    }
+    expect(events).toEqual([
+      ["tmpdir_remove_failed", expect.objectContaining({ source: "exit", agentId: "a1", path: DIR, code: "EACCES" })],
+    ]);
+  });
+});
+
+describe("a real removal of a tree it cannot fully delete", () => {
+  it("throws EACCES with a code, which is what the callers must catch", () => {
+    if (process.getuid?.() === 0) return;
+    const root = nodeFs.mkdtempSync(path.join(os.tmpdir(), "cc901-rm-"));
+    const readOnly = path.join(root, "tree", "ro");
+    nodeFs.mkdirSync(readOnly, { recursive: true });
+    nodeFs.writeFileSync(path.join(readOnly, "f"), "");
+    nodeFs.chmodSync(readOnly, 0o555);
+
+    try {
+      expect(() => realTmpFs.rm(path.join(root, "tree"))).toThrow(expect.objectContaining({ code: "EACCES" }));
+    } finally {
+      nodeFs.chmodSync(readOnly, 0o755);
+      nodeFs.rmSync(root, { recursive: true });
+    }
+  });
+});
+
+const row = (agentId: string, name: string, state: AgentIdentity["state"], exitedAt = 0): AgentIdentity => ({
+  agentId,
+  name,
+  state,
+  exitedAt,
+  lastEventAt: exitedAt,
+});
+
+describe("sweeping per-agent TMPDIRs of finished agents", () => {
+  const now = SWEEP_GRACE_MS + 1;
+  const run = (fs: FakeFs, roster: AgentIdentity[], table = procTable({})) => {
+    const events: Array<[string, Record<string, unknown>]> = [];
+    sweepAgentTmpDirs({
+      roster: () => roster,
+      now: () => now,
+      ...deps(fs, table),
+      log: (e, d) => events.push([e, d]),
+    });
+    return events;
+  };
+
+  it("removes the dirs of an exited agent and logs each", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11").add("/tmp/ac-worker-12").add("/tmp/ac-worker-12/f", "file");
+
+    const events = run(fs, [row("a1", "worker", "exited")]);
+
+    expect(fs.removed.sort()).toEqual(["/tmp/ac-worker-11", "/tmp/ac-worker-12"]);
+    expect(events).toContainEqual([
+      "tmpdir_removed",
+      { source: "sweep", agentId: "a1", path: "/tmp/ac-worker-12", inodes: 2 },
+    ]);
+  });
+
+  it("leaves every entry that is not exactly ac-<finished name>-<pid>", () => {
+    const fs = new FakeFs()
+      .add("/tmp/ac-worker-abc")
+      .add("/tmp/ac-worker-")
+      .add("/tmp/ac-worker-0")
+      .add("/tmp/ac-other-11")
+      .add("/tmp/ac-worker")
+      .add("/tmp/review-500-abc")
+      .add("/tmp/worker-11");
+
+    run(fs, [row("a1", "worker", "exited")]);
+
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("leaves a name that also has a live row", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11");
+
+    run(fs, [row("a1", "worker", "exited"), row("a2", "worker", "live")]);
+
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("leaves an agent still inside the sweep grace", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11");
+
+    run(fs, [row("a1", "worker", "exited", now)]);
+
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("leaves a dir whose launcher is still a live run-agent of that agent", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11");
+
+    run(fs, [row("a1", "worker", "retired")], procTable({ 11: { command: "node agent-chat run-agent a1" } }));
+
+    expect(fs.removed).toEqual([]);
+  });
+
+  it("refuses a symlink and reports it once, not every sweep", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11", "symlink");
+    const roster = [row("a1", "worker", "exited")];
+    const events: string[] = [];
+    const sweep = {
+      roster: () => roster,
+      now: () => now,
+      ...deps(fs),
+      log: (e: string) => events.push(e),
+      announced: new Set<string>(),
+    };
+
+    sweepAgentTmpDirs(sweep);
+    sweepAgentTmpDirs(sweep);
+
+    expect(fs.removed).toEqual([]);
+    expect(events).toEqual(["tmpdir_kept"]);
+  });
+
+  it("logs a failed removal once and still removes the entries after it", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11").add("/tmp/ac-worker-12");
+    fs.denied.add("/tmp/ac-worker-11");
+    const events: Array<[string, Record<string, unknown>]> = [];
+    const sweep = {
+      roster: () => [row("a1", "worker", "exited")],
+      now: () => now,
+      ...deps(fs),
+      log: (e: string, d: Record<string, unknown>) => events.push([e, d]),
+      announced: new Set<string>(),
+    };
+
+    sweepAgentTmpDirs(sweep);
+    fs.add("/tmp/ac-worker-13");
+    sweepAgentTmpDirs(sweep);
+
+    expect(fs.removed).toEqual(["/tmp/ac-worker-12", "/tmp/ac-worker-13"]);
+    expect(events.filter(([e]) => e === "tmpdir_remove_failed")).toEqual([
+      [
+        "tmpdir_remove_failed",
+        expect.objectContaining({
+          source: "sweep",
+          agentId: "a1",
+          path: "/tmp/ac-worker-11",
+          code: "EACCES",
+        }),
+      ],
+    ]);
+  });
+
+  it("reads each process at most once in a pass however many dirs it checks (CC-1447)", () => {
+    const fs = new FakeFs();
+    for (let pid = 11; pid < 61; pid++) fs.add(`/tmp/ac-worker-${pid}`);
+    const procs: Record<number, FakeProc> = {};
+    for (let pid = 1000; pid < 1100; pid++) procs[pid] = { env: {}, cwd: "/home/example", fds: ["/dev/null"] };
+    const reads = new Map<string, number>();
+    const counted = (table: TmpProcessTable): TmpProcessTable => {
+      const count =
+        <A extends unknown[], R>(name: string, read: (...args: A) => R) =>
+        (...args: A): R => {
+          const key = `${name}:${String(args[0])}`;
+          reads.set(key, (reads.get(key) ?? 0) + 1);
+          return read(...args);
+        };
+      return {
+        pids: count("pids", table.pids),
+        environ: count("environ", table.environ),
+        command: count("command", table.command),
+        parentOf: count("parentOf", table.parentOf),
+        isAlive: count("isAlive", table.isAlive),
+        cwd: count("cwd", table.cwd),
+        fds: count("fds", table.fds),
+      };
+    };
+
+    run(fs, [row("a1", "worker", "exited")], counted(procTable(procs)));
+
+    expect(fs.removed).toHaveLength(50);
+    expect(Math.max(...reads.values())).toBe(1);
+  });
+
+  it("reads the table afresh on the next pass, so a dir freed meanwhile goes", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11");
+    const procs = new Map<number, FakeProc>([[500, { cwd: "/tmp/ac-worker-11" }]]);
+    const table = procTable({});
+    const live: TmpProcessTable = {
+      ...table,
+      pids: () => [...procs.keys()],
+      isAlive: pid => procs.has(pid),
+      cwd: pid => procs.get(pid)?.cwd,
+    };
+    const sweep = {
+      roster: () => [row("a1", "worker", "exited")],
+      now: () => now,
+      ...deps(fs, live),
+      log: () => undefined,
+    };
+
+    sweepAgentTmpDirs(sweep);
+    procs.delete(500);
+    sweepAgentTmpDirs(sweep);
+
+    expect(fs.removed).toEqual(["/tmp/ac-worker-11"]);
+  });
+
+  it("removes a finished agent’s dir under each root it is given", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11").add(DISK_ROOT).add(`${DISK_ROOT}/ac-worker-12`);
+    const events: Array<[string, Record<string, unknown>]> = [];
+
+    sweepAgentTmpDirs({
+      roster: () => [row("a1", "worker", "exited")],
+      now: () => now,
+      ...deps(fs),
+      log: (e, d) => events.push([e, d]),
+      roots: ["/tmp", DISK_ROOT],
+    });
+
+    expect(fs.removed.sort()).toEqual([`${DISK_ROOT}/ac-worker-12`, "/tmp/ac-worker-11"]);
+  });
+
+  it("does not sweep through a symlinked disk root (CC-1321)", () => {
+    const fs = new FakeFs().add(DISK_ROOT, "symlink").add(`${DISK_ROOT}/ac-worker-12`);
+    const events: Array<[string, Record<string, unknown>]> = [];
+
+    sweepAgentTmpDirs({
+      roster: () => [row("a1", "worker", "exited")],
+      now: () => now,
+      ...deps(fs),
+      log: (e, d) => events.push([e, d]),
+      roots: [DISK_ROOT],
+    });
+
+    expect(fs.removed).toEqual([]);
+    expect(events).toContainEqual([
+      "tmpdir_kept",
+      expect.objectContaining({ source: "sweep", reason: "root symlink" }),
+    ]);
+  });
+
+  it("removes a finished implementer’s leftover dir under the disk root (CC-1264)", () => {
+    const dir = `${DISK_ROOT}/ac-seat-a-impl-4242`;
+    const fs = new FakeFs().add(DISK_ROOT).add(dir);
+    const events: Array<[string, Record<string, unknown>]> = [];
+
+    sweepAgentTmpDirs({
+      roster: () => [row("a1", "seat-a-impl", "exited")],
+      now: () => now,
+      ...deps(fs),
+      log: (e, d) => events.push([e, d]),
+      roots: agentTmpSweepRoots("/home/example"),
+    });
+
+    expect(fs.removed).toEqual([dir]);
+    expect(events).toContainEqual(["tmpdir_removed", expect.objectContaining({ source: "sweep", path: dir })]);
+  });
+
+  it("removes a finished agent’s harness dir and keeps a live agent’s (CC-1266)", () => {
+    const harness = "/home/example/.cache/agent-chat/harness";
+    const fs = new FakeFs().add(harness).add(`${harness}/ac-worker-4242`).add(`${harness}/ac-lead-77`);
+
+    sweepAgentTmpDirs({
+      roster: () => [row("a1", "worker", "exited"), row("a2", "lead", "live")],
+      now: () => now,
+      ...deps(fs),
+      log: () => undefined,
+      roots: agentTmpSweepRoots("/home/example"),
+    });
+
+    expect(fs.removed).toEqual([`${harness}/ac-worker-4242`]);
+    expect(fs.nodes.has(`${harness}/ac-lead-77`)).toBe(true);
+  });
+
+  it("skips a root that does not exist", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11");
+
+    sweepAgentTmpDirs({
+      roster: () => [row("a1", "worker", "exited")],
+      now: () => now,
+      ...deps(fs),
+      log: () => undefined,
+      roots: [DISK_ROOT, "/tmp"],
+    });
+
+    expect(fs.removed).toEqual(["/tmp/ac-worker-11"]);
+  });
+
+  it("does nothing when no agent is finished", () => {
+    const fs = new FakeFs().add("/tmp/ac-worker-11");
+
+    expect(run(fs, [row("a1", "worker", "live")])).toEqual([]);
+    expect(fs.removed).toEqual([]);
+  });
+});
