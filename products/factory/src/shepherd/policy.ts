@@ -325,7 +325,7 @@ function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) =
 }
 
 /** Read from the MERGE evidence at that head; a head with no well-formed evidence names none. */
-function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
+export function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): string[] {
   return skillPathsIn(mergeEvidenceAt(headSha, verdictFor)?.merge.changedPaths ?? []);
 }
 
@@ -335,7 +335,7 @@ function skillPathsAt(headSha: string, verdictFor: (headSha: string) => Verdict 
  * (merge-facts.ts), so a visual-path or files-unread gate can carry a weakened CI policy too. A MERGE whose evidence is
  * malformed read no files the owner can trust, so it reads as unread.
  */
-function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
+export function ownerAtHeadAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): OwnerAtHeadRow[] {
   const evidence = mergeEvidenceAt(headSha, verdictFor);
   if (evidence === undefined) return verdictFor(headSha)?.kind === "MERGE" ? ["files-unread"] : [];
   const rows: OwnerAtHeadRow[] = [];
