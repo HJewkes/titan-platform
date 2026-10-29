@@ -303,6 +303,32 @@ exits, pending and later calls reject with `CodexAppServerExitedError`. The clie
 declines server requests such as approvals with a JSON-RPC error. Choose an approval
 policy at `threadStart` that never asks.
 
+## Launch identity and per-agent TMPDIR
+
+A host that launches long-lived agents marks each launch's process tree and gives it a private
+temp dir. These modules come from agent-chat, which still owns the policy around them: when to
+reap, which roster rows count, and what to log.
+
+- `AGENT_ID_ENV` and `LAUNCHER_PID_ENV` mark a launch. A process belongs to a launch only when
+  both match, so a resumed agent's live successor is never mistaken for a finished launch's stray.
+- `withoutLaunchIdentity(env)` and `clearLaunchIdentity(env)` drop the identity, any restart
+  token and any launch's private temp dir. Run one before starting shared infrastructure from
+  inside an agent; otherwise that infrastructure inherits the agent's identity.
+- `ensureAgentTmpDir({ name, pid, root })` makes `<root>/ac-<name>-<pid>` with mode 0700, on
+  Linux only. `root` is `/tmp`, `diskTmpRoot(home)` or `diskHarnessRoot(home)`. The dir is not
+  made, and the function returns undefined, when the path is a symlink, is not a directory or
+  belongs to another uid.
+- `removeOwnTmpDir` runs at the launcher's exit. `sweepAgentTmpDirs` runs periodically and
+  covers finished launches. Each removes only the exact path rebuilt from a validated name and
+  pid, and keeps the dir while a process of the launch is alive or holds its cwd or an fd inside.
+- `reapOwnLaunch(agentId, launcherPid, deps)` sends TERM and then KILL to the processes a
+  finished launch left behind. It spares the caller, the caller's ancestors and daemons.
+
+Path length: Linux caps a Unix socket path at 108 bytes. `<home>/.cache/agent-chat/tmp/ac-<name>-<pid>`
+reaches about 80 bytes with a 32-character name, so a tool that opens a pipe under TMPDIR, as
+tsx does, can exceed the cap and fail with `listen EINVAL`. The format stays fixed because
+`isLaunchTmpDir` must recognise dirs made by older launchers; keep agent names short instead.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message
