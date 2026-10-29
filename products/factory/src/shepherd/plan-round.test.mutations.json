@@ -43,7 +43,8 @@
       "find": "const keys = plan.ciPolicyKeys;",
       "replace": "const keys = plan.ciPolicyKeys ?? [];",
       "kills": [
-        "predicting the ci-policy gate refuses a .github/ plan that names no ciPolicyKeys, naming the keys"
+        "predicting the ci-policy gate refuses a .github/ plan that names no ciPolicyKeys, naming the keys",
+        "drafting the round exits 65 and prints no round when the plan is refused"
       ]
     }
   ]

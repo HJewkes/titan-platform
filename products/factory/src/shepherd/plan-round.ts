@@ -64,8 +64,19 @@ export function blobOf(bytes: Buffer): string {
   return createHash("sha1").update(`blob ${bytes.byteLength}\0`).update(bytes).digest("hex");
 }
 
-export function pinFiles(plan: PlanBlock): CiPolicyScope["files"] {
+/** Blob shas read at `--pin-from`, by planned path; null where the ref holds no such path. */
+type RefPins = ReadonlyMap<string, string | null>;
+
+export function pinFiles(plan: PlanBlock, pins?: RefPins): CiPolicyScope["files"] {
+  if (pins) return plan.files.map((file) => ({ path: file.path, blob: pins.get(file.path) ?? null }));
   return plan.files.map((file) => ({ path: file.path, blob: file.content === undefined ? null : blobOf(Buffer.from(file.content, "utf8")) }));
+}
+
+/** The re-ask pins the bytes a drifted head really holds, so a path that also states its bytes inline would leave two answers. */
+async function pinsAt(plan: PlanBlock, git: GitRead, ref: string): Promise<RefPins> {
+  const inline = plan.files.filter((file) => file.content !== undefined || file.absent !== undefined).map((file) => file.path);
+  if (inline.length > 0) throw new PlanRoundRefused(`--pin-from ${ref} pins every planned file from that ref, and ${inline.join(", ")} also gives content or absent inline; drop those fields from the block`);
+  return new Map(await Promise.all(plan.files.map(async (file) => [file.path, await git.blob(ref, file.path)] as const)));
 }
 
 interface GatePrediction {
@@ -76,9 +87,9 @@ interface GatePrediction {
 }
 
 /** One prediction per WHAT gate, each from the guard's own predicate, so the round asks exactly what merge would. */
-export function predictGates(plan: PlanBlock, visualPaths: readonly string[] | undefined): GatePrediction {
+export function predictGates(plan: PlanBlock, visualPaths: readonly string[] | undefined, pins?: RefPins): GatePrediction {
   const paths = plan.files.map((file) => file.path);
-  const ciPolicy = predictCiPolicy(plan);
+  const ciPolicy = predictCiPolicy(plan, pins);
   const skill = skillPathsIn(paths);
   const visual = visualPaths === undefined ? [] : visualMatches(paths, visualPaths);
   const notes = paths.some((path) => path.toLowerCase() === AUTHORITY_TABLE)
@@ -88,7 +99,7 @@ export function predictGates(plan: PlanBlock, visualPaths: readonly string[] | u
 }
 
 /** `ciPolicyCovers` needs every changed path pinned, so a policy question binds only a plan that gives every file's bytes. */
-function predictCiPolicy(plan: PlanBlock): CiPolicyScope | undefined {
+function predictCiPolicy(plan: PlanBlock, pins: RefPins | undefined): CiPolicyScope | undefined {
   const github = plan.files.map((file) => file.path).filter(isGithubPath);
   if (github.length === 0 && plan.ciPolicy === undefined) return undefined;
   const keys = plan.ciPolicyKeys;
@@ -100,21 +111,26 @@ function predictCiPolicy(plan: PlanBlock): CiPolicyScope | undefined {
     if (plan.ciPolicy) throw new PlanRoundRefused("ciPolicy: true needs at least one ciPolicyKeys entry");
     return undefined;
   }
-  const unpinned = plan.files.filter((file) => file.content === undefined && file.absent === undefined).map((file) => file.path);
+  const unpinned = pins ? [] : plan.files.filter((file) => file.content === undefined && file.absent === undefined).map((file) => file.path);
   const unpinnedRefusal = `a CI-policy approval pins every file its PR changes, and ${unpinned.join(", ")} has no content or absent; split the policy edit into its own PR`;
   if (unpinned.length > 0) throw new PlanRoundRefused(unpinnedRefusal);
   if (plan.files.length > MAX_PINNED_FILES) throw new PlanRoundRefused(`a CI-policy approval pins at most ${MAX_PINNED_FILES} files, and the plan lists ${plan.files.length}`);
-  return { ciPolicyKeys: keys, files: pinFiles(plan) };
+  return { ciPolicyKeys: keys, files: pinFiles(plan, pins) };
 }
 
-/** Reads a file at a ref in the planner's checkout; null when the ref holds no such path. */
+/** Reads in the planner's checkout. `show` and `blob` give null when the ref holds no such path; a ref that is no commit throws. */
 export interface GitRead {
   show(ref: string, path: string): Promise<string | null>;
+  blob(ref: string, path: string): Promise<string | null>;
+  commit(ref: string): Promise<string>;
+  /** Every path `git diff -M <base>...<ref>` changes, both sides of a rename included. */
+  diffNames(base: string, ref: string): Promise<string[]>;
 }
 
 /** Each pinned file against the base, rendered by the D21 card's own differ, so the owner reads at plan time what merge would show. */
-async function ownerDiff(plan: PlanBlock, git: GitRead, base: string): Promise<CiPolicyFileChange[]> {
-  const files = await Promise.all(plan.files.map(async (file) => ({ path: file.path, before: (await git.show(base, file.path)) ?? "", after: file.content ?? "" })));
+async function ownerDiff(plan: PlanBlock, git: GitRead, base: string, pinFrom: string | undefined): Promise<CiPolicyFileChange[]> {
+  const after = async (file: PlanBlock["files"][number]) => (pinFrom === undefined ? (file.content ?? "") : ((await git.show(pinFrom, file.path)) ?? ""));
+  const files = await Promise.all(plan.files.map(async (file) => ({ path: file.path, before: (await git.show(base, file.path)) ?? "", after: await after(file) })));
   return ciPolicyChanges(files);
 }
 
@@ -135,10 +151,11 @@ const pathAsk = (plan: PlanBlock, gate: "skill" | "visual", paths: string[]): Pl
   context: [`Paths: ${paths.map(shownLine).join(", ")}.`, ...whyLines(plan, paths)].join("\n"),
 });
 
-async function asksOf(plan: PlanBlock, predicted: GatePrediction, git: GitRead, base: string): Promise<PlanAsk[]> {
+async function asksOf(plan: PlanBlock, predicted: GatePrediction, git: GitRead, options: PlanRoundOptions): Promise<PlanAsk[]> {
   const asks: PlanAsk[] = [];
   if (predicted.ciPolicy) {
-    const lines = [`Weakens: ${predicted.ciPolicy.ciPolicyKeys.join(", ")}.`, ...diffLines(await ownerDiff(plan, git, base)), ...whyLines(plan, plan.files.map((file) => file.path))];
+    const diff = await ownerDiff(plan, git, options.base, options.pinFrom);
+    const lines = [`Weakens: ${predicted.ciPolicy.ciPolicyKeys.join(", ")}.`, ...diffLines(diff), ...whyLines(plan, plan.files.map((file) => file.path))];
     asks.push({ gate: "ci-policy", scope: predicted.ciPolicy, title: `${plan.summary} (CI policy)`, context: lines.join("\n") });
   }
   if (predicted.skill) asks.push(pathAsk(plan, "skill", predicted.skill));
@@ -151,6 +168,8 @@ interface PlanRoundOptions {
   base: string;
   supersedes?: string[];
   storybookUrl?: string;
+  /** The re-ask: pin each planned file to the blob this ref holds, rather than to inline content. */
+  pinFrom?: string;
   /** The `visual_paths` of the seat that owns the plan's repo; undefined when no seat opts in. */
   visualPaths?: readonly string[];
 }
@@ -161,7 +180,7 @@ interface PlanRoundResult {
   notes: string[];
 }
 
-const planUnit = (task: string): string => `plan-${task.toLowerCase().replace(/\//g, "-")}`;
+export const planUnit = (task: string): string => `plan-${task.toLowerCase().replace(/\//g, "-")}`;
 
 /** Every binding is checked with the factory's own record schema, so a round that would record nothing is refused here, not at the owner's pick. */
 function checkBindings(round: PlanRound): void {
@@ -172,8 +191,9 @@ function checkBindings(round: PlanRound): void {
 }
 
 export async function planRound(plan: PlanBlock, options: PlanRoundOptions, git: GitRead): Promise<PlanRoundResult> {
-  const predicted = predictGates(plan, options.visualPaths);
-  const asks = await asksOf(plan, predicted, git, options.base);
+  const pins = options.pinFrom === undefined ? undefined : await pinsAt(plan, git, options.pinFrom);
+  const predicted = predictGates(plan, options.visualPaths, pins);
+  const asks = await asksOf(plan, predicted, git, options);
   if (asks.length === 0) return { notes: [...predicted.notes, NOTHING_PREDICTED] };
   const { round, supersedes, storybookUrl } = options;
   const built = buildPlanRound({ unit: planUnit(plan.task), round, task: plan.task, repo: plan.repo, asks, ...(supersedes && { supersedes }), ...(storybookUrl && { storybookUrl }) });
