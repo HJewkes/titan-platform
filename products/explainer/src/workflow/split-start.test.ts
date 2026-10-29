@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { dailyWith } from "../daily-script.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
 import { cueGapCheck } from "../lint-cadence.js";
-import type { ScriptV1 } from "../script-schema.js";
+import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
 import { splitCuelessBeats } from "../script-split.js";
 import { MAX_REPAIR_ROUNDS, runScriptStage, type ModelStageInput } from "./model-stages.js";
 import { SPINE } from "./run-fakes.test-helpers.js";
@@ -52,7 +52,7 @@ async function runSeeded(reply: ScriptV1, checks: readonly L0Check[] = [cueGapCh
   const input = stageInput();
   const model = fakeModel(reply);
   const outcome = await runScriptStage(input, { model: "fake", profile: "daily-overview", runnerFor: model.runnerFor, l0Checks: checks, g2p: { tokens: () => [] } });
-  const draft = JSON.parse(input.read(outcome.outputs.draft!)) as ScriptV1;
+  const draft = ScriptSchema.parse(JSON.parse(input.read(outcome.outputs.draft!)));
   return { outcome, draft, prompts: model.prompts, read: input.read };
 }
 
@@ -93,7 +93,7 @@ describe("the split as the repair's starting script", () => {
 
     const rounds = Array.from({ length: MAX_REPAIR_ROUNDS }, (_, i) => `candidate-repair-${i + 1}`);
     expect(Object.keys(outcome.outputs)).toEqual(expect.arrayContaining(["candidate-split", ...rounds]));
-    expect(ids(JSON.parse(read(outcome.outputs["candidate-split"]!)) as ScriptV1)).toContain("reflection-2b");
+    expect(ids(ScriptSchema.parse(JSON.parse(read(outcome.outputs["candidate-split"]!))))).toContain("reflection-2b");
     expect(outcome.notes).toContain(`repair candidates: ${["candidate-split", ...rounds].map((name) => `${name} ${outcome.outputs[name]}`).join(", ")}`);
     expect(outcome.notes?.find((note) => note.startsWith("repair-1 hint:"))).toContain(SPLIT_HINT);
   });
