@@ -1,6 +1,6 @@
 import os from "node:os";
-import { runAgent, type AgentFailure, type AgentUsage } from "@titan-design/agent";
-import { ScoreCardSchema } from "./score-card.js";
+import { runAgent, type AgentFailure, type AgentRunConfig, type AgentRunResult, type AgentUsage } from "@titan-design/agent";
+import { ScoreCardSchema, type ScoreCard } from "./score-card.js";
 import type { CallUsage, DigestRunner, ScoreRunner, StepErrorClass } from "./seams.js";
 
 const ERROR_CLASS: Record<AgentFailure["kind"], StepErrorClass> = {
@@ -15,6 +15,9 @@ const ERROR_CLASS: Record<AgentFailure["kind"], StepErrorClass> = {
   inactivity_timeout: "other",
 };
 
+type RunBareAgent<T> = (config: AgentRunConfig<T>) => Promise<AgentRunResult<T>>;
+export type RunScoreAgent = RunBareAgent<ScoreCard>;
+
 function callUsage(usage: AgentUsage): CallUsage {
   const usages = Object.values(usage.modelUsage);
   const sum = (pick: (u: (typeof usages)[number]) => number) => usages.reduce((n, u) => n + pick(u), 0);
@@ -26,9 +29,9 @@ function callUsage(usage: AgentUsage): CallUsage {
 }
 
 /** One bare `claude -p` call: no tools, no settings, the CLI's own login as the credential. Without a schema the output is the reply text. */
-function bareRunner(outputSchema?: typeof ScoreCardSchema): ScoreRunner {
+function bareRunner<T>(run: RunBareAgent<T>, outputSchema?: AgentRunConfig<T>["outputSchema"]): ScoreRunner {
   return async (call) => {
-    const result = await runAgent({
+    const result = await run({
       harness: "claude-print",
       model: call.model,
       prompt: call.prompt,
@@ -55,5 +58,6 @@ function bareRunner(outputSchema?: typeof ScoreCardSchema): ScoreRunner {
   };
 }
 
-export const claudeScoreRunner: ScoreRunner = bareRunner(ScoreCardSchema);
-export const claudeDigestRunner: DigestRunner = bareRunner();
+export const createClaudeScoreRunner = (run: RunScoreAgent = runAgent): ScoreRunner => bareRunner(run, ScoreCardSchema);
+export const claudeScoreRunner: ScoreRunner = createClaudeScoreRunner();
+export const claudeDigestRunner: DigestRunner = bareRunner<string>(runAgent);
