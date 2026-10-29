@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the stdio server drops the active__ tool prefix",
+      "file": "products/active-work/src/server/mcp.ts",
+      "find": "    toolPrefix: TOOL_NAME_PREFIX,\n",
+      "replace": "    toolPrefix: 'aw__',\n",
+      "kills": ["integration: stdio MCP server handshakes and lists tools over real stdio"]
+    }
+  ]
+}

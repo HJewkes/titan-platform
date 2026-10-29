@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the daemon stops serving the dashboard under /ui/",
+      "file": "products/active-work/src/server/daemon.ts",
+      "find": "      app.get('/ui/*', (c) => handleDashboard(c));\n",
+      "replace": "",
+      "kills": [
+        "integration: live daemon roundtrip on a random port serves health, version, rpc, mcp, ui; cleans pid file on SIGTERM"
+      ]
+    }
+  ]
+}
