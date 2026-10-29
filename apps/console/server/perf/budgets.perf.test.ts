@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { silentLogger } from "@titan-design/daemon";
 import { inProcessCaller, type InProcessCall } from "@titan-design/registry";
-import type { ClassedCommand, ConsoleContext } from "../owner-guard.js";
+import type { ConsoleContext } from "../owner-guard.js";
 import { createConsoleRegistry } from "../registry.js";
 import { createSources } from "../upstreams.js";
 import { budgetFor, RPC_BUDGETS, type RpcBudget } from "./budgets.js";
@@ -36,8 +36,8 @@ function freshCaller(): InProcessCall {
 }
 
 function readCommandNames(): string[] {
-  const commands = createConsoleRegistry(createSources(fixture.config, silentLogger)).list() as ClassedCommand[];
-  return commands.filter((command) => command.commandClass === "read").map((command) => command.name);
+  const commands = createConsoleRegistry(createSources(fixture.config, silentLogger)).list();
+  return commands.filter((command) => "commandClass" in command && command.commandClass === "read").map((command) => command.name);
 }
 
 async function callCounted(rpc: InProcessCall, budget: RpcBudget): Promise<{ envelope: unknown; calls: Record<string, number>; total: number }> {
