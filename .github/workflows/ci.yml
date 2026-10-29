@@ -244,6 +244,30 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm lint:types
 
+  # Per-RPC budgets for the console's reads (TP-4403 d1), alone on a runner so no other test's CPU skews the medians.
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Check the console's read budgets
+        run: pnpm vitest run --project perf
+
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:
     runs-on: ubuntu-latest
