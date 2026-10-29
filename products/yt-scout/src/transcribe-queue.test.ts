@@ -144,12 +144,11 @@ describe("transcribe queue", () => {
     await tick(at(29));
     expect(h.calls).toHaveLength(2);
 
-    await tick(at(30));
-    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ next_retry_at: null, last_error_class: "no_captions", attempts: 3 });
     expect(h.calls.some((c) => c.includes("--whisper"))).toBe(false);
 
-    const report = await tick(at(31));
+    const report = await tick(at(30));
     expect(report.transcribed).toEqual(["vvvvvvvvv01"]);
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "transcribed", attempts: 4 });
     expect(h.calls.at(-1)).toContain("--whisper");
   });
 
