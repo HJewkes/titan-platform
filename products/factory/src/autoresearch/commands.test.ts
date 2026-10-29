@@ -218,6 +218,20 @@ describe("autoresearch.start", () => {
     expect(JSON.parse(params.config!)).toMatchObject({ lanes: 2, rounds: 50, forkSchedule: { basinEvery: 3 } });
   });
 
+  it("gives a snapshot target's run the cadence settings, and a target with no snapshot block none", async () => {
+    const { ctx, start } = writeContext([]);
+    const snapshot = { repo: "fixture-owner/fixture-repo", task: "fixture/FX-1", implementer: "fixture-seat", logDir: "ar-log" };
+    const autoresearch = arConfigFixture("/nonexistent", { fixture: { clone: "/nonexistent/fixture", snapshot }, other: { clone: "/nonexistent/other" } });
+    const withCadence = { ...ctx, autoresearch: { ...autoresearch, run: { ...autoresearch.run, snapshot: { keptIdeas: 1, spendUsd: 5 } } } };
+
+    await callWrite("autoresearch.start", { target: "fixture", pin: PIN }, { ...ctx, autoresearch });
+    await callWrite("autoresearch.start", { target: "other", pin: PIN }, withCadence);
+
+    const settings = start.mock.calls.map(([, params]) => JSON.parse(params.config!));
+    expect(settings[0].snapshot).toEqual({ keptIdeas: 3, spendUsd: 12 });
+    expect(settings[1]).not.toHaveProperty("snapshot");
+  });
+
   it("is not blocked by an unfinished run of another workflow that names the same target", async () => {
     const { ctx, start } = writeContext([{ ...baselinedRun("land-1"), workflowName: "land-pr" }]);
 
