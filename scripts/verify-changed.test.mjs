@@ -154,7 +154,7 @@ describe("planCommands", () => {
 
   it("orders changeset status, tsc, then bounded vitest", () => {
     // Mutants caught: wrong base ref, missing per-package tsc or lint:types, reordered steps.
-    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "lint:types", "vitest related"]);
+    expect(plan.map((c) => c.label)).toEqual(["changeset status", "tsc packages/a", "lint:types", "build changed packages", "capabilities:check", "vitest related"]);
     expect(plan[0].args).toContain("--since=origin/main");
   });
 
@@ -200,18 +200,27 @@ describe("lint:types scope", () => {
 describe("docs gate", () => {
   const plan = (changed) => planCommands({ base: "b", changed, hasTypecheckScript: () => false, hasTimeout: true }).map((c) => c.label);
 
-  it("skips docs:build and capabilities:check when no docs input changed", () => {
-    // Mutant caught: always appending docs:build, which adds a vitepress build to every push.
-    expect(plan(["packages/a/src/x.ts"])).toEqual(expect.not.arrayContaining(["docs:build", "capabilities:check"]));
+  it("skips both checks when neither a docs nor a package input changed", () => {
+    // Mutant caught: always appending docs:build or capabilities:check, which adds minutes to every push.
+    expect(plan(["scripts/verify-changed.mjs"])).toEqual(expect.not.arrayContaining(["docs:build", "capabilities:check"]));
   });
 
-  it("runs both when a docs or capability input changed", () => {
+  it("checks capabilities, after rebuilding the package, when any public package source changed", () => {
+    // Mutant caught: triggering on src/index.ts only, so a signature change in src/foo.ts fails CI on a stale api snapshot.
+    const labels = plan(["packages/a/src/foo.ts"]);
+    expect(labels).toEqual(expect.arrayContaining(["build changed packages", "capabilities:check"]));
+    expect(labels.indexOf("build changed packages")).toBeLessThan(labels.indexOf("capabilities:check"));
+    expect(labels).not.toContain("docs:build");
+  });
+
+  it("runs docs:build for a docs or generator input", () => {
     // Mutant caught: leaving a generator input out of the pattern, so stale generated docs reach CI.
     expect(plan(["site/guides/x.md"])).toEqual(expect.arrayContaining(["docs:build", "capabilities:check"]));
-    expect(plan(["packages/a/CAPABILITY.md"])).toContain("docs:build");
+    expect(plan(["scripts/api-snapshots.mjs"])).toContain("docs:build");
+    expect(plan(["scripts/new-package.mjs"])).toContain("docs:build");
   });
 
-  it("recognises each generator input and nothing else", () => {
+  it("recognises each docs input and nothing else", () => {
     // Mutants caught: an unanchored pattern matching any package.json or index.ts; omitting capabilities-data.json.
     for (const hit of ["CAPABILITIES.md", "scripts/capabilities-data.json", "scripts/gen-docs-reference.mjs", "packages/a/package.json", "apps/console/src/index.ts", ".codewatch/check.json"]) {
       expect(docsInputsChanged([hit]), hit).toBe(true);

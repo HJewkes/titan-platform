@@ -34,7 +34,7 @@
       "find": "if (docsInputsChanged(changed)) {",
       "replace": "if (true) {",
       "kills": [
-        "docs gate skips docs:build and capabilities:check when no docs input changed"
+        "docs gate skips both checks when neither a docs nor a package input changed"
       ]
     }
   ]

@@ -86,12 +86,22 @@ export function typecheckDirs(changed, hasTypecheckScript) {
   return touchedPackageDirs(typed).filter(hasTypecheckScript);
 }
 
-// Everything gen-docs-reference.mjs and gen-capabilities.mjs read: site pages, the capability data and catalog, each
-// unit's manifest, CAPABILITY.md and entry point, the tier rule, and the generators themselves.
+// What docs:build reads: site pages, the capability data and catalog, each unit's manifest, CAPABILITY.md and entry
+// point, the tier rule, and the generators with the modules they import.
 const DOCS_INPUT =
-  /^(?:site\/|CAPABILITIES\.md$|scripts\/capabilities-data\.json$|scripts\/gen-(?:docs-reference|capabilities)[^/]*$|\.codewatch\/check\.json$|(?:packages|products|apps)\/[^/]+\/(?:package\.json|CAPABILITY\.md|src\/index\.ts)$)/;
+  /^(?:site\/|CAPABILITIES\.md$|scripts\/(?:capabilities-data\.json|gen-(?:docs-reference|capabilities)[^/]*|api-snapshots[^/]*|new-package\.mjs)$|\.codewatch\/check\.json$|(?:packages|products|apps)\/[^/]+\/(?:package\.json|CAPABILITY\.md|src\/index\.ts)$)/;
 
 export const docsInputsChanged = (changed) => changed.some((path) => DOCS_INPUT.test(path));
+
+// capabilities:check also compares API snapshots built from each public package's dist and follows `export *` into
+// sibling sources, so any change in a package can alter it, not just its entry point.
+const PUBLIC_PACKAGE_FILE = /^packages\/[^/]+\/(?:src\/|api\/|package\.json$|CAPABILITY\.md$)/;
+
+export const capabilityInputsChanged = (changed) =>
+  docsInputsChanged(changed) || changed.some((path) => PUBLIC_PACKAGE_FILE.test(path));
+
+/** Public packages to rebuild so the snapshots read fresh dist; none when only docs inputs changed. */
+export const snapshotBuildDirs = (changed) => touchedPackageDirs(changed.filter((path) => PUBLIC_PACKAGE_FILE.test(path))).filter((dir) => dir.startsWith("packages/"));
 
 /** Packages whose changed files can alter type-aware lint: the same files that can alter types, no script needed. */
 export function lintTypesDirs(changed) {
@@ -113,10 +123,12 @@ export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) 
   if (lintDirs.length > 0) {
     commands.push({ label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", `--only=${lintDirs.join(",")}`] });
   }
-  if (docsInputsChanged(changed)) {
+  if (capabilityInputsChanged(changed)) {
+    const builds = snapshotBuildDirs(changed).flatMap((dir) => ["--filter", `./${dir}`]);
+    if (builds.length > 0) commands.push({ label: "build changed packages", cmd: "pnpm", args: [...builds, "run", "--if-present", "build"] });
     commands.push({ label: "capabilities:check", cmd: "pnpm", args: ["run", "capabilities:check"] });
-    commands.push({ label: "docs:build", cmd: "pnpm", args: ["run", "docs:build"] });
   }
+  if (docsInputsChanged(changed)) commands.push({ label: "docs:build", cmd: "pnpm", args: ["run", "docs:build"] });
   const related = relatedTestArgs(changed);
   if (related) {
     const vitest = ["pnpm", "exec", "vitest", ...related];
