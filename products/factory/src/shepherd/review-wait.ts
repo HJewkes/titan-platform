@@ -100,7 +100,7 @@ export type BusyWaits = { busyWaits?: string[] };
 export type NotStarted = { kind: "none"; reason: string; notStarted: true } & BusyWaits;
 
 /** What a resync answers a review step whose pull request moved: no reviewer, and the run reads the PR again for its new head. */
-export type Superseded = { kind: "none"; reason: string };
+type Superseded = { kind: "none"; reason: string };
 
 export const busyWaits = (waits: string[]): BusyWaits => (waits.length > 0 ? { busyWaits: waits } : {});
 
