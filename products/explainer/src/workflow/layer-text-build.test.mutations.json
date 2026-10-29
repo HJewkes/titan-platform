@@ -31,16 +31,6 @@
       ]
     },
     {
-      "name": "a check that throws is rethrown as a plain error, losing the build",
-      "file": "products/explainer/src/workflow/layer-build.ts",
-      "find": "throw new CheckUnavailable(error, build);",
-      "replace": "throw error;",
-      "kills": [
-        "the text check on custom-layer builds keeps the built layer sources in the failed record when the check cannot run",
-        "the text check on custom-layer builds fails resolve as an infra error naming the face and URL when fonts cannot load, with no model rebuild"
-      ]
-    },
-    {
       "name": "the failed record stores no layer sources",
       "file": "products/explainer/src/workflow/layer-build.ts",
       "find": "outputs: { ...record.outputs, ...sources }, notes: [...record.notes, message]",
@@ -51,12 +41,13 @@
       ]
     },
     {
-      "name": "an unrunnable check is marked as a layer defect",
+      "name": "a layer that names its own font is never rebuilt",
       "file": "products/explainer/src/workflow/layer-build.ts",
-      "find": "const CHECK_UNAVAILABLE = \"layer check could not run, not a layer defect\";",
-      "replace": "const CHECK_UNAVAILABLE = \"needs repair\";",
+      "find": "if (findings.length === 0) return { build };",
+      "replace": "if (findings.length >= 0) return { build };",
       "kills": [
-        "the text check on custom-layer builds fails resolve as an infra error naming the face and URL when fonts cannot load, with no model rebuild"
+        "the text check on custom-layer builds rebuilds once a layer that names its own font, naming the line and the theme font tokens",
+        "the text check on custom-layer builds fails resolve when the rebuild still names its own font"
       ]
     }
   ]

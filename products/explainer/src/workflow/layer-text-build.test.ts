@@ -18,6 +18,7 @@ afterEach(() => fx.cleanup());
 
 const BUILDER: BuilderRef = { id: "claude-print", version: "1", model: "fake-model", basePromptSha: "a".repeat(64) };
 const NAN_LAYER = "export default () => <span id=\"parcels\">{NaN} parcels held</span>;\n";
+const OWN_FONT_LAYER = "export default () => <span id=\"parcels\" style={{ fontFamily: \"Inter\" }}>12 parcels held</span>;\n";
 const GOOD_LAYER = "export default () => <span id=\"parcels\">12 parcels held</span>;\n";
 
 /** A fake model that answers its packets with `modules` in turn, keeping each packet it was sent. */
@@ -137,5 +138,46 @@ describe("the text check on custom-layer builds", () => {
     new ArtifactStore(fx.dataDir, db).materialise(failed.outputs[UNBUILT_LAYERS]!, dest);
     db.close();
     expect(readFileSync(path.join(dest, "b1.tsx"), "utf8")).toBe(layer);
+  });
+
+  // Mutations: the font check never runs, or its rebuild is skipped, or its hint drops the line.
+  it("rebuilds once a layer that names its own font, naming the line and the theme font tokens", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(OWN_FONT_LAYER, GOOD_LAYER);
+
+    // Act
+    const record = await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(2);
+    expect(JSON.parse(packets[1]!).rebuild).toMatch(/^the last build set its own fonts: line 1 \(font family\).*--font-family-body/);
+    const tree = path.join(runPaths(fx.dataDir, record.childRunId!).runDir, CUSTOM_LAYERS);
+    expect(readFileSync(path.join(tree, "b1.tsx"), "utf8")).toBe(GOOD_LAYER);
+  });
+
+  it("fails resolve when the rebuild still names its own font", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(OWN_FONT_LAYER);
+
+    // Act
+    const run = runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    await expect(run).rejects.toThrow("custom layers not built: b1 (needs repair: the layer still sets its own fonts after one rebuild: line 1 (font family))");
+    expect(packets).toHaveLength(2);
+  });
+
+  it("builds a layer with no font of its own in one model call", async () => {
+    // Arrange
+    fx = fixture();
+    const { packets, worker } = scriptedWorker(GOOD_LAYER);
+
+    // Act
+    await runOneStage({ stage: "resolve", inputs: customBeatInputs(fx.dataDir) }, hostWith(worker, nanCheck().check));
+
+    // Assert
+    expect(packets).toHaveLength(1);
   });
 });
