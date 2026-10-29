@@ -2,7 +2,7 @@ import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
 import { listInitiativeSlugs } from '../lint/index.js';
 import { toRelative } from './refs.js';
-import { scanWorkspace, type WorkspaceClass } from './scan.js';
+import { scanWorkspaceSlug, type WorkspaceClass } from './scan.js';
 
 /**
  * What the active root holds, indexed or not: `scanWorkspace`'s files plus
@@ -89,13 +89,24 @@ export async function scanNestedSources(
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** Every file the active root holds per initiative, indexed classes and nested sources alike. */
-export async function scanInventory(activeRoot: string): Promise<InventoryFile[]> {
-  const [indexed, slugs] = await Promise.all([
-    scanWorkspace(activeRoot),
-    listInitiativeSlugs(activeRoot),
+/** One initiative's files, indexed classes and nested sources alike, unsorted. */
+export async function scanInventorySlug(
+  activeRoot: string,
+  slug: string,
+): Promise<InventoryFile[]> {
+  const [indexed, nested] = await Promise.all([
+    scanWorkspaceSlug(activeRoot, slug),
+    scanNestedSources(activeRoot, slug),
   ]);
-  const nested = await Promise.all(slugs.map((slug) => scanNestedSources(activeRoot, slug)));
-  const files: InventoryFile[] = indexed.map((file) => ({ ...file, indexed: true }));
-  return [...files, ...nested.flat()].sort((a, b) => a.path.localeCompare(b.path));
+  return [...indexed.map((file) => ({ ...file, indexed: true })), ...nested];
+}
+
+/** Every file the active root holds per initiative, sorted by relative path. */
+export async function scanInventory(
+  activeRoot: string,
+  scanSlug: (activeRoot: string, slug: string) => Promise<InventoryFile[]> = scanInventorySlug,
+): Promise<InventoryFile[]> {
+  const slugs = await listInitiativeSlugs(activeRoot);
+  const perSlug = await Promise.all(slugs.map((slug) => scanSlug(activeRoot, slug)));
+  return perSlug.flat().sort((a, b) => a.path.localeCompare(b.path));
 }

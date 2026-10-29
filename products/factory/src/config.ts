@@ -147,7 +147,7 @@ export const SpawnGateConfigSchema = z.strictObject({
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
   headroomIntervalMs: z.number().int().min(0).optional(),
-  burstMax: z.number().int().positive().optional(),
+  burstMax: z.never({ error: "burstMax is no longer read: load is the only spawn limiter, so remove the key" }).optional(),
   headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
 });

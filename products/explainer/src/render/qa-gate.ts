@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { countByKind } from "@titan-design/render-qa";
+import type { Browser } from "playwright-core";
 import { cueGate, type CueGateResult } from "../qa/cue-gate.js";
 import type { QaGate } from "../qa/gate-profile.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
@@ -50,7 +51,10 @@ export function qaGateWith(engine: Pick<QaEngine, "open">): RenderQaGate {
   return (pageUrl, timeline, gate) => cueGate(engine, pageUrl, qaTimeline(timeline), gate, { lead: leadLines(timeline) });
 }
 
-export const defaultQaGate: RenderQaGate = (pageUrl, timeline, gate) => qaGateWith(chromiumQaEngine())(pageUrl, timeline, gate);
+/** The gate on real Chromium, in `browser` when one is lent. */
+export function chromiumQaGate(browser?: Browser): RenderQaGate {
+  return (pageUrl, timeline, gate) => qaGateWith(chromiumQaEngine(undefined, browser))(pageUrl, timeline, gate);
+}
 
 /** The gate's verdict beside the render, so a refusal points at the held errors by kind and beat. */
 export async function writeGateReport(file: string, { held }: CueGateResult, gate: QaGate): Promise<void> {

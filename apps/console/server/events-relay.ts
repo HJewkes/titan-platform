@@ -8,6 +8,8 @@ export type RelaySource = "active-work" | "agent-chat" | "factory";
 
 /** A kind the browser gets after an upstream stream reopens, since frames sent while it was down are lost. */
 const RECONNECTED_KIND = "reconnected";
+/** A kind the console sends itself, once a cache that served a moved value has read the new one. */
+const REFRESHED_KIND = "refreshed";
 
 /**
  * The data of one relayed frame. Only the kind and the ids a page needs to decide what to refetch:
@@ -63,6 +65,8 @@ interface RelayOptions {
   logger: Logger;
   fetch?: typeof fetch;
   timing?: Partial<RelayTiming>;
+  /** Called for each relayed frame, so a cache of what the upstream holds can drop its copy. A throw is logged, never fatal. */
+  onFrame?: (source: RelaySource) => void;
   /** The clock that measures how long a stream stayed up. */
   now?: () => number;
 }
@@ -78,6 +82,7 @@ interface RelayContext {
   fetch: typeof fetch;
   timing: RelayTiming;
   now: () => number;
+  onFrame: (source: RelaySource) => void;
 }
 
 /** One connection per upstream, redialled with capped backoff until closed; never throws. */
@@ -89,6 +94,7 @@ export function startEventsRelay(options: RelayOptions): EventsRelay {
     fetch: options.fetch ?? ((input, init) => globalThis.fetch(input, init)),
     timing: { ...DEFAULT_RELAY_TIMING, ...options.timing },
     now: options.now ?? Date.now,
+    onFrame: options.onFrame ?? (() => undefined),
   };
   const runs = options.upstreams.map((upstream) => keepRelaying(upstream, context, controller.signal));
   return {
@@ -184,7 +190,7 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
       return outcome(`HTTP ${response.status}`);
     }
     openedAt = context.now();
-    if (reopening) broadcast(context.hub, upstream.source, { kind: RECONNECTED_KIND });
+    if (reopening) announceReopen(upstream.source, context);
     await pump(response.body, upstream, context, watchdog);
     return outcome("stream ended");
   } catch (err) {
@@ -208,7 +214,7 @@ async function pump(body: ReadableStream<Uint8Array>, upstream: RelayUpstream, c
       const frames = parse(text);
       unterminated = frames.length > 0 || text.includes("\n\n") ? 0 : unterminated + text.length;
       if (unterminated > MAX_FRAME_CHARS) throw new Error(`a frame passed ${MAX_FRAME_CHARS} characters`);
-      for (const frame of frames) relayFrame(frame, upstream, context.hub);
+      for (const frame of frames) relayFrame(frame, upstream, context);
     }
   } finally {
     await reader.cancel().catch(() => undefined);
@@ -216,9 +222,28 @@ async function pump(body: ReadableStream<Uint8Array>, upstream: RelayUpstream, c
 }
 
 /** Exactly one relayed frame per upstream frame, keep-alives aside. */
-function relayFrame(frame: SseMessage, upstream: RelayUpstream, hub: Pick<EventHub, "broadcast">): void {
+function relayFrame(frame: SseMessage, upstream: RelayUpstream, context: RelayContext): void {
   if (KEEPALIVES.has(frame.event)) return;
-  broadcast(hub, upstream.source, { kind: KIND.test(frame.event) ? frame.event : "unknown", ...upstream.pick(frame.data) });
+  notifyFrame(upstream.source, context);
+  broadcast(context.hub, upstream.source, { kind: KIND.test(frame.event) ? frame.event : "unknown", ...upstream.pick(frame.data) });
+}
+
+function announceReopen(source: RelaySource, context: RelayContext): void {
+  notifyFrame(source, context);
+  broadcast(context.hub, source, { kind: RECONNECTED_KIND });
+}
+
+function notifyFrame(source: RelaySource, { onFrame, logger }: RelayContext): void {
+  try {
+    onFrame(source);
+  } catch (err) {
+    logger.warn({ source, err: err instanceof Error ? err.message : String(err) }, "events relay: onFrame threw");
+  }
+}
+
+/** Tells the browser a cache has caught up with a source, so the reads it served before that can be read again. */
+export function announceRefreshed(hub: Pick<EventHub, "broadcast">, source: RelaySource): void {
+  broadcast(hub, source, { kind: REFRESHED_KIND });
 }
 
 function broadcast(hub: Pick<EventHub, "broadcast">, source: RelaySource, event: RelayedEvent): void {

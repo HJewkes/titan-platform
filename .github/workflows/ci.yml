@@ -58,6 +58,9 @@ jobs:
       # Findings at warn level never fail the job; an unreadable rule file does (exit 2). .github/merge-lint.json holds the allowlist.
       - name: Flag merge calls outside the logged wrappers
         run: pnpm merge:lint
+      # A sidecar whose find no longer occurs in its target would make fix-proof refuse a later, unrelated PR (TP-4439).
+      - name: Check mutation sidecar finds against their targets
+        run: pnpm sidecar:finds
       - run: pnpm typecheck
         env:
           TURBO_TELEMETRY_DISABLED: 1
@@ -91,8 +94,33 @@ jobs:
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
           restore-keys: vitest-results-${{ runner.os }}-
       # redirect-corpus.test.ts needs real bash and zsh; the explainer render tests spawn real ffmpeg/ffprobe.
+      # The debs are cached per runner image, so a hit installs from disk with no apt-get update or download (TP-4400).
+      # A miss downloads; only main saves, because a hit installs the debs as root with no signature check,
+      # so a pull request must never write the cache a later run trusts. Pull requests hit main's save.
+      - name: Read the runner image version
+        id: image
+        run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore the zsh and ffmpeg debs
+        id: debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
+      - name: Download the zsh and ffmpeg debs
+        if: steps.debs.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/apt-debs/partial
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends --download-only -o APT::Sandbox::User=root -o Dir::Cache::archives="$HOME/apt-debs" zsh ffmpeg
+          sudo chmod -R a+rX ~/apt-debs
       - name: Install zsh and ffmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh ffmpeg
+        run: sudo dpkg -i "$HOME"/apt-debs/*.deb
+      - name: Save the zsh and ffmpeg debs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.debs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-debs
+          key: apt-debs-zsh-ffmpeg-${{ runner.os }}-${{ steps.image.outputs.version }}
       # frame-capture's tests drive a real headless Chromium, at the revision its pinned playwright-core expects.
       # The browser is cached per playwright-core version; --with-deps still installs the system libraries each run.
       - name: Read the playwright-core version
@@ -258,6 +286,32 @@ jobs:
       - name: Lint with type-aware rules
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: pnpm lint:types
+
+  # Per-RPC budgets for the console's reads (TP-4403 d1), alone on a runner so no other test's CPU skews the medians.
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Check the console's read budgets
+        run: pnpm vitest run --project perf
+        env:
+          TITAN_BENCH: "1"
 
   # A required check must always report, so the job always runs and a pull request touching none of its inputs is a no-op.
   hub-compose:

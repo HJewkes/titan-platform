@@ -5,6 +5,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { fixtureEnv, type SeedFiles, seedRepo, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator, type WorktreeRequest } from "./allocator.js";
 import { reattachWorktree } from "./reattach.js";
@@ -19,8 +20,6 @@ import {
   type SetupResult,
   type SetupRunner,
 } from "./setup.js";
-import { seedRepo, seedRepoWithOrigin, type SeedFiles } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 
 // Real repositories, clones and process groups: slower than a unit test, and slower still under a parallel run.
 vi.setConfig({ testTimeout: 20_000 });

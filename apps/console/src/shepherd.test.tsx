@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -54,14 +54,9 @@ const RECORDED = snapshot({
   [snapshotKey("shepherd.timeline", { repo: "orbit/relay", pr: 99 })]: errorEnvelope("orbit/relay#99 is not shepherded", 66),
 });
 
-function renderConsole(hash: string, recorded: Snapshot = RECORDED): void {
+function renderConsole(hash: string, recorded: Snapshot = RECORDED, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", recorded), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 describe("the Shepherd watch list", () => {
@@ -95,7 +90,7 @@ describe("the Shepherd watch list", () => {
   });
 
   it("opens a PR's timeline from its row", async () => {
-    renderConsole("#/shepherd");
+    renderConsole("#/shepherd", RECORDED, { inApp: true });
     fireEvent.click(within(await screen.findByTestId("shepherd-row-run-12")).getByRole("link"));
     await waitFor(() => expect(window.location.hash).toBe(`#/shepherd/${encodeURIComponent("orbit/relay#12")}`));
     expect(await screen.findByText(/verdict FIX_FIRST by relay-reviewer-1/)).toBeTruthy();

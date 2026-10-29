@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveOrigins, sessionsNeedingOrigin } from '@titan-design/session-graph';
 
@@ -593,4 +593,30 @@ describe('experiment arm and follow-ups (CC-168)', () => {
       graph.db.close();
     }
   });
+});
+
+describe('a locked events.db (TP-4479)', () => {
+  it('fails the origin pass within the short busy timeout instead of waiting 5 s', async () => {
+    writeEvents([]);
+    const graph = openGraph(path.join(home, 'graph.sqlite3'));
+    graph.db
+      .prepare('INSERT INTO session (session_id, turn_count) VALUES (?, 0)')
+      .run(WORKER_SESSION);
+    const holder = new Database(path.join(home, 'events.db'));
+    holder.exec('BEGIN EXCLUSIVE');
+    vi.stubEnv('AGENT_CHAT_HOME', home);
+    const startedAt = Date.now();
+
+    try {
+      const outcome = await resolveOrigins(graph, agentChatOriginResolver(undefined, home));
+
+      expect(Date.now() - startedAt).toBeLessThan(1_000);
+      expect(outcome).toMatchObject({ failed: true, applied: 0 });
+    } finally {
+      vi.unstubAllEnvs();
+      holder.exec('ROLLBACK');
+      holder.close();
+      graph.db.close();
+    }
+  }, 30_000);
 });

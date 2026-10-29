@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { FIXTURE_TSCONFIG, openTestStore } from "../incremental.test-helpers.js";
 import { indexPaths } from "../indexer.js";
-import { openCodeGraph, type CodeGraphStore } from "../store.js";
+import type { CodeGraphStore } from "../store.js";
 import type { GraphMetric } from "../types.js";
 import {
   snapshotPageRank,
@@ -47,7 +48,7 @@ async function makeProject(): Promise<{ root: string; store: CodeGraphStore }> {
   await fs.writeFile(path.join(root, "src/smelly.ts"), SMELLY_TS);
   await fs.writeFile(path.join(root, "src/user.ts"), USER_TS);
   await fs.writeFile(path.join(root, "src/loops.py"), LOOPS_PY);
-  return { root, store: openCodeGraph(path.join(root, "graph.sqlite3")) };
+  return { root, store: openTestStore(path.join(root, "graph.sqlite3")) };
 }
 
 const ANALYSIS_NAMES = new Set([
@@ -80,7 +81,7 @@ describe("dead-code and growth-risk metrics during indexing", () => {
   });
 
   const index = (options: { incremental?: boolean } = {}) =>
-    indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, ...options });
+    indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, tsConfig: FIXTURE_TSCONFIG, ...options });
 
   it("emits both families on TypeScript files and only loop depth on Python files", async () => {
     const result = await index();
@@ -112,7 +113,7 @@ describe("snapshot query functions", () => {
 
   beforeEach(async () => {
     ({ root, store } = await makeProject());
-    ({ snapshotId } = await indexPaths(store, { paths: [root], ref: "wd", detectRenames: false }));
+    ({ snapshotId } = await indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, tsConfig: FIXTURE_TSCONFIG }));
   });
 
   afterEach(async () => {

@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gitIn, withHistory } from "@titan-design/test-kit/git";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { CorpusRow } from "../corpus/index.js";
@@ -12,20 +12,6 @@ import { buildReviewPrCases, treeDigest, type BuildManifest } from "./build-case
 import { localCloneGit, type BundleGit } from "./bundle.js";
 
 const PRIVATE_SLUG = "household-ledger";
-
-function git(dir: string, ...args: string[]): string {
-  return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" }).trim();
-}
-
-function commit(dir: string, files: Record<string, string>, message: string): string {
-  for (const [path, text] of Object.entries(files)) {
-    mkdirSync(join(dir, path, ".."), { recursive: true });
-    writeFileSync(join(dir, path), text);
-  }
-  git(dir, "add", "-A");
-  git(dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", message);
-  return git(dir, "rev-parse", "HEAD");
-}
 
 const source = (name: string, op: string) => `export function ${name}(value: number, max: number): number {\n  if (value ${op} max) {\n    return max;\n  }\n  return value;\n}\n`;
 const test = (name: string) => `import { ${name} } from "./${name}.js";\n\nit("caps", () => {\n  expect(${name}(9, 5)).toBe(5);\n});\n`;
@@ -40,17 +26,15 @@ interface Fixture {
 }
 
 function buildClone(clone: string): Fixture {
-  git(clone, "init", "-q", "-b", "main");
-  const base = commit(clone, { "src/a.ts": "export const add = (a: number, b: number) => a + b;\n", "src/b.ts": "", "src/c.ts": "" }, "base");
-  const branch = (name: string) => git(clone, "checkout", "-q", "-b", name, base);
-  branch("pr1");
-  const caught = commit(clone, { "src/a.ts": "export const add = (a: number, b: number) => a - b;\n" }, "pr1 head");
-  const fix = commit(clone, { "src/a.ts": "export const add = (a: number, b: number) => a + b;\n" }, "pr1 fix");
-  branch("pr2");
-  const cleanEarly = commit(clone, { "src/b.ts": source("capB", ">=") }, "pr2 first head");
-  const cleanB = commit(clone, { "src/b.ts": source("capB", ">"), "src/b.test.ts": test("capB") }, "pr2 final head");
-  branch("pr3");
-  const cleanC = commit(clone, { "src/c.ts": source("capC", ">"), "src/c.test.ts": test("capC") }, "pr3 head");
+  gitIn(clone)("init", "-q", "-b", "main");
+  const [base = "", caught = "", fix = "", cleanEarly = "", cleanB = "", cleanC = ""] = withHistory(clone, [
+    { files: { "src/a.ts": "export const add = (a: number, b: number) => a + b;\n", "src/b.ts": "", "src/c.ts": "" }, message: "base" },
+    { files: { "src/a.ts": "export const add = (a: number, b: number) => a - b;\n" }, message: "pr1 head", branch: "pr1", from: ":1" },
+    { files: { "src/a.ts": "export const add = (a: number, b: number) => a + b;\n" }, message: "pr1 fix", branch: "pr1" },
+    { files: { "src/b.ts": source("capB", ">=") }, message: "pr2 first head", branch: "pr2", from: ":1" },
+    { files: { "src/b.ts": source("capB", ">"), "src/b.test.ts": test("capB") }, message: "pr2 final head", branch: "pr2" },
+    { files: { "src/c.ts": source("capC", ">"), "src/c.test.ts": test("capC") }, message: "pr3 head", branch: "pr3", from: ":1" },
+  ]);
   return { base, caught, fix, cleanEarly, cleanB, cleanC };
 }
 

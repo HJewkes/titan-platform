@@ -5,7 +5,7 @@ import { buildScorePrompt, type ScorePrompt } from "./score-prompt.js";
 import type { ScoreCallOutput, ScoreRunner, StepErrorClass, StepOutcome } from "./seams.js";
 import { appendRow, writeCase, type RowOutcome, type StepRow } from "./step-rows.js";
 
-const SYSTEM_PROMPT = "You score video transcripts against a rubric. Reply with one JSON object and nothing else.";
+export const SYSTEM_PROMPT = "You score video transcripts against a rubric. Reply with one JSON object and nothing else.";
 const MAX_BUDGET_USD = 0.25;
 const MAX_ATTEMPTS = 2;
 /** Plan section 3: past 2 h the score sees the first ~30k tokens and says so. */
@@ -39,6 +39,7 @@ interface StoredCard extends ScoreCard {
   partial: boolean;
   prompt_sha: string;
   model: string;
+  transcript_path: string;
 }
 
 interface ScoreVideoResult {
@@ -52,6 +53,12 @@ interface ScoreVideoResult {
 /** Drops the YAML front matter the extractor writes; the description in the body stays. */
 function stripFrontMatter(text: string): string {
   return text.replace(/^---\n[\s\S]*?\n---\n/, "");
+}
+
+/** What the model sees: front matter dropped, and a long video cut to its start. Shared with eval so a case's sha matches the original call. */
+export function transcriptForScoring(raw: string, partial: boolean): string {
+  const full = stripFrontMatter(raw);
+  return partial ? full.slice(0, PARTIAL_CHARS) : full;
 }
 
 const RETRYABLE: StepErrorClass[] = ["schema_invalid", "refusal"];
@@ -105,9 +112,8 @@ function usageOf(a: Attempt): Pick<StepRow, "input_tokens" | "output_tokens" | "
 
 export async function scoreVideo(deps: ScoreDeps, input: ScoreVideoInput): Promise<ScoreVideoResult> {
   const now = deps.now ?? (() => new Date());
-  const full = stripFrontMatter(readFileSync(input.transcriptPath, "utf8"));
   const partial = (input.durationSeconds ?? 0) > PARTIAL_AFTER_SECONDS;
-  const transcript = partial ? full.slice(0, PARTIAL_CHARS) : full;
+  const transcript = transcriptForScoring(readFileSync(input.transcriptPath, "utf8"), partial);
   const prompt = buildScorePrompt({ title: input.title, transcript, rubric: deps.rubric, partial });
   let cost = 0;
   let last: Attempt | undefined;
@@ -123,22 +129,31 @@ export async function scoreVideo(deps: ScoreDeps, input: ScoreVideoInput): Promi
     appendRow(deps.rowsDir, rowFor(deps, input, prompt, attempt, startedAt, { ...usageOf(last), outcome, error_class: errorClass }));
     if (!retry) break;
   }
-  return failResult(deps, input, prompt, last!, cost);
+  return failResult({ deps, input, prompt, partial }, last!, cost);
 }
 
-function failResult(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, last: Attempt, cost: number): ScoreVideoResult {
+interface CaseContext {
+  deps: ScoreDeps;
+  input: ScoreVideoInput;
+  prompt: ScorePrompt;
+  partial: boolean;
+}
+
+function fileCase(ctx: CaseContext, label: string, output: unknown): void {
+  writeCase(ctx.deps.casesDir, {
+    step: "score",
+    video_id: ctx.input.id,
+    label,
+    inputs: { transcript_path: ctx.input.transcriptPath, transcript_sha256: ctx.prompt.inputSha, title: ctx.input.title, partial: ctx.partial },
+    prompt_sha: ctx.prompt.promptSha,
+    model: ctx.deps.model,
+    output,
+  });
+}
+
+function failResult(ctx: CaseContext, last: Attempt, cost: number): ScoreVideoResult {
   const errorClass = last.outcome.ok ? "other" : last.outcome.errorClass;
-  if (errorClass === "schema_invalid" || errorClass === "refusal") {
-    writeCase(deps.casesDir, {
-      step: "score",
-      video_id: input.id,
-      label: errorClass,
-      inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
-      prompt_sha: prompt.promptSha,
-      model: deps.model,
-      output: (last.outcome.ok ? last.outcome.value.output : last.outcome.raw) ?? null,
-    });
-  }
+  if (errorClass === "schema_invalid" || errorClass === "refusal") fileCase(ctx, errorClass, (last.outcome.ok ? last.outcome.value.output : last.outcome.raw) ?? null);
   return { ok: false, errorClass, droppedTechniques: [], costUsd: cost };
 }
 
@@ -156,18 +171,6 @@ function writeCardFile(file: string, stored: StoredCard): void {
   writeFileSync(file, `${JSON.stringify(stored, null, 2)}\n`);
 }
 
-function fileTsInvalidCase(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, card: ScoreCard, dropped: Technique[]): void {
-  writeCase(deps.casesDir, {
-    step: "score",
-    video_id: input.id,
-    label: "ts_invalid",
-    inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
-    prompt_sha: prompt.promptSha,
-    model: deps.model,
-    output: { card, dropped },
-  });
-}
-
 function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, f: Finish): ScoreVideoResult {
   const card = f.attemptResult.card!;
   const { kept, dropped } = checkTimestamps(card.techniques, f.transcript);
@@ -180,10 +183,11 @@ function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt
     partial: f.partial,
     prompt_sha: prompt.promptSha,
     model: deps.model,
+    transcript_path: input.transcriptPath,
   };
   writeCardFile(input.outputPath, stored);
   const tsInvalid = dropped.length > 0;
-  if (tsInvalid) fileTsInvalidCase(deps, input, prompt, card, dropped);
+  if (tsInvalid) fileCase({ deps, input, prompt, partial: f.partial }, "ts_invalid", { card, dropped });
   appendRow(
     deps.rowsDir,
     rowFor(deps, input, prompt, f.attempt, f.startedAt, {

@@ -97,7 +97,7 @@ describe("score step", () => {
 
     expect(result.ok).toBe(true);
     const stored = JSON.parse(readFileSync(input().outputPath, "utf8"));
-    expect(stored).toMatchObject({ id: "abc123def45", total: 9, partial: false });
+    expect(stored).toMatchObject({ id: "abc123def45", total: 9, partial: false, transcript_path: input().transcriptPath });
     expect(stored.techniques).toHaveLength(2);
     expect(rows()).toEqual([
       expect.objectContaining({ step: "score", attempt: 1, outcome: "ok", error_class: null, cost_usd: 0.03, input_tokens: 1000, output_tokens: 200 }),

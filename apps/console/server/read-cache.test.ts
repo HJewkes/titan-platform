@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cachedRead } from "./read-cache.js";
+import { cachedRead, cachedReads, stableJson } from "./read-cache.js";
 
 const TIMES = { freshMs: 10, staleMs: 100 };
 
@@ -85,5 +85,86 @@ describe("cachedRead", () => {
     await expect(cache.read()).rejects.toThrow("upstream down");
 
     expect(await cache.read()).toBe("back");
+  });
+});
+
+describe("cachedReads", () => {
+  const keyed = (calls: string[]) => (name: string): Promise<string> => {
+    calls.push(name);
+    return Promise.resolve(`${name}#${calls.length}`);
+  };
+  const options = { keyOf: (name: string) => name, maxKeys: 8, now: () => 0 };
+
+  it("makes one upstream call for concurrent reads of the same key", async () => {
+    const waiting: Array<(value: string) => void> = [];
+    const cache = cachedReads((_name: string) => new Promise<string>((resolve) => waiting.push(resolve)), TIMES, options);
+
+    const both = Promise.all([cache.read("a"), cache.read("a")]);
+    waiting[0]?.("shared");
+
+    expect(await both).toEqual(["shared", "shared"]);
+    expect(waiting).toHaveLength(1);
+  });
+
+  it("keeps a different value for each key", async () => {
+    const calls: string[] = [];
+    const cache = cachedReads(keyed(calls), TIMES, options);
+
+    const first = await cache.read("a");
+    const second = await cache.read("b");
+
+    expect([first, second, await cache.read("a")]).toEqual(["a#1", "b#2", "a#1"]);
+  });
+
+  it("drops the least recently read key once more than maxKeys are kept", async () => {
+    const calls: string[] = [];
+    const cache = cachedReads(keyed(calls), TIMES, { ...options, maxKeys: 2 });
+    await cache.read("a");
+    await cache.read("b");
+    await cache.read("a");
+    await cache.read("c");
+
+    await cache.read("a");
+    await cache.read("b");
+
+    expect(calls).toEqual(["a", "b", "c", "b"]);
+  });
+
+  it("reads every key again after an invalidate", async () => {
+    const calls: string[] = [];
+    const cache = cachedReads(keyed(calls), TIMES, options);
+    await cache.read("a");
+    await cache.read("b");
+
+    cache.invalidate();
+    await cache.read("a");
+    await cache.read("b");
+
+    expect(calls).toEqual(["a", "b", "a", "b"]);
+  });
+
+  it("never keeps a read that was running when an invalidate came", async () => {
+    const waiting: Array<(value: string) => void> = [];
+    const cache = cachedReads((_name: string) => new Promise<string>((resolve) => waiting.push(resolve)), TIMES, options);
+    const before = cache.read("a");
+
+    cache.invalidate();
+    const after = cache.read("a");
+    waiting[1]?.("after the write");
+    await after;
+    waiting[0]?.("before the write");
+    await before;
+
+    expect(await cache.read("a")).toBe("after the write");
+  });
+});
+
+describe("stableJson", () => {
+  it("names the same arguments alike whatever the key order, including nested ones", () => {
+    expect(stableJson({ slug: "x", filter: { b: 1, a: [{ d: 1, c: 2 }] } })).toBe(stableJson({ filter: { a: [{ c: 2, d: 1 }], b: 1 }, slug: "x" }));
+  });
+
+  it("names different arguments differently", () => {
+    expect(stableJson({ slug: "x" })).not.toBe(stableJson({ slug: "y" }));
   });
 });

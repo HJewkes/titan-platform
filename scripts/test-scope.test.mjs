@@ -129,6 +129,8 @@ describe("vitestArgs", () => {
       "--project",
       "forks",
       "--project",
+      "perf",
+      "--project",
       "active-work",
       "--project",
       "active-work-forks",
