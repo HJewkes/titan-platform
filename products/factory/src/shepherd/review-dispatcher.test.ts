@@ -1,30 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewSuperseded } from "./review-dispatcher.js";
-import { movedPastOnList, spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
-import { spawnGate, SpawnDeferred, type MachineReadings } from "./spawn-gate.js";
-
-const idle: MachineReadings = { load5: 2, pressureLevel: 1, freeMemoryPct: 85 };
-const busy: MachineReadings = { ...idle, load5: 30 };
-const HEAD_A = "a".repeat(40);
-const HEAD_B = "b".repeat(40);
-const TICK_MS = 60_000;
-
-/** A gate with one review slot on a faked clock; `queue` records each launch and leaves the outcome on `settled`. */
-function scene(options: { list?: () => { at: number; prs: { number: number; headSha: string }[] } } = {}) {
-  const state = { readings: busy, running: [] as number[], launched: [] as string[], settled: new Map<string, string>() };
-  const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => state.readings, log: () => undefined, tickMs: TICK_MS, ...(options.list && { movedPast: movedPastOnList(options.list) }) });
-  const queue = (name: string, review: ReviewAsk, signal?: AbortSignal) => {
-    const launch = async () => void state.launched.push(name);
-    gate.queueReview(name, review, { running: async () => state.running, launch }, signal).then(
-      () => state.settled.set(name, "launched"),
-      (error: unknown) => state.settled.set(name, error instanceof Error ? error.name : String(error)),
-    );
-  };
-  return { state, gate, queue };
-}
-
-const flush = () => vi.advanceTimersByTimeAsync(0);
-const target = (pr: number, head = HEAD_A) => ({ repo: "octo/demo", pr, head });
+import { HEAD_A, HEAD_B, TICK_MS, flush, idle, scene, target } from "./review-dispatcher.test-helpers.js";
+import { notStarted } from "./review-wait.js";
+import { spawnQueuePosition } from "./review-queue.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 
 describe("the push dispatcher starts reviews from the one queue on its three triggers", () => {
   beforeEach(() => void vi.useFakeTimers({ now: 1_000_000 }));
@@ -88,34 +67,20 @@ describe("the push dispatcher starts reviews from the one queue on its three tri
     expect(spawnQueuePosition("octo/demo", 7)).toBeUndefined();
   });
 
-  it("withdraws a queued review whose step aborts, so the next in line takes the freed slot", async () => {
-    const { state, gate, queue } = scene();
-    const step = new AbortController();
-    queue("rv-demo-7", { fixer: false, intentAt: 10_000, target: target(7) }, step.signal);
-    queue("rv-demo-8", { fixer: false, intentAt: 20_000, target: target(8) });
+  it("a gate-deferred review whose head moves finishes superseded and leaves the queue", async () => {
+    const live = { head: HEAD_A };
+    const { state, queue } = scene({ liveHead: async () => live.head });
+    queue("rv-demo-7", { fixer: false, intentAt: 10_000, target: target(7) });
     await flush();
+    expect(spawnQueuePosition("octo/demo", 7)).toBe("position 1 of 1");
 
-    step.abort(new Error("the step was cancelled"));
-    await flush();
-    expect(state.settled.get("rv-demo-7")).toBe("Error");
-    expect(spawnQueuePosition("octo/demo", 7)).toBeUndefined();
-
-    state.readings = idle;
-    gate.reviewEnded();
-    await flush();
-
-    expect(state.launched).toEqual(["rv-demo-8"]);
-  });
-
-  it("never queues a review whose step aborted before it asked", async () => {
-    const { state, queue } = scene();
-    state.readings = idle;
-
-    queue("rv-demo-7", { fixer: false, target: target(7) }, AbortSignal.abort(new Error("gone")));
-    await flush();
+    live.head = HEAD_B;
+    await vi.advanceTimersByTimeAsync(TICK_MS);
 
     expect(state.launched).toEqual([]);
-    expect(state.settled.get("rv-demo-7")).toBe("Error");
+    expect(state.settled.get("rv-demo-7")).toBe(new ReviewSuperseded("").name);
+    expect(notStarted(state.errors.get("rv-demo-7"), [])).toEqual({ kind: "none", reason: `superseded: the pull request moved from head ${HEAD_A} to ${HEAD_B}` });
+    expect(spawnQueuePosition("octo/demo", 7)).toBeUndefined();
   });
 
   it("gives up on a review still queued after the hold, as a deferral its step reports", async () => {

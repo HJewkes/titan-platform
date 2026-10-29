@@ -59,8 +59,8 @@ export interface ReviewerAgent {
 export interface ReviewerDispatch {
   roster(): Promise<readonly ReviewerAgent[]>;
   /**
-   * `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. An aborted `signal`
-   * withdraws an ask the port still holds unstarted, which then rejects with the signal's reason.
+   * `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. A dispatch that waits
+   * before starting the reviewer stops waiting, and starts nothing, once `signal` aborts.
    */
   spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts, signal?: AbortSignal): Promise<void>;
   resume(name: string, brief: string, signal?: AbortSignal): Promise<void>;

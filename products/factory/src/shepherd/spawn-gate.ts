@@ -3,7 +3,7 @@ import { availableParallelism, loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 import { stopReason } from "./machine-stop.js";
 import type { ReviewerReading, ReviewSlots } from "./review-slots.js";
-import { reviewDispatcher, type ReviewStart } from "./review-dispatcher.js";
+import { reviewDispatcher, type LiveHead, type ReviewStart } from "./review-dispatcher.js";
 import { admitQueued, queueNote, reviewWaitList, type MovedPast, type ReviewAsk, type WaitingReview } from "./review-queue.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 
@@ -203,10 +203,9 @@ export interface SpawnGate {
   reviewSlots(): ReviewSlots | undefined;
   /**
    * Queues a review and resolves once it has launched. It starts when it reaches the front on a trigger the gate admits on;
-   * it rejects with `ReviewSuperseded` once its pull request moves past it, with `SpawnDeferred` once it outwaits the hold, and
-   * with the reason of `signal` once that aborts.
+   * it rejects with `ReviewSuperseded` once its pull request moves past it, and with `SpawnDeferred` once it outwaits the hold.
    */
-  queueReview(name: string, review: ReviewAsk, start: ReviewStart, signal?: AbortSignal): Promise<void>;
+  queueReview(name: string, review: ReviewAsk, start: ReviewStart): Promise<void>;
   /** A review ended, so a slot may be free: the queue's front asks again now rather than on the next tick. */
   reviewEnded(): void;
 }
@@ -224,6 +223,8 @@ interface SpawnGateOptions {
   holdMs?: number;
   /** Tells when a queued review's run has moved past it, so it leaves the queue at once. */
   movedPast?: MovedPast;
+  /** The open PR's head read live, once per pass for each queued review, so a head the cached list has not shown yet still drops it. */
+  liveHead?: LiveHead;
   /** One line per admitted or deferred spawn; defaults to the factory log. */
   log?: (line: string) => void;
   /** Told of every machine-stop breach a spawn ask reads, whatever the verdict, so a review that ends later can see the stop held. */
@@ -312,6 +313,7 @@ function queuedReviews(options: SpawnGateOptions, admit: SpawnGate["admit"], now
     remove: (name) => reviews.remove(name),
     admit: (name, running, review) => admit(name, running, review),
     deferred: (error) => error instanceof SpawnDeferred,
+    liveHead: options.liveHead,
     expired: (waitedMs) => new SpawnDeferred(`the review stayed queued for ${minutes(waitedMs)}`),
     now,
     tickMs: options.tickMs ?? REVIEW_TICK_MS,
@@ -345,7 +347,7 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   return {
     ...reviewSlotMemory(() => limitsNow().maxConcurrentReviews, now, pending.seen),
     ...gate,
-    queueReview: (name, review, start, signal) => dispatcher.queue(name, review, start, signal),
+    queueReview: (name, review, start) => dispatcher.queue(name, review, start),
     reviewEnded: () => void dispatcher.wake(),
   };
 }

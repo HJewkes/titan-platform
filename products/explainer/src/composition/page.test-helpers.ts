@@ -7,6 +7,7 @@ import { extname, join, normalize } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { captureFrames } from "@titan-design/frame-capture";
+import type { Browser } from "playwright-core";
 import { build } from "vite";
 import { parseTimeline, type Timeline } from "./timeline.js";
 
@@ -75,10 +76,10 @@ export interface Render {
   pageDurationS: number;
 }
 
-/** Captures the page at FPS on one worker, as the render command does before it hands the frames to the encoder. */
-export async function renderFrames(url: string): Promise<Render> {
+/** Captures the page at FPS on one worker in `browser`, as the render command does before it hands the frames to the encoder. */
+export async function renderFrames(url: string, browser: Browser): Promise<Render> {
   const frames: Buffer[] = [];
-  const result = await captureFrames({ url, fps: FPS, ...STAGE, workers: 1 }, async (i, png) => {
+  const result = await captureFrames({ url, fps: FPS, ...STAGE, workers: 1, browser }, async (i, png) => {
     frames[i] = png;
   });
   return { frames, pageDurationS: result.pageDurationS };

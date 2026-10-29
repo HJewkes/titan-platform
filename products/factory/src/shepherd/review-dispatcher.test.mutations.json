@@ -38,12 +38,12 @@
       ]
     },
     {
-      "name": "an aborted step leaves its review queued",
+      "name": "the pass does not read the live head of a queued review",
       "file": "products/factory/src/shepherd/review-dispatcher.ts",
-      "find": "      signal?.addEventListener(\"abort\", withdraw, { once: true });\n",
+      "find": "  await dropMovedLive(ports, book);\n",
       "replace": "",
       "kills": [
-        "the push dispatcher starts reviews from the one queue on its three triggers withdraws a queued review whose step aborts, so the next in line takes the freed slot"
+        "the push dispatcher starts reviews from the one queue on its three triggers a gate-deferred review whose head moves finishes superseded and leaves the queue"
       ]
     }
   ]

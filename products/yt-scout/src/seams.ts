@@ -20,7 +20,16 @@ export interface Detector {
 
 export type StepErrorClass = "http429" | "no_captions" | "live" | "upcoming" | "schema_invalid" | "refusal" | "budget" | "other";
 
-export type StepOutcome<T> = { ok: true; value: T } | { ok: false; errorClass: StepErrorClass; message: string };
+/** What a model call billed. A failed call can still have billed, so a failure carries it too. */
+export interface CallUsage {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export type StepOutcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; errorClass: StepErrorClass; message: string; usage?: CallUsage; raw?: unknown };
 
 export interface Transcript {
   path: string;
@@ -40,3 +49,22 @@ export interface ScoreResult {
 export interface Scorer {
   score(video: VideoRow, transcript: Transcript): Promise<StepOutcome<ScoreResult>>;
 }
+
+export interface ScoreCall {
+  prompt: string;
+  systemPrompt: string;
+  model: string;
+  maxBudgetUsd: number;
+}
+
+export interface ScoreCallOutput extends CallUsage {
+  /** Unvalidated: the score step parses it against `ScoreCardSchema` itself. */
+  output: unknown;
+  model: string;
+}
+
+/** One bare, tool-less harness call. The real one wraps `runAgent`; tests pass a fake. */
+export type ScoreRunner = (call: ScoreCall) => Promise<StepOutcome<ScoreCallOutput>>;
+
+/** The digest call returns markdown, so `output` is a string. Same bare-call shape as the score runner. */
+export type DigestRunner = (call: ScoreCall) => Promise<StepOutcome<ScoreCallOutput>>;

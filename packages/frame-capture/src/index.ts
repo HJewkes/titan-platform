@@ -6,6 +6,8 @@ export {
   launch,
   openCapturePage,
   settleFonts,
+  withBrowser,
+  withCapturePage,
   type CapturePage,
   type FontState,
   type PageOptions,

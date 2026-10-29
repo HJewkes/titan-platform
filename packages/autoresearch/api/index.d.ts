@@ -461,6 +461,66 @@ declare function keepRule(best: readonly ArResult[], idea: readonly ArResult[], 
 /** Both confirm runs must beat the best's median on their own; one loss rejects. */
 declare function confirmRule(best: readonly ArResult[], confirms: readonly ArResult[], settings: KeepSettings): KeepDecision;
 
+declare const BoundsSchema: z.ZodObject<{
+    schema: z.ZodLiteral<"ar-bounds/v1">;
+    classes: z.ZodRecord<z.ZodString, z.ZodObject<{
+        paths: z.ZodArray<z.ZodString>;
+        tests: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodTuple<[z.ZodNumber, z.ZodNumber], null>>>;
+        integerParams: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strip>>;
+    diff: z.ZodDefault<z.ZodObject<{
+        oneClassPerIdea: z.ZodDefault<z.ZodBoolean>;
+    }, z.core.$strip>>;
+    test: z.ZodDefault<z.ZodObject<{
+        required: z.ZodDefault<z.ZodBoolean>;
+        mustFailOnBase: z.ZodDefault<z.ZodBoolean>;
+        exceptClasses: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strip>>;
+    banned: z.ZodDefault<z.ZodObject<{
+        frozenTouch: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+        literalsOutsideConfig: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{
+            allowed: z.ZodOptional<z.ZodArray<z.ZodNumber>>;
+        }, z.core.$loose>]>>;
+        newFiles: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+        seedNames: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+type Bounds = z.infer<typeof BoundsSchema>;
+/** `ar-bounds-pre`, run on every planner add before any spawn: a failure costs nothing but the planner's words. */
+declare function preCheck(proposal: Proposal, bounds: Bounds, caseNames: readonly string[]): string | undefined;
+
+interface QueueContext {
+    round: number;
+    bounds: Bounds;
+    caseNames: readonly string[];
+    deadEnds: readonly DeadEnd[];
+    /** Every idea id already queued or evaluated, so an exact repeat is refused. */
+    seen: ReadonlySet<string>;
+    /** Lineage of every idea id seen, so a follow-up or requeue inherits its parent's. */
+    lineageOf: ReadonlyMap<string, string>;
+}
+interface QuotaContext {
+    /** Ideas kept last round; each one owes a follow-up. */
+    keptLastRound: readonly string[];
+    minPool: number;
+    queuedBefore: number;
+}
+interface Applied {
+    queue: Idea[];
+    rejected: {
+        proposal: Proposal;
+        code: string;
+    }[];
+}
+declare function toIdea(proposal: Proposal, context: Pick<QueueContext, "round" | "lineageOf">): Idea;
+/** The quotas `quotaViolations` enforces, worded for the planner; kept beside the check so the brief's numbers are the check's. */
+declare function quotaRules(quota: QuotaContext): string[];
+/** Quotas the planner must meet each round (plan 4.2); an empty list means the ops may be applied. */
+declare function quotaViolations(ops: QueueOps, quota: QuotaContext): string[];
+/** Applies the planner's ops mechanically: adds pass dedup, the bounds pre-check and the dead-end rule, at no model cost. */
+declare function applyOps(queue: readonly Idea[], ops: QueueOps, context: QueueContext): Applied;
+
 declare const PinnedSchema: z.ZodObject<{
     pin: z.ZodString;
     ratchetRef: z.ZodString;
@@ -598,6 +658,7 @@ declare const PlannerSchema: z.ZodObject<{
         retries: z.ZodNumber;
     }, z.core.$strip>>;
 }, z.core.$strip>;
+/** `malformed` is the parse error of a final message that held no JSON; the workflow retries the planner with it as the miss. */
 declare const PlannedSchema: z.ZodObject<{
     agent: z.ZodOptional<z.ZodString>;
     sessionId: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -613,6 +674,7 @@ declare const PlannedSchema: z.ZodObject<{
         retries: z.ZodNumber;
     }, z.core.$strip>>>;
     ops: z.ZodUnknown;
+    malformed: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 type Planner = z.infer<typeof PlannerSchema>;
 /** One row per L0 check, in the order they ran; `diff` is measured and replaces the implementer's own count on the outcome. */
@@ -1059,13 +1121,15 @@ interface ArPorts {
     }, signal: AbortSignal): Promise<Pinned>;
     /**
      * The central planner's queue ops for one round, which the workflow checks against the schema and quotas, and the
-     * agent that wrote them. Round 1 spawns the planner; later rounds resume it.
+     * agent that wrote them. Round 1's first attempt spawns the planner; every other attempt resumes it. `quota` is
+     * what the answer is checked against.
      */
     plan(input: {
         runId: string;
         round: number;
         digest: Digest;
         violations: string[];
+        quota: QuotaContext;
         mode: PlanMode;
     }, signal: AbortSignal): Promise<z.input<typeof PlannedSchema>>;
     allocTree(input: {
@@ -1304,35 +1368,6 @@ declare const SyncGateAnswerSchema: z.ZodObject<{
     resolved: z.ZodString;
 }, z.core.$loose>;
 
-declare const BoundsSchema: z.ZodObject<{
-    schema: z.ZodLiteral<"ar-bounds/v1">;
-    classes: z.ZodRecord<z.ZodString, z.ZodObject<{
-        paths: z.ZodArray<z.ZodString>;
-        tests: z.ZodDefault<z.ZodArray<z.ZodString>>;
-        params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodTuple<[z.ZodNumber, z.ZodNumber], null>>>;
-        integerParams: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    }, z.core.$strip>>;
-    diff: z.ZodDefault<z.ZodObject<{
-        oneClassPerIdea: z.ZodDefault<z.ZodBoolean>;
-    }, z.core.$strip>>;
-    test: z.ZodDefault<z.ZodObject<{
-        required: z.ZodDefault<z.ZodBoolean>;
-        mustFailOnBase: z.ZodDefault<z.ZodBoolean>;
-        exceptClasses: z.ZodDefault<z.ZodArray<z.ZodString>>;
-    }, z.core.$strip>>;
-    banned: z.ZodDefault<z.ZodObject<{
-        frozenTouch: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
-        literalsOutsideConfig: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{
-            allowed: z.ZodOptional<z.ZodArray<z.ZodNumber>>;
-        }, z.core.$loose>]>>;
-        newFiles: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
-        seedNames: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodBoolean, z.ZodObject<{}, z.core.$loose>]>>;
-    }, z.core.$strip>>;
-}, z.core.$strip>;
-type Bounds = z.infer<typeof BoundsSchema>;
-/** `ar-bounds-pre`, run on every planner add before any spawn: a failure costs nothing but the planner's words. */
-declare function preCheck(proposal: Proposal, bounds: Bounds, caseNames: readonly string[]): string | undefined;
-
 interface DiffFile {
     path: string;
     /** The old path of a rename. */
@@ -1424,35 +1459,6 @@ declare function select(queue: readonly Idea[], outcomes: readonly Outcome[], op
     round: number;
     k: number;
 }): Selection;
-
-interface QueueContext {
-    round: number;
-    bounds: Bounds;
-    caseNames: readonly string[];
-    deadEnds: readonly DeadEnd[];
-    /** Every idea id already queued or evaluated, so an exact repeat is refused. */
-    seen: ReadonlySet<string>;
-    /** Lineage of every idea id seen, so a follow-up or requeue inherits its parent's. */
-    lineageOf: ReadonlyMap<string, string>;
-}
-interface QuotaContext {
-    /** Ideas kept last round; each one owes a follow-up. */
-    keptLastRound: readonly string[];
-    minPool: number;
-    queuedBefore: number;
-}
-interface Applied {
-    queue: Idea[];
-    rejected: {
-        proposal: Proposal;
-        code: string;
-    }[];
-}
-declare function toIdea(proposal: Proposal, context: Pick<QueueContext, "round" | "lineageOf">): Idea;
-/** Quotas the planner must meet each round (plan 4.2); an empty list means the ops may be applied. */
-declare function quotaViolations(ops: QueueOps, quota: QuotaContext): string[];
-/** Applies the planner's ops mechanically: adds pass dedup, the bounds pre-check and the dead-end rule, at no model cost. */
-declare function applyOps(queue: readonly Idea[], ops: QueueOps, context: QueueContext): Applied;
 
 /** An eval run under the console's name for its wall time. */
 type ArEvalView = Omit<ArResult, "wall_s"> & {
@@ -1621,4 +1627,4 @@ declare function ideaRefs(run: WorkflowRun, ideaId: string): {
 /** The run page's model; null until the pin step has recorded the target. `looks` are the run's validate runs. */
 declare function arRunView(run: WorkflowRun, looks?: readonly WorkflowRun[]): ArRunView | null;
 
-export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArReevalView, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArSnapshotView, type ArStepDeclaration, type ArStepHandler, type ArSyncView, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type Cadence, type CadenceRound, CadenceRoundSchema, CadenceSchema, type CadenceTrigger, CadenceTriggerSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type IntegrateRequest, type IntegrateResult, IntegrateResultSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, REGISTRY_TAIL, RatchetKindSchema, RatchetMoveSchema, type RatchetRequest, type Reeval, ReevalSchema, ReevalVerdictSchema, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, SnapshotCutSchema, type SnapshotLog, SnapshotLogSchema, type SnapshotRequest, SnapshotResultSchema, type SnapshotSettings, SnapshotSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, SyncGateAnswerSchema, type SyncRequest, type SyncResult, SyncResultSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cadence, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, snapshotLog, toIdea, zeroToleranceHit };
+export { AUTORESEARCH_STEPS, AUTORESEARCH_VALIDATE_STEPS, AUTORESEARCH_VALIDATE_WORKFLOW, AUTORESEARCH_WORKFLOW, AgainstSchema, type ArDispatchStep, type ArEvalView, type ArIdeaView, type ArLadderView, type ArMetricView, type ArMicro, ArMicroSchema, type ArPorts, type ArReevalView, type ArResult, ArResultSchema, type ArRoundView, type ArRunSummary, type ArRunView, type ArSnapshotView, type ArStepDeclaration, type ArStepHandler, type ArSyncView, type ArTargetView, ArchivedSchema, type Band, type Bounds, BoundsSchema, type Cadence, type CadenceRound, CadenceRoundSchema, CadenceSchema, type CadenceTrigger, CadenceTriggerSchema, type CellRow, type CheckRow, type DeadEnd, type DiffFile, type DiffSize, DiffSizeSchema, type Digest, EMPTY_REGISTRIES, type EvidenceRow, type Fork, ForkScheduleSchema, HeadSchema, type Idea, IdeaSchema, type ImplementRequest, ImplementedSchema, ImplementerSchema, InboxSchema, type IntegrateRequest, type IntegrateResult, IntegrateResultSchema, type KeepSettings, LoadWaitSchema, type LookAggregate, LookAggregateSchema, type LookRequest, type MetricSpec, MetricSpecSchema, type MicroRequest, NO_NOISE, type NoiseSettings, type NoiseState, type Outcome, OutcomeSchema, type Pinned, PinnedSchema, type PlanMode, PlannedSchema, type Planner, PlannerSchema, type PostCheck, type PostCheckInput, type Proposal, ProposalSchema, type QueueOps, QueueOpsSchema, type QuotaContext, REGISTRY_TAIL, RatchetKindSchema, RatchetMoveSchema, type RatchetRequest, type Reeval, ReevalSchema, ReevalVerdictSchema, RegisteredSchema, type Registries, type RegistryRow, RegistryRowSchema, ReleasedSchema, type RoundRecord, type RoundSummary, RoundSummarySchema, type RunPin, type RunSettings, RunSettingsSchema, SnapshotCutSchema, type SnapshotLog, SnapshotLogSchema, type SnapshotRequest, SnapshotResultSchema, type SnapshotSettings, SnapshotSettingsSchema, StaticCheckSchema, type StepTiming, type StopReason, StopReasonSchema, SyncGateAnswerSchema, type SyncRequest, type SyncResult, SyncResultSchema, type Target, TargetSchema, TreeSchema, addPair, applyOps, arRunSummary, arRunView, arStepHandlers, arStepId, band, betaDraw, buildDigest, cadence, cellTable, changedParams, confirmRule, evidenceRow, finalOutcomes, frozenOverlap, ideaId, ideaRefs, implementerBrief, improvement, inDeadEnd, keepRule, median, microSignalArg, parseUnifiedDiff, pooledSigma, postCheck, preCheck, projectMetric, quotaRules, quotaViolations, recordAnalysis, recordOutcome, registryTails, renderCommand, resultSchemaFor, reward, runAutoresearch, runValidatorLook, seededRandom, select, sigmaOf, snapshotLog, toIdea, zeroToleranceHit };

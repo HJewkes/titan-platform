@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   Alert,
   Button,
@@ -21,12 +21,16 @@ import {
   Typography,
   VStack,
 } from "@titan-design/react-ui";
+import type { QueryResult } from "@titan-design/react-app";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { GuessedCaption, STAGE_ORDER, TaskStageBadge, stageLabel } from "./TaskParts.js";
 
-type Row = ConsoleCommands["work.tasks"]["result"]["tasks"][number];
+type TasksResult = ConsoleCommands["work.tasks"]["result"];
+type TasksArgs = ConsoleCommands["work.tasks"]["args"];
+type Row = TasksResult["tasks"][number];
+type Stage = Row["stage"];
 
 const FILTER_KEYS = ["stage", "initiative", "severity", "q"] as const;
 type Filters = Partial<Record<(typeof FILTER_KEYS)[number], string>>;
@@ -52,32 +56,34 @@ function setFilters(filters: Filters): void {
   open({ view: "tasks", ...(query ? { query } : {}) });
 }
 
-function matches(row: Row, filters: Filters): boolean {
-  const text = filters.q?.toLowerCase();
-  return (
-    (!filters.stage || row.stage === filters.stage) &&
-    (!filters.initiative || row.slug === filters.initiative) &&
-    (!filters.severity || row.severity === filters.severity) &&
-    (!text || `${row.id} ${row.title}`.toLowerCase().includes(text))
-  );
+const isStage = (value: string | undefined): value is Stage => STAGE_ORDER.some((stage) => stage === value);
+
+/** The server filters, so the per-stage cap never hides a row a filter would show; an unknown stage in the link is dropped. */
+function argsOf({ stage, initiative, severity, q }: Filters): TasksArgs {
+  return { ...(isStage(stage) ? { stage } : {}), ...(initiative ? { initiative } : {}), ...(severity ? { severity } : {}), ...(q ? { q } : {}) };
 }
 
 /** Open tasks across initiatives, grouped by derived stage; the filters live in the query string so a view is a link. */
 export function TasksPage({ query }: { query?: string }): ReactNode {
-  const tasks = useQuery("work.tasks");
-  if (tasks.status === "loading") return <Spinner size="sm" label="Loading tasks" />;
-  if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error.message}`} />;
-  const { tasks: rows, evidence } = tasks.data;
-  if (rows.length === 0) return <EmptyState title="No open tasks" description="No initiative has an open task." />;
   const filters = filtersOf(query);
-  const shown = rows.filter((row) => matches(row, filters));
+  const tasks = useQuery("work.tasks", argsOf(filters));
+  // Each filter is a new read, so the bar keeps the last initiatives it saw instead of unmounting while one loads.
+  const initiatives = useRef<readonly string[]>([]);
+  if (tasks.data !== undefined) initiatives.current = tasks.data.initiatives;
+  if (tasks.data?.initiatives.length === 0) return <EmptyState title="No open tasks" description="No initiative has an open task." />;
   return (
     <VStack gap={4}>
-      {evidence.degraded.length > 0 ? <Alert status="warning" message={`Some stages lack evidence: ${evidence.degraded.join("; ")}`} /> : null}
-      <FilterBar filters={filters} initiatives={[...new Set(rows.map((row) => row.slug))].sort()} />
-      {shown.length === 0 ? <NoMatches /> : <StageGroups rows={shown} />}
+      {tasks.data && tasks.data.evidence.degraded.length > 0 ? <Alert status="warning" message={`Some stages lack evidence: ${tasks.data.evidence.degraded.join("; ")}`} /> : null}
+      <FilterBar filters={filters} initiatives={initiatives.current} />
+      <TasksBody tasks={tasks} />
     </VStack>
   );
+}
+
+function TasksBody({ tasks }: { tasks: QueryResult<TasksResult> }): ReactNode {
+  if (tasks.status === "loading") return <Spinner size="sm" label="Loading tasks" />;
+  if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error.message}`} />;
+  return tasks.data.tasks.length === 0 ? <NoMatches /> : <StageGroups rows={tasks.data.tasks} counts={tasks.data.counts} />;
 }
 
 function NoMatches(): ReactNode {
@@ -109,14 +115,17 @@ function FilterBar({ filters, initiatives }: { filters: Filters; initiatives: re
   );
 }
 
-function StageGroups({ rows }: { rows: readonly Row[] }): ReactNode {
+function StageGroups({ rows, counts }: { rows: readonly Row[]; counts: TasksResult["counts"] }): ReactNode {
   const groups = STAGE_ORDER.map((stage) => ({ stage, rows: rows.filter((row) => row.stage === stage) })).filter((group) => group.rows.length > 0);
   return (
     <VStack gap={6}>
       {groups.map((group) => (
         <Section key={group.stage} testID={`stage-group-${group.stage}`}>
-          <SectionHeader title={`${stageLabel(group.stage)} (${group.rows.length})`} />
+          <SectionHeader title={`${stageLabel(group.stage)} (${counts[group.stage]})`} />
           <SectionContent>
+            {group.rows.length < counts[group.stage] ? (
+              <Typography variant="caption" color="secondary">{`Showing the first ${group.rows.length} by priority; filter to see the rest.`}</Typography>
+            ) : null}
             <StageTable rows={group.rows} />
           </SectionContent>
         </Section>

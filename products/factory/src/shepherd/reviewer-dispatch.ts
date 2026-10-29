@@ -210,12 +210,18 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
 function queuedStart(gate: SpawnGate | undefined, roster: RosterReader) {
   const firstSeen = new Map<string, number>();
   return (name: string, review: ReviewAsk, launch: () => Promise<void>, signal?: AbortSignal): Promise<void> =>
-    gate ? gate.queueReview(name, review, { running: () => readRunningReviews(roster, gate, firstSeen), launch }, signal) : launch();
+    gate ? gate.queueReview(name, review, { running: () => readRunningReviews(roster, gate, firstSeen), launch, ...(signal && { signal }) }) : launch();
 }
 
-/** A resume names only the reviewer, so its PR is known only when this process spawned it. */
+/** A spawn's ask carries the head it reviews, which the gate drops it on once the PR lists another. */
 function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"], intentAt?: number): ReviewAsk {
   return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr, head: target.head }, ...(intentAt !== undefined && { intentAt }) };
+}
+
+/** A resume names only the reviewer, so its PR is known only when this process spawned it, and the head of that spawn is usually stale by the resume's review. */
+function resumeAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"]): ReviewAsk {
+  const ask = reviewAsk(target, isFixer);
+  return ask.target === undefined ? ask : { ...ask, target: { repo: ask.target.repo, pr: ask.target.pr } };
 }
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
@@ -236,6 +242,6 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
     roster: () => askBroker(async () => rosterRows(await roster.rows())),
     lineage: () => askBroker(async () => toLineage(await lineage.rows())),
     spawn: (name, brief, target, facts = {}, signal) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt, signal), options.onMachineHold),
-    resume: (name, brief, signal) => askBroker(() => queued(name, reviewAsk(targets.get(name), options.isFixer), () => agents.resume(name, brief), signal), options.onMachineHold),
+    resume: (name, brief, signal) => askBroker(() => queued(name, resumeAsk(targets.get(name), options.isFixer), () => agents.resume(name, brief), signal), options.onMachineHold),
   };
 }

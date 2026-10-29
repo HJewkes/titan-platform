@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a detail route is folded into its list route",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "const name = row.detail ? `${row.view} (detail)` : row.view;",
+      "replace": "const name = row.view;",
+      "kills": ["route timing summary a detail route is summarised apart from its list route"]
+    },
+    {
+      "name": "the log reader drops route rows",
+      "file": "apps/console/server/perf/recorder.ts",
+      "find": "[rpcRow, upstreamRow, routeRow]",
+      "replace": "[rpcRow, upstreamRow]",
+      "kills": ["route timing summary a route row reported today is read back from the log for the 24 h window"]
+    }
+  ]
+}

@@ -5,8 +5,11 @@
 // Usage: node scripts/verify-changed.mjs [base]   (base: VERIFY_CHANGED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
+import { readWorkspace, testScope } from "./test-scope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_BASE = "origin/main";
@@ -17,6 +20,9 @@ const GRAPH_ROOT = /^(?:packages|products|apps)\//;
 const CODE_GRAPH_ENTRY = join(ROOT, "packages/code-graph/dist/index.js");
 const VITEST_TIMEOUT_SECONDS = 600;
 const VITEST_HEAP_MB = 4096;
+const TYPE_INPUT = /(?:^|\/)tsconfig[^/]*\.json$/;
+const ROOT_SCRIPTS = "scripts/";
+const LOC_LABEL = "max-file-loc";
 
 // The languages code-graph's indexer walks (LANGUAGES in its indexer.ts); which extensions `typescript` covers is
 // code-parser's call (.mjs and .cjs joined in TP-4161), so nothing here lists them.
@@ -70,42 +76,101 @@ export function locViolations(changed, rule, readContent, inScope) {
     });
 }
 
-/** The workspace package directory a path belongs to, or null for a path outside every package. */
-export function packageDirOf(path) {
-  const match = /^(?:packages|products|apps)\/[^/]+/.exec(path);
-  return match ? match[0] : null;
-}
-
-export function touchedPackageDirs(changed) {
-  return [...new Set(changed.map(packageDirOf).filter(Boolean))].sort();
-}
-
-/** Packages whose changed files can alter types: a deleted-only or docs-only change needs no tsc. */
-export function typecheckDirs(changed, hasTypecheckScript) {
-  const typed = changed.filter((path) => SOURCE_EXT.test(path) || /(?:^|\/)tsconfig[^/]*\.json$/.test(path));
-  return touchedPackageDirs(typed).filter(hasTypecheckScript);
-}
-
 export function relatedTestArgs(changed) {
   const sources = changed.filter((path) => SOURCE_EXT.test(path));
   return sources.length === 0 ? null : ["related", "--run", "--passWithNoTests", ...sources];
 }
 
-/** Ordered commands after the in-process LOC check; each is argv for spawnSync with optional env. */
-export function planCommands({ base, changed, hasTypecheckScript, hasTimeout }) {
-  const commands = [{ label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] }];
-  for (const dir of typecheckDirs(changed, hasTypecheckScript)) {
-    commands.push({ label: `tsc ${dir}`, cmd: "pnpm", args: ["--dir", dir, "run", "typecheck"] });
-  }
+/**
+ * Which members lint:types covers, from CI's own test-scope graph so a change reaches the packages that read its
+ * types through dist. Inside a member only type inputs count; a path outside every member goes to testScope as is,
+ * so one it does not know asks for a full run.
+ */
+export function lintTypesScope(changed, workspace) {
+  if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: "full" };
+  const inMember = (path) => workspace.some((member) => path.startsWith(member.dir));
+  const inputs = changed.filter((path) => !inMember(path) || SOURCE_EXT.test(path) || TYPE_INPUT.test(path));
+  if (inputs.length === 0) return { mode: "none" };
+  const scope = testScope(inputs, workspace);
+  if (scope.mode !== "scoped") return { mode: scope.mode };
+  const dirs = scope.dirs.filter((dir) => dir !== ROOT_SCRIPTS).map((dir) => dir.replace(/\/$/, ""));
+  return dirs.length === 0 ? { mode: "none" } : { mode: "scoped", dirs };
+}
+
+function lintTypesCommand(changed, workspace) {
+  const scope = lintTypesScope(changed, workspace);
+  if (scope.mode === "none") return null;
+  const only = scope.mode === "scoped" ? [`--only=${scope.dirs.join(",")}`] : [];
+  return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only] };
+}
+
+function vitestCommand(changed, hasTimeout, spool) {
   const related = relatedTestArgs(changed);
-  if (related) {
-    const vitest = ["pnpm", "exec", "vitest", ...related];
-    // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
-    const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
-    const label = hasTimeout ? "vitest related" : "vitest related (no timeout command, unbounded)";
-    commands.push({ label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` } });
-  }
-  return commands;
+  if (!related) return null;
+  const vitest = ["pnpm", "exec", "vitest", ...related];
+  // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
+  const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
+  const label = hasTimeout ? "vitest related" : "vitest related (no timeout command, unbounded)";
+  // Each pre-push run leaves a timing record in the spool, so the corpus sees local runs too (TP-4465).
+  const timing = { TITAN_TEST_TIMING_SPOOL: spool, TITAN_TEST_TIMING_RUNNER: "verify-changed" };
+  return { label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}`, ...timing } };
+}
+
+const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
+
+/**
+ * Every ci.yml `run:` step, matched by job and by its command (a string matches the whole command or its leading
+ * words). A `label` names the planCommands step that mirrors it; any other disposition says why there is none.
+ * verify-changed-coverage.test.mjs fails on a step no row matches and on a labelled row the plan never runs.
+ */
+export const CI_COVERAGE = [
+  { job: ["validate", "dag-check", "perf", "test-shard"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
+  { job: "validate", run: "pnpm env:doctor", disposition: "local", label: "env:doctor" },
+  { job: ["validate", "dag-check", "perf", "test-shard"], run: "pnpm build", disposition: "local", label: "build" },
+  { job: "validate", run: "pnpm egress:scan range", disposition: "covered-by", reason: "the pre-push hook that prepare installs scans the pushed range" },
+  { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
+  { job: "validate", run: "pnpm sidecar:finds", disposition: "local", label: "sidecar:finds" },
+  { job: "validate", run: "pnpm typecheck", disposition: "local", label: "typecheck" },
+  { job: "validate", run: "pnpm lint", disposition: "local", label: "lint" },
+  { job: ["validate", "test-shard"], run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
+  { job: "validate", run: "pnpm test:scope", disposition: "local-subset", label: "vitest related", reason: "the full reverse closure can pass the 600 s cap; CI stays the authority" },
+  { job: "test-shard", run: /^pnpm exec vitest run .*--shard=/, disposition: "ci-only", reason: "main's full suite in shards; a pull request runs the scoped pnpm test:scope instead" },
+  { job: "validate", run: "pnpm capabilities:check", disposition: "local", label: "capabilities:check" },
+  { job: "validate", run: "pnpm metrics:check", disposition: "local", label: "metrics:check" },
+  { job: "validate", run: /sunset-manifest\.mjs check/, disposition: "ci-only", reason: "clones agent-chat over the network and only warns" },
+  { job: "validate", run: "pnpm docs:build", disposition: "local", label: "docs:build" },
+  { job: "validate", run: "pnpm changeset status", disposition: "local", label: "changeset status" },
+  { job: "validate", run: "pnpm index-version:check", disposition: "local", label: "index-version:check" },
+  { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
+  { job: "dag-check", run: /^pnpm (?:dag:check:graph|dead:check) /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
+  { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
+  { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
+  { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
+];
+
+/**
+ * The CI_COVERAGE steps in ci.yml order, each argv for spawnSync with optional env. The cheap checks run on every
+ * change: a trigger list that misses an input fails silently, and only CI catches it. LOC runs in-process after the
+ * build, which produces the code-graph dist it reads.
+ */
+export function planCommands({ base, changed, workspace, hasTimeout, spool }) {
+  if (changed.length === 0) return [];
+  return [
+    pnpmRun("env:doctor"),
+    pnpmRun("build"),
+    { label: LOC_LABEL, inProcess: true },
+    pnpmRun("merge:lint"),
+    pnpmRun("sidecar:finds"),
+    pnpmRun("typecheck"),
+    pnpmRun("lint"),
+    vitestCommand(changed, hasTimeout, spool),
+    pnpmRun("capabilities:check"),
+    pnpmRun("metrics:check"),
+    pnpmRun("docs:build"),
+    { label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] },
+    { ...pnpmRun("index-version:check"), env: { BASE_REF: base } },
+    lintTypesCommand(changed, workspace),
+  ].filter(Boolean);
 }
 
 const gitLines = (args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
@@ -119,9 +184,9 @@ function changedFiles(base) {
   return [...files].filter((path) => existsSync(join(ROOT, path)));
 }
 
-function hasTypecheckScript(dir) {
-  const manifest = join(ROOT, dir, "package.json");
-  return existsSync(manifest) && Boolean(JSON.parse(readFileSync(manifest, "utf8")).scripts?.typecheck);
+function timingSpool() {
+  const home = process.env.TITAN_TEST_TIMING_HOME || join(homedir(), ".local/share/titan-test-timing");
+  return process.env.TITAN_TEST_TIMING_SPOOL || join(home, "spool");
 }
 
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
@@ -134,19 +199,34 @@ async function overLoc(changed) {
   return locViolations(changed, rule, (path) => readFileSync(join(ROOT, path), "utf8"), inScope);
 }
 
+// A broken build leaves no code-graph dist; report that as this step's failure and keep running the rest.
+async function locPasses(changed) {
+  try {
+    const over = await overLoc(changed);
+    for (const v of over) console.error(`verify:changed: ${v.path} has ${v.loc} lines, max ${v.max}`);
+    return over.length === 0;
+  } catch (err) {
+    console.error(`verify:changed: ${err.message}`);
+    return false;
+  }
+}
+
+async function runStep({ cmd, args, env, inProcess }, changed) {
+  if (inProcess) return locPasses(changed);
+  return spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } }).status === 0;
+}
+
 async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const over = await overLoc(changed);
-  for (const v of over) console.error(`verify:changed: ${v.path} has ${v.loc} lines, max ${v.max}`);
-  let failed = over.length > 0;
-  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout() })) {
-    console.log(`verify:changed: ${label}`);
-    const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
-    if (result.status !== 0) {
-      console.error(`verify:changed: ${label} failed`);
-      failed = true;
-    }
+  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool() });
+  if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
+  let failed = false;
+  for (const step of plan) {
+    console.log(`verify:changed: ${step.label}`);
+    if (await runStep(step, changed)) continue;
+    console.error(`verify:changed: ${step.label} failed`);
+    failed = true;
   }
   process.exitCode = failed ? 1 : 0;
 }

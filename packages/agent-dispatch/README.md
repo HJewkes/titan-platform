@@ -68,6 +68,14 @@ await dispatchToAgentChat(
   out gets the same argv as before.
 - `dataFence(label, text)` wraps untrusted text in a fence one backtick longer than the
   longest backtick run in it (at least three), preceded by a line saying it is data.
+- `lastFencedJson(text)` parses the body of the last ```` ```json ```` block in an agent's
+  final message, the way an implementer ends its report; undefined when there is none, and
+  a `SyntaxError` when the block is not JSON, so a malformed report never reads as missing.
+- `dispatchToAgentChat` and `buildSpawnArgs` take an optional `role` (`implementer`,
+  `reviewer`, `fix-round-<n>` and the rest of agent-chat's `--role` values) and `task`, sent
+  as `--role` and `--task` so the agent's roster row records who it works for. A task id
+  outside `TASK_ID_PATTERN` throws `DispatchError` before anything runs; a caller that leaves
+  both out gets the same argv as before.
 - Every agent-chat call runs with `AGENT_CHAT_NO_AUTOSTART=1`. When the CLI reports that it
   cannot reach the broker, the call rejects with `BrokerUnavailableError` (a
   `DispatchError`); every other refusal stays a plain `DispatchError`. Every verb that runs
@@ -131,3 +139,27 @@ block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `ove
 - `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
 - `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
   caller names; the package owns no path.
+
+## Routing (`./routing`, `./routing/node`)
+
+The workflow table (`shape-v1`) that maps a task's facts to a prior and an implementer
+profile, shipped as `workflow/shape-v1.yml`.
+
+- `parseWorkflowTable(text)` gives the table or one problem line per lint failure; every
+  value is a closed enum.
+- `classifyTask(table, facts)` gives the first matching prior and its reason;
+  `profileFor(table, prior, estimate)` gives the profile its class row dispatches.
+- A rule with `needsOwns: true` cannot match a task with no owns, so missing facts never
+  route down. The shipped table sets it on `small` and `standard`.
+- `priorRoute(router, facts, today, label)` keeps or changes a profile in `shadow` or `on`
+  mode; `planFacts(planText, slice?)` reads owns and points from a `burndown-slices` block.
+- `routeSpawn(input)` is the spawn-time decision. It applies to `auto` and the implementer
+  family (`implementer`, `implementer-lite`, `bd-implementer`, `bd-implementer-lite`). The
+  table picks the tier; the caller's family keeps its prefix. It never refuses a spawn: a
+  missing table, an override, a keep-role (default `fix-round`) or a pick outside the two
+  tiers keeps the requested profile and says why in `source`.
+- `routeMeta(decision)` writes the decision as the `ROUTE_META_KEYS` fields of a spawn row.
+  `summarizeRoutes(rows)` reads such rows back into agreement, would-lite, lite-without-owns,
+  fact coverage and candidate counts.
+- `./routing/node` has `DEFAULT_WORKFLOW_TABLE`, `readWorkflowTable(root)` and
+  `readPriorRouter(mode, root)`.

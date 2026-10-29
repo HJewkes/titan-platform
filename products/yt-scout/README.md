@@ -75,3 +75,17 @@ A missing source is reported as `missing`, not an error. Channels that match a w
 handle or name are stored as that key; others keep their own name.
 
 Tests use synthetic ids and text written to a temp directory. Do not commit real transcript text.
+
+## Eval loop
+
+Cases live under `$YT_ROOT/scout/evals/cases/score-<id>.json`, outside the repo: each holds the
+transcript's path and sha256, never its text.
+
+- `titan-yt-scout flag <id> --transcript <file> --verdict over|under|miss|wrong-ts|bad-why [--gold-total <n>] [--note ...]`
+  records the owner's verdict. `over`, `under` and `miss` need `--gold-total`, the total the card should have had.
+- `score` files automatic cases (`schema_invalid`, `refusal`, `ts_invalid`).
+- `titan-yt-scout eval audit --model <opus> --rubric <file>` re-scores 5 cards from the last week
+  and files an `audit-disagree` case on a gap of 3 or more in total, or a flip across the threshold.
+- `titan-yt-scout eval replay --model <m> --rubric <file> [--max-cases n] [--max-cost usd]` re-runs every case and prints
+  threshold-side agreement, mean absolute difference in total against gold (the recorded card when there is no gold),
+  ts validity and cost. A case whose transcript changed since it was filed is counted `stale`, not replayed.

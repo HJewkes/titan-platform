@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { seedRepo } from "@titan-design/test-kit/git";
+import { afterAll } from "vitest";
 
 /** A throwaway git repository for tests, committed to with the machine's git config ignored. */
 export interface TestRepo {
@@ -57,10 +59,15 @@ export function tempDir(prefix: string): string {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
 }
 
+/** An unborn `main` copied from a per-file template, with no sample hooks; each commit stays a real one. */
 export function makeTestRepo(dir = tempDir("egress-scan-")): TestRepo {
+  seedRepo(dir, {});
+  return openTestRepo(dir);
+}
+
+function openTestRepo(dir: string): TestRepo {
   const git = (args: readonly string[], env: Readonly<Record<string, string>> = {}): string =>
     execFileSync("git", [...args], { cwd: dir, encoding: "utf-8", env: { ...ISOLATED_ENV, ...env } });
-  git(["init", "-q", "-b", "main"]);
   return {
     dir,
     git,
@@ -74,4 +81,38 @@ export function makeTestRepo(dir = tempDir("egress-scan-")): TestRepo {
       return git(["rev-parse", "HEAD"]).trim();
     },
   };
+}
+
+/** A repository at `root/repo`, with room beside it under `root` for the bare remotes its setup makes. */
+export interface RepoWorld {
+  readonly root: string;
+  readonly repo: TestRepo;
+}
+
+const worldTemplates: string[] = [];
+
+afterAll(() => {
+  for (const root of worldTemplates.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+/**
+ * Runs `build` once, on the first call, and hands every call a copy of the world it left, re-pointing the copy's
+ * remotes at the copy's root. A setup's dozens of git processes then run once per file instead of once per test.
+ */
+export function worldTemplate<T extends object>(build: (world: RepoWorld) => T): () => RepoWorld & T {
+  let template: { root: string; value: T } | undefined;
+  return () => {
+    template ??= buildWorld(build);
+    const root = tempDir("egress-world-");
+    fs.cpSync(template.root, root, { recursive: true });
+    const config = path.join(root, "repo", ".git", "config");
+    fs.writeFileSync(config, fs.readFileSync(config, "utf-8").replaceAll(template.root, root));
+    return { ...template.value, root, repo: openTestRepo(path.join(root, "repo")) };
+  };
+}
+
+function buildWorld<T>(build: (world: RepoWorld) => T): { root: string; value: T } {
+  const root = tempDir("egress-world-");
+  worldTemplates.push(root);
+  return { root, value: build({ root, repo: makeTestRepo(path.join(root, "repo")) }) };
 }

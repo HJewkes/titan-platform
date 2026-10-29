@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "L0 never runs the cue gap row",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "cueGapCheck, heldCountCheck, fillFloorCheck,",
+      "replace": "heldCountCheck, fillFloorCheck,",
+      "kills": [
+        "Q-D17 planned cue gaps a planned cue gap over 8 s fails"
+      ]
+    },
+    {
+      "name": "L0 never runs the held-beat or fill floor rows",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "cueGapCheck, heldCountCheck, fillFloorCheck,",
+      "replace": "cueGapCheck,",
+      "kills": [
+        "Q-D18 held beats a script with no held beat fails against pacing.held 1-2"
+      ]
+    }
+  ]
+}

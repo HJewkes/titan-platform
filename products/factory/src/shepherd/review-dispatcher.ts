@@ -4,12 +4,22 @@ import type { ReviewAsk, WaitingReview } from "./review-queue.js";
 export interface ReviewStart {
   running: () => Promise<readonly number[]>;
   launch: () => Promise<void>;
+  /** The waiting step's signal: aborting it takes the review out of the queue, so a cancelled run never launches a reviewer. */
+  signal?: AbortSignal;
 }
 
 /** The queued review's pull request moved to a new head or closed before its turn, so it never started. */
 export class ReviewSuperseded extends Error {
   override readonly name = "ReviewSuperseded";
+
+  /** `moved` is set when the live PR read, not the cached list, found the move; the step then answers as a resync would. */
+  constructor(message: string, readonly moved?: { from: string; to: string }) {
+    super(message);
+  }
 }
+
+/** The open PR's head now; undefined when it cannot be read or is no longer open. */
+export type LiveHead = (target: { repo: string; pr: number }) => Promise<string | undefined>;
 
 /** What the dispatcher needs from the gate: the one queue, and the verdict that admits or defers the review at its front. */
 interface DispatcherPorts {
@@ -19,6 +29,8 @@ interface DispatcherPorts {
   /** Throws `deferred` when the machine or the slots would not take the review now. */
   admit(name: string, running: readonly number[], review: ReviewAsk): void;
   deferred: (error: unknown) => boolean;
+  /** Absent means no live read is made. */
+  liveHead?: LiveHead;
   /** Thrown to a review still queued after `holdMs`, so its step can give up as it did on a long machine hold. */
   expired: (waitedMs: number) => Error;
   now: () => number;
@@ -31,7 +43,6 @@ interface Waiter extends ReviewStart {
   since: number;
   resolve: () => void;
   reject: (error: unknown) => void;
-  /** Stops listening to the step's abort signal. */
   detach: () => void;
 }
 
@@ -51,8 +62,12 @@ function waiterBook(ports: DispatcherPorts, onTick: () => void) {
     if (error !== undefined) waiter.reject(error);
     return waiter;
   };
-  const add = (name: string, waiter: Waiter) => {
+  /** Queues `name`'s waiter; its signal aborting settles it with the signal's reason, unless a later queue of `name` replaced it. */
+  const add = (name: string, entry: Omit<Waiter, "detach">) => {
+    const abort = () => void (waiting.get(name) === waiter && settle(name, entry.signal?.reason));
+    const waiter: Waiter = { ...entry, detach: () => entry.signal?.removeEventListener("abort", abort) };
     waiting.set(name, waiter);
+    entry.signal?.addEventListener("abort", abort, { once: true });
     timer ??= setInterval(onTick, ports.tickMs);
     timer.unref();
   };
@@ -60,6 +75,19 @@ function waiterBook(ports: DispatcherPorts, onTick: () => void) {
 }
 
 type Book = ReturnType<typeof waiterBook>;
+
+/** Gives up each waiter whose PR now stands at another head; one that cannot be read stays queued. */
+async function dropMovedLive(ports: DispatcherPorts, book: Book): Promise<void> {
+  const { liveHead } = ports;
+  if (!liveHead) return;
+  await Promise.all([...book.waiting].map(async ([name, { review }]) => {
+    const { target } = review;
+    if (!target?.head) return;
+    const current = await liveHead(target).catch(() => undefined);
+    if (current === undefined || current === target.head || !book.waiting.has(name)) return;
+    book.settle(name, new ReviewSuperseded(`superseded: the pull request moved from head ${target.head} to ${current}`, { from: target.head, to: current }));
+  }));
+}
 
 /** The queue's front that still has a waiter; undefined when none does. */
 function frontOf(ports: DispatcherPorts, { waiting }: Book): (Waiter & { name: string }) | undefined {
@@ -71,6 +99,7 @@ function frontOf(ports: DispatcherPorts, { waiting }: Book): (Waiter & { name: s
 /** One pass over the front of the queue: gives up the expired, then admits and launches until the gate defers one. */
 async function pass(ports: DispatcherPorts, book: Book): Promise<void> {
   const at = ports.now();
+  await dropMovedLive(ports, book);
   for (const [name, waiter] of book.waiting) if (at - waiter.since >= ports.holdMs) book.settle(name, ports.expired(at - waiter.since));
   for (let front = frontOf(ports, book); front; front = frontOf(ports, book)) {
     try {
@@ -114,15 +143,12 @@ export function reviewDispatcher(ports: DispatcherPorts) {
   return {
     /**
      * The enqueue trigger: resolves once the review has launched, rejects when its launch fails, it is superseded, it outwaits
-     * `holdMs` or `signal` aborts, which takes it out of the queue so an abandoned step holds no place.
+     * `holdMs`, or its step's signal aborts.
      */
-    queue(name: string, review: ReviewAsk, start: ReviewStart, signal?: AbortSignal): Promise<void> {
+    queue(name: string, review: ReviewAsk, start: ReviewStart): Promise<void> {
       book.settle(name, new ReviewSuperseded(`${name} was queued again`));
-      if (signal?.aborted) return Promise.reject(signal.reason);
-      const withdraw = () => book.settle(name, signal?.reason);
-      signal?.addEventListener("abort", withdraw, { once: true });
-      const detach = () => signal?.removeEventListener("abort", withdraw);
-      const started = new Promise<void>((resolve, reject) => book.add(name, { ...start, review, since: ports.now(), resolve, reject, detach }));
+      if (start.signal?.aborted) return Promise.reject(start.signal.reason);
+      const started = new Promise<void>((resolve, reject) => book.add(name, { ...start, review, since: ports.now(), resolve, reject }));
       ports.enter(name, review);
       void pump();
       return started;

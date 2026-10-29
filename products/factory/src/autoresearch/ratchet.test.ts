@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGit, ratchetFastForward, remoteDefaultBranch, seedRatchet } from "./ratchet.js";
 
@@ -16,11 +17,7 @@ async function fixtureRepo() {
   roots.push(root);
   const bare = join(root, "origin.git");
   const work = join(root, "work");
-  mkdirSync(work);
-  await git(work, "init", "--quiet", "-b", "main");
-  await git(work, "commit", "--quiet", "--allow-empty", "-m", "fixture");
-  await git(root, "clone", "--quiet", "--bare", work, bare);
-  await git(work, "remote", "add", "origin", bare);
+  seedRepoWithOrigin(work, bare);
   return { bare, work, pin: await git(work, "rev-parse", "HEAD") };
 }
 

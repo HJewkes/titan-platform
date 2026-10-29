@@ -4,13 +4,14 @@ import { describe, expect, it } from "vitest";
 import { factoryMigrations } from "../host.js";
 import { SHEPHERD_MIGRATIONS } from "../workflows.js";
 import { MergeOrder, orderDriving, type RunHolds } from "./merge-order.js";
+import { ShepherdStore } from "./store.js";
 
 const REPO = "hjewkes/titan-platform";
 const AT = "2026-10-23T10:00:00.000Z";
 
 type Holds = ReturnType<RunHolds["byRun"]>;
-const UNHELD: Holds = { held: false, holdSatisfied: null, ownerHold: null };
-const HELD: Holds = { held: true, holdSatisfied: null, ownerHold: null };
+const UNHELD: Holds = { repo: REPO, held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, ownerHold: null };
+const HELD: Holds = { ...UNHELD, held: true, holdReason: "held in this test" };
 const SATISFIED: Holds = { ...HELD, holdSatisfied: { head: "head-1", by: { reviewer: "rv", agentId: "agent-rv-1", sessionId: "session-rv-1", locator: {} } } };
 const OWNER_HELD: Holds = { ...SATISFIED, ownerHold: { reason: "owner hold in this test", at: AT, askedAt: null } };
 
@@ -19,7 +20,7 @@ function drives(holds: Holds, status: "running" | "completed" = "running"): bool
   const db = openDatabase(":memory:");
   runMigrations(db, [...factoryMigrations(), ...SHEPHERD_MIGRATIONS]);
   new WorkflowRunStore(db).create({ id: "run-x", workflowName: "shepherd-pr", params: { repo: REPO }, status, currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: AT, completedAt: null, error: null });
-  const driving = orderDriving(new MergeOrder(db), { byRun: () => holds })("run-x");
+  const driving = orderDriving(new MergeOrder(db), { byRun: () => holds, gateEvidence: () => new ShepherdStore(db).gateEvidence() })("run-x");
   db.close();
   return driving;
 }

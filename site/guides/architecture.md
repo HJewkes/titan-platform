@@ -59,6 +59,7 @@ graph TD
     speechG2p["speech-g2p"]
     speechStt["speech-stt"]
     speechTts["speech-tts"]
+    testTiming["test-timing"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -176,6 +177,7 @@ graph TD
   styleAnalyzer --> styleProfile
   styleChecker --> styleAnalyzer
   styleChecker --> styleProfile
+  testTiming --> storeSqlite
   throughput --> evidence
   toolGuard --> authority
   toolGuard --> fixProof
@@ -281,7 +283,9 @@ graph TD
   sessionMiner --> workflow
   titan --> daemon
   titan --> health
+  ytScout --> agent
   ytScout --> appPaths
+  ytScout --> ownerQueue
   ytScout --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp

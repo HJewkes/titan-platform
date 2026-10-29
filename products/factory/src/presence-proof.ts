@@ -89,7 +89,7 @@ const GatePresenceStatementSchema = z.strictObject({
   items: z.tuple([z.strictObject({ gate: z.string().regex(GATE_ID), payload: z.record(z.string(), z.json()) })]),
 });
 
-type GatePresenceStatement = z.infer<typeof GatePresenceStatementSchema>;
+export type GatePresenceStatement = z.infer<typeof GatePresenceStatementSchema>;
 
 export type Refusal =
   | "bad-signature"

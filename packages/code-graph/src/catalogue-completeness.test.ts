@@ -51,11 +51,11 @@ const FIXTURE: Record<string, string> = {
   ...TEST_KINDS_PROJECT,
 };
 
-async function buildFixture(repo: TestRepo): Promise<void> {
-  await repo.write("src/util.ts", "export const seed = 0;\n");
-  repo.commit("seed", { date: "2023-01-01T12:00:00Z" });
-  for (const [file, contents] of Object.entries(FIXTURE)) await repo.write(file, contents);
-  repo.commit("fixture", { author: "bob", date: daysAgo(5) });
+function buildFixture(repo: TestRepo): void {
+  repo.history([
+    { message: "seed", date: "2023-01-01T12:00:00Z", files: { "src/util.ts": "export const seed = 0;\n" } },
+    { message: "fixture", author: "bob", date: daysAgo(5), files: FIXTURE },
+  ]);
 }
 
 function storeCoverage(store: CodeGraphStore, snapshotId: number, repoDir: string): void {
@@ -93,7 +93,7 @@ describe("metric catalogue completeness", () => {
 
   beforeAll(async () => {
     repo = await makeTestRepo();
-    await buildFixture(repo);
+    buildFixture(repo);
     store = openCodeGraph(":memory:");
     const { snapshotId } = await indexPaths(store, { paths: [repo.dir], churnWindows: [30, 90], lifetime: true });
     storeCoverage(store, snapshotId, repo.dir);

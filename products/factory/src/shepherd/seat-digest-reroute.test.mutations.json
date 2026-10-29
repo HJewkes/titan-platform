@@ -30,10 +30,10 @@
       ]
     },
     {
-      "name": "rows outside the window are skipped but never settled",
+      "name": "only the first of the rows outside the window is settled",
       "file": "products/factory/src/shepherd/seat-digest.ts",
-      "find": "      if (input.row.outcome !== null || FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);\n",
-      "replace": "",
+      "find": "...view.finished.map((item) => item.key), ...view.settled])",
+      "replace": "...view.finished.map((item) => item.key), ...view.settled.slice(0, 1)])",
       "kills": [
         "a digest rerouted from a dead seat carries only what is recent and unheard (TP-4059) settles the old rows, so a second sweep neither sends nor reads them again"
       ]
