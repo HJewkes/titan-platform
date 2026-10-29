@@ -8,11 +8,19 @@ interface Owned {
   repos: FixtureRepo[];
 }
 
-const keyOf = (args: readonly unknown[]) => JSON.stringify(args, (_key, value: unknown) => (typeof value === "function" ? value.name : value));
+// By identity, not name: two different functions that share a name must not share a run.
+const functionIds = new WeakMap<object, number>();
+let nextFunctionId = 0;
+function functionId(fn: object): number {
+  if (!functionIds.has(fn)) functionIds.set(fn, nextFunctionId++);
+  return functionIds.get(fn)!;
+}
+const keyOf = (args: readonly unknown[]) =>
+  JSON.stringify(args, (_key, value: unknown) => (typeof value === "function" ? `fn#${functionId(value)}` : value));
 
 /**
  * `loop` run once per distinct arguments, for tests that only read the finished run; a function argument is keyed by
- * its name. Its host and repo outlive afterEach and are released after the file.
+ * its identity. Its host and repo outlive afterEach and are released after the file.
  */
 export function sharedRuns<A extends unknown[], R>(loop: (...args: A) => Promise<R>, owned: Owned): (...args: A) => Promise<R> {
   const runs = new Map<string, Promise<R>>();
