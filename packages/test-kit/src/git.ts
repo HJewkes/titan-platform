@@ -18,6 +18,10 @@ export interface HistoryCommit {
    * branch's last commit, or the branch's tip in the repository, or has no parent when the branch does not exist yet.
    */
   readonly from?: string;
+  /** When the commit was made, as `Date.parse` reads it; left out, the pinned date `withHistory` gives its position. */
+  readonly date?: string;
+  /** The author's name, with the email `<name>@example.com`; left out, the fixture identity authors the commit. */
+  readonly author?: string;
 }
 
 const NAME = "Test";
@@ -162,10 +166,12 @@ const data = (text: string): string => `data ${Buffer.byteLength(text)}\n${text}
 
 function commitCommand(commit: HistoryCommit, mark: number, parent: string | undefined): string {
   const fileLines = Object.entries(commit.files).map(([file, content]) => (content === null ? `D ${file}\n` : `M 100644 inline ${file}\n${data(content)}`));
+  const when = commit.date === undefined ? HISTORY_EPOCH + mark : Math.floor(Date.parse(commit.date) / 1000);
   return [
     `commit refs/heads/${commit.branch ?? "main"}\n`,
     `mark :${mark}\n`,
-    `committer ${NAME} <${EMAIL}> ${HISTORY_EPOCH + mark} +0000\n`,
+    commit.author === undefined ? "" : `author ${commit.author} <${commit.author}@example.com> ${when} +0000\n`,
+    `committer ${NAME} <${EMAIL}> ${when} +0000\n`,
     data(`${commit.message ?? `commit ${mark}`}\n`),
     parent === undefined ? "" : `from ${parent}\n`,
     ...fileLines,
@@ -189,8 +195,8 @@ function importStream(commits: readonly HistoryCommit[], existing: ReadonlySet<s
 
 /**
  * Writes `commits` into the repository at `dir` with one `git fast-import`, then checks out the last commit's branch
- * with its tree. Returns each commit's sha, in order. Commit dates are pinned, so a history's shas are the same on
- * every run; files are written as mode 100644.
+ * with its tree. Returns each commit's sha, in order. Commit dates are pinned unless a commit names its own, so a
+ * history's shas are the same on every run; files are written as mode 100644.
  */
 export function withHistory(dir: string, commits: readonly HistoryCommit[]): string[] {
   const git = gitIn(dir);
