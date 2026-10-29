@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every portfolio read fetches each brief again",
+      "file": "apps/console/server/work.ts",
+      "find": "if (known?.updated === item.updated) return known.prefix;",
+      "replace": "if (known?.updated === item.updated && false) return known.prefix;",
+      "kills": [
+        "the portfolio a portfolio read with unchanged initiatives makes no brief reads"
+      ]
+    },
+    {
+      "name": "a moved updated stamp keeps the old prefix",
+      "file": "apps/console/server/work.ts",
+      "find": "if (known?.updated === item.updated) return known.prefix;",
+      "replace": "if (known) return known.prefix;",
+      "kills": [
+        "the portfolio a portfolio read re-reads the brief of an initiative whose updated stamp moved"
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXIT } from "@titan-design/registry";
 import { snapshotKey } from "@titan-design/rpc-client";
 import { activeWorkClient } from "./active-work.js";
+import { cachedActiveWork } from "./active-work-cache.js";
 import { brokerReader } from "./broker.js";
 import { fixtureActiveWork, fixtureAnswer, type FixtureOptions } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
@@ -68,6 +69,40 @@ describe("the portfolio", () => {
     });
     const { initiatives } = await readPortfolio(activeWorkClient(daemon.port));
     expect(initiatives.find((row) => row.slug === "kiln-tools")).not.toHaveProperty("taskPrefix");
+  });
+
+  it("a portfolio read with unchanged initiatives makes no brief reads", async () => {
+    const activeWork = await fakeActiveWork();
+    await readPortfolio(activeWork);
+    const first = calls.filter((command) => command === "source.read").length;
+    calls = [];
+    const { initiatives } = await readPortfolio(activeWork);
+    expect(first).toBeGreaterThan(0);
+    expect(calls.filter((command) => command === "source.read")).toEqual([]);
+    expect(initiatives.find((row) => row.slug === "orbit-relay")?.taskPrefix).toBe("OR");
+  });
+
+  it("a portfolio read re-reads the brief of an initiative whose updated stamp moved", async () => {
+    let stamp = "2031-03-04T16:20:00Z";
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      calls.push(command);
+      const answer = fixtureAnswer(command, args) as { sections?: Array<{ items: Array<{ slug: string; updated: string }> }> };
+      if (command === "list") answer.sections?.forEach((section) => section.items.forEach((item) => { if (item.slug === "orbit-relay") item.updated = stamp; }));
+      return answer;
+    });
+    const activeWork = activeWorkClient(daemon.port);
+    await readPortfolio(activeWork);
+    calls = [];
+    stamp = "2031-03-05T09:00:00Z";
+    await readPortfolio(activeWork);
+    expect(calls.filter((command) => command === "source.read")).toHaveLength(1);
+  });
+
+  it("a read of one initiative through the cached client reads the inventory once across repeats", async () => {
+    const activeWork = cachedActiveWork(await fakeActiveWork());
+    await readInitiative(activeWork, "orbit-relay");
+    await readInitiative(activeWork, "orbit-relay");
+    expect(calls.filter((command) => command === "inventory")).toHaveLength(1);
   });
 
   it("flags a personal initiative and still shows it", async () => {

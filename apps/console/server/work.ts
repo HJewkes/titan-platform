@@ -137,7 +137,7 @@ export async function readPortfolio(activeWork: ActiveWork, options: WorkOptions
   ]);
   const bySlug = new Map(inventory.initiatives.map((entry) => [entry.slug, entry]));
   const items = list.sections.flatMap((section) => section.items);
-  const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item.slug)));
+  const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item)));
   const rows = items.map((item, index) =>
     rowOf(item, tasks.tasks.filter((task) => task.slug === item.slug), bySlug.get(item.slug), inventory.human_only_known, prefixes[index]),
   );
@@ -161,11 +161,28 @@ async function readHead(activeWork: ActiveWork, slug: string): Promise<{ initiat
 
 const TASK_PREFIX = /^task_prefix:\s*["']?([A-Z][A-Z0-9]*)["']?\s*$/m;
 
-/** active-work's `list` does not carry the prefix, so it comes from the brief's frontmatter; an unreadable brief has none. */
-async function taskPrefixOf(activeWork: ActiveWork, slug: string): Promise<string | undefined> {
-  const brief = await activeWork.read("source.read", { slug, path: "brief.md" }).catch(() => null);
-  const frontmatter = brief ? /^---\r?\n([\s\S]*?)\r?\n---/.exec(brief.content)?.[1] : undefined;
+/** Per client, so one console's prefixes never leak into another's reads. */
+const prefixMemo = new WeakMap<ActiveWork, Map<string, { updated: string; prefix: string | undefined }>>();
+
+function parsePrefix(content: string): string | undefined {
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1];
   return frontmatter ? TASK_PREFIX.exec(frontmatter)?.[1] : undefined;
+}
+
+/**
+ * active-work's `list` does not carry the prefix, so it comes from the brief's frontmatter. The answer is kept per slug while the
+ * initiative's `updated` is unchanged, so an unchanged portfolio reads no brief. An unreadable brief has none and is not kept.
+ */
+async function taskPrefixOf(activeWork: ActiveWork, item: WireInitiative): Promise<string | undefined> {
+  const memo = prefixMemo.get(activeWork) ?? new Map();
+  prefixMemo.set(activeWork, memo);
+  const known = memo.get(item.slug);
+  if (known?.updated === item.updated) return known.prefix;
+  const brief = await activeWork.read("source.read", { slug: item.slug, path: "brief.md" }).catch(() => null);
+  if (!brief) return undefined;
+  const prefix = parsePrefix(brief.content);
+  memo.set(item.slug, { updated: item.updated, prefix });
+  return prefix;
 }
 
 /** The body under the YAML frontmatter; the header already shows what the frontmatter holds. */
