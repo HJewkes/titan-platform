@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { caseExists } from "./eval-cases.js";
+import { z } from "zod";
+import { caseExists, readStoredCard, type CardFile } from "./eval-cases.js";
 import { rescore, type RescoreInput } from "./rescore.js";
 import { totalOf } from "./score-card.js";
-import { transcriptForScoring, type StoredCard } from "./score.js";
+import { transcriptForScoring } from "./score.js";
 import { writeCase } from "./step-rows.js";
 
 export const AUDIT_SAMPLE = 5;
 /** A difference this large in total files a case even when both totals fall on the same side. */
 export const AUDIT_TOTAL_GAP = 3;
+
+const RowSchema = z.looseObject({ step: z.string(), outcome: z.string(), video_id: z.string(), started_at: z.string(), output_path: z.string().nullable() });
 
 export interface AuditCandidate {
   id: string;
@@ -23,7 +26,7 @@ export function auditCandidates(rowsDir: string, since: Date, casesDir: string):
   const latest = new Map<string, string>();
   for (const f of readdirSync(rowsDir).filter((n) => n.startsWith("steps-")).sort()) {
     for (const line of readFileSync(path.join(rowsDir, f), "utf8").split("\n").filter(Boolean)) {
-      const row = JSON.parse(line) as { step: string; outcome: string; video_id: string; started_at: string; output_path: string | null };
+      const row = RowSchema.parse(JSON.parse(line));
       const kept = row.step === "score" && (row.outcome === "ok" || row.outcome === "fallback") && row.output_path;
       if (kept && new Date(row.started_at) >= since) latest.set(row.video_id, row.output_path!);
     }
@@ -59,7 +62,7 @@ export interface AuditReport {
 export async function runAudit(sample: AuditCandidate[], opts: AuditOptions): Promise<AuditReport> {
   const report: AuditReport = { sampled: sample.length, filed: [], stale: 0, failed: 0, costUsd: 0 };
   for (const c of sample) {
-    const stored = JSON.parse(readFileSync(c.cardPath, "utf8")) as StoredCard;
+    const stored = readStoredCard(c.cardPath);
     const r = await rescore({ ...opts, title: stored.title, transcriptPath: c.transcriptPath, partial: stored.partial });
     if (r.kind === "stale") report.stale++;
     else if (r.kind === "failed") report.failed++;
@@ -74,7 +77,7 @@ export async function runAudit(sample: AuditCandidate[], opts: AuditOptions): Pr
   return report;
 }
 
-function fileDisagreement(opts: AuditOptions, c: AuditCandidate, stored: StoredCard, audit: { audited: number; card: unknown }): string {
+function fileDisagreement(opts: AuditOptions, c: AuditCandidate, stored: CardFile, audit: { audited: number; card: unknown }): string {
   const transcript = readFileSync(c.transcriptPath, "utf8");
   return writeCase(opts.casesDir, {
     step: "score",

@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { totalOf } from "./score-card.js";
-import { transcriptForScoring, type StoredCard } from "./score.js";
+import { ScoreCardSchema, totalOf } from "./score-card.js";
+import { transcriptForScoring } from "./score.js";
 import { VERDICTS, writeCase, type EvalCase, type Gold } from "./step-rows.js";
 
 const CaseSchema = z.object({
@@ -16,6 +16,29 @@ const CaseSchema = z.object({
   output: z.unknown().default(null),
   gold: z.object({ verdict: z.enum(VERDICTS), total: z.int().min(0).max(15).optional(), note: z.string().optional() }).optional(),
 });
+
+const StoredCardSchema = z.looseObject({
+  id: z.string(),
+  title: z.string(),
+  total: z.int(),
+  partial: z.boolean(),
+  prompt_sha: z.string(),
+  model: z.string(),
+});
+
+/** The fields eval reads from a stored card file or from the output of an automatic case. */
+const OutputSchema = z.looseObject({ title: z.string().optional(), partial: z.boolean().optional(), total: z.number().optional(), card: ScoreCardSchema.optional() });
+
+export type CardFile = z.infer<typeof StoredCardSchema>;
+
+export function readStoredCard(file: string): CardFile {
+  return StoredCardSchema.parse(JSON.parse(readFileSync(file, "utf8")));
+}
+
+export function outputFields(c: EvalCase): z.infer<typeof OutputSchema> {
+  const parsed = OutputSchema.safeParse(c.output);
+  return parsed.success ? parsed.data : {};
+}
 
 export function readCases(casesDir: string): EvalCase[] {
   if (!existsSync(casesDir)) return [];
@@ -32,9 +55,9 @@ export function caseExists(casesDir: string, step: string, id: string): boolean 
 /** The total the owner or the recorded card gives as the answer; absent when the case holds no card, as after a schema failure. */
 export function referenceTotal(c: EvalCase): number | undefined {
   if (c.gold?.total !== undefined) return c.gold.total;
-  const out = c.output as { total?: unknown; card?: Parameters<typeof totalOf>[0] } | null;
-  if (typeof out?.total === "number") return out.total;
-  return out?.card ? totalOf(out.card) : undefined;
+  const out = outputFields(c);
+  if (out.total !== undefined) return out.total;
+  return out.card ? totalOf(out.card) : undefined;
 }
 
 export interface FlagInput {
@@ -48,7 +71,7 @@ export interface FlagInput {
 
 /** Records the transcript's path and sha256, never its text; an existing automatic case keeps its label and gains the gold. */
 export function flagCase(casesDir: string, input: FlagInput): string {
-  const card = JSON.parse(readFileSync(input.cardPath, "utf8")) as StoredCard;
+  const card = readStoredCard(input.cardPath);
   const transcript = transcriptForScoring(readFileSync(input.transcriptPath, "utf8"), card.partial);
   const gold: Gold = { verdict: input.verdict, ...(input.goldTotal !== undefined && { total: input.goldTotal }), ...(input.note && { note: input.note }) };
   const existing = readCases(casesDir).find((c) => c.step === "score" && c.video_id === input.id);

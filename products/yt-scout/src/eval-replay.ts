@@ -1,5 +1,5 @@
 import { totalOf } from "./score-card.js";
-import { referenceTotal } from "./eval-cases.js";
+import { outputFields, referenceTotal } from "./eval-cases.js";
 import { rescore, type RescoreInput } from "./rescore.js";
 import type { EvalCase } from "./step-rows.js";
 
@@ -26,14 +26,6 @@ export interface ReplaySummary {
 const PER_CALL_CAP_USD = 0.25;
 const mean = (xs: number[]): number | null => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
-function isPartial(c: EvalCase): boolean {
-  return (c.output as { partial?: unknown } | null)?.partial === true;
-}
-
-function titleOf(c: EvalCase): string {
-  const out = c.output as { title?: unknown } | null;
-  return typeof out?.title === "string" ? out.title : c.video_id;
-}
 
 export async function replayCases(cases: EvalCase[], opts: ReplayOptions): Promise<ReplaySummary> {
   const scoreCases = cases.filter((c) => c.step === "score");
@@ -46,7 +38,7 @@ export async function replayCases(cases: EvalCase[], opts: ReplayOptions): Promi
     const remaining = opts.maxCostUsd - s.costUsd;
     if (s.replayed >= opts.maxCases || remaining <= 0) break;
     const r = await rescore(
-      { ...opts, title: titleOf(c), transcriptPath: c.inputs.transcript_path, partial: isPartial(c), maxBudgetUsd: Math.min(PER_CALL_CAP_USD, remaining) },
+      { ...opts, title: outputFields(c).title ?? c.video_id, transcriptPath: c.inputs.transcript_path, partial: outputFields(c).partial === true, maxBudgetUsd: Math.min(PER_CALL_CAP_USD, remaining) },
       c.inputs.transcript_sha256,
     );
     if (r.kind === "stale") {
