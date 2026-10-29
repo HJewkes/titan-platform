@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { EgoGraph } from "../server/graph.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(cleanup);
 
@@ -55,14 +55,9 @@ function snapshot(): Snapshot {
   };
 }
 
-function renderConsole(hash: string): void {
+function renderConsole(hash: string, { inApp = false } = {}): void {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot()), "text/html");
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={pageDataSource({ doc: page })}>
-      <App />
-    </RpcProvider>,
-  );
+  renderPage(pageDataSource({ doc: page }), hash, { inApp });
 }
 
 const graphRoute = (ref: string): string => `#/knowledge/${encodeURIComponent(ref)}?tab=graph`;
@@ -80,7 +75,7 @@ describe("the knowledge graph tab", () => {
   });
 
   it("opens a pressed node's record", async () => {
-    renderConsole(graphRoute(TASK));
+    renderConsole(graphRoute(TASK), { inApp: true });
     fireEvent.click(await screen.findByRole("button", { name: /^Cap the backoff, Note/ }));
     await waitFor(() => expect(window.location.hash).toBe(`#/knowledge/${encodeURIComponent(NOTE)}`));
   });
@@ -113,7 +108,7 @@ describe("the knowledge graph tab", () => {
   });
 
   it("switches a record to its graph through the query string", async () => {
-    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`);
+    renderConsole(`#/knowledge/${encodeURIComponent(NOTE)}`, { inApp: true });
     fireEvent.click(await screen.findByRole("tab", { name: "Graph" }));
     await waitFor(() => expect(window.location.hash).toBe(graphRoute(NOTE)));
     expect(await screen.findByRole("application", { name: /^Records linked to note:orbit-relay/ })).toBeTruthy();
