@@ -11,8 +11,14 @@ interface RawTable {
   priors: Record<string, unknown>[];
 }
 
+const isRawTable = (value: unknown): value is RawTable => typeof value === "object" && value !== null;
+
 const shippedText = fs.readFileSync(DEFAULT_WORKFLOW_TABLE, "utf8");
-const shippedTable = () => parse(shippedText) as RawTable;
+function shippedTable(): RawTable {
+  const raw: unknown = parse(shippedText);
+  if (!isRawTable(raw)) throw new Error("the shipped table is not a mapping");
+  return raw;
+}
 const lint = (table: unknown) => parseWorkflowTable(stringify(table)).problems;
 
 describe("the workflow table this package ships", () => {

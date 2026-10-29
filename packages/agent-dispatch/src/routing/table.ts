@@ -61,8 +61,8 @@ const workflowRowSchema = z.strictObject({
 /** One prior row. It matches when every size condition holds and, if it names any signal, at least one signal does. */
 const priorRuleSchema = z.strictObject({
   prior: closed(PRIORS, "prior"),
-  owns: z.string().optional(),
-  ownsOnly: z.string().optional(),
+  owns: closed(PATH_LISTS, "path list").optional(),
+  ownsOnly: closed(PATH_LISTS, "path list").optional(),
   unitsAtLeast: z.number().int().positive().optional(),
   tags: z.array(z.string().min(1)).optional(),
   estimateAtMost: z.number().optional(),
@@ -103,21 +103,14 @@ function keyProblems(keys: string[], values: readonly string[], what: string, wh
   ];
 }
 
-function ruleProblems(priors: readonly PriorRule[]): string[] {
-  const named = priors.flatMap((rule, i) =>
-    (["owns", "ownsOnly"] as const).flatMap((key) => {
-      const list = rule[key];
-      return list === undefined || isOneOf(PATH_LISTS, list)
-        ? []
-        : [`at priors.${i}.${key}: unknown path list ${JSON.stringify(list)}`];
-    }),
-  );
+function fallbackProblems(priors: readonly PriorRule[]): string[] {
   const last = priors.at(-1);
-  const fallback = last !== undefined && Object.keys(last).length === 1 ? [] : ["priors has no fallback row last"];
-  return [...named, ...fallback];
+  return last !== undefined && Object.keys(last).length === 1 ? [] : ["priors has no fallback row last"];
 }
 
-function lintTable(raw: z.infer<typeof tableShape>): string[] {
+type RawTable = z.infer<typeof tableShape>;
+
+function lintTable(raw: RawTable): string[] {
   const priorTargets = Object.entries(raw.priorWorkflow).flatMap(([prior, target]) =>
     target === "planner" || isOneOf(CLASSES, target)
       ? []
@@ -128,9 +121,13 @@ function lintTable(raw: z.infer<typeof tableShape>): string[] {
     ...keyProblems(Object.keys(raw.workflow), CLASSES, "class", "workflow"),
     ...keyProblems(Object.keys(raw.priorWorkflow), PRIORS, "prior", "priorWorkflow"),
     ...priorTargets,
-    ...ruleProblems(raw.priors),
+    ...fallbackProblems(raw.priors),
   ];
 }
+
+/** The lint checks every key and target the narrower type names, so a table with no problems is one. */
+const isLinted = (raw: RawTable, problems: readonly string[]): raw is RawTable & WorkflowTable =>
+  problems.length === 0;
 
 /** The table, or one reason line per problem. */
 export function parseWorkflowTable(text: string): TableRead {
@@ -139,5 +136,5 @@ export function parseWorkflowTable(text: string): TableRead {
   const parsed = tableShape.safeParse(doc.toJS());
   if (!parsed.success) return { problems: parsed.error.issues.map(shapeProblem) };
   const problems = lintTable(parsed.data);
-  return problems.length === 0 ? { table: parsed.data as WorkflowTable } : { problems };
+  return isLinted(parsed.data, problems) ? { table: parsed.data } : { problems };
 }

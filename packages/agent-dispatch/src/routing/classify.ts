@@ -41,10 +41,10 @@ const inList = (file: string, globs: readonly string[]) => globs.some((glob) => 
 
 function signal(rule: PriorRule, facts: TaskFacts, paths: Record<PathList, string[]>): string | undefined {
   const tags = facts.tags ?? [];
-  const owned =
-    rule.owns === undefined ? undefined : facts.owns.find((file) => inList(file, paths[rule.owns as PathList]));
-  if (owned !== undefined) return `owns ${owned} matches ${rule.owns}`;
-  const only = rule.ownsOnly as PathList | undefined;
+  const list = rule.owns;
+  const owned = list === undefined ? undefined : facts.owns.find((file) => inList(file, paths[list]));
+  if (owned !== undefined) return `owns ${owned} matches ${list}`;
+  const only = rule.ownsOnly;
   if (only !== undefined && facts.owns.length > 0 && facts.owns.every((file) => inList(file, paths[only])))
     return `owns only ${only}`;
   const units = unitsOf(facts.owns);
