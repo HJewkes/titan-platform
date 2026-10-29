@@ -20,14 +20,14 @@ export const execRunner: Runner = (command, args) =>
     });
   });
 
-export type TranscribeMode = "subtitles" | "whisper";
+type TranscribeMode = "subtitles" | "whisper";
 
 export interface TranscribeEnv {
   ytRoot: string;
   runner: Runner;
 }
 
-export function classifyStderr(stderr: string): StepErrorClass {
+function classifyStderr(stderr: string): StepErrorClass {
   if (/HTTP Error 429|Too Many Requests/i.test(stderr)) return "http429";
   if (/no (usable )?(subtitles|captions)|has no (auto-generated )?captions/i.test(stderr)) return "no_captions";
   if (/live event will begin|premieres in|This live event/i.test(stderr)) return "upcoming";

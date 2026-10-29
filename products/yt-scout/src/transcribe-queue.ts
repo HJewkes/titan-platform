@@ -5,15 +5,15 @@ import type { StepErrorClass } from "./seams.js";
 import type { VideoRow } from "./store.js";
 
 const HOUR = 3_600_000;
-export const MAX_ATTEMPTS = 5;
-export const CAPTION_WAIT_MS = 24 * HOUR;
-export const CAPTION_RETRY_MS = 6 * HOUR;
-export const CAPTION_SECOND_RETRY_MS = 24 * HOUR;
+const MAX_ATTEMPTS = 5;
+const CAPTION_WAIT_MS = 24 * HOUR;
+const CAPTION_RETRY_MS = 6 * HOUR;
+const CAPTION_SECOND_RETRY_MS = 24 * HOUR;
 // Marks a video whose first caption retry has also failed; only the third failure sends it to Whisper.
 const SECOND_CAPTION_WAIT = "no_captions:2";
-export const LIVE_GIVE_UP_MS = 48 * HOUR;
-export const WHISPER_PER_TICK = 2;
-export const WHISPER_MAX_LOAD = 12;
+const LIVE_GIVE_UP_MS = 48 * HOUR;
+const WHISPER_PER_TICK = 2;
+const WHISPER_MAX_LOAD = 12;
 const OTHER_RETRY_MS = HOUR;
 
 export interface QueueEnv extends TranscribeEnv {
@@ -26,7 +26,7 @@ export interface QueueEnv extends TranscribeEnv {
   breaker: BreakerStore;
 }
 
-export interface QueueReport {
+interface QueueReport {
   transcribed: string[];
   rescheduled: string[];
   failed: string[];

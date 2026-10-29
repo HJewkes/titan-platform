@@ -1,9 +1,9 @@
 import type { Db } from "@titan-design/store-sqlite";
 
-export const BREAKER_MIN_MS = 2 * 3_600_000;
-export const BREAKER_MAX_MS = 24 * 3_600_000;
+const BREAKER_MIN_MS = 2 * 3_600_000;
+const BREAKER_MAX_MS = 24 * 3_600_000;
 
-export interface BreakerState {
+interface BreakerState {
   openUntil: string | null;
   cooldownMs: number;
 }
