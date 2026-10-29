@@ -129,13 +129,37 @@ describe("score step", () => {
     expect(readdirSync(path.join(tree.root, "cases"))).toEqual(["score-abc123def45.json"]);
   });
 
-  it("does not retry or file a case for a budget stop", async () => {
-    const runner: ScoreRunner = async () => ({ ok: false, errorClass: "budget", message: "cap" });
+  it("records the cost and keeps the raw output when the harness rejects the output itself", async () => {
+    const usage = { costUsd: 0.04, inputTokens: 1200, outputTokens: 300 };
+    const runner: ScoreRunner = async () => ({ ok: false, errorClass: "schema_invalid", message: "bad", usage, raw: { novelty: 9 } });
 
     const result = await scoreVideo(deps(runner), input());
 
-    expect(result.errorClass).toBe("budget");
-    expect(rows().map((r) => r.outcome)).toEqual(["deferred"]);
+    expect(result.costUsd).toBeCloseTo(0.08);
+    expect(rows().map((r) => [r.outcome, r.cost_usd, r.input_tokens, r.output_tokens])).toEqual([
+      ["retry", 0.04, 1200, 300],
+      ["fail", 0.04, 1200, 300],
+    ]);
+    const file = JSON.parse(readFileSync(path.join(tree.root, "cases", "score-abc123def45.json"), "utf8"));
+    expect(file.output).toEqual({ novelty: 9 });
+  });
+
+  it("records the cost of an output that fails the card schema", async () => {
+    await scoreVideo(deps(ok({ ...CARD, novelty: 9 })), input());
+
+    expect(rows().map((r) => r.cost_usd)).toEqual([0.03, 0.03]);
+    const file = JSON.parse(readFileSync(path.join(tree.root, "cases", "score-abc123def45.json"), "utf8"));
+    expect(file.output).toMatchObject({ novelty: 9 });
+  });
+
+  it("does not retry or file a case for a budget stop, and records what the stop cost", async () => {
+    const usage = { costUsd: 0.25, inputTokens: 5000, outputTokens: 900 };
+    const runner: ScoreRunner = async () => ({ ok: false, errorClass: "budget", message: "cap", usage });
+
+    const result = await scoreVideo(deps(runner), input());
+
+    expect(result).toMatchObject({ errorClass: "budget", costUsd: 0.25 });
+    expect(rows()).toEqual([expect.objectContaining({ outcome: "deferred", cost_usd: 0.25, input_tokens: 5000, output_tokens: 900 })]);
   });
 
   it("keeps prompt_sha stable across runs and moves input_sha with the transcript", async () => {
