@@ -28,3 +28,29 @@ export function splitTitle(raw: string): { code: string | undefined; title: stri
   if (at === -1) return { code: undefined, title: raw.trim() };
   return { code: raw.slice(0, at).trim(), title: raw.slice(at + 3).trim() };
 }
+
+/**
+ * Reads a leading `---` fenced block of flat `key: value` lines (YAML front matter).
+ * A file that does not open with a closed fence has empty fields and starts its body at 0.
+ */
+export function parseFrontMatter(text: string): ParsedHeader {
+  const open = /^---\r?\n/.exec(text);
+  if (!open) return { fields: {}, bodyStart: 0 };
+  const fields: Record<string, string> = {};
+  let pos = open[0].length;
+  while (pos < text.length) {
+    const eol = text.indexOf("\n", pos);
+    const end = eol === -1 ? text.length : eol;
+    const line = text.slice(pos, end).replace(/\r$/, "");
+    pos = eol === -1 ? text.length : eol + 1;
+    if (line === "---") return { fields, bodyStart: pos };
+    const match = /^([A-Za-z_][\w-]*):[ \t]*(.*)$/.exec(line);
+    if (match) fields[match[1]!] = unquote(match[2]!.trim());
+  }
+  return { fields: {}, bodyStart: 0 };
+}
+
+function unquote(value: string): string {
+  const quoted = /^(["'])(.*)\1$/.exec(value);
+  return quoted ? quoted[2]! : value;
+}

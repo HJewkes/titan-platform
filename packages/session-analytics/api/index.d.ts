@@ -1680,6 +1680,210 @@ declare const HANDOFFS_SQL: string;
  * `since`: the generation live at a window's start began with a handoff written before it.
  */
 declare function readHandoffs(db: Db, since?: string): HandoffRecord[];
+/** A worker's report to its coordinator, with the worker's last spawn before it, when the log has one. */
+interface WorkerReportRecord {
+    eventId: number;
+    at: string;
+    agent: string;
+    coordinator: string;
+    spawnedAt: string | null;
+    body: string;
+}
+/** Messages that open with the return contract's `Status:` line, inside the inclusive-exclusive ISO window. */
+declare function readWorkerReports(db: Db, window: {
+    since: string;
+    until: string;
+}): WorkerReportRecord[];
+/** A Claude session agent-chat started or resumed for a named agent; the session id names its transcript file. */
+interface WorkerSessionRecord {
+    agent: string;
+    sessionId: string;
+}
+/**
+ * Every worker session started or resumed before `until` (ISO), whichever window its transcript is
+ * read for. A coordinator is left out, by its profile or by having spawned an agent itself: it idles
+ * on its inbox by design, which is not friction.
+ */
+declare function readWorkerSessions(db: Db, until: string): WorkerSessionRecord[];
+/** Messages each agent got in the window from the agent that last spawned it, the follow-ups Q6 classes. */
+declare function readSpawnerMessages(db: Db, window: {
+    since: string;
+    until: string;
+}): {
+    agent: string;
+    at: string;
+    body: string;
+}[];
+
+/** `unreadable` is an error whose transcript line is gone or moved, so its text cannot be classed. */
+declare const ERROR_CLASSES: readonly [...("classifier-denial" | "permission-denied" | "user-rejected" | "sleep-block" | "wrong-tool-name" | "hook-block" | "edit-not-read" | "edit-no-match" | "file-missing" | "gh-graphql-ratelimit" | "gh-secondary-ratelimit" | "gh-other" | "git-error" | "timeout" | "mcp-tool-error" | "agent-chat-refused" | "test-fail" | "lint-type" | "exit-code")[], "other", "unreadable"];
+type ErrorClass = (typeof ERROR_CLASSES)[number];
+/** Insights Q5's classifier for a tool result's text. */
+declare function classifyError(text: string): ErrorClass;
+
+declare const FOLLOW_UP_CLASSES: readonly [...("brief-fix" | "poll" | "correction")[], "other"];
+type FollowUpClass = (typeof FOLLOW_UP_CLASSES)[number];
+/** Insights Q6's classifier for a spawner's message to its child. */
+declare function classifyFollowUp(body: string): FollowUpClass;
+
+/**
+ * Friction lines in worker reports. `Friction:` is the return-contract field (CC-1660); until most
+ * reports carry it, `Concerns:` and blocked lines stand in, labelled so the two never read as one.
+ */
+declare const FRICTION_SOURCES: readonly ["friction", "concerns", "blocked"];
+type FrictionSource = (typeof FRICTION_SOURCES)[number];
+declare const FRICTION_CLUSTERS: readonly ["denials", "ci-wait", "flaky-test", "missing-context", "broker-infra", "review-loop", "other", "scope-note"];
+type FrictionCluster = (typeof FRICTION_CLUSTERS)[number];
+
+declare const LOG_SIGNAL_KINDS: readonly ["denial", "tool-error", "retry", "test-rerun", "wait", "follow-up"];
+type LogSignalKind = (typeof LOG_SIGNAL_KINDS)[number];
+/** One costly moment in a worker's own log; `hours` is the time it held the worker, not the session's length. */
+interface LogSignal {
+    cluster: FrictionCluster;
+    kind: LogSignalKind;
+    at: string;
+    hours: number;
+    detail: string;
+}
+/**
+ * The window's friction in one worker transcript: denials and tool errors (Q5's classes), waits over
+ * five minutes, and a Bash command run again with no edit since its last run (a test re-run is the
+ * flaky-test signal; a repeated CI poll is a CI wait).
+ */
+declare function transcriptSignals(lines: readonly string[], window: {
+    since: string;
+    until: string;
+}): LogSignal[];
+/** A spawner's brief fix or correction to its worker (Q6's classes) says the brief lacked something. */
+declare function followUpSignals(messages: readonly {
+    at: string;
+    body: string;
+}[]): LogSignal[];
+
+/** One archived row per report in the window, friction or not, so the day's denominator survives too. */
+interface FrictionRow {
+    eventId: number;
+    at: string;
+    agent: string;
+    coordinator: string;
+    spawnedAt: string | null;
+    /** Spawn to report; null when the log has no spawn for the agent. */
+    agentHours: number | null;
+    lines: {
+        source: FrictionSource;
+        text: string;
+        cluster: FrictionCluster;
+    }[];
+}
+interface FrictionClusterRow {
+    cluster: FrictionCluster;
+    reports: number;
+    /** Each agent counted once, at its longest spawn-to-report time in the cluster. */
+    agentHours: number;
+    agents: string[];
+    sources: Partial<Record<FrictionSource, number>>;
+    example: string;
+}
+/** The secondary side: what workers said about themselves. */
+interface ReportSide {
+    reports: number;
+    /** Reports carrying the contract's `Friction:` field, the measure of CC-1660's adoption. */
+    withFrictionField: number;
+    /** Reports that said something through the fallback lines instead. */
+    withFallback: number;
+    /** Lines that were scope notes or design caveats: counted here, never ranked. */
+    scopeNotes: number;
+    clusters: FrictionClusterRow[];
+}
+/** The primary side: what the workers' own transcripts show. */
+interface LogSide {
+    agents: number;
+    sessions: number;
+    clusters: LogClusterRow[];
+}
+interface FrictionDailyReport {
+    window: {
+        since: string;
+        until: string;
+    };
+    logs: LogSide;
+    reports: ReportSide;
+    agreement: Omit<AgreementSummary, "rows">;
+    rows: FrictionRow[];
+    agreementRows: AgreementSummary["rows"];
+    agentLogs: AgentLog[];
+}
+/** Both sides of the day and how far they agree; the logs lead, since they are measured rather than recalled. */
+declare function frictionDailyReport(input: {
+    reports: readonly WorkerReportRecord[];
+    logs: readonly AgentLog[];
+    window: {
+        since: string;
+        until: string;
+    };
+}): FrictionDailyReport;
+
+/** One agent's log-derived friction in the window, over every session of it that was read. */
+interface AgentLog {
+    agent: string;
+    sessions: string[];
+    signals: LogSignal[];
+}
+interface LogClusterRow {
+    cluster: FrictionCluster;
+    agents: number;
+    signals: number;
+    /** The time the signals held workers, summed. */
+    agentHours: number;
+    kinds: Partial<Record<LogSignalKind, number>>;
+    examples: string[];
+}
+declare const AGREEMENTS: readonly ["yes", "partial", "no", "n/a"];
+type Agreement = (typeof AGREEMENTS)[number];
+/** Does the agent's own report name the cluster its log says cost it most? */
+interface AgreementRow {
+    agent: string;
+    logTop: FrictionCluster | null;
+    reported: FrictionCluster[];
+    agreement: Agreement;
+    logOnly: FrictionCluster[];
+    reportOnly: FrictionCluster[];
+}
+interface AgreementSummary {
+    yes: number;
+    partial: number;
+    no: number;
+    /** Agents with a report whose log showed no friction, so there is nothing to agree with. */
+    notApplicable: number;
+    /** Clusters by how many agents had them only in their log, or only in their report. */
+    logOnly: {
+        cluster: FrictionCluster;
+        agents: number;
+    }[];
+    reportOnly: {
+        cluster: FrictionCluster;
+        agents: number;
+    }[];
+    rows: AgreementRow[];
+}
+
+declare const FRICTION_ASKER = "friction-audit";
+/** The log-derived top clusters, the primary ranking, by agent-hours. */
+declare function renderLogTop(report: FrictionDailyReport, top?: number): string[];
+/** The report-based top clusters, the secondary ranking, by reports. */
+declare function renderReportTop(report: FrictionDailyReport, top?: number): string[];
+declare function renderFrictionMarkdown(report: FrictionDailyReport, date: string): string;
+/** The day's know-item; it blocks nothing, so it has no `unblocksNow`. */
+declare function frictionDeposit(report: FrictionDailyReport, date: string, archive: string): {
+    asker: string;
+    kind: "know";
+    door: "two-way";
+    depositId: string;
+    summary: string;
+    context: string;
+    keys: string[];
+};
+declare const frictionDepositId: (date: string) => string;
 
 /** The broker logs this once a teleport's successor holds the name; a started, failed or aborted teleport ends nothing. */
 declare const TELEPORT_COMPLETED_EVENT = "teleport_completed";
@@ -2593,4 +2797,4 @@ declare function scorecardJournalRows(input: ScorecardJournalInput): ScorecardRo
 /** A row's value as the scorecard prints it: the cost row names its usd_est coverage whether or not it is measured. */
 declare function scorecardRowText(r: ScorecardRow): string;
 
-export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentNameRow, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CompactionMark, type ComparisonSpec, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, type DarkGap, type DenialRecord, type DispatchRecord, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, type ModelRequests, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PullState, REBUILD_GAP_BANDS, REVIEW_FILL_COMPARISON, type ReportScope, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RowDelta, SESSION_TIMELINE_VERSION, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, type SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TimelineAgentSpan, type TimelineError, type TimelineErrorBreakdown, type TimelineFileBreakdown, type TimelineFileTouch, type TimelineGap, type TimelineMessage, type TimelineMinuteBucket, type TimelineTokenPoint, type TimelineTokens, type TimelineToolBreakdown, type TimelineToolCall, type TimelineToolOutcome, type TimelineTotals, type TimelineTurn, type TimelineTurnOrigin, type TokenClass, type TokenTimeline, type ToolFamilyCount, type ToolField, type ToolNameCount, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerRole, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyRequest, classifySession, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countAtOrBefore, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, readAgentSessions, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawns, readTtlRows, readVerdicts, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderLivenessText, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };
+export { ACTION_CLASSES, AGENT_LIFECYCLE, ALL_REPOS, type ActionCall, type ActionClass, type ActionRule, type ActualsTask, type AgentLog, type AgentNameRow, type Agreement, type AgreementRow, type AgreementSummary, type Assignment, BLOCKED_FLOW_SOURCES, BOOT_TOOL, type Band, type BashRule, type BlockedFlowInput, type BlockedFlowReport, type BlockedFlowSource, type BrokerEntry, CHANNEL_CLUSTER_MS, CONTEXT_BANDS, CONTEXT_RESET_TOKENS, COORDINATOR_MERGE_DEDUPE_REQUESTS, COORDINATOR_MIN_EPISODE_REQUESTS, COORDINATOR_WAVE_QUIET_REQUESTS, COST_REPORT_SECTIONS, type CacheTtlBucket, type CacheTtlWhatIf, type CacheWriteTtl, type CappedHours, type CompactionMark, type ComparisonSpec, type CoordDutyTable, type CostBucket, type CostPerOutcomeOptions, type CostPerOutcomeReport, type CostReport, type CostReportOptions, type CostReportSection, type CycleParams, DARK_MIN, DEFAULT_ACTION_RULES, DEFAULT_ACTIVE_CAP_MINUTES, DEFAULT_BOOT_REQUESTS, DEFAULT_CONFIGURED_K, DEFAULT_DONE_OUTCOMES, DEFAULT_EPISODE_ROLES, DEFAULT_K_SWEEP, DEFAULT_MECHANICAL_CLASSES, DEFAULT_MERGED_OUTCOMES, DEFAULT_NO_ACTION_CLASSES, DEFAULT_REVIEWER_PRS, DEFAULT_REVIEWER_ROLE, DEFAULT_STANDING_ROLE, type DarkGap, type DenialRecord, type DispatchRecord, type DutyCall, type DutyKind, type DutyRuleSet, type DutyTableOptions, type DutyTurn, ERROR_CLASSES, EVENTS_TABLE_DDL, type EpisodeInbound, type EpisodeInput, type EpisodeNames, type EpisodeRequest, type EpisodeRequestRow, type EpisodeSignal, type ErrorClass, FOLLOW_UP_CLASSES, FRICTION_ASKER, type FollowUpClass, type FrictionCluster, type FrictionClusterRow, type FrictionDailyReport, type FrictionRow, type FrictionSource, GAP_BANDS, type GenerationEnd, HANDOFFS_SQL, HEURISTIC_VERSIONS, type HandoffCohort, type HandoffOptions, type HandoffRecord, type HandoffRequestRow, type HandoffSession, type HandoffTeleport, type HandoffThreshold, type Heuristic, type HumanRole, IDLE_GAP_MS, type IdleSlotRow, type InheritMode, type KSweep, LAST_PROMPTS_SQL, LIST_PRICE_CAVEAT, LIVENESS_SOURCES, type LastEventRecord, type LatencyRow, type LatencyStats, type LivenessInput, type LivenessReport, type LivenessSource, type LogClusterRow, type LogSide, type LogSignal, type LogSignalKind, MIN_COST_COVERAGE, type MechanicalShare, type MergeOutcome, type MergeStatus, type MeterInputs, type MeterOptions, type MeterResult, type ModelRequests, NOT_MEASURED, type Outcome, type OutcomeBucket, POOLED_REVIEWERS, PROFILE_ROLES, PROMPT_STALE_MIN, type ParsedVerdict, type PrDiff, type PrFeatures, type PullState, REBUILD_GAP_BANDS, REVIEW_FILL_COMPARISON, type ReportScope, type ReportSide, type ReportWindow, type ReviewFillReport, type ReviewerComparison, type RoleActions, type RouteFailureRow, type RouteMiss, type RouteMissKind, type RowDelta, SESSION_TIMELINE_VERSION, SPAWNS_SQL, SPLITLESS_CACHE_WRITE_TTL, STANDING_PEER_MIN_ASSIGNMENTS, STANDING_PEER_MIN_HOURS, SUCCESSOR_REWORK_COMPARISON, type ScorecardJournalInput, type ScorecardJournalRowId, type ScorecardRow, type SeatContextOptions, type SeatContextRow, type SeatGeneration, type SeatGenerationsInput, type SeatJournal, type SeatSessions, type SessionClass, type SessionClassification, type SessionFacts, type SessionOrigin, type SessionTimeline, SessionTimelineAccumulator, type SessionTimelineOptions, type SlotTick, type SpawnRecord, type StalePromptRow, type SuccessorReworkOptions, type SuccessorReworkReport, TELEPORT_COMPLETED_EVENT, TELEPORT_EVENT, TICK_HOLD_MAX_MIN, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP, TOKEN_CLASSES, TP1550_RULES, type TaskActuals, type TaskActualsFlag, type TaskActualsOptions, type TaskInitiative, type TaskPr, type TeleportEvent, type TimelineAgentSpan, type TimelineError, type TimelineErrorBreakdown, type TimelineFileBreakdown, type TimelineFileTouch, type TimelineGap, type TimelineMessage, type TimelineMinuteBucket, type TimelineTokenPoint, type TimelineTokens, type TimelineToolBreakdown, type TimelineToolCall, type TimelineToolOutcome, type TimelineTotals, type TimelineTurn, type TimelineTurnOrigin, type TokenClass, type TokenTimeline, type ToolFamilyCount, type ToolField, type ToolNameCount, type ToolRule, type TranscriptCopy, type Trigger, type TtlRequestRow, UNKNOWN_PROFILE, UNSTATED_REASON, type UnreportedExit, type UnreportedExitRow, V3_RULES, VERDICTS_SQL, type VerdictRecord, WAKE_FROM_KINDS, type WakeCauseBucket, type WakeCauseEpisodes, type WakeEpisode, type WakeEpisodes, type WakeEventRow, type WakeFromKind, type WakeGapCell, type WakePair, type WindowComparison, type WorkerFacts, type WorkerReportRecord, type WorkerRole, type WorkerSessionRecord, type WrittenEpisodes, assignmentCount, assignmentSchema, bandOf, blockedFlowReport, blockedFlowSchema, buildEpisodes, buildSessionTimeline, buildWakeEpisodes, cacheTtlReport, cacheTtlWhatIf, cacheTtlWhatIfSchema, classifyDeniedAction, classifyError, classifyFollowUp, classifyRequest, classifySession, compareWindows, contextBand, coordDutyTableSchema, costPerOutcome, costPerOutcomeSchema, costPerRequest, costReport, costReportSchema, countAtOrBefore, countMisses, darkGaps, dedupeDenials, dutyTable, episodeNames, eventsDbCommand, followUpSignals, frictionDailyReport, frictionDeposit, frictionDepositId, gapBand, handoffThreshold, handoffThresholdSchema, heuristicFor, idleSlotMinutes, initiativeFromCwd, isBootAction, latencyStats, latencyStatsSchema, listMergedPrRefs, livenessReport, livenessSchema, mergeCopies, mergeOutcomes, parseBrokerLog, parseDenials, parsePrRef, parseSeatJournal, parseTeleportEvents, parseVerdict, prFeaturesFor, prKey, readAgentSessions, readDispatchJournal, readEpisodeInput, readHandoffs, readLastPrompts, readRequestToolCalls, readSpawnerMessages, readSpawns, readTtlRows, readVerdicts, readWorkerReports, readWorkerSessions, renderBlockedFlowText, renderCacheTtlText, renderCostPerOutcomeText, renderCostReportSections, renderCostReportText, renderFrictionMarkdown, renderLivenessText, renderLogTop, renderReportTop, renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText, reviewFillReport, reviewFillSchema, roleFromProfile, routeFailureRows, routeMisses, scopeFilter, scorecardJournalRows, scorecardRowText, seatContext, seatContextSchema, seatGenerations, seatGenerationsSchema, seatOf, sessionInitiative, sessionRole, staleEpisodeSessions, staleEpisodeSessionsYielding, stalePromptRows, successorReworkReport, successorReworkSchema, summarizeWakeEpisodes, sweepK, taskActuals, transcriptSignals, unreportedExitRows, wakeEpisodesSchema, workerRole, writeEpisodes };

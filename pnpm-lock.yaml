@@ -1487,6 +1487,9 @@ importers:
       '@titan-design/memory':
         specifier: workspace:^
         version: link:../../packages/memory
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/pm':
         specifier: workspace:^
         version: link:../../packages/pm

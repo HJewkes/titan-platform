@@ -268,6 +268,7 @@ graph TD
   sessionMiner --> hitl
   sessionMiner --> locator
   sessionMiner --> memory
+  sessionMiner --> ownerQueue
   sessionMiner --> pm
   sessionMiner --> registry
   sessionMiner --> retrieval
@@ -364,7 +365,7 @@ The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes <!-- generated:miner-count start -->seventeen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->eighteen<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 
