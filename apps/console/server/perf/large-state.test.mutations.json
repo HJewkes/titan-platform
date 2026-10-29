@@ -7,7 +7,7 @@
       "find": "return (await isRegularFile(path.join(roundDir, WITHDRAWN_FILE))) ? \"withdrawn\" : \"open\";",
       "replace": "return \"open\";",
       "kills": [
-        "answers the console's reads in process and counts each upstream call by command"
+        "the perf fixture answers the console's reads in process and counts each upstream call by command"
       ]
     },
     {
@@ -16,7 +16,7 @@
       "find": "read(\"shepherd.list\", { state }, z.array(watchRow))",
       "replace": "read(\"shepherd.list\", { state: \"active\" }, z.array(watchRow))",
       "kills": [
-        "answers the console's reads in process and counts each upstream call by command"
+        "the perf fixture answers the console's reads in process and counts each upstream call by command"
       ]
     },
     {
@@ -25,7 +25,7 @@
       "find": "get(HISTORY_ROUTE, brokerHistory, token)",
       "replace": "get(\"/api/queue\", brokerHistory, token)",
       "kills": [
-        "forgets the broker's calls on reset, as it forgets the daemons'"
+        "the perf fixture forgets the broker's calls on reset, as it forgets the daemons'"
       ]
     }
   ]
