@@ -3,7 +3,7 @@ import { GATE_DEMOTIONS, type GateDemotions } from "./auto-pass.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import { conflictAtNewBase, type ConflictBaseRun } from "./conflict-base.js";
 import { awaitNewHead, conflictGate, type GateRun } from "./gates.js";
-import { releaseUnlandable, type OrderRun } from "./merge-order-steps.js";
+import { releaseUnlandable, unreserved, type OrderRun } from "./merge-order-steps.js";
 
 /** Fixer attempts at one conflict under D9: the implementer's, then one fresh agent's. */
 const MAX_CONFLICT_WAKES = 2;
@@ -34,10 +34,7 @@ export async function fixConflict(run: ConflictRun, headSha: string, wake: Wake)
  * could not go out asks the owner. Undefined lands the next round. A wait with no fixer at work holds no reservation (TP-4497).
  */
 async function demoteConflict(run: ConflictRun, headSha: string, wake: Wake, demotions: GateDemotions = GATE_DEMOTIONS): Promise<LandOutcome | undefined> {
-  if (!demotions.conflict) {
-    await releaseUnlandable(run);
-    return conflictGate(run, headSha);
-  }
+  if (!demotions.conflict) return unreserved(run, () => conflictGate(run, headSha));
   let last = "the fresh fixer's head still conflicts with its base";
   if (run.conflictWakes < MAX_CONFLICT_WAKES) {
     run.conflictWakes += 1;

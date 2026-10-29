@@ -45,7 +45,7 @@ import { awaitedPast, liveEscalation, type PrTarget, type WakeRun } from "./gate
 import { fixConflict, type ConflictRun } from "./conflict-demotion.js";
 import { conflictBaseRoute } from "./conflict-base.js";
 import { expireOrder } from "./merge-order-expiry.js";
-import { orderedConflict, releaseOrder, releaseUnlandable, retakeOrder, type OrderRun } from "./merge-order-steps.js";
+import { orderedConflict, releasedUnlessWoken, releaseOrder, releaseUnlandable, retakeOrder, unreserved, type OrderRun } from "./merge-order-steps.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack, unsettledMergeNotice } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -185,12 +185,8 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   if (kind !== "conflict") await releaseUnlandable(run);
   if (await awaitedPast(run, headSha)) return true;
   if (await heldRepair(run, kind, headSha, payload)) return true;
-  if (!(await spendRepair(run.ctx, run.target, kind, headSha))) {
-    await releaseUnlandable(run);
-    throw new LeaveLand(await repairGate(run, kind, headSha, payload));
-  }
-  const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
-  if (outcome.kind !== "woken") await releaseUnlandable(run);
+  if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await unreserved(run, () => repairGate(run, kind, headSha, payload)));
+  const outcome = await releasedUnlessWoken(run, run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }));
   return afterWake(run, kind, headSha, payload, outcome, (left) => new LeaveLand(left));
 }
 

@@ -211,6 +211,19 @@ export async function releaseUnlandable(run: OrderRun): Promise<void> {
   run.retake = true;
 }
 
+/** Runs `wait`, which no fixer works through, holding no reservation. */
+export async function unreserved<T>(run: OrderRun, wait: () => Promise<T>): Promise<T> {
+  await releaseUnlandable(run);
+  return wait();
+}
+
+/** A wake's outcome; one no fixer took leaves nobody resolving a conflict, so the reservation ends with it. */
+export async function releasedUnlessWoken<T extends { kind: string }>(run: OrderRun, outcome: Promise<T>): Promise<T> {
+  const read = await outcome;
+  if (read.kind !== "woken") await releaseUnlandable(run);
+  return read;
+}
+
 /** A run whose reservation a fix round released takes it again, once, when a head reaches the merge decision. */
 export async function retakeOrder(run: OrderRun, headSha: string): Promise<void> {
   if (!run.retake || run.reserved || replayingWithout(run.ctx, RESERVE_STEP)) return;
