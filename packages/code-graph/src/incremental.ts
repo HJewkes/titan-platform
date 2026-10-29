@@ -330,20 +330,35 @@ function readReuseBasis(
   };
 }
 
+/** How many of the files about to be indexed a snapshot holds byte-identical. */
+function sharedFiles(fingerprints: readonly FileFingerprint[], current: ReadonlyMap<string, string>): number {
+  let shared = 0;
+  for (const f of fingerprints) if (current.get(f.fileId) === f.contentHash) shared += 1;
+  return shared;
+}
+
 /**
- * Pick the most recent snapshot usable as a reuse basis: same index version and
- * carrying file fingerprints. Older snapshots predate the fingerprint table and
- * can't be diffed, so we return null and the caller does a full index.
+ * Pick the snapshot to reuse: same index version and carrying file fingerprints,
+ * and among those the one sharing the most byte-identical files with `current`
+ * (file id → content hash), the newest on a tie. Without `current`, the newest.
+ * The newest is often another tree: a baseline indexed after its head, or another
+ * worktree's run in a shared seed, and every file it differs on re-parses (TP-4398).
+ * Older snapshots predate the fingerprint table and can't be diffed, so with
+ * none usable we return null and the caller does a full index.
  */
 export function loadReuseBasis(
   db: CodeGraphStore,
   indexVersion: string,
+  current?: ReadonlyMap<string, string>,
 ): ReuseBasis | null {
+  let best: { id: number; fingerprints: FileFingerprint[]; shared: number } | null = null;
   for (const snap of db.listSnapshots({ limit: 50 })) {
     if (snap.indexVersion !== indexVersion) continue;
     const fingerprints = db.listFingerprints(snap.id);
     if (fingerprints.length === 0) continue;
-    return readReuseBasis(db, snap.id, fingerprints);
+    const shared = current ? sharedFiles(fingerprints, current) : 0;
+    if (!best || shared > best.shared) best = { id: snap.id, fingerprints, shared };
+    if (!current || (shared === current.size && fingerprints.length === shared)) break;
   }
-  return null;
+  return best ? readReuseBasis(db, best.id, best.fingerprints) : null;
 }

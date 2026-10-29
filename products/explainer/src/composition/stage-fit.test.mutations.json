@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fit never shrinks: it measures the floor at scale 1",
+      "file": "products/explainer/src/composition/beats/stage/stageFit.ts",
+      "find": "const floor = overflowAt(frame, FIT_MIN);",
+      "replace": "const floor = overflowAt(frame, 1);",
+      "kills": [
+        "the stage fit a stat beat whose long labels overrun the row shrinks into its stage box, every frame, no text under 40 px"
+      ]
+    },
+    {
+      "name": "a row names the leaf's class alone, not the slot element it draws",
+      "file": "products/explainer/src/composition/beats/stage/stageFit.ts",
+      "find": "return slot instanceof HTMLElement && frame.contains(slot) ? `${slot.dataset.reveal} ${own}` : own;",
+      "replace": "return own;",
+      "kills": [
+        "the stage fit a stat label too long even at the type floor is a row naming the beat, the label, the px and a shorten hint"
+      ]
+    },
+    {
+      "name": "report mode throws at the first overflow too",
+      "file": "products/explainer/src/composition/beats/stage/stageFit.ts",
+      "find": "if (!reportOnly()) throw new Error(formatRow(row));",
+      "replace": "throw new Error(formatRow(row));",
+      "kills": [
+        "the stage fit a stat label too long even at the type floor is a row naming the beat, the label, the px and a shorten hint",
+        "the stage fit one stage-fit scan reports every beat past its stage box, in beat order"
+      ]
+    },
+    {
+      "name": "the stat label's floor drops under 40 px",
+      "file": "products/explainer/src/composition/beats/stage/beats.css",
+      "find": "--beat-body: max(var(--beat-floor), calc(48px * var(--beat-fit)));",
+      "replace": "--beat-body: calc(48px * var(--beat-fit));",
+      "kills": [
+        "the stage fit a stat label too long even at the type floor is a row naming the beat, the label, the px and a shorten hint",
+        "the stage fit one stage-fit scan reports every beat past its stage box, in beat order"
+      ]
+    }
+  ]
+}

@@ -7,18 +7,21 @@
 /* The beat scale. Overlays outside a .beat-frame (an explainer's chrome) opt in with .beat-scale. */
 .beat-frame, .beat-scale {
   /* S96 type scale: headline 96, body 48, code 40. Display and gaps scale with body (6/7); label and caption
-     stop at the 40 px floor for 1080 video (TD-856), which a lint in typeFloor.test.ts enforces. */
-  --beat-display: 123px;
-  --beat-title: 96px;
-  --beat-body: 48px;
-  --beat-caption: 40px;
-  --beat-label: 40px;
-  --beat-code: 40px;
-  --beat-gap-sm: 14px;
-  --beat-gap: 27px;
-  --beat-gap-lg: 48px;
-  --beat-inset: 41px;
-  --beat-radius: 21px;
+     stop at the 40 px floor for 1080 video (TD-856), which qa's G8 text-size gate enforces.
+     --beat-fit is the stage-fit scale (stageFit.ts): text shrinks with it to the floor and never under it. */
+  --beat-fit: 1;
+  --beat-floor: 40px;
+  --beat-display: max(var(--beat-floor), calc(123px * var(--beat-fit)));
+  --beat-title: max(var(--beat-floor), calc(96px * var(--beat-fit)));
+  --beat-body: max(var(--beat-floor), calc(48px * var(--beat-fit)));
+  --beat-caption: var(--beat-floor);
+  --beat-label: var(--beat-floor);
+  --beat-code: var(--beat-floor);
+  --beat-gap-sm: calc(14px * var(--beat-fit));
+  --beat-gap: calc(27px * var(--beat-fit));
+  --beat-gap-lg: calc(48px * var(--beat-fit));
+  --beat-inset: calc(41px * var(--beat-fit));
+  --beat-radius: calc(21px * var(--beat-fit));
   --beat-content-width: 80%;
   --beat-tick-box: calc(var(--beat-body) * 10 / 7);
 }
@@ -65,8 +68,10 @@
   color: var(--color-text-secondary);
   font-size: var(--beat-body);
 }
+/* Centred, so a row the stage fit lets run past the content box spills evenly into both margins. */
 .beat-stats {
   display: flex;
+  justify-content: center;
   gap: var(--beat-gap-lg);
 }
 .beat-stat {
@@ -88,10 +93,14 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
+/* Holds the settled figure's width while it counts up, so the stage fit does not resize the card every frame. */
+.beat-stat-figure {
+  display: inline-block;
+}
 .beat-stat-unit {
   margin-left: 0.15em;
   color: var(--color-text-tertiary);
-  font-size: 0.4em;
+  font-size: max(var(--beat-floor), 0.4em);
 }
 /* A pill, not a content-box block: it opts out of the shared 80 % width. */
 .beat-frame > .beat-stat-delta {

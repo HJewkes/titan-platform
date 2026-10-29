@@ -123,12 +123,15 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
   const program = new Command().name("titan-factory").description("Code-driven software-factory workflows").exitOverride();
   program.configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
   program.option("--db <path>", "workflow database (TITAN_FACTORY_DB, else the config file, else XDG state)");
+  program.option("--factory-config <path>", "config file (TITAN_FACTORY_CONFIG, else $XDG_CONFIG_HOME/titan-factory/config.json)");
   let exitCode: number = EXIT.OK;
   const dbPath = (): string => resolveDbPath({ env: io.env, dbFlag: program.opts<{ db?: string }>().db });
   const setExit = (code: number): void => void (exitCode = code);
   let verb = "";
   program.hook("preAction", (_program, action) => {
     verb = verbPath(action);
+    const configFlag = program.opts<{ factoryConfig?: string }>().factoryConfig;
+    if (configFlag) io.env.TITAN_FACTORY_CONFIG = configFlag;
     if (FROZEN_HOST_WRITE_VERBS.has(verb)) refuseFrozenHost(io.env, verb);
   });
   const withHost = async (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number): Promise<void> => {

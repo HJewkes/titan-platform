@@ -11,8 +11,8 @@ import { LayerBuildSchema, type BeatWorker, type BuilderRef, type LayerBuild } f
 /** The system prompt every claude-print build starts from; its sha is in every packet key. */
 export const CUSTOM_LAYER_PROMPT = path.join(DEFAULT_DOCTRINE_DIR, "builders", "custom-layer.md");
 export const CLAUDE_PRINT_LAYER_MODEL = "sonnet";
-/** Bump when the call around the prompt changes (schema, turns, budget), so every layer is rebuilt. */
-export const CLAUDE_PRINT_WORKER_VERSION = "c2";
+/** Bump when the call around the prompt or the checks after it change (schema, turns, budget, TP-4418 text check), so every layer is rebuilt. */
+export const CLAUDE_PRINT_WORKER_VERSION = "c3";
 const MAX_BUDGET_USD = 0.5;
 
 /** What the model answers: the layer without spend, which the worker prices itself. */

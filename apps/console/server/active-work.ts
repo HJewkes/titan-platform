@@ -37,8 +37,6 @@ const artifactBranch = z.object({ repo: z.string(), name: z.string(), note: z.st
 
 const artifactWorktree = z.object({ path: z.string(), repo: z.string(), branch: z.string().optional(), holding: z.string().optional(), note: z.string().optional() });
 
-const prInfo = z.object({ number: z.number(), state: z.string(), title: z.string(), url: z.string(), checks: z.string().optional() });
-
 const reference = z.object({ slug: z.string(), source: z.enum(["task", "session", "artifacts"]), file: z.string(), field: z.string(), text: z.string() });
 
 /** A `deliverable.list` row: the registry record's summary fields and its joined tasks' open and done counts. */
@@ -93,6 +91,8 @@ const READS = {
     parse_errors: z.array(z.object({ slug: z.string(), error: z.string() })),
   }),
   "task.list": z.object({ tasks: z.array(task) }),
+  /** One task file read by id; a daemon older than active-work's task.show answers EXIT.USAGE. */
+  "task.show": task.omit({ slug: true }),
   inventory: z.object({ initiatives: z.array(inventoryInitiative), human_only_known: z.boolean() }),
   "session.list": z.object({ sessions: z.array(session) }),
   loops: z.object({ open: z.array(loop) }),
@@ -104,10 +104,6 @@ const READS = {
   search: z.object({ query: z.string(), hits: z.array(searchHit), degraded: z.array(z.object({ retriever: z.string(), message: z.string() })) }),
   "artifact.list": z.object({ items: z.array(z.object({ slug: z.string(), artifacts: z.object({ branches: z.array(artifactBranch), worktrees: z.array(artifactWorktree) }) })) }),
   /** Runs `gh` once per registered branch, so only a one-task read may call it. */
-  "artifact.status": z.object({
-    branches: z.array(artifactBranch.extend({ present: z.boolean(), pr: prInfo.nullable() })),
-    worktrees: z.array(artifactWorktree.extend({ branch: z.string().nullable(), present: z.boolean(), pr: z.number().optional() })),
-  }),
   "context.graph": z.object({ references: z.array(reference) }),
   /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
   "deliverable.list": z.array(deliverable),

@@ -54,6 +54,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const sources = withStoryOrigin(createSources(config, logger, perf), config, ports);
   const { upstreams } = sources;
   const build = readBuildInfo();
+  const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
   const handle = await startDaemon({
     registry: createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf)]),
     createContext: consoleContextFor(config.ownerWrites),
