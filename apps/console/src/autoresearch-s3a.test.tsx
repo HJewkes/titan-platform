@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
-import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
+import { snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView } from "../server/autoresearch-view.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
-import { App } from "./App.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 let twin: Snapshot;
 
@@ -23,13 +22,8 @@ const KEPT = "i-3f9a0c1d2e4b";
 const L0_STOP = "i-5b3c7e9a1d0f";
 const L2_REJECT = "i-c81e5a7f3b20";
 
-function renderConsole(hash: string, snapshot: Snapshot = twin): void {
-  window.location.hash = hash;
-  render(
-    <RpcProvider source={staticSource({ snapshot })}>
-      <App />
-    </RpcProvider>,
-  );
+function renderConsole(hash: string, snapshot: Snapshot = twin, { inApp = false } = {}): void {
+  renderPage(snapshot, hash, { inApp });
 }
 
 const withRun = (run: ArRunView): Snapshot => ({ ...twin, calls: { ...twin.calls, [snapshotKey("autoresearch.run", { runId: run.runId })]: successEnvelope(run) } });
@@ -99,7 +93,7 @@ describe("the idea drawer's S3a record", () => {
 
 describe("the registries' link to the idea and round", () => {
   it("links a dead end to the idea that produced it and shows its round", async () => {
-    renderConsole(RUN_ROUTE);
+    renderConsole(RUN_ROUTE, twin, { inApp: true });
     const deadEnds = within(await screen.findByTestId("autoresearch-dead-ends"));
     const row = deadEnds.getAllByRole("row").find((entry) => within(entry).queryByTestId(`autoresearch-registry-idea-${L2_REJECT}`) !== null);
 
