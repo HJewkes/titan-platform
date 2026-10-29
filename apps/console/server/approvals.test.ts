@@ -285,6 +285,20 @@ describe("approvals.flow", () => {
     releases.forEach((release) => release());
   });
 
+  it("reads the factory again after a factory relay frame, inside the fresh window", async () => {
+    let calls = 0;
+    const countingFactory = { list: () => Promise.resolve({ items: [], gaps: [++calls && ""].filter(Boolean) }) } as unknown as NonNullable<ApprovalsSources["factory"]>;
+    const wired = { ...createSources(resolveConfig({}, root)), ...sources(countingFactory), now: () => 0 };
+    const command = consoleCommands(wired)["approvals.flow"];
+
+    await command.run({}, { warnings: [], format: "json" });
+    await command.run({}, { warnings: [], format: "json" });
+    wired.invalidation?.emit("factory");
+    await command.run({}, { warnings: [], format: "json" });
+
+    expect(calls).toBe(2);
+  });
+
   it("is registered as a read command and wired to the factory by createSources", () => {
     const wired = createSources(resolveConfig({}, root));
 

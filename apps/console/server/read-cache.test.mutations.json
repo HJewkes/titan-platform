@@ -27,6 +27,25 @@
       "kills": [
         "cachedRead reads again after an invalidate, and never keeps a read that was running when it came"
       ]
+    },
+    {
+      "name": "a keyed invalidate keeps every key",
+      "file": "apps/console/server/read-cache.ts",
+      "find": "      for (const entry of entries.values()) entry.invalidate();\n      entries = new Map();\n",
+      "replace": "",
+      "kills": [
+        "cachedReads reads every key again after an invalidate",
+        "cachedReads never keeps a read that was running when an invalidate came"
+      ]
+    },
+    {
+      "name": "a re-read key is not moved to the newest place",
+      "file": "apps/console/server/read-cache.ts",
+      "find": "      entries.delete(key);\n      entries.set(key, entry);",
+      "replace": "      entries.set(key, entry);",
+      "kills": [
+        "cachedReads drops the least recently read key once more than maxKeys are kept"
+      ]
     }
   ]
 }
