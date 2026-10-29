@@ -3,15 +3,16 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { RequestAuth } from "@titan-design/daemon";
 import type { OwnerItem } from "@titan-design/owner-queue";
 import { invokeCommand } from "@titan-design/registry";
 import { partialFake } from "@titan-design/test-kit";
 import type { AgentsSource } from "./agents.js";
 import type { FactoryNeeds } from "./approvals.js";
+import type { BrokerReader } from "./broker.js";
 import { consoleCommands } from "./commands.js";
 import { resolveConfig } from "./config.js";
-import type { InboxView } from "./inbox-view.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { copiedRounds, type CopiedRounds } from "./round-fixtures.js";
 import type { ShepherdSource } from "./shepherd.js";
@@ -33,6 +34,8 @@ const GATE: OwnerItem = {
   keys: [], personal: false, lens: "blocking-merge", unblocks: [], openedAt: "2031-03-04T12:00:00.000Z", status: "open",
 };
 
+const listed = z.object({ items: z.array(z.object({ id: z.string() })) });
+
 let root: string;
 let rounds: CopiedRounds;
 let gateOpen: boolean;
@@ -52,7 +55,8 @@ afterEach(async () => {
 function commands() {
   const factory: FactoryNeeds = { list: () => Promise.resolve({ items: gateOpen ? [GATE] : [], gaps: [] }) };
   const shepherd = partialFake<ShepherdSource>({ list: () => Promise.resolve([]) });
-  const agents = partialFake<AgentsSource>({ broker: { read: () => Promise.reject(new Error("no broker in this test")) }, eventsDbPath: "", seatPrefixes: [] });
+  const broker = partialFake<BrokerReader>({ read: () => Promise.reject(new Error("no broker in this test")) });
+  const agents = partialFake<AgentsSource>({ broker, eventsDbPath: "", seatPrefixes: [] });
   const wired = createSources(resolveConfig({}, root));
   return consoleCommands({ ...wired, factory, shepherd, agents, rounds: rounds.source, inbox: { dir: path.join(root, "inbox") }, listeners: undefined, decisionLog: undefined });
 }
@@ -60,7 +64,7 @@ function commands() {
 async function listInbox(served: ReturnType<typeof commands>): Promise<string[]> {
   const { envelope } = await invokeCommand(served["inbox.list"], { planning: true }, OWNER_CONTEXT);
   if (!envelope.ok) throw new Error("inbox.list was refused");
-  return (envelope.data as InboxView).items.map((item) => item.id);
+  return listed.parse(envelope.data).items.map((item) => item.id);
 }
 
 async function submitShown(served: ReturnType<typeof commands>): Promise<void> {

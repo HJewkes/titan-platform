@@ -13,7 +13,7 @@
     {
       "name": "rounds.submit is wired to no inbox cache",
       "file": "apps/console/server/commands.ts",
-      "find": "...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, inboxCache.invalidate),",
+      "find": "...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir, cache.invalidate),",
       "replace": "...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),",
       "kills": [
         "inbox.list after a round is submitted drops the submitted round and the gate its answer settled on the next call"
