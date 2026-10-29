@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Badge, BadgeText, EmptyState, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, EmptyState, HStack, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
 import { routeOverBudget, rpcOverBudget } from "../data/perf-budgets.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 
 type Summary = ServedCommands["perf.summary"]["result"];
 const WINDOWS = ["15m", "24h"] as const;
+const NAME_WIDTH = 290;
 
 /** What the console measured about itself, slowest first; a row past its budget carries a warning badge. */
 export function PerfTab(): ReactNode {
@@ -65,7 +66,7 @@ function Block({ id, title, subtitle, empty, count, children }: BlockProps): Rea
 
 function OverBudget(): ReactNode {
   return (
-    <Badge color="warning" variant="subtle" size="sm" testID="perf-over-budget">
+    <Badge color="warning" variant="subtle" size="sm" testID="perf-over-budget" className="whitespace-nowrap">
       <BadgeText>over budget</BadgeText>
     </Badge>
   );
@@ -75,11 +76,11 @@ function OverBudget(): ReactNode {
 function PerfTable({ labels, children }: { labels: readonly string[]; children: ReactNode }): ReactNode {
   return (
     <div className="overflow-x-auto">
-      <Table density="dense" className="min-w-[30rem]">
+      <Table density="dense" className="min-w-[44rem]">
         <TableHeader>
           <TableRow>
             {labels.map((label, i) => (
-              <TableHeaderCell key={label} align={i === 0 ? "left" : "right"}>
+              <TableHeaderCell key={label} align={i === 0 ? "left" : "right"} width={i === 0 ? NAME_WIDTH : undefined}>
                 {label}
               </TableHeaderCell>
             ))}
@@ -107,8 +108,11 @@ function Nums({ values }: { values: readonly number[] }): ReactNode {
 
 function NameCell({ name, over }: { name: string; over: boolean }): ReactNode {
   return (
-    <TableCell>
-      {name} {over ? <OverBudget /> : null}
+    <TableCell width={NAME_WIDTH}>
+      <HStack gap={2} align="center">
+        <span>{name}</span>
+        {over ? <OverBudget /> : null}
+      </HStack>
     </TableCell>
   );
 }
