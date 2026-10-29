@@ -4,7 +4,7 @@
     {
       "name": "the record carries the item's other taps",
       "file": "apps/console/server/inbox-actions.ts",
-      "find": "return { kind, gateId, runId, stepId, repo, pr, headSha, decision };",
+      "find": "return { kind, gateId, runId, stepId, repo, pr, headSha, decision, ...(evidence && { evidenceDigest: evidence.digest }) };",
       "replace": "return action;",
       "kills": [
         "inbox.act on a waivable sh-sent-back gate waives the fix-proof as a second tap: the read-back says this head only and no merge, and the record names waive-proof alone",

@@ -34,6 +34,7 @@ import { movedMessage, opMessageOf, opReadBackOf, postedOp, type MergeWait, type
 import { CONSOLE_DECISION_IDS, readInbox, type ConsoleDecision, type InboxItem, type InboxSources } from "./inbox-view.js";
 import type { ActionOutcome, OwnerActionClient, Unreachable } from "./owner-action.js";
 import { ownerWriteCommand, readCommand } from "./owner-guard.js";
+import type { OwnerEvidence } from "./shepherd.js";
 import { CONFIRM, CONFIRM_TTL_MS, digestOf, preparedStore, readSettled, recordOnce, refuse, settleOutcome, writeRecord, type Prepared, type PreparedStore } from "./owner-tap.js";
 
 export const ACTIONS_OFF = "inbox actions are off";
@@ -64,6 +65,9 @@ export interface InboxActionOptions {
   now?: () => number;
 }
 
+/** An owner-at-head gate's evidence as the factory read it at the gate's head; the record posts `digest` back. */
+type GateEvidence = Omit<Extract<OwnerEvidence, { status: "ready" }>, "status" | "gateId" | "head">;
+
 type PrReadBack = {
   repo: string;
   pr: number;
@@ -72,6 +76,7 @@ type PrReadBack = {
   gateId?: string;
   hold?: { class: string; reason: string };
   effect: string;
+  evidence?: GateEvidence;
 };
 
 type ChatReadBack = {
@@ -132,7 +137,25 @@ async function readBackOf(sources: InboxSources, item: InboxItem, action: Consol
   if (action.kind === "hold-release") return { ...prBaseOf(item, action), ...g10Signal((await sources.shepherd.timeline(action.repo, action.pr)).entries, action) };
   const at = `${action.repo}#${action.pr} at ${short(action.headSha)}`;
   if (action.kind === "owner-release") return { ...prBaseOf(item, action), effect: `Release the owner-asked hold on ${at}` };
-  return { ...prBaseOf(item, action), gateId: action.gateId, effect: gateEffect(action.decision, at) };
+  return gateReadBack(sources, item, action, at);
+}
+
+type GateTap = Extract<PostedAction, { kind: "resolve-gate" }>;
+
+/**
+ * TP-4404: a merge on an owner-at-head gate reads back the evidence the factory shows for each fact it names, so the owner
+ * reads it on the card; where the factory cannot show it all, there is no tap and the reason names the terminal command.
+ * An unreadable evidence read leaves the plain read-back, and the factory refuses a digestless tap on such a gate.
+ */
+async function gateReadBack(sources: InboxSources, item: InboxItem, action: GateTap, at: string): Promise<PrReadBack | string> {
+  const base = { ...prBaseOf(item, action), gateId: action.gateId, effect: gateEffect(action.decision, at) };
+  if (action.decision !== "merge") return base;
+  const evidence = await sources.shepherd.ownerEvidence(action.gateId).catch(() => undefined);
+  if (evidence === undefined || evidence.status === "none") return base;
+  if (evidence.status === "missing") return `the owner reads ${evidence.facts.join(", ")} at their own head, and ${evidence.reason}; run ${evidence.command}`;
+  if (evidence.head !== action.headSha) return `the evidence was read at ${short(evidence.head)}, not at ${short(action.headSha)}; read the item again`;
+  const { facts, mergeBase, sections, digest } = evidence;
+  return { ...base, evidence: { facts, mergeBase, sections, digest } };
 }
 
 const GATE_EFFECT: Record<ConsoleDecision, (at: string) => string> = {
@@ -153,11 +176,17 @@ function chosenAction(action: InboxAction, decision: ConsoleDecision | undefined
   return decision === action.decision || action.alternatives?.includes(decision) ? { ...action, decision } : undefined;
 }
 
-/** The factory reads a strict action, so the record names the one decision given and none of the item's other taps. */
-function postedAction(action: Exclude<ConsoleAction, OpAction>): Exclude<ConsoleAction, OpAction> {
+type RecordedAction = Exclude<ConsoleAction, OpAction> | (Omit<GateTap, "alternatives"> & { evidenceDigest?: string });
+
+/**
+ * The factory reads a strict action, so the record names the one decision given and none of the item's other taps, plus the
+ * digest of any owner-at-head evidence the owner was shown.
+ */
+function postedAction(action: Exclude<ConsoleAction, OpAction>, readBack: ReadBack): RecordedAction {
   if (action.kind !== "resolve-gate") return action;
   const { kind, gateId, runId, stepId, repo, pr, headSha, decision } = action;
-  return { kind, gateId, runId, stepId, repo, pr, headSha, decision };
+  const evidence = "evidence" in readBack ? readBack.evidence : undefined;
+  return { kind, gateId, runId, stepId, repo, pr, headSha, decision, ...(evidence && { evidenceDigest: evidence.digest }) };
 }
 
 function noActionReason(action: InboxAction): string {
@@ -208,7 +237,7 @@ async function writeItemRecord(ctx: ActContext, file: string, tap: Tap, prepared
   if (typeof readBack === "string" || itemDigest(item, action, prepared.readAt, readBack) !== tap.confirm) return refuse(CHANGED);
   const text = textFor(action, tap.text);
   const verdict = verdictFor(action.kind === "approve-chat" && isApproveChatReadBack(readBack) ? readBack : undefined, tap.verdict);
-  const target = action.kind === "owner-op" ? ("proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action }) : { action: postedAction(action) };
+  const target = action.kind === "owner-op" ? ("proposal" in readBack ? { op: postedOp(action.op, readBack) } : { action }) : { action: postedAction(action, readBack) };
   const record = { itemId: item.id, ...target, readBack, ...(text !== undefined && { text }), ...(verdict !== undefined && { verdict }), confirm: tap.confirm, readAt: prepared.readAt, item: decisionItemOf(item), session: { issuedAt: ctx.issuedAt }, peer: "lan-remote", at: new Date(ctx.now()).toISOString() };
   await writeRecord(ctx.options.actionsDir, file, record);
 }
