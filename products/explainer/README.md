@@ -385,6 +385,16 @@ the spike page's `vite build` (the composition page, built once per source sha i
 (`renderVideo`: capture, mix, `captions.vtt`, `render-manifest.json` and its QA gate). Its mid and end−1 s contact
 sheet (`sheet`) is dropped until the beat-aware sheets (TP-3000), and `render-json` is now `render-manifest`.
 
+**Stage fit (TP-4408).** A template beat in the stage box fits itself to it: `useStageFit` (`beats/stage/stageFit.ts`)
+searches `--beat-fit` (beats.css) from 1 down to 0.2 on every render, and every text token shrinks with it to the 40 px
+type floor qa's G8 gate enforces, never under it. A stat card reserves its settled figure's width, so the fit does
+not change while the figure counts up. Content still past the box at the floor is a row (`overflow-row.ts`): the beat,
+the element by slot id and class (`figures-2 beat-stat-label`), the px per side and a hint such as `shorten ... to <= 12
+chars`. Before the QA gate and any capture, `renderVideo` runs the stage-fit scan (`render/stage-fit-scan.ts`): it
+opens the page with `?stage-fit=report`, which records each row on `window.__stageOverflows` and draws on, seeks every
+beat at 2 Hz and at its settled end, and throws one `StageOverflow` that lists every row. Outside report mode the page
+still throws at the first row, so a capture never draws content under the chrome.
+
 **The sheets stage (TP-4018).** The port of the host's `write_video_meta.py`. ffprobe reads the MP4's duration and
 ffmpeg grabs a 480 px poster at `posterAtS`, 30 % in rounded to a tenth of a second. `buildSidecar` writes
 `<stem>.video.json` as `titan-console/video-meta@1` (v1 fields only: `title`, `description` = `video.promise`,
