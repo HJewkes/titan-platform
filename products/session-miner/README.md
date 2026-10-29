@@ -413,6 +413,40 @@ systemctl --user daemon-reload
 systemctl --user enable --now session-miner-tool-gaps.timer
 ```
 
+## Daily friction audit (TP-4364)
+
+`titan-miner friction-daily [--since 24h] [--dry-run] [--archive-dir <dir>]` reads the window's
+worker reports from agent-chat's events table (`TITAN_MINER_EVENTS_DB`): messages whose body opens
+with the return contract's `Status:` line.
+
+1. From each report it takes the `Friction: <line>` field. A report without one falls back to its
+   `Concerns:` items and blocked lines, labelled `concerns` or `blocked` so the two sources never
+   read as one. `none` counts as nothing said.
+2. Each line is normalised (ids, paths and numbers reduced to tokens) and put in the first keyword
+   bucket it matches: `denials`, `flaky-test`, `ci-wait`, `broker-infra`, `review-loop`,
+   `missing-context`, else `other`. No model is called.
+3. Clusters rank by reports, then agent-hours: each agent counted once per cluster, from its last
+   spawn before the report to the report.
+4. It writes one row per report to `<archive>/<date>.jsonl` and the top five to `<date>.md`. The
+   archive defaults to `<active-work>/titan-platform/artifacts/friction-daily`.
+5. It withdraws the previous seven days' items as `superseded:<today's id>`, then files one know
+   item as asker `friction-audit`, depositId `friction-daily-<date>`, key `friction-daily`, so the
+   asker never holds more than one open item.
+
+`--dry-run` reads and prints the top five, and writes and files nothing. Root `--json` prints the
+result as one JSON line.
+
+`ops/systemd/session-miner-friction-daily.{service,timer}` run it daily at 14:05 UTC, catching up
+a missed day on boot. The service reads `ACTIVE_ROOT` from
+`~/.config/titan-session-miner/friction-daily.env`, which it requires. To install (an owner step):
+
+```sh
+printf 'ACTIVE_ROOT=<root>\n' > ~/.config/titan-session-miner/friction-daily.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-friction-daily.service ~/projects/titan-platform/ops/systemd/session-miner-friction-daily.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-friction-daily.timer
+```
+
 ## Daily self-improve classification (TP-685)
 
 `titan-miner self-improve-daily --chunks <dir> --prompts <dir> --out <dir> [--max-budget-usd 3]`

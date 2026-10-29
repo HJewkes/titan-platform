@@ -1,0 +1,15 @@
+# Daily friction audit: cluster the last 24 h of worker-report Friction: lines, archive the rows,
+# file one owner inbox item. Install steps: products/session-miner/README.md, "Daily friction audit".
+[Unit]
+Description=Session miner: daily friction audit and owner inbox item
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets ACTIVE_ROOT; required, so a host without it fails rather than archiving to the wrong root.
+EnvironmentFile=%h/.config/titan-session-miner/friction-daily.env
+ExecStart=/usr/bin/node %h/projects/titan-platform/products/session-miner/dist/bin.js friction-daily
+TimeoutStartSec=10min
+Nice=10
+IOSchedulingClass=idle
