@@ -39,7 +39,7 @@
     },
     {
       "name": "a standing approval reads as a queued land run",
-      "file": "apps/console/server/inbox-actions.ts",
+      "file": "apps/console/server/inbox-op.ts",
       "find": "      return \"Merge approved: Shepherd merges at this head once the adversary loop closes with MERGE; a new head or a non-MERGE verdict voids it and the inbox tells you\";\n",
       "replace": "      return `Merge queued: land run ${outcome.runId} merges at this head once its checks are green`;\n",
       "kills": [
