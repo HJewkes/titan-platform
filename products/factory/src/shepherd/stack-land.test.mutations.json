@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "scratch repos keep the inherited push hook",
+      "file": "products/factory/src/shepherd/git-test-env.test-helpers.ts",
+      "find": "\"core.hooksPath\"",
+      "replace": "\"core.pager\"",
+      "kills": [
+        "restackChild retargets a child still on the parent's branch, then fast-forwards it to the merge-onto commit"
+      ]
+    }
+  ]
+}
