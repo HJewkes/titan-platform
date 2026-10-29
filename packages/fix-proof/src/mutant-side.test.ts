@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spawnExec, type Exec } from "./exec.js";
 import { execMutants } from "./mutant-side.js";
 import { MAX_MUTATIONS, type Mutation } from "./mutation.js";
-import { FIXED, makeRepo, removeRepos } from "./repo.test-helpers.js";
+import { FIXED, makeRepo, REAL_RUNNER, removeRepos } from "./repo.test-helpers.js";
 import { isSandboxed, sudoStub } from "./sandbox.test-helpers.js";
 import { decodeMutantsReport, type DecodedMutants } from "./transport.js";
 
@@ -41,6 +41,8 @@ function spec(...mutations: Mutation[]): string {
 
 interface Scenario {
   build?: string;
+  /** The test reads no vitest outcome, so the runner only writes an empty report. */
+  fakeRunner?: boolean;
   head: Record<string, string>;
   base?: Record<string, string>;
   exec?: Exec;
@@ -48,8 +50,8 @@ interface Scenario {
   out?: string;
 }
 
-async function runScenario({ build = DIST_BUILD, head, base = {}, exec, sandboxUser, out = outDir() }: Scenario): Promise<DecodedMutants> {
-  const repo = makeRepo({ build }, os.tmpdir(), { "src/math.ts": FIXED, "src/double.ts": DOUBLE, ...base });
+async function runScenario({ build = DIST_BUILD, fakeRunner = false, head, base = {}, exec, sandboxUser, out = outDir() }: Scenario): Promise<DecodedMutants> {
+  const repo = makeRepo(fakeRunner ? { build } : { ...REAL_RUNNER, build }, os.tmpdir(), { "src/math.ts": FIXED, "src/double.ts": DOUBLE, ...base });
   const sha = repo.commit(head);
   await execMutants({ repo: repo.dir, base: repo.base, head: sha, out, exec, sandboxUser });
   return decodeMutantsReport(fs.readFileSync(path.join(out, "mutants.report"), "utf-8"));
@@ -188,7 +190,7 @@ describe("execMutants", { timeout: 120_000 }, () => {
   it("with a sandbox user, every build and vitest call after the overlay runs in the sandbox", async () => {
     const { calls, exec } = sudoStub();
 
-    const decoded = await runScenario({ head: calcSpec(ADD_SUBTRACTS, DOUBLE_ADDS), exec, sandboxUser: "fix-proof-sandbox" });
+    const decoded = await runScenario({ head: calcSpec(ADD_SUBTRACTS, DOUBLE_ADDS), exec, sandboxUser: "fix-proof-sandbox", fakeRunner: true });
 
     const isVitest = (args: readonly string[]) => args.includes("--reporter=json");
     const isBuild = (args: readonly string[]) => args.some((arg) => arg.startsWith(DIST_BUILD));

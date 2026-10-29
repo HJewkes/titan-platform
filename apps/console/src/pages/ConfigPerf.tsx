@@ -1,7 +1,19 @@
 import { useState, type ReactNode } from "react";
 import { Alert, Badge, BadgeText, EmptyState, HStack, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
-import { routeOverBudget, rpcOverBudget } from "../data/perf-budgets.js";
+import { DEFAULT_LIMITS, budgetFor } from "../../server/perf/budgets.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
+
+/** Plan §2: no page waits longer than this for its first data. */
+const ROUTE_BUDGET_MS = 3000;
+
+function routeOverBudget(row: { p95: number }): boolean {
+  return row.p95 > ROUTE_BUDGET_MS;
+}
+
+function rpcOverBudget(row: { name: string; p95: number; bytesMax: number }): boolean {
+  const budget = budgetFor(row.name) ?? DEFAULT_LIMITS;
+  return row.p95 > budget.maxMs || row.bytesMax > budget.maxBytes;
+}
 
 type Summary = ServedCommands["perf.summary"]["result"];
 const WINDOWS = ["15m", "24h"] as const;
