@@ -21,9 +21,10 @@ import { open } from "../router.js";
 import { GuessedCaption, RefLink, TaskStageBadge } from "./TaskParts.js";
 
 type Detail = ConsoleCommands["work.task"]["result"];
-type Mention = Detail["mentions"][number];
+type Mention = ConsoleCommands["work.taskMentions"]["result"]["mentions"][number];
+type Branch = ConsoleCommands["work.taskArtifacts"]["result"]["branches"][number];
 
-/** One task from `work.task`: its record, pull request state, mentions and the sessions spawned for it. */
+/** One task from `work.task`, rendered first; branch PR state and mentions are slower reads that fill in after it. */
 export function TaskDetailPage({ id }: { id: string }): ReactNode {
   const detail = useQuery("work.task", { id });
   if (detail.status === "loading") return <Spinner size="sm" label="Loading task" />;
@@ -44,7 +45,7 @@ export function TaskDetailPage({ id }: { id: string }): ReactNode {
         <PullRequests detail={detail.data} />
       </Panel>
       <Panel title="Mentions">
-        <Mentions mentions={detail.data.mentions} degraded={detail.data.mentionsDegraded} />
+        <Mentions id={id} />
       </Panel>
       <Panel title="Linked sessions">
         <Sessions detail={detail.data} />
@@ -105,12 +106,10 @@ function Field({ label, text }: { label: string; text: string }): ReactNode {
 }
 
 function PullRequests({ detail }: { detail: Detail }): ReactNode {
-  const { openPrs, artifacts, evidence } = detail;
-  const branches = artifacts.branches;
+  const { openPrs, evidence } = detail;
   return (
     <VStack gap={2}>
       {evidence.degraded.length > 0 ? <Alert status="warning" size="compact" message={`Pull request state is unavailable: ${evidence.degraded.join("; ")}.`} /> : null}
-      {openPrs.length === 0 && branches.length === 0 ? <Typography variant="caption" color="secondary">No branch or pull request carries this task.</Typography> : null}
       {openPrs.map((pr) => (
         <HStack key={`${pr.repo}#${pr.number}`} gap={2} align="center" wrap>
           <RefLink refText={`pr:${pr.repo}#${pr.number}`} label={`${pr.repo}#${pr.number}`} />
@@ -118,14 +117,28 @@ function PullRequests({ detail }: { detail: Detail }): ReactNode {
           <Typography variant="caption" color="secondary">{pr.headRef}</Typography>
         </HStack>
       ))}
-      {branches.map((branch) => (
-        <BranchRow key={`${branch.repo}/${branch.name}`} branch={branch} />
-      ))}
+      <Branches id={detail.task.id} slug={detail.task.slug} openPrs={openPrs.length} />
     </VStack>
   );
 }
 
-function BranchRow({ branch }: { branch: Detail["artifacts"]["branches"][number] }): ReactNode {
+function Branches({ id, slug, openPrs }: { id: string; slug: string; openPrs: number }): ReactNode {
+  const artifacts = useQuery("work.taskArtifacts", { id, slug });
+  if (artifacts.status === "loading") return <Spinner size="sm" label="Loading branch pull requests" />;
+  if (artifacts.data === undefined) return <Alert status="warning" size="compact" message={`Branch pull requests are unavailable: ${artifacts.error.message}`} />;
+  const { branches, degraded } = artifacts.data;
+  return (
+    <>
+      {degraded.length > 0 ? <Alert status="warning" size="compact" message={`Branch pull requests are unavailable: ${degraded.join("; ")}.`} /> : null}
+      {openPrs === 0 && branches.length === 0 ? <Typography variant="caption" color="secondary">No branch or pull request carries this task.</Typography> : null}
+      {branches.map((branch) => (
+        <BranchRow key={`${branch.repo}/${branch.name}`} branch={branch} />
+      ))}
+    </>
+  );
+}
+
+function BranchRow({ branch }: { branch: Branch }): ReactNode {
   const { pr } = branch;
   return (
     <HStack gap={2} align="center" wrap>
@@ -152,8 +165,13 @@ function mentionRef(mention: Mention): string | undefined {
   return taskId ? `task:${taskId}` : undefined;
 }
 
-function Mentions({ mentions, degraded }: { mentions: readonly Mention[]; degraded: string | null }): ReactNode {
-  if (degraded) return <Alert status="warning" size="compact" message={`Mentions are unavailable: ${degraded}`} />;
+function Mentions({ id }: { id: string }): ReactNode {
+  const read = useQuery("work.taskMentions", { id });
+  if (read.status === "loading") return <Spinner size="sm" label="Loading mentions" />;
+  const unavailable = (why: string) => <Alert status="warning" size="compact" message={`Mentions are unavailable: ${why}`} />;
+  if (read.data === undefined) return unavailable(read.error.message);
+  const { mentions, degraded } = read.data;
+  if (degraded) return unavailable(degraded);
   if (mentions.length === 0) return <Typography variant="caption" color="secondary">No record mentions this task.</Typography>;
   return (
     <VStack gap={2}>

@@ -3,7 +3,6 @@
   "agentGuidance": false,
   "globalDependencies": [
     "tsconfig.base.json",
-    "pnpm-lock.yaml",
     "pnpm-workspace.yaml"
   ],
   "tasks": {

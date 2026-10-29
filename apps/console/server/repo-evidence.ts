@@ -109,7 +109,7 @@ function mergedAt(log: string | null): Map<string, number> {
   return newest;
 }
 
-function githubSlug(remote: string): string | null {
+export function githubSlug(remote: string): string | null {
   return /github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/.exec(remote.trim())?.[1] ?? null;
 }
 

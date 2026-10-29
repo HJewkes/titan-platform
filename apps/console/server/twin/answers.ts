@@ -214,9 +214,6 @@ const EVIDENCE = { repos: ["orbit/relay"], degraded: [] };
 const TASK_DETAIL: Served["work.task"]["result"] = {
   fetchedAt: new Date(TWIN_NOW).toISOString(),
   task: { ...TASKS[0]!, doneWhen: "A dropped handshake retries with capped backoff and a test drops it twice" },
-  mentions: [],
-  mentionsDegraded: null,
-  artifacts: { branches: [], worktrees: [] },
   refs: [],
   openPrs: [],
   sessions: [],
@@ -314,6 +311,8 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
   answer("work.tasks", {}, { fetchedAt: new Date(TWIN_NOW).toISOString(), tasks: TASKS, evidence: EVIDENCE }),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
+  answer("work.taskMentions", { id: "OR-12" }, { mentions: [], degraded: null }),
+  answer("work.taskArtifacts", { id: "OR-12", slug: TASK_DETAIL.task.slug }, { branches: [], degraded: [] }),
   answer("inbox.list", {}, { ...INBOX_VIEW, items: INBOX_ITEMS.filter((item) => item.section !== "planning") }),
   answer("inbox.list", { planning: true }, { ...INBOX_VIEW, items: INBOX_ITEMS }),
   answer("shepherd.list", { state: "active" }, WATCHED),

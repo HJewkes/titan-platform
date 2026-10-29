@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the summary lists the fastest files first",
+      "file": "scripts/vitest-file-timing.mjs",
+      "find": "sort((a, b) => b[key] - a[key])",
+      "replace": "sort((a, b) => a[key] - b[key])",
+      "kills": [
+        "the file timing reporter puts the slowest files by each phase in the step summary",
+        "the file timing reporter lists no more than the top count in each table"
+      ]
+    },
+    {
+      "name": "collect time is dropped from the artifact",
+      "file": "scripts/vitest-file-timing.mjs",
+      "find": "collectMs: Math.round(diagnostic.collectDuration),",
+      "replace": "collectMs: 0,",
+      "kills": [
+        "the file timing reporter writes every file's collect, setup and test time to the artifact",
+        "the file timing reporter puts the slowest files by each phase in the step summary"
+      ]
+    },
+    {
+      "name": "the summary is written outside Actions",
+      "file": "scripts/vitest-file-timing.mjs",
+      "find": "if (this.summary) this.append",
+      "replace": "this.append",
+      "kills": [
+        "the file timing reporter writes the artifact but no summary outside Actions"
+      ]
+    }
+  ]
+}

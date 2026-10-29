@@ -6,7 +6,7 @@ import { useEvents, useInvalidate } from "./rpc.js";
 
 /** The reads each relayed source can change; a broker message never refetches active-work's reads. */
 const RELAY_INVALIDATES = {
-  "active-work": ["work.portfolio", "work.initiative", "work.tasks", "work.task", "graph.ego"],
+  "active-work": ["work.portfolio", "work.initiative", "work.tasks", "work.task", "work.taskMentions", "work.taskArtifacts", "graph.ego"],
   "agent-chat": ["agents.roster", "agents.graph", "agents.messages", "agents.queue"],
   // The factory names its frames `shepherd` for every workflow run, autoresearch's too, so any of them may have moved a run.
   factory: ["autoresearch.runs", "autoresearch.run"],
