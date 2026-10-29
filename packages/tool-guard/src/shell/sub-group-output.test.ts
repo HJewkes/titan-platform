@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -100,29 +100,34 @@ describe("lines main denies still deny (TP-3333)", () => {
 
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
-/** Runs `line` under `runner` in a scratch dir with a fake `git` first on PATH, and reports whether it was asked to push. */
-function runsPush(line: string, runner: string): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sub-group-output-"));
-  try {
+/**
+ * Runs `line` under `runner` in a scratch dir with a fake `git` first on PATH, and reports whether it was asked to push.
+ * A describe adds its rows and runs them all through one driver (TP-4453).
+ */
+const runsPushOracle = () =>
+  shellOracle("sub-group-output-", (dir, line: string, runner: string) => {
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\n[ "$*" = "push origin HEAD:main" ] && touch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(program, [...flags, "-c", line], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
-    return fs.existsSync(path.join(dir, "mk"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program, args: [...flags, "-c", line], extraEnv: { ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => fs.existsSync(path.join(dir, "mk")),
+    };
+  });
 
 const RUNNERS = ["bash", "zsh -f", "dash", "zsh --emulate sh -f"];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("real shells run the push the denied lines print (TP-3333)", () => {
+  const quiet = ['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'eval "$( { echo hi; echo ls; } )"'];
+  const runsPush = runsPushOracle();
+  for (const line of [...PRINTS_A_PUSH, ...quiet]) for (const runner of RUNNERS) runsPush.add(line, runner);
+  runsPush.beforeAll();
+
   it.each(PRINTS_A_PUSH.flatMap((line) => RUNNERS.map((runner): [string, string] => [line, runner])))("%s runs the push under %s", (line, runner) => {
-    expect(runsPush(line, runner)).toBe(true);
+    expect(runsPush.get(line, runner)).toBe(true);
   });
 
-  it.each(['bash -c "$(echo echo hi | cat)"', 'echo "$({ echo a; echo b; })"', 'eval "$( { echo hi; echo ls; } )"'])("%s runs no push under any of them", (line) => {
-    expect(RUNNERS.map((runner) => runsPush(line, runner))).toEqual([false, false, false, false]);
+  it.each(quiet)("%s runs no push under any of them", (line) => {
+    expect(RUNNERS.map((runner) => runsPush.get(line, runner))).toEqual([false, false, false, false]);
   });
 });

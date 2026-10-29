@@ -2,7 +2,8 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
+import { killGroup } from "../test-support/shell-rows.js";
 import type { WordToken } from "./lexer.js";
 import { shellOperands } from "./shell-options.js";
 
@@ -44,7 +45,11 @@ async function observed(shell: string): Promise<string[][]> {
   try {
     await new Promise((resolve) => {
       const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, ZDOTDIR: dir, LOG: log };
-      spawn("bash", ["../driver.sh"], { cwd: work, env, stdio: "ignore" }).on("close", resolve);
+      const driver = spawn("bash", ["../driver.sh"], { cwd: work, env, stdio: "ignore", detached: true });
+      driver.on("close", () => {
+        killGroup(driver.pid);
+        resolve(undefined);
+      });
     });
     return parseLog(fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "");
   } finally {
@@ -65,8 +70,9 @@ const located = (shell: string): string | null => {
   return found.status === 0 ? found.stdout.trim() : null;
 };
 
+// Concurrent, so the four shells' drivers overlap instead of queueing (TP-4453).
 describe("the option reader agrees with each real shell on a generated table (TP-3221)", () => {
-  it.each(["bash", "zsh", "dash", "sh"])("reads every line %s runs as it runs it", async (shell) => {
+  it.concurrent.for(["bash", "zsh", "dash", "sh"])("reads every line %s runs as it runs it", async (shell, { expect }) => {
     const at = located(shell);
     if (at === null) return;
     const runs = await observed(at);
