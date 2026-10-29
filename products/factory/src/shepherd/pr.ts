@@ -11,6 +11,7 @@ import { setCarryOf } from "./approved-set-carry.js";
 import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
+import { fixPrStall } from "./fix-pr-stall.js";
 import { conflictCheckRoute, conflictCheckedGates, conflictsAt, leaveOnConflict } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
@@ -136,7 +137,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 /** An unsettled mergeability past its bound is the seat's to hear about, never an owner gate, while land keeps re-reading. */
 function shepherdOptions(run: ShepherdRun, verdictFor: (headSha: string) => Verdict | undefined, checkedBase: () => string | undefined): LandOptions {
   const options = shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha), checkedBase);
-  const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run) };
+  const unsettled = options.unsettled && { ...options.unsettled, notice: unsettledMergeNotice(run), stalled: fixPrStall(run) };
   const merge = { reviewedMerge: (headSha: string) => verdictIsMergeAt(verdictFor(headSha), headSha) };
   const atHead = { ownerBriefAt: (headSha: string) => ownerBriefAt(verdictFor(headSha), headSha), ciPolicyAt: (headSha: string) => ciPolicyAt(verdictFor(headSha), headSha) };
   return { ...options, ...(unsettled && { unsettled }), ...merge, ...atHead, sendBackOffered: sendBackOffer() };
@@ -355,8 +356,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
     ...visualPacketRoutes(deps),
-    sendBackOfferRoute(deps),
-    visualAcceptOfferRoute(deps),
+    sendBackOfferRoute(deps), visualAcceptOfferRoute(deps),
     headOriginRoute(deps),
     reviewRefusedRoute(deps.now),
     autoPassRoute(deps.port, deps.now),

@@ -13,6 +13,7 @@ import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
 import { CONFLICT_BASE_STEPS } from "./conflict-base.js";
 import { MERGE_ORDER_STEPS } from "./merge-order-steps.js";
 import { FREEZE_HOLD_STEPS } from "./freeze-hold.js";
+import { FIX_PR_STALL_STEPS } from "./fix-pr-stall.js";
 import { G10_RELEASE_STEPS } from "./g10-release.js";
 import { G10_REHOLD_STEPS } from "./g10-rehold.js";
 import { SEAT_NOTICE_STEPS } from "./gate-route.js";
@@ -47,6 +48,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...CONFLICT_BASE_STEPS,
   ...MERGE_ORDER_STEPS,
   ...FREEZE_HOLD_STEPS,
+  ...FIX_PR_STALL_STEPS,
   ...G10_RELEASE_STEPS,
   ...G10_REHOLD_STEPS,
   ...SEAT_NOTICE_STEPS,

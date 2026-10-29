@@ -21,10 +21,11 @@ const SEAT_GATES = ["ci-failed", "sh-sent-back", "stuck-behind"] as const;
 type SeatGate = (typeof SEAT_GATES)[number];
 /**
  * Seat work that is no gate's: a held run's fix round, a red head that only repeats its base's red, which waits on the
- * seat instead of waking a fixer, a mergeability GitHub left unsettled past the wait's bound, or a runaway whose
+ * seat instead of waking a fixer, a mergeability GitHub left unsettled past the wait's bound, a fix-task PR the freeze
+ * holds because no fix PR is marked, or a runaway whose
  * convergence review still said FIX_FIRST, which is the planner's to redesign or split.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed", "order-expired"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "fix-pr-unmarked", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed", "order-expired"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -37,6 +38,7 @@ const NEXT: Record<SeatNotice, string> = {
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
   held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
   "merge-unsettled": "Nothing waits on the owner: Shepherd reads mergeability again at this head every few minutes and merges once GitHub settles it. A new head starts the wait over. Push to the PR, or close it to end the run.",
+  "fix-pr-unmarked": "Nothing waits on the owner: Shepherd keeps waiting at this head and merges once the repo thaws or this PR is marked as the episode's fix. Mark it as above, or close it to end the run.",
   "fix-first-planner": `${WAITS} Shepherd wakes no further fixer: the task needs its planner. Redesign or split the task and push to the PR, or close the PR to end the run.`,
   "base-red": "Shepherd woke no fixer and spent no repair: the PR only repeats its base's red. The run waits for the base or the PR's head to move, then reads CI again. Fix the base, push a fix to the PR, or close the PR to end the run.",
   "review-infra": `This is a reviewer infrastructure defect, not a finding about the PR, and nothing waits on the owner. ${WAITS} Next: fix the reviewer account or broker, then push to the PR or register it again to review it on another account.`,
