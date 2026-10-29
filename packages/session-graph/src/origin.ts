@@ -1,6 +1,7 @@
 import { RELATIONS, sessionRef, taskRef } from "@titan-design/session-read";
 import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
+import { ORIGIN_ROUTE_COLUMNS } from "./origin-route-schema.js";
 
 /**
  * Who started a session and why, as a launcher such as agent-chat recorded it.
@@ -42,6 +43,18 @@ export interface ResolvedOrigin {
   predecessor?: string | null;
   /** How many follow-ups of each kind (`fix`, `rebase`, `extension`, `review`) the session received. */
   followupKinds?: Readonly<Record<string, number>> | null;
+  /** The spawn-routing decision the launcher logged; `routeFacts` is compact JSON text. */
+  routeMode?: string | null;
+  routeSource?: string | null;
+  routePrior?: string | null;
+  routeReason?: string | null;
+  routeRequested?: string | null;
+  routeWanted?: string | null;
+  routeWorkflow?: string | null;
+  routeTable?: string | null;
+  routeFacts?: string | null;
+  routeCandidate?: string | null;
+  routeCandidateWanted?: string | null;
 }
 
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
@@ -98,10 +111,13 @@ const SESSIONS_NEEDING_ORIGIN = `
   WHERE o.session_id IS NULL OR o.resolved_at < s.ended_at OR o.task_source IS NULL
   ORDER BY s.session_id`;
 
+const camel = (column: string): string => column.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+
 const ORIGIN_COLUMNS = [
   "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
   "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
   "experiment_id", "experiment_arm", "predecessor", "followup_kinds",
+  ...ORIGIN_ROUTE_COLUMNS,
 ] as const;
 
 /** A null `task_source` means the resolver did not look for tasks, so the stored link stands; `none` clears it. */
@@ -113,11 +129,13 @@ const UPSERT_ORIGIN = `
   INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
     brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at,
-    experiment_id, experiment_arm, predecessor, followup_kinds)
+    experiment_id, experiment_arm, predecessor, followup_kinds,
+    ${ORIGIN_ROUTE_COLUMNS.join(", ")})
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
     @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt,
-    @experimentId, @experimentArm, @predecessor, @followupKinds)
+    @experimentId, @experimentArm, @predecessor, @followupKinds,
+    ${ORIGIN_ROUTE_COLUMNS.map((c) => `@${camel(c)}`).join(", ")})
   ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
     ${TASK_LINK_UPDATE}`;
 
@@ -183,7 +201,17 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
     experimentId: o.experimentId ?? null, experimentArm: o.experimentArm ?? null, predecessor: o.predecessor ?? null,
     followupKinds: o.followupKinds ? JSON.stringify(o.followupKinds) : null,
+    ...routeColumns(o),
     ...taskLinkColumns(o),
+  };
+}
+
+function routeColumns(o: ResolvedOrigin): Record<string, string | null> {
+  return {
+    routeMode: o.routeMode ?? null, routeSource: o.routeSource ?? null, routePrior: o.routePrior ?? null,
+    routeReason: o.routeReason ?? null, routeRequested: o.routeRequested ?? null, routeWanted: o.routeWanted ?? null,
+    routeWorkflow: o.routeWorkflow ?? null, routeTable: o.routeTable ?? null, routeFacts: o.routeFacts ?? null,
+    routeCandidate: o.routeCandidate ?? null, routeCandidateWanted: o.routeCandidateWanted ?? null,
   };
 }
 

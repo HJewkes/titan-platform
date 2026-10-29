@@ -14,6 +14,10 @@ const TEST_GIT_ENV = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_CONFIG_GLOBAL: "/dev/null",
+  // Agent worktrees inject core.hooksPath through GIT_CONFIG_COUNT; the temp repos must not run those push hooks.
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "core.hooksPath",
+  GIT_CONFIG_VALUE_0: "/dev/null",
   GIT_AUTHOR_NAME: "Test",
   GIT_AUTHOR_EMAIL: "test@example.com",
   GIT_COMMITTER_NAME: "Test",

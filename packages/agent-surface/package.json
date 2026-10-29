@@ -36,5 +36,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@titan-design/agent-protocol": "workspace:*"
   }
 }
