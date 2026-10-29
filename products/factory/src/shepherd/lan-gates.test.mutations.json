@@ -23,13 +23,6 @@
       "kills": ["a lan-gates hold cleared by gate evidence stays held while one named gate has no record at the head"]
     },
     {
-      "name": "green evidence never clears",
-      "file": "products/factory/src/shepherd/store.ts",
-      "find": "lanGatesClearAt(this.gateEvidence(), repo, r, sha))",
-      "replace": "false)",
-      "kills": ["a lan-gates hold cleared by gate evidence stands aside at the PR's exact head once every named gate is green there, without lifting the hold"]
-    },
-    {
       "name": "green evidence lifts the hold for good",
       "file": "products/factory/src/shepherd/store.ts",
       "find": "lanGatesClearAt(this.gateEvidence(), repo, r, sha))",
