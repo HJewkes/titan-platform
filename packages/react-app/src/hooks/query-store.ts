@@ -32,7 +32,12 @@ export interface QueryStore {
   invalidate(commands?: readonly string[]): void;
 }
 
-export function createQueryStore(source: DataSource): QueryStore {
+export interface QueryStoreOptions {
+  /** How long an unwatched query keeps its result for a later watcher; 0 drops it a tick after the last unwatch. */
+  gcMs?: number;
+}
+
+export function createQueryStore(source: DataSource, { gcMs = 0 }: QueryStoreOptions = {}): QueryStore {
   const entries = new Map<string, Entry>();
 
   const run = (entry: Entry): void => {
@@ -57,13 +62,17 @@ export function createQueryStore(source: DataSource): QueryStore {
     watch(command, args, listener) {
       const key = snapshotKey(command, args);
       const entry = entries.get(key) ?? adopt(entries, key, command, args, run);
+      const kept = entry.dropTimer !== undefined;
       clearTimeout(entry.dropTimer);
+      entry.dropTimer = undefined;
       entry.listeners.add(listener);
+      // A kept entry shows its old data at once; the refetch runs behind it.
+      if (kept && gcMs > 0 && !entry.controller) run(entry);
       return () => {
         entry.listeners.delete(listener);
         if (entry.listeners.size > 0) return;
-        // Deferred a tick so a StrictMode unmount-remount keeps the in-flight call instead of redialling.
-        entry.dropTimer = setTimeout(() => drop(key, entry), 0);
+        // gcMs 0 defers a tick so a StrictMode unmount-remount keeps the in-flight call instead of redialling.
+        entry.dropTimer = setTimeout(() => drop(key, entry), gcMs);
       };
     },
     state: (key) => entries.get(key)?.state ?? LOADING,

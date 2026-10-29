@@ -92,6 +92,8 @@ const READS = {
     parse_errors: z.array(z.object({ slug: z.string(), error: z.string() })),
   }),
   "task.list": z.object({ tasks: z.array(task) }),
+  /** One task file read by id; a daemon older than active-work's task.show answers EXIT.USAGE. */
+  "task.show": task.omit({ slug: true }),
   inventory: z.object({ initiatives: z.array(inventoryInitiative), human_only_known: z.boolean() }),
   "session.list": z.object({ sessions: z.array(session) }),
   loops: z.object({ open: z.array(loop) }),

@@ -13,6 +13,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const MANIFEST_PATH = join(ROOT, "products", "factory", "sunset", "manifest.json");
 export const MILESTONES_PATH = join(ROOT, "products", "factory", "sunset", "milestones.json");
 const FATES = new Set(["delete", "survives", "kept"]);
+const D_TASK = /^D-M\d+[ab]?-\d+$/;
+// A fold task (TP-626 and its D7-D12 children) moves agent-chat code into packages; it has no milestone of its own.
+const FOLD_TASK = /^TP-\d+$/;
 const USAGE = "usage: sunset-manifest check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--manifest <file>] [--milestones <file>]";
 
 export function parseArgs(argv) {
@@ -33,7 +36,9 @@ export function parseArgs(argv) {
 function entryProblem(entry) {
   if (!FATES.has(entry.fate)) return `${entry.path}: fate "${entry.fate}" is not delete, survives or kept`;
   if (entry.fate === "kept" && !entry.reason) return `${entry.path}: kept needs a reason`;
-  if (entry.fate !== "kept" && !/^D-M\d+[ab]?-\d+$/.test(entry.task ?? "")) return `${entry.path}: ${entry.fate} needs a D-task id`;
+  const task = entry.task ?? "";
+  if (entry.fate !== "kept" && !D_TASK.test(task) && !FOLD_TASK.test(task)) return `${entry.path}: ${entry.fate} needs a D-task or fold id`;
+  if (entry.fate === "delete" && FOLD_TASK.test(task) && entry.milestone !== "fold") return `${entry.path}: a fold id's milestone is fold`;
   if (entry.fate === "delete" && !entry.milestone) return `${entry.path}: delete needs the milestone of its task`;
   return undefined;
 }
@@ -48,9 +53,10 @@ export function exitedMilestones(milestones) {
   return new Set(milestones.milestones.filter((m) => m.exited).map((m) => m.id));
 }
 
-/** Whether a directory-level default (`manifest.defaults`) covers a file no entry maps, so a new file inherits its rung. */
-function hasDefault(manifest, repo, file) {
-  return (manifest.defaults ?? []).some((rule) => rule.repo === repo && file.startsWith(`${rule.path}/`));
+/** The directory-level default (`manifest.defaults`) a file no entry maps inherits its rung from: the deepest one covering it. */
+export function defaultFor(manifest, repo, file) {
+  const covering = (manifest.defaults ?? []).filter((rule) => rule.repo === repo && file.startsWith(`${rule.path}/`));
+  return covering.reduce((best, rule) => (!best || rule.path.length > best.path.length ? rule : best), undefined);
 }
 
 /** Files only a default covers, as `defaulted: <repo>:<file> (<default path>)` lines: informational, so they stay visible while their entries are owed. */
@@ -59,7 +65,7 @@ export function defaultedNotices(manifest, listings) {
   const lines = [];
   for (const { repo, path } of manifest.roots) {
     for (const file of listings[`${repo}:${path}`] ?? []) {
-      const rule = (manifest.defaults ?? []).find((candidate) => candidate.repo === repo && file.startsWith(`${candidate.path}/`));
+      const rule = defaultFor(manifest, repo, file);
       if (rule && !mapped.has(`${repo}:${file}`)) lines.push(`defaulted: ${repo}:${file} (${rule.path})`);
     }
   }
@@ -109,7 +115,7 @@ export function classifyManifest(manifest, listings, exited = new Set()) {
       const rung = milestoneOf(entry.task);
       if (entry.fate === "delete" && entry.repo === repo && listed.includes(entry.path) && exited.has(rung)) add("overdue", `${repo}:${entry.path}: still exists but ${entry.task} was due at the exit of ${rung}`);
     }
-    for (const file of listed) if (!seen.has(`${repo}:${file}`) && !hasDefault(manifest, repo, file)) add("drift", `${repo}:${file}: unmapped`);
+    for (const file of listed) if (!seen.has(`${repo}:${file}`) && !defaultFor(manifest, repo, file)) add("drift", `${repo}:${file}: unmapped`);
     const present = new Set(listed.map((file) => `${repo}:${file}`));
     for (const entry of manifest.entries) {
       const key = `${entry.repo}:${entry.path}`;

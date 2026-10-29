@@ -46,15 +46,19 @@ function StageBeat({ beat, view, headline }: ViewProps) {
  */
 const BOUNDARY_S = 1e-9;
 
-/** A custom layer owns the whole canvas: its anchors are cells of the full frame, and it draws its own chrome if any. */
+/**
+ * A custom layer draws in the stage box between empty chrome bands, as a stage kind does, so its content clears the
+ * chrome by construction and qa's under-chrome rule sees any overflow. Its anchors stay cells of the full frame.
+ */
 function CustomLayerBeatView({ beat, module }: { beat: TimelineBeat; module: string }) {
   return (
     <Beat startS={beat.startS} durationS={beat.durationS - BOUNDARY_S} cues={beat.cues}>
-      <div style={LAYER}>
+      <Stage beat={beat.id}>
         <BeatFrame kind={beat.kind} className="absolute inset-0">
           <CustomLayer url={module} />
         </BeatFrame>
-      </div>
+      </Stage>
+      <Chrome chips={[]} />
     </Beat>
   );
 }
