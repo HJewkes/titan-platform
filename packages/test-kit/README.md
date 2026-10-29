@@ -43,7 +43,9 @@ git("rev-parse", "HEAD"); // trimmed stdout; a non-zero exit throws
 - `withHistory(dir, commits)`: writes many commits with one `git fast-import`, then checks out
   the last commit's branch. Commit dates are pinned, one second apart, so the shas it returns are
   the same on every run. A `null` file deletes the path. `from` names the parent: a branch,
-  `:n` for the history's nth commit (from 1), or a full sha.
+  `:n` for the history's nth commit (from 1), or a full sha. A commit's own `date` (any string
+  `Date.parse` reads) replaces its pinned one, and `author` names its author, as
+  `<author>@example.com`, for tests that count authors or windows by date.
 - `fixtureEnv()`: the environment every helper runs git with. It drops the `GIT_CONFIG_*` entries
   a session may inject (an agent session's push hook refuses scratch remotes), ignores system and
   global config, and fixes the author and committer. Pass it to the code under test when that code

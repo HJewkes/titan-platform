@@ -11,6 +11,10 @@ interface HistoryCommit {
      * branch's last commit, or the branch's tip in the repository, or has no parent when the branch does not exist yet.
      */
     readonly from?: string;
+    /** When the commit was made, as `Date.parse` reads it; left out, the pinned date `withHistory` gives its position. */
+    readonly date?: string;
+    /** The author's name, with the email `<name>@example.com`; left out, the fixture identity authors the commit. */
+    readonly author?: string;
 }
 /**
  * The environment for fixture git commands: no system or global config, a fixed identity, and none of the
@@ -33,8 +37,8 @@ declare function seedRepo(dir: string, files?: SeedFiles): void;
 declare function seedRepoWithOrigin(dir: string, origin: string, files?: SeedFiles): void;
 /**
  * Writes `commits` into the repository at `dir` with one `git fast-import`, then checks out the last commit's branch
- * with its tree. Returns each commit's sha, in order. Commit dates are pinned, so a history's shas are the same on
- * every run; files are written as mode 100644.
+ * with its tree. Returns each commit's sha, in order. Commit dates are pinned unless a commit names its own, so a
+ * history's shas are the same on every run; files are written as mode 100644.
  */
 declare function withHistory(dir: string, commits: readonly HistoryCommit[]): string[];
 
