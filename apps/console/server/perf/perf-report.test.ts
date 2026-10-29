@@ -1,9 +1,12 @@
 import { existsSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildHttpApp } from "@titan-design/daemon";
 import { createRegistry, inProcessCaller } from "@titan-design/registry";
+import { postReport } from "../../src/data/perf.js";
 import type { ConsoleContext } from "../owner-guard.js";
+import { consoleContextFor } from "../registry.js";
 import { makeLogDir, readLogText, removeDir } from "../perf-recorder.test-helpers.js";
-import { perfCommands } from "./commands.js";
+import { PERF_REPORT, PERF_REPORT_BODY_LIMIT, perfCommands } from "./commands.js";
 import { createPerfRecorder } from "./recorder.js";
 
 const NOW = Date.parse("2026-10-29T12:00:00Z");
@@ -70,5 +73,26 @@ describe("perf.report", () => {
     const answer = await report({ rows: [] }, "in-process");
 
     expect(answer.ok).toBe(false);
+  });
+});
+
+describe("perf.report over HTTP", () => {
+  it("accepts the post the browser sends through the daemon's default guard", async () => {
+    const recorder = createPerfRecorder({ dir: logDir, now: () => NOW });
+    const registry = createRegistry<ConsoleContext>();
+    registry.register(perfCommands(recorder, () => REGISTERED)[PERF_REPORT]);
+    const app = buildHttpApp({ registry, createContext: consoleContextFor(false), version: "test", port: () => 7400, rpcBodyLimit: { perCommand: { [PERF_REPORT]: PERF_REPORT_BODY_LIMIT } } });
+    const answers: Response[] = [];
+    // The browser adds Host and Origin to a same-origin post; `keepalive` stays in the browser and never reaches the wire.
+    const browser = async (url: string, { keepalive: _, ...init }: RequestInit): Promise<void> => {
+      answers.push(await app.request(`http://localhost:7400${url}`, { ...init, headers: { ...(init.headers as Record<string, string>), origin: "http://localhost:7400" } }));
+    };
+
+    postReport({ rows: [{ kind: "route", view: "home", detail: false, ms: 12, queries: 1 }], dropped: 0 }, browser);
+    await vi.waitFor(() => expect(answers).toHaveLength(1));
+    await recorder.close();
+
+    expect(answers[0]?.status).toBe(200);
+    expect(logged()).toEqual([{ t: NOW, kind: "route", view: "home", detail: false, ms: 12, queries: 1 }]);
   });
 });
