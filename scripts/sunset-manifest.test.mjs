@@ -117,6 +117,26 @@ describe("sunset check defaulted notice", () => {
     expect(defaultedNotices(manifest, listing("old/a.ts", "old/x.ts", "old/y.ts"), new Set(["titan-platform:old/y.ts"]))).toEqual(["defaulted: titan-platform:old/y.ts (old)"]);
   });
 
+  it("makes no changed-files claim in the count line when no base was given", () => {
+    const line = defaultedSummary(withDefault(del("old/a.ts")), listing("old/a.ts", "old/x.ts"));
+
+    expect(line).toContain("defaulted: 1 files covered only by a directory default;");
+    expect(line).not.toContain("changed since the base");
+  });
+
+  it("lists a file renamed into a defaulted directory since the base", () => {
+    const box = sandbox(["a.ts"], ["a.ts"]);
+    writeFileSync(box.manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: [{ ...del("old/a.ts"), repo: "agent-chat" }], defaults: [{ ...rule, repo: "agent-chat" }] }));
+    writeFileSync(join(box.dir, "moved.ts"), "unique moved content\n".repeat(5));
+    commitAll(box.dir, "base");
+    execFileSync("git", ["-C", box.dir, "mv", "moved.ts", "old/moved.ts"]);
+    commitAll(box.dir, "move");
+
+    const result = spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", box.dir, "--manifest", box.manifest, "--agent-chat-base", "HEAD~1"], { encoding: "utf8" });
+
+    expect(result.stderr).toContain("::notice::defaulted: agent-chat:old/moved.ts (old)");
+  });
+
   it("names the agent-chat root's fate tasks in the count line, not TP-3180", () => {
     const rules = [{ repo: "agent-chat", path: "src", fate: "delete", task: "TP-626", milestone: "fold" }, { repo: "agent-chat", path: "src/agents", fate: "delete", task: "TP-647", milestone: "fold" }];
     const manifest = { roots: [{ repo: "agent-chat", path: "src" }], entries: [], defaults: rules };
