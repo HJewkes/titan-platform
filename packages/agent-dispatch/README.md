@@ -145,3 +145,13 @@ profile, shipped as `workflow/shape-v1.yml`.
   fact coverage and candidate counts.
 - `./routing/node` has `DEFAULT_WORKFLOW_TABLE`, `readWorkflowTable(root)` and
   `readPriorRouter(mode, root)`.
+- `readRouteTable(file)` from `./routing/node` gives the table with its
+  `shape-v1@<sha8>` id. It re-reads the file only when the file's mtime or size changes, so a
+  spawn path can call it on every spawn.
+- `readSpawnFacts(root, taskId, slice?, reqOwns?)` from `./routing/node` reads a spawn's
+  facts from an active-work root. Estimate, done_when and tags come from
+  `<initiative>/tasks/<taskId>.yml`; a top-level `kind:` becomes a `kind:<x>` tag. Owns come
+  from `<initiative>/sources/<taskId>-plan.md`: the named slice's owns and points, else the
+  union of owns, else `reqOwns`. The returned `note` says which facts were present and where
+  the owns came from. An id found in two initiatives reads the first by name and is marked
+  `ambiguous`.
