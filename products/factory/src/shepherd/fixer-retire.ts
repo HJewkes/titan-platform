@@ -48,15 +48,28 @@ export async function retireEndedFixers(ports: FixerRetirePorts, frozen: readonl
 
 const reasonOf = (error: unknown): string => redactForEvidence(error instanceof Error ? error.message : String(error));
 
-async function retireOne(ports: FixerRetirePorts, fixer: string): Promise<FixerRetireNote> {
+/** agent-chat's refusal carries no structured code, so the one fixed phrase is all there is to match (the same one sh-park matches). */
+const NOT_ON_DISK = /is not on disk; nothing to park/;
+
+/** The detail of a tree that is parked or gone, or the note for a tree that stays. */
+async function parkTree(ports: FixerRetirePorts, fixer: string): Promise<{ parked: string } | { left: FixerRetireNote }> {
   try {
     await ports.park(fixer);
+    return { parked: "worktree parked, branch kept" };
   } catch (error) {
-    return { fixer, outcome: "left", detail: `its worktree was not parked: ${reasonOf(error)}` };
+    const reason = reasonOf(error);
+    // A tree already off disk is the state parking wants; retiring the agent ends the sweep's retries.
+    if (NOT_ON_DISK.test(reason)) return { parked: "worktree already off disk, branch kept" };
+    return { left: { fixer, outcome: "left", detail: `its worktree was not parked: ${reason}` } };
   }
+}
+
+async function retireOne(ports: FixerRetirePorts, fixer: string): Promise<FixerRetireNote> {
+  const tree = await parkTree(ports, fixer);
+  if ("left" in tree) return tree.left;
   try {
     await ports.retire(fixer);
-    return { fixer, outcome: "retired", detail: "worktree parked, branch kept" };
+    return { fixer, outcome: "retired", detail: tree.parked };
   } catch (error) {
     return { fixer, outcome: "left", detail: `parked, but the retire failed: ${reasonOf(error)}` };
   }
