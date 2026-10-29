@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the shown line is cut at 160 characters",
+      "file": "products/factory/src/console-action/exact-line.ts",
+      "find": "toString(16).toUpperCase()}}`));",
+      "replace": "toString(16).toUpperCase()}}`)).slice(0, 160);",
+      "kills": [
+        "exactLine gives back every generated string exactly, and shows none of the characters a screen could hide or break on"
+      ]
+    }
+  ]
+}
