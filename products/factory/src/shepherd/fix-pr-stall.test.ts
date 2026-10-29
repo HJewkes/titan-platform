@@ -35,7 +35,7 @@ const mergePhases: ShepherdPhases = {
 function world() {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => {
-    fake.setRuns(pr.headSha, [successRun("validate", 1)]);
+    fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
     pr.mergeableState = "clean";
   };
   const port = githubPort(fake.wire);
