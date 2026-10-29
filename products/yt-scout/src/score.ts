@@ -67,7 +67,9 @@ async function callOnce(deps: ScoreDeps, prompt: ScorePrompt): Promise<Attempt> 
   if (!outcome.ok) return { outcome };
   const parsed = ScoreCardSchema.safeParse(outcome.value.output);
   if (parsed.success) return { outcome, card: parsed.data };
-  return { outcome: { ok: false, errorClass: "schema_invalid", message: parsed.error.message }, card: undefined };
+  const { output, costUsd, inputTokens, outputTokens } = outcome.value;
+  const usage = { costUsd, inputTokens, outputTokens };
+  return { outcome: { ok: false, errorClass: "schema_invalid", message: parsed.error.message, usage, raw: output } };
 }
 
 function rowFor(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, attempt: number, startedAt: Date, p: Partial<StepRow>): StepRow {
@@ -97,8 +99,8 @@ function rowFor(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, at
 }
 
 function usageOf(a: Attempt): Pick<StepRow, "input_tokens" | "output_tokens" | "cost_usd"> {
-  if (!a.outcome.ok) return { input_tokens: 0, output_tokens: 0, cost_usd: 0 };
-  const v = a.outcome.value;
+  const v = a.outcome.ok ? a.outcome.value : a.outcome.usage;
+  if (!v) return { input_tokens: 0, output_tokens: 0, cost_usd: 0 };
   return { input_tokens: v.inputTokens, output_tokens: v.outputTokens, cost_usd: v.costUsd };
 }
 
@@ -135,7 +137,7 @@ function failResult(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt
       inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
       prompt_sha: prompt.promptSha,
       model: deps.model,
-      output: last.outcome.ok ? last.outcome.value.output : null,
+      output: (last.outcome.ok ? last.outcome.value.output : last.outcome.raw) ?? null,
     });
   }
   return { ok: false, errorClass, droppedTechniques: [], costUsd: cost };

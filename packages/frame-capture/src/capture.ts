@@ -24,6 +24,14 @@ export interface FontState {
   status: string
 }
 
+/** The unloaded faces, and the font URLs the browser failed to fetch: the rejection itself says only "A network error occurred". */
+export class FontLoadError extends Error {
+  constructor(readonly faces: readonly FontState[], readonly urls: readonly string[]) {
+    const tried = urls.length > 0 ? `; font requests that failed: ${urls.join(', ')}` : ''
+    super(`fonts not loaded: ${faces.map((f) => `${f.family} (${f.status})`).join(', ')}${tried}`)
+  }
+}
+
 const API_POLL_MS = 10
 const API_TIMEOUT_MS = 10_000
 
@@ -84,11 +92,21 @@ export interface CapturePage {
   errors: readonly Error[]
 }
 
-function assertFontsLoaded(fonts: readonly FontState[]): void {
+function assertFontsLoaded(fonts: readonly FontState[], failedUrls: ReadonlySet<string>): void {
   const unloaded = fonts.filter((f) => f.status !== 'loaded')
-  if (unloaded.length > 0) {
-    throw new Error(`fonts not loaded: ${unloaded.map((f) => `${f.family} (${f.status})`).join(', ')}`)
-  }
+  if (unloaded.length > 0) throw new FontLoadError(unloaded, [...failedUrls])
+}
+
+/** Every font URL that failed to fetch or answered with an error status, from before navigation. */
+function watchFontRequests(page: Page): Set<string> {
+  const failed = new Set<string>()
+  page.on('requestfailed', (request) => {
+    if (request.resourceType() === 'font') failed.add(request.url())
+  })
+  page.on('response', (response) => {
+    if (response.request().resourceType() === 'font' && !response.ok()) failed.add(response.url())
+  })
+  return failed
 }
 
 /**
@@ -101,12 +119,13 @@ export async function openCapturePage(browser: Browser, url: string, options: Pa
   const page = await context.newPage()
   const errors: Error[] = []
   page.on('pageerror', (e) => errors.push(e))
+  const failedFonts = watchFontRequests(page)
   await page.goto(url, { waitUntil: 'load' })
   const duration = await waitForMotionApi(page, errors)
   const fonts = await settleFonts(page, options.preloadFonts ?? true)
   // Anchors the animations the page started while loading at virtual 0, so a chunk that jumps ahead agrees with a sweep.
   await page.evaluate(() => window.__virtualTime.syncAnimations())
-  if (options.preloadFonts !== false) assertFontsLoaded(fonts)
+  if (options.preloadFonts !== false) assertFontsLoaded(fonts, failedFonts)
   throwIfPageErrored(errors, 'while loading')
   return { page, duration, fonts, errors }
 }
