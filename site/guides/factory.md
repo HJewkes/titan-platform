@@ -142,7 +142,8 @@ stays out of the repo.
   with no reviewer. Reviews queue once and never ask again on their own: the gate starts them
   from the queue's front when one is queued, when a review ends, and on a one-minute tick while
   any waits. A review still queued after the 3 hour machine-hold ceiling gives up, so a
-  saturated machine reaches the owner instead of waiting without end.
+  saturated machine reaches the owner instead of waiting without end. A run cancelled or shut
+  down while its review waits takes the review out of the queue at once, so it never starts.
   A reviewer also waits while `shepherd.review.maxConcurrent` (3) reviewers run, while the
   filesystem holding review checkouts has under `shepherd.review.minFreeBytes` (5 GiB) free, or
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the

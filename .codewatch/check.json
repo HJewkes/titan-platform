@@ -45,7 +45,8 @@
           "packages/frame-capture",
           "packages/speech-tts",
           "packages/speech-stt",
-          "packages/speech-g2p"
+          "packages/speech-g2p",
+          "packages/test-timing"
         ],
         "2": [
           "packages/session-read",
@@ -130,7 +131,8 @@
           "packages/frame-capture",
           "packages/speech-tts",
           "packages/speech-stt",
-          "packages/speech-g2p"
+          "packages/speech-g2p",
+          "packages/test-timing"
         ],
         [
           "packages/session-read",

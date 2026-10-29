@@ -5,12 +5,15 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GIT_SAFETY } from "./context.js";
 import { spawnExec, type Exec } from "./exec.js";
-import { FIXED, git, makeRepo, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
+import { FIXED, git, makeRepo, REAL_RUNNER, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
 import { isSandboxed, sudoStub, type StubOptions } from "./sandbox.test-helpers.js";
 import { execSide, MAX_VITEST_REPORT_BYTES } from "./side.js";
 import { decodeReport } from "./transport.js";
 
 const outs: string[] = [];
+
+// Keyed on the runner contract, not the command text, so it holds for the fake runner too.
+const runsUnsandboxed = (call: { file: string; args: readonly string[] }) => call.file === "sh" && call.args.includes("--outputFile");
 
 function outDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-side-"));
@@ -52,7 +55,7 @@ function plantingTest(plant: string): string {
 
 // The base side runs the head's test code first, so whatever it plants in the shared .git is there for the head side.
 async function baseThenHead(files: Record<string, string>) {
-  const repo = makeRepo();
+  const repo = makeRepo(REAL_RUNNER);
   const head = repo.commit({ "src/math.ts": FIXED, ...files });
   const out = outDir();
   await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out });
@@ -91,7 +94,7 @@ describe("execSide", { timeout: 120_000 }, () => {
   });
 
   it("base side writes two reports with repo-relative file names", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
@@ -171,7 +174,7 @@ describe("execSide", { timeout: 120_000 }, () => {
   });
 
   it("a head test file named with pathspec magic overlays only itself", async () => {
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const name = ":(exclude)x.test.ts";
     const head = repo.commit({ "src/math.ts": FIXED, [name]: REAL_TEST.replace('"./math"', '"./src/math"') });
     const out = outDir();
@@ -199,7 +202,7 @@ describe("execSide", { timeout: 120_000 }, () => {
 
   it("base side with a sandbox user runs every vitest call through the sandbox and chowns the tree first", async () => {
     const { calls, exec } = sudoStub();
-    const repo = makeRepo();
+    const repo = makeRepo(REAL_RUNNER);
     const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
     const out = outDir();
 
@@ -210,7 +213,7 @@ describe("execSide", { timeout: 120_000 }, () => {
     expect(chownTree).toBeGreaterThanOrEqual(0);
     expect(vitest).toHaveLength(2);
     expect(chownTree).toBeLessThan(vitest[0] ?? -1);
-    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.some(runsUnsandboxed)).toBe(false);
     expect(calls.filter((call) => call.file === "sudo").at(-1)?.args.slice(0, 4)).toEqual(["-n", "--", "chown", "-R"]);
     const seconds = Number(calls[vitest[0] ?? 0]?.args[5]);
     expect(seconds).toBeGreaterThan(60);
@@ -231,7 +234,7 @@ describe("execSide", { timeout: 120_000 }, () => {
       expect(report).toEqual({ ok: false, error: expect.stringMatching(/^base: sandbox setup failed/), reported: true }),
     );
     expect(calls.some(isSandboxed)).toBe(false);
-    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.some(runsUnsandboxed)).toBe(false);
   });
 
   it("a symlinked vitest output is not read", async () => {

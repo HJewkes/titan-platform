@@ -4,6 +4,7 @@ import { z } from "zod";
 import { BuilderRefSchema, LayerBuildSchema, packetKey, type BeatWorker, type BuilderRef, type LayerBuild, type LayerRepair, type LayerRepairer, type RepairRequest } from "../build/beat-worker.js";
 import { LayerBuildCache } from "../build/build-cache.js";
 import { compileLayer } from "../build/compile-gate.js";
+import { formatUntimed, untimedCueHint, untimedCues } from "../build/layer-cues.js";
 import { missingCueElements, missingElementsHint } from "../build/layer-elements.js";
 import { buildLayerPacket, type BuiltLayerPacket, type LayerPacket } from "../build/layer-packet.js";
 import { fontFindings, fontHint } from "../build/layer-fonts.js";
@@ -156,7 +157,8 @@ function buildRoute(deps: LayerRouteDeps): StepRoute {
     const compiled = verdict.ok ? { build } : await repairOnce(deps, { packet, key, module: build.module, error: verdict.error, scratchDir }, build);
     const exposed = compiled.error === undefined ? await exposingCueTargets(deps, worker, packet, compiled.build) : compiled;
     const fonted = exposed.error === undefined ? await themeFontsOnly(deps, worker, packet, exposed.build) : exposed;
-    const gated = fonted.error === undefined ? await passingTextRules(deps, worker, packet, { beatId, key, build: fonted.build }).catch(uncheckedBuild) : fonted;
+    const timed = fonted.error === undefined ? await timedFromCues(deps, worker, packet, fonted.build) : fonted;
+    const gated = timed.error === undefined ? await passingTextRules(deps, worker, packet, { beatId, key, build: timed.build }).catch(uncheckedBuild) : timed;
     if ("unchecked" in gated) return { result: gated.build, unchecked: { error: gated.unchecked }, usage: stepUsage(gated.build.usage) };
     if (gated.error !== undefined) return { result: gated.build, needsRepair: { error: gated.error }, usage: stepUsage(gated.build.usage) };
     cache.put(key, gated.build, { runId: step.runId, stage: STAGE });
@@ -211,6 +213,24 @@ async function themeFontsOnly(deps: LayerRouteDeps, worker: BeatWorker, packet: 
   if (still.length === 0) return { build: rebuilt };
   const lines = still.map(({ line, rule }) => `line ${line} (${rule})`).join(", ");
   return { build: rebuilt, error: `the layer still sets its own fonts after one rebuild: ${lines}` };
+}
+
+/**
+ * The $0 cue-timing check after the font check (TP-4469): a layer that does not read every cue word with `useCue` times
+ * its targets from the plan's seconds, which the voice never keeps, so it is rebuilt once, told each cue word.
+ */
+async function timedFromCues(deps: LayerRouteDeps, worker: BeatWorker, packet: BuiltLayerPacket, build: LayerBuild): Promise<{ build: LayerBuild; error?: string }> {
+  const { cues } = packet.packet;
+  const untimed = untimedCues(build.module, cues);
+  if (untimed.length === 0) return { build };
+  const again = await workerBuild(deps, worker, hintedPacket(packet, untimedCueHint(untimed)));
+  const rebuilt: LayerBuild = { ...again, usage: addUsage(build.usage, again.usage) };
+  const verdict = await compileLayer(rebuilt.module);
+  if (!verdict.ok) return { build: rebuilt, error: `rebuilt to time its cues with useCue, the layer does not compile: ${verdict.error}` };
+  const missing = missingCueElements(cues.map((cue) => cue.target), rebuilt);
+  if (missing.length > 0) return { build: rebuilt, error: `rebuilt to time its cues with useCue, the layer exposes no element for cue targets ${missing.join(", ")}` };
+  const still = untimedCues(rebuilt.module, cues);
+  return still.length === 0 ? { build: rebuilt } : { build: rebuilt, error: `the layer still times cue words without useCue after one rebuild: ${formatUntimed(still)}` };
 }
 
 /**

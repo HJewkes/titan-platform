@@ -5,12 +5,12 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { RoundSummarySchema, SnapshotResultSchema, type SyncRequest } from "./ports.js";
-import { ideaId, type Proposal } from "./schemas.js";
+import { ideaId, OutcomeSchema, type Proposal } from "./schemas.js";
 import { cadence, CadenceSchema, startSnapshots, SnapshotSettingsSchema, type SnapshotState } from "./snapshot.js";
 import { FIXTURE_POLICY, fakeArPorts, fixtureRepo, git, proposal, removeFixture, writeFiles, type FakeArPorts, type FakeOptions, type FixtureRepo, type Policy } from "./test-support/fake-ports.js";
 import { openTestHost, type TestHost } from "./test-support/host.js";
 import { latch, until } from "./test-support/runs.js";
-import { AUTORESEARCH_WORKFLOW } from "./workflow.js";
+import { addSpend, AUTORESEARCH_WORKFLOW } from "./workflow.js";
 
 const CC = "cc_total_delta_pct";
 const POLICY: Policy = { ...FIXTURE_POLICY, mechanisms: { a: { metrics: { [CC]: -4 } }, b: { metrics: { [CC]: -3 } }, c: { metrics: { [CC]: -3 } } } };
@@ -73,6 +73,10 @@ async function mainMergedOnto(repo: FixtureRepo, { head, ratchetRef }: SyncReque
 const settings = SnapshotSettingsSchema.parse({ keptIdeas: 2, spendUsd: 5 });
 const kept = (count: number): SnapshotState => ({ ...startSnapshots("s0"), kept: Array.from({ length: count }, (_, index) => ({ ideaId: `i-${index}` })) });
 const OPEN = { k: 1, pr: 101, branch: "b", tag: "t", sha: "s1", carried: { kept: [], from: "s0" } };
+const NO_SPEND = { agentUsd: 0, modelUsd: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+const FIXTURE_PLANNER = { usd: 0.25, cacheReadTokens: 40, retries: 0 };
+const spending = (implementUsd: number, evalUsd: number) =>
+  OutcomeSchema.parse({ ideaId: "i", lineage: "i", cell: "c", verdict: "kept", reason: "beyond-band", rungReached: "L3", usage: { implementUsd, evalUsd, microUsd: 0 } });
 
 describe("the snapshot cadence", () => {
   it("names the phase end over kept ideas and spend, then kept ideas over spend", () => {
@@ -105,21 +109,18 @@ describe("snapshot cuts in a run", () => {
     expect(ports.calls.sync.map((input) => [input.round, input.pr])).toEqual([[2, 101], [3, 101], ["end", 101]]);
   });
 
-  it("is due on agent dollars alone: two implementers at $0.60 each with free evals", async () => {
-    const policy = { ...POLICY, usd: { eval: 0, implement: 0.6 } };
-    const { ports, run } = await loop([["a", "b"]], { rounds: 1, snapshot: { spendUsd: 1 } }, {}, policy);
+  it("is due on agent dollars alone: two implementers at $0.60 each with free evals", () => {
+    const spend = addSpend(NO_SPEND, [spending(0.6, 0), spending(0.6, 0)], [FIXTURE_PLANNER], []);
 
-    expect(cadenceOf(run, 1)).toMatchObject({ due: true, trigger: "spend", keptSince: 2 });
-    const { agentUsd, modelUsd } = ports.calls.snapshot[0]!.log.spentSince;
-    expect([agentUsd, modelUsd]).toEqual([expect.closeTo(1.45), 0]);
+    expect(cadence(kept(2), spend, SnapshotSettingsSchema.parse({ spendUsd: 1 }))).toMatchObject({ due: true, trigger: "spend", keptSince: 2 });
+    expect([spend.agentUsd, spend.modelUsd]).toEqual([expect.closeTo(1.45), 0]);
   });
 
-  it("is due on model dollars alone when no implementer charges", async () => {
-    const policy = { ...POLICY, usd: { eval: 0.2, implement: 0 } };
-    const { ports, run } = await loop([["a"]], { rounds: 1, snapshot: { spendUsd: 1 } }, {}, policy);
+  it("is due on model dollars alone when no implementer charges", () => {
+    const spend = addSpend(NO_SPEND, [spending(0, 1.2)], [FIXTURE_PLANNER], []);
 
-    expect(cadenceOf(run, 1)).toMatchObject({ due: true, trigger: "spend", keptSince: 1 });
-    expect(ports.calls.snapshot[0]!.log.spentSince.agentUsd).toBeLessThan(1);
+    expect(cadence(kept(1), spend, SnapshotSettingsSchema.parse({ spendUsd: 1 }))).toMatchObject({ due: true, trigger: "spend", keptSince: 1 });
+    expect(spend.agentUsd).toBeLessThan(1);
   });
 
   it("logs the kept ideas with their Δ and σ and the shas the cut spans", async () => {
@@ -128,6 +129,7 @@ describe("snapshot cuts in a run", () => {
 
     expect(log).toMatchObject({ phase: "p1", trigger: "kept", round: 1, from: repo.pin, to: summaryOf(run, 1).best.head });
     expect(log.kept).toEqual([{ ideaId: id("a"), delta: expect.any(Number), sigma: expect.any(Number) }]);
+    expect(log.spentSince).toEqual({ agentUsd: 0.25, modelUsd: 0 });
     expect(sha).toBe(summaryOf(run, 1).best.head);
   });
 

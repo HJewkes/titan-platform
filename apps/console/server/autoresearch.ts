@@ -3,6 +3,7 @@ import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
 import { ArDiffSchema, ArRunSummarySchema, ArRunViewSchema, type ArDiff, type ArRunSummary, type ArRunView } from "./autoresearch-view.js";
 import { readCommand } from "./owner-guard.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 
 /** Each call rejects with an error that carries a sysexits `code` when the factory is down, refuses, or answers another shape. */
 export interface AutoresearchSource {
@@ -17,10 +18,10 @@ const READ_TIMEOUT_MS = 10_000;
  * Calls titan-factory's autoresearch read model on its loopback port, with only the client header `liveSource` adds. The
  * schemas strip what they do not pin, so a field the factory adds never reaches the browser until the page names it.
  */
-export function autoresearchReader(port: number, timeoutMs: number = READ_TIMEOUT_MS): AutoresearchSource {
+export function autoresearchReader(port: number, timeoutMs: number = READ_TIMEOUT_MS, recorder?: UpstreamObserver): AutoresearchSource {
   const source = liveSource({
     origin: `http://127.0.0.1:${port}`,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) }),
+    fetch: timedFetch("factory", recorder, (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(timeoutMs) })),
   });
   async function read<T>(command: string, args: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
     const envelope = await source.call(command, args);

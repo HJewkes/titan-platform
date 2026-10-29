@@ -1,34 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewSuperseded } from "./review-dispatcher.js";
+import { HEAD_A, HEAD_B, TICK_MS, flush, idle, scene, target } from "./review-dispatcher.test-helpers.js";
 import { notStarted } from "./review-wait.js";
-import { movedPastOnList, spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
-import { spawnGate, SpawnDeferred, type MachineReadings } from "./spawn-gate.js";
-
-const idle: MachineReadings = { load5: 2, pressureLevel: 1, freeMemoryPct: 85 };
-const busy: MachineReadings = { ...idle, load5: 30 };
-const HEAD_A = "a".repeat(40);
-const HEAD_B = "b".repeat(40);
-const TICK_MS = 60_000;
-
-/** A gate with one review slot on a faked clock; `queue` records each launch and leaves the outcome on `settled`. */
-function scene(options: { list?: () => { at: number; prs: { number: number; headSha: string }[] }; liveHead?: () => Promise<string | undefined> } = {}) {
-  const state = { readings: busy, running: [] as number[], launched: [] as string[], settled: new Map<string, string>(), errors: new Map<string, unknown>() };
-  const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => state.readings, log: () => undefined, tickMs: TICK_MS, ...(options.list && { movedPast: movedPastOnList(options.list) }), ...(options.liveHead && { liveHead: options.liveHead }) });
-  const queue = (name: string, review: ReviewAsk) => {
-    const launch = async () => void state.launched.push(name);
-    gate.queueReview(name, review, { running: async () => state.running, launch }).then(
-      () => state.settled.set(name, "launched"),
-      (error: unknown) => {
-        state.errors.set(name, error);
-        state.settled.set(name, error instanceof Error ? error.name : String(error));
-      },
-    );
-  };
-  return { state, gate, queue };
-}
-
-const flush = () => vi.advanceTimersByTimeAsync(0);
-const target = (pr: number, head = HEAD_A) => ({ repo: "octo/demo", pr, head });
+import { spawnQueuePosition } from "./review-queue.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 
 describe("the push dispatcher starts reviews from the one queue on its three triggers", () => {
   beforeEach(() => void vi.useFakeTimers({ now: 1_000_000 }));

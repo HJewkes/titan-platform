@@ -8,7 +8,7 @@ import { fixersOver } from "./main-red.js";
 import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import type { RosterReader } from "./roster.js";
-import { spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
+import { movedPastOnList, spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
 import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
 import { implementersOver } from "./wake.js";
 
@@ -316,6 +316,26 @@ describe("every factory-started agent passes the one gate", () => {
     await Promise.all(started);
 
     expect(state.admitted).toEqual(["rv-octo-demo-9", "rv-octo-demo-7", "rv-octo-demo-8"]);
+  });
+
+  it("keeps a queued resume of a reviewer first spawned at an older head when another review asks after its PR moved on", async () => {
+    mkdirSync(join(dir, "co"));
+    const state = { load5: 2, now: 100_000, lines: [] as string[], list: { at: 0, prs: [{ number: 7, headSha: "a".repeat(40) }] } };
+    const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log: (line) => void state.lines.push(line), movedPast: movedPastOnList(() => state.list) });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
+    await dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) });
+    state.load5 = 40;
+    state.now += ROUND_MS;
+    void dispatch.resume("rv-octo-demo-7", "review the fix").catch(() => undefined);
+    await vi.waitFor(() => expect(spawnQueuePosition("octo/demo", 7)).toBe("position 1 of 1"));
+
+    state.list = { at: state.now + 1, prs: [{ number: 7, headSha: "b".repeat(40) }, { number: 8, headSha: "a".repeat(40) }] };
+    state.now += 2;
+    void dispatch.spawn("rv-octo-demo-8", "brief", { repo: "octo/demo", pr: 8, head: "a".repeat(40) }).catch(() => undefined);
+    await vi.waitFor(() => expect(spawnQueuePosition("octo/demo", 8)).toBe("position 2 of 2"));
+
+    expect(state.lines.filter((line) => line.includes("dropped"))).toEqual([]);
+    expect(spawnQueuePosition("octo/demo", 7)).toBe("position 1 of 2");
   });
 });
 

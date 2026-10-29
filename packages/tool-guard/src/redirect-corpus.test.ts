@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +9,7 @@ import { handle } from "./hook.js";
 import type { HookPort } from "./hook.js";
 import { REDIRECT_OPS } from "./line-writes.js";
 import { ParseError, tokenize } from "./shell/lexer.js";
+import { ROW_TIMEOUT_MS, runSubshellRows } from "./test-support/shell-rows.js";
 
 const HOME = "/home/you";
 /** `f` and `g` start empty, as in each shell's directory: the guard refuses a script it cannot read, a missing one too. */
@@ -78,22 +78,22 @@ const work = mkdtempSync(join(tmpdir(), "tool-guard-redirect-corpus-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
 /** Runs every row under one shell, each in its own empty directory, in one process; a row's syntax error stays in its subshell. */
-function runAll(shell: string, path: string, args: string[]): void {
-  const driver = rows.map((_, i) => `(cd ${shell}/d${i} && eval "$(<../../r${i})") </dev/null >/dev/null 2>&1`).join("\n");
-  rows.forEach((_, i) => {
-    mkdirSync(join(work, shell, `d${i}`), { recursive: true });
-    writeFileSync(join(work, shell, `d${i}`, "other"), `${PUSH}\n`);
-    for (const file of FILES) writeFileSync(join(work, shell, `d${i}`, file), "");
+async function runAll(shell: string, path: string, args: string[]): Promise<void> {
+  const subshellRows = rows.map((row, i) => {
+    const dir = join(work, shell, `d${i}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "other"), `${PUSH}\n`);
+    for (const file of FILES) writeFileSync(join(dir, file), "");
+    return { name: `${shell}: ${row.writer} ${JSON.stringify(row.form)}`, cwd: dir, scriptFile: join(work, `r${i}`) };
   });
-  writeFileSync(join(work, `${shell}.sh`), `${driver}\n`);
-  const run = spawnSync(path, [...args, join(work, `${shell}.sh`)], { cwd: work, env: { PATH: process.env.PATH ?? "" }, timeout: 120_000 });
-  if (run.error) throw run.error;
+  const ran = await runSubshellRows(path, [...args], subshellRows, { env: { PATH: process.env.PATH ?? "" }, cwd: work, timeoutMs: ROW_TIMEOUT_MS });
+  subshellRows.forEach((_, i) => ran.of(i));
 }
 
-/** For each row and file, the shells that left the push in that file. */
-function shellResults(): string[][][] {
+/** For each row and file, the shells that left the push in that file; both shells run at once (TP-4453). */
+async function shellResults(): Promise<string[][][]> {
   rows.forEach((row, i) => writeFileSync(join(work, `r${i}`), row.line));
-  for (const [name, { path, args }] of Object.entries(SHELLS)) if (path !== undefined) runAll(name, path, args);
+  await Promise.all(Object.entries(SHELLS).flatMap(([name, { path, args }]) => (path === undefined ? [] : [runAll(name, path, args)])));
   return rows.map((_, i) => FILES.map((file) => Object.keys(SHELLS).filter((shell) => holdsPush(join(work, shell, `d${i}`, file)))));
 }
 
@@ -104,8 +104,8 @@ function holdsPush(path: string): boolean {
   return existsSync(path) && PUSH_RE.test(readFileSync(path, "utf-8"));
 }
 
-function corpus(): [string, string, string[], boolean][] {
-  const results = shellResults();
+async function corpus(): Promise<[string, string, string[], boolean][]> {
+  const results = await shellResults();
   return rows.flatMap((row, i) =>
     FILES.map((file, j): [string, string, string[], boolean] => {
       const shells = results[i]?.[j] ?? [];
@@ -154,8 +154,10 @@ if (missing.length > 0) {
     it("needs both shells", () => undefined);
   });
 } else {
+  // Awaited at collection, as the titles name the shells that wrote each file.
+  const rowsWithShells = await corpus();
   describe(title, () => {
-    it.each(corpus())("%s", async (_, command, shells, exact) => {
+    it.each(rowsWithShells)("%s", async (_, command, shells, exact) => {
       const denied = (await handle(bashEvent(command), {}, port)).stdout.includes('"permissionDecision":"deny"');
 
       if (shells.length > 0) expect(denied).toBe(true);

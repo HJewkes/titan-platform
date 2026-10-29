@@ -209,13 +209,19 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
 /** Each start waits its turn in the gate's one queue, which reads the running reviewers as it admits; with no gate it launches at once. */
 function queuedStart(gate: SpawnGate | undefined, roster: RosterReader) {
   const firstSeen = new Map<string, number>();
-  return (name: string, review: ReviewAsk, launch: () => Promise<void>): Promise<void> =>
-    gate ? gate.queueReview(name, review, { running: () => readRunningReviews(roster, gate, firstSeen), launch }) : launch();
+  return (name: string, review: ReviewAsk, launch: () => Promise<void>, signal?: AbortSignal): Promise<void> =>
+    gate ? gate.queueReview(name, review, { running: () => readRunningReviews(roster, gate, firstSeen), launch, ...(signal && { signal }) }) : launch();
 }
 
-/** A resume names only the reviewer, so its PR is known only when this process spawned it. */
+/** A spawn's ask carries the head it reviews, which the gate drops it on once the PR lists another. */
 function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"], intentAt?: number): ReviewAsk {
   return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr, head: target.head }, ...(intentAt !== undefined && { intentAt }) };
+}
+
+/** A resume names only the reviewer, so its PR is known only when this process spawned it, and the head of that spawn is usually stale by the resume's review. */
+function resumeAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"]): ReviewAsk {
+  const ask = reviewAsk(target, isFixer);
+  return ask.target === undefined ? ask : { ...ask, target: { repo: ask.target.repo, pr: ask.target.pr } };
 }
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
@@ -227,15 +233,15 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   // The gate admits each review from its queue, so the adapter that launches it is ungated.
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS, roster });
   const targets = new Map<string, ReviewTarget>();
-  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string, intentAt?: number) => {
+  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string, intentAt?: number, signal?: AbortSignal) => {
     targets.set(name, target);
     const cwd = checkoutDir(target.repo, cwdFor);
-    await queued(name, reviewAsk(target, options.isFixer, intentAt), () => agents.spawn({ name, profile, brief, cwd }));
+    await queued(name, reviewAsk(target, options.isFixer, intentAt), () => agents.spawn({ name, profile, brief, cwd }), signal);
   };
   return {
     roster: () => askBroker(async () => rosterRows(await roster.rows())),
     lineage: () => askBroker(async () => toLineage(await lineage.rows())),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
-    resume: (name, brief) => askBroker(() => queued(name, reviewAsk(targets.get(name), options.isFixer), () => agents.resume(name, brief)), options.onMachineHold),
+    spawn: (name, brief, target, facts = {}, signal) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt, signal), options.onMachineHold),
+    resume: (name, brief, signal) => askBroker(() => queued(name, resumeAsk(targets.get(name), options.isFixer), () => agents.resume(name, brief), signal), options.onMachineHold),
   };
 }

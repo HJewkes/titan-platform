@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the drain counts a gate-queued review spawn busy",
+      "file": "products/factory/src/restart-drain.ts",
+      "find": " && !gateQueued(isQueued, run, busy) ? [busy]",
+      "replace": " ? [busy]",
+      "kills": [
+        "sh-review a review spawn the gate deferred when serve restarts (TP-4474) is not waited on by the drain, and the repeated step after the restart admits and spawns its reviewer once"
+      ]
+    },
+    {
+      "name": "every registered run reads as gate-queued",
+      "file": "products/factory/src/serve-holds.ts",
+      "find": "    return registration !== undefined && spawnQueuePosition(registration.repo, registration.pr) !== undefined;",
+      "replace": "    return registration !== undefined;",
+      "kills": [
+        "sh-review a review spawn the gate deferred when serve restarts (TP-4474) is not waited on by the drain, and the repeated step after the restart admits and spawns its reviewer once"
+      ]
+    }
+  ]
+}

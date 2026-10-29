@@ -115,7 +115,7 @@ const sum = (values: readonly number[]) => values.reduce((total, value) => total
  * Agent dollars are implementers and planners; model dollars are eval and micro runs, a re-evaluation's runs among
  * them, which no outcome carries. Superseded outcomes spent too.
  */
-function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly DispatchUsage[], reevals: readonly Reeval[]): Spend {
+export function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly DispatchUsage[], reevals: readonly Reeval[]): Spend {
   const reevalUsd = sum(reevals.flatMap((reeval) => reeval.runs.map((result) => result.usd)));
   return {
     agentUsd: spend.agentUsd + sum(outcomes.map((outcome) => outcome.usage?.implementUsd ?? 0)) + sum(planners.map((usage) => usage.usd)),
@@ -125,10 +125,10 @@ function addSpend(spend: Spend, outcomes: readonly Outcome[], planners: readonly
   };
 }
 
-const PlanStepSchema = PlannerSchema.partial().extend({ ops: QueueOpsSchema });
+const PlanStepSchema = PlannerSchema.partial().extend({ ops: QueueOpsSchema, malformed: z.string().optional() });
 
 /** Only a planner that named itself is recorded; its other fields mean nothing without the agent. */
-function plannerOf({ ops: _ops, ...planned }: z.infer<typeof PlanStepSchema>): Planner | undefined {
+function plannerOf({ ops: _ops, malformed: _malformed, ...planned }: z.infer<typeof PlanStepSchema>): Planner | undefined {
   return planned.agent === undefined ? undefined : { ...planned, agent: planned.agent };
 }
 
@@ -141,7 +141,7 @@ interface PlannedRound {
   usage: DispatchUsage[];
 }
 
-/** The planner gets one retry that names the quota it missed; a second miss stops the run. */
+/** The planner gets one retry that names the quota it missed, resuming it even in round 1; a second miss stops the run. */
 async function planRound(run: Run, state: LoopState, round: number): Promise<PlannedRound> {
   const digest = buildDigest({ round, evidence: state.evidence, registries: state.registries, queue: state.queue });
   const quota = { keptLastRound: state.keptLastRound, minPool: run.settings.minPool, queuedBefore: state.queue.length };
@@ -149,10 +149,11 @@ async function planRound(run: Run, state: LoopState, round: number): Promise<Pla
   let first: string[] | undefined;
   const usage: DispatchUsage[] = [];
   for (const attempt of ["", ".retry"]) {
-    const input = { runId: run.ctx.runId, round, digest, violations, mode: round === 1 ? "spawn" : "resume" };
+    const input = { runId: run.ctx.runId, round, digest, violations, quota, mode: round === 1 && attempt === "" ? "spawn" : "resume" };
     const planned = await step(run.ctx, `${arStepId("plan")}:${round}${attempt}`, input, PlanStepSchema);
     if (planned.usage) usage.push(planned.usage);
-    violations = quotaViolations(planned.ops, quota);
+    // An answer that held no JSON gets the same one corrective turn a quota miss does.
+    violations = planned.malformed === undefined ? quotaViolations(planned.ops, quota) : [planned.malformed];
     first ??= violations;
     if (violations.length === 0) return { ops: planned.ops, planner: plannerOf(planned), violations: first, retried: attempt !== "", usage };
   }
