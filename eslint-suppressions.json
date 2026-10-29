@@ -1387,11 +1387,6 @@
       "count": 15
     }
   },
-  "products/factory/src/shepherd/reviewer-dispatch.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/reviewer-reader.test.ts": {
     "titan/no-internal-module-mock": {
       "count": 1
