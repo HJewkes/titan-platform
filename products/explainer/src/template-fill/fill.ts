@@ -52,6 +52,9 @@ export interface FillRefusal {
   detail: string;
 }
 
+/** Whether resolve chose a custom layer for this row: such a beat is built by TP-2607 and never template-filled. */
+export const isCustomRow = (row: ResolvedRow | undefined): boolean => row?.layer === "custom";
+
 /** Thrown when any beat is refused; it lists every refusal, so one run reports them all. */
 export class FillError extends Error {
   constructor(readonly refusals: readonly FillRefusal[]) {
@@ -165,7 +168,7 @@ export function fillScript(script: ScriptV1, resolved: Resolved, context: FillCo
   const refused: FillRefusal[] = [];
   for (const beat of script.beats) {
     const row = rows.get(beat.id);
-    if (row?.layer === "custom") {
+    if (isCustomRow(row)) {
       out.custom.push(beat.id);
       continue;
     }
