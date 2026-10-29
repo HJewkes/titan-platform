@@ -184,7 +184,9 @@ describe("rewriteScript guard and revert", () => {
 
     const { script: out, report } = await rewrite(script, fakeRewriter(shrinksC3), { rounds: 1 });
 
-    expect(report.rounds[0]!.reverted).toEqual([{ beat: "c1", rows: ["word-budget"] }, { beat: "c2", rows: ["word-budget"] }]);
+    // A daily-overview script also gets TP-4470's script preflight rows, which revert other beats for their own reasons.
+    const overBudget = report.rounds[0]!.reverted.filter((beat) => beat.rows.includes("word-budget")).map((beat) => beat.beat);
+    expect(overBudget).toEqual(["c1", "c2"]);
     expect(spokenOf(out, "c1")).toBe(spokenOf(spellAll(script), "c1"));
   });
 
