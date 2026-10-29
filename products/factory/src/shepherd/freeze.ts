@@ -139,10 +139,7 @@ export class FreezeStore {
     return this.db.prepare("UPDATE shepherd_freeze SET fix_task = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL").run(id, repoKey(repo), episode).changes > 0;
   }
 
-  /**
-   * The first fixer recorded wins, as in `linkFix`: concurrent spawns for one episode must not move its exemption off the
-   * fixer whose PR is already open. True when the live episode now names `name`.
-   */
+  /** First writer wins, as in `linkFix`, so concurrent spawns never move the exemption; true when the live episode names `name`. */
   setFixer(repo: RepoSlug, episode: number, name: string): boolean {
     this.db.prepare("UPDATE shepherd_freeze SET fixer = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL AND fixer IS NULL").run(name, repoKey(repo), episode);
     return this.live(repo, episode)?.fixer === name;

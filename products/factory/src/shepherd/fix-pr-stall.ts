@@ -18,7 +18,7 @@ type Stall = z.infer<typeof StallResult>;
  * A PR registered against the live episode's fix task that the freeze still holds: its implementer is not the fixer the
  * episode recorded, and no fix PR is marked. Its own merge is what would thaw the freeze, so the thaw wait never ends.
  */
-export function unmarkedFixPr(deps: ShepherdDeps, freezes: (() => FreezeStore) | undefined, input: PrTarget): Stall {
+function unmarkedFixPr(deps: ShepherdDeps, freezes: (() => FreezeStore) | undefined, input: PrTarget): Stall {
   const freeze = freezes?.().get(input.repo);
   const registration = deps.store.get().byPr(input.repo, input.pr);
   if (!freeze || freeze.fixTask === null || freeze.fixPr !== null || registration?.task !== freeze.fixTask || isFixersPr(freeze, registration)) return { why: null };
