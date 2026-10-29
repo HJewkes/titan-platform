@@ -4,8 +4,8 @@
     {
       "name": "listByWorkflow reads every workflow's runs",
       "file": "packages/workflow/src/store.ts",
-      "find": "WHERE workflow_name = ? AND status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,\n    ).all(workflowName, JSON.stringify(statuses))",
-      "replace": "WHERE ? IS NOT NULL AND status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,\n    ).all(workflowName, JSON.stringify(statuses))",
+      "find": "\"workflow_name = ? AND status IN (SELECT value FROM json_each(?))\", workflowName",
+      "replace": "\"? IS NOT NULL AND status IN (SELECT value FROM json_each(?))\", workflowName",
       "kills": [
         "WorkflowRunStore listByWorkflow returns only that workflow's runs in the asked statuses, in start order",
         "WorkflowRunStore listByWorkflow never parses another workflow's step results"

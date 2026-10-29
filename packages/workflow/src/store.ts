@@ -133,17 +133,16 @@ export class WorkflowRunStore {
   }
 
   listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM ${this.table} WHERE status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,
-    ).all(JSON.stringify(statuses)) as RawRunRow[];
-    return rows.map(toRun);
+    return this.runsWhere("status IN (SELECT value FROM json_each(?))", JSON.stringify(statuses));
   }
 
   /** One workflow's runs of `statuses`, so a caller that reads a single workflow never loads or parses another's step results. */
   listByWorkflow(workflowName: string, statuses: readonly WorkflowStatus[]): WorkflowRun[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM ${this.table} WHERE workflow_name = ? AND status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,
-    ).all(workflowName, JSON.stringify(statuses)) as RawRunRow[];
+    return this.runsWhere("workflow_name = ? AND status IN (SELECT value FROM json_each(?))", workflowName, JSON.stringify(statuses));
+  }
+
+  private runsWhere(condition: string, ...params: string[]): WorkflowRun[] {
+    const rows = this.db.prepare(`SELECT * FROM ${this.table} WHERE ${condition} ORDER BY started_at`).all(...params) as RawRunRow[];
     return rows.map(toRun);
   }
 
