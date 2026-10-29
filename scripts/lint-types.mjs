@@ -2,11 +2,11 @@
 // Runs the type-aware lint as sequential eslint processes, one per chunk of workspace src dirs. One process for the
 // whole repo holds a TypeScript program per tsconfig at once and sits at V8's default heap cap, so it aborted
 // depending on GC timing (TP-3059). A chunk stays well under the cap, and a chunk that still aborts is named.
-// Usage: node scripts/lint-types.mjs [extra eslint args]
+// Usage: node scripts/lint-types.mjs [--only=<package dir>,...] [extra eslint args]
 import { spawnSync } from "node:child_process";
 import { existsSync, globSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, matchesGlob } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TYPED_FILES } from "../eslint.typed.config.js";
 
@@ -33,6 +33,16 @@ export function typedGroups(root, typedFiles) {
     const workspace = WORKSPACE_GLOB.exec(glob);
     if (workspace) return workspaceGroups(root, workspace[1], workspace[2]);
     return [{ pattern: glob, dir: glob, files: countFiles(root, glob) }];
+  });
+}
+
+const PACKAGE_PREFIX = /^[^/]+\/[^/]+/;
+
+/** Keeps the groups inside the given package dirs; a glob group such as packages/*\/scripts matches by its package prefix. */
+export function groupsInPackages(groups, packageDirs) {
+  return groups.filter((group) => {
+    const prefix = PACKAGE_PREFIX.exec(group.pattern)?.[0];
+    return prefix !== undefined && packageDirs.some((dir) => matchesGlob(dir, prefix));
   });
 }
 
@@ -87,6 +97,10 @@ function eslintRunner(extraArgs) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const chunks = chunkGroups(typedGroups(ROOT, TYPED_FILES), MAX_CHUNK_FILES);
-  process.exitCode = runChunks(chunks, eslintRunner(process.argv.slice(2)), (line) => console.error(line));
+  const args = process.argv.slice(2);
+  const only = args.find((arg) => arg.startsWith("--only="));
+  const all = typedGroups(ROOT, TYPED_FILES);
+  const groups = only ? groupsInPackages(all, only.slice("--only=".length).split(",")) : all;
+  const chunks = chunkGroups(groups, MAX_CHUNK_FILES);
+  process.exitCode = runChunks(chunks, eslintRunner(args.filter((arg) => arg !== only)), (line) => console.error(line));
 }
