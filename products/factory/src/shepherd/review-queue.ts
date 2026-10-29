@@ -3,7 +3,7 @@ import { BUSY_LONGEST_WAIT_MS } from "./review-wait.js";
 type Admission = { admit: true } | { admit: false; reason: string };
 
 /** The PR a review is for, at the head its intent was recorded against. */
-export interface QueuedTarget {
+interface QueuedTarget {
   repo: string;
   pr: number;
   head?: string;

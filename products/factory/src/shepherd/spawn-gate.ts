@@ -119,7 +119,7 @@ function inodeFloor(disk: CheckoutDisk, limits: SpawnLimits): number | undefined
  * Pure: how many reviews may start now, so that many from the front of the queue can go at once: the free review slots, and the
  * count whose `reviewLoad` still fits under `buildLoad5`. At least one, since it is read only once the gate would admit.
  */
-export function reviewRoom(readings: MachineReadings, limits: SpawnLimits, runningReviews: readonly number[], now: number, admittedReviews = 0): number {
+function reviewRoom(readings: MachineReadings, limits: SpawnLimits, runningReviews: readonly number[], now: number, admittedReviews = 0): number {
   const { build } = buildPressure(readings, limits, runningReviews, now, admittedReviews);
   const byLoad = limits.reviewLoad > 0 ? Math.floor((limits.buildLoad5 - build) / limits.reviewLoad) + 1 : Infinity;
   const bySlots = limits.maxConcurrentReviews - runningReviews.length - admittedReviews;
