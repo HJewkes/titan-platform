@@ -98,3 +98,5 @@ export { INJECTED_MARKERS, MARKER_SCAN_CHARS, findInjectedMarker, hasMarker, par
 export { MIN_ATTACHMENT_CHARS, sourceForCause } from "./audit-context.js";
 export { bashSignals, toolUseSignals, type AuditSignal } from "./audit-signal.js";
 export { ORIENTATION_HEADER, assignedTaskIds, orientationEnd, type Assignment, type AssignmentInput, type AssignmentSource } from "./spawn-assignment.js";
+export type { CacheBreakpoint, FirstRequest, FirstRequestUsage, RequestBlock, RequestSection } from "./first-request.js";
+export { readFirstRequest } from "./first-request.js";

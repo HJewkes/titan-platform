@@ -52,6 +52,9 @@ export interface FillRefusal {
   detail: string;
 }
 
+/** Whether resolve chose a custom layer for this row: such a beat is built by TP-2607 and never template-filled. */
+export const isCustomRow = (row: ResolvedRow | undefined): boolean => row?.layer === "custom";
+
 /** Thrown when any beat is refused; it lists every refusal, so one run reports them all. */
 export class FillError extends Error {
   constructor(readonly refusals: readonly FillRefusal[]) {
@@ -80,10 +83,40 @@ function tryParse(specs: ReadonlyMap<string, BeatSpec>, type: string, raw: unkno
   }
 }
 
-function derivation(beat: ScriptBeat, row: ResolvedRow, ref: BeatSlotRef, scope: BeatScope, pinned: unknown): Derivation {
-  if (pinned !== undefined) return isRecord(pinned) ? { slots: pinned, reveals: [] } : { reason: `the slots pin's entry for ${beat.id} is not an object` };
+/** The deriver's own reading of the beat's script fields, extending its chapter's stage when it continues it; never the pin. */
+function ownDerivation(beat: ScriptBeat, row: ResolvedRow, ref: BeatSlotRef, scope: BeatScope): Derivation {
   const own = DERIVERS[ref](beat, scope);
   return scope.lead?.spec === row.beat ? deriveContinuation(beat, scope, scope.lead, own) : own;
+}
+
+/**
+ * The layer the beat's spec is tried with: its own derivation, or the pinned entry in its place. A pin replaces slots
+ * only: the script's cues still time the beat, so the derived reveals stay, and `keptReveals` drops those whose target
+ * the pinned slots no longer hold.
+ */
+function triedLayer(beat: ScriptBeat, own: Derivation, pinned: unknown): Derivation {
+  if (pinned === undefined) return own;
+  if (!isRecord(pinned)) return { reason: `the slots pin's entry for ${beat.id} is not an object` };
+  return { slots: pinned, reveals: isDerived(own) ? own.reveals : [] };
+}
+
+interface Attempt {
+  own: Derivation;
+  tried: Derivation;
+  problems: string;
+  pinned: unknown;
+}
+
+/**
+ * The kind a beat draws when its spec's slots do not parse, and why: the fallback its own derivation names, else a
+ * list. The derivation decides, pinned or not, so render draws a beat from resolve's `generated-slots` pin as the
+ * same kind resolve drew; the pin's slots, which are that kind's, fill it.
+ */
+function fallbackFor(beat: ScriptBeat, scope: BeatScope, { own, tried, problems, pinned }: Attempt): Underived {
+  const to = (isDerived(own) ? undefined : own.fallback) ?? { spec: LIST, derived: deriveList(beat, scope) };
+  const reason = !isDerived(own) ? own.reason : isDerived(tried) ? problems : tried.reason;
+  const derived = isRecord(pinned) ? { slots: pinned, reveals: to.derived.reveals } : to.derived;
+  return { reason, fallback: { spec: to.spec, derived } };
 }
 
 /** Reveals of elements the final slots still hold: an override that replaces a list drops the derived items' cues. */
@@ -116,7 +149,7 @@ function filled(beat: ScriptBeat, drawn: { spec: BeatSpec; ref: BeatSlotRef }, l
   };
 }
 
-/** The spec the derivation names instead (a list by default), drawn only when its own slots parse. */
+/** The fallback `fallbackFor` chose, drawn only when its own slots parse. */
 function fallBack(beat: ScriptBeat, row: ResolvedRow, scope: BeatScope, specs: ReadonlyMap<string, BeatSpec>, why: Underived): FilledBeat | FillRefusal {
   const to = why.fallback ?? { spec: LIST, derived: deriveList(beat, scope) };
   const drawn = drawnSpec(specs, to.spec);
@@ -134,12 +167,14 @@ function fallBack(beat: ScriptBeat, row: ResolvedRow, scope: BeatScope, specs: R
 export function fillBeat(beat: ScriptBeat, row: ResolvedRow, scope: BeatScope, context: FillContext): FilledBeat | FillRefusal {
   const drawn = drawnSpec(context.specs, row.beat);
   if (typeof drawn === "string") return { beat: beat.id, detail: drawn };
-  const derived = derivation(beat, row, drawn.ref, scope, context.pinned?.[beat.id]);
+  const own = ownDerivation(beat, row, drawn.ref, scope);
+  const pinned = context.pinned?.[beat.id];
+  const derived = triedLayer(beat, own, pinned);
   const generated = { ...(isDerived(derived) ? derived.slots : {}), ...row.slots };
   const parsed = tryParse(context.specs, row.beat, withSlotOverrides(beat.visual, generated));
   if ("slots" in parsed) return filled(beat, drawn, { generated, slots: parsed.slots }, isDerived(derived) ? derived : NOTHING);
   if (beat.visual.slots !== undefined) return { beat: beat.id, detail: `visual.slots leave ${row.beat} invalid: ${parsed.problems}` };
-  return fallBack(beat, row, scope, context.specs, isDerived(derived) ? { reason: parsed.problems } : derived);
+  return fallBack(beat, row, scope, context.specs, fallbackFor(beat, scope, { own, tried: derived, problems: parsed.problems, pinned }));
 }
 
 const isRefusal = (found: FilledBeat | FillRefusal): found is FillRefusal => "detail" in found;
@@ -165,7 +200,7 @@ export function fillScript(script: ScriptV1, resolved: Resolved, context: FillCo
   const refused: FillRefusal[] = [];
   for (const beat of script.beats) {
     const row = rows.get(beat.id);
-    if (row?.layer === "custom") {
+    if (isCustomRow(row)) {
       out.custom.push(beat.id);
       continue;
     }

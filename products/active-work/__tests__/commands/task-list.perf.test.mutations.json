@@ -1,0 +1,16 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the parse cache is removed",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "if (previous?.mtimeMs === mtimeMs && previous.size === size && previous.ino === ino) {",
+      "replace": "if (false) {",
+      "kills": [
+        "task.list on 9,000 synthetic tasks a warm list of 9,000 tasks parses no file",
+        "task.list on 9,000 synthetic tasks editing one task file re-parses exactly that file",
+        "task.list on 9,000 synthetic tasks a warm list stats each task file at most once and reads none"
+      ]
+    }
+  ]
+}

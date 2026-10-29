@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a failed mentions read renders nothing",
+      "file": "apps/console/src/pages/TaskDetailPage.tsx",
+      "find": "if (read.data === undefined) return unavailable(read.error.message);",
+      "replace": "if (read.data === undefined) return null;",
+      "kills": [
+        "a task's detail keeps the page and marks each deferred section unavailable when its read fails"
+      ]
+    },
+    {
+      "name": "a degraded branch answer reads as no branches",
+      "file": "apps/console/src/pages/TaskDetailPage.tsx",
+      "find": "{degraded.length > 0 ? <Alert",
+      "replace": "{degraded.length < 0 ? <Alert",
+      "kills": [
+        "a task's detail shows a degraded deferred answer as unavailable, not as empty"
+      ]
+    },
+    {
+      "name": "the mentions section shows no loading state",
+      "file": "apps/console/src/pages/TaskDetailPage.tsx",
+      "find": "if (read.status === \"loading\") return <Spinner size=\"sm\" label=\"Loading mentions\" />;",
+      "replace": "if (read.status === \"loading\") return null;",
+      "kills": [
+        "a task's detail renders the shell first, then fills in branch pull requests and mentions"
+      ]
+    }
+  ]
+}

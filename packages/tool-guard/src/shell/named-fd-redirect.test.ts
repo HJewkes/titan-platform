@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
@@ -9,6 +8,7 @@ import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
 import { extractCommands } from "./commands.js";
 import { tokenize } from "./lexer.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -217,10 +217,12 @@ describe("a shell runs a descriptor a {name} redirect may have opened (TP-3279)"
 
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
-/** Runs `line` under `runner` in a scratch dir whose x.sh and `{run}` call a fake `git`, and reports whether it ran. */
-function runsGit(line: string, runner: string): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "named-fd-"));
-  try {
+/**
+ * Runs `line` under `runner` in a scratch dir whose x.sh and `{run}` call a fake `git`, and reports whether it ran.
+ * A describe adds its rows and runs them all through one driver (TP-4453).
+ */
+const runsGitOracle = () =>
+  shellOracle("named-fd-", (dir, line: string, runner: string) => {
     for (const script of ["x.sh", "{run}"]) fs.writeFileSync(path.join(dir, script), `${PUSH}\n`);
     for (const script of ["ok.sh", "{fd}"]) fs.writeFileSync(path.join(dir, script), "true\n");
     fs.mkdirSync(path.join(dir, "{x}"));
@@ -228,13 +230,11 @@ function runsGit(line: string, runner: string): boolean {
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\ntouch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(program, [...flags, "-c", line], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
-    return fs.existsSync(path.join(dir, "mk"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program, args: [...flags, "-c", line], extraEnv: { ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => fs.existsSync(path.join(dir, "mk")),
+    };
+  });
 
 /**
  * Each denied line, with its setup, under a parent shell that runs the push. zsh keeps fd 10 for itself and opens 11.
@@ -261,12 +261,18 @@ const PREMISES: Array<[string, string]> = [
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run what the denied lines hold (TP-3279)", () => {
+  const quiet = ["bash {fd}< ./x.sh ./ok.sh", "echo {a,b}<./x.sh", "bash /dev/fd/10 \\{fd}< ./x.sh", "cat {fd} < ./x.sh"];
+  const runsGit = runsGitOracle();
+  for (const [line, runner] of PREMISES) runsGit.add(line, runner);
+  for (const line of quiet) for (const runner of ["bash", "zsh -f", "dash"]) runsGit.add(line, runner);
+  runsGit.beforeAll();
+
   it.each(PREMISES)("%s runs the push under %s", (line, runner) => {
-    expect(runsGit(line, runner)).toBe(true);
+    expect(runsGit.get(line, runner)).toBe(true);
   });
 
-  it.each(["bash {fd}< ./x.sh ./ok.sh", "echo {a,b}<./x.sh", "bash /dev/fd/10 \\{fd}< ./x.sh", "cat {fd} < ./x.sh"])("%s runs no push under any of them", (line) => {
-    expect(["bash", "zsh -f", "dash"].map((runner) => runsGit(line, runner))).toEqual([false, false, false]);
+  it.each(quiet)("%s runs no push under any of them", (line) => {
+    expect(["bash", "zsh -f", "dash"].map((runner) => runsGit.get(line, runner))).toEqual([false, false, false]);
   });
 });
 
@@ -321,14 +327,22 @@ describe("the text a group or substitution prints takes each shell's reading of 
 });
 
 describe.skipIf(!["bash", "dash"].every(has))("bash prints the push a glued {fd}< hides, where dash keeps the word (TP-3308)", () => {
+  const runsGit = runsGitOracle();
+  for (const line of PRINTED_GLUED) for (const runner of ["bash", "dash"]) runsGit.add(line, runner);
+  runsGit.beforeAll();
+
   it.each(PRINTED_GLUED)("%s", (line) => {
-    expect(["bash", "dash"].map((runner) => runsGit(line, runner))).toEqual([true, false]);
+    expect(["bash", "dash"].map((runner) => runsGit.get(line, runner))).toEqual([true, false]);
   });
 });
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("zsh alone prints the push a spaced {x} < hides (TP-3308)", () => {
+  const runsGit = runsGitOracle();
+  for (const line of PRINTED_SPACED) for (const runner of ["zsh -f", "bash", "dash"]) runsGit.add(line, runner);
+  runsGit.beforeAll();
+
   it.each(PRINTED_SPACED)("%s", (line) => {
-    expect(["zsh -f", "bash", "dash"].map((runner) => runsGit(line, runner))).toEqual([true, false, false]);
+    expect(["zsh -f", "bash", "dash"].map((runner) => runsGit.get(line, runner))).toEqual([true, false, false]);
   });
 });
 

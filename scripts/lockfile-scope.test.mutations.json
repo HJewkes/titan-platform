@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the root importer no longer forces the full suite",
+      "file": "scripts/lockfile-scope.mjs",
+      "find": "if (importers.includes(ROOT_IMPORTER)) return full(",
+      "replace": "if (false) return full(",
+      "kills": [
+        "a pnpm-lock.yaml change runs everything for a root devDependency change",
+        "a pnpm-lock.yaml change runs everything for a transitive bump only the root's tooling reaches"
+      ]
+    },
+    {
+      "name": "only the head side is traced",
+      "file": "scripts/lockfile-scope.mjs",
+      "find": "[base, head]);",
+      "replace": "[head]);",
+      "kills": [
+        "a pnpm-lock.yaml change scopes a removed dependency to the package that dropped it, tracing the snapshots on the base side"
+      ]
+    },
+    {
+      "name": "an untraced entry no longer forces the full suite",
+      "file": "scripts/lockfile-scope.mjs",
+      "find": "if (traced.untraced) return",
+      "replace": "if (false) return",
+      "kills": [
+        "a pnpm-lock.yaml change runs everything for a changed snapshot no importer reaches"
+      ]
+    },
+    {
+      "name": "peer suffixes are kept when matching entries",
+      "file": "scripts/lockfile-scope.mjs",
+      "find": "const withoutPeers = (key) => key.replace(/\\(.*$/, \"\");",
+      "replace": "const withoutPeers = (key) => key;",
+      "kills": [
+        "a pnpm-lock.yaml change traces a changed packages entry to its snapshot whatever that snapshot's peers"
+      ]
+    },
+    {
+      "name": "a changed lockfile setting is ignored",
+      "file": "scripts/lockfile-scope.mjs",
+      "find": ".find((key) => !GRAPH_SECTIONS.has(key));",
+      "replace": ".find(() => false);",
+      "kills": [
+        "a pnpm-lock.yaml change runs everything when a lockfile setting changes"
+      ]
+    }
+  ]
+}

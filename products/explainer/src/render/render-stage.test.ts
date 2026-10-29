@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ArtifactStore, sha256 } from "../workflow/artifacts.js";
 import { openState, runOneStage, runVideo } from "../workflow/host.js";
@@ -25,16 +25,30 @@ function treeFile(treeSha: string, rel: string): string | undefined {
   return entry === undefined ? undefined : artifact(entry.sha);
 }
 
-/** A fake run to tts, whose outputs pin the render stage's inputs. */
-async function voiced(): Promise<Record<string, string>> {
-  const first = await runVideo({ spine: fx.spine, facts: fx.facts, to: "tts" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+let base: Fixture;
+let voicedInputs: Record<string, string>;
+
+/** One fake run to tts for the whole file; its outputs pin the render stage's inputs. */
+beforeAll(async () => {
+  base = fixture();
+  const first = await runVideo({ spine: base.spine, facts: base.facts, to: "tts" }, fakeHost(base, fakeScriptModel(), fakeRender()));
   const out = (stage: string) => first.report.rows.find((row) => row.stage === stage)!.outputs;
-  return { script: out("rewrite").script!, resolved: out("resolve").resolved!, words: out("tts").words!, audio: out("tts").audio! };
+  voicedInputs = { script: out("rewrite").script!, resolved: out("resolve").resolved!, words: out("tts").words!, audio: out("tts").audio! };
+});
+afterAll(() => base.cleanup());
+
+/** A fresh fixture whose data dir is a copy of the voiced run's, so a test never sees another's writes. */
+function seeded(): Fixture {
+  const copy = fixture();
+  cpSync(base.dataDir, copy.dataDir, { recursive: true, filter: (src) => path.basename(src) !== "bridge.json" });
+  return copy;
 }
+
+const voiced = (): Record<string, string> => ({ ...voicedInputs });
 
 /** The render stage alone on the voiced inputs, with the variant params given; each engine option is its own variant, so no call reads another's cache entry. */
 async function renderStage(params: Record<string, unknown> = {}, options: FakeRenderOptions = {}) {
-  const inputs = await voiced();
+  const inputs = voiced();
   const variant = path.join(fx.dataDir, "render.variant.json");
   writeFileSync(variant, JSON.stringify({ schema: "explainer.variant/v1", stage: "render", name: `fake ${JSON.stringify(options)}`, params }));
   const render = fakeRender(options);
@@ -47,7 +61,7 @@ const CustomBeatSchema = z.object({ beats: z.array(z.looseObject({ id: z.string(
 
 /** The voiced inputs with the first resolved beat turned custom, and a custom-layers tree holding `modules` for it. */
 async function customInputs(modules?: Record<string, string>): Promise<Record<string, string>> {
-  const inputs = await voiced();
+  const inputs = voiced();
   const resolved = ResolvedRowsSchema.parse(JSON.parse(artifact(inputs.resolved!)));
   const first = resolved.beats[0]!;
   const from = { runId: "input", stage: "input" };
@@ -65,7 +79,7 @@ async function customInputs(modules?: Record<string, string>): Promise<Record<st
 describe("the render stage's custom layers", () => {
   // Mutation: render's inputs leave out custom-layers, or render-stage never bundles the tree into the page.
   it("bundles a custom beat's layer into the served page and names it from the timeline beat", async () => {
-    fx = fixture();
+    fx = seeded();
     const inputs = await customInputs();
 
     const record = await runOneStage({ stage: "render", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
@@ -77,8 +91,17 @@ describe("the render stage's custom layers", () => {
     expect(bundled).not.toMatch(/from\s*["']react["']/);
   });
 
+  it("fails naming the beat when the run has no custom-layers tree", async () => {
+    fx = seeded();
+    const inputs = Object.fromEntries(Object.entries(await customInputs()).filter(([name]) => name !== "custom-layers"));
+
+    const render = runOneStage({ stage: "render", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    await expect(render).rejects.toThrow(/custom layer for beat "h1" is not built/);
+  });
+
   it("rejects naming the module when the tree lacks the file its index names", async () => {
-    fx = fixture();
+    fx = seeded();
     const inputs = await customInputs({ "other.tsx": SYNTHETIC_LAYER });
 
     const render = runOneStage({ stage: "render", inputs }, fakeHost(fx, fakeScriptModel(), fakeRender()));
@@ -89,7 +112,7 @@ describe("the render stage's custom layers", () => {
 
 describe("the render stage", () => {
   it("draws the board under beat-NN ids, and renames the voiced words.json beats to match", async () => {
-    fx = fixture();
+    fx = seeded();
 
     const { inputs, record, render } = await renderStage();
 
@@ -100,7 +123,7 @@ describe("the render stage", () => {
   });
 
   it("stores the page tree it served, so qa serves the same page", async () => {
-    fx = fixture();
+    fx = seeded();
 
     const { record, render } = await renderStage();
 
@@ -109,7 +132,7 @@ describe("the render stage", () => {
   });
 
   it("serves a style pack's CSS from the page head, and no stylesheet without a pack", async () => {
-    fx = fixture();
+    fx = seeded();
     const styled = await renderStage({ stylePack: "paper-margin" });
     const plain = await renderStage();
 
@@ -120,7 +143,7 @@ describe("the render stage", () => {
   });
 
   it("gates on the qa profile by default, and records qaGate skipped under noQa", async () => {
-    fx = fixture();
+    fx = seeded();
     const gated = await renderStage();
     const skipped = await renderStage({ noQa: true });
 
@@ -130,7 +153,7 @@ describe("the render stage", () => {
   });
 
   it("refuses to render while the page holds QA errors", async () => {
-    fx = fixture();
+    fx = seeded();
 
     const render = renderStage({}, { qa: { findingsAt: () => [{ kind: "text-overlap", el: "h2", text: "a", other: "b", at: { x: 0, y: 0, w: 9, h: 9 } }] } });
 
@@ -138,7 +161,7 @@ describe("the render stage", () => {
   });
 
   it("reports two-run as a failed, non-gating check when the second render's bytes differ", async () => {
-    fx = fixture();
+    fx = seeded();
     const same = await renderStage({ twoRun: true });
     const differs = await renderStage({ twoRun: true }, { varies: true });
 
@@ -149,7 +172,7 @@ describe("the render stage", () => {
   });
 
   it("renders once and reports no two-run check unless the variant asks", async () => {
-    fx = fixture();
+    fx = seeded();
 
     const { record, render } = await renderStage();
 

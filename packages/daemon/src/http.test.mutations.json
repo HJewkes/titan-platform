@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the reported bytes count characters instead of the body sent",
+      "file": "packages/daemon/src/http.ts",
+      "find": "bytes: Buffer.byteLength(text)",
+      "replace": "bytes: text.length",
+      "kills": ["POST /rpc/:name observer reports name, status and the exact byte length of the body it sent for each rpc"]
+    },
+    {
+      "name": "a throwing rpc observer is not contained",
+      "file": "packages/daemon/src/http.ts",
+      "find": "  try {\n    onRpc?.(sample);\n  } catch {\n    // dropped on purpose: see above\n  }",
+      "replace": "  onRpc?.(sample);",
+      "kills": ["POST /rpc/:name observer an observer that throws never changes the rpc's answer"]
+    },
+    {
+      "name": "an unknown command reports the name the caller sent",
+      "file": "packages/daemon/src/http.ts",
+      "find": "name: cmd ? name : UNKNOWN_RPC",
+      "replace": "name",
+      "kills": ["POST /rpc/:name observer reports name, status and the exact byte length of the body it sent for each rpc"]
+    }
+  ]
+}

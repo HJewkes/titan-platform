@@ -1,4 +1,3 @@
-import Database from 'better-sqlite3';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { EXTRACT_VERSION, type DiscoveredTranscript } from '@titan-design/session-read';
@@ -9,7 +8,7 @@ import {
   agentChatHome,
   eventsDbSource,
   type LifecycleEvent,
-  type OpenDatabase,
+  openBriefly,
   type SpawnSource,
 } from './origin-agent-chat.js';
 
@@ -20,12 +19,6 @@ import {
  */
 
 export const SEAL_GRACE_MS = 10 * 60_000;
-
-/** Skipping is only a saving, so a locked `events.db` is not worth better-sqlite3's 5 s busy wait. */
-const EVENTS_BUSY_TIMEOUT_MS = 100;
-
-const openBriefly: OpenDatabase = (file, options) =>
-  new Database(file, { ...options, timeout: EVENTS_BUSY_TIMEOUT_MS });
 
 /**
  * Session id to retire time in epoch ms, from agent-chat's `events.db`. Any

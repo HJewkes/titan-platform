@@ -6,6 +6,7 @@ import { proofWaiverTable, type ProofWaivers } from "./proof-waiver.js";
 import { claimPlanApprovals, planApprovalTable, repointPlanApprovals, type PlanApprovals } from "./plan-approval.js";
 import { mergeBaseExceptionTable, repointMergeBaseException, type MergeBaseExceptions } from "./merge-base-exception.js";
 import { watchListTable, type WatchList } from "./watch-list.js";
+import { gateEvidenceTable, holdPassedAt, type GateEvidence } from "./lan-gates.js";
 import { registrationOf } from "./registration-of.js";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
@@ -263,6 +264,9 @@ export class ShepherdStore implements HoldLookup {
   /** The seats' watches on PRs, read by the seat digest; a watch gates nothing. */
   readonly watches = (): WatchList => watchListTable(this.db, () => this.stamp());
 
+  /** What gates outside GitHub Actions concluded at each head; a `lan-gates` hold stands aside at a head where they are green (`lan-gates.ts`). */
+  readonly gateEvidence = (): GateEvidence => gateEvidenceTable(this.db, () => this.stamp());
+
   /** The run's hold, release, repair-stop and gate-cancel events and its repo's freeze, thaw and path repair-stop events, oldest first. */
   eventsOf(runId: string): ShepherdEvent[] {
     const registration = this.byRun(runId);
@@ -281,11 +285,8 @@ export class ShepherdStore implements HoldLookup {
 
   /** Compare-and-swap: records the MERGE only while the run is still held for `reviewer`; false when a release or re-hold got there first. */
   satisfyHold(runId: string, reviewer: string, head: string, by: Omit<HoldSatisfiedBy, "reviewer">): boolean {
-    const satisfiedBy = JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer }));
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?")
-      .run(head, satisfiedBy, this.stamp(), runId, reviewer).changes;
-    return this.changed(runId, changed === 1);
+    const satisfy = "UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?";
+    return this.changed(runId, this.db.prepare(satisfy).run(head, JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer })), this.stamp(), runId, reviewer).changes === 1);
   }
 
   /** Withdraws the satisfaction, as when the reviewer's newest verdict is FIX_FIRST; at whatever head it was read, so no later carry can restore it. */
@@ -319,11 +320,11 @@ export class ShepherdStore implements HoldLookup {
     this.changed(runId, this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId).changes === 1);
   }
 
-  /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. No satisfaction passes an owner hold. */
+  /** A branch registration waiting for its PR holds that PR too. A MERGE, or green lan-gates, at `sha` passes the hold there only; none passes an owner hold. */
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
     const owner = candidates.find((registration) => registration?.ownerHold)?.ownerHold;
-    const held = candidates.find((registration) => registration?.held && !(sha !== undefined && registration.holdSatisfied?.head === sha));
+    const held = candidates.find((r) => r?.held && !(sha !== undefined && holdPassedAt(this, r, sha)));
     return owner?.reason ?? (held && (held.holdReason ?? "held"));
   }
 

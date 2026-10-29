@@ -5,6 +5,19 @@ import type { z } from "zod";
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+// Every stage reloads the doctrine, and YAML parsing dominated those loads. Keyed on the file's text so an edit reloads;
+// each call gets a clone, so no caller sees another's mutations.
+const parsed = new Map<string, { text: string; document: unknown }>();
+
+function parseYamlFile(file: string): unknown {
+  const text = readFileSync(file, "utf8");
+  const hit = parsed.get(file);
+  if (hit?.text === text) return structuredClone(hit.document);
+  const document: unknown = parse(text);
+  parsed.set(file, { text, document });
+  return structuredClone(document);
+}
+
 /** Reads every `<sub>/*.yaml` under `dir` through `schema`; a file is named after its key. */
 export function readYamlDir<T>(dir: string, sub: string, schema: z.ZodType<T>, key: (item: T) => string): Map<string, T> {
   const path = join(dir, sub);
@@ -14,7 +27,7 @@ export function readYamlDir<T>(dir: string, sub: string, schema: z.ZodType<T>, k
       const file = `${sub}/${name}`;
       let item: T;
       try {
-        item = schema.parse(parse(readFileSync(join(path, name), "utf8")));
+        item = schema.parse(parseYamlFile(join(path, name)));
       } catch (error) {
         throw new Error(`${file}: ${describe(error)}`);
       }
