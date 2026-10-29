@@ -9,6 +9,33 @@
       "kills": [
         "configuredRoutes after a config reload lets readFixProof see noReproProceed on with no restart"
       ]
+    },
+    {
+      "name": "a read never re-checks the file, so an edit waits for a restart",
+      "file": "products/factory/src/config-ref.ts",
+      "find": "if (probe === loaded.probe || probe === rejected) return;",
+      "replace": "return;",
+      "kills": [
+        "configRef without a reload shows a key added to the file after load on the next read"
+      ]
+    },
+    {
+      "name": "every read re-parses even when the probe is unchanged",
+      "file": "products/factory/src/config-ref.ts",
+      "find": "if (probe === loaded.probe || probe === rejected) return;",
+      "replace": "if (probe === rejected) return;",
+      "kills": [
+        "configRef without a reload does not re-parse while the file's probe is unchanged"
+      ]
+    },
+    {
+      "name": "a rejected edit is retried and warned about on every read",
+      "file": "products/factory/src/config-ref.ts",
+      "find": "rejected = probe;",
+      "replace": "rejected = undefined;",
+      "kills": [
+        "configRef without a reload keeps the previous config on an invalid edit and warns once"
+      ]
     }
   ]
 }
