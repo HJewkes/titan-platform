@@ -1,0 +1,31 @@
+export {
+  CLASSES,
+  IMPLEMENTER_LADDER,
+  MERGE_LADDER,
+  PATH_LISTS,
+  PLAN_LADDER,
+  PRIORS,
+  REVIEW_LADDER,
+  TABLE_VERSION,
+  parseWorkflowTable,
+  type Implementer,
+  type PathList,
+  type Prior,
+  type PriorRule,
+  type Profile,
+  type ShapeClass,
+  type TableRead,
+  type WorkflowRow,
+  type WorkflowTable,
+} from "./table.js";
+export { classifyTask, profileFor, unitsOf, type Classified, type TaskFacts } from "./classify.js";
+export {
+  DISPATCHABLE,
+  PRIOR_ROUTINGS,
+  planFacts,
+  priorRoute,
+  type PlanFacts,
+  type PriorRouter,
+  type PriorRouting,
+  type Routed,
+} from "./prior.js";

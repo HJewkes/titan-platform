@@ -76,9 +76,39 @@ const GATE_CARDS: Readonly<Record<string, GateCard>> = {
   },
   "main-frozen": FROZEN,
   "main-red-again": FROZEN,
+  "device-check": {
+    proceed: "pass",
+    consequence: {
+      pass: "build-surface goes on to review this slice at the head you checked.",
+      fail: "The implementer gets your note as a failed check and pushes a new head.",
+    },
+    irreversible: "Nothing: either answer only steers the slice's next round.",
+    onSilence: WAIT,
+  },
+  "deploy-approve": {
+    proceed: "deploy",
+    consequence: {
+      deploy: "build-surface runs the repo's deploy command at this merge; a failed deploy stops the whole run.",
+      skip: "This slice stays merged and undeployed; the run goes on to the next slice.",
+    },
+    irreversible: "A deploy changes what the live surface serves; undoing it takes the repo's own rollback.",
+    onSilence: WAIT,
+  },
+  "final-walk": {
+    proceed: "accept",
+    consequence: {
+      accept: "The build-surface run completes with the build accepted.",
+      changes: "The run completes with your notes recorded for follow-up tasks.",
+    },
+    irreversible: "Either answer ends the run; more work needs a new run.",
+    onSilence: WAIT,
+  },
 };
 
 const SHOWN_REF = /^(https:\/\/\S+|\/[^\n]*|\$ [^\n]+)$/;
+
+/** A step's own card, else its family's: build-surface opens one `deploy-approve:<slice>` per slice. */
+const cardOf = (step: string): GateCard | undefined => GATE_CARDS[step] ?? GATE_CARDS[step.split(":")[0]!];
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 export const gateStepOf = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
@@ -90,7 +120,7 @@ export function cardFields(gate: GateRecord): CardFields {
   const step = gateStepOf(gate.id);
   const row = policyRowOf(gate.prompt) ?? (gate.rule && { table: gate.rule.table, rowId: gate.rule.ruleId });
   const decisionClass = decisionClassOf({ ...row, step, prompt: gate.prompt });
-  const card = GATE_CARDS[step];
+  const card = cardOf(step);
   return {
     ...(decisionClass && { class: decisionClass }),
     ...(card && { irreversible: card.irreversible, onSilence: card.onSilence }),
@@ -99,9 +129,9 @@ export function cardFields(gate: GateRecord): CardFields {
 }
 
 /** The option the weekly meter counts as approve for a step; a step with no card row answers with `approve: true`. */
-export const proceedOf = (step: string): string => GATE_CARDS[step]?.proceed ?? "approve";
+export const proceedOf = (step: string): string => cardOf(step)?.proceed ?? "approve";
 
 /** The consequence the step's card names for an option; undefined leaves `card:consequence` to say it is missing. */
 export function consequenceOf(gate: GateRecord, optionId: string): string | undefined {
-  return GATE_CARDS[gateStepOf(gate.id)]?.consequence[optionId];
+  return cardOf(gateStepOf(gate.id))?.consequence[optionId];
 }

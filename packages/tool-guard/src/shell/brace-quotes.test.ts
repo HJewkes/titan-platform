@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { runBuiltHook } from "../test-support/built-hook.js";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
@@ -31,13 +30,12 @@ async function hookDenies(command: string): Promise<boolean> {
   return (await handle(event(command), { PATH: "/usr/bin" }, port)).stdout !== "";
 }
 
-// The built bundle loads its modules in another order than vitest does; CI builds before it tests, locally run `pnpm build` first.
-const dist = fileURLToPath(new URL("../../dist/", import.meta.url));
+// The built bundle loads its modules in another order than vitest does.
 const home = mkdtempSync(join(tmpdir(), "tool-guard-braces-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-function builtHookStdout(command: string): string {
-  const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event(command, home), env: { ...process.env, HOME: home }, encoding: "utf-8" });
+async function builtHookStdout(command: string): Promise<string> {
+  const run = await runBuiltHook(event(command, home), { home });
   expect(run.status).toBe(0);
   return run.stdout;
 }
@@ -77,8 +75,8 @@ describe("a } that bash reads as quoted inside ${…}", () => {
   it.each([
     ["a push", PUSH],
     ["a merge", MERGE],
-  ])("the built hook denies %s after the reviewer's probe", (_name, guarded) => {
-    expect(builtHookStdout(`: \${x:-$(echo "}'")}\n${guarded}\n#'`)).toContain('"permissionDecision":"deny"');
+  ])("the built hook denies %s after the reviewer's probe", async (_name, guarded) => {
+    expect(await builtHookStdout(`: \${x:-$(echo "}'")}\n${guarded}\n#'`)).toContain('"permissionDecision":"deny"');
   });
 
   it("the hook refuses a } inside a process substitution, which bash 3.2 reads as the end", async () => {
@@ -91,8 +89,8 @@ describe("a } that bash reads as quoted inside ${…}", () => {
     expect(await hookDenies(`: \${x+$[ } #]}; ${guarded}`)).toBe(true);
   });
 
-  it.each(GUARDED)("the built hook denies %s after a } inside $[ ] on the same line", (_name, guarded) => {
-    expect(builtHookStdout(`: \${x+$[ } #]}; ${guarded}`)).toContain('"permissionDecision":"deny"');
+  it.each(GUARDED)("the built hook denies %s after a } inside $[ ] on the same line", async (_name, guarded) => {
+    expect(await builtHookStdout(`: \${x+$[ } #]}; ${guarded}`)).toContain('"permissionDecision":"deny"');
   });
 
   it("the hook names an unclosed substitution in a single-quoted operand", async () => {
@@ -162,8 +160,8 @@ describe("a $(( that bash reads as a subshell in a command substitution", () => 
     expect(await hookDenies(command)).toBe(true);
   });
 
-  it.each(SUBSHELL_CASES)("the built hook denies %s in %s", (_name, _form, command) => {
-    expect(builtHookStdout(command)).toContain('"permissionDecision":"deny"');
+  it.each(SUBSHELL_CASES)("the built hook denies %s in %s", async (_name, _form, command) => {
+    expect(await builtHookStdout(command)).toContain('"permissionDecision":"deny"');
   });
 
   it("reads the subshell's commands as a substitution", () => {
@@ -179,8 +177,8 @@ describe("a heredoc in a $( ) inside ${…}, which bash 3.2 ends at the first )"
     expect(await hookDenies(command(guarded))).toBe(true);
   });
 
-  it.each(GUARDED)("the built hook denies %s on the line after it", (_name, guarded) => {
-    expect(builtHookStdout(command(guarded))).toContain('"permissionDecision":"deny"');
+  it.each(GUARDED)("the built hook denies %s on the line after it", async (_name, guarded) => {
+    expect(await builtHookStdout(command(guarded))).toContain('"permissionDecision":"deny"');
   });
 
   it("the hook names the substitution bash 3.2 ends elsewhere", async () => {
@@ -214,8 +212,8 @@ describe("an expansion the reader cannot close where bash runs the next command"
     expect(await hookDenies(command)).toBe(true);
   });
 
-  it.each(UNCLOSED_CASES)("the built hook denies %s after %s", (_name, _line, command) => {
-    expect(builtHookStdout(command)).toContain('"permissionDecision":"deny"');
+  it.each(UNCLOSED_CASES)("the built hook denies %s after %s", async (_name, _line, command) => {
+    expect(await builtHookStdout(command)).toContain('"permissionDecision":"deny"');
   });
 
   it("the hook names the expansion it could not close", async () => {

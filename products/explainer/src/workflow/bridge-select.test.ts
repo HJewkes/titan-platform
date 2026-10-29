@@ -1,13 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { BridgeFileSchema, readBridgeFile } from "./bridge.js";
 import { resumeVideo, runVideo } from "./host.js";
-import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, dropSeeds, fakeRender, fakeHost, fakeScriptModel, fixture, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 import { fakeQa, heldOverlap } from "../qa/qa-fakes.test-helpers.js";
 
 let fx: Fixture | undefined;
 afterEach(() => fx?.cleanup());
+afterAll(dropSeeds);
 
 /** Copies the fixture's data-dir bridge to `<home>/bridges/<name>.json`, with its own theater. */
 function installNamedBridge(fixture: Fixture, name: string): { home: string; theater: string } {
@@ -26,8 +27,11 @@ function withStages(fixture: Fixture, stages: Record<string, unknown>): void {
   writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), stages }));
 }
 
-async function tts(fixture: Fixture) {
-  const first = await runVideo({ spine: fixture.spine, facts: fixture.facts, to: "tts" }, fakeHost(fixture, fakeScriptModel(), fakeRender()));
+/** A copy of the file's run stored through tts, as `fx`, and the pins a run from render needs. */
+async function tts() {
+  const seed = await seededRun({ to: "tts" });
+  const first = seed.result;
+  fx = cloneFixture(seed);
   const outputs = first.report.rows.find((row) => row.stage === "tts")?.outputs ?? {};
   const script = first.report.rows.find((row) => row.stage === "rewrite")?.outputs.script;
   const resolved = first.report.rows.find((row) => row.stage === "resolve")?.outputs.resolved;
@@ -36,33 +40,30 @@ async function tts(fixture: Fixture) {
 
 describe("a profile's named bridge", () => {
   it("links a daily-overview run through the host's bridges/daily.json, not the data dir's bridge.json", async () => {
-    fx = fixture();
-    const host = installNamedBridge(fx, "daily");
-    const pins = await tts(fx);
+    const pins = await tts();
+    const host = installNamedBridge(fx!, "daily");
 
-    const result = await runVideo({ from: "render", pins, profile: "daily-overview" }, fakeHost(fx, fakeScriptModel(), fakeRender(), { bridgeHome: host.home }));
+    const result = await runVideo({ from: "render", pins, profile: "daily-overview" }, fakeHost(fx!, fakeScriptModel(), fakeRender(), { bridgeHome: host.home }));
 
     expect(result.status, result.error).toBe("completed");
     expect(existsSync(path.join(host.theater, "daily.mp4"))).toBe(true);
-    expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(false);
+    expect(existsSync(path.join(fx!.theater, "demo.mp4"))).toBe(false);
   });
 
   it("keeps the data dir's bridge.json for a profile that names no bridge", async () => {
-    fx = fixture();
-    installNamedBridge(fx, "daily");
-    const pins = await tts(fx);
+    const pins = await tts();
+    installNamedBridge(fx!, "daily");
 
-    const result = await runVideo({ from: "render", pins, profile: "repo-tour" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const result = await runVideo({ from: "render", pins, profile: "repo-tour" }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
-    expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(true);
+    expect(existsSync(path.join(fx!.theater, "demo.mp4"))).toBe(true);
   });
 
   it("fails naming the missing file when the profile's bridge is not installed", async () => {
-    fx = fixture();
-    const pins = await tts(fx);
+    const pins = await tts();
 
-    const result = await runVideo({ from: "render", pins, profile: "daily-overview" }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const result = await runVideo({ from: "render", pins, profile: "daily-overview" }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     expect(result.status).toBe("failed");
     expect(result.error).toContain(path.join("bridges", "daily.json"));
@@ -71,15 +72,14 @@ describe("a profile's named bridge", () => {
 
 describe("--theater", () => {
   it("links the export into the given folder in place of the bridge's theater.dir", async () => {
-    fx = fixture();
-    const pins = await tts(fx);
-    const scratch = path.join(fx.dataDir, "..", "scratch-theater");
+    const pins = await tts();
+    const scratch = path.join(fx!.dataDir, "..", "scratch-theater");
 
-    const result = await runVideo({ from: "render", pins, theater: scratch }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const result = await runVideo({ from: "render", pins, theater: scratch }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
     expect(existsSync(path.join(scratch, "demo.mp4"))).toBe(true);
-    expect(existsSync(path.join(fx.theater, "demo.mp4"))).toBe(false);
+    expect(existsSync(path.join(fx!.theater, "demo.mp4"))).toBe(false);
   });
 
   it("keeps the given folder when a run that failed before export is resumed", async () => {
@@ -137,11 +137,10 @@ describe("a host bridge after the render port", () => {
   });
 
   it("renders a run whose host file has no render block", async () => {
-    fx = fixture();
-    const pins = await tts(fx);
-    withStages(fx, {});
+    const pins = await tts();
+    withStages(fx!, {});
 
-    const result = await runVideo({ from: "render", pins }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+    const result = await runVideo({ from: "render", pins }, fakeHost(fx!, fakeScriptModel(), fakeRender()));
 
     expect(result.status, result.error).toBe("completed");
   });

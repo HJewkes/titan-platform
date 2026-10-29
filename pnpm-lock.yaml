@@ -229,6 +229,9 @@ importers:
       '@titan-design/egress-scan':
         specifier: workspace:^
         version: link:../../packages/egress-scan
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../../packages/evidence
       '@titan-design/frame-capture':
         specifier: workspace:^
         version: link:../../packages/frame-capture
@@ -295,6 +298,10 @@ importers:
         version: 4.5.4
 
   packages/agent-dispatch:
+    dependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -1556,9 +1563,15 @@ importers:
 
   products/yt-scout:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
       '@titan-design/app-paths':
         specifier: workspace:^
         version: link:../../packages/app-paths
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite

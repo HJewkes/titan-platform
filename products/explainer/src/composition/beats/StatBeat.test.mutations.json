@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the count-up shows the spring's overshoot",
+      "file": "products/explainer/src/composition/beats/StatBeat.tsx",
+      "find": "return (value < 0 ? Math.max(counted, value) : Math.min(counted, value)).toFixed(places(value));",
+      "replace": "return counted.toFixed(places(value));",
+      "kills": [
+        "a stat card counting up to its figure the count never shows a value past its figure"
+      ]
+    }
+  ]
+}

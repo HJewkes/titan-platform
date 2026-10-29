@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { nodeContext } from "../context.js";
@@ -9,6 +8,7 @@ import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import { tokenize } from "./lexer.js";
 import { ParseError } from "./parse-error.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const HOME = "/home/you";
 const PUSH = "git push origin HEAD:feat";
@@ -68,17 +68,16 @@ describe("zsh expansions that run their value are refused by the lexer (TP-2937)
 const zsh = spawnSync("zsh", ["-f", "-c", "true"]).status === 0;
 
 describe.skipIf(!zsh)("zsh really runs the value of the refused forms (TP-2937)", () => {
-  function runs(body: string, assign: string): boolean {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "zsh-value-"));
-    try {
-      fs.writeFileSync(path.join(dir, "f"), "");
-      spawnSync("zsh", ["-f", "-c", `${assign}; ${body}`], { cwd: dir, stdio: "ignore" });
-      return fs.existsSync(path.join(dir, "m"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
+  // Every row runs through one driver (TP-4453).
+  const oracle = shellOracle("zsh-value-", (dir, body: string, assign: string) => {
+    fs.writeFileSync(path.join(dir, "f"), "");
+    return { run: { program: "zsh", args: ["-f", "-c", `${assign}; ${body}`] }, read: () => fs.existsSync(path.join(dir, "m")) };
+  });
+  const runs = (body: string, assign: string): boolean => oracle.get(body, assign);
   const QUALIFIER = 'x="*(e:touch m:)"';
+  for (const body of ["print -r -- ${~x} >/dev/null", "print -r -- $~x >/dev/null", "print -r -- ${~~x} >/dev/null", 'print -r -- "${~x}" >/dev/null']) oracle.add(body, QUALIFIER);
+  oracle.add("print -r -- ${(e)y} >/dev/null", `y='$(touch m)'`);
+  oracle.beforeAll();
 
   it("runs a glob qualifier through ${~x}", () => {
     expect(runs("print -r -- ${~x} >/dev/null", QUALIFIER)).toBe(true);
