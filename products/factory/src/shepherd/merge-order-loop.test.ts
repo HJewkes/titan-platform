@@ -34,6 +34,7 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 interface Wake {
+  kind: string;
   headSha: string;
   /** What GitHub had merged when the fixer started: the base it merges. */
   mergedBefore: number[];
@@ -54,6 +55,8 @@ interface Loop {
   beforeZReview: () => Promise<void>;
   /** Runs inside each merge call, before GitHub merges `pr`. */
   beforeMerge: (pr: number) => Promise<void>;
+  /** X's heads whose review sends X back with FIX_FIRST; X's fixer answers with a push that merges nothing. */
+  fixFirstAt: Set<string>;
   /** Moves the clock every run reads, as a long fix round would. */
   advance: (ms: number) => void;
   /** Every seat message, as `seat: text`. */
@@ -91,17 +94,18 @@ function landingPort(fake: FakeGitHub): GitHubPort {
   return { ...port, checkRuns: async (slug, sha) => (mergeShas().includes(sha) && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(slug, sha)) };
 }
 
-/** X's fixer merges the base it was woken at and pushes; no other PR is ever woken. */
+/** X's fixer merges the base it was woken at and pushes, or at a review wake pushes a fix that merges nothing; no other PR is ever woken. */
 function fixerWake(loop: () => Loop, absorbed: Set<number>): ShepherdPhases["wake"] {
   return async (_ctx, request) => {
     const l = loop();
-    if (request.pr !== X || request.kind !== "conflict") return { kind: "unhandled", reason: "only X's conflict is woken in this test" };
-    const mergedBefore = [...l.merged];
+    if (request.pr !== X || (request.kind !== "conflict" && request.kind !== "review")) return { kind: "unhandled", reason: "only X's conflict and review are woken in this test" };
+    const conflict = request.kind === "conflict";
+    const mergedBefore = conflict ? [...l.merged] : [];
     const base = l.fake.refs.get("main")!;
-    l.wakes.push({ headSha: request.headSha, mergedBefore });
+    l.wakes.push({ kind: request.kind, headSha: request.headSha, mergedBefore });
     await l.duringWake();
     const head = fakeSha(`loop-fix-${l.wakes.length}`);
-    l.fake.commits.set(head, { sha: head, parents: [request.headSha, base] });
+    l.fake.commits.set(head, { sha: head, parents: conflict ? [request.headSha, base] : [request.headSha] });
     mergedBefore.forEach((pr) => absorbed.add(pr));
     l.fake.pushHead(X, head);
     return { kind: "woken", agent: "impl-x" };
@@ -125,12 +129,16 @@ function loopWorld(enabled: boolean, ttlMinutes?: number): Loop {
   const told: string[] = [];
   const exitNotice = { seatFor: () => "demo-seat", lastReport: async () => undefined, send: async (seat: string, text: string) => void told.push(`${seat}: ${text}`) };
   const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: tick, holdPollMs: 1, registry: async () => "trusted" as const, mergeOrderRules: ORDER(enabled, ttlMinutes), park: async () => ({ lines: [] }), exitNotice });
-  const review: ShepherdPhases["review"] = async (ctx, request) => (request.pr === Z && (await late.loop!.beforeZReview()), merges(ctx, request));
+  const review: ShepherdPhases["review"] = async (ctx, request) => {
+    if (request.pr === Z) await late.loop!.beforeZReview();
+    if (request.pr === X && late.loop!.fixFirstAt.has(request.headSha)) return { kind: "FIX_FIRST", headSha: request.headSha, text: "missing test" };
+    return merges(ctx, request);
+  };
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake: fixerWake(() => late.loop!, absorbed) })], routes, gatePollMs: 5 });
   hosts.push(host);
   const noop = async () => undefined;
   const advance = (ms: number) => void (clock += ms);
-  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop, beforeMerge: noop, advance, told });
+  return (late.loop = { fake, host, store: store.get(), order: new MergeOrder(host.db), port, merged, wakes: [], runs: new Map(), duringWake: noop, beforeZReview: noop, beforeMerge: noop, fixFirstAt: new Set(), advance, told });
 }
 
 function shepherd(loop: Loop, pr: number): string {
@@ -169,10 +177,7 @@ function reserveAhead(loop: Loop, ahead: string): string {
   return r;
 }
 
-/** X's reservation taken again at its resolved head; no peer counts as merging ahead of it by then. */
-const RETAKEN = { reserved: true, ahead: [] };
-
-const endReservation =(loop: Loop, r: string): void => void loop.order.release(REPO, r, { at: "2026-10-23T10:00:00.000Z" });
+const endReservation = (loop: Loop, r: string): void => void loop.order.release(REPO, r, { at: "2026-10-23T10:00:00.000Z" });
 
 /** X conflicts at its current head with nothing merged, until its fixer pushes. */
 function dirtyUntilPushed(loop: Loop): void {
@@ -205,6 +210,27 @@ describe("TP-4098 slice C: the #2301 loop", () => {
 
     expect(loop.merged).toEqual([Y, Z, X]);
     expect(loop.wakes).toHaveLength(2);
+  });
+
+  it("with merge order on, the conflicted PR is resolved once and lands before the next overlapping PR", async () => {
+    const loop = loopWorld(true);
+    const reasons: (string | undefined)[] = [];
+    loop.beforeZReview = () => vi.waitFor(() => expect(loop.wakes.length).toBeGreaterThan(0), WAIT);
+    loop.duringWake = async () => {
+      await vi.waitFor(() => expect(currentStep(loop, Z)).toMatch(/^merge:/), WAIT);
+      reasons.push(await orderReasonForZ(loop));
+    };
+    await afterY(loop);
+
+    shepherd(loop, X);
+    shepherd(loop, Z);
+    await finish(loop, X, Z);
+
+    expect(loop.merged).toEqual([Y, X, Z]);
+    expect(loop.wakes).toHaveLength(1);
+    expect(reasons).toEqual([`merge order: waiting behind #${X} (${CAPABILITY})`]);
+    expect(results(loop, Z, "merge:")).toContainEqual(expect.objectContaining({ done: false, skipped: "held" }));
+    expect([...results(loop, X, "sh-seat-notice"), ...results(loop, Z, "sh-seat-notice")]).toEqual([]);
   });
 
   it("lets a PR already in its merge step land first, then wakes the conflicted PR once at the base it leaves", async () => {
@@ -259,7 +285,7 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     endReservation(loop, r);
     await finish(loop, Z);
 
-    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [] }, RETAKEN]);
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
     expect(loop.merged).toEqual([X, Z]);
@@ -279,7 +305,7 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     loop.store.release(z);
     await finish(loop, Z);
 
-    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }, RETAKEN]);
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
     expect(loop.wakes).toHaveLength(1);
     expect(loop.merged).toEqual([X, Z]);
@@ -316,88 +342,73 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     loop.host.runtime.cancel(z, "ended in this test");
 
     expect(zAtWake).toEqual(["running"]);
-    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }, RETAKEN]);
+    expect(results(loop, X, "sh-order-reserve")).toEqual([{ reserved: true, ahead: [z] }]);
     expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Z], moved: false }]);
     expect(loop.merged).toEqual([Y, X]);
   });
 
   it("releases the reservation when its run lands", async () => {
     const loop = loopWorld(true);
-    const atMerge: string[][] = [];
-    loop.beforeMerge = async (pr) => void (pr === X && atMerge.push(loop.order.list(REPO).map((reservation) => reservation.runId)));
+    const during: string[][] = [];
+    loop.duringWake = async () => void during.push(loop.order.list(REPO).map((reservation) => reservation.runId));
     await afterY(loop);
 
     const x = shepherd(loop, X);
     await finish(loop, X);
 
-    expect(atMerge).toEqual([[x]]);
+    expect(during).toEqual([[x]]);
     expect(loop.merged).toEqual([Y, X]);
     expect(loop.order.list(REPO)).toEqual([]);
-    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release", "order-reserve", "order-release"]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release"]);
   });
 
   it("logs the expiry once and tells the seat once when the reservation outlives its TTL", async () => {
     const loop = loopWorld(true, 60);
-    const retaken = () => loop.order.list(REPO).some((reservation) => reservation.reason.startsWith("landable again"));
-    let advanced = false;
-    loop.fake.onGetPr = ((greenRuns) => (pr, reads) => (greenRuns(pr, reads), !advanced && retaken() && ((advanced = true), loop.advance(2 * 60 * 60_000))))(loop.fake.onGetPr!);
+    loop.duringWake = async () => loop.advance(2 * 60 * 60_000);
     await afterY(loop);
 
     const x = shepherd(loop, X);
     await finish(loop, X);
 
     expect(loop.merged).toEqual([Y, X]);
-    expect(results(loop, X, "sh-order-expire")).toContainEqual({ expired: true, ttlMinutes: 60 });
-    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release", "order-reserve", "order-expired"]);
+    expect(results(loop, X, "sh-order-expire")).toEqual([{ expired: true, ttlMinutes: 60 }]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-expired"]);
     expect(loop.told).toEqual([expect.stringMatching(/^demo-seat: Shepherd: hjewkes\/titan-platform#2301 .*merge order: its reservation passed the 60 min TTL/)]);
   });
 });
 
-describe("TP-4497: a reservation is held only at a landable head", () => {
-  it("a PR that moves from merging to fixing releases its reservation and a waiting ready PR proceeds", async () => {
-    const loop = loopWorld(true);
-    const reasons: (string | undefined)[] = [];
-    loop.beforeZReview = () => vi.waitFor(() => expect(loop.wakes.length).toBeGreaterThan(0), WAIT);
-    loop.duringWake = async () => {
-      if (loop.wakes.length > 1) return;
-      reasons.push(await orderReasonForZ(loop));
-      await vi.waitFor(() => expect(loop.merged).toContain(Z), WAIT);
-    };
-    await afterY(loop);
+/** The resolved head of X's first conflict wake, and the head its review fix pushes after it. */
+const RESOLVED = fakeSha("loop-fix-1");
+const REVIEW_FIXED = fakeSha("loop-fix-2");
 
-    const x = shepherd(loop, X);
-    shepherd(loop, Z);
-    await finish(loop, X, Z);
-
-    expect(reasons).toEqual([undefined]);
-    expect(loop.merged).toEqual([Y, Z, X]);
-    expect(results(loop, Z, "merge:")).not.toContainEqual(expect.objectContaining({ skipped: "held" }));
-    expect(orderEvents(loop, x).slice(0, 2)).toEqual(["order-reserve", "order-release"]);
-  });
-
-  it("a run in fixing does not re-take its reservation on a sweep, in any fix round", async () => {
+describe("TP-4497: a reservation is held only through a conflict round or at a landable head", () => {
+  it("a review fix round releases the reservation and a ready overlapping PR lands", async () => {
     const loop = loopWorld(true);
     const during: string[][] = [];
-    loop.beforeZReview = () => vi.waitFor(() => expect(loop.wakes.length).toBeGreaterThan(0), WAIT);
+    loop.fixFirstAt.add(RESOLVED);
     loop.duringWake = async () => {
-      if (loop.wakes.length === 1) await vi.waitFor(() => expect(loop.merged).toContain(Z), WAIT);
+      if (loop.wakes.at(-1)?.kind !== "review") return;
       during.push(loop.order.list(REPO).map((reservation) => reservation.runId));
+      shepherd(loop, Z);
+      await vi.waitFor(() => expect(loop.merged).toContain(Z), WAIT);
     };
-    await afterY(loop);
+    dirtyUntilPushed(loop);
 
     const x = shepherd(loop, X);
-    shepherd(loop, Z);
-    await finish(loop, X, Z);
+    await finish(loop, X);
+    await finish(loop, Z);
 
-    expect(during).toEqual([[], []]);
-    expect(loop.wakes).toHaveLength(2);
-    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release", "order-reserve", "order-release", "order-reserve", "order-release"]);
+    expect(during).toEqual([[]]);
+    expect(loop.merged).toEqual([Z, X]);
+    expect(loop.wakes.map((wake) => wake.kind)).toEqual(["conflict", "review", "conflict"]);
+    expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release", "order-reserve", "order-release"]);
   });
 
-  it("a run that returns to a landable head takes its reservation again and the order is respected", async () => {
+  it("a run back at a landable head after a review fix takes its reservation again and the order is respected", async () => {
     const loop = loopWorld(true);
-    const reasons: (string | undefined)[] = [];
     const held: string[] = [];
+    const reasons: (string | undefined)[] = [];
+    loop.fixFirstAt.add(RESOLVED);
     loop.beforeMerge = async (pr) => {
       if (pr !== X) return;
       held.push(...loop.order.list(REPO).map((reservation) => reservation.reason));
@@ -410,7 +421,7 @@ describe("TP-4497: a reservation is held only at a landable head", () => {
     await finish(loop, X);
     await finish(loop, Z);
 
-    expect(held).toEqual([`landable again at ${loop.fake.pr(X).headSha}`]);
+    expect(held).toEqual([`landable again at ${REVIEW_FIXED}`]);
     expect(reasons).toEqual([`merge order: waiting behind #${X} (${CAPABILITY})`]);
     expect(loop.merged).toEqual([X, Z]);
     expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-release", "order-reserve", "order-release"]);

@@ -175,18 +175,23 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 }
 
 /**
- * A woken agent has already awaited its new head, so the caller goes straight to the next land round; the run holds no
- * merge-order reservation while it waits (TP-4497).
+ * A woken agent has already awaited its new head, so the caller goes straight to the next land round.
  * Every wake kind spends one repair budget per run, recorded as a step so a replay and a new head keep the count;
  * a wake past the budget asks the owner instead and leaves the round. A held run spends none, unless `heldRepair` lets it.
+ * TP-4497: only a conflict wake, whose fixer merges main, keeps the merge-order reservation, and only while a fixer works.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   run.trail.woken = kind;
-  await releaseUnlandable(run);
+  if (kind !== "conflict") await releaseUnlandable(run);
   if (await awaitedPast(run, headSha)) return true;
   if (await heldRepair(run, kind, headSha, payload)) return true;
-  if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
-  return afterWake(run, kind, headSha, payload, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }), (left) => new LeaveLand(left));
+  if (!(await spendRepair(run.ctx, run.target, kind, headSha))) {
+    await releaseUnlandable(run);
+    throw new LeaveLand(await repairGate(run, kind, headSha, payload));
+  }
+  const outcome = await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload });
+  if (outcome.kind !== "woken") await releaseUnlandable(run);
+  return afterWake(run, kind, headSha, payload, outcome, (left) => new LeaveLand(left));
 }
 
 const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason });

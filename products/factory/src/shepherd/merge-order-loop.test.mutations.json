@@ -4,22 +4,20 @@
     {
       "name": "the conflicted run skips the order wait",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "  const waited = await step(run.ctx, `${WAIT_STEP}:${n}`, input, WaitResult);\n  await releaseUnlandable(run);\n  return waited.moved ? undefined : wake();",
-      "replace": "  await releaseUnlandable(run);\n  return wake();",
+      "find": "  const waited = await step(run.ctx, `${WAIT_STEP}:${n}`, input, WaitResult);\n  return waited.moved ? undefined : wake();",
+      "replace": "  return wake();",
       "kills": [
         "TP-4098 slice C: the #2301 loop lets a PR already in its merge step land first, then wakes the conflicted PR once at the base it leaves",
         "TP-4098 slice C: the #2301 loop skips the wake when the head moves during the order wait, and lands the next round"
       ]
     },
     {
-      "name": "a run leaving its land step unmerged keeps its reservation",
+      "name": "no run already merging is let through first",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
-      "find": "  if (!run.reserved) return;\n  await releaseOrder(run);\n  run.retake = true;",
-      "replace": "  if (!run.reserved) return;\n  run.retake = true;",
+      "find": "if (theirs.unread !== undefined || overlapping(",
+      "replace": "if (theirs.unread !== undefined && overlapping(",
       "kills": [
-        "TP-4497: a reservation is held only at a landable head a PR that moves from merging to fixing releases its reservation and a waiting ready PR proceeds",
-        "TP-4497: a reservation is held only at a landable head a run in fixing does not re-take its reservation on a sweep, in any fix round",
-        "TP-4497: a reservation is held only at a landable head a run that returns to a landable head takes its reservation again and the order is respected"
+        "TP-4098 slice C: the #2301 loop lets a PR already in its merge step land first, then wakes the conflicted PR once at the base it leaves"
       ]
     },
     {

@@ -184,7 +184,8 @@ export interface OrderRun {
 /**
  * TP-4098 (D1): a conflicted PR reserves its paths, waits for the overlapping PRs already merging and any earlier
  * reservation, then gets its one conflict wake at the base they leave. A push during the wait lands the next round.
- * TP-4497: the reservation ends before the wake, so a fix round that waits on its implementer never holds ready PRs.
+ * TP-4497: it is kept through the conflict fixer's work and the resolved head's round, and released once no fixer works
+ * on the conflict or that round ends unmerged.
  */
 export async function orderedConflict(run: OrderRun, headSha: string, wake: () => Promise<LandOutcome | undefined>): Promise<LandOutcome | undefined> {
   if (replayingWithout(run.ctx, RESERVE_STEP)) return wake();
@@ -193,7 +194,6 @@ export async function orderedConflict(run: OrderRun, headSha: string, wake: () =
   if (!(await step(run.ctx, `${RESERVE_STEP}:${n}`, input, ReserveResult)).reserved) return wake();
   run.reserved = true;
   const waited = await step(run.ctx, `${WAIT_STEP}:${n}`, input, WaitResult);
-  await releaseUnlandable(run);
   return waited.moved ? undefined : wake();
 }
 
