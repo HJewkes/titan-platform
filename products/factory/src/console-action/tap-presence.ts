@@ -7,7 +7,7 @@ import type { GateAction } from "./record.js";
 type Spent = { batchId: string } | { refusal: string };
 
 /** The answer an owner-at-head tap's presence statement must name: the merge, its head and the digest of the card shown. */
-export const tapAnswer = ({ decision, headSha, evidenceDigest }: GateAction): Record<string, string> => ({ decision, headSha, evidenceDigest: evidenceDigest ?? "" });
+const tapAnswer = ({ decision, headSha, evidenceDigest }: GateAction): Record<string, string> => ({ decision, headSha, evidenceDigest: evidenceDigest ?? "" });
 
 /**
  * TP-4491: the evidence digest proves only that the card is unchanged, and any agent can read it, so an owner-at-head tap
