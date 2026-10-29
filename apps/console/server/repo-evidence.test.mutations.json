@@ -4,10 +4,19 @@
     {
       "name": "each read resolves every path's clone with git again",
       "file": "apps/console/server/repo-evidence.ts",
-      "find": "const rootOf = ttlCache((repoPath) => findGitRoot(repoPath, git), ttlMs, now);",
-      "replace": "const rootOf = (repoPath: string) => findGitRoot(repoPath, git);",
+      "find": "const rootOf = cachedReads((repoPath: string) => findGitRoot(repoPath, git), times, keyed);",
+      "replace": "const rootOf = { read: (repoPath: string) => findGitRoot(repoPath, git) };",
       "kills": [
         "repository evidence spawns no git at all for a repeated read within the cache window, however many paths name the clone"
+      ]
+    },
+    {
+      "name": "expired evidence waits for git and GitHub again",
+      "file": "apps/console/server/repo-evidence.ts",
+      "find": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000 };",
+      "replace": "const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 60_000 };",
+      "kills": [
+        "repository evidence serves the last evidence once past the window, while one read refreshes it behind"
       ]
     }
   ]

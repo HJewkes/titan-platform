@@ -1,6 +1,7 @@
 import path from "node:path";
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { findGitRoot, runGit, type GitRunner } from "@titan-design/worktree";
+import { cachedReads, type CacheTimes } from "./read-cache.js";
 import { taskIdsIn, type PrEvidence, type RefEvidence } from "./task-stage.js";
 
 /** One local clone's stage evidence. Only local refs are read: the console never fetches. */
@@ -22,38 +23,29 @@ export type EvidenceReader = (repoPaths: readonly string[]) => Promise<RepoEvide
 interface GitEvidenceOptions {
   git?: GitRunner;
   github?: Pick<GitHubPort, "listOpenPrs">;
-  ttlMs?: number;
+  times?: CacheTimes;
   now?: () => number;
 }
 
-const EVIDENCE_TTL_MS = 60_000;
-
-/** One promise per key, reused until it is `ttlMs` old. */
-function ttlCache<T>(read: (key: string) => Promise<T>, ttlMs: number, now: () => number): (key: string) => Promise<T> {
-  const cache = new Map<string, { at: number; read: Promise<T> }>();
-  return (key) => {
-    const hit = cache.get(key);
-    if (hit && now() - hit.at < ttlMs) return hit.read;
-    const fresh = read(key);
-    cache.set(key, { at: now(), read: fresh });
-    return fresh;
-  };
-}
+/** Ten minutes bounds how old served evidence can be while a slow `gh` refresh runs behind it. */
+const EVIDENCE_TIMES: CacheTimes = { freshMs: 60_000, staleMs: 600_000 };
+const MAX_KEYS = 256;
 
 /**
- * One cached git and GitHub read per repository per minute, however many tasks or requests ask. Each path's clone is
- * cached for as long: a list read names every worktree path, and one `git rev-parse` spawn per path held each read up.
+ * One cached git and GitHub read per repository per minute, however many tasks or requests ask; an older one is served
+ * while it refreshes, so the minute's first read never waits on git and GitHub. Each path's clone is cached the same
+ * way: a list read names every worktree path, and one `git rev-parse` spawn per path held each read up.
  */
 export function gitEvidenceReader(options: GitEvidenceOptions = {}): EvidenceReader {
   const git = options.git ?? runGit;
   const github = options.github ?? githubPort(ghCliWire());
-  const now = options.now ?? Date.now;
-  const ttlMs = options.ttlMs ?? EVIDENCE_TTL_MS;
-  const rootOf = ttlCache((repoPath) => findGitRoot(repoPath, git), ttlMs, now);
-  const cached = ttlCache((root) => readRepo(root, git, github), ttlMs, now);
+  const times = options.times ?? EVIDENCE_TIMES;
+  const keyed = { keyOf: (key: string) => key, maxKeys: MAX_KEYS, ...(options.now !== undefined && { now: options.now }) };
+  const rootOf = cachedReads((repoPath: string) => findGitRoot(repoPath, git), times, keyed);
+  const cached = cachedReads((root: string) => readRepo(root, git, github), times, keyed);
   return async (repoPaths) => {
-    const roots = await Promise.all([...new Set(repoPaths)].map(rootOf));
-    const read = await Promise.all([...new Set(roots.filter((root): root is string => root !== null))].map(cached));
+    const roots = await Promise.all([...new Set(repoPaths)].map((repoPath) => rootOf.read(repoPath)));
+    const read = await Promise.all([...new Set(roots.filter((root): root is string => root !== null))].map((root) => cached.read(root)));
     return read.filter((entry): entry is RepoEvidence => entry !== null);
   };
 }
