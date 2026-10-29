@@ -118,6 +118,9 @@ interface Voicing {
   padding: Padding;
 }
 
+/** A beat the script holds still, by `heldS` or the held band, as qa reads it. */
+const isHeld = (beat: ScriptV1["beats"][number], rate: BeatRate): boolean => rate.band === "held" || (beat.heldS ?? 0) > 0;
+
 /** Truing reads the calibrated take, so a beat's length is the length of speech at its band's rate. */
 async function voiceBeat(beat: ScriptV1["beats"][number], rate: BeatRate, { voice, engine, cache, padding }: Voicing): Promise<VoicedBeat> {
   const take = await takeFor(beat.spoken, rate.rateWpm, voice, engine, cache);
@@ -125,7 +128,7 @@ async function voiceBeat(beat: ScriptV1["beats"][number], rate: BeatRate, { voic
   const speechS = take.audio.samples.length / take.audio.sampleRate;
   return {
     id: beat.id, ...rate, spoken: beat.spoken, wordCount: script.length, plannedS: beat.plannedS, speechS: Math.round(speechS * 1000) / 1000,
-    durationS: trueDuration(beat.plannedS, speechS, padding), cached: take.cached, speed: take.speed, wpm: take.wpm,
+    durationS: trueDuration(beat.plannedS, speechS, padding, isHeld(beat, rate)), cached: take.cached, speed: take.speed, wpm: take.wpm,
     words: shiftWords(realign(script, take.words), padding.leadS), heard: shiftWords(take.words, padding.leadS), wav: padded(take.audio, padding.leadS),
   };
 }
