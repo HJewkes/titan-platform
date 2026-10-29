@@ -37,6 +37,9 @@ export function extractFriction(body: string): FrictionLine[] {
   return friction.length > 0 ? friction : [...concernLines(lines), ...blockedLines(lines)];
 }
 
+/** The report's `Concerns:` items alone, whether or not it also has `Friction:` lines. */
+export const extractConcerns = (body: string): FrictionLine[] => concernLines(body.split("\n"));
+
 function concernLines(lines: readonly string[]): FrictionLine[] {
   const at = lines.findIndex((line) => CONCERNS_LINE.test(line));
   if (at < 0) return [];
