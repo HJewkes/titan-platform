@@ -119,6 +119,22 @@ const RESTART_WRITE_STEPS: Readonly<Record<string, string>> = {
   "audit-gaps": `${RECORD}: an agent's gap proposal`,
   "audit-plan": `${RECORD}: an agent's surface plan`,
   "audit-publish": `${WRITE}: writes the audit report file`,
+  "bs-plan": `${READ}: the build spec the slices come from`,
+  "bs-preflight": `${READ}: the repo's preflight verdict for a slice`,
+  "bs-extract": `${RECORD}: an agent's extracted targets`,
+  "bs-extract-check": `${READ}: the repo's verdict on the targets`,
+  "bs-branch": `${WRITE}: creates the slice branch on GitHub`,
+  "bs-implement": `${WRITE}: spawns the slice implementer`,
+  "bs-report-check": `${READ}: the verdict on an implementer's report`,
+  "bs-gates": `${READ}: runs the repo's gates at a head`,
+  "bs-preview": `${WRITE}: syncs the preview at a head`,
+  "bs-review": `${WRITE}: dispatches the slice reviewer`,
+  "bs-review-check": `${READ}: the verdict on a review`,
+  "bs-fix": `${WRITE}: resumes the implementer for a fix round`,
+  "bs-pr": `${WRITE}: opens the slice PR`,
+  "bs-shepherd": `${WRITE}: registers the PR with Shepherd`,
+  "bs-await-land": `${READ}: waits for Shepherd to land the PR`,
+  "bs-deploy": `${WRITE}: runs the repo's deploy at the merge`,
 };
 
 const home = mkdtempSync(join(tmpdir(), "restart-contract-"));

@@ -55,3 +55,6 @@ export type {
 export * from "./requests.js";
 export { buildResultSchemas } from "./results.js";
 export * from "./result-types.js";
+export * from "./spawn-args.js";
+export * from "./mcp-args.js";
+export * from "./validation.js";

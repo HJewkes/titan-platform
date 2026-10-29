@@ -1,13 +1,18 @@
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { indexPaths, openCodeGraph } from "@titan-design/code-graph";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { enrichStructure, type EnrichOptions, type EnrichResult } from "./enrich.js";
-import { REVIEW_GRAPH_DB } from "./graph-source.js";
+import { REVIEW_GRAPH_DB, type IndexFn } from "./graph-source.js";
 import type { ExplainerFact } from "./schemas.js";
 import { StructureSchema } from "./structure-schema.js";
 import { ENTRY, fixtureClone, FIXTURE_PIN, OTHER_PIN, REPORT, SERVICE, STORE } from "./test-support/structure-fixture.js";
+
+// Without it each fresh index type-checks the default libs, about a second per enrich.
+const NO_LIB_TSCONFIG = fileURLToPath(new URL("./test-support/no-lib-tsconfig.json", import.meta.url));
+const indexNoLib: IndexFn = (store, options) => indexPaths(store, { ...options, tsConfig: NO_LIB_TSCONFIG });
 
 const temps: string[] = [];
 let clone: string;
@@ -36,7 +41,7 @@ async function tempDir(prefix: string): Promise<string> {
 }
 
 function enrich(overrides: Partial<EnrichOptions> = {}): Promise<EnrichResult> {
-  return enrichStructure({ facts: FACTS, reviewDir: emptyReview, clonePath: clone, pin: FIXTURE_PIN, ...overrides });
+  return enrichStructure({ facts: FACTS, reviewDir: emptyReview, clonePath: clone, pin: FIXTURE_PIN, index: indexNoLib, ...overrides });
 }
 
 function codes(outcome: EnrichResult): string[] {
@@ -144,7 +149,7 @@ describe("enrichStructure diagnostics", () => {
     const reviewDir = await tempDir("rx-enrich-offpin-");
     const db = join(await tempDir("rx-enrich-db-"), "graph.db");
     const store = openCodeGraph(db);
-    await indexPaths(store, { paths: [clone], commitHash: OTHER_PIN, computeMetrics: false, computeChurn: false });
+    await indexNoLib(store, { paths: [clone], commitHash: OTHER_PIN, computeMetrics: false, computeChurn: false });
     store.close();
     await mkdir(join(reviewDir, "structural"));
     await copyFile(db, join(reviewDir, REVIEW_GRAPH_DB));

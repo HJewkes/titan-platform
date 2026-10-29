@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "every branch-PR read lists the repository again",
+      "file": "apps/console/server/branch-prs.ts",
+      "find": "if (hit && now() - hit.at < (options.ttlMs ?? PR_TTL_MS)) return hit.read;",
+      "replace": "if (hit && now() < 0) return hit.read;",
+      "kills": [
+        "the branch PR reader reuses a repository's list for a minute, then reads it again"
+      ]
+    },
+    {
+      "name": "an older PR on the same head replaces the newest",
+      "file": "apps/console/server/branch-prs.ts",
+      "find": "if (byHead.has(pr.headRefName)) continue;",
+      "replace": "",
+      "kills": [
+        "the branch PR reader gives each branch its newest PR by head, with the checks summary, and no absolute path"
+      ]
+    },
+    {
+      "name": "a failed gh pr list loses GitHub's reason",
+      "file": "apps/console/server/branch-prs.ts",
+      "find": "if (result.code !== 0) return",
+      "replace": "if (result.code === -1) return",
+      "kills": [
+        "the branch PR reader marks PR state unread, not failing, when GitHub cannot be listed"
+      ]
+    },
+    {
+      "name": "a clone with no GitHub origin is listed anyway",
+      "file": "apps/console/server/branch-prs.ts",
+      "find": "if (slug === null) return Promise.resolve(",
+      "replace": "if (slug === \"\") return Promise.resolve(",
+      "kills": [
+        "the branch PR reader asks GitHub nothing for a clone with no GitHub origin"
+      ]
+    }
+  ]
+}

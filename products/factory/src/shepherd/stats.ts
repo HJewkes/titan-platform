@@ -117,6 +117,15 @@ export const inStepOrder = (run: WorkflowRun): Ordered[] =>
     .map(([key, result]) => ({ key, result }))
     .sort((a, b) => a.result.completedAt.localeCompare(b.result.completedAt));
 
+/** The head the run's newest CI read was at, which is the head its merge step merges; undefined before any. */
+export function lastCiHead(run: WorkflowRun): string | undefined {
+  const read = inStepOrder(run)
+    .filter(({ key }) => stepName(key) === "ci-wait")
+    .at(-1);
+  const head = read && payloadOf(read.result).headSha;
+  return typeof head === "string" ? head : undefined;
+}
+
 const FREEZE_HOLD_UPDATE = "update-branch:sh-freeze-hold:";
 
 /**

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the sweep keeps moments past the settled end",
+      "file": "products/explainer/src/render/stage-fit-scan.ts",
+      "find": ".filter((t) => t < settled);",
+      "replace": ";",
+      "kills": [
+        "the stage-fit scan's seek moments a beat ending just past a half second is still scanned forward only"
+      ]
+    }
+  ]
+}
