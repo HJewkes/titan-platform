@@ -172,6 +172,31 @@ describe("the events relay", () => {
     pick: brokerIds,
   });
 
+  it("tells onFrame the source of each frame and of a reopen, never for a keep-alive, and survives a throw", async () => {
+    const broker = await fake(TOKEN);
+    const seen: string[] = [];
+    relays.push(
+      startEventsRelay({
+        hub: { broadcast: () => undefined },
+        upstreams: [brokerAt(broker.port)],
+        logger: silentLogger,
+        timing: { baseDelayMs: 10, maxDelayMs: 40 },
+        onFrame: (source) => {
+          seen.push(source);
+          throw new Error("listener failed");
+        },
+      }),
+    );
+    await until(() => broker.openCount() === 1);
+
+    broker.write(`: heartbeat\n\nevent: ping\ndata: 1\n\n${brokerRow(7, "message")}${brokerRow(8, "message")}`);
+    await until(() => seen.length === 2);
+    broker.drop();
+    await until(() => seen.length === 3);
+
+    expect(seen).toEqual(["agent-chat", "agent-chat", "agent-chat"]);
+  });
+
   it("redials a dropped upstream and tells the browser once, so its pages refetch what the gap missed", async () => {
     const broker = await fake(TOKEN);
     const relayed = startRelay(brokerAt(broker.port));

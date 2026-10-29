@@ -67,7 +67,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
+  const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger, onFrame: (source) => sources.invalidation?.emit(source) });
   const close = async (): Promise<void> => {
     await Promise.all([relay.close(), handle.close()]);
   };

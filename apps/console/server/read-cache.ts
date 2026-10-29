@@ -55,3 +55,48 @@ export function cachedRead<T>(load: () => Promise<T>, { freshMs, staleMs }: Cach
     },
   };
 }
+
+interface CachedReads<A, T> {
+  read(args: A): Promise<T>;
+  /** Drops every key, so each next read waits for a fresh one; reads already running are returned to their callers but never kept. */
+  invalidate(): void;
+}
+
+interface KeyedOptions<A> {
+  /** Two arguments with the same key share one kept value and one running read. */
+  keyOf(args: A): string;
+  /** The least recently read key goes first once more are kept. */
+  maxKeys: number;
+  now?: () => number;
+}
+
+/** `cachedRead` for a read that takes arguments: each key has its own value, and all keys share the times. */
+export function cachedReads<A, T>(load: (args: A) => Promise<T>, times: CacheTimes, { keyOf, maxKeys, now = Date.now }: KeyedOptions<A>): CachedReads<A, T> {
+  let entries = new Map<string, CachedRead<T>>();
+  return {
+    read(args) {
+      const key = keyOf(args);
+      const entry = entries.get(key) ?? cachedRead(() => load(args), times, now);
+      entries.delete(key);
+      entries.set(key, entry);
+      for (const oldest of entries.keys()) {
+        if (entries.size <= maxKeys) break;
+        entries.delete(oldest);
+      }
+      return entry.read();
+    },
+    invalidate() {
+      for (const entry of entries.values()) entry.invalidate();
+      entries = new Map();
+    },
+  };
+}
+
+/** JSON with object keys sorted, so `{a, b}` and `{b, a}` name one read. */
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, inner: unknown) =>
+    inner !== null && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(Object.entries(inner).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)))
+      : inner,
+  );
+}

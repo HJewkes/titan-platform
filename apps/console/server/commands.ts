@@ -16,6 +16,7 @@ import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { inboxActionCommands, type InboxActionOptions } from "./inbox-actions.js";
 import { inboxViewCommands, type InboxSources } from "./inbox-view.js";
+import type { Invalidation } from "./invalidation.js";
 import { inboxReadCache } from "./inbox-rows.js";
 import { readCommand } from "./owner-guard.js";
 import { roundFramesCommands } from "./round-frames.js";
@@ -50,6 +51,8 @@ export interface ConsoleSources {
   agents: AgentsSource;
   sessions: SessionsSource;
   activeWork: ActiveWork;
+  /** Optional so test sources need not build one; absent, relay frames drop no cached read. */
+  invalidation?: Invalidation;
   inbox: InboxSource;
   rounds: RoundsSource;
   shepherd: ShepherdSource;
@@ -97,9 +100,10 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
 }
 
 /** The owner's merged queue, as the raw Flow, as the inbox with its actions, and the taps that take them. */
-function ownerQueueCommands(sources: InboxSources, actions: InboxActionOptions) {
+function ownerQueueCommands(sources: InboxSources, actions: InboxActionOptions, invalidation: Invalidation | undefined) {
   const cache = inboxReadCache(sources);
-  return { ...approvalsCommands(sources), ...inboxViewCommands(sources, cache), ...inboxActionCommands(sources, actions, cache.invalidate) };
+  invalidation?.on("factory", cache.invalidate);
+  return { ...approvalsCommands({ ...sources, ...(cache.factory !== undefined && { factory: cache.factory }) }), ...inboxViewCommands(sources, cache), ...inboxActionCommands(sources, actions, cache.invalidate) };
 }
 
 function workCommands(activeWork: ActiveWork, work: WorkOptions | undefined) {
@@ -129,7 +133,7 @@ function surfaceReaders(coordinatorRoots: CoordinatorRoots | undefined, hostSurf
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, videos, videoNotify, explainerBin, work, configStore, invalidation }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   return {
     ...upstreamsCommands(upstreams),
@@ -146,7 +150,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...roundsRevealCommands(rounds),
     ...roundsSubmitCommands(rounds, decisionLog, listeners, inbox.dir),
     ...roundsAnswerRecCommands(rounds, submitPipeline(rounds, decisionLog, listeners, inbox.dir)),
-    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }),
+    ...ownerQueueCommands({ factory, rounds, inbox, shepherd, agents },{ ...(inboxActions ?? ACTIONS_UNWIRED), ...(decisionLog && { decisionLog }) }, invalidation),
     ...shepherdCommands(shepherd),
     ...(autoresearch === undefined ? {} : autoresearchCommands(autoresearch)),
     ...configSurfacesCommands(configReaders),
