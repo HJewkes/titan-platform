@@ -7,10 +7,12 @@ type QueryStatus = "loading" | "success" | "error";
 interface RpcProviderProps {
     /** `liveSource(...)` against a daemon, or `staticSource(...)` over a snapshot; components cannot tell which. */
     source: DataSource;
+    /** How long a query's result outlives its last watcher, so navigating back shows it at once; default 0. */
+    gcMs?: number;
     children?: ReactNode;
 }
 /** Holds the query cache and the shared event stream for everything below it. */
-declare function RpcProvider({ source, children }: RpcProviderProps): ReactNode;
+declare function RpcProvider({ source, gcMs, children }: RpcProviderProps): ReactNode;
 
 interface QueryControls {
     /** True while a call is in flight, including a refetch that keeps the previous data. */

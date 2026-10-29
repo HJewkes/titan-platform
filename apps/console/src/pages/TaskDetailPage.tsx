@@ -44,7 +44,7 @@ export function TaskDetailPage({ id }: { id: string }): ReactNode {
         <PullRequests detail={detail.data} />
       </Panel>
       <Panel title="Mentions">
-        <Mentions mentions={detail.data.mentions} />
+        <Mentions mentions={detail.data.mentions} degraded={detail.data.mentionsDegraded} />
       </Panel>
       <Panel title="Linked sessions">
         <Sessions detail={detail.data} />
@@ -152,7 +152,8 @@ function mentionRef(mention: Mention): string | undefined {
   return taskId ? `task:${taskId}` : undefined;
 }
 
-function Mentions({ mentions }: { mentions: readonly Mention[] }): ReactNode {
+function Mentions({ mentions, degraded }: { mentions: readonly Mention[]; degraded: string | null }): ReactNode {
+  if (degraded) return <Alert status="warning" size="compact" message={`Mentions are unavailable: ${degraded}`} />;
   if (mentions.length === 0) return <Typography variant="caption" color="secondary">No record mentions this task.</Typography>;
   return (
     <VStack gap={2}>

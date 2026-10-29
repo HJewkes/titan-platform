@@ -195,7 +195,8 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   const { rootDirs, idRoot } = resolveRoots(options.paths, source);
   const readFiles = await readSourceFiles(await source.listFiles(rootDirs, LANGUAGES), source);
 
-  const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION) : null;
+  const current = new Map(readFiles.map((rf) => [fileId(idRoot, rf.filePath), rf.hash]));
+  const reuse = options.incremental !== false ? loadReuseBasis(store, INDEX_VERSION, current) : null;
   const requalify = needsRequalifyAliases(store);
   const { streamed, toParse, reusedFileIds } = await streamWithReuse({
     readFiles,
