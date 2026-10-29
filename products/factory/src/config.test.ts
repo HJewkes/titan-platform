@@ -18,6 +18,18 @@ function xdg(config?: unknown): NodeJS.ProcessEnv {
   return { XDG_CONFIG_HOME: join(dir, "config"), XDG_STATE_HOME: join(dir, "state") };
 }
 
+describe("configPath", () => {
+  it("prefers TITAN_FACTORY_CONFIG over XDG_CONFIG_HOME", () => {
+    expect(configPath({ ...xdg(), TITAN_FACTORY_CONFIG: "/own/config.json" })).toBe("/own/config.json"); // mutation: drop the env check
+  });
+
+  it("falls back to the XDG path when TITAN_FACTORY_CONFIG is empty", () => {
+    const env = { ...xdg(), TITAN_FACTORY_CONFIG: "" };
+
+    expect(configPath(env)).toBe(join(env.XDG_CONFIG_HOME!, "titan-factory", "config.json")); // mutation: use `??` instead of truthiness
+  });
+});
+
 describe("resolveDbPath", () => {
   it("prefers the flag, then the environment, then the config file", () => {
     const env = { ...xdg({ dbPath: "/from/config" }), TITAN_FACTORY_DB: "/from/env" };

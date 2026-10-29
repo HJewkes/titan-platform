@@ -44,6 +44,9 @@ titan-factory bot-token scan [--json]                         # A17: name every 
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
 `$XDG_CONFIG_HOME/titan-factory/config.json`, then `$XDG_STATE_HOME/titan-factory/factory.sqlite3`.
+`--config <path>` (or `TITAN_FACTORY_CONFIG`) names the config file itself and beats
+`$XDG_CONFIG_HOME`; an empty value is ignored. Use it to run a second, isolated instance on its own
+config, database and port when `XDG_CONFIG_HOME` cannot be changed.
 Owner-specific bindings live in that config file, never in this repo.
 
 ### A host whose database is frozen: `remoteFactory`
