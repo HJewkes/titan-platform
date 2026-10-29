@@ -65,9 +65,10 @@ export function gitIn(cwd: string): (...args: string[]) => string {
 }
 
 interface Template {
+  dir: string;
   local: string;
-  repo: string;
-  origin: string;
+  /** Built on the first `seedRepoWithOrigin`: a copy of `local` whose `origin` remote already holds its seed. */
+  remote?: { repo: string; origin: string };
 }
 
 // A `git init`, a seed commit and a bare origin cost a dozen processes; a recursive copy costs none.
@@ -105,33 +106,30 @@ function initTemplate(): string {
   return dir;
 }
 
+// Appended as a file rather than set with `git config`, which would cost one process per key.
+const FAST_CONFIG_TEXT = Object.entries(FAST_CONFIG)
+  .map(([key, value]) => `[${key.slice(0, key.lastIndexOf("."))}]\n\t${key.slice(key.lastIndexOf(".") + 1)} = ${value}\n`)
+  .join("");
+
 function initRepo(dir: string, bare: boolean): void {
   gitIn(path.dirname(dir))("init", "-q", `--template=${initTemplate()}`, ...(bare ? ["--bare"] : []), "-b", "main", dir);
-  const git = gitIn(dir);
-  for (const [key, value] of Object.entries(FAST_CONFIG)) git("config", key, value);
+  fs.appendFileSync(path.join(dir, bare ? "" : ".git", "config"), FAST_CONFIG_TEXT);
 }
 
 function buildTemplate(files: SeedFiles): Template {
   const dir = fs.mkdtempSync(path.join(rootDir(), "t-"));
   const local = path.join(dir, "local");
-  const repo = path.join(dir, "repo");
-  const origin = path.join(dir, "origin");
-  initRepo(repo, false);
-  initRepo(origin, true);
-  const git = gitIn(repo);
-  const seeded = Object.keys(files).length > 0;
-  if (seeded) {
+  initRepo(local, false);
+  if (Object.keys(files).length > 0) {
     for (const [file, content] of Object.entries(files)) {
-      fs.mkdirSync(path.join(repo, path.dirname(file)), { recursive: true });
-      fs.writeFileSync(path.join(repo, file), content);
+      fs.mkdirSync(path.join(local, path.dirname(file)), { recursive: true });
+      fs.writeFileSync(path.join(local, file), content);
     }
+    const git = gitIn(local);
     git("add", ".");
     git("commit", "-q", "-m", "seed");
   }
-  fs.cpSync(repo, local, { recursive: true });
-  git("remote", "add", "origin", origin);
-  if (seeded) git("push", "-q", "origin", "main");
-  return { local, repo, origin };
+  return { dir, local };
 }
 
 function templateFor(files: SeedFiles): Template {
@@ -142,6 +140,20 @@ function templateFor(files: SeedFiles): Template {
     templates.set(key, template);
   }
   return template;
+}
+
+function remoteFor(template: Template): { repo: string; origin: string } {
+  if (!template.remote) {
+    const repo = path.join(template.dir, "repo");
+    const origin = path.join(template.dir, "origin");
+    fs.cpSync(template.local, repo, { recursive: true });
+    initRepo(origin, true);
+    const git = gitIn(repo);
+    git("remote", "add", "origin", origin);
+    if (git("for-each-ref", "refs/heads") !== "") git("push", "-q", "origin", "main");
+    template.remote = { repo, origin };
+  }
+  return template.remote;
 }
 
 /**
@@ -155,7 +167,7 @@ export function seedRepo(dir: string, files: SeedFiles = DEFAULT_SEED): void {
 
 /** The same, with `origin` (an empty or missing directory) made the bare remote that already holds the seed commit. */
 export function seedRepoWithOrigin(dir: string, origin: string, files: SeedFiles = DEFAULT_SEED): void {
-  const template = templateFor(files);
+  const template = remoteFor(templateFor(files));
   fs.cpSync(template.repo, dir, { recursive: true });
   fs.cpSync(template.origin, origin, { recursive: true });
   const config = path.join(dir, ".git", "config");
