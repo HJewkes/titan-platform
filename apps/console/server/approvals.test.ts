@@ -266,6 +266,25 @@ describe("approvals.flow", () => {
     expect(Date.parse(result.readAt)).not.toBeNaN();
   });
 
+  it("serves the cached factory leg while a slow needs.list refreshes", async () => {
+    const clock = { at: 0 };
+    const releases: Array<() => void> = [];
+    let calls = 0;
+    const slowFactory = {
+      list: () => (++calls === 1 ? Promise.resolve({ items: [hitlGate()], gaps: [] }) : new Promise((resolve) => releases.push(() => resolve({ items: [], gaps: [] })))),
+    } as unknown as NonNullable<ApprovalsSources["factory"]>;
+    const command = consoleCommands({ ...createSources(resolveConfig({}, root)), ...sources(slowFactory), now: () => clock.at })["approvals.flow"];
+    const flow = () => command.run({}, { warnings: [], format: "json" });
+    await flow();
+
+    clock.at = 60_000;
+    const second = await Promise.race([flow(), new Promise<"waited">((resolve) => setTimeout(() => resolve("waited"), 300))]);
+
+    expect(second).not.toBe("waited");
+    expect(ids((second as ApprovalsFlow).flow.order)).toEqual([GATE]);
+    releases.forEach((release) => release());
+  });
+
   it("is registered as a read command and wired to the factory by createSources", () => {
     const wired = createSources(resolveConfig({}, root));
 
