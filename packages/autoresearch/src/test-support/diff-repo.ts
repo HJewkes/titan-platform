@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { seedRepo } from "@titan-design/test-kit/git";
 import { parseUnifiedDiff, type DiffFile } from "../diff.js";
 import { git, SEED_FILES, writeFiles } from "./fake-ports.js";
 
@@ -17,14 +18,11 @@ interface RealDiff {
   at(rev: "base" | "head", path: string): string;
 }
 
-/** Two commits in a fresh repo seeded with `SEED_FILES`, and the diff a host's L0 port would read between them. */
+/** Two commits in a copy of the `SEED_FILES` template repo, and the diff a host's L0 port would read between them. */
 export async function realDiff(change: Change): Promise<RealDiff> {
   const dir = mkdtempSync(join(tmpdir(), "ar-diff-"));
   try {
-    await git(dir, "init", "--quiet", "-b", "main");
-    writeFiles(dir, SEED_FILES);
-    await git(dir, "add", "--all");
-    await git(dir, "commit", "--quiet", "-m", "base");
+    seedRepo(dir, SEED_FILES);
     for (const [from, to] of Object.entries(change.rename ?? {})) await git(dir, "mv", from, to);
     for (const [path, text] of Object.entries(change.write ?? {})) {
       if (text === null) rmSync(join(dir, path));
