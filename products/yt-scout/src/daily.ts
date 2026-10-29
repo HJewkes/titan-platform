@@ -15,6 +15,7 @@ export interface DailyCard {
   title: string;
   sourceName: string;
   durationMinutes: number | null;
+  partial: boolean;
   actionable: number;
   novelty: number;
   evidence: number;
@@ -129,7 +130,7 @@ async function filesCasesFromAnswer(deps: DailyDeps, yesterday: string): Promise
       step: "score",
       video_id: id,
       label: verdict,
-      inputs: { transcript_path: card.transcriptPath, transcript_sha256: card.inputSha },
+      inputs: { transcript_path: card.transcriptPath, transcript_sha256: card.inputSha, title: card.title, partial: card.partial },
       prompt_sha: card.prompt_sha,
       model: card.model,
       output: { actionable: card.actionable, novelty: card.novelty, evidence: card.evidence, total: card.total, summary: card.summary },
