@@ -67,6 +67,15 @@ export {
   type ServiceAnswer,
 } from "./ask.js";
 export {
+  PrefixLintError,
+  lintPrefixSections,
+  stablePrefix,
+  type PrefixSection,
+  type PrefixViolation,
+  type StablePrefix,
+  type StablePrefixOptions,
+} from "./prefix/stable-prefix.js";
+export {
   BOOT_PACKET_BUDGET,
   DEFAULT_BOOT_PRIORITY,
   bootPacket,
