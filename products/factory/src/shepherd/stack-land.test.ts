@@ -1,10 +1,10 @@
-import { execFile, execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
+import { fixtureEnv, gitIn, seedRepoWithOrigin } from "@titan-design/test-kit/git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TEST_GIT_ENV } from "./git-test-env.test-helpers.js";
 import { configuredStackRestack, restackChild, stackChildren, type ChildWake, type RestackInput, type StackLandDeps } from "./stack-land.js";
 import type { Git } from "./tree-carry.js";
 
@@ -18,7 +18,7 @@ let root: string;
 let origin: string;
 let work: string;
 
-const run = (cwd: string, args: string[]): string => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", env: TEST_GIT_ENV, stdio: ["ignore", "pipe", "pipe"] }).trim();
+const run = (cwd: string, args: string[]): string => gitIn(cwd)(...args);
 const git = (...args: string[]): string => run(work, args);
 const originRef = (ref: string): string => run(origin, ["rev-parse", ref]);
 
@@ -36,7 +36,7 @@ function recordingGit(seen: string[][], beforePush?: () => void): Git {
     seen.push([...args]);
     if (args[0] === "push") beforePush?.();
     return new Promise((resolve) => {
-      execFile("git", ["--git-dir", gitDir, ...args], { encoding: "utf8", env: TEST_GIT_ENV }, (error, stdout, stderr) => {
+      execFile("git", ["--git-dir", gitDir, ...args], { encoding: "utf8", env: fixtureEnv() }, (error, stdout, stderr) => {
         resolve({ code: error ? (typeof error.code === "number" ? error.code : 128) : 0, stdout, stderr });
       });
     });
@@ -102,22 +102,15 @@ function buildStack(options: StackOptions = {}): Stack {
 
 const roots: string[] = [];
 
-/** A fresh origin seeded with one main commit, refusing non-fast-forward pushes, and a working clone of it. */
+/** A fresh origin seeded with one main commit, refusing non-fast-forward pushes, and a working repository with it as origin. */
 function freshRepo(): void {
   root = mkdtempSync(join(tmpdir(), "stack-land-"));
   roots.push(root);
-  const seed = join(root, "seed");
   origin = join(root, "origin.git");
   work = join(root, "work");
-  mkdirSync(seed);
-  run(seed, ["init", "-q", "--initial-branch=main"]);
-  writeFileSync(join(seed, "base.txt"), lines("base"));
-  run(seed, ["add", "base.txt"]);
-  run(seed, ["commit", "-q", "-m", "main base"]);
-  run(root, ["clone", "-q", "--bare", seed, origin]);
+  seedRepoWithOrigin(work, origin, { "base.txt": lines("base") });
   run(origin, ["config", "receive.denyNonFastForwards", "true"]);
   run(origin, ["config", "uploadpack.allowAnySHA1InWant", "true"]);
-  run(root, ["clone", "-q", origin, work]);
 }
 
 beforeEach(freshRepo);
