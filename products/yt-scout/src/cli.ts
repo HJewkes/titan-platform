@@ -1,8 +1,12 @@
+import os from "node:os";
 import { Command, CommanderError } from "commander";
 import { isOnTrial, type Watchlist } from "./config.js";
 import { configPath, dbPath, ytRoot } from "./paths.js";
 import { formatSeenImport, importSeen } from "./seen-import.js";
+import { sqliteBreaker } from "./breaker.js";
 import { openScoutDb } from "./store.js";
+import { execRunner } from "./transcribe.js";
+import { runTranscribeQueue } from "./transcribe-queue.js";
 import { loadWatchlist, WatchlistError } from "./watchlist.js";
 
 type Write = (line: string) => void;
@@ -51,10 +55,37 @@ function addSeenCommand(program: Command, write: Write): void {
     });
 }
 
+function addTranscribeCommand(program: Command, write: Write): void {
+  program
+    .command("transcribe")
+    .description("Transcribe the due new videos, one at a time")
+    .option("--root <dir>", "youtube sources tree (default: $YT_ROOT, else the youtube initiative's sources)")
+    .option("--db <file>", "scout database (default: $TITAN_YT_SCOUT_DB, else ~/.local/state/titan-yt-scout/scout.sqlite3)")
+    .action(async (opts: { root?: string; db?: string }) => {
+      const db = openScoutDb(opts.db ?? dbPath());
+      try {
+        const report = await runTranscribeQueue(db, {
+          ytRoot: opts.root ?? ytRoot(),
+          runner: execRunner,
+          now: () => new Date(),
+          load5: () => os.loadavg()[1]!,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          random: Math.random,
+          breaker: sqliteBreaker(db),
+        });
+        write(`transcribed ${report.transcribed.length}, rescheduled ${report.rescheduled.length}, failed ${report.failed.length}, whisper refused ${report.whisperRefused.length}`);
+        if (report.breakerOpen) write("circuit breaker open: no more subtitle pulls this run");
+      } finally {
+        db.close();
+      }
+    });
+}
+
 export async function runCli(argv: string[], write: Write = console.log, writeErr: Write = console.error): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);
   addSeenCommand(program, write);
+  addTranscribeCommand(program, write);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;
