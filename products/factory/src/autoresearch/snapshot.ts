@@ -137,6 +137,25 @@ async function pushCreateOnly(git: DatedGit, tree: string, { tag, branch, sha, l
   throw failure;
 }
 
+/**
+ * A cut whose push landed but whose PR never opened is retried under a new `at`, so its log commit differs. It may
+ * converge only when the remote tag already names this sha and the remote branch's first parent is that tag; then
+ * nothing is pushed. A tag anywhere else, or a branch off another commit, stays refused.
+ */
+async function pushedBefore(git: DatedGit, cut: CutSnapshot, { tag, branch }: SnapshotRefs): Promise<string | undefined> {
+  const tagged = await remoteHead(git, cut.tree, tag);
+  if (tagged === "") return undefined;
+  if (tagged !== cut.sha) throw new Error(`[snapshot-exists] ${tag} is at ${tagged}, not ${cut.sha}`);
+  const head = await remoteHead(git, cut.tree, branch);
+  if (head === "") return undefined;
+  await git(["fetch", "--quiet", "origin", branch], cut.tree).catch((error: unknown) => {
+    throw new Error(`[pin-fetch] git fetch origin ${branch} failed in ${cut.tree}: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  const parent = await git(["rev-parse", "--verify", "--quiet", `${head}^1`], cut.tree).catch(() => "");
+  if (parent !== cut.sha) throw new Error(`[snapshot-exists] ${branch} is at ${head}, whose first parent is not ${cut.sha}`);
+  return head;
+}
+
 /** Tags a kept ratchet sha and pushes a branch one log commit past it, for the snapshot PR's head. */
 export async function cutSnapshot(git: DatedGit, cut: CutSnapshot): Promise<Cut> {
   const refs = snapshotRefs(cut);
@@ -144,6 +163,8 @@ export async function cutSnapshot(git: DatedGit, cut: CutSnapshot): Promise<Cut>
   if (Number.isNaN(Date.parse(cut.at))) throw new Error(`[snapshot-at] ${cut.at} cannot date the log commit`);
   const logPath = logPathOf(cut);
   await assertOnRatchet(git, cut);
+  const pushed = await pushedBefore(git, cut, refs);
+  if (pushed !== undefined) return { ...refs, sha: cut.sha, logSha: pushed };
   const logSha = await logCommit(git, cut, logPath);
   await refuseFrozenLog(git, cut, logSha);
   const done = { ...refs, sha: cut.sha, logSha };

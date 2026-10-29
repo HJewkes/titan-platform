@@ -12,6 +12,8 @@ const AT = "2026-10-21T00:00:00Z";
 const PREFIX = "autoresearch/fixture";
 const RATCHET = `refs/heads/${PREFIX}/run-1`;
 const REPO = "fixture-owner/fixture-repo";
+/** Not `main`, so the fixture's own pushes to its default branch never look like a write to a real main. */
+const DEFAULT = "trunk";
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
@@ -38,7 +40,7 @@ async function fixture(onMain: Record<string, string> = { "other.txt": "unrelate
   roots.push(root);
   const [bare, work] = [join(root, "origin.git"), join(root, "work")];
   mkdirSync(work);
-  await git(work, "init", "--quiet", "-b", "main");
+  await git(work, "init", "--quiet", "-b", DEFAULT);
   writeFileSync(join(work, "src.txt"), "pin\n");
   await git(work, "add", "--all");
   await git(work, "commit", "--quiet", "-m", "pin");
@@ -49,10 +51,10 @@ async function fixture(onMain: Record<string, string> = { "other.txt": "unrelate
   await pushTo(work, kept, RATCHET);
   const squash = await commitOn(work, pin, { "src.txt": "kept\n", "ar-log/run-1/m1.md": "kept: i-a1\n" });
   const main = Object.keys(onMain).length === 0 ? squash : await commitOn(work, squash, onMain);
-  await pushTo(work, main, "refs/heads/main");
+  await pushTo(work, main, `refs/heads/${DEFAULT}`);
   const fake = fakeGitHub({ repo: REPO });
   const pr = fake.addPr({ state: "closed", merged: true, headRef: `${PREFIX}-snap/run-1/m1`, headSha: main });
-  const input = { repo: REPO, pr: pr.number, tree: work, head: kept, ratchetRef: RATCHET, ratchetPrefix: PREFIX, defaultBranch: "main", frozen: ["eval/**"], logDir: "ar-log", at: AT };
+  const input = { repo: REPO, pr: pr.number, tree: work, head: kept, ratchetRef: RATCHET, ratchetPrefix: PREFIX, defaultBranch: DEFAULT, frozen: ["eval/**"], logDir: "ar-log", at: AT };
   return { bare, work, kept, main, fake, port: githubPort(fake.wire), input };
 }
 
@@ -69,7 +71,7 @@ describe("syncing the ratchet after its snapshot PR merges", () => {
     expect(result).toEqual({ state: "merged", merged: { from: kept, to, main }, treeChanged: true });
     expect(await parentsOf(bare, to)).toEqual([kept, main]);
     const next = await commitOn(work, to, { "next.txt": "next idea\n" });
-    const base = await git(work, "merge-base", "refs/remotes/origin/main", next);
+    const base = await git(work, "merge-base", `refs/remotes/origin/${DEFAULT}`, next);
     expect(await git(work, "diff", "--name-only", base, next)).toBe("next.txt");
   });
 
@@ -130,8 +132,32 @@ describe("a sync the loop must hold at its gate", () => {
 
     const result = await syncRatchet(execDatedGit, port, { ...input, resolved });
 
-    expect(result).toEqual({ state: "merged", merged: { from: kept, to: resolved, main }, treeChanged: true });
+    expect(result).toEqual({ state: "merged", merged: { from: kept, to: resolved, main }, treeChanged: true, allowedFrozen: [] });
     expect(await remoteRatchet(bare)).toBe(resolved);
+  });
+
+  it("takes a resolved commit that changes exactly the frozen paths the gate showed, and records them", async () => {
+    const { bare, work, kept, main, port, input } = await fixture({ "eval/score.sh": "exit 0\n" });
+    await git(work, "checkout", "--quiet", "--detach", kept);
+    await git(work, "merge", "--quiet", "--no-ff", "-m", "resolve", main);
+    const resolved = await git(work, "rev-parse", "HEAD");
+
+    const result = await syncRatchet(execDatedGit, port, { ...input, resolved, allowedFrozen: ["eval/score.sh"] });
+
+    expect(result).toMatchObject({ state: "merged", merged: { to: resolved }, allowedFrozen: ["eval/score.sh"] });
+    expect(await remoteRatchet(bare)).toBe(resolved);
+  });
+
+  it("refuses a resolved commit that adds a frozen path the gate did not show, and pushes nothing", async () => {
+    const { bare, work, kept, main, port, input } = await fixture({ "eval/score.sh": "exit 0\n" });
+    await git(work, "checkout", "--quiet", "--detach", kept);
+    await git(work, "merge", "--quiet", "--no-ff", "-m", "resolve", main);
+    const resolved = await commitOn(work, await git(work, "rev-parse", "HEAD"), { "eval/judge.sh": "exit 0\n" });
+    const before = await git(bare, "for-each-ref", "--format=%(refname) %(objectname)");
+
+    await expect(syncRatchet(execDatedGit, port, { ...input, resolved, allowedFrozen: ["eval/score.sh"] })).rejects.toThrow("[sync-frozen] ");
+    await expect(syncRatchet(execDatedGit, port, { ...input, resolved })).rejects.toThrow("eval/judge.sh, eval/score.sh");
+    expect(await git(bare, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(before);
   });
 
   it("refuses a resolved commit that lacks main's tip, or the ratchet head, and pushes nothing", async () => {

@@ -36,6 +36,24 @@ function moveOf(step: RoutedStepInput, input: unknown) {
   return { move: { run: step.runId, round, idea: ideaId, from, to, kind, keepRung, delta, sigma, runDigests, pin } };
 }
 
+const SyncMoved = z.object({ merged: z.object({ from: z.string(), to: z.string(), main: z.string() }), allowedFrozen: z.array(z.string()).optional() });
+
+/** A sync that moved the ratchet is a ratchet move like any other, so its record is `autoresearch.ratchet` of kind `sync`. */
+function syncMoveOf(step: RoutedStepInput, input: unknown, result: object) {
+  const moved = SyncMoved.safeParse(result);
+  if (!moved.success) return undefined;
+  const { round, pr, pin, resolved } = z.record(z.string(), z.unknown()).parse(input);
+  const { from, to, main } = moved.data.merged;
+  return { move: { run: step.runId, round, from, to, kind: "sync", pr, main, resolved, allowedFrozen: moved.data.allowedFrozen, pin } };
+}
+
+/** The evidence kind and the move a step's record carries beside its result. */
+function recordOf(name: string, step: RoutedStepInput, input: unknown, result: object): { kind: string; extra: object } {
+  if (name === "ratchet") return { kind: name, extra: moveOf(step, input) };
+  const synced = name === "sync" ? syncMoveOf(step, input, result) : undefined;
+  return synced ? { kind: "ratchet", extra: synced } : { kind: name, extra: {} };
+}
+
 type HandlersFor = (runId: string) => { ports: ArPorts; byName: ReadonlyMap<string, ArStepHandler> };
 
 /** Each route reads its input as JSON and answers under `result`, wrapped as factory evidence. */
@@ -46,8 +64,9 @@ function arRoute({ name, onRestart }: ArStepHandler, handlersFor: HandlersFor): 
       const handler = byName.get(name)!;
       const input: unknown = JSON.parse(step.prompt);
       const result = await handler.run(input, step.signal, { firstStartedAt: step.firstStartedAt });
-      const body = { startedAt: step.firstStartedAt, restarts: step.restarts, result, ...(handler.name === "ratchet" ? moveOf(step, input) : {}) };
-      const output = JSON.stringify(evidenceRecord(`autoresearch.${handler.name}`, step, new Date(ports.now()).toISOString(), body));
+      const { kind, extra } = recordOf(handler.name, step, input, result);
+      const body = { startedAt: step.firstStartedAt, restarts: step.restarts, result, ...extra };
+      const output = JSON.stringify(evidenceRecord(`autoresearch.${kind}`, step, new Date(ports.now()).toISOString(), body));
       const usage = usageOf(result);
       return { ok: true as const, output, ...(usage ? { usage } : {}) };
     } catch (error) {
