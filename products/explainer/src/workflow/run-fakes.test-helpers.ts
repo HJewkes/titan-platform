@@ -286,7 +286,7 @@ export function fakeHost(fx: Fixture, model: FakeScriptModel, render: FakeRender
   return { dataDir: fx.dataDir, ...seams, ...extra, rewriter, rubric };
 }
 
-export interface SeededRun {
+interface SeededRun {
   /** The seed's own fixture: read it, never run in it; `cloneFixture` gives a test its own copy. */
   fx: Fixture;
   model: FakeScriptModel;
