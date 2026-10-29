@@ -31,13 +31,17 @@ const ResultSchema = z.object({
 
 type Result = z.infer<typeof ResultSchema>;
 
+function isMissing(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && err.code === 'ENOENT';
+}
+
 async function listSlugs(): Promise<string[]> {
   const root = getActiveRoot();
   let entries: Dirent[];
   try {
     entries = await fs.readdir(root, { withFileTypes: true });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    if (isMissing(err)) return [];
     throw err;
   }
   return entries.filter((e) => e.isDirectory()).map((e) => e.name);
@@ -69,7 +73,7 @@ async function listTaskFiles(slug: string): Promise<SlugListing> {
     const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.yml'));
     return { slug, dir, files };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    if (!isMissing(err)) throw err;
     parsedByDir.delete(dir);
     return { slug, dir, files: [] };
   }
@@ -83,7 +87,7 @@ async function loadCachedTask(
   try {
     stat = await fs.stat(filePath);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    if (isMissing(err)) return undefined;
     throw err;
   }
   const { mtimeMs, size, ino } = stat;
@@ -105,7 +109,7 @@ async function loadListing(
   const tasks: TaskWithSlug[] = [];
   entries.forEach((entry, i) => {
     if (!entry) return;
-    current.set(listing.files[i]!, entry);
+    current.set(listing.files[i], entry);
     if (keep(entry.task)) tasks.push({ ...entry.task, slug: listing.slug });
   });
   parsedByDir.set(listing.dir, current);

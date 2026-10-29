@@ -1,25 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as YamlIo from '../../src/utils/yaml-io.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import taskList from '../../src/commands/task-list.js';
 import type { CommandContext } from '../../src/registry/index.js';
 import { withTempActiveRoot } from '../setup/test-helpers.js';
 
-const parsedFiles = vi.hoisted(() => [] as string[]);
-
-vi.mock('../../src/utils/yaml-io.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof YamlIo>();
-  return {
-    ...actual,
-    readYaml: (...args: Parameters<typeof actual.readYaml>) => {
-      parsedFiles.push(path.basename(args[0]));
-      return actual.readYaml(...args);
-    },
-  };
-});
-
 const SLUG = 'sample-initiative';
+
+// Every parse starts with a read of the file, so task-file reads count parses.
+const parsedFiles: string[] = [];
 
 function ctx(activeRoot: string): CommandContext {
   return { activeRoot, warnings: [], format: 'json' };
@@ -38,6 +27,15 @@ async function retitle(root: string, id: string, title: string): Promise<void> {
 describe('task.list parse cache', () => {
   beforeEach(() => {
     parsedFiles.length = 0;
+    const readFile = fs.readFile.bind(fs);
+    vi.spyOn(fs, 'readFile').mockImplementation((file, options) => {
+      if (String(file).endsWith('.yml')) parsedFiles.push(path.basename(String(file)));
+      return readFile(file, options);
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('an unchanged task file is not parsed again', async () => {
@@ -55,8 +53,8 @@ describe('task.list parse cache', () => {
   it('an edited task file is re-read', async () => {
     await withTempActiveRoot(async (root) => {
       await listAll(root);
-      parsedFiles.length = 0;
       await retitle(root, 'SI-1', 'A retitled sample task');
+      parsedFiles.length = 0;
 
       const { tasks } = await listAll(root);
 

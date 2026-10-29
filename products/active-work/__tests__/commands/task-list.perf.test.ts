@@ -1,25 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as YamlIo from '../../src/utils/yaml-io.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import taskList from '../../src/commands/task-list.js';
 import type { CommandContext } from '../../src/registry/index.js';
 import { mapConcurrent } from '../../src/utils/map-concurrent.js';
 import { withEmptyActiveRoot } from '../setup/test-helpers.js';
 
-const parseCount = vi.hoisted(() => ({ value: 0 }));
-
-vi.mock('../../src/utils/yaml-io.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof YamlIo>();
-  return {
-    ...actual,
-    readYaml: (...args: Parameters<typeof actual.readYaml>) => {
-      parseCount.value += 1;
-      return actual.readYaml(...args);
-    },
-  };
-});
+// Every parse starts with a read of the file, so task-file reads count parses.
+const parseCount = { value: 0 };
 
 const INITIATIVES = 45;
 const TASKS_PER_INITIATIVE = 200;
@@ -70,6 +59,15 @@ function median(samples: number[]): number {
 describe('task.list on 9,000 synthetic tasks', () => {
   beforeEach(() => {
     parseCount.value = 0;
+    const readFile = fs.readFile.bind(fs);
+    vi.spyOn(fs, 'readFile').mockImplementation((file, options) => {
+      if (String(file).endsWith('.yml')) parseCount.value += 1;
+      return readFile(file, options);
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('a warm list of 9,000 tasks parses no file', async () => {
