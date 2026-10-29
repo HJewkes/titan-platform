@@ -11,7 +11,7 @@ import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
-import { actionFor, DIVERGED_HOLD, inboxItems, type InboxItem, type InboxView, type WatchRow } from "./inbox-view.js";
+import { actionFor, DIVERGED_HOLD, inboxItems, type InboxView, type WatchRow } from "./inbox-view.js";
 import { closedPort, send, startFakeBroker, startFakeDaemon, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
 const REPO = "example/repo";
@@ -173,9 +173,9 @@ const fixtureFactory: RpcAnswer = (command) => {
 
 const okEnvelope = z.object({ ok: z.literal(true), data: z.custom<InboxView>() });
 
-async function listInbox(factoryPort: number): Promise<InboxView> {
+async function listInbox(factoryPort: number, args: { planning?: boolean } = { planning: true }): Promise<InboxView> {
   handle = await startConsoleDaemon({ config: config(factoryPort), logger: silentLogger });
-  const reply = await send("127.0.0.1", handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, "{}");
+  const reply = await send("127.0.0.1", handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, JSON.stringify(args));
   return okEnvelope.parse(JSON.parse(reply.body)).data;
 }
 
@@ -184,7 +184,7 @@ async function serveFactory(rpc: RpcAnswer): Promise<number> {
   return factory.port;
 }
 
-const byId = (list: InboxView, id: string): InboxItem | undefined => list.items.find((each) => each.id === id);
+const byId = (list: InboxView, id: string): InboxView["items"][number] | undefined => list.items.find((each) => each.id === id);
 
 describe("inbox.list on a fixture factory", () => {
   it("returns every source kind with its action, blocking first and newest first", async () => {
@@ -210,6 +210,30 @@ describe("inbox.list on a fixture factory", () => {
     expect(byId(list, `gate:${RUN_GONE}/approve-merge`)?.action).toMatchObject({ command: `titan-factory gate resolve ${RUN_GONE} approve-merge --json '<payload>'` });
     expect(byId(list, "task:EX-9")).toMatchObject({ evidence: "#/tasks/EX-9", action: { route: "#/tasks/EX-9" } });
     expect(byId(list, "round:ship-r1/ship")).toMatchObject({ evidence: "#/rounds/ship-r1", action: { roundId: "ship-r1" } });
+  });
+
+  it("counts the planning items in the default view and lists only the blocking ones", async () => {
+    await writeShipRound("ship-r1", new Date("2026-10-10T01:00:00.000Z"));
+
+    const list = await listInbox(await serveFactory(fixtureFactory), {});
+
+    expect(list.planningCount).toBe(3);
+    expect(list.items.map((each) => each.section)).not.toContain("planning");
+    expect(list.items.map((each) => each.id)).toContain("round:ship-r1/ship");
+  });
+
+  it("serves a second read inside the fresh window from the factory read it kept", async () => {
+    let needsReads = 0;
+    const counted: RpcAnswer = (command, args) => {
+      if (command === "needs.list") needsReads += 1;
+      return fixtureFactory(command, args);
+    };
+    await listInbox(await serveFactory(counted));
+
+    const reply = await send("127.0.0.1", handle!.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${handle!.port}`, "content-type": "application/json", "x-titan-client": "test" }, "{}");
+
+    expect(okEnvelope.parse(JSON.parse(reply.body)).data.gaps).toEqual([]);
+    expect(needsReads).toBe(1);
   });
 
   it("joins each gate on a live PR to its gate strip at that head", async () => {
@@ -429,12 +453,29 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(op), undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
   });
 
-  it("maps a gate op onto the live row's resolve, at the row's head", () => {
+  it("offers the gate's own tap, never the agent-written refusal, while the gate is open at the deposit's head", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
+
+    const [listed] = inboxItems([deposited(op)], [row(RUN_PLAIN, 1)]);
+
+    expect(listed!.action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, runId: RUN_PLAIN, stepId: "approve-merge", repo: REPO, pr: 1, headSha: HEAD, decision: "merge" });
+  });
+
+  it("offers no tap once the live row's head moved past the deposit's head, and names both heads", () => {
     const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: "f".repeat(40), decision: "merge" } as const;
 
     const [listed] = inboxItems([deposited(op)], [row(RUN_PLAIN, 1)]);
 
-    expect(listed!.action).toMatchObject({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, pr: 1, headSha: HEAD });
+    expect(listed!.action).toEqual({ kind: "terminal", reason: `this deposit asks at ffffffff, but the gate now pins ${HEAD.slice(0, 8)}; answer the gate's own item at that head` });
+  });
+
+  it("offers no tap once the gate is answered and the row waits on another step", () => {
+    const op = { kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
+    const answered = { ...row(RUN_PLAIN, 1), pendingGate: { gateId: `${RUN_PLAIN}/sh-sent-back`, stepId: "sh-sent-back", since: "2026-10-10T00:00:00.000Z" } };
+
+    const [listed] = inboxItems([deposited(op)], [answered]);
+
+    expect(listed!.action).toEqual({ kind: "terminal", reason: `gate ${RUN_PLAIN}/approve-merge is no longer open on ${REPO}#1; withdraw this deposit` });
   });
 
   it("maps a hold op onto the live row's release only when the row is held in that class", () => {

@@ -38,7 +38,7 @@ Before adding code:
 | [`test-kit`](#cap-test-kit) | 0 | A test needs a value of an interface type but the code under test reads only a few of its fields: `partialFake<T>({ ... })` builds it without an `as unknown as T` double cast. |
 | [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. |
-| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. |
+| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
@@ -164,6 +164,8 @@ HarnessExecutionPort adds an open generic execution service with profile/account
 HarnessPricingPort describes an event-time quote with optional readonly normalized cache-write TTL context: reported cost, a source-provided existing estimate, a dated/versioned catalog estimate with matching/accounting policy references, or explicit unpriced reason. It supplies no arithmetic, catalog or provider adapter.
 
 For shared dated pricing and cost arithmetic, import `./pricing`; its existing Claude TTL/long-prompt and Codex inclusive-token accounting engines preserve compatibility entrypoints without native account reads or stored-cost rewrites.
+
+For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames and the records they carry, import `./wire`.
 
 Key exports:
 
@@ -562,7 +564,7 @@ Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents
 
 **Use this when:**
 
-Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves. Its `./routing` subpath holds the workflow table that picks an implementer profile (lite or full) from a task's estimate, tags and owned files.
+Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves. Its `./routing` subpath holds the workflow table that picks an implementer profile (lite or full) from a task's estimate, tags and owned files.
 
 Key exports:
 
@@ -643,7 +645,7 @@ Key exports:
 
 - `protocol`: `TITAN_MOTION_GLOBAL`, `TitanMotionApi`
 - `virtual-time`: `VIRTUAL_TIME_SCRIPT`, `VirtualTimeApi`
-- `capture`: `captureFrame`, `launch`, `openCapturePage`, `settleFonts`, `CapturePage`
+- `capture`: `captureFrame`, `FontLoadError`, `launch`, `openCapturePage`, `settleFonts`
 - `frames`: `captureFrames`
 - `encode`: `mixAudio`, `startEncoder`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/frame-capture)

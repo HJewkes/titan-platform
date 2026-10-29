@@ -36,6 +36,7 @@ const DETAIL: TaskDetail = {
   fetchedAt: "2031-03-05T00:00:00.000Z",
   task: { ...TASKS.tasks[0]!, notes: "Backoff caps at thirty seconds.", doneWhen: "A dropped handshake retries with backoff." },
   mentions: [{ slug: "orbit-relay", source: "task", file: "tasks/OR-7.yml", field: "notes", text: "Follows OR-1" }],
+  mentionsDegraded: null,
   artifacts: {
     branches: [{ repo: "orbit", name: "pc-or-1-retry", present: true, pr: { number: 41, state: "OPEN", title: "OR-1: Retry", url: "https://example.invalid/41", checks: "pass (3/3)" } }],
     worktrees: [],
