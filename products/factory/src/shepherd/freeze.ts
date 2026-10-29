@@ -4,7 +4,7 @@ import { z } from "zod";
 import { consoleTextOf } from "./error-class.js";
 import { appendEvent, SHEPHERD_ACTOR } from "./events.js";
 import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
-import { episodeRecords, type EpisodeRecords } from "./freeze-episode.js";
+import { EPISODE_OPENED, episodeRecords, type EpisodeRecords } from "./freeze-episode.js";
 import { repoFreezes, type RepoFreezes } from "./repo-freeze.js";
 
 export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
@@ -131,16 +131,21 @@ export class FreezeStore {
          ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only, fix_pr = NULL, fix_pr_actor = NULL`,
       )
       .run(repoKey(repo), redSha, at, (row?.episode ?? 0) + 1, flag);
-    appendEvent(this.db, { repo, kind: "freeze", at, actor: SHEPHERD_ACTOR, headSha: redSha, reason: cancelOnly ? "main red from cancelled runs only" : "main red" });
+    appendEvent(this.db, { repo, kind: "freeze", at, actor: SHEPHERD_ACTOR, headSha: redSha, reason: cancelOnly ? EPISODE_OPENED.cancelOnly : EPISODE_OPENED.red });
   }
 
   /** False when `episode` is no longer the live one, so a late step never writes into a later episode. */
   setFixTask(repo: RepoSlug, episode: number, id: string): boolean {
-    return this.setField(repo, episode, "fix_task", id);
+    return this.db.prepare("UPDATE shepherd_freeze SET fix_task = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL").run(id, repoKey(repo), episode).changes > 0;
   }
 
+  /**
+   * The first fixer recorded wins, as in `linkFix`: concurrent spawns for one episode must not move its exemption off the
+   * fixer whose PR is already open. True when the live episode now names `name`.
+   */
   setFixer(repo: RepoSlug, episode: number, name: string): boolean {
-    return this.setField(repo, episode, "fixer", name);
+    this.db.prepare("UPDATE shepherd_freeze SET fixer = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL AND fixer IS NULL").run(name, repoKey(repo), episode);
+    return this.live(repo, episode)?.fixer === name;
   }
 
   /** Marks `pr` as live `episode`'s fix, once per episode, and records the mark as a freeze event naming `actor`. */
@@ -200,10 +205,6 @@ export class FreezeStore {
     })();
     if (thawed) notifyThaw(this.onThaw, repo);
     return thawed;
-  }
-
-  private setField(repo: RepoSlug, episode: number, column: "fix_task" | "fixer", value: string): boolean {
-    return this.db.prepare(`UPDATE shepherd_freeze SET ${column} = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL`).run(value, repoKey(repo), episode).changes > 0;
   }
 
   private row(repo: RepoSlug): Row | undefined {
