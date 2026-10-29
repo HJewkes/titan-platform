@@ -9,7 +9,7 @@ import { ReviewerBrokerBusy } from "./review.js";
 import { DEFAULT_BUSY_WAIT_MS, ReviewerMachineHold, ReviewerSpawnQueued, ReviewerStillBusy, whileBrokerBusy } from "./review-wait.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import type { RosterReader } from "./roster.js";
-import { REVIEW_STALE_MS, type ReviewAsk } from "./review-queue.js";
+import { movedPastOnList, REVIEW_STALE_MS, type ReviewAsk } from "./review-queue.js";
 import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
 import { implementersOver } from "./wake.js";
 
@@ -361,6 +361,24 @@ describe("every factory-started agent passes the one gate", () => {
 
     expect(ran()).toBe(true);
     expect(waits).toEqual(["held by the machine stop: ReviewerSpawnQueued; asking again in 1 min"]);
+  });
+
+  it("keeps a queued resume of a reviewer first spawned at an older head when another review asks after its PR moved on", async () => {
+    mkdirSync(join(dir, "co"));
+    const state = { load5: 2, now: 100_000, lines: [] as string[], list: { at: 0, prs: [{ number: 7, headSha: "a".repeat(40) }] } };
+    const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log: (line) => void state.lines.push(line), movedPast: movedPastOnList(() => state.list) });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
+    await dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) });
+    state.load5 = 40;
+    state.now += ROUND_MS;
+    await expect(dispatch.resume("rv-octo-demo-7", "review the fix")).rejects.toBeInstanceOf(ReviewerBrokerBusy);
+
+    state.list = { at: state.now + 1, prs: [{ number: 7, headSha: "b".repeat(40) }, { number: 8, headSha: "a".repeat(40) }] };
+    state.now += 2;
+    await dispatch.spawn("rv-octo-demo-8", "brief", { repo: "octo/demo", pr: 8, head: "a".repeat(40) }).catch(() => undefined);
+
+    expect(state.lines.filter((line) => line.includes("dropped"))).toEqual([]);
+    expect(state.lines.at(-1)).toContain("rv-octo-demo-7");
   });
 
   it("starts the reviewer with the older recorded intent first though the newer asked first, and re-asks a minute later", async () => {
