@@ -1,6 +1,6 @@
 import { Command, CommanderError } from "commander";
 import { isOnTrial, type Watchlist } from "./config.js";
-import { createDetector, detectNew, formatDetected, insertNew, realDeps, type DetectDeps } from "./detect.js";
+import { createDetector, detectNew, formatDetected, insertNew, realDeps, resolveYtDlp, type DetectDeps } from "./detect.js";
 import { configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
 import { appendRows, type StepRow } from "./rows.js";
 import { formatSeenImport, importSeen } from "./seen-import.js";
@@ -8,6 +8,7 @@ import { openScoutDb } from "./store.js";
 import { loadWatchlist, WatchlistError } from "./watchlist.js";
 
 type Write = (line: string) => void;
+type MakeDeps = (onRow: DetectDeps["onRow"], ytDlpBin: string) => DetectDeps;
 
 /** Exit code for a watch list that fails to parse or validate. */
 export const EXIT_CONFIG = 1;
@@ -53,7 +54,7 @@ function addSeenCommand(program: Command, write: Write): void {
     });
 }
 
-function addDetectCommand(program: Command, write: Write, makeDeps: (onRow: DetectDeps["onRow"]) => DetectDeps): void {
+function addDetectCommand(program: Command, write: Write, makeDeps: MakeDeps): void {
   program
     .command("detect")
     .description("Poll the watch list and list ids not yet in the videos table")
@@ -66,7 +67,7 @@ function addDetectCommand(program: Command, write: Write, makeDeps: (onRow: Dete
       const db = openScoutDb(opts.db ?? dbPath());
       try {
         const rows: StepRow[] = [];
-        const detector = createDetector(makeDeps((row) => rows.push(row)), watchlist.defaults.tabs);
+        const detector = createDetector(makeDeps((row) => rows.push(row), resolveYtDlp(watchlist.yt_dlp)), watchlist.defaults.tabs);
         const now = new Date();
         const found = await detectNew(db, watchlist, detector, now);
         appendRows(opts.rowsDir ?? rowsDir(), rows);
@@ -83,7 +84,7 @@ export async function runCli(
   argv: string[],
   write: Write = console.log,
   writeErr: Write = console.error,
-  makeDeps: (onRow: DetectDeps["onRow"]) => DetectDeps = realDeps,
+  makeDeps: MakeDeps = realDeps,
 ): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);

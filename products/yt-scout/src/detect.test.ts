@@ -1,9 +1,9 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { chmodSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseAtom } from "./atom.js";
 import { runCli } from "./cli.js";
-import { createDetector, detectNew, type DetectDeps } from "./detect.js";
+import { createDetector, detectNew, resolveYtDlp, type DetectDeps } from "./detect.js";
 import { tempTree, VALID_WATCHLIST, type TempTree } from "./fixtures.test-helpers.js";
 import { parseFlatListing } from "./flat-listing.js";
 import { parseWatchlist } from "./watchlist.js";
@@ -136,7 +136,7 @@ describe("titan-yt-scout detect --dry-run", () => {
     const out: string[] = [];
     const db = path.join(tree.root, "s.sqlite3");
     const rowsDirPath = path.join(tree.root, "rows");
-    const mk = (onRow: DetectDeps["onRow"]) => fakeDeps({ onRow, fetchText: async () => ({ status: 404, text: "" }) });
+    const mk = (onRow: DetectDeps["onRow"], _bin?: string) => fakeDeps({ onRow, fetchText: async () => ({ status: 404, text: "" }) });
 
     const code = await runCli(["detect", "--dry-run", "--config", path.join(tree.root, "w.yml"), "--db", db, "--rows-dir", rowsDirPath], (l) => out.push(l), () => {}, mk);
 
@@ -147,5 +147,31 @@ describe("titan-yt-scout detect --dry-run", () => {
     const lines = readFileSync(path.join(rowsDirPath, file), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(lines.map((l) => l.outcome)).toEqual(["fallback", "fallback"]);
     expect(openScoutDb(db).prepare("SELECT COUNT(*) AS n FROM videos").get()).toEqual({ n: 0 });
+  });
+});
+
+describe("yt-dlp binary", () => {
+  let tree: TempTree;
+  beforeEach(() => (tree = tempTree()));
+  afterEach(() => tree.cleanup());
+
+  it("prefers the configured path over YT_DLP over PATH", () => {
+    expect(resolveYtDlp("/opt/a", { YT_DLP: "/opt/b" })).toBe("/opt/a");
+    expect(resolveYtDlp(undefined, { YT_DLP: "/opt/b" })).toBe("/opt/b");
+    expect(resolveYtDlp(undefined, {})).toBe("yt-dlp");
+  });
+
+  it("invokes the binary named by the yt_dlp config key", async () => {
+    const bin = path.join(tree.root, "fake-yt-dlp");
+    tree.write("fake-yt-dlp", `#!/bin/sh\necho '{"entries":[{"id":"fakefakefk1","title":"Jane Speaker talk","duration":600}]}'\n`);
+    chmodSync(bin, 0o755);
+    const searchOnly = VALID_WATCHLIST.split("\n").filter((l) => !/^ {2}- key: (confTalks|vendor)|^ {4}(name: (Conference|Vendor)|channel_id|handle|poll: 6h|trial_until)/.test(l)).join("\n");
+    tree.write("w.yml", `${searchOnly}yt_dlp: ${bin}\n`);
+    const out: string[] = [];
+
+    const code = await runCli(["detect", "--dry-run", "--config", path.join(tree.root, "w.yml"), "--db", path.join(tree.root, "s.sqlite3"), "--rows-dir", path.join(tree.root, "rows")], (l) => out.push(l));
+
+    expect(code).toBe(0);
+    expect(out).toContain("speaker: 1 new");
   });
 });

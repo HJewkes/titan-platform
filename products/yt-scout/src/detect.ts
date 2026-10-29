@@ -18,7 +18,7 @@ export interface DetectDeps {
 
 const run = promisify(execFile);
 
-export function realDeps(onRow: (row: StepRow) => void, ytDlpBin = process.env.YT_DLP || "yt-dlp"): DetectDeps {
+export function realDeps(onRow: (row: StepRow) => void, ytDlpBin = "yt-dlp"): DetectDeps {
   return {
     async fetchText(url) {
       const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -29,6 +29,11 @@ export function realDeps(onRow: (row: StepRow) => void, ytDlpBin = process.env.Y
     },
     onRow,
   };
+}
+
+/** The configured binary, else `YT_DLP`, else `yt-dlp` on PATH. */
+export function resolveYtDlp(configured: string | undefined, env: NodeJS.ProcessEnv = process.env): string {
+  return configured || env.YT_DLP || "yt-dlp";
 }
 
 const listingArgs = (url: string): string[] => ["--flat-playlist", "--playlist-end", PLAYLIST_END, "--dump-single-json", url];
