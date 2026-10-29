@@ -68,28 +68,32 @@ function addScoreCommand(program: Command, write: Write, runner: ScoreRunner): v
     .option("--duration <seconds>", "video length; past 2 h only the start is scored", Number)
     .option("--workflow-version <sha>", "recorded on the row", "dev")
     .action(async (id: string, o: ScoreOptions) => {
-      const config = loadWatchlist(configPath());
-      const transcriptPath = path.resolve(o.transcript);
-      const deps: ScoreDeps = {
-        runner,
-        rubric: readFileSync(o.rubric, "utf8"),
-        model: config.models.score,
-        rowsDir: rowsDir(),
-        casesDir: casesDir(),
-        runId: `score-${Date.now()}`,
-        workflowVersion: o.workflowVersion,
-      };
-      const result = await scoreVideo(deps, {
-        id,
-        source: o.source ?? null,
-        title: o.title ?? frontMatterTitle(transcriptPath) ?? id,
-        transcriptPath,
-        outputPath: o.out ? path.resolve(o.out) : path.join(path.dirname(transcriptPath), `${id}.score.json`),
-        durationSeconds: o.duration,
-      });
-      write(result.ok ? `scored ${id}: ${result.card!.total}/15, $${result.costUsd.toFixed(4)}` : `score failed for ${id}: ${result.errorClass}`);
-      if (!result.ok) throw new CommanderError(EXIT_SCORE, "score.failed", result.errorClass ?? "failed");
+      await runScore(id, o, write, runner);
     });
+}
+
+async function runScore(id: string, o: ScoreOptions, write: Write, runner: ScoreRunner): Promise<void> {
+  const config = loadWatchlist(configPath());
+  const transcriptPath = path.resolve(o.transcript);
+  const deps: ScoreDeps = {
+    runner,
+    rubric: readFileSync(o.rubric, "utf8"),
+    model: config.models.score,
+    rowsDir: rowsDir(),
+    casesDir: casesDir(),
+    runId: `score-${Date.now()}`,
+    workflowVersion: o.workflowVersion,
+  };
+  const result = await scoreVideo(deps, {
+    id,
+    source: o.source ?? null,
+    title: o.title ?? frontMatterTitle(transcriptPath) ?? id,
+    transcriptPath,
+    outputPath: o.out ? path.resolve(o.out) : path.join(path.dirname(transcriptPath), `${id}.score.json`),
+    durationSeconds: o.duration,
+  });
+  write(result.ok ? `scored ${id}: ${result.card!.total}/15, $${result.costUsd.toFixed(4)}` : `score failed for ${id}: ${result.errorClass}`);
+  if (!result.ok) throw new CommanderError(EXIT_SCORE, "score.failed", result.errorClass ?? "failed");
 }
 
 interface ScoreOptions {

@@ -33,7 +33,7 @@ export function appendRow(rowsDir: string, row: StepRow): void {
   appendFileSync(path.join(rowsDir, `steps-${row.started_at.slice(0, 7)}.jsonl`), `${JSON.stringify(row)}\n`);
 }
 
-export interface EvalCase {
+interface EvalCase {
   step: string;
   video_id: string;
   label: string;

@@ -23,7 +23,7 @@ export interface ScoreDeps {
   now?: () => Date;
 }
 
-export interface ScoreVideoInput {
+interface ScoreVideoInput {
   id: string;
   source: string | null;
   title: string;
@@ -32,7 +32,7 @@ export interface ScoreVideoInput {
   durationSeconds?: number;
 }
 
-export interface StoredCard extends ScoreCard {
+interface StoredCard extends ScoreCard {
   id: string;
   title: string;
   total: number;
@@ -41,7 +41,7 @@ export interface StoredCard extends ScoreCard {
   model: string;
 }
 
-export interface ScoreVideoResult {
+interface ScoreVideoResult {
   ok: boolean;
   card?: StoredCard;
   errorClass?: StepErrorClass | "ts_invalid";
@@ -50,7 +50,7 @@ export interface ScoreVideoResult {
 }
 
 /** Drops the YAML front matter the extractor writes; the description in the body stays. */
-export function stripFrontMatter(text: string): string {
+function stripFrontMatter(text: string): string {
   return text.replace(/^---\n[\s\S]*?\n---\n/, "");
 }
 
@@ -149,6 +149,23 @@ interface Finish {
   partial: boolean;
 }
 
+function writeCardFile(file: string, stored: StoredCard): void {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(stored, null, 2)}\n`);
+}
+
+function fileTsInvalidCase(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, card: ScoreCard, dropped: Technique[]): void {
+  writeCase(deps.casesDir, {
+    step: "score",
+    video_id: input.id,
+    label: "ts_invalid",
+    inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
+    prompt_sha: prompt.promptSha,
+    model: deps.model,
+    output: { card, dropped },
+  });
+}
+
 function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt, f: Finish): ScoreVideoResult {
   const card = f.attemptResult.card!;
   const { kept, dropped } = checkTimestamps(card.techniques, f.transcript);
@@ -162,20 +179,9 @@ function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt
     prompt_sha: prompt.promptSha,
     model: deps.model,
   };
-  mkdirSync(path.dirname(input.outputPath), { recursive: true });
-  writeFileSync(input.outputPath, `${JSON.stringify(stored, null, 2)}\n`);
+  writeCardFile(input.outputPath, stored);
   const tsInvalid = dropped.length > 0;
-  if (tsInvalid) {
-    writeCase(deps.casesDir, {
-      step: "score",
-      video_id: input.id,
-      label: "ts_invalid",
-      inputs: { transcript_path: input.transcriptPath, transcript_sha256: prompt.inputSha },
-      prompt_sha: prompt.promptSha,
-      model: deps.model,
-      output: { card, dropped },
-    });
-  }
+  if (tsInvalid) fileTsInvalidCase(deps, input, prompt, card, dropped);
   appendRow(
     deps.rowsDir,
     rowFor(deps, input, prompt, f.attempt, f.startedAt, {

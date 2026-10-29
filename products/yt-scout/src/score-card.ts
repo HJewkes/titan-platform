@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PAIN_POINTS = [
+const PAIN_POINTS = [
   "load",
   "permissions",
   "context",
@@ -39,11 +39,11 @@ function toSeconds(hours: string | undefined, minutes: string, seconds: string):
   return Number(hours ?? 0) * 3600 + Number(minutes) * 60 + Number(seconds);
 }
 
-export function transcriptAnchors(transcript: string): Set<number> {
+function transcriptAnchors(transcript: string): Set<number> {
   return new Set([...transcript.matchAll(ANCHOR)].map((m) => toSeconds(m[1], m[2]!, m[3]!)));
 }
 
-export interface TsCheck {
+interface TsCheck {
   kept: Technique[];
   dropped: Technique[];
 }

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-export const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
-export const SCORE_TEMPLATE_PATH = new URL("../prompts/score.v1.md", import.meta.url);
+const SCORE_TEMPLATE_PATH = new URL("../prompts/score.v1.md", import.meta.url);
 
 /** The rubric's two sections the score step keeps; its batch, file and `done` instructions do not apply to one video. */
 const KEPT_SECTIONS = ["The owner's system", "Scores"];
@@ -23,7 +23,7 @@ export interface ScorePrompt {
   inputSha: string;
 }
 
-export interface ScorePromptInput {
+interface ScorePromptInput {
   title: string;
   transcript: string;
   rubric: string;
