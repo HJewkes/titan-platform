@@ -20,7 +20,7 @@ export const Z = 2311;
 export const CAPABILITY = "products/explainer/CAPABILITY.md";
 const FILES: Readonly<Record<number, string[]>> = { [X]: [CAPABILITY, "products/explainer/README.md"], [Y]: [CAPABILITY, "products/explainer/README.md"], [Z]: [CAPABILITY] };
 /** Out of reach of the fake clock, which every run's polls advance, so no wait here ends on the TTL. */
-const ORDER = (enabled: boolean, ttlMinutes = 1e9): MergeOrderRules => () => ({ enabled, ttlMinutes, ignore: [".changeset/**"] });
+export const ORDER = (enabled: boolean, ttlMinutes = 1e9): MergeOrderRules => () => ({ enabled, ttlMinutes, ignore: [".changeset/**"] });
 export const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
 const locator = partialFake<SourceTextLocator>({});

@@ -1,7 +1,8 @@
-import { WorkflowRunStore } from "@titan-design/workflow";
+import { WorkflowRunStore, type WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AUTO_POLICY, CAPABILITY, currentStep, dirtyUntilPushed, finish, hosts, loopWorld, orderEvents, orderReasonForZ, REPO, results, shepherd, WAIT, X, Y, Z, type Loop } from "./merge-order-loop.test-helpers.js";
+import { AUTO_POLICY, CAPABILITY, currentStep, dirtyUntilPushed, finish, hosts, loopWorld, ORDER, orderEvents, orderReasonForZ, REPO, results, shepherd, WAIT, X, Y, Z, type Loop } from "./merge-order-loop.test-helpers.js";
 import { fakeSha, successRun } from "@titan-design/github";
+import { blockers, orderDriving, orderWaiting } from "./merge-order.js";
 
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
@@ -17,14 +18,28 @@ function heldInMerge(loop: Loop, pr: number): string {
  * holds the rest. It is a bare running run that never merges Y; a held one would order nothing (TP-4133).
  */
 function reserveAhead(loop: Loop, ahead: string): string {
+  return standIn(loop, { paths: [CAPABILITY], ahead: [ahead] });
+}
+
+/** A bare running run that reserved `paths` for Y before X could; `waiting` puts it in its own order-wait step. */
+function standIn(loop: Loop, { paths, ahead = [], waiting = false }: { paths: string[]; ahead?: string[]; waiting?: boolean }): string {
   const since = "2026-10-23T09:59:00.000Z";
   const r = "run-r-stand-in";
-  new WorkflowRunStore(loop.host.db).create({ id: r, workflowName: "stand-in", params: { repo: REPO }, status: "running", currentStep: null, stepResults: {}, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: since, completedAt: null, error: null });
-  loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths: [CAPABILITY], ahead: [ahead], since, reason: "R waits on X" });
+  const activeSteps: WorkflowRun["activeSteps"] = waiting ? { "sh-order-wait:1": { stepId: "sh-order-wait:1", iterKey: "sh-order-wait:1:0", attempt: 0, startedAt: since, kind: "legacy" as const } } : {};
+  new WorkflowRunStore(loop.host.db).create({ id: r, workflowName: "stand-in", params: { repo: REPO }, status: "running", currentStep: null, stepResults: {}, activeSteps, revision: 0, ownerGeneration: 0, startedAt: since, completedAt: null, error: null });
+  loop.order.reserve({ repo: REPO, runId: r, pr: Y, headSha: loop.fake.pr(Y).headSha, baseSha: loop.fake.refs.get("main")!, paths, ahead, since, reason: "R stands in" });
   return r;
 }
 
 const endReservation = (loop: Loop, r: string): void => void loop.order.release(REPO, r, { at: "2026-10-23T10:00:00.000Z" });
+
+/** The PRs whose reservations `runId`'s own reservation waits behind now, as its order wait reads them. */
+function waitsBehind(loop: Loop, runId: string): number[] {
+  const reservations = loop.order.list(REPO);
+  const own = reservations.find((reservation) => reservation.runId === runId)!;
+  const self = { repo: REPO, runId, paths: own.paths };
+  return blockers(self, reservations, ORDER(true)(REPO)!, Date.parse("2026-10-23T10:00:00.000Z"), orderDriving(loop.order, loop.store), orderWaiting(loop.order)).map((blocker) => blocker.reservation.pr);
+}
 
 /** Y lands first, so X starts out conflicted; Z's review waits until X's conflict is under way. */
 async function afterY(loop: Loop): Promise<void> {
@@ -209,5 +224,40 @@ describe("TP-4098 slice C: the #2301 loop", () => {
     expect(results(loop, X, "sh-order-expire")).toEqual([{ expired: true, ttlMinutes: 60 }]);
     expect(orderEvents(loop, x)).toEqual(["order-reserve", "order-expired"]);
     expect(loop.told).toEqual([expect.stringMatching(/^demo-seat: Shepherd: hjewkes\/titan-platform#2301 .*merge order: its reservation passed the 60 min TTL/)]);
+  });
+});
+
+describe("TP-4501: a run waiting for its turn orders only other waiters", () => {
+  it("a run waiting in order-wait does not block a ready overlapping PR", async () => {
+    const loop = loopWorld(true);
+    const r = standIn(loop, { paths: ["products/explainer/README.md"] });
+    dirtyUntilPushed(loop);
+    shepherd(loop, X);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
+
+    shepherd(loop, Z);
+    await finish(loop, Z);
+    endReservation(loop, r);
+    await finish(loop, X);
+
+    expect(loop.merged).toEqual([Z, X]);
+    expect(loop.wakes.map((wake) => wake.mergedBefore)).toEqual([[Z]]);
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Y], moved: false }]);
+  });
+
+  it("two overlapping waiters resolve in reservation order without deadlock", async () => {
+    const loop = loopWorld(true);
+    const w = standIn(loop, { paths: [CAPABILITY], waiting: true });
+    dirtyUntilPushed(loop);
+    const x = shepherd(loop, X);
+    await vi.waitFor(() => expect(currentStep(loop, X)).toMatch(/^sh-order-wait/), WAIT);
+    const behind = [w, x].map((runId) => waitsBehind(loop, runId));
+
+    endReservation(loop, w);
+    await finish(loop, X);
+
+    expect(behind).toEqual([[], [Y]]);
+    expect(results(loop, X, "sh-order-wait")).toEqual([{ waitedBehind: [Y], moved: false }]);
+    expect(loop.merged).toEqual([X]);
   });
 });
