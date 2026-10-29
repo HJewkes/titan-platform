@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pinned beat drops its derived reveals",
+      "file": "products/explainer/src/template-fill/fill.ts",
+      "find": "reveals: isDerived(derived) ? derived.reveals : [] };",
+      "replace": "reveals: [] };",
+      "kills": [
+        "renderBoard under a slots pin a beat filled from the generated-slots pin keeps its cue reveals"
+      ]
+    }
+  ]
+}

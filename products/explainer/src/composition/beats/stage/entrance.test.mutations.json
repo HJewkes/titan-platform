@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a rising word fades in through low opacity",
+      "file": "products/explainer/src/composition/beats/stage/entrance.ts",
+      "find": "opacity: p > 0 ? 1 : 0,",
+      "replace": "opacity: p,",
+      "kills": [
+        "a text entrance a rising word is at full colour whenever it is visible"
+      ]
+    }
+  ]
+}
