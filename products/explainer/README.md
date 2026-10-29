@@ -369,8 +369,9 @@ the template fill as resolve gated it (cited `code`, the owner's `slots` pin, el
 `boardFromFill` makes the storyboard: each beat's spec type and slots, its planned seconds and its script cue words.
 `storyboardIds` (`src/render/beat-ids.ts`) is the one place script ids become `beat-01`, `beat-02`, ... in script
 order; it renames the `words.json` beats and links each `<script id>.wav` of the `audio` tree under its new name, and
-qa's lead-line set goes through it too. A custom-layer beat is drawn from its template spec, with a stage note, until
-TP-2607 C4 renders custom layers. `compileTimeline` writes `timeline.json`; the built composition page is copied into
+qa's lead-line set goes through it too. A custom-layer beat is never template-filled (`isCustomRow` is the one
+predicate resolve's gate and render share): the board holds it by spec type with no slots, its built layer from the
+`custom-layers` tree draws it, and a run with no built layer for it fails naming the beat. `compileTimeline` writes `timeline.json`; the built composition page is copied into
 the `page` tree, with the render variant's style pack as `style-pack.css` (`:root { --pack-<slot>: var(--<token>); }`)
 linked from its head, and served beside the timeline; `renderVideo` renders it behind the run type's gate profile
 (`qa { mode: "gate", gate: loadQaGate(type) }`, or `"skip"` with `noQa`). The stage stores `mp4`, `vtt`,
