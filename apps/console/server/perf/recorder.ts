@@ -100,17 +100,25 @@ function logName(t: number): string {
   return `rpc-${new Date(t).toISOString().slice(0, 10)}.jsonl`;
 }
 
+/** Server-side rows go to the bounded ring as well as the day files, so the 15m window never reads disk. */
+function ringedLog(ringSize: number, log: { add(row: LogRow): void }): { ring: LogRow[]; keep(row: LogRow): void } {
+  const ring: LogRow[] = [];
+  return {
+    ring,
+    keep(row) {
+      ring.push(row);
+      if (ring.length > ringSize) ring.shift();
+      log.add(row);
+    },
+  };
+}
+
 export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
   const { dir, now = Date.now, ringSize = 2000, flushMs = 5000, flushRows = 200, retentionDays = 7 } = options;
-  const ring: LogRow[] = [];
   const log = createBatchWriter(dir, flushMs, flushRows);
+  const { ring, keep } = ringedLog(ringSize, log);
   const pruned = pruneOldLogs(dir, now(), retentionDays).catch(() => {});
 
-  function keep(row: LogRow): void {
-    ring.push(row);
-    if (ring.length > ringSize) ring.shift();
-    log.add(row);
-  }
   const rowsIn = (window: SummaryWindow) => windowRows(window, now() - WINDOW_MS[window], ring, log.flush, dir);
 
   return {
