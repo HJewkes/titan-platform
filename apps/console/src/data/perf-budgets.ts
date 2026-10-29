@@ -1,5 +1,5 @@
 /** Mirrors the plan's initial budgets table until the server's budget table (TP-4426) is shared with the client. */
-export interface LocalBudget {
+interface LocalBudget {
   maxMs: number;
   maxBytes: number;
 }
@@ -24,9 +24,9 @@ const LOCAL_RPC_BUDGETS: Record<string, LocalBudget> = {
 };
 
 /** Plan §2: no page waits longer than this for its first data. */
-export const LOCAL_ROUTE_BUDGET_MS = 3000;
+const LOCAL_ROUTE_BUDGET_MS = 3000;
 
-export function localRpcBudget(name: string): LocalBudget {
+function localRpcBudget(name: string): LocalBudget {
   return LOCAL_RPC_BUDGETS[name] ?? DEFAULT_RPC_BUDGET;
 }
 

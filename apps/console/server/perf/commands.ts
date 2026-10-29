@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { VIEW_KEYS } from "../../src/view-keys.js";
 import { depositCommand, readCommand } from "../owner-guard.js";
-import type { ClientRow, PerfRecorder } from "./recorder.js";
+import type { ClientRow, PerfRecorder, RouteStats, RpcStats } from "./recorder.js";
 
 export const PERF_REPORT = "perf.report";
 /** The browser sends at most 100 rows a post, so a real body is a few KB; the cap keeps a stray loopback caller small. */
@@ -37,7 +37,7 @@ const routeStats = z.object({ name: z.string(), count: z.number(), p50: z.number
 
 const upstreamStats = rpcStats.extend({ timeouts: z.number() });
 
-function slowestFirst<T extends { p95: number }>(rows: readonly T[]): T[] {
+function slowestFirst<T extends RpcStats | RouteStats>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => b.p95 - a.p95);
 }
 

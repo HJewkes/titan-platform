@@ -1,29 +1,9 @@
 import { useState, type ReactNode } from "react";
-import {
-  Alert,
-  Badge,
-  BadgeText,
-  EmptyState,
-  Section,
-  SectionContent,
-  SectionHeader,
-  Spinner,
-  Tab,
-  TabList,
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-  Tabs,
-  VStack,
-} from "@titan-design/react-ui";
-import type { ConsoleCommands } from "../../server/commands.js";
+import { Alert, Badge, BadgeText, EmptyState, Section, SectionContent, SectionHeader, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, VStack } from "@titan-design/react-ui";
 import { routeOverBudget, rpcOverBudget } from "../data/perf-budgets.js";
-import { useQuery } from "../data/rpc.js";
+import { useQuery, type ServedCommands } from "../data/rpc.js";
 
-type Summary = ConsoleCommands["perf.summary"]["result"];
+type Summary = ServedCommands["perf.summary"]["result"];
 const WINDOWS = ["15m", "24h"] as const;
 
 /** What the console measured about itself, slowest first; a row past its budget carries a warning badge. */
@@ -41,10 +21,7 @@ export function PerfTab(): ReactNode {
       {summary.status === "loading" ? (
         <Spinner size="sm" label="Loading timings" />
       ) : summary.data === undefined ? (
-        <Alert
-          status="error"
-          message={`Could not load timings: ${summary.error.message}`}
-        />
+        <Alert status="error" message={`Could not load timings: ${summary.error.message}`} />
       ) : (
         <SummaryTables summary={summary.data} />
       )}
@@ -55,43 +32,34 @@ export function PerfTab(): ReactNode {
 function SummaryTables({ summary }: { summary: Summary }): ReactNode {
   return (
     <>
-      <Section testID="perf-routes">
-        <SectionHeader title="Routes" subtitle="Time to first data" />
-        <SectionContent>
-          {summary.routes.length === 0 ? (
-            <EmptyState title="No route timed yet" />
-          ) : (
-            <RouteTable rows={summary.routes} />
-          )}
-        </SectionContent>
-      </Section>
-      <Section testID="perf-rpcs">
-        <SectionHeader
-          title="RPCs"
-          subtitle="Milliseconds and response bytes per command"
-        />
-        <SectionContent>
-          {summary.rpcs.length === 0 ? (
-            <EmptyState title="No call recorded" />
-          ) : (
-            <RpcTable rows={summary.rpcs} />
-          )}
-        </SectionContent>
-      </Section>
-      <Section testID="perf-upstreams">
-        <SectionHeader
-          title="Upstreams"
-          subtitle="Calls the console made to other daemons"
-        />
-        <SectionContent>
-          {summary.upstreams.length === 0 ? (
-            <EmptyState title="No upstream call recorded" />
-          ) : (
-            <UpstreamTable rows={summary.upstreams} />
-          )}
-        </SectionContent>
-      </Section>
+      <Block id="perf-routes" title="Routes" subtitle="Time to first data" empty="No route timed yet" count={summary.routes.length}>
+        <RouteTable rows={summary.routes} />
+      </Block>
+      <Block id="perf-rpcs" title="RPCs" subtitle="Milliseconds and response bytes per command" empty="No call recorded" count={summary.rpcs.length}>
+        <RpcTable rows={summary.rpcs} />
+      </Block>
+      <Block id="perf-upstreams" title="Upstreams" subtitle="Calls the console made to other daemons" empty="No upstream call recorded" count={summary.upstreams.length}>
+        <UpstreamTable rows={summary.upstreams} />
+      </Block>
     </>
+  );
+}
+
+interface BlockProps {
+  id: string;
+  title: string;
+  subtitle: string;
+  empty: string;
+  count: number;
+  children: ReactNode;
+}
+
+function Block({ id, title, subtitle, empty, count, children }: BlockProps): ReactNode {
+  return (
+    <Section testID={id}>
+      <SectionHeader title={title} subtitle={subtitle} />
+      <SectionContent>{count === 0 ? <EmptyState title={empty} /> : children}</SectionContent>
+    </Section>
   );
 }
 
@@ -104,114 +72,82 @@ function OverBudget(): ReactNode {
 }
 
 /** A phone is narrower than six numeric columns, so the table scrolls sideways inside its section instead of clipping. */
-function Scroll({ children }: { children: ReactNode }): ReactNode {
-  return <div className="overflow-x-auto">{children}</div>;
-}
-
-function Head({ labels }: { labels: readonly string[] }): ReactNode {
+function PerfTable({ labels, children }: { labels: readonly string[]; children: ReactNode }): ReactNode {
   return (
-    <TableHeader>
-      <TableRow>
-        {labels.map((label, i) => (
-          <TableHeaderCell key={label} align={i === 0 ? "left" : "right"}>
-            {label}
-          </TableHeaderCell>
-        ))}
-      </TableRow>
-    </TableHeader>
+    <div className="overflow-x-auto">
+      <Table density="dense" className="min-w-[30rem]">
+        <TableHeader>
+          <TableRow>
+            {labels.map((label, i) => (
+              <TableHeaderCell key={label} align={i === 0 ? "left" : "right"}>
+                {label}
+              </TableHeaderCell>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </div>
   );
 }
 
 function Num({ value }: { value: number }): ReactNode {
+  return <TableCell align="right">{Math.round(value).toLocaleString("en-US")}</TableCell>;
+}
+
+function Nums({ values }: { values: readonly number[] }): ReactNode {
   return (
-    <TableCell align="right">
-      {Math.round(value).toLocaleString("en-US")}
+    <>
+      {values.map((value, i) => (
+        <Num key={i} value={value} />
+      ))}
+    </>
+  );
+}
+
+function NameCell({ name, over }: { name: string; over: boolean }): ReactNode {
+  return (
+    <TableCell>
+      {name} {over ? <OverBudget /> : null}
     </TableCell>
   );
 }
 
 function RouteTable({ rows }: { rows: Summary["routes"] }): ReactNode {
   return (
-    <Scroll>
-      <Table density="dense" className="min-w-[30rem]">
-        <Head labels={["Route", "p50 ms", "p95 ms", "Count"]} />
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.name} testID={`perf-route-${row.name}`}>
-              <TableCell>
-                {row.name} {routeOverBudget(row) ? <OverBudget /> : null}
-              </TableCell>
-              <Num value={row.p50} />
-              <Num value={row.p95} />
-              <Num value={row.count} />
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Scroll>
+    <PerfTable labels={["Route", "p50 ms", "p95 ms", "Count"]}>
+      {rows.map((row) => (
+        <TableRow key={row.name} testID={`perf-route-${row.name}`}>
+          <NameCell name={row.name} over={routeOverBudget(row)} />
+          <Nums values={[row.p50, row.p95, row.count]} />
+        </TableRow>
+      ))}
+    </PerfTable>
   );
 }
 
 function RpcTable({ rows }: { rows: Summary["rpcs"] }): ReactNode {
   return (
-    <Scroll>
-      <Table density="dense" className="min-w-[30rem]">
-        <Head
-          labels={[
-            "Command",
-            "p50 ms",
-            "p95 ms",
-            "p50 bytes",
-            "Errors",
-            "Count",
-          ]}
-        />
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.name} testID={`perf-rpc-${row.name}`}>
-              <TableCell>
-                {row.name} {rpcOverBudget(row) ? <OverBudget /> : null}
-              </TableCell>
-              <Num value={row.p50} />
-              <Num value={row.p95} />
-              <Num value={row.bytesP50} />
-              <Num value={row.errors} />
-              <Num value={row.count} />
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Scroll>
+    <PerfTable labels={["Command", "p50 ms", "p95 ms", "p50 bytes", "Errors", "Count"]}>
+      {rows.map((row) => (
+        <TableRow key={row.name} testID={`perf-rpc-${row.name}`}>
+          <NameCell name={row.name} over={rpcOverBudget(row)} />
+          <Nums values={[row.p50, row.p95, row.bytesP50, row.errors, row.count]} />
+        </TableRow>
+      ))}
+    </PerfTable>
   );
 }
 
 function UpstreamTable({ rows }: { rows: Summary["upstreams"] }): ReactNode {
   return (
-    <Scroll>
-      <Table density="dense" className="min-w-[30rem]">
-        <Head
-          labels={[
-            "Upstream call",
-            "p50 ms",
-            "p95 ms",
-            "Errors",
-            "Timeouts",
-            "Count",
-          ]}
-        />
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.name} testID={`perf-upstream-${row.name}`}>
-              <TableCell>{row.name}</TableCell>
-              <Num value={row.p50} />
-              <Num value={row.p95} />
-              <Num value={row.errors} />
-              <Num value={row.timeouts} />
-              <Num value={row.count} />
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Scroll>
+    <PerfTable labels={["Upstream call", "p50 ms", "p95 ms", "Errors", "Timeouts", "Count"]}>
+      {rows.map((row) => (
+        <TableRow key={row.name} testID={`perf-upstream-${row.name}`}>
+          <NameCell name={row.name} over={false} />
+          <Nums values={[row.p50, row.p95, row.errors, row.timeouts, row.count]} />
+        </TableRow>
+      ))}
+    </PerfTable>
   );
 }

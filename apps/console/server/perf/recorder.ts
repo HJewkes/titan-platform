@@ -124,6 +124,10 @@ function logName(t: number): string {
   return `rpc-${new Date(t).toISOString().slice(0, 10)}.jsonl`;
 }
 
+function ofKind<K extends LogRow["kind"]>(rows: readonly LogRow[], kind: K): Extract<LogRow, { kind: K }>[] {
+  return rows.filter((row): row is Extract<LogRow, { kind: K }> => row.kind === kind);
+}
+
 export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
   const { dir, now = Date.now, ringSize = 2000, flushMs = 5000, flushRows = 200, retentionDays = 7 } = options;
   const ring: LogRow[] = [];
@@ -145,20 +149,11 @@ export function createPerfRecorder(options: PerfRecorderOptions): PerfRecorder {
       keep({ t: now(), kind: "upstream", name: sample.name, ms: sample.ms, bytes: sample.bytes, outcome: sample.outcome });
     },
     recordClient(rows) {
-      for (const row of rows) {
-        if (row.kind === "route") keep({ ...row, t: now() });
-        else log.add({ ...row, t: now() });
-      }
+      for (const row of rows) (row.kind === "route" ? keep : log.add)({ ...row, t: now() });
     },
-    async summary(window) {
-      return statsOf((await rowsIn(window)).filter((row): row is RpcRow => row.kind === "rpc"));
-    },
-    async routes(window) {
-      return routeStatsOf((await rowsIn(window)).filter((row): row is RouteRow => row.kind === "route"));
-    },
-    async upstreams(window) {
-      return upstreamStatsOf((await rowsIn(window)).filter((row): row is UpstreamRow => row.kind === "upstream"));
-    },
+    summary: async (window) => statsOf(ofKind(await rowsIn(window), "rpc")),
+    routes: async (window) => routeStatsOf(ofKind(await rowsIn(window), "route")),
+    upstreams: async (window) => upstreamStatsOf(ofKind(await rowsIn(window), "upstream")),
     flush: log.flush,
     async close() {
       await Promise.all([pruned, log.stop()]);
