@@ -29,8 +29,11 @@ Files under a directory with no default still fail as unmapped. Existing entries
 files no entry maps. The manifest carries one default per root (Shepherd and `scripts/seat` `kept`, burndown `delete` D-M8-08 at M8).
 
 The check prints a non-failing `defaulted: <repo>:<file> (<default path>)` line (a CI `::notice::`) for each file only a
-default covers, plus a count; the exit code is unchanged. TP-3180 stays open while the notice lists any file: a default
-keeps CI green, it does not settle the file's fate. Adding an entry for the file removes it from the notice.
+default covers that was added, modified or renamed since the base ref (`--base`, `--agent-chat-base`; with no ref, none),
+plus one count line that names the fate tasks of the covering defaults. On a pull request CI passes the PR's base commit
+as `--base`. It passes no `--agent-chat-base`: its agent-chat clone is a depth-1 checkout of main, so there is nothing to
+compare against and agent-chat files get only the count line. The exit code is unchanged. A default keeps CI green, it does
+not settle the file's fate. Adding an entry for the file removes it from the notice.
 
 Chosen over exempting PRs whose merge-base predates the manifest (option B) because it needs no git history in the check
 (CI checkouts can be shallow), keeps the rule for every branch, and fits the schema as one optional array.

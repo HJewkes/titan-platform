@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "lint:types scope skips the dependents test-scope's closure adds",
+      "file": "scripts/verify-changed.mjs",
+      "find": "  const scope = testScope(inputs, workspace);\n",
+      "replace": "  const scope = { mode: \"scoped\", dirs: inputs.map((path) => path.split(\"/\").slice(0, 2).join(\"/\")) };\n",
+      "kills": [
+        "lint:types scope covers a changed package and its workspace dependents, and nothing else"
+      ]
+    },
+    {
+      "name": "a lint:types input change stays scoped",
+      "file": "scripts/verify-changed.mjs",
+      "find": "  if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: \"full\" };\n",
+      "replace": "",
+      "kills": [
+        "lint:types scope runs unscoped when a lint:types input or a path test-scope does not know changes"
+      ]
+    },
+    {
+      "name": "the coverage table drops the pnpm lint row",
+      "file": "scripts/verify-changed.mjs",
+      "find": "  { job: \"validate\", run: \"pnpm lint\", disposition: \"local\", label: \"lint\" },\n",
+      "replace": "",
+      "kills": [
+        "CI_COVERAGE mirrors ci.yml matches every ci.yml run step to exactly one row and every row to a step"
+      ]
+    },
+    {
+      "name": "verify:changed stops planning pnpm lint",
+      "file": "scripts/verify-changed.mjs",
+      "find": "    pnpmRun(\"lint\"),\n",
+      "replace": "",
+      "kills": [
+        "CI_COVERAGE mirrors ci.yml plans every labelled row's command in ci.yml order"
+      ]
+    },
+    {
+      "name": "docs:build runs only behind a path trigger",
+      "file": "scripts/verify-changed.mjs",
+      "find": "    pnpmRun(\"docs:build\"),\n",
+      "replace": "    changed.some((path) => path.endsWith(\".md\")) && pnpmRun(\"docs:build\"),\n",
+      "kills": [
+        "CI_COVERAGE mirrors ci.yml runs docs:build, capabilities:check and lint for a change no generator reads"
+      ]
+    }
+  ]
+}

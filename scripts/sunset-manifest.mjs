@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Checks the old-code sunset manifest (D-M0-06) against `git ls-files` of every root it covers.
 // It also fails when a delete entry's file still exists after its D-task's milestone has exited (D-M0-07).
-// Usage: node scripts/sunset-manifest.mjs check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--manifest <file>] [--milestones <file>]
+// Usage: node scripts/sunset-manifest.mjs check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--base <ref>] [--agent-chat-base <ref>] [--manifest <file>] [--milestones <file>]
+// --base and --agent-chat-base name a ref per repo: only defaulted files added, modified or renamed since it get a per-file notice; the rest are one count line.
 // --agent-chat-drift warn prints drift problems found in agent-chat roots as ::warning:: lines and keeps the exit code for the rest.
 // Without --agent-chat the agent-chat roots are checked for shape only, since CI has no checkout of that repo.
 import { execFileSync } from "node:child_process";
@@ -16,17 +17,17 @@ const FATES = new Set(["delete", "survives", "kept"]);
 const D_TASK = /^D-M\d+[ab]?-\d+$/;
 // A fold task (TP-626 and its D7-D12 children) moves agent-chat code into packages; it has no milestone of its own.
 const FOLD_TASK = /^TP-\d+$/;
-const USAGE = "usage: sunset-manifest check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--manifest <file>] [--milestones <file>]";
+const USAGE = "usage: sunset-manifest check [--agent-chat <dir>] [--agent-chat-drift fail|warn] [--base <ref>] [--agent-chat-base <ref>] [--manifest <file>] [--milestones <file>]";
 
 export function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (command !== "check") throw new Error(USAGE);
-  const opts = { agentChat: undefined, agentChatDrift: "fail", manifest: MANIFEST_PATH, milestones: MILESTONES_PATH };
-  const flags = { "--agent-chat": "agentChat", "--agent-chat-drift": "agentChatDrift", "--manifest": "manifest", "--milestones": "milestones" };
+  const opts = { agentChat: undefined, agentChatDrift: "fail", base: undefined, agentChatBase: undefined, manifest: MANIFEST_PATH, milestones: MILESTONES_PATH };
+  const flags = { "--agent-chat": "agentChat", "--agent-chat-drift": "agentChatDrift", "--base": "base", "--agent-chat-base": "agentChatBase", "--manifest": "manifest", "--milestones": "milestones" };
   for (let i = 0; i < rest.length; i++) {
     const key = flags[rest[i]];
     if (!key || rest[i + 1] === undefined) throw new Error(`unknown argument ${rest[i]}; ${USAGE}`);
-    opts[key] = key === "agentChatDrift" ? rest[++i] : resolve(rest[++i]);
+    opts[key] = ["agentChatDrift", "base", "agentChatBase"].includes(key) ? rest[++i] : resolve(rest[++i]);
   }
   if (!["fail", "warn"].includes(opts.agentChatDrift)) throw new Error(`--agent-chat-drift takes fail or warn; ${USAGE}`);
   return opts;
@@ -59,17 +60,34 @@ export function defaultFor(manifest, repo, file) {
   return covering.reduce((best, rule) => (!best || rule.path.length > best.path.length ? rule : best), undefined);
 }
 
-/** Files only a default covers, as `defaulted: <repo>:<file> (<default path>)` lines: informational, so they stay visible while their entries are owed. */
-export function defaultedNotices(manifest, listings) {
+/** Files only a default covers, as `[repo, file, rule]`. */
+function defaultedFiles(manifest, listings) {
   const mapped = new Set(manifest.entries.map((entry) => `${entry.repo}:${entry.path}`));
-  const lines = [];
+  const found = [];
   for (const { repo, path } of manifest.roots) {
     for (const file of listings[`${repo}:${path}`] ?? []) {
       const rule = defaultFor(manifest, repo, file);
-      if (rule && !mapped.has(`${repo}:${file}`)) lines.push(`defaulted: ${repo}:${file} (${rule.path})`);
+      if (rule && !mapped.has(`${repo}:${file}`)) found.push([repo, file, rule]);
     }
   }
-  return lines;
+  return found;
+}
+
+/** `defaulted: <repo>:<file> (<default path>)` lines, informational so they stay visible while their entries are owed; `changed` (a set of `<repo>:<file>`) limits them to files touched since a base, and leaving it out lists every one. */
+export function defaultedNotices(manifest, listings, changed) {
+  return defaultedFiles(manifest, listings)
+    .filter(([repo, file]) => !changed || changed.has(`${repo}:${file}`))
+    .map(([repo, file, rule]) => `defaulted: ${repo}:${file} (${rule.path})`);
+}
+
+/** The one count line for the defaulted files: how many, and the fate task each covering default hands them to; with no `changed` set (no base given) it claims nothing about changed files. */
+export function defaultedSummary(manifest, listings, changed) {
+  const all = defaultedFiles(manifest, listings);
+  if (all.length === 0) return undefined;
+  const rules = new Map(all.map(([repo, , rule]) => [`${repo}:${rule.path}`, rule]));
+  const fates = [...rules].map(([key, rule]) => `${key}=${rule.task ?? rule.fate}`).sort().join(", ");
+  const shown = changed ? ` (${all.filter(([repo, file]) => changed.has(`${repo}:${file}`)).length} changed since the base, listed above)` : "";
+  return `defaulted: ${all.length} files covered only by a directory default${shown}; their entries are owed to the fate tasks ${fates}`;
 }
 
 function orphanProblems(manifest) {
@@ -130,6 +148,13 @@ function gitFiles(repoDir, path) {
   return execFileSync("git", ["-C", repoDir, "ls-files", path], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").filter(Boolean);
 }
 
+/** `<repo>:<file>` for each file added, modified or renamed in between `base` and HEAD of a checkout; none when no base is given. */
+export function changedSince(repo, repoDir, base) {
+  if (!repoDir || !base) return [];
+  const out = execFileSync("git", ["-C", repoDir, "diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return out.split("\n").filter(Boolean).map((file) => `${repo}:${file}`);
+}
+
 export function listRoots(manifest, repoDirs) {
   const listings = {};
   for (const { repo, path } of manifest.roots) if (repoDirs[repo]) listings[`${repo}:${path}`] = gitFiles(repoDirs[repo], path);
@@ -153,9 +178,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (empty) problems.push({ kind: "empty", text: empty });
     const warnOnly = (problem) => opts.agentChatDrift === "warn" && problem.kind === "drift" && problem.text.startsWith("agent-chat:");
     for (const problem of problems) console.error(warnOnly(problem) ? `::warning::${problem.text}` : problem.text);
-    const defaulted = defaultedNotices(manifest, listings);
-    for (const line of defaulted) console.error(`::notice::${line}`);
-    if (defaulted.length > 0) console.error(`::notice::defaulted: ${defaulted.length} files covered only by a directory default; TP-3180 stays open while any is listed`);
+    const changed = opts.base || opts.agentChatBase ? new Set([...changedSince("titan-platform", ROOT, opts.base), ...changedSince("agent-chat", opts.agentChat, opts.agentChatBase)]) : undefined;
+    for (const line of defaultedNotices(manifest, listings, changed ?? new Set())) console.error(`::notice::${line}`);
+    const summary = defaultedSummary(manifest, listings, changed);
+    if (summary) console.error(`::notice::${summary}`);
     if (!opts.agentChat) console.error("agent-chat roots checked for shape only (no --agent-chat)");
     process.exitCode = problems.some((problem) => !warnOnly(problem)) ? 1 : 0;
   } catch (error) {
