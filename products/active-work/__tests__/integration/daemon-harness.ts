@@ -30,8 +30,17 @@ export function findFreePort(): Promise<number> {
 /**
  * Every path env var points inside `stateRoot`, HOME included, so macOS
  * env-paths cannot reach the real install.
+ *
+ * Session indexing is off unless asked for: its first pass over an empty corpus
+ * held each daemon's startup and shutdown for about 4 s, and only the roundtrip
+ * test, which drives the whole daemon, needs it running.
  */
-export function spawnDaemon(port: number, stateRoot: string, activeRoot: string): SpawnedDaemon {
+export function spawnDaemon(
+  port: number,
+  stateRoot: string,
+  activeRoot: string,
+  options: { indexWatch?: boolean } = {},
+): SpawnedDaemon {
   const child = spawn(process.execPath, [requireDistBin(), 'mcp', 'serve', '--port', String(port)], {
     env: {
       ...process.env,
@@ -42,6 +51,7 @@ export function spawnDaemon(port: number, stateRoot: string, activeRoot: string)
       XDG_CACHE_HOME: stateRoot,
       ACTIVE_ROOT: activeRoot,
       HOME: stateRoot,
+      AW_INDEX_WATCH: options.indexWatch ? '1' : '0',
     },
     stdio: ['ignore', 'ignore', 'pipe'],
   });

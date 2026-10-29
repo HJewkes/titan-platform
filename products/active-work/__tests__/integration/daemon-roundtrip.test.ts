@@ -51,7 +51,7 @@ describe('integration: live daemon roundtrip on a random port', () => {
     const stateRoot = mkdtempSync(path.join(tmpdir(), 'aw-rt-state-'));
     const activeRoot = mkdtempSync(path.join(tmpdir(), 'aw-rt-active-'));
 
-    const { child, stderr } = spawnDaemon(port, stateRoot, activeRoot);
+    const { child, stderr } = spawnDaemon(port, stateRoot, activeRoot, { indexWatch: true });
 
     try {
       await waitForHealth(port, 15_000, child, stderr);

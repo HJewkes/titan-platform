@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assertSafeToRemove } from '../setup/test-helpers.js';
-import { requireDistBin, runCliInProcess } from './cli-runner.js';
+import { requireDistBin, runCli } from './cli-runner.js';
 
 const SLUG = 'scout';
 const TASK_COUNT = 1500;
@@ -84,16 +84,16 @@ function listToClosingPipe(): Promise<{ status: number | null; stderr: string }>
 }
 
 describe('cli output to a pipe', () => {
-  beforeAll(async () => {
+  beforeAll(() => {
     listArgs = [requireDistBin(), '--json', 'task', 'list', SLUG];
     tempDir = mkdtempSync(path.join(os.tmpdir(), 'aw-test-'));
     const activeRoot = path.join(tempDir, 'root');
     const home = path.join(tempDir, 'home');
     mkdirSync(activeRoot);
     mkdirSync(home);
-    env = { ...process.env, NO_COLOR: '1', ACTIVE_ROOT: activeRoot, HOME: home };
-    env.XDG_STATE_HOME = path.join(home, 'state');
-    const created = await runCliInProcess(['new', SLUG, '--title', 'Scout'], { ACTIVE_ROOT: activeRoot });
+    const paths = { ACTIVE_ROOT: activeRoot, HOME: home, XDG_STATE_HOME: path.join(home, 'state') };
+    env = { ...process.env, NO_COLOR: '1', ...paths };
+    const created = runCli(['new', SLUG, '--title', 'Scout'], paths);
     expect(created.status).toBe(0);
     writeTasks(path.join(activeRoot, SLUG, 'tasks'));
   });
