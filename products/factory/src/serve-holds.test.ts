@@ -1,9 +1,10 @@
 import { partialFake } from "@titan-design/test-kit";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { busyRuns } from "./restart-drain.js";
-import { heldRun } from "./serve-holds.js";
+import { gateQueuedRun, heldRun } from "./serve-holds.js";
 import type { ShepherdServices } from "./shepherd/services.js";
+import { SpawnDeferred, spawnGate } from "./shepherd/spawn-gate.js";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./shepherd/store.js";
 import type { MergeTrain, MergeTrainRef } from "./shepherd/train.js";
 
@@ -46,5 +47,56 @@ describe("serve's hold check for the restart drain", () => {
 
   it("has no hold check without Shepherd", () => {
     expect(heldRun(undefined)).toBeUndefined();
+  });
+});
+
+describe("serve's spawn-gate queue check for the restart drain (TP-4474)", () => {
+  const T0 = 1_000_000;
+  const quiet = () => undefined;
+  const loaded = () => spawnGate({ read: () => ({ load5: 40 }), now: () => T0, log: quiet });
+  const roomy = () => spawnGate({ read: () => ({ load5: 1 }), now: () => T0, log: quiet });
+  const review = (pr: number) => ({ fixer: false, target: { repo: REPO, pr } });
+  const deferred = (pr: number) => expect(() => loaded().admit(`rv-demo-${pr}`, [], review(pr))).toThrow(SpawnDeferred);
+  /** Each run is registered on its own PR, the number in its id. */
+  const shepherd = partialFake<ShepherdServices>({
+    store: partialFake<ShepherdStoreRef>({ get: () => partialFake<ShepherdStore>({ byRun: (id: string) => partialFake<Registration>({ repo: REPO, pr: Number(id.slice(1)) }) }) }),
+  });
+
+  afterEach(() => [7, 8].forEach((pr) => roomy().admit(`rv-demo-${pr}`, [], review(pr))));
+
+  it("does not wait on a run whose only active step is a review spawn the gate deferred", () => {
+    deferred(7);
+
+    expect(busyRuns([run("r7", "sh-review:abc1234")], route, undefined, gateQueuedRun(shepherd))).toEqual([]);
+  });
+
+  it("waits on a run once the gate admits its review and the reviewer agent is spawned", () => {
+    deferred(7);
+    roomy().admit("rv-demo-7", [], review(7));
+
+    expect(busyRuns([run("r7", "sh-review:abc1234")], route, undefined, gateQueuedRun(shepherd))).toEqual([{ runId: "r7", step: "sh-review:abc1234", phase: "review" }]);
+  });
+
+  it("waits on a run whose PR the gate never deferred, beside one it did", () => {
+    deferred(8);
+
+    expect(busyRuns([run("r7", "sh-review:abc1234"), run("r8", "sh-review:abc1234")], route, undefined, gateQueuedRun(shepherd)).map((busy) => busy.runId)).toEqual(["r7"]);
+  });
+
+  it("waits on a queued PR's run at a step that is not the review spawn", () => {
+    deferred(7);
+
+    expect(busyRuns([run("r7", "sh-review-intent:abc1234"), run("r7", "merge:0")], route, undefined, gateQueuedRun(shepherd))).toHaveLength(2);
+  });
+
+  it("waits on a review spawn whose store cannot be read", () => {
+    deferred(7);
+    const unreadable = partialFake<ShepherdServices>({ store: partialFake<ShepherdStoreRef>({ get: () => { throw new Error("the shepherd store is not bound"); } }) });
+
+    expect(busyRuns([run("r7", "sh-review:abc1234")], route, undefined, gateQueuedRun(unreadable))).toHaveLength(1);
+  });
+
+  it("has no queue check without Shepherd", () => {
+    expect(gateQueuedRun(undefined)).toBeUndefined();
   });
 });
