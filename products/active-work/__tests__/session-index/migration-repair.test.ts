@@ -102,6 +102,7 @@ describe('openGraph on a graph with colliding migration numbers', () => {
       { version: 12, name: 'inbound broadcast flag' },
       { version: 13, name: 'price long-prompt tier' },
       { version: 14, name: 'echo state per transcript' },
+      { version: 15, name: 'origin route decision' },
       { version: 1001, name: 'workspace index tables' },
       { version: 1002, name: 'preserved rows' },
     ]);
@@ -116,7 +117,7 @@ describe('openGraph on a graph with colliding migration numbers', () => {
 
     expect(migrationRows()).toEqual(fresh);
     expect(fresh.map((r) => r.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 1001, 1002,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1001, 1002,
     ]);
   });
 

@@ -1,0 +1,261 @@
+{
+  "spawn": {
+    "rid": 7,
+    "t": "spawn",
+    "name": "example-worker",
+    "profile": "implementer",
+    "brief": "Fix the widget.",
+    "cwd": "/work/example-repo",
+    "isolation": "worktree",
+    "surface": "headless",
+    "briefing": "example-initiative",
+    "worktree": "/work/example-repo/.worktrees/example-worker",
+    "owns": [
+      "src/widget/**"
+    ],
+    "claimPaths": [
+      "src/widget/index.ts"
+    ],
+    "baseRef": "origin/feat/example-parent",
+    "inherit": "context",
+    "remoteControl": false,
+    "forkFrom": "00000000-0000-4000-8000-000000000001",
+    "tags": [
+      "example"
+    ],
+    "subscriptions": [
+      {
+        "selector": {
+          "spawnedBy": "self"
+        },
+        "kinds": [
+          "agent_exited"
+        ]
+      }
+    ],
+    "configDir": "/home/example/.claude-profiles/example",
+    "account": "least-used",
+    "spawnerConfigDir": "/home/example/.claude",
+    "resumeSession": "00000000-0000-4000-8000-000000000002",
+    "predecessor": "example-worker-1",
+    "experiment": {
+      "id": "example-exp",
+      "arm": "control"
+    },
+    "returnContract": "none",
+    "tier": 2,
+    "spawnedAs": "burndown",
+    "callerAgent": "agent-0001",
+    "task": "EX-1",
+    "slice": "b",
+    "routeOverride": "needs the named profile",
+    "workRole": "implementer",
+    "override": "fix-round",
+    "hostPlatform": "linux",
+    "launchesHere": true,
+    "host": "example-host",
+    "callerHost": "example-host",
+    "callerHome": "/home/example",
+    "launchedBy": "shepherd",
+    "launchReason": "fix round",
+    "lineageFrom": "agent-0000"
+  },
+  "resume": {
+    "rid": 8,
+    "t": "resume",
+    "name": "example-worker",
+    "surface": "iterm-tab",
+    "message": "Continue.",
+    "source": "console",
+    "remoteControl": true,
+    "nonce": "nonce-0001",
+    "launchedBy": "seat-watchdog",
+    "launchReason": "stalled",
+    "host": "example-host",
+    "callerAgent": "agent-0001"
+  },
+  "retire": {
+    "rid": 9,
+    "t": "retire",
+    "name": "example-worker",
+    "force": false,
+    "caller": "example-coord",
+    "agentId": "agent-0002"
+  },
+  "agents": {
+    "rid": 10,
+    "t": "agents",
+    "includeRetired": false,
+    "view": {
+      "spawner": "example-coord",
+      "prefix": "example-",
+      "includeFinished": true,
+      "includeRetired": false,
+      "limit": 20
+    }
+  },
+  "surface": {
+    "rid": 11,
+    "t": "surface",
+    "name": "example-worker"
+  },
+  "spawn_result": {
+    "rid": 7,
+    "t": "spawn_result",
+    "ok": false,
+    "agentId": "agent-0003",
+    "name": "example-worker",
+    "reason": "the machine is busy",
+    "code": "machine_memory_floor",
+    "retryable": true,
+    "retryAfterMs": 5000,
+    "warnings": [
+      "sharing a checkout"
+    ],
+    "disallowedTools": [
+      "WebFetch"
+    ],
+    "transcript": {
+      "path": "/home/example/.claude/projects/x/s.jsonl",
+      "found": true
+    },
+    "account": "example",
+    "base": {
+      "ref": "origin/main",
+      "sha": "0123456789abcdef0123456789abcdef01234567"
+    },
+    "deduped": false,
+    "launch": {
+      "agentId": "agent-0003",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "name": "example-worker",
+      "profile": {
+        "name": "implementer",
+        "description": "Writes code in a worktree.",
+        "harness": "claude-code",
+        "model": "example-model",
+        "allowedTools": [
+          "Read",
+          "Edit"
+        ],
+        "disallowedTools": [
+          "WebFetch"
+        ],
+        "isolation": "worktree",
+        "surface": "headless",
+        "surfaceLifetime": "close-on-exit",
+        "role": "worker",
+        "remoteControl": false,
+        "returnContract": "implementer",
+        "effort": "high",
+        "cacheTtl": "1h",
+        "pushPolicy": "no-rewrite",
+        "promptPrelude": "Be brief.",
+        "strictMcpConfig": true,
+        "settingSources": [
+          "project",
+          "local"
+        ],
+        "disableSlashCommands": true
+      },
+      "brief": "Fix the widget.",
+      "preamble": "You are a peer.",
+      "adopted": true,
+      "surface": "headless",
+      "tags": [
+        "example"
+      ],
+      "subscriptions": [
+        {
+          "selector": {
+            "tag": "example"
+          },
+          "kinds": [
+            "registered"
+          ]
+        }
+      ],
+      "remoteControl": false,
+      "channels": [
+        "example-channel"
+      ],
+      "permissionMode": "default",
+      "anchor": "example-anchor",
+      "landToken": "synthetic-not-a-credential",
+      "successorFirst": true,
+      "cwd": "/work/example-repo",
+      "configDir": "/home/example/.claude",
+      "configDirUnset": true,
+      "resume": true
+    },
+    "host": "example-host"
+  },
+  "agents_result": {
+    "rid": 10,
+    "t": "agents_result",
+    "agents": [
+      {
+        "agentId": "agent-0002",
+        "name": "example-worker",
+        "profile": "implementer",
+        "state": "exited",
+        "origin": "spawned",
+        "spawnedBy": "example-coord",
+        "launchedBy": "shepherd",
+        "spawnedAt": 1700000000000,
+        "brief": "Fix the widget.",
+        "cwd": "/work/example-repo",
+        "isolation": "worktree",
+        "surface": "headless",
+        "sessionId": "00000000-0000-4000-8000-000000000004",
+        "configDir": "/home/example/.claude",
+        "configDirUnset": false,
+        "host": "example-host",
+        "provisionalName": true,
+        "repo": "example-org/example-repo",
+        "branch": "feat/example",
+        "base": {
+          "sha": "0123456789abcdef0123456789abcdef01234567",
+          "ref": "origin/main"
+        },
+        "task": "EX-1",
+        "workRole": "implementer",
+        "workRoleInferred": true,
+        "lastEventAt": 1700000100000,
+        "exitedAt": 1700000100000,
+        "detachedAt": 1700000050000,
+        "generation": 2,
+        "teleportFrom": "agent-0001",
+        "predecessor": null,
+        "exit": {
+          "code": 0,
+          "summary": "done",
+          "costUsd": 1.5,
+          "failedToStart": false,
+          "inferred": false
+        }
+      }
+    ],
+    "slots": {
+      "held": 3,
+      "cap": 8
+    },
+    "hidden": {
+      "finished": 4,
+      "retired": 2,
+      "overLimit": 1
+    }
+  },
+  "switch_result": {
+    "rid": 11,
+    "t": "switch_result",
+    "ok": true,
+    "reason": "pane anchor gone",
+    "name": "example-worker",
+    "agentId": "agent-0002",
+    "surface": "iterm-window",
+    "warnings": [
+      "opened a window instead of a pane"
+    ]
+  }
+}

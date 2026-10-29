@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { runBuiltHook } from "./test-support/built-hook.js";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
@@ -160,8 +159,6 @@ describe("a write that may not run over a script that holds a push", () => {
   });
 });
 
-// CI builds before it tests; locally run `pnpm build` first.
-const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-written-file-"));
 const pushHome = mkdtempSync(join(tmpdir(), "tool-guard-written-push-"));
 writeFileSync(join(home, "f"), "echo stale\n");
@@ -171,24 +168,24 @@ afterAll(() => {
   rmSync(pushHome, { recursive: true, force: true });
 });
 
-function hook(command: string, cwd = home): string | null {
-  const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: bash(command, cwd), env: { ...process.env, HOME: cwd }, encoding: "utf-8", timeout: 5000 });
+async function hook(command: string, cwd = home): Promise<string | null> {
+  const run = await runBuiltHook(bash(command, cwd), { home: cwd });
   expect(run.status).toBe(0);
   return decisionOf(run.stdout);
 }
 
 describe("the built hook on a script the line writes and then runs", () => {
-  it.each(denyRows)("denies %s", (_, command) => {
-    expect(hook(command)).toBe("deny");
+  it.each(denyRows)("denies %s", async (_, command) => {
+    expect(await hook(command)).toBe("deny");
   });
 
-  it.each(passRows)("passes %s", (_, command) => {
-    expect(hook(command)).toBeNull();
+  it.each(passRows)("passes %s", async (_, command) => {
+    expect(await hook(command)).toBeNull();
   });
 });
 
 describe("the built hook on a write that may not run over a script that holds a push", () => {
-  it.each(writeMayNotRun)("denies %s", (_, command) => {
-    expect(hook(command, pushHome)).toBe("deny");
+  it.each(writeMayNotRun)("denies %s", async (_, command) => {
+    expect(await hook(command, pushHome)).toBe("deny");
   });
 });

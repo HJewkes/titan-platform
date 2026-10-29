@@ -41,7 +41,9 @@ jobs:
         with:
           path: .turbo/cache
           key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
       - run: pnpm build
         env:
           TURBO_TELEMETRY_DISABLED: 1
@@ -123,6 +125,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm test:scope --run
+      # Per-file collect, setup and test time from scripts/vitest-file-timing.mjs; a none scope writes no file.
+      - name: Upload the vitest file timing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-file-timing-${{ github.run_attempt }}
+          path: vitest-file-timing.json
+          if-no-files-found: ignore
       - name: Save vitest results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
@@ -133,11 +143,14 @@ jobs:
       - run: pnpm capabilities:check
       - run: pnpm metrics:check
       # Drift in agent-chat's roots only warns here: agent-chat moves independently, so it must not redden this required check.
+      # On a PR, --base limits the per-file defaulted notices to files the PR adds or changes; the agent-chat clone is a depth-1 main, so it has no base.
       - name: Check the sunset manifest against agent-chat main
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           git clone --depth 1 https://github.com/HJewkes/agent-chat "$RUNNER_TEMP/agent-chat"
           echo "agent-chat main: $(git -C "$RUNNER_TEMP/agent-chat" rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn
+          node scripts/sunset-manifest.mjs check --agent-chat "$RUNNER_TEMP/agent-chat" --agent-chat-drift warn ${BASE_SHA:+--base "$BASE_SHA"}
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -172,7 +185,9 @@ jobs:
         with:
           path: .turbo/cache
           key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
       - name: Build
         id: build
         run: pnpm build

@@ -1,11 +1,12 @@
-import path from "node:path";
 import { z } from "zod";
 import { readEdges, taskTree, type Task } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
+import { branchStateReader, type BranchStateReader, type BranchStates } from "./branch-prs.js";
 import { failure, type ActiveWork, type ReadResult, type WireDeliverable, type WireTask } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
+import { listPage, listRow, tasksArgs, type TaskListPage, type TasksArgs } from "./task-list.js";
 import { deriveStage, taskIdsIn, type PrEvidence, type RefEvidence, type StageEvidence, type StageRule, type TaskStage } from "./task-stage.js";
 import { isPersonal, slugsForPrefix, taskRowOf, type WorkOptions } from "./work.js";
 
@@ -14,6 +15,8 @@ export interface TasksSource {
   sessions: SessionsSource;
   /** Defaults to one cached git and GitHub read per repository named in any `artifacts.yml`. */
   evidence?: EvidenceReader;
+  /** Defaults to one cached `gh pr list` per GitHub repository a task's branches live in. */
+  branches?: BranchStateReader;
   work?: WorkOptions;
 }
 
@@ -37,27 +40,17 @@ interface EvidenceSummary {
   degraded: string[];
 }
 
-export interface TasksResult {
+/** Rows come in active-work's priority order, and `initiatives` holds each initiative with an open task. */
+export interface TasksResult extends TaskListPage {
   fetchedAt: string;
-  tasks: TaskRow[];
   evidence: EvidenceSummary;
 }
 
 type WireReference = ReadResult<"context.graph">["references"][number];
-type WireStatus = ReadResult<"artifact.status">;
 
 export interface TaskDetail {
   fetchedAt: string;
   task: TaskRow & { notes?: string; doneWhen?: string };
-  /** Exact-id references from other tasks, session records and artifacts, as active-work's `context.graph` finds them. */
-  mentions: WireReference[];
-  /** Why mentions could not be read, such as `context.graph` passing the read timeout; mentions is empty then. */
-  mentionsDegraded: string | null;
-  /** `artifacts.yml` rows carrying the id, with live PR state from active-work's `artifact.status`. */
-  artifacts: {
-    branches: { repo: string; name: string; note?: string; present: boolean; pr: WireStatus["branches"][number]["pr"] }[];
-    worktrees: { repo: string; branch: string | null; holding?: string; present: boolean; pr?: number }[];
-  };
   /** Live refs and open pull requests carrying the id, the evidence the stage was derived from. */
   refs: RefEvidence[];
   openPrs: PrEvidence[];
@@ -72,7 +65,19 @@ export interface TaskDetail {
   deliverablesDegraded: string | null;
 }
 
+/** Mentions are slow to find (`context.graph` scans every initiative), so the page asks for them after the shell. */
+export interface TaskMentions {
+  /** Exact-id references from other tasks, session records and artifacts, as active-work's `context.graph` finds them. */
+  mentions: WireReference[];
+  /** Why mentions could not be read, such as `context.graph` passing the read timeout; mentions is empty then. */
+  degraded: string | null;
+}
+
+/** The task's initiative's `artifacts.yml` branches carrying the id, with live PR state; the page asks after the shell. */
+export type TaskArtifacts = BranchStates;
+
 const SESSION_LIMIT = 50;
+const TASK_ID = /^[A-Z][A-Z0-9]*-\d+$/;
 
 export function tasksCommands(source: TasksSource) {
   const evidence = source.evidence ?? gitEvidenceReader();
@@ -80,16 +85,37 @@ export function tasksCommands(source: TasksSource) {
     "work.tasks": readCommand({
       name: "work.tasks",
       description: "Open tasks across every initiative, each with a derived stage, the rule that produced it and its evidence",
-      args: z.object({}),
+      args: tasksArgs,
       result: z.custom<TasksResult>(),
-      run: () => readTasks(source, evidence),
+      run: (args) => readTasks(source, evidence, args),
     }),
     "work.task": readCommand({
       name: "work.task",
-      description: "One task with its derived stage, mentions, artifacts with PR state, and the sessions spawned for it",
-      args: z.object({ id: z.string().regex(/^[A-Z][A-Z0-9]*-\d+$/) }),
+      description: "One task with its derived stage, children and the sessions spawned for it; mentions and branch PR state are separate reads",
+      args: z.object({ id: z.string().regex(TASK_ID) }),
       result: z.custom<TaskDetail>(),
       run: ({ id }) => readTask(source, evidence, id),
+    }),
+    ...deferredTaskCommands(source, source.branches ?? branchStateReader()),
+  };
+}
+
+/** The task page's slow sections, read after its shell renders so neither holds the shell up. */
+function deferredTaskCommands(source: TasksSource, branches: BranchStateReader) {
+  return {
+    "work.taskMentions": readCommand({
+      name: "work.taskMentions",
+      description: "Records in any initiative that mention one task id, as active-work's context.graph finds them",
+      args: z.object({ id: z.string().regex(TASK_ID) }),
+      result: z.custom<TaskMentions>(),
+      run: ({ id }) => readMentions(source, id),
+    }),
+    "work.taskArtifacts": readCommand({
+      name: "work.taskArtifacts",
+      description: "The branches in a task's initiative artifacts that carry its id, each with its pull request state",
+      args: z.object({ id: z.string().regex(TASK_ID), slug: z.string().min(1) }),
+      result: z.custom<TaskArtifacts>(),
+      run: ({ id, slug }) => readArtifacts(source, branches, id, slug),
     }),
   };
 }
@@ -110,14 +136,15 @@ async function personalSlugs(activeWork: ActiveWork, options: WorkOptions = {}):
 
 const keeps = (personal: Set<string>) => (slug: string): boolean => !personal.has("*") && !personal.has(slug);
 
-async function readTasks(source: TasksSource, reader: EvidenceReader): Promise<TasksResult> {
+async function readTasks(source: TasksSource, reader: EvidenceReader, args: TasksArgs): Promise<TasksResult> {
   const [list, repos, personal] = await Promise.all([
     source.activeWork.read("task.list", { all_initiatives: true }),
     readEvidence(source.activeWork, reader),
     personalSlugs(source.activeWork, source.work),
   ]);
   const evidence = stageEvidence(list.tasks, repos);
-  return { fetchedAt: new Date().toISOString(), tasks: list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => stagedRow(task, evidence)), evidence: summary(repos) };
+  const rows = list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => listRow(stagedRow(task, evidence)));
+  return { fetchedAt: new Date().toISOString(), ...listPage(rows, args), evidence: summary(repos) };
 }
 
 // readEdges and taskTree read only id, title, status, estimate, tags, parent and dep, which a wire task carries.
@@ -155,11 +182,9 @@ function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[
 async function readTask(source: TasksSource, reader: EvidenceReader, id: string): Promise<TaskDetail> {
   const { activeWork } = source;
   const { open, personal, task } = await lookUpTask(source, id);
-  const [repos, mentions, sessions, status, joined] = await Promise.all([
+  const [repos, sessions, joined] = await Promise.all([
     readEvidence(activeWork, reader),
-    readMentions(activeWork, id),
     sessionsForTask(source.sessions, id, SESSION_LIMIT),
-    readStatus(activeWork, task.slug),
     joinDeliverables(activeWork, task.deliverables ?? []),
   ]);
   const evidence = stageEvidence(open, repos);
@@ -167,14 +192,11 @@ async function readTask(source: TasksSource, reader: EvidenceReader, id: string)
   return {
     fetchedAt: new Date().toISOString(),
     task: detailRow(task, evidence),
-    mentions: mentions.references.filter((reference) => kept(reference.slug)),
-    mentionsDegraded: mentions.degraded,
-    artifacts: artifactsOf(status.status, id),
     refs: [...(evidence.refs.get(id) ?? [])],
     openPrs: [...(evidence.openPrs.get(id) ?? [])],
     sessions: sessions.sessions,
     sessionsDegraded: sessions.degraded,
-    evidence: summary(repos, status.degraded),
+    evidence: summary(repos),
     children: childrenOf(open.filter((entry) => kept(entry.slug)), id),
     ...joined,
   };
@@ -217,20 +239,25 @@ async function showTask(activeWork: ActiveWork, slug: string, id: string): Promi
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-async function readMentions(activeWork: ActiveWork, id: string): Promise<{ references: WireReference[]; degraded: string | null }> {
+async function readMentions(source: TasksSource, id: string): Promise<TaskMentions> {
   try {
-    return { references: (await activeWork.read("context.graph", { id })).references, degraded: null };
+    const [{ references }, personal] = await Promise.all([source.activeWork.read("context.graph", { id }), personalSlugs(source.activeWork, source.work)]);
+    return { mentions: references.filter((reference) => keeps(personal)(reference.slug)), degraded: null };
   } catch (error) {
-    return { references: [], degraded: `Mentions unread: ${messageOf(error)}` };
+    return { mentions: [], degraded: `Mentions unread: ${messageOf(error)}` };
   }
 }
 
-/** One `gh` call per registered branch can outlast the read timeout; the page still loads, with the PR state marked unavailable. */
-async function readStatus(activeWork: ActiveWork, slug: string): Promise<{ status: WireStatus; degraded: string[] }> {
+/** Only the task's own branches are looked up, so a page never pays for every branch its initiative ever registered. */
+async function readArtifacts(source: TasksSource, reader: BranchStateReader, id: string, slug: string): Promise<TaskArtifacts> {
+  const personal = await personalSlugs(source.activeWork, source.work);
+  if (!keeps(personal)(slug)) throw failure(`No initiative ${slug}`, EXIT.NOINPUT);
   try {
-    return { status: await activeWork.read("artifact.status", { slug }), degraded: [] };
+    const { items } = await source.activeWork.read("artifact.list", { slug });
+    const branches = items.flatMap((item) => item.artifacts.branches).filter((branch) => carries(id, branch.name, branch.note));
+    return branches.length === 0 ? { branches: [], degraded: [] } : await reader(branches);
   } catch (error) {
-    return { status: { branches: [], worktrees: [] }, degraded: [`Artifact state unread: ${messageOf(error)}`] };
+    return { branches: [], degraded: [`Artifacts unread: ${messageOf(error)}`] };
   }
 }
 
@@ -253,13 +280,3 @@ async function joinDeliverables(activeWork: ActiveWork, ids: readonly string[]):
 }
 
 const carries = (id: string, ...texts: (string | null | undefined)[]): boolean => texts.some((text) => text != null && taskIdsIn(text).includes(id));
-
-/** Repos are absolute paths in `artifacts.yml`; the page gets the directory name, and no worktree path. */
-function artifactsOf(status: WireStatus, id: string): TaskDetail["artifacts"] {
-  const branches = status.branches.filter((branch) => carries(id, branch.name, branch.note));
-  const worktrees = status.worktrees.filter((tree) => carries(id, tree.branch, tree.holding, tree.note));
-  return {
-    branches: branches.map(({ repo, name, note, present, pr }) => ({ repo: path.basename(repo), name, ...(note ? { note } : {}), present, pr })),
-    worktrees: worktrees.map(({ repo, branch, holding, present, pr }) => ({ repo: path.basename(repo), branch, ...(holding ? { holding } : {}), present, ...(pr !== undefined ? { pr } : {}) })),
-  };
-}
