@@ -42,8 +42,14 @@ function wordValue(word: string): { kind: WordKind; value: number } {
 const continues = (last: WordKind | undefined, next: WordKind): boolean =>
   last === undefined || next === "hundred" || next === "scale" || last === "hundred" || last === "scale" || (last === "tens" && next === "small");
 
-/** "two thousand three hundred nineteen" reads as "2319"; "one two" as "1 2"; an "and" no scale word precedes stays a word. */
-function readNumberRun(run: string): string {
+const isPairedSmall = (last: WordKind | undefined, next: WordKind, value: number, current: number): boolean =>
+  last === "small" && next === "small" && value >= 10 && current > 0 && current < 100;
+
+/**
+ * "two thousand three hundred nineteen" reads as "2319"; "one two" as "1 2"; an "and" no scale word precedes stays a word.
+ * Paired, a two-digit number straight after a smaller one is said as digit pairs: "five thirty-one" reads "531".
+ */
+function readNumberRun(run: string, paired = false): string {
   const out: string[] = [];
   let total = 0, current = 0, last: WordKind | undefined;
   const flush = () => {
@@ -60,12 +66,13 @@ function readNumberRun(run: string): string {
       continue;
     }
     const { kind, value } = wordValue(word);
-    if (!continues(last, kind)) flush();
+    const pair = paired && isPairedSmall(last, kind, value, current);
+    if (!pair && !continues(last, kind)) flush();
     if (kind === "hundred") current = (current || 1) * 100;
     else if (kind === "scale") {
       total += (current || 1) * value;
       current = 0;
-    } else current += value;
+    } else current = pair ? current * 100 + value : current + value;
     last = kind;
   }
   flush();
@@ -75,10 +82,11 @@ function readNumberRun(run: string): string {
 const MARKUP = /\[([^\]]+)\]\([^)]*\)/g;
 
 /** A beat's text as a reader sees it: markup reduced to its word, spelled numbers written in digits. */
-export const claimText = (text: string): string => text.replace(MARKUP, "$1").replace(NUMBER_RUN, readNumberRun);
+export const claimText = (text: string, paired = false): string =>
+  text.replace(MARKUP, "$1").replace(NUMBER_RUN, (run) => readNumberRun(run, paired));
 
-const beatTexts = (beat: ScriptBeat): string[] =>
-  [beat.spoken, beat.visual.assertion, ...beat.visual.labels, ...beat.visual.chips.map((chip) => chip.text)].map(claimText);
+const beatTexts = (beat: ScriptBeat, paired: boolean): string[] =>
+  [beat.spoken, beat.visual.assertion, ...beat.visual.labels, ...beat.visual.chips.map((chip) => chip.text)].map((text) => claimText(text, paired));
 
 const REPO_REF = /\b([\w.-]+(?:\/[\w.-]+)?)#(\d+)\b/g;
 const TASK_REF = /\b([A-Z]{2,6}-\d+)\b/g;
@@ -163,9 +171,9 @@ function takeCounts(text: string): Claim[] {
 }
 
 /** The claims one beat makes, spoken and on screen: named refs, then counts with a noun or a state. */
-export function beatClaims(beat: ScriptBeat): Claim[] {
+export function beatClaims(beat: ScriptBeat, paired = false): Claim[] {
   const seen = new Set<string>();
-  return beatTexts(beat)
+  return beatTexts(beat, paired)
     .flatMap((text) => {
       const { refs, rest } = takeRefs(text);
       return [...refs, ...takeCounts(rest)];
@@ -263,15 +271,25 @@ function verdict(claim: Claim, beat: ScriptBeat, index: FactIndex): string | und
   return countVerdict(claim, citedFacts(beat, index));
 }
 
-/** Every claim in the script that the gathered facts do not back, one finding per beat and claim. */
+function beatFindings(beat: ScriptBeat, index: FactIndex, paired: boolean): ClaimFinding[] {
+  return beatClaims(beat, paired).flatMap((claim) => {
+    const nearest = verdict(claim, beat, index);
+    return nearest === undefined ? [] : [{ beat: beat.id, claim: claim.text, nearest }];
+  });
+}
+
+/**
+ * Every claim in the script that the gathered facts do not back, one finding per beat and claim. A beat is read two ways,
+ * numbers said apart ("twenty-three thirty-nine" as 23 and 39) and said in pairs (2339); it is backed when either is.
+ */
 export function claimFindings(script: ScriptV1, facts: readonly GatheredFact[]): ClaimFinding[] {
   const index = indexFacts(facts);
-  return script.beats.flatMap((beat) =>
-    beatClaims(beat).flatMap((claim) => {
-      const nearest = verdict(claim, beat, index);
-      return nearest === undefined ? [] : [{ beat: beat.id, claim: claim.text, nearest }];
-    }),
-  );
+  return script.beats.flatMap((beat) => {
+    const apart = beatFindings(beat, index, false);
+    if (apart.length === 0) return [];
+    const paired = beatFindings(beat, index, true);
+    return paired.length < apart.length ? paired : apart;
+  });
 }
 
 export const findingLine = ({ beat, claim, nearest }: ClaimFinding): string => `${beat} "${claim}" (${nearest})`;

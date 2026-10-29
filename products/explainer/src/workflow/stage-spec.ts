@@ -31,11 +31,11 @@ export const STAGE_VERSIONS: Record<CachedStage, string> = {
   audition: "pp10",
   script: "x22",
   rewrite: "x13",
-  eval: "x12",
+  eval: "x13",
   resolve: "p5c2s2f2s2d5",
   tts: "p6d",
   render: "m10c10",
-  qa: "x10x",
+  qa: "x10y",
   sheets: "x10",
 };
 
