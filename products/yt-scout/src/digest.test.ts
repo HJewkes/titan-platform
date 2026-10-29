@@ -133,6 +133,16 @@ describe("digest step", () => {
     expect(rows()[0]).toMatchObject({ outcome: "fail", error_class: "other" });
     expect(() => readFileSync(path.join(tree.root, "v1.digest.md"))).toThrow();
   });
+
+  it("records what a failed call billed on its row and in the result", async () => {
+    const usage = { costUsd: 0.75, inputTokens: 9000, outputTokens: 1200 };
+    const failing: DigestRunner = async () => ({ ok: false, errorClass: "budget", message: "over budget", usage });
+
+    const result = await digestVideo(deps({ runner: failing }), video("v1"));
+
+    expect(result).toEqual({ status: "failed", errorClass: "budget", costUsd: 0.75 });
+    expect(rows()[0]).toMatchObject({ outcome: "deferred", cost_usd: 0.75, input_tokens: 9000, output_tokens: 1200 });
+  });
 });
 
 describe("cli retriever", () => {
@@ -149,6 +159,15 @@ describe("cli retriever", () => {
     expect(r).toEqual({ priorDigests: ["vidAAAAAAAA | p1-2 | passage"], tasks: [{ id: "TP-100", title: "First task" }] });
     expect(seen[0]).toEqual(["corpus-query", "hits", "/corpus", "--phrase", "directory", "--window", "1"]);
     expect(seen[1]![0]).toBe("active-work");
+  });
+
+  it("keeps task hits when another hit has a null title", async () => {
+    const exec = async (file: string) =>
+      file === "corpus-query" ? "" : JSON.stringify({ hits: [{ class: "notes", ref: "note:y", title: null }, { class: "tasks", ref: "task:TP-100", title: "First task" }] });
+
+    const r = await cliRetriever({ exec, corpusRoot: "/corpus" })(CARD);
+
+    expect(r.tasks).toEqual([{ id: "TP-100", title: "First task" }]);
   });
 
   it("degrades to empty retrieval when both CLIs fail", async () => {

@@ -107,8 +107,9 @@ export async function digestVideo(deps: DigestDeps, input: DigestInput): Promise
   const outcome = await deps.runner({ prompt: prompt.prompt, systemPrompt: SYSTEM_PROMPT, model: deps.model, maxBudgetUsd: MAX_BUDGET_USD });
   if (!outcome.ok) {
     const rowOutcome: RowOutcome = outcome.errorClass === "budget" ? "deferred" : "fail";
-    appendRow(deps.rowsDir, rowFor(deps, input, prompt, startedAt, { outcome: rowOutcome, error_class: outcome.errorClass }));
-    return { status: "failed", errorClass: outcome.errorClass, costUsd: 0 };
+    const billed = { input_tokens: outcome.usage?.inputTokens ?? 0, output_tokens: outcome.usage?.outputTokens ?? 0, cost_usd: outcome.usage?.costUsd ?? 0 };
+    appendRow(deps.rowsDir, rowFor(deps, input, prompt, startedAt, { ...billed, outcome: rowOutcome, error_class: outcome.errorClass }));
+    return { status: "failed", errorClass: outcome.errorClass, costUsd: billed.cost_usd };
   }
   const { output, costUsd, inputTokens, outputTokens } = outcome.value;
   const outputPath = digestPathFor(input.transcriptPath);

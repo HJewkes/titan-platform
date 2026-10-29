@@ -52,7 +52,7 @@ async function priorDigests(config: CliRetrieverConfig, card: ScoreCard): Promis
 }
 
 const SearchOutputSchema = z.object({
-  hits: z.array(z.object({ ref: z.string().optional(), class: z.string().optional(), title: z.string().optional() })).default([]),
+  hits: z.array(z.object({ ref: z.string().nullish(), class: z.string().nullish(), title: z.string().nullish() })).default([]),
 });
 
 function parseTasks(stdout: string): TaskRef[] {
