@@ -56,13 +56,13 @@ export function cachedRead<T>(load: () => Promise<T>, { freshMs, staleMs }: Cach
   };
 }
 
-export interface CachedReads<A, T> {
+interface CachedReads<A, T> {
   read(args: A): Promise<T>;
   /** Drops every key, so each next read waits for a fresh one; reads already running are returned to their callers but never kept. */
   invalidate(): void;
 }
 
-export interface KeyedOptions<A> {
+interface KeyedOptions<A> {
   /** Two arguments with the same key share one kept value and one running read. */
   keyOf(args: A): string;
   /** The least recently read key goes first once more are kept. */
