@@ -45,7 +45,7 @@ async function weakenedGate() {
   const world = await gateOn(stored, [evidenceStep(BEFORE_OPEN, stored, 0)]);
   const card = await ownerEvidence(world.gate, { host: world.host, port: world.port, readText: reads(TEXT) });
   const digest = card.status === "ready" ? card.digest : "";
-  return { ...world, digest, signed: (signer: Signer, payload = { decision: "merge", headSha: H, evidenceDigest: digest }) => presenceFor(signer, world.gate.id, payload) };
+  return { ...world, digest, signed: (signer: Signer, payload: Record<string, string> = { decision: "merge", headSha: H, evidenceDigest: digest }) => presenceFor(signer, world.gate.id, payload) };
 }
 
 describe("a console tap on an owner-at-head gate", () => {
