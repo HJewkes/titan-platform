@@ -20,12 +20,12 @@ export interface ConfigRef {
 }
 
 /** `probe` is a cheap identity of the file's bytes (null when absent) so a read re-parses only after an edit. */
-export interface ConfigFile {
+interface ConfigFile {
   probe(path: string): string | null;
   read(path: string): Buffer;
 }
 
-export interface ConfigRefDeps {
+interface ConfigRefDeps {
   file?: ConfigFile;
   warn?: (line: string) => void;
 }
