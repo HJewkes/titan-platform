@@ -36,21 +36,42 @@ export function scriptPacing(script: Pick<ScriptV1, "profile">): TimingProfile["
   return profiles.profiles.has(script.profile) ? timingProfile(profileFor(profiles, script.profile)).pacing : undefined;
 }
 
-/** The beat's voiced words against its cap at its beat type's band rate, numbers spelled as the voice reads them. */
-function voicedBudget(beat: ScriptBeat): BudgetRow | undefined {
-  const { specs, bands } = doctrine();
-  const found = resolveBeat(beat, specs, shippedVisualRouter());
-  return "code" in found ? undefined : beatBudget(spellSpokenNumbers(beat), found.band, bands);
+interface Drawn {
+  /** The beat's voiced words against its cap at its beat type's band rate, numbers spelled as the voice reads them. */
+  budget: BudgetRow;
+  kind: string;
+  /** Whether a script cue can change the picture: the emphasis gate fails a cue on a kind with no emphasis targets. */
+  takesCues: boolean;
 }
 
-/** The longest planned stretch with no cue: from the cut in, between cues, and to the end of the voiced words. */
+function drawn(beat: ScriptBeat): Drawn | undefined {
+  const { specs, bands } = doctrine();
+  const found = resolveBeat(beat, specs, shippedVisualRouter());
+  if ("code" in found) return undefined;
+  const targets = specs.get(found.beat)?.emphasis?.targets ?? [];
+  return { budget: beatBudget(spellSpokenNumbers(beat), found.band, bands), kind: found.beat, takesCues: found.layer === "custom" || targets.length > 0 };
+}
+
+export const voicedBudget = (beat: ScriptBeat): BudgetRow | undefined => drawn(beat)?.budget;
+
+/** The kind the beat is drawn as when no script cue can move it (a claim-card, a button), else undefined. */
+export function cuelessKind(beat: ScriptBeat): string | undefined {
+  const found = drawn(beat);
+  return found && !found.takesCues ? found.kind : undefined;
+}
+
+/**
+ * The longest planned stretch with no cue: from the cut in, between cues, and to the end of the voiced words. A kind
+ * that takes no cue counts none, as qa's picture-change sees no cue move it.
+ */
 export function longestCueGapS(beat: ScriptBeat): number | undefined {
-  const budget = voicedBudget(beat);
-  if (!budget) return undefined;
+  const found = drawn(beat);
+  if (!found) return undefined;
+  const { budget, takesCues } = found;
   const voiced = spellSpokenNumbers(beat);
   const index = spokenWordIndex(voiced);
   const endS = Math.min(beat.plannedS, budget.words / budget.wordsPerS);
-  const cues = beatCues(voiced.visual).map((cue) => Math.min(endS, index(cue) / budget.wordsPerS));
+  const cues = (takesCues ? beatCues(voiced.visual) : []).map((cue) => Math.min(endS, index(cue) / budget.wordsPerS));
   const times = [0, ...cues, endS].sort((a, b) => a - b);
   return Math.max(0, ...times.slice(1).map((t, i) => t - times[i]!));
 }

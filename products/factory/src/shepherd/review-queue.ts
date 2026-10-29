@@ -1,3 +1,6 @@
+import type { GitHubPort } from "@titan-design/github";
+import type { LiveHead } from "./review-dispatcher.js";
+
 type Admission = { admit: true } | { admit: false; reason: string };
 
 /** The PR a review is for, at the head its intent was recorded against. */
@@ -37,6 +40,12 @@ export function movedPastOnList(cached: CachedOpenList): MovedPast {
     return list.prs.find((pr) => pr.number === target.pr)?.headSha !== target.head;
   };
 }
+
+/** The open PR's head read through the port, for a queued review whose head the cached list has not shown moving. */
+export const openHeadOnPort = (port: GitHubPort): LiveHead => async ({ repo, pr }) => {
+  const read = await port.getPr(repo, pr);
+  return read.state === "open" ? read.headSha : undefined;
+};
 
 /** Pure: fixers first, then by the time their intent was recorded. */
 function reviewQueue(waiting: readonly WaitingReview[]): WaitingReview[] {
