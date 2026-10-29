@@ -6,9 +6,11 @@ import { revealFrom } from "./stage/reveal.js";
 import { StatKindBeat } from "./StatBeat.js";
 
 /** Synthetic: parcels scanned at an invented depot, and a shrinking queue as a negative figure. */
+const SCANNED = 250;
+const QUEUE = -40;
 const FIGURES = [
-  { id: "figures-1", label: "Parcels scanned", value: 250 },
-  { id: "figures-2", label: "Queue change", value: -40 },
+  { id: "figures-1", label: "Parcels scanned", value: SCANNED },
+  { id: "figures-2", label: "Queue change", value: QUEUE },
 ];
 
 /** Every tenth of a second over the first four seconds: the whole count-up and its settle. */
@@ -29,13 +31,13 @@ function shownAt(t: number): number[] {
 describe("a stat card counting up to its figure", () => {
   it("the count never shows a value past its figure", () => {
     // Arrange
-    const [scanned, queue] = FIGURES.map((figure) => figure.value) as [number, number];
+    const samples = SAMPLES_S;
 
     // Act
-    const shown = SAMPLES_S.map(shownAt);
+    const shown = samples.map(shownAt);
 
     // Assert
-    expect(shown.every(([a, b]) => a! <= scanned && b! >= queue)).toBe(true);
-    expect(shown.at(-1)).toEqual([scanned, queue]);
+    expect(shown.every(([scanned = Infinity, queue = -Infinity]) => scanned <= SCANNED && queue >= QUEUE)).toBe(true);
+    expect(shown.at(-1)).toEqual([SCANNED, QUEUE]);
   });
 });
