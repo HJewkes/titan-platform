@@ -69,12 +69,18 @@ const OTHER = "0a1b2c3d-0000-4000-8000-0000000000bb";
 let daemon: FakeDaemon | undefined;
 let dir: string;
 let calls: string[];
+let taskLists: Record<string, unknown>[];
 let registryServed: boolean;
+let taskShowServed: boolean;
+let failing: Set<string>;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-tasks-"));
   calls = [];
+  taskLists = [];
   registryServed = true;
+  taskShowServed = true;
+  failing = new Set();
 });
 
 afterEach(async () => {
@@ -83,11 +89,31 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+const PREFIXES: Record<string, string> = { "orbit-relay": "OR", "garden-plan": "GP" };
+
+const notFound = (message: string) => Object.assign(new Error(message), { code: EXIT.NOINPUT });
+
+function showTask(args: Record<string, unknown>): unknown {
+  if (!taskShowServed) throw new Error("Unknown command: task.show");
+  const found = TASKS.find((entry) => entry.slug === args.slug && entry.id === args.id);
+  if (!found) throw notFound(`task ${String(args.id)} not found in ${String(args.slug)}`);
+  const { slug: _slug, ...rest } = found;
+  return rest;
+}
+
 function answer(command: string, args: Record<string, unknown>): unknown {
   calls.push(command);
+  if (failing.has(command)) throw new Error("The operation was aborted due to timeout");
   switch (command) {
     case "task.list":
-      return { tasks: TASKS.filter((entry) => args.status === "all" || entry.status === "open") };
+      taskLists.push(args);
+      return { tasks: TASKS.filter((entry) => (args.slug === undefined || entry.slug === args.slug) && (args.status === "all" || entry.status === "open")) };
+    case "task.show":
+      return showTask(args);
+    case "list":
+      return { sections: [{ heading: "Focused", items: Object.keys(PREFIXES).map((slug) => ({ slug, title: slug, state: "focused", updated: "2031-03-01" })) }], parse_errors: [] };
+    case "source.read":
+      return { content: `---\ntask_prefix: ${PREFIXES[String(args.slug)]}\n---\nBrief.`, truncated: false };
     case "artifact.list":
       return ARTIFACTS;
     case "artifact.status":
@@ -203,6 +229,7 @@ describe("work.task", () => {
     expect(data.openPrs).toEqual([{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }]);
     expect(data.sessions.map((session) => session.sessionId)).toEqual([SESSION]);
     expect(data.sessionsDegraded).toBeNull();
+    expect(data.mentionsDegraded).toBeNull();
   });
 
   it("lists the children a parent tag or a parent field names", async () => {
@@ -234,15 +261,45 @@ describe("work.task", () => {
     expect(JSON.stringify(data)).not.toContain("/synthetic/");
   });
 
-  it("returns a done task with the done stage", async () => {
+  it("returns a done task with the done stage, read from its own initiative by id", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-9" });
-    expect(data.task).toMatchObject({ stage: "done", stageRule: "status-done", status: "done" });
+    expect(data.task).toMatchObject({ id: "OR-9", slug: "orbit-relay", stage: "done", stageRule: "status-done", status: "done" });
+    expect(calls).toContain("task.show");
+  });
+
+  it("never asks for every initiative's done tasks to find one id", async () => {
+    await invoke<TaskDetail>("work.task", { id: "OR-9" });
+    expect(taskLists).toEqual([{ all_initiatives: true }]);
+  });
+
+  it("finds a done task through one initiative's list on a daemon without task.show", async () => {
+    taskShowServed = false;
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-9" });
+    expect(data.task).toMatchObject({ id: "OR-9", status: "done" });
+    expect(taskLists).toContainEqual({ slug: "orbit-relay", status: "all" });
+    expect(taskLists).not.toContainEqual(expect.objectContaining({ all_initiatives: true, status: "all" }));
+  });
+
+  it("is not found, not failing, for an id whose prefix no initiative claims", async () => {
+    const { exitCode } = await invoke<TaskDetail>("work.task", { id: "ZZ-1" });
+    expect(exitCode).toBe(EXIT.NOINPUT);
+    expect(calls).not.toContain("task.show");
+  });
+
+  it("loads with mentions and artifact state marked unavailable when those reads time out", async () => {
+    failing = new Set(["context.graph", "artifact.status"]);
+    const { data, exitCode } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
+    expect(exitCode).toBe(EXIT.OK);
+    expect(data).toMatchObject({ mentions: [], artifacts: { branches: [], worktrees: [] } });
+    expect(data.mentionsDegraded).toContain("context.graph");
+    expect(data.evidence.degraded).toEqual([expect.stringContaining("artifact.status")]);
   });
 
   it("is not found for an id no initiative holds", async () => {
     const { envelope, exitCode } = await invoke<TaskDetail>("work.task", { id: "OR-404" });
     expect(envelope.ok).toBe(false);
     expect(exitCode).toBe(EXIT.NOINPUT);
+    expect(calls).toContain("task.show");
     expect(calls).not.toContain("artifact.status");
   });
 

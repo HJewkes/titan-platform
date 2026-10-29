@@ -7,7 +7,7 @@ import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
 import { deriveStage, taskIdsIn, type PrEvidence, type RefEvidence, type StageEvidence, type StageRule, type TaskStage } from "./task-stage.js";
-import { isPersonal, taskRowOf, type WorkOptions } from "./work.js";
+import { isPersonal, slugsForPrefix, taskRowOf, type WorkOptions } from "./work.js";
 
 export interface TasksSource {
   activeWork: ActiveWork;
@@ -51,6 +51,8 @@ export interface TaskDetail {
   task: TaskRow & { notes?: string; doneWhen?: string };
   /** Exact-id references from other tasks, session records and artifacts, as active-work's `context.graph` finds them. */
   mentions: WireReference[];
+  /** Why mentions could not be read, such as `context.graph` passing the read timeout; mentions is empty then. */
+  mentionsDegraded: string | null;
   /** `artifacts.yml` rows carrying the id, with live PR state from active-work's `artifact.status`. */
   artifacts: {
     branches: { repo: string; name: string; note?: string; present: boolean; pr: WireStatus["branches"][number]["pr"] }[];
@@ -62,7 +64,7 @@ export interface TaskDetail {
   sessions: TaskSessions["sessions"];
   sessionsDegraded: TaskSessions["degraded"];
   evidence: EvidenceSummary;
-  /** Tasks whose parent edge names this one, in active-work's priority order. */
+  /** Open tasks whose parent edge names this one, in active-work's priority order; done children are not read. */
   children: { id: string; title: string; status: string }[];
   /** Each id in the task's `deliverables`, with its `deliverable.list` row, or null when no record has that id. */
   deliverables: { id: string; record: WireDeliverable | null }[];
@@ -128,8 +130,8 @@ function stagedRow(task: WireTask, evidence: StageEvidence): TaskRow {
   return { ...taskRowOf(task), status: task.status, stage, stageRule: rule, stageReason: reason, stageGuessed: guessed, ...edges };
 }
 
-function summary(repos: readonly RepoEvidence[]): EvidenceSummary {
-  return { repos: repos.map((entry) => entry.repo), degraded: repos.flatMap((entry) => (entry.degraded ? [entry.degraded] : [])) };
+function summary(repos: readonly RepoEvidence[], more: readonly string[] = []): EvidenceSummary {
+  return { repos: repos.map((entry) => entry.repo), degraded: [...repos.flatMap((entry) => (entry.degraded ? [entry.degraded] : [])), ...more] };
 }
 
 function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[]): StageEvidence {
@@ -152,30 +154,68 @@ function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[
 
 async function readTask(source: TasksSource, reader: EvidenceReader, id: string): Promise<TaskDetail> {
   const { activeWork } = source;
-  const [list, personal] = await Promise.all([activeWork.read("task.list", { all_initiatives: true, status: "all" }), personalSlugs(activeWork, source.work)]);
-  const task = list.tasks.find((entry) => entry.id === id);
+  const independent = Promise.all([readEvidence(activeWork, reader), readMentions(activeWork, id), sessionsForTask(source.sessions, id, SESSION_LIMIT)]);
+  // A missing id throws before this is awaited; the handler keeps its rejection from going unhandled meanwhile.
+  independent.catch(() => undefined);
+  // The open list is what the stage needs anyway, and holds the task unless it is done.
+  const [open, personal] = await Promise.all([activeWork.read("task.list", { all_initiatives: true }), personalSlugs(activeWork, source.work)]);
+  const task = open.tasks.find((entry) => entry.id === id) ?? (await findDoneTask(activeWork, id));
   if (!task || !keeps(personal)(task.slug)) throw failure(`No task ${id} in any initiative`, EXIT.NOINPUT);
-  const [repos, mentions, status, sessions, joined] = await Promise.all([
-    readEvidence(activeWork, reader),
-    activeWork.read("context.graph", { id }),
-    activeWork.read("artifact.status", { slug: task.slug }),
-    sessionsForTask(source.sessions, id, SESSION_LIMIT),
-    joinDeliverables(activeWork, task.deliverables ?? []),
-  ]);
-  const evidence = stageEvidence(list.tasks, repos);
+  const [[repos, mentions, sessions], status, joined] = await Promise.all([independent, readStatus(activeWork, task.slug), joinDeliverables(activeWork, task.deliverables ?? [])]);
+  const evidence = stageEvidence(open.tasks, repos);
+  const kept = keeps(personal);
   return {
     fetchedAt: new Date().toISOString(),
     task: { ...stagedRow(task, evidence), ...(task.notes !== undefined ? { notes: task.notes } : {}), ...(task.done_when !== undefined ? { doneWhen: task.done_when } : {}) },
-    mentions: mentions.references.filter((reference) => keeps(personal)(reference.slug)),
-    artifacts: artifactsOf(status, id),
+    mentions: mentions.references.filter((reference) => kept(reference.slug)),
+    mentionsDegraded: mentions.degraded,
+    artifacts: artifactsOf(status.status, id),
     refs: [...(evidence.refs.get(id) ?? [])],
     openPrs: [...(evidence.openPrs.get(id) ?? [])],
     sessions: sessions.sessions,
     sessionsDegraded: sessions.degraded,
-    evidence: summary(repos),
-    children: childrenOf(list.tasks.filter((entry) => keeps(personal)(entry.slug)), id),
+    evidence: summary(repos, status.degraded),
+    children: childrenOf(open.tasks.filter((entry) => kept(entry.slug)), id),
     ...joined,
   };
+}
+
+/** A done task is not in the open list: its id prefix names the initiative, and `task.show` reads that one file. */
+async function findDoneTask(activeWork: ActiveWork, id: string): Promise<WireTask | undefined> {
+  for (const slug of await slugsForPrefix(activeWork, id.slice(0, id.lastIndexOf("-")))) {
+    const found = await showTask(activeWork, slug, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+async function showTask(activeWork: ActiveWork, slug: string, id: string): Promise<WireTask | undefined> {
+  try {
+    return { ...(await activeWork.read("task.show", { slug, id })), slug };
+  } catch (error) {
+    const { code } = error as { code?: number };
+    if (code === EXIT.NOINPUT) return undefined;
+    // A daemon without task.show still answers one initiative's list, far short of every initiative's done tasks.
+    if (code === EXIT.USAGE) return (await activeWork.read("task.list", { slug, status: "all" })).tasks.find((entry) => entry.id === id);
+    throw error;
+  }
+}
+
+async function readMentions(activeWork: ActiveWork, id: string): Promise<{ references: WireReference[]; degraded: string | null }> {
+  try {
+    return { references: (await activeWork.read("context.graph", { id })).references, degraded: null };
+  } catch (error) {
+    return { references: [], degraded: `Mentions unread: ${(error as Error).message}` };
+  }
+}
+
+/** One `gh` call per registered branch can outlast the read timeout; the page still loads, with the PR state marked unavailable. */
+async function readStatus(activeWork: ActiveWork, slug: string): Promise<{ status: WireStatus; degraded: string[] }> {
+  try {
+    return { status: await activeWork.read("artifact.status", { slug }), degraded: [] };
+  } catch (error) {
+    return { status: { branches: [], worktrees: [] }, degraded: [`Artifact state unread: ${(error as Error).message}`] };
+  }
 }
 
 function childrenOf(tasks: readonly WireTask[], id: string): TaskDetail["children"] {

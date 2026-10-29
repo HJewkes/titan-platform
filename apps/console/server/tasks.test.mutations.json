@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "work.task reads every initiative's done tasks again to find one id",
+      "file": "apps/console/server/tasks.ts",
+      "find": "[activeWork.read(\"task.list\", { all_initiatives: true }), personalSlugs(activeWork, source.work)]",
+      "replace": "[activeWork.read(\"task.list\", { all_initiatives: true, status: \"all\" }), personalSlugs(activeWork, source.work)]",
+      "kills": ["work.task never asks for every initiative's done tasks to find one id"]
+    },
+    {
+      "name": "a daemon without task.show fails the done-task lookup",
+      "file": "apps/console/server/tasks.ts",
+      "find": "if (code === EXIT.USAGE) return",
+      "replace": "if (code === -1) return",
+      "kills": ["work.task finds a done task through one initiative's list on a daemon without task.show"]
+    },
+    {
+      "name": "a timed-out context.graph fails the whole task read",
+      "file": "apps/console/server/tasks.ts",
+      "find": "return { references: [], degraded: `Mentions unread: ${(error as Error).message}` };",
+      "replace": "throw error;",
+      "kills": ["work.task loads with mentions and artifact state marked unavailable when those reads time out"]
+    }
+  ]
+}

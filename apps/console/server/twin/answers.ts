@@ -210,6 +210,7 @@ const TASK_DETAIL: Served["work.task"]["result"] = {
   fetchedAt: new Date(TWIN_NOW).toISOString(),
   task: { ...TASKS[0]!, doneWhen: "A dropped handshake retries with capped backoff and a test drops it twice" },
   mentions: [],
+  mentionsDegraded: null,
   artifacts: { branches: [], worktrees: [] },
   refs: [],
   openPrs: [],
