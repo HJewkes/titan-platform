@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { seedRepo } from "../packages/test-kit/dist/git.js";
 import { MANIFEST_PATH, MILESTONES_PATH, checkManifest, classifyManifest, defaultFor, defaultedNotices, exitedMilestones, listRoots, milestoneOf } from "./sunset-manifest.mjs";
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), "sunset-manifest.mjs");
@@ -19,9 +20,9 @@ const listing = (...files) => ({ "titan-platform:old": files });
 function sandbox(files, mapped) {
   const dir = mkdtempSync(join(tmpdir(), "sunset-manifest-"));
   dirs.push(dir);
+  seedRepo(dir, {});
   mkdirSync(join(dir, "old"));
   for (const file of files) writeFileSync(join(dir, "old", file), "x\n");
-  execFileSync("git", ["-C", dir, "init", "-q"]);
   execFileSync("git", ["-C", dir, "add", "."]);
   const manifest = join(dir, "manifest.json");
   writeFileSync(manifest, JSON.stringify({ roots: [{ repo: "agent-chat", path: "old" }], entries: mapped.map((name) => ({ ...del(`old/${name}`), repo: "agent-chat" })) }));
@@ -252,9 +253,9 @@ describe("the checked-in manifest", () => {
   it("reports a new agent-chat src file under its area's default and exits 0 under warn", () => {
     const dir = mkdtempSync(join(tmpdir(), "sunset-agent-chat-"));
     dirs.push(dir);
+    seedRepo(dir, {});
     mkdirSync(join(dir, "src", "agents"), { recursive: true });
     writeFileSync(join(dir, "src", "agents", "supervisor-new.ts"), "x\n");
-    execFileSync("git", ["-C", dir, "init", "-q"]);
     execFileSync("git", ["-C", dir, "add", "."]);
 
     const result = spawnSync(process.execPath, [SCRIPT, "check", "--agent-chat", dir, "--agent-chat-drift", "warn"], { encoding: "utf8" });
