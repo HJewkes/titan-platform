@@ -28,13 +28,11 @@ describe("indexPaths with git-history metrics", () => {
   }
 
   it("records churn_30d/_commits/_authors per indexed file", async () => {
-    await repo.write("src/hot.ts", "export const x = 1;\n");
-    await repo.write("src/cold.ts", "export const y = 2;\n");
-    repo.commit("init", { date: daysAgo(3) });
-    await repo.write("src/hot.ts", "export const x = 1;\nexport const z = 3;\n");
-    repo.commit("extend hot", { author: "bob", date: daysAgo(2) });
-    await repo.write("src/hot.ts", "export const x = 1;\nexport const z = 3;\nexport const q = 4;\n");
-    repo.commit("extend hot more", { date: daysAgo(1) });
+    repo.history([
+      { message: "init", date: daysAgo(3), files: { "src/hot.ts": "export const x = 1;\n", "src/cold.ts": "export const y = 2;\n" } },
+      { message: "extend hot", author: "bob", date: daysAgo(2), files: { "src/hot.ts": "export const x = 1;\nexport const z = 3;\n" } },
+      { message: "extend hot more", date: daysAgo(1), files: { "src/hot.ts": "export const x = 1;\nexport const z = 3;\nexport const q = 4;\n" } },
+    ]);
 
     const { byKey } = await indexMetrics();
     expect(byKey("src/hot.ts", "churn_30d")).toBeGreaterThan(0);
@@ -66,10 +64,8 @@ describe("indexPaths with git-history metrics", () => {
   it("captures churn and ownership older than the rolling window under lifetime", async () => {
     const lines = ["export const a = 1;", "export const b = 2;", "export const c = 3;"];
     const history = [["alice", "2023-01-01T12:00:00Z"], ["bob", "2023-02-01T12:00:00Z"], ["carol", "2023-03-01T12:00:00Z"]];
-    for (const [i, [author, date]] of history.entries()) {
-      await repo.write("src/ancient.ts", `${lines.slice(0, i + 1).join("\n")}\n`);
-      repo.commit(`ancient ${i}`, { author, date });
-    }
+    const ancient = (i: number) => ({ "src/ancient.ts": `${lines.slice(0, i + 1).join("\n")}\n` });
+    repo.history(history.map(([author, date], i) => ({ message: `ancient ${i}`, author, date, files: ancient(i) })));
     const { byKey } = await indexMetrics({ lifetime: true });
     expect(byKey("src/ancient.ts", "churn_180d")).toBeUndefined();
     expect(byKey("src/ancient.ts", "churn_lifetime")).toBeGreaterThan(0);
@@ -95,12 +91,19 @@ describe("indexPaths with git-history metrics", () => {
   });
 
   it("links a path-orphan test by co-edit and keys its test ownership on the source", async () => {
-    await repo.write("src/engine.ts", "export const e = 1;\n");
-    await repo.write("src/weird.test.ts", 'import { e } from "./engine.js";\ne;\n');
-    repo.commit("init", { date: daysAgo(3) });
-    await repo.write("src/engine.ts", "export const e = 2;\n");
-    await repo.write("src/weird.test.ts", 'import { e } from "./engine.js";\ne + 1;\n');
-    repo.commit("co-edit", { author: "bob", date: daysAgo(2) });
+    repo.history([
+      {
+        message: "init",
+        date: daysAgo(3),
+        files: { "src/engine.ts": "export const e = 1;\n", "src/weird.test.ts": 'import { e } from "./engine.js";\ne;\n' },
+      },
+      {
+        message: "co-edit",
+        author: "bob",
+        date: daysAgo(2),
+        files: { "src/engine.ts": "export const e = 2;\n", "src/weird.test.ts": 'import { e } from "./engine.js";\ne + 1;\n' },
+      },
+    ]);
 
     const { all, byKey } = await indexMetrics({ churnWindowDays: 7 });
     expect(byKey("src/engine.ts", "linked_test_count")).toBe(1);
@@ -110,11 +113,10 @@ describe("indexPaths with git-history metrics", () => {
   });
 
   it("produces git-root-relative ids even when indexing a subdir", async () => {
-    await repo.write("packages/foo/src/inside.ts", "export const a = 1;\n");
-    await repo.write("outside.ts", "export const b = 2;\n");
-    repo.commit("init", { date: daysAgo(2) });
-    await repo.write("packages/foo/src/inside.ts", "export const a = 1;\nexport const c = 3;\n");
-    repo.commit("edit inside", { date: daysAgo(1) });
+    repo.history([
+      { message: "init", date: daysAgo(2), files: { "packages/foo/src/inside.ts": "export const a = 1;\n", "outside.ts": "export const b = 2;\n" } },
+      { message: "edit inside", date: daysAgo(1), files: { "packages/foo/src/inside.ts": "export const a = 1;\nexport const c = 3;\n" } },
+    ]);
 
     const { all, byKey } = await indexMetrics({ paths: [path.join(repo.dir, "packages")] });
     expect(byKey("packages/foo/src/inside.ts", "churn_30d")).toBeGreaterThan(0);
@@ -122,11 +124,10 @@ describe("indexPaths with git-history metrics", () => {
   });
 
   it("attributes churn to the new path after a rename", async () => {
-    await repo.write("src/old.ts", "export const v = 1;\n");
-    repo.commit("init", { date: daysAgo(2) });
-    repo.git(["mv", "src/old.ts", "src/new.ts"]);
-    await repo.write("src/new.ts", "export const v = 1;\nexport const w = 2;\n");
-    repo.commit("rename + edit", { date: daysAgo(1) });
+    repo.history([
+      { message: "init", date: daysAgo(2), files: { "src/old.ts": "export const v = 1;\n" } },
+      { message: "rename + edit", date: daysAgo(1), files: { "src/old.ts": null, "src/new.ts": "export const v = 1;\nexport const w = 2;\n" } },
+    ]);
 
     const { all, byKey } = await indexMetrics();
     expect(byKey("src/new.ts", "churn_30d")).toBeGreaterThan(0);
@@ -145,11 +146,16 @@ describe("indexPaths with git-history metrics", () => {
 
   describe("at a revision", () => {
     // Both commits are years old, so a window ending at the wall clock would see neither.
-    beforeEach(async () => {
-      await repo.write("src/shared.ts", "export const s = 1;\n");
-      repo.commit("alice writes", { author: "alice", date: "2024-01-01T12:00:00Z" });
-      await repo.write("src/shared.ts", "export const s = 1;\nexport const t = 2;\nexport const u = 3;\n");
-      repo.commit("bob edits", { author: "bob", date: "2024-01-10T12:00:00Z" });
+    beforeEach(() => {
+      repo.history([
+        { message: "alice writes", author: "alice", date: "2024-01-01T12:00:00Z", files: { "src/shared.ts": "export const s = 1;\n" } },
+        {
+          message: "bob edits",
+          author: "bob",
+          date: "2024-01-10T12:00:00Z",
+          files: { "src/shared.ts": "export const s = 1;\nexport const t = 2;\nexport const u = 3;\n" },
+        },
+      ]);
     });
 
     it("counts neither churn nor authorship from a commit after the indexed one", async () => {

@@ -1,7 +1,7 @@
 import os from "node:os";
 import { runAgent, type AgentFailure, type AgentRunConfig, type AgentRunResult, type AgentUsage } from "@titan-design/agent";
 import { ScoreCardSchema, type ScoreCard } from "./score-card.js";
-import type { CallUsage, ScoreRunner, StepErrorClass } from "./seams.js";
+import type { CallUsage, DigestRunner, ScoreRunner, StepErrorClass } from "./seams.js";
 
 const ERROR_CLASS: Record<AgentFailure["kind"], StepErrorClass> = {
   rate_limited: "other",
@@ -15,7 +15,8 @@ const ERROR_CLASS: Record<AgentFailure["kind"], StepErrorClass> = {
   inactivity_timeout: "other",
 };
 
-export type RunScoreAgent = (config: AgentRunConfig<ScoreCard>) => Promise<AgentRunResult<ScoreCard>>;
+type RunBareAgent<T> = (config: AgentRunConfig<T>) => Promise<AgentRunResult<T>>;
+export type RunScoreAgent = RunBareAgent<ScoreCard>;
 
 function callUsage(usage: AgentUsage): CallUsage {
   const usages = Object.values(usage.modelUsage);
@@ -27,32 +28,36 @@ function callUsage(usage: AgentUsage): CallUsage {
   };
 }
 
-/** One bare `claude -p` call: no tools, no settings, the CLI's own login as the credential. */
-export const createClaudeScoreRunner = (run: RunScoreAgent = runAgent): ScoreRunner => async (call) => {
-  const result = await run({
-    harness: "claude-print",
-    model: call.model,
-    prompt: call.prompt,
-    systemPrompt: call.systemPrompt,
-    cwd: os.tmpdir(),
-    maxTurns: 2,
-    maxBudgetUsd: call.maxBudgetUsd,
-    outputSchema: ScoreCardSchema,
-  });
-  if (!result.ok) {
-    const { failure } = result;
+/** One bare `claude -p` call: no tools, no settings, the CLI's own login as the credential. Without a schema the output is the reply text. */
+function bareRunner<T>(run: RunBareAgent<T>, outputSchema?: AgentRunConfig<T>["outputSchema"]): ScoreRunner {
+  return async (call) => {
+    const result = await run({
+      harness: "claude-print",
+      model: call.model,
+      prompt: call.prompt,
+      systemPrompt: call.systemPrompt,
+      cwd: os.tmpdir(),
+      maxTurns: 2,
+      maxBudgetUsd: call.maxBudgetUsd,
+      outputSchema,
+    });
+    if (!result.ok) {
+      const { failure } = result;
+      return {
+        ok: false,
+        errorClass: ERROR_CLASS[failure.kind],
+        message: failure.reason,
+        ...(result.usage ? { usage: callUsage(result.usage) } : {}),
+        ...("raw" in failure ? { raw: failure.raw } : {}),
+      };
+    }
     return {
-      ok: false,
-      errorClass: ERROR_CLASS[failure.kind],
-      message: failure.reason,
-      ...(result.usage ? { usage: callUsage(result.usage) } : {}),
-      ...("raw" in failure ? { raw: failure.raw } : {}),
+      ok: true,
+      value: { output: result.output, ...callUsage(result.usage), model: Object.keys(result.usage.modelUsage)[0] ?? call.model },
     };
-  }
-  return {
-    ok: true,
-    value: { output: result.output, ...callUsage(result.usage), model: Object.keys(result.usage.modelUsage)[0] ?? call.model },
   };
-};
+}
 
+export const createClaudeScoreRunner = (run: RunScoreAgent = runAgent): ScoreRunner => bareRunner(run, ScoreCardSchema);
 export const claudeScoreRunner: ScoreRunner = createClaudeScoreRunner();
+export const claudeDigestRunner: DigestRunner = bareRunner<string>(runAgent);

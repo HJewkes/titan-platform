@@ -2,12 +2,11 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fixtureEnv, seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorktreeAllocator } from "./allocator.js";
 import { inspectForRelease } from "./release-safety.js";
 import { runGit } from "./git.js";
-import { seedRepo } from "./git-fixture.js";
-import { fixtureEnv } from "./test-env.js";
 
 const roots: string[] = [];
 const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();

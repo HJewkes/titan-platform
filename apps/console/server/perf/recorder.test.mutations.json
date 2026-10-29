@@ -15,8 +15,8 @@
     {
       "name": "a logged row spreads the whole sample",
       "file": "apps/console/server/perf/recorder.ts",
-      "find": "const row: RpcRow = { t: now(), kind: \"rpc\", name: sample.name, ms: sample.ms, bytes: sample.bytes, status: sample.status };",
-      "replace": "const row = { ...sample, t: now(), kind: \"rpc\" } as RpcRow;",
+      "find": "keep({ t: now(), kind: \"rpc\", name: sample.name, ms: sample.ms, bytes: sample.bytes, status: sample.status });",
+      "replace": "keep({ ...sample, t: now(), kind: \"rpc\" } as RpcRow);",
       "kills": [
         "perf recorder a sample carries no argument values"
       ]

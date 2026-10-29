@@ -59,6 +59,20 @@ describe("perf recorder", () => {
     });
   });
 
+  it("summarises upstream calls apart from rpcs with timeouts counted", async () => {
+    const recorder = createPerfRecorder({ dir: logDir, now: () => NOW });
+    recorder.record(sample("work.tasks", 5));
+    recorder.recordUpstream({ name: "factory:needs.list", ms: 30, bytes: 80, outcome: "ok" });
+    recorder.recordUpstream({ name: "factory:needs.list", ms: 10_000, bytes: 0, outcome: "timeout" });
+
+    const upstreams = await recorder.upstreams("15m");
+    const rpcs = await recorder.summary("15m");
+    await recorder.close();
+
+    expect(upstreams).toEqual([expect.objectContaining({ name: "factory:needs.list", count: 2, errors: 1, timeouts: 1, max: 10_000 })]);
+    expect(rpcs.map((row) => row.name)).toEqual(["work.tasks"]);
+  });
+
   it("the 24 hour summary reads rows from the log, not only the ring", async () => {
     const earlier = NOW - 3 * 3_600_000;
     seedLog(logDir, "rpc-2026-10-29.jsonl", `${JSON.stringify({ t: earlier, kind: "rpc", name: "work.notes", ms: 40, bytes: 9, status: 200 })}\nnot json\n`);

@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound } from "../server/rounds.js";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
 import { draftKey } from "./pages/round-draft.js";
 import { checkAndSend, toSection } from "./pages/round-pager.test-helpers.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 afterEach(() => {
   cleanup();
@@ -27,7 +26,7 @@ interface Served {
 }
 
 /** Renders the synthetic question round; `rounds.submit` succeeds, and after it `rounds.get` answers as sent. */
-async function renderRound({ manifestSha256, status }: Served = {}): Promise<void> {
+async function renderRound({ manifestSha256, status }: Served = {}, { inApp = false } = {}): Promise<void> {
   const round = await getRound(source, ROUND);
   if (!round.valid) throw new Error(round.reason);
   const served = { ...round, ...(manifestSha256 && { manifestSha256 }), ...(status && { status, notes: { general: "", comments: {} } }) };
@@ -49,14 +48,7 @@ async function renderRound({ manifestSha256, status }: Served = {}): Promise<voi
       return inner.call(name, args, options);
     },
   };
-  window.location.hash = `#/rounds/${ROUND}`;
-  render(
-    <RpcProvider source={live}>
-      <AnswerSourceProvider value={live}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(live, `#/rounds/${ROUND}`, { answers: live, inApp });
   await screen.findByTestId("round-question-ramp-default");
 }
 
@@ -81,7 +73,7 @@ async function typeDraft(): Promise<void> {
 
 describe("an unsent round's draft", () => {
   it("restores picks, comments and round feedback after the page is remounted", async () => {
-    await renderRound();
+    await renderRound({}, { inApp: true });
     await typeDraft();
     cleanup();
 

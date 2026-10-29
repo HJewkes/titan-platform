@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
+import type { RoutedStepInput, StepRoute, WorkflowRun } from "@titan-design/workflow";
+import { partialFake } from "@titan-design/test-kit";
 import { crashAt } from "../test-support/crash.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase } from "./cleanup.js";
@@ -38,7 +39,11 @@ import {
   type ReviewIntentResult,
   type ReviewWiring,
 } from "./review.js";
-import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, reviewWait } from "./review-wait.js";
+import { DEFAULT_HOLD_WAIT_MS, ReviewerAskTimedOut, ReviewerMachineHold, ReviewerSpawnQueued, reviewWait } from "./review-wait.js";
+import { SpawnDeferred, spawnGate, type SpawnGate } from "./spawn-gate.js";
+import { busyRuns } from "../restart-drain.js";
+import { gateQueuedRun } from "../serve-holds.js";
+import type { ShepherdServices } from "./services.js";
 import { CI_UNREAD_LINE, DEPTH_FLOOR_REASON, type AwaitVerdictInput, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
@@ -725,6 +730,49 @@ describe("sh-review", () => {
 
     expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
     expect(dispatch.spawns).toHaveLength(1);
+  });
+
+  describe("a review spawn the gate deferred when serve restarts (TP-4474)", () => {
+    /** Spawns pass `gateOf()` first, as the agent-chat port's do, so a deferral starts nobody; the roster outlives serve, as the broker does. */
+    function gatedDispatch(gateOf: () => SpawnGate): FakeDispatch {
+      const fake = fakeDispatch();
+      const spawn = fake.spawn;
+      fake.spawn = async (name, brief, target, facts) => {
+        try {
+          gateOf().admit(name, [], { fixer: false, target: { repo: target.repo, pr: target.pr } });
+        } catch (error) {
+          throw error instanceof SpawnDeferred ? new ReviewerSpawnQueued(`spawn gate: ${error.message}`) : error;
+        }
+        return spawn(name, brief, target, facts);
+      };
+      return fake;
+    }
+
+    const reviewing: WorkflowRun = { id: "run-1", workflowName: "shepherd-pr", params: {}, status: "running", currentStep: `sh-review:${HEAD}`, stepResults: {}, activeSteps: {}, revision: 1, ownerGeneration: 1, startedAt: "2026-01-01T00:00:00.000Z", completedAt: null, error: null };
+
+    it("is not waited on by the drain, and the repeated step after the restart admits and spawns its reviewer once", async () => {
+      const lines: string[] = [];
+      let gate = spawnGate({ read: () => ({ load5: 40 }), log: (line) => void lines.push(line) });
+      const dispatch = gatedDispatch(() => gate);
+      let store: ShepherdStore | undefined;
+      const queued = gateQueuedRun(partialFake<ShepherdServices>({ store: partialFake<ShepherdStoreRef>({ get: () => store! }) }));
+      const drainSaw: string[][] = [];
+      const serveStops = new AbortController();
+      const onSleep = () => {
+        drainSaw.push(busyRuns([reviewing], () => undefined, undefined, queued).map((busy) => busy.runId));
+        serveStops.abort();
+      };
+      await reviewSteps(dispatch, { signal: serveStops.signal, onSleep, prepare: (bound) => (store = bound) }).review(spawnIntent, 0, "run-1").catch(() => undefined);
+
+      gate = spawnGate({ read: () => ({ load5: 1 }), log: (line) => void lines.push(line) });
+      const { result } = await reviewSteps(dispatch, { prepare: (bound) => (store = bound) }).review(spawnIntent, 1, "run-1");
+
+      expect(drainSaw).toEqual([[]]);
+      expect(result).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-7" });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-7"]);
+      expect(lines.map((line) => /spawn_gate (\w+) rv-octo-demo-7/.exec(line)?.[1])).toEqual(["deferred", "admitted"]);
+      expect(busyRuns([reviewing], () => undefined, undefined, queued)).toHaveLength(1);
+    });
   });
 
   it("keeps the intent's time when the step repeats after the reviewer spoke, so those first words still count", async () => {

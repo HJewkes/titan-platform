@@ -5,6 +5,7 @@
 // Usage: node scripts/verify-changed.mjs [base]   (base: VERIFY_CHANGED_BASE, then argv, then origin/main)
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
@@ -103,14 +104,16 @@ function lintTypesCommand(changed, workspace) {
   return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only] };
 }
 
-function vitestCommand(changed, hasTimeout) {
+function vitestCommand(changed, hasTimeout, spool) {
   const related = relatedTestArgs(changed);
   if (!related) return null;
   const vitest = ["pnpm", "exec", "vitest", ...related];
   // macOS ships without coreutils timeout; an unbounded run beats skipping the tests.
   const [cmd, ...args] = hasTimeout ? ["timeout", String(VITEST_TIMEOUT_SECONDS), ...vitest] : vitest;
   const label = hasTimeout ? "vitest related" : "vitest related (no timeout command, unbounded)";
-  return { label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}` } };
+  // Each pre-push run leaves a timing record in the spool, so the corpus sees local runs too (TP-4465).
+  const timing = { TITAN_TEST_TIMING_SPOOL: spool, TITAN_TEST_TIMING_RUNNER: "verify-changed" };
+  return { label, cmd, args, env: { NODE_OPTIONS: `--max-old-space-size=${VITEST_HEAP_MB}`, ...timing } };
 }
 
 const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script] });
@@ -121,14 +124,15 @@ const pnpmRun = (script) => ({ label: script, cmd: "pnpm", args: ["run", script]
  * verify-changed-coverage.test.mjs fails on a step no row matches and on a labelled row the plan never runs.
  */
 export const CI_COVERAGE = [
-  { job: ["validate", "dag-check"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
+  { job: ["validate", "dag-check", "perf"], run: "pnpm install --frozen-lockfile", disposition: "setup", reason: "the checkout is installed already" },
   { job: "validate", run: "pnpm env:doctor", disposition: "local", label: "env:doctor" },
-  { job: ["validate", "dag-check"], run: "pnpm build", disposition: "local", label: "build" },
+  { job: ["validate", "dag-check", "perf"], run: "pnpm build", disposition: "local", label: "build" },
   { job: "validate", run: "pnpm egress:scan range", disposition: "covered-by", reason: "the pre-push hook that prepare installs scans the pushed range" },
   { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
+  { job: "validate", run: "pnpm sidecar:finds", disposition: "local", label: "sidecar:finds" },
   { job: "validate", run: "pnpm typecheck", disposition: "local", label: "typecheck" },
   { job: "validate", run: "pnpm lint", disposition: "local", label: "lint" },
-  { job: "validate", run: /apt-get install|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
+  { job: "validate", run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
   { job: "validate", run: "pnpm test:scope", disposition: "local-subset", label: "vitest related", reason: "the full reverse closure can pass the 600 s cap; CI stays the authority" },
   { job: "validate", run: "pnpm capabilities:check", disposition: "local", label: "capabilities:check" },
   { job: "validate", run: "pnpm metrics:check", disposition: "local", label: "metrics:check" },
@@ -139,6 +143,7 @@ export const CI_COVERAGE = [
   { job: "dag-check", run: /INDEX_VERSION|codewatch-summary\.mjs/, disposition: "setup", reason: "cache key and report summary, not a check" },
   { job: "dag-check", run: /^pnpm (?:dag:check:graph|dead:check) /, disposition: "separate-gate", reason: "pnpm dag:check, about 200 s seeded, runs beside verify:changed" },
   { job: "dag-check", run: "pnpm lint:types", disposition: "local-scoped", label: "lint:types", reason: "scoped by lintTypesScope over CI's test-scope graph" },
+  { job: "perf", run: "pnpm vitest run --project perf", disposition: "ci-only", reason: "timing budgets need a runner with no other test load, so a local run would not be the authority" },
   { job: "hub-compose", run: /[\s\S]/, disposition: "ci-only", reason: "needs Docker; CI already scopes the job by path" },
 ];
 
@@ -147,16 +152,17 @@ export const CI_COVERAGE = [
  * change: a trigger list that misses an input fails silently, and only CI catches it. LOC runs in-process after the
  * build, which produces the code-graph dist it reads.
  */
-export function planCommands({ base, changed, workspace, hasTimeout }) {
+export function planCommands({ base, changed, workspace, hasTimeout, spool }) {
   if (changed.length === 0) return [];
   return [
     pnpmRun("env:doctor"),
     pnpmRun("build"),
     { label: LOC_LABEL, inProcess: true },
     pnpmRun("merge:lint"),
+    pnpmRun("sidecar:finds"),
     pnpmRun("typecheck"),
     pnpmRun("lint"),
-    vitestCommand(changed, hasTimeout),
+    vitestCommand(changed, hasTimeout, spool),
     pnpmRun("capabilities:check"),
     pnpmRun("metrics:check"),
     pnpmRun("docs:build"),
@@ -175,6 +181,11 @@ function changedFiles(base) {
     ...gitLines(["ls-files", "--other", "--modified", "--exclude-standard"]),
   ]);
   return [...files].filter((path) => existsSync(join(ROOT, path)));
+}
+
+function timingSpool() {
+  const home = process.env.TITAN_TEST_TIMING_HOME || join(homedir(), ".local/share/titan-test-timing");
+  return process.env.TITAN_TEST_TIMING_SPOOL || join(home, "spool");
 }
 
 const hasTimeout = () => spawnSync("timeout", ["--version"], { stdio: "ignore" }).error === undefined;
@@ -207,7 +218,7 @@ async function runStep({ cmd, args, env, inProcess }, changed) {
 async function main() {
   const base = process.env.VERIFY_CHANGED_BASE || process.argv[2] || DEFAULT_BASE;
   const changed = changedFiles(base);
-  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout() });
+  const plan = planCommands({ base, changed, workspace: readWorkspace(ROOT), hasTimeout: hasTimeout(), spool: timingSpool() });
   if (plan.length === 0) console.log(`verify:changed: nothing changed against ${base}`);
   let failed = false;
   for (const step of plan) {

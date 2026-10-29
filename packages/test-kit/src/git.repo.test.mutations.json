@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "withHistory ignores a commit's own date and pins it by position",
+      "file": "packages/test-kit/src/git.ts",
+      "find": "  const when = commit.date === undefined ? HISTORY_EPOCH + mark : Math.floor(Date.parse(commit.date) / 1000);\n",
+      "replace": "  const when = HISTORY_EPOCH + mark;\n",
+      "kills": [
+        "withHistory dates and authors a commit that names them, and pins the rest"
+      ]
+    }
+  ]
+}

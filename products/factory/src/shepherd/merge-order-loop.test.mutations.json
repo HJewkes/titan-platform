@@ -32,15 +32,6 @@
       ]
     },
     {
-      "name": "a review fix round keeps the conflict's reservation",
-      "file": "products/factory/src/shepherd/pr.ts",
-      "find": "  if (kind !== \"conflict\") await releaseUnlandable(run);\n",
-      "replace": "",
-      "kills": [
-        "TP-4497: a reservation is held only through a conflict round or at a landable head a review fix round releases the reservation and a ready overlapping PR lands"
-      ]
-    },
-    {
       "name": "a run held behind a live reservation counts as merging",
       "file": "products/factory/src/shepherd/merge-order-steps.ts",
       "find": "    if (await stillOpen(deps.port, repo, blocker.reservation.pr)) return true;\n",

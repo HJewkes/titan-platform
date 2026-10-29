@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Command, CommanderError } from "commander";
+import { addEvalCommands } from "./eval-cli.js";
 import { isOnTrial, type Watchlist } from "./config.js";
 import { claudeScoreRunner } from "./claude-runner.js";
+import { addDailyCommand } from "./daily-cli.js";
+import type { ConsoleRunner } from "./daily.js";
 import { createDetector, detectNew, formatDetected, insertNew, realDeps, resolveYtDlp, type DetectDeps } from "./detect.js";
 import { casesDir, configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
 import { appendRows, type StepRow } from "./rows.js";
@@ -179,6 +182,7 @@ export async function runCli(
   writeErr: Write = console.error,
   scoreRunner: ScoreRunner = claudeScoreRunner,
   makeDeps: MakeDeps = realDeps,
+  consoleRunner?: ConsoleRunner,
 ): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);
@@ -186,6 +190,8 @@ export async function runCli(
   addDetectCommand(program, write, makeDeps);
   addTranscribeCommand(program, write);
   addScoreCommand(program, write, scoreRunner);
+  addEvalCommands(program, write, scoreRunner);
+  addDailyCommand(program, write, consoleRunner);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;
