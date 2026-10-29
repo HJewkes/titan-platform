@@ -44,8 +44,9 @@ const LIVE_STATUS: Record<string, StepErrorClass> = { is_upcoming: "upcoming", i
 
 function liveStatusOf(stdout: string): StepErrorClass | undefined {
   try {
-    const status = (JSON.parse(stdout) as { live_status?: unknown }).live_status;
-    return typeof status === "string" ? LIVE_STATUS[status] : undefined;
+    const meta: unknown = JSON.parse(stdout);
+    if (typeof meta !== "object" || meta === null || !("live_status" in meta)) return undefined;
+    return typeof meta.live_status === "string" ? LIVE_STATUS[meta.live_status] : undefined;
   } catch {
     return undefined;
   }
