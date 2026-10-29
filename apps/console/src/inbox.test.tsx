@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
-import { App } from "./App.js";
-import { AnswerSourceProvider } from "./data/submit.js";
+import { renderPage } from "./render-page.test-helpers.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
@@ -115,7 +114,7 @@ interface Call {
 }
 
 /** Renders the inbox over a recorded snapshot; with `taps` the page is live and those commands answer as given. */
-function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Record<string, Tap>): Call[] {
+function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Record<string, Tap>, { inApp = false } = {}): Call[] {
   const planning = inboxView({}, true);
   const snapshot: Snapshot = { format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer, [snapshotKey("inbox.list", { planning: true })]: planning } };
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot), "text/html");
@@ -125,14 +124,7 @@ function renderInbox(answer: JsonEnvelope<unknown> = inboxAnswer(), taps?: Recor
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (calls.push({ name, args }), taps?.[name] ? taps[name](args) : inner.call(name, args, options)),
   };
-  window.location.hash = "#/inbox";
-  render(
-    <RpcProvider source={source}>
-      <AnswerSourceProvider value={taps ? source : null}>
-        <App />
-      </AnswerSourceProvider>
-    </RpcProvider>,
-  );
+  renderPage(source, "#/inbox", { answers: taps ? source : null, inApp });
   return calls;
 }
 
@@ -229,7 +221,7 @@ describe("the inbox page", () => {
 
   it("opens a console-route evidence link inside the console and a URL in a new tab", async () => {
     const opened = vi.spyOn(window, "open").mockReturnValue(null);
-    renderInbox();
+    renderInbox(inboxAnswer(), undefined, { inApp: true });
     fireEvent.click(within(await screen.findByTestId("inbox-row-gate-1")).getByText("https://github.com/example/repo/pull/12"));
     expect(opened).toHaveBeenCalledWith("https://github.com/example/repo/pull/12", "_blank", "noopener");
     fireEvent.click(within(screen.getByTestId("inbox-row-held-1")).getByText("Open evidence"));
@@ -289,13 +281,13 @@ describe("the inbox page", () => {
   });
 
   it("issues only reads until a row is tapped", async () => {
-    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    const calls = renderInbox(inboxAnswer(), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved }, { inApp: true });
     await screen.findByTestId("inbox-row-gate-1");
     expect(new Set(calls.map((call) => call.name))).toEqual(new Set(["inbox.list", "console.build"]));
   });
 
   it("shows a derived row's evidence, threshold and age with a link to the agent and no button, even on a live page", async () => {
-    renderInbox(inboxAnswer({ derived: [BLOCKED_AGENT] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved });
+    renderInbox(inboxAnswer({ derived: [BLOCKED_AGENT] }), { "inbox.prepare": () => Promise.resolve(ready()), "inbox.act": resolved }, { inApp: true });
     const row = await screen.findByTestId(`inbox-derived-${BLOCKED_AGENT.id}`);
     expect(within(row).getByText("machine: blocked")).toBeTruthy();
     expect(within(row).getByText("40m")).toBeTruthy();

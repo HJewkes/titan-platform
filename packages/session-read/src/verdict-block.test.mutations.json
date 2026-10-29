@@ -9,6 +9,15 @@
       "kills": [
         "parseVerdictBlock parses a long single-line message in linear time"
       ]
+    },
+    {
+      "name": "a labelled unchanged line is left out of the listed lines",
+      "file": "packages/session-read/src/verdict-block.ts",
+      "find": "return rest === undefined ? [] : [{ raw, reading: readCiPolicyLabel(rest, index === canonicalAt) }];",
+      "replace": "return rest === undefined || rest === \"unchanged\" ? [] : [{ raw, reading: readCiPolicyLabel(rest, index === canonicalAt) }];",
+      "kills": [
+        "ciPolicyLabelledLines lists a decorated weakened line and the canonical unchanged line after it, each with its own reading"
+      ]
     }
   ]
 }

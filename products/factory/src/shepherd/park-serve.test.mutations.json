@@ -4,8 +4,8 @@
     {
       "name": "agent-chat calls run synchronously, blocking serve's event loop",
       "file": "packages/agent-dispatch/src/agents.ts",
-      "find": "    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input, undefined, signal);",
-      "replace": "    return (await import(\"./exec.js\")).execSafe(bin, args, agentChatEnv(), timeoutMs, undefined, input);",
+      "find": "    return await execSafeAsync(bin, args, { ...agentChatEnv(), ...extraEnv }, timeoutMs, input, undefined, signal);",
+      "replace": "    return (await import(\"./exec.js\")).execSafe(bin, args, { ...agentChatEnv(), ...extraEnv }, timeoutMs, undefined, input);",
       "kills": [
         "a park whose agent-chat child reads Shepherd back from serve completes, and serve answers /version while the child still runs"
       ]

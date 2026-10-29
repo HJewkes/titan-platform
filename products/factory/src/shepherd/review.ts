@@ -139,7 +139,7 @@ type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
  * A timed-out ask may have landed, so it is `timed-out`, looked for like any ask, and never asked again blind (TP-2804).
  */
 async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<"asked" | "timed-out"> {
-  const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target, facts));
+  const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief, signal) : dispatch.spawn(intent.reviewer, brief, target, facts, signal));
   const note = (text: string) => {
     waits.push(text);
     noteReviewWait(target.repo, target.pr, `waiting for reviewer admission (the broker has not started ${intent.reviewer}): ${text}`);

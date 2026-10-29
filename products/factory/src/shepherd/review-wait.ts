@@ -1,5 +1,6 @@
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { errorClass, failureOf } from "./error-class.js";
+import { ReviewSuperseded } from "./review-dispatcher.js";
 
 const minutes = (ms: number) => `${Math.round(ms / 6_000) / 10} min`;
 
@@ -75,7 +76,7 @@ export class ReviewerMachineHold extends ReviewerBrokerBusy {
   override readonly name: string = "ReviewerMachineHold";
 }
 
-/** The factory's own spawn gate deferred the start; it admits oldest-first, so the queue's head must ask again within a window or the opening is lost. */
+/** The factory's own spawn gate deferred a start that is not queued, so it asks again after the gate's window rather than a doubling wait. */
 export class ReviewerSpawnQueued extends ReviewerMachineHold {
   override readonly name = "ReviewerSpawnQueued";
 }
@@ -100,8 +101,12 @@ export type NotStarted = { kind: "none"; reason: string; notStarted: true } & Bu
 
 export const busyWaits = (waits: string[]): BusyWaits => (waits.length > 0 ? { busyWaits: waits } : {});
 
-/** A still-busy broker started nobody, so the step says so rather than reading as a review that ran; any other throw stays a refusal. */
+/**
+ * A still-busy broker, or a queued review its pull request moved past, started nobody, so the step says so rather than reading as
+ * a review that ran; any other throw stays a refusal.
+ */
 export function notStarted(error: unknown, waits: string[]): NotStarted {
+  if (error instanceof ReviewSuperseded) return { kind: "none", reason: `the reviewer dispatch was dropped: ${error.message}`, notStarted: true, ...busyWaits(waits) };
   if (!(error instanceof ReviewerStillBusy)) throw error;
   return { kind: "none", reason: `the reviewer dispatch was refused: ${error.message}`, notStarted: true, ...busyWaits(waits) };
 }

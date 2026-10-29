@@ -54,7 +54,7 @@ export function repoTierDirs(root = ROOT) {
 }
 
 // "repo" is not here: vitestArgs adds it only when a change touches a repo-tier package.
-export const ALWAYS_PROJECTS = ["threads", "forks", "active-work", "active-work-forks"];
+export const ALWAYS_PROJECTS = ["threads", "factory", "explainer", "console", "isolated", "forks", "perf", "active-work", "active-work-forks"];
 
 /** Root projects named in the vitest config that this script would never select, so their tests would be skipped silently. */
 export function unselectedProjects(configSource) {

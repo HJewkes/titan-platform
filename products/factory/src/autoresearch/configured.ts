@@ -31,6 +31,7 @@ export function targetPorts(config: ArConfig, name: string): ArPorts {
   const { clone } = target;
   const agents = arAgentPorts({
     clone,
+    target: { name, adapterDir: target.adapterDir },
     agentChat: { bin: config.agentChatBin, timeoutMs: AGENT_CHAT_TIMEOUT_MS, pollMs: AGENT_POLL_MS },
     configDir: config.configDir,
     account: config.account,

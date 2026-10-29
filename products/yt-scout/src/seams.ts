@@ -65,3 +65,6 @@ export interface ScoreCallOutput extends CallUsage {
 
 /** One bare, tool-less harness call. The real one wraps `runAgent`; tests pass a fake. */
 export type ScoreRunner = (call: ScoreCall) => Promise<StepOutcome<ScoreCallOutput>>;
+
+/** The digest call returns markdown, so `output` is a string. Same bare-call shape as the score runner. */
+export type DigestRunner = (call: ScoreCall) => Promise<StepOutcome<ScoreCallOutput>>;

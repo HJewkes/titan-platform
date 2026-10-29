@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { seedRepo } from "@titan-design/test-kit/git";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { checkoutGit, draftPlanRound, type PlanRoundArgs, type PlanRoundPorts } from "../cli-shepherd-plan-round.js";
@@ -156,14 +156,9 @@ describe("drafting the round", () => {
 });
 
 describe("reading the base in a checkout", () => {
-  const git = (dir: string, ...args: string[]) => execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...args]);
-
   it("shows a file at a ref, reads a path the ref lacks as null, and refuses a ref that is no commit", async () => {
     const dir = tempDir();
-    git(dir, "init", "-q");
-    writeFileSync(join(dir, "kept.yml"), "on: push\n");
-    git(dir, "add", "kept.yml");
-    git(dir, "commit", "-q", "-m", "base");
+    seedRepo(dir, { "kept.yml": "on: push\n" });
     const read = checkoutGit(dir);
 
     expect(await read.show("HEAD", "kept.yml")).toBe("on: push\n");
