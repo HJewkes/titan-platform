@@ -332,7 +332,7 @@ export async function dropSeeds(): Promise<void> {
  * A copy of the seed's fixture with its data dir, sqlite state and artifacts, mtimes kept so cache freshness reads
  * the same, and its bridge pointed at the copy's own theater.
  */
-export function cloneFixture(seed: SeededRun): Fixture {
+export function cloneFixture(seed: Pick<SeededRun, "fx">): Fixture {
   const from = path.dirname(seed.fx.dataDir);
   const root = mkdtempSync(path.join(tmpdir(), "explainer-run-"));
   cpSync(from, root, { recursive: true, preserveTimestamps: true });

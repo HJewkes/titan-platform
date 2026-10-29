@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BoundsSchema } from "./bounds.js";
 import type { Digest, EvidenceRow } from "./digest.js";
+import type { QuotaContext } from "./queue.js";
 import type { Registries } from "./registry.js";
 import { AgainstSchema, ArResultSchema, DiffSizeSchema, ImplementerSchema, L0RecordSchema, ProposalSchema, ReevalVerdictSchema, TargetSchema, type ArMicro, type ArResult, type Idea, type Outcome, type QueueOps } from "./schemas.js";
 
@@ -33,7 +34,8 @@ export const ImplementedSchema = ImplementerSchema.extend({
 });
 /** The planner that answered a round (G2) and what its turn cost (G4); `ops` is checked against the queue schema later. */
 export const PlannerSchema = z.object({ agent: z.string(), sessionId: z.string().optional(), mode: z.enum(["spawn", "resume"]).optional(), usage: DispatchUsageSchema.optional() });
-export const PlannedSchema = PlannerSchema.partial().extend({ ops: z.unknown() });
+/** `malformed` is the parse error of a final message that held no JSON; the workflow retries the planner with it as the miss. */
+export const PlannedSchema = PlannerSchema.partial().extend({ ops: z.unknown(), malformed: z.string().optional() });
 export type Planner = z.infer<typeof PlannerSchema>;
 /** One row per L0 check, in the order they ran; `diff` is measured and replaces the implementer's own count on the outcome. */
 export const StaticCheckSchema = L0RecordSchema.extend({ diff: DiffSizeSchema.optional() });
@@ -300,9 +302,10 @@ export interface ArPorts {
   pin(input: { runId: string; pin: string }, signal: AbortSignal): Promise<Pinned>;
   /**
    * The central planner's queue ops for one round, which the workflow checks against the schema and quotas, and the
-   * agent that wrote them. Round 1 spawns the planner; later rounds resume it.
+   * agent that wrote them. Round 1's first attempt spawns the planner; every other attempt resumes it. `quota` is
+   * what the answer is checked against.
    */
-  plan(input: { runId: string; round: number; digest: Digest; violations: string[]; mode: PlanMode }, signal: AbortSignal): Promise<z.input<typeof PlannedSchema>>;
+  plan(input: { runId: string; round: number; digest: Digest; violations: string[]; quota: QuotaContext; mode: PlanMode }, signal: AbortSignal): Promise<z.input<typeof PlannedSchema>>;
   allocTree(input: { runId: string; ideaId: string; base: string; lane: number }, signal: AbortSignal): Promise<z.infer<typeof TreeSchema>>;
   implement(input: ImplementRequest, signal: AbortSignal): Promise<z.input<typeof ImplementedSchema>>;
   /** L0: bounds post-check, unit suite and test proof; never a model call. */

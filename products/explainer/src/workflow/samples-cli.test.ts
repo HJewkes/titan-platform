@@ -1,10 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { runAaFloorCli } from "../aa-floor-cli.js";
 import { ArtifactStore } from "./artifacts.js";
 import { openState } from "./host.js";
-import { fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, fakeRender, fakeHost, fakeScriptModel, fixture, type Fixture } from "./run-fakes.test-helpers.js";
 import { runAbCli } from "./samples-cli.js";
 import { runStageCli } from "./stage-cli.js";
 
@@ -32,8 +32,8 @@ function casesDir(inputs: Record<string, string>): string {
   return dir;
 }
 
-function setup() {
-  fx = fixture();
+function setup(from = fixture()) {
+  fx = from;
   const model = fakeScriptModel(undefined, { usd: 0.05 });
   const host = fakeHost(fx, model, fakeRender());
   const out: string[] = [];
@@ -42,12 +42,26 @@ function setup() {
   return { model, out, err, deps, inputs: storedInputs() };
 }
 
+const measureArgv = (inputs: { spine: string; facts: string }) => ["stage", "script", "--in", `spine=${inputs.spine}`, "--in", `facts=${inputs.facts}`, "--samples", "2", "--data-dir", fx.dataDir];
+
+let measured: Promise<Fixture> | undefined;
+afterAll(async () => (await measured)?.cleanup());
+
+/** A copy of a data dir that already holds one two-sample script measure, made once per file, as `setup` over it. */
+async function setupMeasured() {
+  measured ??= (async () => {
+    const { deps, inputs } = setup();
+    await runStageCli(measureArgv(inputs), deps);
+    return fx;
+  })();
+  return setup(cloneFixture({ fx: await measured }));
+}
+
 describe("explainer stage --samples", () => {
   it("runs n distinct samples of the stage and reports each target row through summarizeMeasure", async () => {
     const { model, out, deps, inputs } = setup();
-    const argv = ["stage", "script", "--in", `spine=${inputs.spine}`, "--in", `facts=${inputs.facts}`, "--samples", "2", "--data-dir", fx.dataDir];
 
-    expect(await runStageCli(argv, deps)).toBe(0);
+    expect(await runStageCli(measureArgv(inputs), deps)).toBe(0);
     const text = out.join("");
 
     expect(model.prompts).toHaveLength(2);
@@ -57,14 +71,11 @@ describe("explainer stage --samples", () => {
   });
 
   it("reuses the cached samples on a second measure", async () => {
-    const { model, out, deps, inputs } = setup();
-    const argv = ["stage", "script", "--in", `spine=${inputs.spine}`, "--in", `facts=${inputs.facts}`, "--samples", "2", "--data-dir", fx.dataDir];
+    const { model, out, deps, inputs } = await setupMeasured();
 
-    await runStageCli(argv, deps);
-    out.length = 0;
-    await runStageCli(argv, deps);
+    await runStageCli(measureArgv(inputs), deps);
 
-    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts).toHaveLength(0);
     expect(out.join("")).toContain("Spend: $0.0000 over 2 runs (2 cache hits, 0 without a script).");
   });
 
@@ -95,7 +106,7 @@ describe("explainer aa-floor and ab", () => {
   });
 
   it("ab refuses one variant, and a floor measured on another stage", async () => {
-    const { err, deps, inputs } = setup();
+    const { err, deps, inputs } = await setupMeasured();
     const cases = casesDir(inputs);
     writeFileSync(path.join(fx.dataDir, "floor.json"), JSON.stringify({
       schema: "explainer.aa-floor/v1", stage: "rewrite", stageVersion: "x4", measuredAt: "t", cases: [], samplesPerArm: 1, sigma: {}, rows: [], spentUsd: 0, runs: 0, failedRuns: 0,
