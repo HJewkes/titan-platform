@@ -39,6 +39,7 @@
   "dependencies": {
     "@titan-design/agent": "workspace:^",
     "@titan-design/app-paths": "workspace:^",
+    "@titan-design/owner-queue": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "commander": "^14.0.3",
     "yaml": "^2.9.1",
