@@ -42,8 +42,8 @@ describe("cachedActiveWork", () => {
     const { client, calls } = fakeActiveWork();
     const cached = cachedActiveWork(client, undefined, () => 0);
 
-    await cached.read("artifact.status", { slug: "a" });
-    await cached.read("artifact.status", { slug: "a" });
+    await cached.read("search", { slug: "a" });
+    await cached.read("search", { slug: "a" });
 
     expect(calls).toHaveLength(2);
   });

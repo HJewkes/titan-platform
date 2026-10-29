@@ -11,10 +11,10 @@
       ]
     },
     {
-      "name": "the live artifact.status read is cached too",
+      "name": "the live search read is cached too",
       "file": "apps/console/server/active-work-cache.ts",
       "find": "  \"deliverable.list\",\n",
-      "replace": "  \"deliverable.list\",\n  \"artifact.status\",\n",
+      "replace": "  \"deliverable.list\",\n  \"search\",\n",
       "kills": [
         "cachedActiveWork goes upstream every time for a read that must be live"
       ]

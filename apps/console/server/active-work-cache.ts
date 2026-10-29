@@ -9,7 +9,7 @@ import { cachedReads, stableJson, type CacheTimes } from "./read-cache.js";
 const ACTIVE_WORK_TIMES: CacheTimes = { freshMs: 5_000, staleMs: 120_000 };
 const MAX_KEYS = 256;
 
-/** `artifact.status` runs `gh` live, `search` and `note.read` are one-off; everything else is a whole-tree read worth sharing. */
+/** `search` and `note.read` are one-off; everything else is a whole-tree read worth sharing. */
 const CACHED: ReadonlySet<ReadName> = new Set<ReadName>([
   "list",
   "task.list",
