@@ -13,9 +13,9 @@ const TICK_MS = 60_000;
 function scene(options: { list?: () => { at: number; prs: { number: number; headSha: string }[] } } = {}) {
   const state = { readings: busy, running: [] as number[], launched: [] as string[], settled: new Map<string, string>() };
   const gate = spawnGate({ limits: { maxConcurrentReviews: 1 }, read: () => state.readings, log: () => undefined, tickMs: TICK_MS, ...(options.list && { movedPast: movedPastOnList(options.list) }) });
-  const queue = (name: string, review: ReviewAsk) => {
+  const queue = (name: string, review: ReviewAsk, signal?: AbortSignal) => {
     const launch = async () => void state.launched.push(name);
-    gate.queueReview(name, review, { running: async () => state.running, launch }).then(
+    gate.queueReview(name, review, { running: async () => state.running, launch }, signal).then(
       () => state.settled.set(name, "launched"),
       (error: unknown) => state.settled.set(name, error instanceof Error ? error.name : String(error)),
     );
@@ -86,6 +86,36 @@ describe("the push dispatcher starts reviews from the one queue on its three tri
     expect(state.launched).toEqual([]);
     expect(state.settled.get("rv-demo-7")).toBe(new ReviewSuperseded("").name);
     expect(spawnQueuePosition("octo/demo", 7)).toBeUndefined();
+  });
+
+  it("withdraws a queued review whose step aborts, so the next in line takes the freed slot", async () => {
+    const { state, gate, queue } = scene();
+    const step = new AbortController();
+    queue("rv-demo-7", { fixer: false, intentAt: 10_000, target: target(7) }, step.signal);
+    queue("rv-demo-8", { fixer: false, intentAt: 20_000, target: target(8) });
+    await flush();
+
+    step.abort(new Error("the step was cancelled"));
+    await flush();
+    expect(state.settled.get("rv-demo-7")).toBe("Error");
+    expect(spawnQueuePosition("octo/demo", 7)).toBeUndefined();
+
+    state.readings = idle;
+    gate.reviewEnded();
+    await flush();
+
+    expect(state.launched).toEqual(["rv-demo-8"]);
+  });
+
+  it("never queues a review whose step aborted before it asked", async () => {
+    const { state, queue } = scene();
+    state.readings = idle;
+
+    queue("rv-demo-7", { fixer: false, target: target(7) }, AbortSignal.abort(new Error("gone")));
+    await flush();
+
+    expect(state.launched).toEqual([]);
+    expect(state.settled.get("rv-demo-7")).toBe("Error");
   });
 
   it("gives up on a review still queued after the hold, as a deferral its step reports", async () => {

@@ -6,28 +6,54 @@
       "file": "products/factory/src/shepherd/review-dispatcher.ts",
       "find": "      ports.enter(name, review);\n      void pump();\n",
       "replace": "      ports.enter(name, review);\n",
-      "kills": ["the push dispatcher starts reviews from the one queue on its three triggers starts a review on enqueue when the machine has room, with no wait"]
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers starts a review on enqueue when the machine has room, with no wait"
+      ]
     },
     {
       "name": "a review ending does not wake the dispatcher",
       "file": "products/factory/src/shepherd/spawn-gate.ts",
       "find": "    reviewEnded: () => void dispatcher.wake(),",
       "replace": "    reviewEnded: () => undefined,",
-      "kills": ["the push dispatcher starts reviews from the one queue on its three triggers starts exactly the queue's front when a review ends and frees the slot"]
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers starts exactly the queue's front when a review ends and frees the slot"
+      ]
     },
     {
       "name": "the tick does not pump the queue",
       "file": "products/factory/src/shepherd/review-dispatcher.ts",
       "find": "  const book = waiterBook(ports, () => void pump());",
       "replace": "  const book = waiterBook(ports, () => undefined);",
-      "kills": ["the push dispatcher starts reviews from the one queue on its three triggers starts exactly the queue's front on the tick once the machine settles, and nothing between ticks"]
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers starts exactly the queue's front on the tick once the machine settles, and nothing between ticks"
+      ]
     },
     {
       "name": "the dispatcher's order keeps asks whose run moved past them",
       "file": "products/factory/src/shepherd/review-queue.ts",
       "find": "      dropMoved(entries, undefined, options);\n",
       "replace": "",
-      "kills": ["the push dispatcher starts reviews from the one queue on its three triggers never starts a queued review whose pull request moved to a new head, and tells its waiter at once"]
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers never starts a queued review whose pull request moved to a new head, and tells its waiter at once"
+      ]
+    },
+    {
+      "name": "an aborted step leaves its review queued",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "      signal?.addEventListener(\"abort\", withdraw, { once: true });\n",
+      "replace": "",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers withdraws a queued review whose step aborts, so the next in line takes the freed slot"
+      ]
+    },
+    {
+      "name": "a review whose step already aborted is queued anyway",
+      "file": "products/factory/src/shepherd/review-dispatcher.ts",
+      "find": "      if (signal?.aborted) return Promise.reject(signal.reason);\n",
+      "replace": "",
+      "kills": [
+        "the push dispatcher starts reviews from the one queue on its three triggers never queues a review whose step aborted before it asked"
+      ]
     }
   ]
 }

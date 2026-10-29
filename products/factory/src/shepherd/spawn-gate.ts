@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { loadavg } from "node:os";
+import { availableParallelism, loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 import { stopReason } from "./machine-stop.js";
 import type { ReviewerReading, ReviewSlots } from "./review-slots.js";
@@ -26,8 +26,10 @@ export interface SpawnLimits {
   headroomIntervalMs: number;
   /** Headroom needs fewer unabsorbed reviews than this. */
   headroomReviews: number;
-  /** What one running review adds to the load5 reading it is compared with. */
+  /** The cores one unabsorbed review adds to the load readings it is compared with. */
   reviewLoad: number;
+  /** No new dispatch while fewer cores than this stay idle: the cores less load1 less the unabsorbed reviews' `reviewLoad`. */
+  minIdleCores: number;
   /** No review starts with fewer free bytes than this on the filesystem that holds review checkouts. */
   reviewMinFreeBytes: number;
   /** No review starts with fewer free inodes than this percent of that filesystem's, or than twice the last checkout's. */
@@ -44,7 +46,10 @@ export const DEFAULT_SPAWN_LIMITS: SpawnLimits = {
   windowMs: 0,
   headroomIntervalMs: 0,
   headroomReviews: 4,
-  reviewLoad: 4,
+  // A 2026-10-29 sample of a 48-core host put every claude process together at ~0.3 core, each at 1-3% CPU, with reviewers running no tests; 0.05 covers one with margin.
+  reviewLoad: 0.05,
+  // A reviewer needs well under a core, so one idle core admits it; a host that also runs suites raises this (one vitest suite took ~7.5 cores in that sample).
+  minIdleCores: 1,
   reviewMinFreeBytes: 5 * 1024 ** 3,
   reviewMinFreeInodesPct: 15,
   maxConcurrentReviews: 3,
@@ -53,6 +58,10 @@ export const DEFAULT_SPAWN_LIMITS: SpawnLimits = {
 /** A reading the machine would not give is absent, and the limit it feeds is not applied. */
 export interface MachineReadings {
   load5: number;
+  /** The one-minute load average, read as the cores busy now; with `cores` it gives the measured headroom. */
+  load1?: number;
+  /** The cores this process may use (`os.availableParallelism()`). */
+  cores?: number;
   pressureLevel?: number;
   freeMemoryPct?: number;
 }
@@ -90,10 +99,15 @@ function admitPace(limits: SpawnLimits, recentStarts: readonly number[], now: nu
   return sinceLast < interval ? { admit: false, reason: `another spawn was admitted ${sinceLast} ms ago, inside the ${interval} ms ${rule}` } : { admit: true };
 }
 
-/** The reviews load5 has not absorbed yet: those running under five minutes, and those admitted that no roster reading shows running. */
+/**
+ * The reviews load5 has not absorbed yet: those running under five minutes, and those admitted that no roster reading shows running.
+ * `idle` is the cores left once they run, undefined when load1 or the core count is unread.
+ */
 function buildPressure(readings: MachineReadings, limits: SpawnLimits, runningReviews: readonly number[], now: number, admittedReviews: number) {
   const unabsorbed = runningReviews.filter((startedAt) => now - startedAt < LOAD5_WINDOW_MS).length + admittedReviews;
-  return { unabsorbed, build: readings.load5 + unabsorbed * limits.reviewLoad };
+  const added = unabsorbed * limits.reviewLoad;
+  const idle = readings.load1 === undefined || readings.cores === undefined ? undefined : readings.cores - readings.load1 - added;
+  return { unabsorbed, build: readings.load5 + added, idle };
 }
 
 /**
@@ -102,8 +116,9 @@ function buildPressure(readings: MachineReadings, limits: SpawnLimits, runningRe
  */
 export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recentStarts: readonly number[], now: number, runningReviews: readonly number[] = [], admittedReviews = 0): Admission {
   if (readings.load5 > limits.load5) return refuse("load5", readings.load5, limits.load5);
-  const { unabsorbed, build } = buildPressure(readings, limits, runningReviews, now, admittedReviews);
+  const { unabsorbed, build, idle } = buildPressure(readings, limits, runningReviews, now, admittedReviews);
   if (build > limits.buildLoad5) return refuse(`load5 with ${unabsorbed} unabsorbed reviews`, build, limits.buildLoad5);
+  if (idle !== undefined && idle < limits.minIdleCores) return { admit: false, reason: `idle cores ${Math.round(idle * 100) / 100} with ${unabsorbed} unabsorbed reviews are under the floor ${limits.minIdleCores}` };
   if (readings.pressureLevel !== undefined && readings.pressureLevel >= limits.pressureLevel) return refuse("memory pressure level", readings.pressureLevel, limits.pressureLevel);
   if (readings.freeMemoryPct !== undefined && readings.freeMemoryPct < limits.freeMemoryPct) return refuse("free memory percent", readings.freeMemoryPct, limits.freeMemoryPct);
   return admitPace(limits, recentStarts, now, hasHeadroom(readings, limits, unabsorbed));
@@ -119,11 +134,13 @@ function inodeFloor(disk: CheckoutDisk, limits: SpawnLimits): number | undefined
 
 /**
  * Pure: how many reviews may start now, so that many from the front of the queue can go at once: the free review slots, and the
- * count whose `reviewLoad` still fits under `buildLoad5`. At least one, since it is read only once the gate would admit.
+ * count whose `reviewLoad` still fits under `buildLoad5` and over the idle-core floor. At least one, since it is read only once the gate would admit.
  */
 function reviewRoom(readings: MachineReadings, limits: SpawnLimits, runningReviews: readonly number[], now: number, admittedReviews = 0): number {
-  const { build } = buildPressure(readings, limits, runningReviews, now, admittedReviews);
-  const byLoad = limits.reviewLoad > 0 ? Math.floor((limits.buildLoad5 - build) / limits.reviewLoad) + 1 : Infinity;
+  const { build, idle } = buildPressure(readings, limits, runningReviews, now, admittedReviews);
+  const fits = (spare: number) => (limits.reviewLoad > 0 ? Math.floor(spare / limits.reviewLoad) + 1 : Infinity);
+  const byLoad = Math.min(fits(limits.buildLoad5 - build), idle === undefined ? Infinity : fits(idle - limits.minIdleCores));
+  // The concurrent cap is the backstop once the measured cost lets many reviews fit.
   const bySlots = limits.maxConcurrentReviews - runningReviews.length - admittedReviews;
   return Math.max(1, Math.min(byLoad, bySlots));
 }
@@ -155,13 +172,16 @@ interface MachineSources {
   platform?: NodeJS.Platform;
   readFile?: ReadFile;
   sysctl?: (name: string) => number | undefined;
+  loads?: () => readonly number[];
+  cores?: () => number;
 }
 
-/** The same reads the broker's machine guard makes: `os.loadavg()[1]`, then macOS sysctl or Linux /proc; absent elsewhere. */
-export function readMachine({ platform = process.platform, readFile, sysctl = sysctlNumber }: MachineSources = {}): MachineReadings {
-  const load5 = loadavg()[1] ?? 0;
-  if (platform === "linux") return { load5, ...readLinuxMemory(readFile) };
-  return { load5, pressureLevel: sysctl("kern.memorystatus_vm_pressure_level"), freeMemoryPct: sysctl("kern.memorystatus_level") };
+/** The same reads the broker's machine guard makes: `os.loadavg()`, then macOS sysctl or Linux /proc; absent elsewhere. Load1 and the core count give the headroom. */
+export function readMachine({ platform = process.platform, readFile, sysctl = sysctlNumber, loads = loadavg, cores = availableParallelism }: MachineSources = {}): MachineReadings {
+  const [load1, load5 = 0] = loads();
+  const cpu = { load5, cores: cores(), ...(load1 !== undefined && { load1 }) };
+  if (platform === "linux") return { ...cpu, ...readLinuxMemory(readFile) };
+  return { ...cpu, pressureLevel: sysctl("kern.memorystatus_vm_pressure_level"), freeMemoryPct: sysctl("kern.memorystatus_level") };
 }
 
 /** Thrown when the gate would not admit a spawn; nobody was started, so the caller asks again on its next poll. */
@@ -178,9 +198,10 @@ export interface SpawnGate {
   reviewSlots(): ReviewSlots | undefined;
   /**
    * Queues a review and resolves once it has launched. It starts when it reaches the front on a trigger the gate admits on;
-   * it rejects with `ReviewSuperseded` once its pull request moves past it, and with `SpawnDeferred` once it outwaits the hold.
+   * it rejects with `ReviewSuperseded` once its pull request moves past it, with `SpawnDeferred` once it outwaits the hold, and
+   * with the reason of `signal` once that aborts.
    */
-  queueReview(name: string, review: ReviewAsk, start: ReviewStart): Promise<void>;
+  queueReview(name: string, review: ReviewAsk, start: ReviewStart, signal?: AbortSignal): Promise<void>;
   /** A review ended, so a slot may be free: the queue's front asks again now rather than on the next tick. */
   reviewEnded(): void;
 }
@@ -265,7 +286,9 @@ function noteStop(ask: Ask, onStop: SpawnGateOptions["onStop"]): void {
   if (stop !== undefined) onStop?.(ask.at, stop);
 }
 
-const seenNote = (readings: MachineReadings, disk: string) => `load5 ${readings.load5}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${disk}`;
+const coresNote = ({ load1, cores }: MachineReadings) => (load1 === undefined || cores === undefined ? "" : `, load1 ${load1} of ${cores} cores`);
+
+const seenNote = (readings: MachineReadings, disk: string) => `load5 ${readings.load5}${coresNote(readings)}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${disk}`;
 
 /** Logs and throws a deferral; an admission passes. */
 function deferUnless(verdict: Admission, who: string, seen: string, log: (line: string) => void): void {
@@ -316,7 +339,7 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   return {
     ...reviewSlotMemory(() => limitsNow().maxConcurrentReviews, now, pending.seen),
     ...gate,
-    queueReview: (name, review, start) => dispatcher.queue(name, review, start),
+    queueReview: (name, review, start, signal) => dispatcher.queue(name, review, start, signal),
     reviewEnded: () => void dispatcher.wake(),
   };
 }

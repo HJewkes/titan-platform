@@ -12,7 +12,8 @@ import { spawnQueuePosition, type ReviewAsk } from "./review-queue.js";
 import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type CheckoutDisk, type MachineReadings, type SpawnLimits } from "./spawn-gate.js";
 import { implementersOver } from "./wake.js";
 
-const limits = DEFAULT_SPAWN_LIMITS;
+/** A configured cost of four cores per unabsorbed review, which the accounting below reads; the measured default is in measured-load.test.ts. */
+const limits: SpawnLimits = { ...DEFAULT_SPAWN_LIMITS, reviewLoad: 4 };
 /** The pace windows the gate shipped with before load became the only limiter; a config can still set them. */
 const paced: SpawnLimits = { ...limits, windowMs: 60_000, headroomIntervalMs: 15_000 };
 /** One poll round: a review admitted this long ago is in load5, so it no longer counts as unabsorbed or takes a slot. */

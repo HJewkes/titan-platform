@@ -31,6 +31,8 @@ interface Waiter extends ReviewStart {
   since: number;
   resolve: () => void;
   reject: (error: unknown) => void;
+  /** Stops listening to the step's abort signal. */
+  detach: () => void;
 }
 
 /** The queued starts by name, and a tick armed only while one waits. */
@@ -42,6 +44,7 @@ function waiterBook(ports: DispatcherPorts, onTick: () => void) {
     const waiter = waiting.get(name);
     if (!waiter) return undefined;
     waiting.delete(name);
+    waiter.detach();
     ports.remove(name);
     if (waiting.size === 0) clearInterval(timer);
     if (waiting.size === 0) timer = undefined;
@@ -109,10 +112,17 @@ export function reviewDispatcher(ports: DispatcherPorts) {
   const book = waiterBook(ports, () => void pump());
   const pump = serial(() => pass(ports, book));
   return {
-    /** The enqueue trigger: resolves once the review has launched, rejects when its launch fails, it is superseded or it outwaits `holdMs`. */
-    queue(name: string, review: ReviewAsk, start: ReviewStart): Promise<void> {
+    /**
+     * The enqueue trigger: resolves once the review has launched, rejects when its launch fails, it is superseded, it outwaits
+     * `holdMs` or `signal` aborts, which takes it out of the queue so an abandoned step holds no place.
+     */
+    queue(name: string, review: ReviewAsk, start: ReviewStart, signal?: AbortSignal): Promise<void> {
       book.settle(name, new ReviewSuperseded(`${name} was queued again`));
-      const started = new Promise<void>((resolve, reject) => book.add(name, { ...start, review, since: ports.now(), resolve, reject }));
+      if (signal?.aborted) return Promise.reject(signal.reason);
+      const withdraw = () => book.settle(name, signal?.reason);
+      signal?.addEventListener("abort", withdraw, { once: true });
+      const detach = () => signal?.removeEventListener("abort", withdraw);
+      const started = new Promise<void>((resolve, reject) => book.add(name, { ...start, review, since: ports.now(), resolve, reject, detach }));
       ports.enter(name, review);
       void pump();
       return started;

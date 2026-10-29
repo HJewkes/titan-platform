@@ -51,6 +51,13 @@ describe("readMachine on linux", () => {
   });
 });
 
+describe("readMachine's measured headroom", () => {
+  it("reads load1, load5 and the core count from the load and core sources", () => {
+    const r = readMachine({ platform: "win32", sysctl: () => undefined, loads: () => [13.5, 12.25, 11], cores: () => 48 });
+    expect(r).toMatchObject({ load1: 13.5, load5: 12.25, cores: 48 });
+  });
+});
+
 describe("readMachine off linux", () => {
   it("keeps the darwin sysctl readings", () => {
     const asked: string[] = [];
