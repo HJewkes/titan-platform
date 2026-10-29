@@ -16,7 +16,7 @@ import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
-import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit } from "./http.js";
+import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit, type RpcSample } from "./http.js";
 import { holdUntil, listenOn, readyLatch, type ListenTarget, type ServeOptions } from "./listen-target.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
@@ -73,6 +73,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   guards?: RequestGuardOptions;
   /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
   rpcBodyLimit?: RpcBodyLimit;
+  /** Observes every `/rpc` answer on every listener; see `HttpAppOptions.onRpc`. */
+  onRpc?: (sample: RpcSample) => void;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;
   logger?: Logger;
@@ -164,6 +166,7 @@ function toHttpOptions<Ctx extends BaseContext>(
     mountRoutes: options.mountRoutes,
     guards: guardOptions(options),
     rpcBodyLimit: options.rpcBodyLimit,
+    onRpc: options.onRpc,
   };
 }
 

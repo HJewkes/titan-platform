@@ -14,6 +14,8 @@ import {
   type Logger,
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
+import { perfCommands } from "./perf/commands.js";
+import { createPerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { relayUpstreams, startEventsRelay } from "./events-relay.js";
@@ -51,14 +53,17 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const sources = withStoryOrigin(createSources(config, logger), config, ports);
   const { upstreams } = sources;
   const build = readBuildInfo();
+  const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
+  const commands = [...(options.extraCommands ?? []), ...Object.values(perfCommands(perf))];
   const handle = await startDaemon({
-    registry: createConsoleRegistry(sources, options.extraCommands),
+    registry: createConsoleRegistry(sources, commands),
     createContext: consoleContextFor(config.ownerWrites),
     version: APP_VERSION,
     port: config.port,
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
     ...storyContentOrigin(config, ports),
+    onRpc: (sample) => perf.record(sample),
     rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream. `build` is what the self-updater checks after a restart.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })), build }),
@@ -70,6 +75,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
   const close = async (): Promise<void> => {
     await Promise.all([relay.close(), handle.close()]);
+    await perf.close();
   };
   return { ...handle, close };
 }
