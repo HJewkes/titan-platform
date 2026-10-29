@@ -59,6 +59,10 @@ The packet describes a single beat and nothing about its neighbours:
   when the cue fires.
 - Style with inline styles and the theme's CSS custom properties (`var(--…)`). Do not load fonts,
   images or stylesheets.
+- Never declare a font: no `@font-face`, font import, `url(…)` to a font file or font host such as
+  fonts.googleapis.com. Set `fontFamily` only to a theme token: `var(--font-family-body)`,
+  `var(--font-family-heading)`, `var(--font-family-mono)` or `var(--font-family-sans)`. The build
+  check refuses a layer that does, naming the line.
 - Keep the module self-contained and readable: it is editable source that a person or a repair agent
   may change later.
 

@@ -41,8 +41,8 @@
     {
       "name": "a lineage gone from the roster ends the wake unhandled",
       "file": "products/factory/src/shepherd/wake.ts",
-      "find": "newest === undefined ? successorChoice(deps, wiring, task, task.implementer, roster) :",
-      "replace": "newest === undefined ? `no agent of ${task.implementer}'s lineage is on the roster` :",
+      "find": "if (newest === undefined) return successorChoice(deps, wiring, task, task.implementer, roster);",
+      "replace": "if (newest === undefined) return `no agent of ${task.implementer}'s lineage is on the roster`;",
       "kills": [
         "sh-wake-implementer: who is woken starts a successor in the repo's checkout, taking over from the registered implementer, when the roster no longer shows the lineage (TP-4045)"
       ]
