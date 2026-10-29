@@ -37,7 +37,7 @@ beforeAll(async () => {
   baked = await renderFrames(server.url("baked.html"), browser);
 }, BROWSER_TIMEOUT_MS);
 
-// openCapturePage leaves its context open, also when the open rejects, so each test's pages close here.
+// openCapturePage leaves its context open once the open succeeds, so each test's pages close here.
 afterEach(async () => {
   await Promise.all(browser.contexts().map((context) => context.close()));
 });

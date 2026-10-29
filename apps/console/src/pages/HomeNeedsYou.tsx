@@ -48,7 +48,7 @@ function needsOf(queue: readonly QueueItem[], tasks: readonly TaskRow[], upstrea
 export function NeedsYouRegion(): ReactNode {
   const health = useQuery("upstreams.health");
   const queue = useQuery("agents.queue");
-  const tasks = useQuery("work.tasks");
+  const tasks = useQuery("work.tasks", { stage: "blocked" });
   const inbox = useQuery("inbox.list");
   if ([health, queue, tasks, inbox].some((query) => query.status === "loading")) return <Spinner size="sm" label="Loading needs-you" />;
   const url = queueUrl(health.data?.upstreams.find((upstream) => upstream.id === "agents")?.target);

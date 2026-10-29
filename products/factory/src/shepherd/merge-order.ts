@@ -6,7 +6,8 @@ import { z } from "zod";
 import { appendEvent } from "./events.js";
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import mergeOrderJson from "./merge-order.json" with { type: "json" };
-import type { Registration } from "./store.js";
+import { holdBarsMerge, type GateEvidenceSource, type HoldFacts } from "./lan-gates.js";
+import { lastCiHead } from "./stats.js";
 
 /**
  * A conflicted PR's reservation of the paths it changes, so an overlapping PR waits at its merge until the conflicted
@@ -110,6 +111,12 @@ export class MergeOrder {
     return run !== undefined && DRIVING.has(run.status);
   }
 
+  /** The head the run's merge step is at, which a lan-gates hold is read at. */
+  mergeHead(runId: string): string | undefined {
+    const run = this.runs.get(runId);
+    return run && lastCiHead(run);
+  }
+
   /** Every running run, of any workflow and repo; the reserve step narrows them to the repo's shepherd-pr runs. */
   driving(): WorkflowRun[] {
     return this.runs.listByStatus(["running"]);
@@ -121,21 +128,18 @@ export class MergeOrder {
   }
 }
 
-/** The registration facts that say a person holds a run. */
-export interface RunHolds {
-  byRun(runId: string): Pick<Registration, "held" | "holdSatisfied" | "ownerHold"> | undefined;
+/** The registration facts that say a person holds a run, and the gate evidence a lan-gates hold stands aside on. */
+export interface RunHolds extends GateEvidenceSource {
+  byRun(runId: string): HoldFacts | undefined;
 }
-
-/** An owner hold, or a hold no reviewer has satisfied; a satisfied hold lets the run merge at that head, so it still drives. */
-const registrationHeld = (registration: ReturnType<RunHolds["byRun"]>): boolean => registration?.held === true && (registration.ownerHold !== null || registration.holdSatisfied === null);
 
 /**
  * Driving, and not held by its registration. A held reserver waits on a person, so its reservation stops ordering peers
- * while the hold lasts instead of until its TTL (TP-4133). Only the registration is read, never the merge guard, which
- * reads this predicate.
+ * while the hold lasts instead of until its TTL (TP-4133). Only the registration, its gate evidence and the run's merge head are
+ * read, never the merge guard, which reads this predicate.
  */
 export function orderDriving(order: MergeOrder, holds: RunHolds): (runId: string) => boolean {
-  return (runId) => order.isDriving(runId) && !registrationHeld(holds.byRun(runId));
+  return (runId) => order.isDriving(runId) && !holdBarsMerge(holds, holds.byRun(runId), order.mergeHead(runId));
 }
 
 /** A store bound to whichever factory database the host opened; reading it unbound throws, so a merge fails closed. */
