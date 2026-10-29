@@ -1,6 +1,7 @@
 import { assertInstalledHeadless, dispatchToAgentChat, messageAgent, resumeAgent, retire, type AgentRecord, type AgentRow } from "@titan-design/agent-dispatch";
 import { agentChatRoster, mutating, type RosterReader } from "./roster.js";
-import type { ReviewAsk, SpawnGate } from "./spawn-gate.js";
+import type { ReviewAsk } from "./review-queue.js";
+import type { SpawnGate } from "./spawn-gate.js";
 
 export const AGENT_CALL_TIMEOUT_MS = 90_000;
 
