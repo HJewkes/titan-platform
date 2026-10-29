@@ -1,5 +1,4 @@
 import { z as RouteTable, G as TaskFacts, g as FactsNote, q as PriorRouting, p as PriorRouter, E as TableRead } from '../route.js';
-import 'zod';
 
 /** The `shape-v1.yml` this package ships, with `needsOwns` on the size rows. */
 declare const DEFAULT_WORKFLOW_TABLE: string;
@@ -37,8 +36,6 @@ declare function readSpawnFacts(root: string, taskId: string, slice?: string, re
 export { DEFAULT_WORKFLOW_TABLE, type RouteTableRead, type SpawnFacts, readPriorRouter, readRouteTable, readSpawnFacts, readWorkflowTable, workflowTablePath };
 
 // ./dist/route.d.ts
-import { z } from 'zod';
-
 /**
  * The workflow table as data, and its lint. Every value is a closed enum, so a typo is a lint problem rather than a
  * row that silently matches nothing. Pure: the caller reads the file (`./routing/node` does).
@@ -56,161 +53,32 @@ declare const PATH_LISTS: readonly ["door", "safety", "visual", "agentText"];
 type Implementer = (typeof IMPLEMENTER_LADDER)[number];
 type Profile = Implementer | "bd-planner";
 type PathList = (typeof PATH_LISTS)[number];
-/** The size classes split two rungs by estimate: the `*Above2` rung, when set, applies past estimate 2. */
-declare const workflowRowSchema: z.ZodObject<{
-    plan: z.ZodEnum<{
-        none: "none";
-        explore: "explore";
-        "bd-planner": "bd-planner";
-        "fable-architect": "fable-architect";
-        "titan-component-workflow": "titan-component-workflow";
-    }>;
-    planAbove2: z.ZodOptional<z.ZodEnum<{
-        none: "none";
-        explore: "explore";
-        "bd-planner": "bd-planner";
-        "fable-architect": "fable-architect";
-        "titan-component-workflow": "titan-component-workflow";
-    }>>;
-    implementer: z.ZodEnum<{
-        code: "code";
-        "bd-implementer-lite": "bd-implementer-lite";
-        "bd-implementer": "bd-implementer";
-        "fable-implementer": "fable-implementer";
-    }>;
-    implementerAbove2: z.ZodOptional<z.ZodEnum<{
-        code: "code";
-        "bd-implementer-lite": "bd-implementer-lite";
-        "bd-implementer": "bd-implementer";
-        "fable-implementer": "fable-implementer";
-    }>>;
-    review: z.ZodEnum<{
-        ci: "ci";
-        reviewer: "reviewer";
-        "bd-reviewer": "bd-reviewer";
-        "fable-reviewer": "fable-reviewer";
-        "fable-reviewer+owner": "fable-reviewer+owner";
-    }>;
-    merge: z.ZodEnum<{
-        "MRG-AU-CI": "MRG-AU-CI";
-        "MRG-AU-RV": "MRG-AU-RV";
-        owner: "owner";
-        "release-path": "release-path";
-    }>;
-}, z.core.$strict>;
-/** One prior row. It matches when every size condition holds and, if it names any signal, at least one signal does. */
-declare const priorRuleSchema: z.ZodObject<{
-    prior: z.ZodEnum<{
-        small: "small";
-        "one-way": "one-way";
-        "safety-path": "safety-path";
-        "ui-round": "ui-round";
-        "cross-package": "cross-package";
-        "agent-text": "agent-text";
-        standard: "standard";
-        "needs-plan": "needs-plan";
-    }>;
-    owns: z.ZodOptional<z.ZodEnum<{
-        door: "door";
-        safety: "safety";
-        visual: "visual";
-        agentText: "agentText";
-    }>>;
-    ownsOnly: z.ZodOptional<z.ZodEnum<{
-        door: "door";
-        safety: "safety";
-        visual: "visual";
-        agentText: "agentText";
-    }>>;
-    unitsAtLeast: z.ZodOptional<z.ZodNumber>;
-    tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    estimateAtMost: z.ZodOptional<z.ZodNumber>;
-    needsDoneWhen: z.ZodOptional<z.ZodBoolean>;
-    needsOwns: z.ZodOptional<z.ZodBoolean>;
-}, z.core.$strict>;
-declare const tableShape: z.ZodObject<{
-    version: z.ZodLiteral<"shape-v1">;
-    paths: z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>;
-    priors: z.ZodArray<z.ZodObject<{
-        prior: z.ZodEnum<{
-            small: "small";
-            "one-way": "one-way";
-            "safety-path": "safety-path";
-            "ui-round": "ui-round";
-            "cross-package": "cross-package";
-            "agent-text": "agent-text";
-            standard: "standard";
-            "needs-plan": "needs-plan";
-        }>;
-        owns: z.ZodOptional<z.ZodEnum<{
-            door: "door";
-            safety: "safety";
-            visual: "visual";
-            agentText: "agentText";
-        }>>;
-        ownsOnly: z.ZodOptional<z.ZodEnum<{
-            door: "door";
-            safety: "safety";
-            visual: "visual";
-            agentText: "agentText";
-        }>>;
-        unitsAtLeast: z.ZodOptional<z.ZodNumber>;
-        tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-        estimateAtMost: z.ZodOptional<z.ZodNumber>;
-        needsDoneWhen: z.ZodOptional<z.ZodBoolean>;
-        needsOwns: z.ZodOptional<z.ZodBoolean>;
-    }, z.core.$strict>>;
-    workflow: z.ZodRecord<z.ZodString, z.ZodObject<{
-        plan: z.ZodEnum<{
-            none: "none";
-            explore: "explore";
-            "bd-planner": "bd-planner";
-            "fable-architect": "fable-architect";
-            "titan-component-workflow": "titan-component-workflow";
-        }>;
-        planAbove2: z.ZodOptional<z.ZodEnum<{
-            none: "none";
-            explore: "explore";
-            "bd-planner": "bd-planner";
-            "fable-architect": "fable-architect";
-            "titan-component-workflow": "titan-component-workflow";
-        }>>;
-        implementer: z.ZodEnum<{
-            code: "code";
-            "bd-implementer-lite": "bd-implementer-lite";
-            "bd-implementer": "bd-implementer";
-            "fable-implementer": "fable-implementer";
-        }>;
-        implementerAbove2: z.ZodOptional<z.ZodEnum<{
-            code: "code";
-            "bd-implementer-lite": "bd-implementer-lite";
-            "bd-implementer": "bd-implementer";
-            "fable-implementer": "fable-implementer";
-        }>>;
-        review: z.ZodEnum<{
-            ci: "ci";
-            reviewer: "reviewer";
-            "bd-reviewer": "bd-reviewer";
-            "fable-reviewer": "fable-reviewer";
-            "fable-reviewer+owner": "fable-reviewer+owner";
-        }>;
-        merge: z.ZodEnum<{
-            "MRG-AU-CI": "MRG-AU-CI";
-            "MRG-AU-RV": "MRG-AU-RV";
-            owner: "owner";
-            "release-path": "release-path";
-        }>;
-    }, z.core.$strict>>;
-    priorWorkflow: z.ZodRecord<z.ZodString, z.ZodString>;
-}, z.core.$strict>;
-type PriorRule = z.infer<typeof priorRuleSchema>;
-type WorkflowRow = z.infer<typeof workflowRowSchema>;
-type WorkflowTable = Omit<z.infer<typeof tableShape>, "paths" | "workflow" | "priorWorkflow"> & {
+interface PriorRule {
+    prior: Prior;
+    owns?: PathList;
+    ownsOnly?: PathList;
+    unitsAtLeast?: number;
+    tags?: string[];
+    estimateAtMost?: number;
+    needsDoneWhen?: boolean;
+    needsOwns?: boolean;
+}
+interface WorkflowRow {
+    plan: (typeof PLAN_LADDER)[number];
+    planAbove2?: (typeof PLAN_LADDER)[number];
+    implementer: Implementer;
+    implementerAbove2?: Implementer;
+    review: (typeof REVIEW_LADDER)[number];
+    merge: (typeof MERGE_LADDER)[number];
+}
+interface WorkflowTable {
+    version: typeof TABLE_VERSION;
+    priors: PriorRule[];
     paths: Record<PathList, string[]>;
     workflow: Record<ShapeClass, WorkflowRow>;
     /** Which class row gives a prior its implementer; `planner` sends it to `bd-planner`. */
     priorWorkflow: Record<Prior, ShapeClass | "planner">;
-};
+}
 type TableRead = {
     table: WorkflowTable;
     problems?: undefined;
