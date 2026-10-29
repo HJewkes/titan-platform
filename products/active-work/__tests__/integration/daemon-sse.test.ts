@@ -31,6 +31,8 @@ async function waitForEvent(
   trigger();
 
   const deadline = Date.now() + timeoutMs;
+  // A read blocks until the next frame, so without this a stream that never sends one outlives the deadline.
+  const timer = setTimeout(() => void reader.cancel().catch(() => {}), timeoutMs);
   let buffer = '';
   try {
     while (Date.now() < deadline) {
@@ -40,6 +42,7 @@ async function waitForEvent(
       if (buffer.includes(needle)) return buffer;
     }
   } finally {
+    clearTimeout(timer);
     await reader.cancel().catch(() => {});
   }
   throw new Error(`event containing "${needle}" never arrived; saw: ${buffer}`);
