@@ -1,10 +1,11 @@
 import { isAbsolute, resolve } from "node:path";
+import { PEER_NAME_PATTERN } from "@titan-design/agent-dispatch";
 import { isRepo } from "@titan-design/github";
 import { parse } from "yaml";
 import { z } from "zod";
 
 /**
- * Short enough that the agent name stays legal; a leading letter keeps `deploy-approve:<slice>` from reading as the
+ * Lowercase so the agent name is legal; its length is checked against the whole name in `assertAgentNames`. A leading letter keeps `deploy-approve:<slice>` from reading as the
  * `:<n>` repeat of a gate.
  */
 const SLICE_ID = /^[a-z][a-z0-9-]{0,39}$/;
@@ -70,7 +71,16 @@ export function parseBuildSpec(text: string): BuildSpec {
   const parsed = BuildSpecSchema.safeParse(parse(front));
   if (!parsed.success) throw new Error(`build spec: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ")}`);
   assertSliceGraph(parsed.data.slices);
+  assertAgentNames(parsed.data);
   return parsed.data;
+}
+
+/** The longest name a slice's agents take is its last round's reviewer, so a long id fails here, not after the implementer's work. */
+function assertAgentNames(spec: BuildSpec): void {
+  for (const slice of spec.slices) {
+    const longest = spec.reviewer ? reviewerNameOf(spec, slice, spec.maxFixRounds) : agentNameOf(spec, slice);
+    if (!PEER_NAME_PATTERN.test(longest)) throw new Error(`build spec: slice "${slice.id}" gives the agent name "${longest}", over agent-chat's 64 characters; shorten the id`);
+  }
 }
 
 /** Unknown, duplicate or circular dependencies would leave a slice that no wave ever picks up. */
@@ -101,6 +111,7 @@ export function agentNameOf(spec: BuildSpec, slice: Slice): string {
   const repo = spec.repo.split("/")[1]!.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 20);
   return `bs-${repo}-${slice.id}`.replace(/-+/g, "-");
 }
+export const reviewerNameOf = (spec: BuildSpec, slice: Slice, round: number): string => `${agentNameOf(spec, slice)}-rv${round}`;
 /** The gate command's evidence directory for one head, under the clone unless the spec gives an absolute path. */
 export function evidenceDirOf(spec: BuildSpec, slice: string, head: string): string {
   return resolve(spec.clone, spec.gate.evidence.replaceAll("{slice}", slice).replaceAll("{head}", head));

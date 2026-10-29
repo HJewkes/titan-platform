@@ -4,7 +4,7 @@ import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { BUILD_SURFACE_STEPS, BUILD_SURFACE_WORKFLOW, FINAL_WALK } from "./manifest.js";
 import { FinalWalkAnswer } from "./schemas.js";
 import { runSlice, SliceOutcomeSchema, type SliceOutcome } from "./slice.js";
-import { sliceRun } from "./slice-run.js";
+import { sliceRun, type RunHalt } from "./slice-run.js";
 import { BuildSpecSchema, readySlices, type BuildSpec } from "./spec.js";
 
 const INPUT_VAR = "BS_STEP_INPUT";
@@ -16,6 +16,7 @@ interface Progress {
   stopped: Map<string, string>;
   spentUsd: number;
   stoppedBy: string | null;
+  halt: RunHalt;
 }
 
 function params(ctx: WorkflowContext): { repo: string; spec: string } {
@@ -36,7 +37,7 @@ async function plan(ctx: WorkflowContext, repo: string, specPath: string): Promi
 async function wave(ctx: WorkflowContext, spec: BuildSpec, number: number, progress: Progress): Promise<boolean> {
   const ready = readySlices(spec.slices, new Set(progress.merged.keys()), new Set(progress.stopped.keys()));
   if (ready.length === 0) return false;
-  const result = await mapItems(ctx, `bs-wave:${number}`, ready, (slice) => runSlice(sliceRun(ctx, spec, slice)), {
+  const result = await mapItems(ctx, `bs-wave:${number}`, ready, (slice) => runSlice(sliceRun(ctx, spec, slice, progress.halt)), {
     key: (slice) => slice.id,
     concurrency: spec.concurrency,
     budgetUsd: spec.budgetUsd - progress.spentUsd,
@@ -58,14 +59,15 @@ async function finalWalk(ctx: WorkflowContext, spec: BuildSpec, progress: Progre
     questions: [{ id: "decision", question: "Accept the build after the final walk?", options: [{ id: "accept", label: "Accept the build" }, { id: "changes", label: "Changes needed; file the notes" }] }],
   };
   const prompt = `Final walk of ${spec.repo} at ${last.mergeSha}: merged ${[...progress.merged.keys()].join(", ")}. Accept, or ask for changes with notes?`;
-  FinalWalkAnswer.parse((await ctx.assisted(FINAL_WALK, prompt, { schema: FinalWalkAnswer, brief })).data);
+  const schema = FinalWalkAnswer(last.mergeSha);
+  schema.parse((await ctx.assisted(FINAL_WALK, prompt, { schema, brief })).data);
 }
 
 /** Waves until no slice is ready; every slice merged opens the final walk, and anything else fails the run naming why. */
 async function buildSurface(ctx: WorkflowContext): Promise<void> {
   const { repo, spec: specPath } = params(ctx);
   const spec = await plan(ctx, repo, specPath);
-  const progress: Progress = { merged: new Map(), stopped: new Map(), spentUsd: 0, stoppedBy: null };
+  const progress: Progress = { merged: new Map(), stopped: new Map(), spentUsd: 0, stoppedBy: null, halt: { reason: null } };
   for (let number = 0; await wave(ctx, spec, number, progress); number++);
   if (progress.merged.size === spec.slices.length) return finalWalk(ctx, spec, progress);
   const stopped = [...progress.stopped].map(([slice, reason]) => `${slice} (${reason})`);

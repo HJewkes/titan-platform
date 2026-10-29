@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { partialFake } from "@titan-design/test-kit";
 import { demoSpec, fakeBuild } from "../test-support/build-surface.js";
 import { BUILD_SURFACE_STEPS, DISPATCH_STEPS } from "./manifest.js";
 import { buildSurfaceRoutes } from "./routes.js";
@@ -20,6 +21,13 @@ describe("the build spec", () => {
     ["an id that is no agent name", [{ id: "Bad_Id", title: "A", brief: "b" }], /a lowercase letter, then/],
   ])("refuses %s, which no wave could build", (_name, slices, error) => {
     expect(() => parseBuildSpec(demoSpec({ slices }))).toThrow(error);
+  });
+
+  it("refuses a slice id whose last reviewer name would pass agent-chat's 64 characters, and takes it with no reviewer", () => {
+    const long = { repo: "owner/a-very-long-repository-name", slices: [{ id: `s${"x".repeat(39)}`, title: "A", brief: "b" }] };
+
+    expect(() => parseBuildSpec(demoSpec(long))).toThrow(`gives the agent name "bs-a-very-long-reposito-s${"x".repeat(39)}-rv12", over agent-chat's 64 characters`);
+    expect(parseBuildSpec(demoSpec({ ...long, reviewer: undefined })).slices).toHaveLength(1);
   });
 
   it("refuses a relative clone, since serve reads it from its own directory", () => {
@@ -45,6 +53,15 @@ describe("the build-surface routes", () => {
     const parked = routes.filter((route) => route.onRestart === "park").map((route) => route.match).sort();
     expect(parked).toEqual(["bs-deploy", "bs-fix", "bs-implement"]);
     expect(routes.map((route) => route.match).sort()).toEqual(Object.keys(DISPATCH_STEPS).sort());
+  });
+
+  it("tell the owner a parked implement step resumes as a new turn, not a re-read of the old report", async () => {
+    const implement = buildSurfaceRoutes(fakeBuild().ports).find((route) => route.match === "bs-implement")!;
+
+    const recovery = await implement.reconcile!(partialFake(), new AbortController().signal);
+
+    expect(recovery).toEqual({ kind: "unknown", evidence: expect.stringMatching(/starts a new implement turn with the full brief and takes only a report written after it/) });
+    expect(recovery).not.toEqual(expect.objectContaining({ evidence: expect.stringMatching(/read again/) }));
   });
 
   it("declare exactly one step for each route and each owner gate", () => {

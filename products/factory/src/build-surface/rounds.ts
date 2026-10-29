@@ -1,9 +1,8 @@
-import { WorkflowCancelledError } from "@titan-design/workflow";
 import { fixPacket, implementerBrief, reviewerBrief, type FixFindings } from "./briefs.js";
 import { DEVICE_CHECK } from "./manifest.js";
 import * as S from "./schemas.js";
-import { commandIn, oneQuestionBrief, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
-import { evidenceDirOf } from "./spec.js";
+import { cancelRun, commandIn, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
+import { evidenceDirOf, reviewerNameOf } from "./spec.js";
 
 const ReportStep = S.AgentStepSchema(S.ImplementerReportSchema);
 const ReviewStep = S.AgentStepSchema(S.ReviewReportSchema);
@@ -30,7 +29,7 @@ export async function runGates(run: SliceRun, suffix: string, head: string): Pro
   const evidenceDir = evidenceDirOf(run.spec, run.slice.id, head);
   const input = { ...commandIn(run, run.spec.gate.command, { BS_HEAD: head, BS_EVIDENCE: evidenceDir }), head, evidenceDir };
   const gates = await sliceStep(run, "bs-gates", suffix, input, S.GateRunSchema);
-  if (gates.exitCode === GATE_BROKEN && ++run.brokenGateRuns >= 2) throw new WorkflowCancelledError(run.ctx.runId, `slice ${run.slice.id}: a gate's sensitivity proof failed twice`);
+  if (gates.exitCode === GATE_BROKEN && ++run.brokenGateRuns >= 2) cancelRun(run, `slice ${run.slice.id}: a gate's sensitivity proof failed twice`);
   return gates;
 }
 
@@ -56,7 +55,7 @@ async function preview(run: SliceRun, round: number, head: string, asked: { devi
   const schema = S.DeviceAnswer(head);
   const options = [{ id: "pass", label: "It passed on the device" }, { id: "fail", label: "It failed on the device" }];
   const brief = oneQuestionBrief(run, `${run.spec.repo} slice ${run.slice.id} at ${head.slice(0, 8)}: ${spec.deviceStep}`, head, `Did the device step pass at ${head}?`, options);
-  const answer = schema.parse((await run.ctx.assisted(`${DEVICE_CHECK}:${run.slice.id}`, `On the device, at head ${head}: ${spec.deviceStep}. Did it pass?`, { schema, brief })).data);
+  const answer = schema.parse((await sliceAsk(run, `${DEVICE_CHECK}:${run.slice.id}`, `On the device, at head ${head}: ${spec.deviceStep}. Did it pass?`, { schema, brief })).data);
   return answer.decision === "pass" ? synced : { pass: false, detail: `device check failed: ${answer.note ?? "no note"}` };
 }
 
@@ -73,7 +72,7 @@ async function review(run: SliceRun, round: number, head: string): Promise<S.Rev
   let rejections: string[] = [];
   for (let attempt = 0; ; attempt++) {
     const brief = reviewerBrief(run.spec, run.slice, head, rejections);
-    const asked = { name: `${run.agent}-rv${round}`, profile: reviewer.profile, cwd: run.spec.clone, brief, task: run.slice.task ?? run.spec.task };
+    const asked = { name: reviewerNameOf(run.spec, run.slice, round), profile: reviewer.profile, cwd: run.spec.clone, brief, task: run.slice.task ?? run.spec.task };
     const { report } = await sliceStep(run, "bs-review", `${round}:${attempt}`, asked, ReviewStep);
     const input = { ...commandIn(run, run.spec.validate.review, { BS_HEAD: head }), payload: report, builtIn: reviewProblems(report, head) };
     const verdict = await sliceStep(run, "bs-review-check", `${round}:${attempt}`, input, S.ValidationSchema);

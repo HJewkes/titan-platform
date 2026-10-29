@@ -11,7 +11,7 @@ const tail = (text: string): string => text.trim().split("\n").slice(-5).join(" 
 
 /** Why a parked step's restart needs a human, said on the recovery the owner reads. */
 const PARKED: Readonly<Record<string, string>> = {
-  "bs-implement": "the slice implementer may still be working or mid-push; resume the run once its agent has exited, and its report is read again",
+  "bs-implement": "the slice implementer may still be working or mid-push; resume the run once its agent has exited; the resume starts a new implement turn with the full brief and takes only a report written after it",
   "bs-fix": "the fix round's implementer may still be working or mid-push; resume the run once its agent has exited",
   "bs-deploy": "the deploy command was interrupted and may have half-run; check the live surface before resuming",
 };

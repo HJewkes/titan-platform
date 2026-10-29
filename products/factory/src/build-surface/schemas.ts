@@ -61,4 +61,4 @@ export const PlanSchema = z.object({ spec: z.unknown() });
 
 export const DeviceAnswer = (headSha: string) => z.object({ decision: z.enum(["pass", "fail"]), headSha: z.literal(headSha), note: z.string().optional() });
 export const DeployAnswer = (headSha: string) => z.object({ decision: z.enum(["deploy", "skip"]), headSha: z.literal(headSha) });
-export const FinalWalkAnswer = z.object({ decision: z.enum(["accept", "changes"]), headSha: z.string(), notes: z.string().optional() });
+export const FinalWalkAnswer = (headSha: string) => z.object({ decision: z.enum(["accept", "changes"]), headSha: z.literal(headSha), notes: z.string().optional() });

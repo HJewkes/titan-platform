@@ -1,9 +1,9 @@
-import { WorkflowCancelledError, type StepResult } from "@titan-design/workflow";
+import type { StepResult } from "@titan-design/workflow";
 import { z } from "zod";
 import { DEPLOY_APPROVE } from "./manifest.js";
 import { buildRounds, runGates } from "./rounds.js";
 import * as S from "./schemas.js";
-import { commandIn, oneQuestionBrief, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
+import { cancelRun, commandIn, oneQuestionBrief, sliceAsk, sliceStep, stopSlice, type SliceRun } from "./slice-run.js";
 
 /** What a finished slice hands the outer loop: its merge, so the next wave knows which dependencies are in. */
 export const SliceOutcomeSchema = z.object({ slice: z.string(), pr: z.number().int(), head: z.string(), mergeSha: z.string(), deployed: z.boolean() });
@@ -58,11 +58,11 @@ async function deploy(run: SliceRun, mergeSha: string): Promise<boolean> {
     const schema = S.DeployAnswer(mergeSha);
     const options = [{ id: "deploy", label: "Deploy it" }, { id: "skip", label: "Do not deploy this slice" }];
     const brief = oneQuestionBrief(run, `Deploy ${run.spec.repo} slice ${run.slice.id} at merge ${mergeSha.slice(0, 8)}?`, mergeSha, `Deploy merge ${mergeSha}?`, options);
-    const answer = schema.parse((await run.ctx.assisted(`${DEPLOY_APPROVE}:${run.slice.id}`, `Deploy slice ${run.slice.id} of ${run.spec.repo} at merge ${mergeSha}?`, { schema, brief })).data);
+    const answer = schema.parse((await sliceAsk(run, `${DEPLOY_APPROVE}:${run.slice.id}`, `Deploy slice ${run.slice.id} of ${run.spec.repo} at merge ${mergeSha}?`, { schema, brief })).data);
     if (answer.decision === "skip") return false;
   }
   const done = await sliceStep(run, "bs-deploy", undefined, commandIn(run, spec.command, { BS_MERGE_SHA: mergeSha }), S.CommandResultSchema);
-  if (!done.pass) throw new WorkflowCancelledError(run.ctx.runId, `slice ${run.slice.id}: the deploy at ${mergeSha} failed: ${done.detail}`);
+  if (!done.pass) cancelRun(run, `slice ${run.slice.id}: the deploy at ${mergeSha} failed: ${done.detail}`);
   return true;
 }
 

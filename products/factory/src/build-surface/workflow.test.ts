@@ -51,6 +51,17 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     expect(deploys).toEqual([shaOf(9001), shaOf(9002)]);
   });
 
+  it("refuses a final-walk acceptance given for a sha other than the last merge", async () => {
+    const { host, runId } = start(fakeBuild());
+    await approveDeploy(host, runId, "shell", 1);
+    await approveDeploy(host, runId, "panel", 2);
+    await gateOpened(host, gateId(runId, "final-walk"));
+
+    const accept = () => host.runtime.signal(runId, "final-walk", { decision: "accept", headSha: shaOf(9001) }, OWNER);
+
+    expect(accept).toThrow(/final-walk does not match its schema: \$\.headSha/);
+  });
+
   it("runs the gates at the head the implementer reported, with the evidence path the spec names", async () => {
     const fake = fakeBuild();
     const { host, runId } = start(fake);
@@ -90,6 +101,52 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
 
     expect(run.error).toMatch(/sensitivity proof failed twice/);
   });
+
+  /** Two independent slices running together; beta is held at `hold` until alpha's deploy has failed. */
+  function siblingRun(hold: "gates" | "land", approve: boolean) {
+    const slices = [
+      { id: "alpha", title: "Alpha", brief: "Build alpha." },
+      { id: "beta", title: "Beta", brief: "Build beta." },
+    ];
+    const fake = fakeBuild({ spec: demoSpec({ deploy: { command: ["make", "deploy"], approve }, slices }) });
+    let alphaDeployFailed!: () => void;
+    const failed = new Promise<void>((resolve) => (alphaDeployFailed = resolve));
+    const { run, shepherd } = fake.ports;
+    fake.ports.run = async (argv, request) => {
+      if (hold === "gates" && argv[1] === "gates" && request.env.BS_SLICE === "beta") await failed;
+      if (argv[1] !== "deploy" || request.env.BS_SLICE !== "alpha") return run(argv, request);
+      fake.commands.push({ argv, env: request.env });
+      setTimeout(alphaDeployFailed, 20);
+      return { status: 1, stdout: "", stderr: "deploy target refused" };
+    };
+    const isBeta = (pr: number) => fake.registered.some((entry) => entry.pr === pr && entry.implementer.endsWith("-beta"));
+    fake.ports.shepherd = { ...shepherd, land: async (request, signal) => (hold === "land" && isBeta(request.pr) && (await failed), shepherd.land(request, signal)) };
+    return { fake, ...start(fake) };
+  }
+
+  const deploysOf = (fake: FakeBuild) => fake.commands.filter((command) => command.argv[1] === "deploy").map((command) => command.env.BS_SLICE);
+
+  it("stops a sibling slice in flight when another slice's deploy fails, before its next step", async () => {
+    const { fake, host, runId } = siblingRun("gates", false);
+
+    const result = await host.runtime.wait(runId);
+
+    expect(result.error).toMatch(/slice alpha: the deploy at .* failed/);
+    expect(deploysOf(fake)).toEqual(["alpha"]);
+    expect(stepsOf(host, runId).filter((step) => /^bs-(preview|review|pr|deploy):beta/.test(step))).toEqual([]);
+  });
+
+  it("never opens a sibling's deploy gate once another slice's deploy has failed", async () => {
+    const { fake, host, runId } = siblingRun("land", true);
+    await gateOpened(host, gateId(runId, "deploy-approve:alpha"));
+    host.runtime.signal(runId, "deploy-approve:alpha", { decision: "deploy", headSha: shaOf(9000 + fake.registered.find((entry) => entry.implementer.endsWith("-alpha"))!.pr) }, OWNER);
+
+    const result = await host.runtime.wait(runId);
+
+    expect(result.error).toMatch(/slice alpha: the deploy at .* failed/);
+    expect(deploysOf(fake)).toEqual(["alpha"]);
+    expect(stepsOf(host, runId)).not.toContain(expect.stringMatching(/^deploy-approve:beta/));
+  }, 5_000);
 
   it("fails at plan when the spec names another repo, before any slice starts", async () => {
     const fake = fakeBuild({ spec: demoSpec({ repo: "owner/other-repo" }) });
