@@ -8,14 +8,15 @@ import { appendFileSync, globSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { lockfileScope } from "./lockfile-scope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT_TESTS = "scripts/";
+const LOCKFILE = "pnpm-lock.yaml";
 
 // Root inputs every test can depend on, and this scoping itself.
 const FULL_PATHS = new Set([
   "package.json",
-  "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   ".node-version",
   ".npmrc",
@@ -32,6 +33,7 @@ const FULL_PATHS = new Set([
   "products/factory/src/test-support/vitest-setup.ts",
   "scripts/test-affected.mjs",
   "scripts/test-scope.mjs",
+  "scripts/lockfile-scope.mjs",
 ]);
 const FULL_PREFIXES = ["scripts/fixtures/", ".github/"];
 
@@ -110,15 +112,15 @@ function reverseClosure(dirs, dependents) {
 
 /**
  * The tests a diff needs. Root script tests join every scoped run: several read the live workspace layout, and they
- * take seconds.
+ * take seconds. `readLock` returns the lockfile text at the merge base and the head, read only when the diff has it.
  */
-export function testScope(changedFiles, workspace) {
+export function testScope(changedFiles, workspace, readLock = () => null) {
   if (changedFiles.length === 0) return { mode: "full", reason: "empty diff" };
   const memberDirs = workspace.map((member) => member.dir).sort((a, b) => b.length - a.length);
   const touched = new Set();
   for (const path of changedFiles) {
-    const verdict = classifyPath(path, memberDirs);
-    if (verdict.kind === "full") return { mode: "full", reason: path };
+    const verdict = path === LOCKFILE ? lockfileScope(readLock(), memberDirs) : classifyPath(path, memberDirs);
+    if (verdict.kind === "full") return { mode: "full", reason: verdict.reason ?? path };
     if (verdict.kind === "dirs") verdict.dirs.forEach((dir) => touched.add(dir));
   }
   if (touched.size === 0) return { mode: "none" };
@@ -145,13 +147,21 @@ function changedFiles(base, head, cwd = ROOT) {
   return out.split("\n").filter(Boolean);
 }
 
+/** pnpm-lock.yaml on both sides of that diff; maxBuffer because the lockfile nears execFileSync's 1 MiB default. */
+function lockSides(base, head, cwd = ROOT) {
+  const git = (...args) => execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const mergeBase = git("merge-base", base, head).trim();
+  return { base: git("show", `${mergeBase}:${LOCKFILE}`), head: git("show", `${head}:${LOCKFILE}`) };
+}
+
 /** The scope for this CI event: full unless a pull request other than the release PR names both ends of its diff. */
-export function scopeForEvent(env, readChanged, loadWorkspace) {
+export function scopeForEvent(env, readChanged, loadWorkspace, readLock = lockSides) {
   if (env.EVENT_NAME !== "pull_request") return { mode: "full", reason: `event ${env.EVENT_NAME || "unknown"}` };
   if (env.HEAD_REF === "changeset-release/main") return { mode: "full", reason: "release PR" };
   if (!env.BASE_SHA || !env.HEAD_SHA) return { mode: "full", reason: "no base or head sha" };
   try {
-    return testScope(readChanged(env.BASE_SHA, env.HEAD_SHA), loadWorkspace());
+    const sides = () => readLock(env.BASE_SHA, env.HEAD_SHA);
+    return testScope(readChanged(env.BASE_SHA, env.HEAD_SHA), loadWorkspace(), sides);
   } catch (err) {
     return { mode: "full", reason: `scope unreadable: ${err.message.split("\n")[0]}` };
   }

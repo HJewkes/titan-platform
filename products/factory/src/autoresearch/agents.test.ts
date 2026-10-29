@@ -187,6 +187,17 @@ describe("implementers", () => {
     expect(built).toMatchObject({ head: git(tree, "rev-parse", "HEAD"), mode: "spawn", account: "agents", agent: nameFor(tree, 1, "i-aaa") });
   });
 
+  it("adopt the idea tree rather than getting a fresh worktree from the default branch", async () => {
+    const p = ports();
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
+    behave(nameFor(tree, 1, "i-aaa"), { commit: true, turns: [implemented()] });
+
+    await p.implement(request(tree, "i-aaa"), signal);
+
+    const argv = spawns()[0]!.args;
+    expect(argv[argv.indexOf("--worktree") + 1]).toBe(tree);
+  });
+
   it("are named from the request's run id, not from the tree they were handed", async () => {
     const p = ports();
     const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
@@ -251,6 +262,19 @@ describe("implementers", () => {
     expect(resume?.head).toBe(bases[1]);
     expect(built).toMatchObject({ mode: "resume", resumedFrom: "ar-winner", agent: "ar-winner", head: git(tree, "rev-parse", "HEAD") });
     expect(existsSync(winnerHome)).toBe(false);
+  });
+
+  it("on an exploit lane resume a winner that adopted the idea tree in place, without moving it", async () => {
+    const p = ports();
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-bbb", base: bases[1]!, lane: 1 }, signal);
+    setRoster([row("ar-winner", tree)]);
+    behave("ar-winner", { commit: true, turns: [implemented()] });
+
+    const built = await p.implement(request(tree, "i-bbb", { fork: "exploit", resumeFrom: "ar-winner", round: 2 }), signal);
+
+    expect(spawns()[0]?.head).toBe(bases[1]);
+    expect(built).toMatchObject({ mode: "resume", agent: "ar-winner", head: git(tree, "rev-parse", "HEAD") });
+    expect(existsSync(tree)).toBe(true);
   });
 
   it("on a resume count only the new turn's usage, not the winner's earlier turns", async () => {

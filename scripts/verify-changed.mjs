@@ -8,6 +8,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LINT_TYPES_INPUTS } from "./lint-types.mjs";
+import { readWorkspace, testScope } from "./test-scope.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_BASE = "origin/main";
@@ -18,6 +20,8 @@ const GRAPH_ROOT = /^(?:packages|products|apps)\//;
 const CODE_GRAPH_ENTRY = join(ROOT, "packages/code-graph/dist/index.js");
 const VITEST_TIMEOUT_SECONDS = 600;
 const VITEST_HEAP_MB = 4096;
+const TYPE_INPUT = /(?:^|\/)tsconfig[^/]*\.json$/;
+const ROOT_SCRIPTS = "scripts/";
 
 // The languages code-graph's indexer walks (LANGUAGES in its indexer.ts); which extensions `typescript` covers is
 // code-parser's call (.mjs and .cjs joined in TP-4161), so nothing here lists them.
@@ -83,7 +87,7 @@ export function touchedPackageDirs(changed) {
 
 /** Packages whose changed files can alter types: a deleted-only or docs-only change needs no tsc. */
 export function typecheckDirs(changed, hasTypecheckScript) {
-  const typed = changed.filter((path) => SOURCE_EXT.test(path) || /(?:^|\/)tsconfig[^/]*\.json$/.test(path));
+  const typed = changed.filter((path) => SOURCE_EXT.test(path) || TYPE_INPUT.test(path));
   return touchedPackageDirs(typed).filter(hasTypecheckScript);
 }
 
@@ -92,12 +96,37 @@ export function relatedTestArgs(changed) {
   return sources.length === 0 ? null : ["related", "--run", "--passWithNoTests", ...sources];
 }
 
+/**
+ * Which members lint:types covers, from CI's own test-scope graph so a change reaches the packages that read its
+ * types through dist. Inside a member only type inputs count; a path outside every member goes to testScope as is,
+ * so one it does not know asks for a full run.
+ */
+export function lintTypesScope(changed, workspace) {
+  if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: "full" };
+  const inMember = (path) => workspace.some((member) => path.startsWith(member.dir));
+  const inputs = changed.filter((path) => !inMember(path) || SOURCE_EXT.test(path) || TYPE_INPUT.test(path));
+  if (inputs.length === 0) return { mode: "none" };
+  const scope = testScope(inputs, workspace);
+  if (scope.mode !== "scoped") return { mode: scope.mode };
+  const dirs = scope.dirs.filter((dir) => dir !== ROOT_SCRIPTS).map((dir) => dir.replace(/\/$/, ""));
+  return dirs.length === 0 ? { mode: "none" } : { mode: "scoped", dirs };
+}
+
+function lintTypesCommand(changed, workspace) {
+  const scope = lintTypesScope(changed, workspace);
+  if (scope.mode === "none") return null;
+  const only = scope.mode === "scoped" ? [`--only=${scope.dirs.join(",")}`] : [];
+  return { label: "lint:types", cmd: "node", args: ["scripts/lint-types.mjs", ...only] };
+}
+
 /** Ordered commands after the in-process LOC check; each is argv for spawnSync with optional env. */
-export function planCommands({ base, changed, hasTypecheckScript, hasTimeout, spool }) {
+export function planCommands({ base, changed, workspace, hasTypecheckScript, hasTimeout, spool }) {
   const commands = [{ label: "changeset status", cmd: "pnpm", args: ["exec", "changeset", "status", `--since=${base}`] }];
   for (const dir of typecheckDirs(changed, hasTypecheckScript)) {
     commands.push({ label: `tsc ${dir}`, cmd: "pnpm", args: ["--dir", dir, "run", "typecheck"] });
   }
+  const lintTypes = lintTypesCommand(changed, workspace);
+  if (lintTypes) commands.push(lintTypes);
   const related = relatedTestArgs(changed);
   if (related) {
     const vitest = ["pnpm", "exec", "vitest", ...related];
@@ -148,7 +177,9 @@ async function main() {
   const over = await overLoc(changed);
   for (const v of over) console.error(`verify:changed: ${v.path} has ${v.loc} lines, max ${v.max}`);
   let failed = over.length > 0;
-  for (const { label, cmd, args, env } of planCommands({ base, changed, hasTypecheckScript, hasTimeout: hasTimeout(), spool: timingSpool() })) {
+  const workspace = readWorkspace(ROOT);
+  const plan = planCommands({ base, changed, workspace, hasTypecheckScript, hasTimeout: hasTimeout(), spool: timingSpool() });
+  for (const { label, cmd, args, env } of plan) {
     console.log(`verify:changed: ${label}`);
     const result = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
     if (result.status !== 0) {
