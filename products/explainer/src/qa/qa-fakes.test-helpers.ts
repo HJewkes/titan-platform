@@ -60,16 +60,23 @@ async function fakeCrops(errors: CroppedFinding[], dir: string): Promise<void> {
   }
 }
 
-/** A page that records each time it inspects and probes, and answers from the options. */
+/** A page that records each time it inspects and probes, and answers from the options. Its clock, like the real one, never goes back. */
 function fakePage(options: FakeQaOptions, inspected: number[], probed: number[]): QaPage {
+  let nowS = 0;
+  const advanceTo = (t: number): void => {
+    if (t < nowS) throw new Error(`virtual time cannot go back from ${nowS * 1000} to ${t * 1000} ms`);
+    nowS = t;
+  };
   return {
     inspectAt: async (t) => {
+      advanceTo(t);
       inspected.push(t);
       const runs = options.contentRuns ?? 3;
       return { textRuns: runs, contentRuns: runs, findings: options.findingsAt?.(t) ?? [] };
     },
     probe: async (moments) =>
       moments.map(({ beat, t }) => {
+        advanceTo(t);
         probed.push(t);
         return { beat, t, ...(options.probeAt?.(t) ?? FULL_STAGE) };
       }),

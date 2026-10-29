@@ -35,7 +35,7 @@ export const STAGE_VERSIONS: Record<CachedStage, string> = {
   resolve: "p5c2s2f2s2d4",
   tts: "p6d",
   render: "m10c10",
-  qa: "x10w",
+  qa: "x10x",
   sheets: "x10",
 };
 
