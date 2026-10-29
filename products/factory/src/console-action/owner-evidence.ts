@@ -26,7 +26,7 @@ const CI_POLICY_FACT: Readonly<Record<CiPolicy["kind"], CiPolicyFact | undefined
 const isCiPolicyFact = (fact: OwnerAtHeadRow): fact is CiPolicyFact => fact === "ci-policy-weakened" || fact === "ci-policy-malformed";
 
 /** The evidence's own reading as the headline, the verdict text it came from, and every labelled line that reading folds. */
-export interface CiPolicySection {
+interface CiPolicySection {
   fact: CiPolicyFact;
   ciPolicy: CiPolicy;
   verdictText: string;
@@ -39,7 +39,7 @@ export type OwnerEvidence =
   | { status: "missing"; gateId: string; facts: string[]; reason: string; command: string };
 
 /** The stored evidence a gate was opened on and the facts land would write from it, equal to the gate's marker. */
-export interface GateEvidence {
+interface GateEvidence {
   land: LandGate;
   evidence: MergeEvidence;
   facts: OwnerAtHeadRow[];
@@ -56,7 +56,7 @@ const short = (sha: string): string => sha.slice(0, 8);
 const named = (facts: readonly string[]): string => (facts.length > 0 ? facts.join(", ") : "none");
 
 /** The command the owner runs at the terminal when the card cannot carry the evidence. */
-export function terminalCommand(gateId: string, head: string): string {
+function terminalCommand(gateId: string, head: string): string {
   const slash = gateId.indexOf("/");
   return `titan-factory gate resolve ${gateId.slice(0, slash)} ${gateId.slice(slash + 1)} --json '${JSON.stringify({ decision: "merge", headSha: head })}'`;
 }
@@ -82,7 +82,7 @@ export async function ownerEvidence(gate: GateRecord, { host, readText = default
 const markedFacts = (gate: GateRecord, row: string): string[] => ownerAtHeadNamesIn(gate.prompt) ?? [row];
 
 /** Locates the evidence the gate was opened on, recomputes land's facts from it, and requires them to equal the marker. */
-export function gateEvidence(gate: GateRecord, host: Pick<FactoryHost, "runs">): GateEvidence | string {
+function gateEvidence(gate: GateRecord, host: Pick<FactoryHost, "runs">): GateEvidence | string {
   const land = landGate(gate);
   const row = ownerAtHeadRow(gate);
   if (land === undefined || row === undefined) return "the gate is not an owner-at-head land gate";
@@ -138,7 +138,7 @@ async function readSections({ evidence, facts }: GateEvidence, readText: ReadVer
  * The headline is the evidence's own reading, verbatim. The verdict text is shown only when the shared reader still reads
  * that same reading from it, so the lines listed are the ones the gate's reading folded.
  */
-export function ciPolicySection(fact: CiPolicyFact, evidence: Pick<MergeEvidence, "ciPolicy">, text: string | null): CiPolicySection | string {
+function ciPolicySection(fact: CiPolicyFact, evidence: Pick<MergeEvidence, "ciPolicy">, text: string | null): CiPolicySection | string {
   const ciPolicy = evidence.ciPolicy;
   if (ciPolicy === undefined || CI_POLICY_FACT[ciPolicy.kind] !== fact) return `the evidence's CI-policy reading does not hold ${fact}`;
   if (text === null) return "the reviewer's verdict text could not be read from its session";
