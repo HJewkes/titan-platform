@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a fake daemon's call is never counted",
+      "file": "apps/console/server/perf/fixture.ts",
+      "find": "tally.set(key, (tally.get(key) ?? 0) + 1);",
+      "replace": "",
+      "kills": [
+        "answers the console's reads in process and counts each upstream call by command"
+      ]
+    },
+    {
+      "name": "reset keeps the broker's requests",
+      "file": "apps/console/server/perf/fixture.ts",
+      "find": "broker.requests.length = 0;",
+      "replace": "",
+      "kills": [
+        "forgets the broker's calls on reset, as it forgets the daemons'"
+      ]
+    },
+    {
+      "name": "a written file keeps the clock's mtime",
+      "file": "apps/console/server/perf/disk-state.ts",
+      "find": "  await writeFile(file, data, mode === undefined ? {} : { mode });\n  await utimes(file, at, at);",
+      "replace": "  await writeFile(file, data, mode === undefined ? {} : { mode });",
+      "kills": [
+        "writes the same bytes and serves the same answers from one seed, and different ones from another"
+      ]
+    },
+    {
+      "name": "every question of a round offers the same options",
+      "file": "apps/console/server/perf/disk-state.ts",
+      "find": "`${verb} ${questionId}`",
+      "replace": "verb",
+      "kills": [
+        "answers the console's reads in process and counts each upstream call by command"
+      ]
+    }
+  ]
+}
