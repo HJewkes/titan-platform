@@ -32,7 +32,7 @@ function renderCard(card: ScoreCard): string {
 }
 
 /** The order is part of the contract: passages as retrieval returned them, tasks sorted by id, so a replay renders the same text. */
-export function renderRetrieval(retrieval: Retrieval): { prior: string; tasks: string } {
+function renderRetrieval(retrieval: Retrieval): { prior: string; tasks: string } {
   const prior = retrieval.priorDigests.map((p) => `- ${p}`).join("\n") || NONE;
   const tasks = [...retrieval.tasks].sort((a, b) => a.id.localeCompare(b.id)).map((t) => `- ${t.id}: ${t.title}`).join("\n") || NONE;
   return { prior, tasks };
