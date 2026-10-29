@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { cellTable } from "./digest.js";
 import { PlannedSchema, RoundSummarySchema, type SyncRequest } from "./ports.js";
@@ -47,13 +47,25 @@ async function finished(options: Partial<FakeOptions> = {}, policy: Policy = POL
   return { repo, ports, host, run, view: arRunView(run)! };
 }
 
+// Read-only tests share one finished run, so it is taken out of the lists afterEach closes.
+let shared: Awaited<ReturnType<typeof finished>>;
+beforeAll(async () => {
+  shared = await finished();
+  hosts.pop();
+  repos.pop();
+});
+afterAll(() => {
+  shared.host.close();
+  removeFixture(shared.repo);
+});
+
 const dispatchedOf = (run: WorkflowRun, stepId: string) => z.object({ result: z.unknown() }).parse(run.stepResults[`${stepId}:0`]!.data).result;
 const summaryOf = (run: WorkflowRun, round: number) => RoundSummarySchema.parse(JSON.parse(run.stepResults[`ar-summary:${round}`]!.output!));
 const ladderOf = (view: ArRunView, round: number, ideaId: string) => view.rounds[round - 1]!.ladders.find((ladder) => ladder.idea.id === ideaId)!;
 
 describe("the run read model on a two-round fixture run", () => {
   it("parses with the console's run and summary schemas", async () => {
-    const { run, view } = await finished();
+    const { run, view } = shared;
 
     const parsed = ArRunViewSchema.parse(view);
     const summary = ArRunSummarySchema.parse(arRunSummary(run));
@@ -64,7 +76,7 @@ describe("the run read model on a two-round fixture run", () => {
   });
 
   it("carries each recorded outcome whole, stamped with the round's σ", async () => {
-    const { run, view } = await finished();
+    const { run, view } = shared;
     const recorded = stopOutcomes(run).get(id("flat"))!;
 
     const { outcome } = ladderOf(view, 1, id("flat"));
@@ -74,7 +86,7 @@ describe("the run read model on a two-round fixture run", () => {
   });
 
   it("names the planner that answered each round", async () => {
-    const { run, view } = await finished();
+    const { run, view } = shared;
     const planner = PlannedSchema.omit({ ops: true }).parse(dispatchedOf(run, "ar-plan:2"));
 
     expect(view.rounds[1]!.planner).toEqual(planner);
@@ -82,7 +94,7 @@ describe("the run read model on a two-round fixture run", () => {
   });
 
   it("lists the gates the baseline ran for an all-gate target, and none for a target without the rule", async () => {
-    const { view } = await finished();
+    const { view } = shared;
 
     expect(view.target.metric.allGate).toEqual(["gate_a", "gate_b"]);
     expect(view.target.metric.noOp).toEqual(["accepted_tasks"]);
@@ -90,7 +102,7 @@ describe("the run read model on a two-round fixture run", () => {
   });
 
   it("names each eval's wall time as the console does", async () => {
-    const { run, view } = await finished();
+    const { run, view } = shared;
     const recorded = ArResultSchema.parse(dispatchedOf(run, `ar-eval:1/${id("better")}:r1`));
 
     const parsed = ArRunViewSchema.parse(view);
@@ -100,7 +112,7 @@ describe("the run read model on a two-round fixture run", () => {
   });
 
   it("shows a superseded winner stopped, and replays the registries and cells the archive received", async () => {
-    const { run, view, ports } = await finished();
+    const { run, view, ports } = shared;
     const [superseded] = summaryOf(run, 1).superseded;
 
     expect(ladderOf(view, 1, superseded!).outcome).toMatchObject({ verdict: "stopped", reason: "superseded" });
@@ -140,7 +152,7 @@ describe("a run still in flight", () => {
   });
 
   it("counts what failed attempts of an in-flight step already spent", async () => {
-    const { run } = await finished();
+    const { run } = shared;
     const [first] = Object.keys(run.stepResults);
     const startedAt = "2026-10-21T00:00:00.000Z";
     const active = { kind: "legacy" as const, stepId: "ar-l0:3/i-000000000000", iterKey: "ar-l0:3/i-000000000000:0", attempt: 2, startedAt, priorUsage: { costUsd: 0.5 } };
@@ -184,7 +196,7 @@ describe("ideas, looks and why a run stopped", () => {
   });
 
   it("diffs a requeued idea's latest ladder against the head its round started from", async () => {
-    const { run } = await finished();
+    const { run } = shared;
     const [superseded] = summaryOf(run, 1).superseded;
     const latest = OutcomeSchema.parse(JSON.parse(run.stepResults[`ar-stop:2/${superseded}`]!.output!));
 

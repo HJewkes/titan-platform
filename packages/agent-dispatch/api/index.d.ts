@@ -216,6 +216,8 @@ interface DispatchRequest extends LaunchedBy, AgentRecord {
     configDir?: string;
     /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
     profilesDir?: string;
+    /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+    worktree?: string;
 }
 interface DispatchResult {
     peerName: string;
@@ -238,6 +240,7 @@ declare function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement &
     profile: string;
     briefing?: string;
     configDir?: string;
+    worktree?: string;
 }): string[];
 /** Where and on which account agent-chat runs the agent; each omitted field leaves its flag out of argv. */
 interface SpawnPlacement {
@@ -575,6 +578,34 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
+interface PrefixSection {
+    name: string;
+    text: string;
+}
+interface StablePrefixOptions {
+    /** Refused in every section: a per-agent name makes the prefix unique per spawn. */
+    agentName?: string;
+}
+interface StablePrefix {
+    text: string;
+    hash: string;
+}
+interface PrefixViolation {
+    section: string;
+    rule: string;
+    match: string;
+}
+declare class PrefixLintError extends Error {
+    readonly violations: readonly PrefixViolation[];
+    constructor(violations: readonly PrefixViolation[]);
+}
+declare function lintPrefixSections(sections: readonly PrefixSection[], options?: StablePrefixOptions): PrefixViolation[];
+/**
+ * Joins sections in the order given (order is part of the cache key, so it is
+ * never sorted) and hashes the result. Throws PrefixLintError on any per-spawn value.
+ */
+declare function stablePrefix(sections: readonly PrefixSection[], options?: StablePrefixOptions): StablePrefix;
+
 /** A file the plan names, with the line it points at when it gives one. */
 interface TouchPoint {
     path: string;
@@ -690,4 +721,4 @@ interface NodeBootReadersOptions {
 /** Readers over a local checkout: files from disk, git state from the git binary, tasks from the caller. */
 declare function nodeBootReaders(opts: NodeBootReadersOptions): BootReaders;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRecord, type AgentRole, type AgentRow, type AnswersPage, type AskRequest, BOOT_PACKET_BUDGET, type BootPacket, type BootPacketInput, type BootPacketOptions, type BootReaders, type BootSection, type BootSectionId, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_BOOT_PRIORITY, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type GitState, type LaunchedBy, type MessageOptions, type NodeBootReadersOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ReadinessFacts, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, TASK_ID_PATTERN, type TaskCard, type TouchPoint, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, bootPacket, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, estimateTokens, execSafe, execSafeAsync, installedProfilesDir, lastFencedJson, listAgentLineage, listAgents, messageAgent, minimalEnv, nodeBootReaders, observeAgentChatCalls, parkAgent, parseAgentRows, planSliceExcerpt, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, touchPointsIn };
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRecord, type AgentRole, type AgentRow, type AnswersPage, type AskRequest, BOOT_PACKET_BUDGET, type BootPacket, type BootPacketInput, type BootPacketOptions, type BootReaders, type BootSection, type BootSectionId, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_BOOT_PRIORITY, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type GitState, type LaunchedBy, type MessageOptions, type NodeBootReadersOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, PrefixLintError, type PrefixSection, type PrefixViolation, type ReadinessFacts, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type StablePrefix, type StablePrefixOptions, TASK_ID_PATTERN, type TaskCard, type TouchPoint, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, bootPacket, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, estimateTokens, execSafe, execSafeAsync, installedProfilesDir, lastFencedJson, lintPrefixSections, listAgentLineage, listAgents, messageAgent, minimalEnv, nodeBootReaders, observeAgentChatCalls, parkAgent, parseAgentRows, planSliceExcerpt, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, stablePrefix, touchPointsIn };

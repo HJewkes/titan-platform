@@ -187,6 +187,8 @@ export interface DispatchRequest extends LaunchedBy, AgentRecord {
   configDir?: string;
   /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
   profilesDir?: string;
+  /** An existing worktree the agent adopts instead of getting a fresh one; agent-chat then makes no branch and holds no budget slot for it. */
+  worktree?: string;
 }
 
 export interface DispatchResult {
@@ -211,6 +213,7 @@ export function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & 
   profile: string;
   briefing?: string;
   configDir?: string;
+  worktree?: string;
 }): string[] {
   return [
     "agent",
@@ -219,6 +222,7 @@ export function buildSpawnArgs(req: LaunchedBy & AgentRecord & SpawnPlacement & 
     req.profile,
     ...(req.briefing === undefined ? [] : ["--briefing", req.briefing]),
     ...(req.configDir === undefined ? [] : ["--config-dir", req.configDir]),
+    ...(req.worktree === undefined ? [] : ["--worktree", req.worktree]),
     ...placementArgs(req),
     ...launchedByArgs(req),
     ...agentRecordArgs(req),
