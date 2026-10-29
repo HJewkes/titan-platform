@@ -442,6 +442,20 @@ rules:
     owner_support: none
     note: "TP-4470, the owner's fill floor: truing ends a beat after its last word, so words near the cap, not tails, keep the runtime near target. Chapter opens, the close and held beats are exempt."
     l0: { severity: error, status: implemented, checks: ["Q-D19"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D20
+    rule: "No heading a template beat draws holds more than 10 words, and no label more than 3, on the kind resolve's fill draws"
+    fields: [beats.visual.assertion, beats.visual.labels, beats.visual.beat]
+    related: [G9]
+    owner_support: none
+    note: "TP-4470. qa's G9 at script time: the chrome headline where the kind shows one, list and map headings, an outro or button line (its first label, or the assertion), and bar, map and stat labels. A claim card's h1 is drawn a word to a span, so G9 never reads it. Custom layers are not predicted."
+    l0: { severity: error, status: implemented, checks: ["Q-D20"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
+  - id: Q-D21
+    rule: "Every template beat's picture moves within 0.2 s of its cut"
+    fields: [beats.visual.chips, beats.visual.beat, beats.visual.cues]
+    related: [G7]
+    owner_support: none
+    note: "TP-4470. qa's G7 at script time: a kind with a headline or a source chip moves at once; a headline-free kind with neither opens on an element that waits for its cue, after the voice's 0.3 s lead-in. Custom layers are not predicted."
+    l0: { severity: error, status: implemented, checks: ["Q-D21"], except_profiles: [repo-tour, repo-argument, pr-overview, paper-summary], scope: chapter }
 
   - id: Q-E1
     rule: "Every claim maps to a fact id with a correct status; atomic claims are supported"

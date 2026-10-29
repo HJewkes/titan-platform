@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { registeredKinds, resolveBeat } from "./composition/registry.js";
 import { dailyWith, l0Row } from "./daily-script.test-helpers.js";
 import { repairHint } from "./l0-repair-hints.js";
-import { HEADLINE_FREE_KINDS } from "./lint-frame-words.js";
+import { HEADLINE_FREE_KINDS } from "./drawn-beats.js";
 
 const SENTENCES = ["router · The router lane wants every match to finish faster", "cache · The cache lane wants its store warm before the rush", "label · Fewer reprints"];
 const KEY_WORDS = ["router · Faster matches", "cache · Warm store", "label · Fewer reprints"];

@@ -1,6 +1,7 @@
 import { FILL_FLOOR, heldBeats, longestCueGapS, scriptPacing, underfilledBeats } from "./lint-cadence.js";
 import { bodyBeats } from "./lint-text.js";
 import { FRAME_MAX_WORDS, frameCounts } from "./lint-frame-words.js";
+import { HEADING_MAX_WORDS, LABEL_MAX_WORDS, overlongTexts, stillOpenings } from "./lint-direction.js";
 import { ECHO_RUN_WORDS, echoedLabels, unspokenNumbers } from "./lint-screen.js";
 import { clipped, listed, namedBeats, quoted, type Hint } from "./repair-hint.js";
 import { beatCues, type ScriptV1 } from "./script-schema.js";
@@ -45,9 +46,25 @@ function fillHint(script: ScriptV1, row: Parameters<Hint>[1]): string {
   return `beats speaking under ${Math.round(FILL_FLOOR * 100)} % of their word cap: ${named.join(", ")}. Write each closer to its cap, more of the point and not filler, so the runtime holds when each beat ends after its last word; or lower plannedS and give the seconds to a beat that needs them`;
 }
 
+const headingHint: Hint = (script, row) => {
+  const failing = new Set(row.detail_beats);
+  const named = overlongTexts(script)
+    .filter((found) => failing.has(found.beat))
+    .map((found) => `${found.beat} (as ${found.kind}): ${found.texts.map((shown) => `${shown.role} "${clipped(shown.text)}"`).join(", ")}`);
+  return `on-screen text over its cap, a heading at most ${HEADING_MAX_WORDS} words and a label at most ${LABEL_MAX_WORDS}: ${named.join("; ")}. An outro or button draws its first label (or, with none, the assertion) as its heading line; shorten each heading or label to its key words and say the rest`;
+};
+
+const motionHint: Hint = (script, row) => {
+  const failing = new Set(row.detail_beats);
+  const named = stillOpenings(script).filter((found) => failing.has(found.beat)).map((found) => `${found.beat} (as ${found.kind}, first moves at ${found.firstS} s)`);
+  return `beats whose picture holds still past 0.2 s after the cut: ${named.join(", ")}. Each draws no headline and opens on an element that waits for its spoken cue; cite the beat's source in a chip, whose line rises at once, or draw it as a kind with a headline`;
+};
+
 export const SCREEN_HINTS: Readonly<Record<string, Hint>> = {
   "Q-D14": numbersHint,
   "Q-D15": frameHint,
+  "Q-D20": headingHint,
+  "Q-D21": motionHint,
   "Q-D16": echoHint,
   "Q-D17": cueGapHint,
   "Q-D18": heldHint,
