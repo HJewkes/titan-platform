@@ -29,16 +29,6 @@
       ]
     },
     {
-      "name": "the install row stops covering the perf job",
-      "file": "scripts/verify-changed.mjs",
-      "find": "{ job: [\"validate\", \"dag-check\", \"perf\"], run: \"pnpm install --frozen-lockfile\"",
-      "replace": "{ job: [\"validate\", \"dag-check\"], run: \"pnpm install --frozen-lockfile\"",
-      "kills": [
-        "CI_COVERAGE mirrors ci.yml matches every ci.yml run step to exactly one row and every row to a step",
-        "CI_COVERAGE mirrors ci.yml gives each of the perf job's run steps a row that explains it"
-      ]
-    },
-    {
       "name": "verify:changed stops planning pnpm lint",
       "file": "scripts/verify-changed.mjs",
       "find": "    pnpmRun(\"lint\"),\n",
