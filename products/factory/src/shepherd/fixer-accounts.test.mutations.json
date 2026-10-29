@@ -14,8 +14,8 @@
     {
       "name": "the agent-chat adapter spawns under its own config dir, not the spawn's",
       "file": "products/factory/src/shepherd/agents.ts",
-      "find": "...SHEPHERD_LAUNCH, ...(configDir !== undefined && { configDir }) }",
-      "replace": "...SHEPHERD_LAUNCH, ...(options.configDir !== undefined && { configDir: options.configDir }) }",
+      "find": "{ ...(configDir !== undefined && { configDir }), ...(role",
+      "replace": "{ ...(options.configDir !== undefined && { configDir: options.configDir }), ...(role",
       "kills": [
         "a red main's fixer spawn spawns under the next account in the successor rotation when the first is exhausted",
         "a red main's fixer spawn spawns under the fixer config directory when no rotation is wired"

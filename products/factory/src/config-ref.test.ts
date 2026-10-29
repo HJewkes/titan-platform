@@ -220,17 +220,17 @@ describe("configuredRoutes after a config reload", () => {
 });
 
 describe("liveSpawnLimits", () => {
-  it("reads the live rows afresh and keeps restart-class keys at their startup value", () => {
+  it("reads the live rows afresh, the pace windows included, and keeps restart-class keys at their startup value", () => {
     const env = configHome();
-    const startup = { spawnGate: { load5: 10, buildLoad5: 12, windowMs: 1_000 }, agentChatBin: "/opt/agent-chat", review: { profile: "example-reviewer", maxConcurrent: 2 } };
+    const startup = { spawnGate: { load5: 10, buildLoad5: 12, windowMs: 1_000, headroomIntervalMs: 500, reviewLoad: 3 }, agentChatBin: "/opt/agent-chat", review: { profile: "example-reviewer", maxConcurrent: 2 } };
     writeConfig(env, { shepherd: startup });
     const config = configRef(configPath(env));
     const limits = liveSpawnLimits(configuredSpawnLimits(startup), config);
 
-    writeConfig(env, { shepherd: { ...startup, spawnGate: { load5: 30, windowMs: 9_000 }, review: { ...startup.review, maxConcurrent: 5 } } });
+    writeConfig(env, { shepherd: { ...startup, spawnGate: { load5: 30, windowMs: 0, headroomIntervalMs: 0, reviewLoad: 9 }, review: { ...startup.review, maxConcurrent: 5 } } });
     config.reload();
 
-    expect(limits()).toEqual({ load5: 30, maxConcurrentReviews: 5, windowMs: 1_000 });
+    expect(limits()).toEqual({ load5: 30, maxConcurrentReviews: 5, windowMs: 0, headroomIntervalMs: 0, reviewLoad: 3 });
   });
 
   it("lets the spawn gate admit at a load the reloaded limit allows", () => {

@@ -19,6 +19,11 @@ export interface ReadOptions {
   toolSpans?: boolean;
   /** Emit `context_block` audit rows. Default true. */
   contextBlocks?: boolean;
+  /**
+   * Chars kept per span. Default `SPAN_TEXT_CAP`, which bounds a search index; a caller that parses a span, such as
+   * an agent's final JSON answer, passes `Infinity` to read it whole.
+   */
+  spanTextCap?: number;
 }
 
 /** A malformed JSON line aborts the transcript so the caller can quarantine it. */
@@ -53,7 +58,7 @@ export async function* readTranscriptEvents(
   const fallback = options.fallbackSessionId === undefined ? path.basename(filePath, ".jsonl") : options.fallbackSessionId;
   const initialTs = start > 0 ? await lastTimestampBefore(filePath, start) : "";
   const pending: SessionEvent[] = [];
-  const policy = { toolSpans: options.toolSpans ?? true, contextBlocks: options.contextBlocks ?? true };
+  const policy = { toolSpans: options.toolSpans ?? true, contextBlocks: options.contextBlocks ?? true, ...(options.spanTextCap === undefined ? {} : { spanTextCap: options.spanTextCap }) };
   const reader = new LineReader((event) => pending.push(event), fallback, options.subagentId ?? null, initialTs, policy);
   let offset = start;
   for await (const line of readJsonLines(filePath, start)) {

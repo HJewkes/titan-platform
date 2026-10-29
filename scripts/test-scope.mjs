@@ -176,7 +176,7 @@ export function vitestArgs(scope, env = {}) {
   const reporters = env.CI ? CI_REPORTERS.map((reporter) => `--reporter=${reporter}`) : [];
   const args = ["run", "--passWithNoTests", ...reporters];
   if (scope.mode !== "scoped") return args;
-  const projects = ["threads", "repo", "forks", "active-work", "active-work-forks"];
+  const projects = ["threads", "repo", "forks", "perf", "active-work", "active-work-forks"];
   return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 

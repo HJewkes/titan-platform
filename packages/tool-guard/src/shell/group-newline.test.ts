@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { decide } from "../decide.js";
 import { handle } from "../hook.js";
 import type { HookPort } from "../hook.js";
 import type { ClassifyContext } from "../types.js";
+import { shellOracle } from "../test-support/shell-rows.js";
 
 const REPO = "/home/you/projects/app";
 const PUSH = "git push origin HEAD:main";
@@ -84,20 +84,20 @@ describe("a group's printed pieces join as the shell prints them (TP-3332, TP-33
 
 const has = (shell: string): boolean => spawnSync(shell, ["-c", "true"]).status === 0;
 
-/** Runs `line` under `runner` in a scratch dir with a fake `git` first on PATH, and reports whether it was asked to push. */
-function runsPush(line: string, runner: string): boolean {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "group-newline-"));
-  try {
+/**
+ * Runs `line` under `runner` in a scratch dir with a fake `git` first on PATH, and reports whether it was asked to push.
+ * A describe adds its rows and runs them all through one driver (TP-4453).
+ */
+const runsPushOracle = () =>
+  shellOracle("group-newline-", (dir, line: string, runner: string) => {
     fs.mkdirSync(path.join(dir, "bin"));
     fs.writeFileSync(path.join(dir, "bin", "git"), `#!/bin/sh\n[ "$*" = "push origin HEAD:main" ] && touch '${path.join(dir, "mk")}'\n`, { mode: 0o755 });
     const [program = "bash", ...flags] = runner.split(" ");
-    const env = { ...process.env, ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` };
-    spawnSync(program, [...flags, "-c", line], { cwd: dir, env, stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 });
-    return fs.existsSync(path.join(dir, "mk"));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
+    return {
+      run: { program, args: [...flags, "-c", line], extraEnv: { ZDOTDIR: dir, PATH: `${path.join(dir, "bin")}:${process.env.PATH ?? ""}` } },
+      read: () => fs.existsSync(path.join(dir, "mk")),
+    };
+  });
 
 /** Each denied line under a parent shell that runs the push; dash has no `<(` and errors on a word after `}`. */
 const PREMISES: Array<[string, string]> = [
@@ -110,11 +110,17 @@ const PREMISES: Array<[string, string]> = [
 ];
 
 describe.skipIf(!["bash", "zsh", "dash"].every(has))("bash, zsh and dash run the push the denied lines print (TP-3332, TP-3334)", () => {
+  const quiet = ["{ echo hi; echo ls; } | bash", "{ echo -n 'git '; echo status; } | bash", "{ echo hi; } {fd}</dev/null | bash"];
+  const runsPush = runsPushOracle();
+  for (const [line, runner] of PREMISES) runsPush.add(line, runner);
+  for (const line of quiet) for (const runner of ["bash", "zsh -f", "dash"]) runsPush.add(line, runner);
+  runsPush.beforeAll();
+
   it.each(PREMISES)("%s runs the push under %s", (line, runner) => {
-    expect(runsPush(line, runner)).toBe(true);
+    expect(runsPush.get(line, runner)).toBe(true);
   });
 
-  it.each(["{ echo hi; echo ls; } | bash", "{ echo -n 'git '; echo status; } | bash", "{ echo hi; } {fd}</dev/null | bash"])("%s runs no push under any of them", (line) => {
-    expect(["bash", "zsh -f", "dash"].map((runner) => runsPush(line, runner))).toEqual([false, false, false]);
+  it.each(quiet)("%s runs no push under any of them", (line) => {
+    expect(["bash", "zsh -f", "dash"].map((runner) => runsPush.get(line, runner))).toEqual([false, false, false]);
   });
 });

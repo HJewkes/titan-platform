@@ -16,6 +16,10 @@ function envWith(shepherd: Record<string, unknown>): NodeJS.ProcessEnv {
   return { XDG_CONFIG_HOME: home };
 }
 
+function rewriteShepherd(env: NodeJS.ProcessEnv, shepherd: Record<string, unknown>): void {
+  writeFileSync(join(env.XDG_CONFIG_HOME ?? "", "titan-factory", "config.json"), JSON.stringify({ shepherd: { agentChatBin: "/opt/agent-chat/bin/agent-chat", ...shepherd } }));
+}
+
 /** An `agent-chat` whose `agent ls --json` prints one row per name, with that presence. */
 function fakeAgentChat(presences: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "main-watch-ports-bin-"));
@@ -56,5 +60,26 @@ describe("shepherd.redSeat", () => {
 
     expect(ports?.redSeat?.("octo/demo")).toBeUndefined();
     expect(ports?.hubSeat()).toBe("hub-coord");
+  });
+});
+
+describe("a config edit while serve runs", () => {
+  it("routes to a redSeat added after the ports were built", () => {
+    const env = envWith({});
+    const ports = configuredMainWatch(env);
+    expect(ports?.redSeat?.("o/r")).toBeUndefined();
+
+    rewriteShepherd(env, { redSeat: { repos: { "o/r": "seat-b" } } });
+
+    expect(ports?.redSeat?.("o/r")).toBe("seat-b");
+  });
+
+  it("picks up a changed hubSeat", () => {
+    const env = envWith({ hubSeat: "hub-a" });
+    const ports = configuredMainWatch(env);
+
+    rewriteShepherd(env, { hubSeat: "hub-b" });
+
+    expect(ports?.hubSeat()).toBe("hub-b");
   });
 });

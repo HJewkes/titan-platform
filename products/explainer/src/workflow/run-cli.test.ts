@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runRunCli } from "./run-cli.js";
@@ -11,18 +11,17 @@ import { StageRecordSchema } from "./records.js";
 import { runStageCli } from "./stage-cli.js";
 
 const ReportRowsSchema = z.object({ rows: z.array(z.object({ stage: z.string(), outputs: z.record(z.string(), z.string()) })) });
-import { fakeRender, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, type Fixture } from "./run-fakes.test-helpers.js";
+import { cloneFixture, dropSeeds, fakeRender, fakeBriefModels, fakeHost, fakeScriptModel, fixture, l0Check, seededRun, type Fixture } from "./run-fakes.test-helpers.js";
 
 let fx: Fixture;
 afterEach(() => fx.cleanup());
+afterAll(dropSeeds);
 
-/** Runs the script stage alone and returns the draft's sha from the run report. */
-async function scriptDraft({ run, out }: ReturnType<typeof cli>): Promise<string> {
-  await run("--spine", fx.spine, "--facts", fx.facts, "--to", "script");
-  const runId = /^run (\S+):/.exec(out[0] ?? "")?.[1];
-  out.length = 0;
-  await run("report", runId!, "--json");
-  return ReportRowsSchema.parse(JSON.parse(out.join(""))).rows.find((r) => r.stage === "script")!.outputs.draft!;
+/** A copy of the file's script-only run, as `fx`, and that run's draft sha. */
+async function scriptDraft(): Promise<string> {
+  const seed = await seededRun({ to: "script" });
+  fx = cloneFixture(seed);
+  return seed.result.report.rows.find((r) => r.stage === "script")!.outputs.draft!;
 }
 
 function cli(host: ReturnType<typeof fakeHost>) {
@@ -88,9 +87,8 @@ describe("explainer stage and run variants CLI", () => {
   });
 
   it("stage runs one stage from stored shas and prints a cache hit the second time", async () => {
-    fx = fixture();
+    const draft = await scriptDraft();
     const host = fakeHost(fx, fakeScriptModel(), fakeRender());
-    const draft = await scriptDraft(cli(host));
     const lines: string[] = [];
     const stage = (...argv: string[]) => runStageCli(["stage", ...argv, "--data-dir", fx.dataDir], { host, out: (t) => lines.push(t), err: (t) => lines.push(t) });
 
@@ -104,8 +102,7 @@ describe("explainer stage and run variants CLI", () => {
   });
 
   it("stage --json prints the failed record with its gate verdict and exits 1", async () => {
-    fx = fixture();
-    const draft = await scriptDraft(cli(fakeHost(fx, fakeScriptModel(), fakeRender())));
+    const draft = await scriptDraft();
     const drafted = choppy().beats[0]!.spoken;
     const redOnceRewritten: L0Check = (input) => l0Check(input.script.beats[0]!.spoken === drafted)(input);
     const host = fakeHost(fx, fakeScriptModel(), fakeRender(), { evalChecks: [redOnceRewritten] });

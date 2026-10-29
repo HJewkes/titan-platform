@@ -13,8 +13,8 @@
     {
       "name": "the compile gate's verdict is ignored",
       "file": "products/explainer/src/workflow/layer-build.ts",
-      "find": "if (!verdict.ok) return",
-      "replace": "if (false as boolean) return",
+      "find": "const compiled = verdict.ok ? { build }",
+      "replace": "const compiled = (true as boolean) ? { build }",
       "kills": [
         "the layer build cache never stores a build that fails the compile gate, so the next run asks the worker again"
       ]

@@ -4,9 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
-import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
+import { FIXTURE_TSCONFIG, openTestStore } from "./incremental.test-helpers.js";
+import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { indexPaths } from "./indexer.js";
-import { openCodeGraph, type CodeGraphStore } from "./store.js";
+import type { CodeGraphStore } from "./store.js";
 
 const PACKAGES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -21,6 +22,18 @@ const PACKAGES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 // Skipped, not failed, on a checkout that has not run `pnpm build`; CI always builds first.
 const REGISTRY_BUILT = existsSync(path.join(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."), "registry", "dist", "index.d.ts"));
 
+const DAEMON_CONSUMER = path.join(PACKAGES, "daemon/src/daemon.ts");
+
+// One daemon file that imports the registry carries the property; extracting all of daemon/src cost seconds per run.
+function oneDaemonConsumer(): IndexSource {
+  const tree = workingTreeSource();
+  return {
+    ...tree,
+    listFiles: async (rootDirs, languages) =>
+      (await tree.listFiles(rootDirs, languages)).filter((f) => f === DAEMON_CONSUMER || !f.includes("/daemon/src/")),
+  };
+}
+
 describe.skipIf(!REGISTRY_BUILT)("indexing this workspace", () => {
   let tmp: string;
   let store: CodeGraphStore;
@@ -28,12 +41,14 @@ describe.skipIf(!REGISTRY_BUILT)("indexing this workspace", () => {
 
   beforeAll(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-ws-"));
-    store = openCodeGraph(path.join(tmp, "graph.sqlite3"));
+    store = openTestStore(path.join(tmp, "graph.sqlite3"));
     const result = await indexPaths(store, {
       paths: [path.join(PACKAGES, "daemon/src"), path.join(PACKAGES, "registry/src")],
       ref: "wd",
       detectRenames: false,
+      computeChurn: false,
       tsConfig: FIXTURE_TSCONFIG,
+      source: oneDaemonConsumer(),
     });
     snapshotId = result.snapshotId;
   }, 60_000);
