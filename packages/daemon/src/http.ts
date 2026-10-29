@@ -6,6 +6,7 @@
  */
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { EXIT, errorEnvelope, invokeCommand, type BaseContext } from "@titan-design/registry";
 import {
@@ -55,7 +56,24 @@ export interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends S
   gate?: DaemonAuth;
   /** The byte cap on a `/rpc` body, enforced before the body is buffered. */
   rpcBodyLimit?: RpcBodyLimit;
+  /**
+   * Called once per `/rpc` answer with its timing and size. A sample never carries arguments, ids
+   * or the body, and a throwing observer cannot change the answer.
+   */
+  onRpc?: (sample: RpcSample) => void;
 }
+
+/** What `onRpc` learns about one call. `name` is `(unknown)` for a command the registry lacks, so a caller cannot grow the key set. */
+export interface RpcSample {
+  name: string;
+  ms: number;
+  /** The exact byte length of the response body sent. */
+  bytes: number;
+  status: number;
+  surface: "http";
+}
+
+const UNKNOWN_RPC = "(unknown)";
 
 export interface RpcBodyLimit {
   /** Applies to every command not named in `perCommand`. Defaults to {@link DEFAULT_RPC_BODY_LIMIT}. */
@@ -193,25 +211,39 @@ function rpcBodyLimitMiddleware(limit: RpcBodyLimit = {}): MiddlewareHandler {
 
 function registerRpc<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
   app.post(`${RPC_PREFIX}:name`, rpcBodyLimitMiddleware(options.rpcBodyLimit), async (c) => {
+    const started = performance.now();
     const name = c.req.param("name");
     const cmd = options.registry.get(name);
-    if (!cmd) return c.json(errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE), RPC_STATUS.NOT_FOUND);
+    const answer = (envelope: unknown, status: ContentfulStatusCode): Response => {
+      const text = JSON.stringify(envelope);
+      observeRpc(options.onRpc, { name: cmd ? name : UNKNOWN_RPC, ms: performance.now() - started, bytes: Buffer.byteLength(text), status, surface: "http" });
+      return c.body(text, status, { "content-type": "application/json" });
+    };
+    if (!cmd) return answer(errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE), RPC_STATUS.NOT_FOUND);
 
     const rawArgs = await readJsonBody(c);
-    if (rawArgs === INVALID_JSON) return c.json(errorEnvelope("Invalid JSON body", EXIT.USAGE), RPC_STATUS.BAD_REQUEST);
+    if (rawArgs === INVALID_JSON) return answer(errorEnvelope("Invalid JSON body", EXIT.USAGE), RPC_STATUS.BAD_REQUEST);
 
     const auth = getRequestAuth(c.req.raw);
     // On a gated app an absent record means the gate did not vouch for this request; never
     // let it reach createContext looking like an ungated loopback call.
-    if (options.gate && !auth) return c.json(errorEnvelope("Authentication required", EXIT.USAGE), 401);
+    if (options.gate && !auth) return answer(errorEnvelope("Authentication required", EXIT.USAGE), 401);
     const context = options.createContext("http", auth);
     const { envelope, exitCode } = await invokeCommand(cmd, rawArgs, context, {
       invalidArgsCode: EXIT.DATAERR,
       formatError: options.formatError,
     });
-    if (envelope.ok) return c.json(envelope);
-    return c.json(envelope, rpcFailureStatus(exitCode));
+    return answer(envelope, envelope.ok ? 200 : rpcFailureStatus(exitCode));
   });
+}
+
+/** Telemetry must never change an answer, so an observer that throws is ignored. */
+function observeRpc(onRpc: ((sample: RpcSample) => void) | undefined, sample: RpcSample): void {
+  try {
+    onRpc?.(sample);
+  } catch {
+    // dropped on purpose: see above
+  }
 }
 
 /** Body is optional; an empty one means "no arguments". guards.ts already 415s a non-JSON POST. */

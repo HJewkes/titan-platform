@@ -18,7 +18,7 @@
     },
     {
       "name": "Planning stays collapsed over the linked item",
-      "file": "apps/console/src/pages/InboxPage.tsx",
+      "file": "apps/console/src/pages/InboxPlanning.tsx",
       "find": "const [isOpen, setOpen] = useState(startOpen);",
       "replace": "const [isOpen, setOpen] = useState(false);",
       "kills": [
