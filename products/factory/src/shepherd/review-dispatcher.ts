@@ -12,7 +12,7 @@ export class ReviewSuperseded extends Error {
 }
 
 /** What the dispatcher needs from the gate: the one queue, and the verdict that admits or defers the review at its front. */
-export interface DispatcherPorts {
+interface DispatcherPorts {
   enter(name: string, review: ReviewAsk): void;
   order(): readonly WaitingReview[];
   remove(name: string): void;
