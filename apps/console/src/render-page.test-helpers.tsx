@@ -7,7 +7,7 @@ import { AnswerSourceProvider } from "./data/submit.js";
 import { PAGES } from "./pages/index.js";
 import { href, parseRoute, type Route } from "./router.js";
 
-export interface RenderPageOptions {
+interface RenderPageOptions {
   /** Where the page sends answers; null, as on an exported snapshot page, sends nothing. */
   answers?: DataSource | null;
   /** Mounts the whole `<App>` at the route instead, for the file's routing test and any assertion that follows the hash. */
