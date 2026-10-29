@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { snapshotKey, type Snapshot } from "@titan-design/rpc-client";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { RpcProvider } from "@titan-design/react-app";
+import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView } from "../server/autoresearch-view.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { App } from "./App.js";
 
 let twin: Snapshot;
 
@@ -15,8 +16,13 @@ beforeAll(async () => {
 
 afterEach(cleanup);
 
-function renderRun(snapshot: Snapshot = twin, { inApp = false } = {}): void {
-  renderPage(snapshot, "#/autoresearch/ar-7c1e", { inApp });
+function renderRun(snapshot: Snapshot = twin): void {
+  window.location.hash = "#/autoresearch/ar-7c1e";
+  render(
+    <RpcProvider source={staticSource({ snapshot })}>
+      <App />
+    </RpcProvider>,
+  );
 }
 
 /** The pre-S3a run under the route's id, so a test can add one noise record to a run that has none. */
@@ -26,7 +32,7 @@ const withRun = (run: ArRunView): Snapshot => ({ ...twin, calls: { ...twin.calls
 
 describe("the autoresearch wins and losses section", () => {
   it("ranks the kept idea as a win and the L2 reject as a loss, by Δ/σ", async () => {
-    renderRun(twin, { inApp: true });
+    renderRun();
 
     const wins = await screen.findByTestId("autoresearch-wins");
     const losses = screen.getByTestId("autoresearch-losses");

@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { RpcProvider } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
-import { snapshotKey, type Snapshot } from "@titan-design/rpc-client";
+import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView, ArValidator } from "../server/autoresearch-view.js";
 import { AR_RUN_FIXTURE } from "../server/twin/autoresearch.js";
 import { TWIN_NOW } from "../server/twin/clock.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { App } from "./App.js";
 
 let twin: Snapshot;
 
@@ -33,8 +34,13 @@ const VALIDATOR: ArValidator = {
 
 const withRun = (run: ArRunView): Snapshot => ({ ...twin, calls: { ...twin.calls, [snapshotKey("autoresearch.run", { runId: run.runId })]: successEnvelope(run) } });
 
-function renderRun(snapshot: Snapshot = twin, { inApp = false } = {}): void {
-  renderPage(snapshot, RUN_ROUTE, { inApp });
+function renderRun(snapshot: Snapshot = twin): void {
+  window.location.hash = RUN_ROUTE;
+  render(
+    <RpcProvider source={staticSource({ snapshot })}>
+      <App />
+    </RpcProvider>,
+  );
 }
 
 /** React's generated ids differ from one mount to the next, so they are blanked before two mounts are compared. */
@@ -60,7 +66,7 @@ describe("the autoresearch registries and validator panel", () => {
   });
 
   it("shows the validator's look, aggregate only, once its panel opens", async () => {
-    renderRun(withRun({ ...AR_RUN_FIXTURE, validator: VALIDATOR }), { inApp: true });
+    renderRun(withRun({ ...AR_RUN_FIXTURE, validator: VALIDATOR }));
     const panel = await screen.findByTestId("autoresearch-validator");
 
     expect(within(panel).getByText("Report only. Never used for selection. Do not tune on these numbers.")).toBeTruthy();

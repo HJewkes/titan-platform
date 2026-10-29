@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { RpcProvider } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { snapshotKey, staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import type { ArRunView } from "../server/autoresearch-view.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A } from "../server/twin/autoresearch.js";
 import { TWIN_NOW } from "../server/twin/clock.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { App } from "./App.js";
 
 let twin: Snapshot;
 
@@ -33,9 +34,14 @@ function countingSource(snapshot: Snapshot): DataSource & { reads: string[] } {
   return { reads, call: (name, args, options) => (reads.push(name), inner.call(name, args, options)), subscribe: (handlers, options) => inner.subscribe(handlers, options) };
 }
 
-function renderConsole(hash: string, snapshot: Snapshot = twin, { inApp = false } = {}): DataSource & { reads: string[] } {
+function renderConsole(hash: string, snapshot: Snapshot = twin): DataSource & { reads: string[] } {
+  window.location.hash = hash;
   const source = countingSource(snapshot);
-  renderPage(source, hash, { inApp });
+  render(
+    <RpcProvider source={source}>
+      <App />
+    </RpcProvider>,
+  );
   return source;
 }
 
@@ -73,7 +79,7 @@ describe("the autoresearch lanes board", () => {
   });
 
   it("links the implementer's session log when the run names a session", async () => {
-    renderConsole(RUN_ROUTE, twin, { inApp: true });
+    renderConsole(RUN_ROUTE);
 
     fireEvent.click(await screen.findByTestId(`autoresearch-implementer-${IMPLEMENTING}`));
 
@@ -81,7 +87,7 @@ describe("the autoresearch lanes board", () => {
   });
 
   it("falls back to the agent's page when the run names no session", async () => {
-    renderConsole(RUN_ROUTE, twin, { inApp: true });
+    renderConsole(RUN_ROUTE);
 
     fireEvent.click(await screen.findByTestId(`autoresearch-implementer-${EVALUATING}`));
 
@@ -95,7 +101,7 @@ describe("the autoresearch lanes board", () => {
   });
 
   it("opens an idea's drawer from its card, with the gaps it waits on, and closes back to the run", async () => {
-    renderConsole(RUN_ROUTE, twin, { inApp: true });
+    renderConsole(RUN_ROUTE);
 
     fireEvent.click(await screen.findByTestId(`autoresearch-card-details-${EVALUATING}`));
     await waitFor(() => expect(window.location.hash).toBe(`${RUN_ROUTE}?idea=${EVALUATING}`));
@@ -108,7 +114,7 @@ describe("the autoresearch lanes board", () => {
   });
 
   it("links the agent from the drawer", async () => {
-    renderConsole(`${RUN_ROUTE}?idea=${EVALUATING}`, twin, { inApp: true });
+    renderConsole(`${RUN_ROUTE}?idea=${EVALUATING}`);
 
     fireEvent.click(await screen.findByTestId("autoresearch-drawer-agent"));
 

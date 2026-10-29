@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource } from "@titan-design/rpc-client";
 import { stagedIndexedRound, type StagedRound } from "../server/round-fixtures.js";
 import { getFrame, listFrames } from "../server/round-frames.js";
 import { getRound } from "../server/rounds.js";
+import { App } from "./App.js";
+import { AnswerSourceProvider } from "./data/submit.js";
 import { getButton } from "./pages/get-button.test-helpers.js";
 import { checkAndSend } from "./pages/round-pager.test-helpers.js";
-import { renderPage } from "./render-page.test-helpers.js";
 
 const ROUND = "tally-motion-r1";
 /** Two synthetic motions' progress stills, drawn from the beacon fixture's solid-block PNGs. */
@@ -55,7 +56,7 @@ afterEach(async () => {
   staged = undefined;
 });
 
-async function renderRound(round: unknown = manifest, { inApp = false } = {}): Promise<{ name: string; args: unknown }[]> {
+async function renderRound(round: unknown = manifest): Promise<{ name: string; args: unknown }[]> {
   staged = await stagedIndexedRound("beacon-states-r1", ROUND, round, STILLS.map(([key, shot]) => ({ key, file: `shots/${shot}.png` })));
   const { source } = staged;
   const frames = await Promise.all(STILLS.map(async ([key]) => [snapshotKey("rounds.frame", { id: ROUND, key, view: "head" }), successEnvelope(await getFrame(source, ROUND, key, "head"))] as const));
@@ -72,7 +73,14 @@ async function renderRound(round: unknown = manifest, { inApp = false } = {}): P
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (made.push({ name, args }), name === "rounds.submit" ? Promise.resolve(submitted) : inner.call(name, args, options)),
   };
-  renderPage(counting, `#/rounds/${ROUND}`, { answers: counting, inApp });
+  window.location.hash = `#/rounds/${ROUND}`;
+  render(
+    <RpcProvider source={counting}>
+      <AnswerSourceProvider value={counting}>
+        <App />
+      </AnswerSourceProvider>
+    </RpcProvider>,
+  );
   await screen.findByText("Tally motion");
   return made;
 }
@@ -81,7 +89,7 @@ const viewer = (base: string): HTMLElement => screen.getByTestId(`design-sequenc
 
 describe("a design round with a motion's progress stills", () => {
   it("draws two stepper viewers, count and reel, not six images", async () => {
-    await renderRound(manifest, { inApp: true });
+    await renderRound();
 
     expect(screen.getAllByTestId(/^design-sequence-/).map((each) => each.dataset.testid)).toEqual(["design-sequence-count", "design-sequence-reel"]);
     expect(screen.queryByTestId(/^design-frame-/)).toBeNull();

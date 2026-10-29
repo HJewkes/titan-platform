@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { PANELS_HEAD, TILES_HEAD, stagedRound, twoPrRound, type StagedRound } from "../server/round-fixtures.js";
 import { getFrame } from "../server/round-frames.js";
 import { getRound, type RoundDetail } from "../server/rounds.js";
+import { App } from "./App.js";
+import { AnswerSourceProvider } from "./data/submit.js";
 import { getButton, getByRoleFast } from "./pages/get-button.test-helpers.js";
 import { draftKey } from "./pages/round-draft.js";
-import { renderPage } from "./render-page.test-helpers.js";
 
 const ROUND = "tiles-and-panels-r1";
 // Each test renders the whole App and presses through it, and a loaded full-suite CI run stretched one past vitest's
@@ -55,7 +56,7 @@ async function recorded(detail: Partial<RoundDetail>): Promise<Snapshot> {
 }
 
 /** The two-PR round over a recorded snapshot; rounds.submit answers "submitted" and every call is kept. */
-async function renderPrs(detail: Partial<RoundDetail> = {}, { inApp = false } = {}): Promise<{ name: string; args: unknown }[]> {
+async function renderPrs(detail: Partial<RoundDetail> = {}): Promise<{ name: string; args: unknown }[]> {
   const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded(detail)), "text/html");
   const inner = pageDataSource({ doc: page });
   const calls: { name: string; args: unknown }[] = [];
@@ -64,7 +65,14 @@ async function renderPrs(detail: Partial<RoundDetail> = {}, { inApp = false } = 
     subscribe: inner.subscribe.bind(inner),
     call: (name, args, options) => (calls.push({ name, args }), name === "rounds.submit" ? Promise.resolve(submitted) : inner.call(name, args, options)),
   };
-  renderPage(counting, `#/rounds/${ROUND}`, { answers: counting, inApp });
+  window.location.hash = `#/rounds/${ROUND}`;
+  render(
+    <RpcProvider source={counting}>
+      <AnswerSourceProvider value={counting}>
+        <App />
+      </AnswerSourceProvider>
+    </RpcProvider>,
+  );
   await screen.findAllByTestId("montage-tile-light");
   return calls;
 }
@@ -84,7 +92,7 @@ const submits = (calls: { name: string; args: unknown }[]) => calls.filter((call
 
 describe("a Ship round with two PRs (TP-3329)", { timeout: RENDER_TIMEOUT_MS }, () => {
   it("shows each PR's proposal, changes and only its own frames", async () => {
-    await renderPrs({}, { inApp: true });
+    await renderPrs();
 
     expect(pr("example/tiles#1").getByTestId("description-example/tiles#1").textContent).toContain("Moves the stripe up six pixels");
     expect(pr("example/tiles#1").getByText("Changed: The tile stripe moved up six pixels.")).toBeTruthy();

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { RpcProvider } from "@titan-design/react-app";
 import { errorEnvelope } from "@titan-design/registry";
-import { snapshotKey, type Snapshot } from "@titan-design/rpc-client";
+import { snapshotKey, staticSource, type Snapshot } from "@titan-design/rpc-client";
 import { twinSnapshot } from "../server/twin/snapshot.js";
-import { renderPage } from "./render-page.test-helpers.js";
+import { App } from "./App.js";
 
 let twin: Snapshot;
 
@@ -14,8 +15,13 @@ beforeAll(async () => {
 
 afterEach(cleanup);
 
-function renderConsole(hash: string, snapshot: Snapshot = twin, { inApp = false } = {}): void {
-  renderPage(snapshot, hash, { inApp });
+function renderConsole(hash: string, snapshot: Snapshot = twin): void {
+  window.location.hash = hash;
+  render(
+    <RpcProvider source={staticSource({ snapshot })}>
+      <App />
+    </RpcProvider>,
+  );
 }
 
 /** The text of the one stat in the header that shows this label. */
@@ -29,7 +35,7 @@ const withAnswer = (command: string, args: unknown, envelope: Snapshot["calls"][
 
 describe("the autoresearch page", () => {
   it("lists the run the twin's autoresearch.runs answers and opens its header", async () => {
-    renderConsole("#/autoresearch", twin, { inApp: true });
+    renderConsole("#/autoresearch");
 
     fireEvent.click(within(await screen.findByTestId("autoresearch-run-ar-7c1e")).getByText("ar-7c1e"));
 
@@ -109,7 +115,7 @@ describe("the autoresearch page", () => {
   });
 
   it("still opens Home for an unknown view, its rail label included", () => {
-    renderConsole("#/research", twin, { inApp: true });
+    renderConsole("#/research");
     expect(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByTestId("autoresearch-header")).toBeNull();
   });
