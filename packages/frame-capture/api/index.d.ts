@@ -58,6 +58,12 @@ interface FontState {
     family: string;
     status: string;
 }
+/** The unloaded faces, and the font URLs the browser failed to fetch: the rejection itself says only "A network error occurred". */
+declare class FontLoadError extends Error {
+    readonly faces: readonly FontState[];
+    readonly urls: readonly string[];
+    constructor(faces: readonly FontState[], urls: readonly string[]);
+}
 declare function launch(): Promise<Browser>;
 /**
  * Loads the page's fonts and waits on document.fonts.ready. The explicit load matters: fonts load
@@ -123,4 +129,4 @@ interface Encoder {
 /** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
 declare function startEncoder(out: string, fps: number, audio: string): Encoder;
 
-export { type CapturePage, type Encoder, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, settleFonts, startEncoder };
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, settleFonts, startEncoder };
