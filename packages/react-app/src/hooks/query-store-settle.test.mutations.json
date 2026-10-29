@@ -34,6 +34,9 @@
       "find": "  } catch {\n    // Telemetry must never fail a query.\n  }",
       "replace": "  } finally {\n    onSettle?.(settled);\n  }",
       "kills": [
+        "createQueryStore onSettle fires once per call with the elapsed time from the injected clock",
+        "createQueryStore onSettle reports a failed answer as not ok and a refetch behind shown data as from cache",
+        "createQueryStore onSettle does not report a call that a newer call superseded",
         "createQueryStore onSettle still settles the query when the observer throws"
       ]
     }
