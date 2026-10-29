@@ -6,6 +6,7 @@ import { failure, type ActiveWork, type ReadResult, type WireDeliverable, type W
 import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
+import { listPage, listRow, tasksArgs, type TaskListPage, type TasksArgs } from "./task-list.js";
 import { deriveStage, taskIdsIn, type PrEvidence, type RefEvidence, type StageEvidence, type StageRule, type TaskStage } from "./task-stage.js";
 import { isPersonal, slugsForPrefix, taskRowOf, type WorkOptions } from "./work.js";
 
@@ -39,9 +40,9 @@ interface EvidenceSummary {
   degraded: string[];
 }
 
-export interface TasksResult {
+/** Rows come in active-work's priority order, and `initiatives` holds each initiative with an open task. */
+export interface TasksResult extends TaskListPage {
   fetchedAt: string;
-  tasks: TaskRow[];
   evidence: EvidenceSummary;
 }
 
@@ -84,9 +85,9 @@ export function tasksCommands(source: TasksSource) {
     "work.tasks": readCommand({
       name: "work.tasks",
       description: "Open tasks across every initiative, each with a derived stage, the rule that produced it and its evidence",
-      args: z.object({}),
+      args: tasksArgs,
       result: z.custom<TasksResult>(),
-      run: () => readTasks(source, evidence),
+      run: (args) => readTasks(source, evidence, args),
     }),
     "work.task": readCommand({
       name: "work.task",
@@ -135,14 +136,15 @@ async function personalSlugs(activeWork: ActiveWork, options: WorkOptions = {}):
 
 const keeps = (personal: Set<string>) => (slug: string): boolean => !personal.has("*") && !personal.has(slug);
 
-async function readTasks(source: TasksSource, reader: EvidenceReader): Promise<TasksResult> {
+async function readTasks(source: TasksSource, reader: EvidenceReader, args: TasksArgs): Promise<TasksResult> {
   const [list, repos, personal] = await Promise.all([
     source.activeWork.read("task.list", { all_initiatives: true }),
     readEvidence(source.activeWork, reader),
     personalSlugs(source.activeWork, source.work),
   ]);
   const evidence = stageEvidence(list.tasks, repos);
-  return { fetchedAt: new Date().toISOString(), tasks: list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => stagedRow(task, evidence)), evidence: summary(repos) };
+  const rows = list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => listRow(stagedRow(task, evidence)));
+  return { fetchedAt: new Date().toISOString(), ...listPage(rows, args), evidence: summary(repos) };
 }
 
 // readEdges and taskTree read only id, title, status, estimate, tags, parent and dep, which a wire task carries.

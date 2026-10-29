@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a withdrawn round reads as open",
+      "file": "apps/console/server/rounds.ts",
+      "find": "return (await isRegularFile(path.join(roundDir, WITHDRAWN_FILE))) ? \"withdrawn\" : \"open\";",
+      "replace": "return \"open\";",
+      "kills": [
+        "the perf fixture answers the console's reads in process and counts each upstream call by command"
+      ]
+    },
+    {
+      "name": "shepherd.list asks the factory for active runs whatever state it was given",
+      "file": "apps/console/server/shepherd.ts",
+      "find": "read(\"shepherd.list\", { state }, z.array(watchRow))",
+      "replace": "read(\"shepherd.list\", { state: \"active\" }, z.array(watchRow))",
+      "kills": [
+        "the perf fixture answers the console's reads in process and counts each upstream call by command"
+      ]
+    },
+    {
+      "name": "the roster reads the broker's queue in place of its history",
+      "file": "apps/console/server/broker.ts",
+      "find": "get(HISTORY_ROUTE, brokerHistory, token)",
+      "replace": "get(\"/api/queue\", brokerHistory, token)",
+      "kills": [
+        "the perf fixture forgets the broker's calls on reset, as it forgets the daemons'"
+      ]
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { captureStderr, waitForHealth } from './child-startup.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TSX_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
@@ -31,20 +32,6 @@ function findFreePort(): Promise<number> {
     });
     sock.on('error', reject);
   });
-}
-
-async function waitForHealth(port: number, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/health`);
-      if (res.ok) return;
-    } catch {
-      // keep polling
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`daemon never became healthy on port ${port}`);
 }
 
 /**
@@ -107,11 +94,9 @@ describe('integration: daemon live-reload SSE', () => {
     });
 
     try {
-      child.stderr?.on('data', (chunk: Buffer) => {
-        process.stderr.write(`[daemon] ${chunk.toString()}`);
-      });
+      const stderr = captureStderr(child.stderr, '[daemon]');
 
-      await waitForHealth(port, 15_000);
+      await waitForHealth(port, 15_000, child, stderr);
       // The watcher starts just after health; give it a beat to attach.
       await new Promise((r) => setTimeout(r, 200));
 

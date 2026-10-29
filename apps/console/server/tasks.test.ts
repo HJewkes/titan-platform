@@ -17,12 +17,12 @@ const task = (slug: string, id: string, fields: Record<string, unknown> = {}) =>
 });
 
 const TASKS = [
-  task("orbit-relay", "OR-1", { notes: "Handshake retry.", done_when: "A dropped handshake retries with backoff." }),
+  task("orbit-relay", "OR-1", { severity: "high", notes: "Handshake retry.", done_when: "A dropped handshake retries with backoff." }),
   task("orbit-relay", "OR-2", { tags: ["dep:OR-5"] }),
   task("orbit-relay", "OR-3"),
   task("orbit-relay", "OR-4", { notes: "Depends on OR-9 (done)." }),
   task("orbit-relay", "OR-5", { tags: ["parent:OR-6"] }),
-  task("orbit-relay", "OR-6", { notes: "Epic for the relay." }),
+  task("orbit-relay", "OR-6", { severity: "high", notes: "Epic for the relay." }),
   task("orbit-relay", "OR-7"),
   // A migrated task: edges and deliverables are fields, and its tags are for retrieval only.
   task("orbit-relay", "OR-8", { parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"], tags: ["origin:relay"] }),
@@ -158,34 +158,30 @@ async function invoke<T>(name: "work.tasks" | "work.task" | "work.taskMentions" 
 }
 
 describe("work.tasks", () => {
-  it("returns open tasks across initiatives, each staged by the rule that produced it", async () => {
+  it("returns open tasks across initiatives, each with its derived stage", async () => {
     const { data } = await invoke<TasksResult>("work.tasks", {});
 
-    const byId = Object.fromEntries(data.tasks.map((row) => [row.id, [row.stage, row.stageRule, row.stageGuessed]]));
+    const byId = Object.fromEntries(data.tasks.map((row) => [row.id, [row.stage, row.stageGuessed]]));
     expect(byId).toEqual({
-      "OR-1": ["review", "open-pr", false],
-      "OR-2": ["blocked", "dependency", false],
-      "OR-3": ["in-progress", "live-ref", false],
-      "OR-4": ["ready", "default", true],
-      "OR-5": ["ready", "default", true],
-      "OR-6": ["blocked", "open-slices", false],
-      "OR-7": ["ready", "merged-commit", false],
-      "OR-8": ["blocked", "dependency", false],
-      "GP-1": ["ready", "default", true],
+      "OR-1": ["review", false],
+      "OR-2": ["blocked", false],
+      "OR-3": ["in-progress", false],
+      "OR-4": ["ready", true],
+      "OR-5": ["ready", true],
+      "OR-6": ["blocked", false],
+      "OR-7": ["ready", false],
+      "OR-8": ["blocked", false],
+      "GP-1": ["ready", true],
     });
     expect(data.tasks.find((row) => row.id === "OR-2")?.stageReason).toBe("Depends on OR-5 (open)");
+    expect(data.tasks.find((row) => row.id === "OR-6")?.stageReason).toBe("2 open slices");
     expect(data.evidence).toEqual({ repos: ["example/orbit"], degraded: [] });
   });
 
-  it("reads parent and dep the same from edge tags and from fields", async () => {
+  it("sends a row only the fields the board renders", async () => {
     const { data } = await invoke<TasksResult>("work.tasks", {});
-
-    const edges = Object.fromEntries(data.tasks.map(({ id, parent, dep, deliverables }) => [id, { parent, dep, deliverables }]));
-    expect(edges["OR-2"]).toEqual({ parent: null, dep: ["OR-5"], deliverables: [] });
-    expect(edges["OR-5"]).toEqual({ parent: "OR-6", dep: [], deliverables: [] });
-    expect(edges["OR-8"]).toEqual({ parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"] });
-    expect(data.tasks.find((row) => row.id === "OR-8")?.stageReason).toBe("Depends on OR-5 (open)");
-    expect(data.tasks.find((row) => row.id === "OR-6")?.stageReason).toBe("2 open slices");
+    const keys = new Set(data.tasks.flatMap((row) => Object.keys(row)));
+    expect(keys).toEqual(new Set(["slug", "id", "title", "severity", "stage", "stageReason", "stageGuessed"]));
   });
 
   it("only ever uses the shared stage vocabulary", async () => {
@@ -218,6 +214,16 @@ describe("work.tasks", () => {
 });
 
 describe("work.task", () => {
+  it("reads parent and dep the same from edge tags and from fields", async () => {
+    const edgesOf = async (id: string) => {
+      const { task } = (await invoke<TaskDetail>("work.task", { id })).data;
+      return { parent: task.parent, dep: task.dep, deliverables: task.deliverables };
+    };
+    expect(await edgesOf("OR-2")).toEqual({ parent: null, dep: ["OR-5"], deliverables: [] });
+    expect(await edgesOf("OR-5")).toEqual({ parent: "OR-6", dep: [], deliverables: [] });
+    expect(await edgesOf("OR-8")).toEqual({ parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"] });
+  });
+
   it("returns the task with notes, done_when, open PRs and its sessions", async () => {
     const { data } = await invoke<TaskDetail>("work.task", { id: "OR-1" });
 

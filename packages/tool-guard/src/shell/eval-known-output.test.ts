@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { runBuiltHook } from "../test-support/built-hook.js";
 import { nodeContext } from "../context.js";
 import type { ReadFs } from "../context.js";
 import { decide } from "../decide.js";
@@ -113,24 +112,22 @@ describe("eval and -c over a substitution whose output is literal", () => {
   });
 });
 
-// CI builds before it tests; locally run `pnpm build` first.
-const dist = fileURLToPath(new URL("../../dist/", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-eval-output-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-function hook(command: string): string | null {
+async function hook(command: string): Promise<string | null> {
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
-  const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input, env: { ...process.env, HOME: home }, encoding: "utf-8", timeout: 5000 });
+  const run = await runBuiltHook(input, { home });
   expect(run.status).toBe(0);
   return decisionOf(run.stdout);
 }
 
 describe("the built hook on eval and -c over a literal substitution", () => {
-  it.each(denyRows)("denies %s", (_, command) => {
-    expect(hook(command)).toBe("deny");
+  it.each(denyRows)("denies %s", async (_, command) => {
+    expect(await hook(command)).toBe("deny");
   });
 
-  it.each(passRows)("passes %s", (_, command) => {
-    expect(hook(command)).toBeNull();
+  it.each(passRows)("passes %s", async (_, command) => {
+    expect(await hook(command)).toBeNull();
   });
 });
