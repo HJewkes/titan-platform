@@ -55,7 +55,7 @@ function build(obj: ObjectFactory) {
   return obj({ schema: z.literal(TIMING_SCHEMA_ID), run: runShape(obj), files: z.array(fileShape(obj)) });
 }
 
-const schemaFor = (mode: Mode) => build((mode === "write" ? z.strictObject : z.looseObject) as ObjectFactory);
+const schemaFor = (mode: Mode) => build(mode === "write" ? z.strictObject : z.looseObject);
 
 /** Strict: what a reporter must write. An unknown key is an error, so a typo never reaches the corpus. */
 export const timingArtifactSchema = schemaFor("write");

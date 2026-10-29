@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { timingArtifact, timingFile } from "./fixtures.test-helpers.js";
 import { ingestArtifact, openTimingStore, storeStats } from "./store.js";
 
-const count = (db: Db, table: "runs" | "files") => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+const count = (db: Db, table: "runs" | "files") => db.prepare<[], number>(`SELECT COUNT(*) FROM ${table}`).pluck().get();
 
 let db: Db;
 beforeEach(() => {

@@ -195,14 +195,13 @@ export interface TimingStoreStats {
 
 /** File rows are never pruned, so the store reports its own size. */
 export function storeStats(db: Db): TimingStoreStats {
-  const runs = db.prepare("SELECT COUNT(*) AS n, MIN(started_ms) AS oldest, MAX(started_ms) AS newest FROM runs").get() as {
-    n: number;
-    oldest: number | null;
-    newest: number | null;
-  };
-  const files = db.prepare("SELECT COUNT(*) AS n FROM files").get() as { n: number };
-  const pageCount = db.pragma("page_count", { simple: true }) as number;
-  const pageSize = db.pragma("page_size", { simple: true }) as number;
-  const iso = (msValue: number | null) => (msValue === null ? null : new Date(msValue).toISOString());
-  return { runs: runs.n, files: files.n, bytes: pageCount * pageSize, oldestStartedAt: iso(runs.oldest), newestStartedAt: iso(runs.newest) };
+  const runs = db
+    .prepare<[], { n: number; oldest: number | null; newest: number | null }>(
+      "SELECT COUNT(*) AS n, MIN(started_ms) AS oldest, MAX(started_ms) AS newest FROM runs",
+    )
+    .get();
+  const files = db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM files").get();
+  const bytes = Number(db.pragma("page_count", { simple: true })) * Number(db.pragma("page_size", { simple: true }));
+  const iso = (msValue: number | null | undefined) => (msValue == null ? null : new Date(msValue).toISOString());
+  return { runs: runs?.n ?? 0, files: files?.n ?? 0, bytes, oldestStartedAt: iso(runs?.oldest), newestStartedAt: iso(runs?.newest) };
 }
