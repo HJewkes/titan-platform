@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a TimeoutError is classified as an error",
+      "file": "apps/console/server/perf/timed-fetch.ts",
+      "find": "name === \"TimeoutError\" || name === \"AbortError\"",
+      "replace": "name === \"AbortError\"",
+      "kills": [
+        "active-work upstream timing a read past its timeout is recorded as outcome timeout with the command name"
+      ]
+    },
+    {
+      "name": "a throwing recorder is not contained",
+      "file": "apps/console/server/perf/timed-fetch.ts",
+      "find": "  try {\n    recorder?.recordUpstream(sample);\n  } catch {\n    // telemetry never fails a call\n  }",
+      "replace": "  recorder?.recordUpstream(sample);",
+      "kills": [
+        "active-work upstream timing a recorder that throws never changes the read's answer"
+      ]
+    }
+  ]
+}

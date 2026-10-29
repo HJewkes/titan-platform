@@ -39,6 +39,7 @@ interface StoredCard extends ScoreCard {
   partial: boolean;
   prompt_sha: string;
   model: string;
+  transcript_path: string;
 }
 
 interface ScoreVideoResult {
@@ -180,6 +181,7 @@ function finishCard(deps: ScoreDeps, input: ScoreVideoInput, prompt: ScorePrompt
     partial: f.partial,
     prompt_sha: prompt.promptSha,
     model: deps.model,
+    transcript_path: input.transcriptPath,
   };
   writeCardFile(input.outputPath, stored);
   const tsInvalid = dropped.length > 0;

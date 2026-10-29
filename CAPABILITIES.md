@@ -502,6 +502,8 @@ A test needs a value of an interface type but the code under test reads only a f
 
 A test must show an operation is linear or bounded, typically a glob or regex matcher that could backtrack: `linearWork` with `hostileGlobs` and a step meter, or `countCalls` with a cap, asserts counted work, never a time.
 
+A test runs real git against scratch repositories: `@titan-design/test-kit/git` copies a per-file template (`seedRepo`, `seedRepoWithOrigin`), writes multi-commit history in one process (`withHistory`), and runs git without session hooks or host config (`fixtureEnv`, `gitIn`).
+
 Key exports:
 
 - `count-calls`: `callMeter`, `countCalls`, `CallMeter`, `CountedMethod`
@@ -564,7 +566,7 @@ Tier 1, `@titan-design/agent-dispatch@0.9.0`. Start and resume agent-chat agents
 
 **Use this when:**
 
-Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
+Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, put a question to the human from a process that is not a Claude session and read the answer back later, or run any binary by absolute path with a minimal environment, or build a token-budgeted boot packet (git state, task card, plan slice, touch-point excerpts, readiness) for an implementer's first turn. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves. Its `./routing` subpath holds the workflow table that picks an implementer profile (lite or full) from a task's estimate, tags and owned files.
 
 Key exports:
 
