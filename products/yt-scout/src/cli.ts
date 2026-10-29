@@ -3,6 +3,8 @@ import path from "node:path";
 import { Command, CommanderError } from "commander";
 import { isOnTrial, type Watchlist } from "./config.js";
 import { claudeScoreRunner } from "./claude-runner.js";
+import { addDailyCommand } from "./daily-cli.js";
+import type { ConsoleRunner } from "./daily.js";
 import { casesDir, configPath, dbPath, rowsDir, ytRoot } from "./paths.js";
 import { scoreVideo, type ScoreDeps } from "./score.js";
 import type { ScoreRunner } from "./seams.js";
@@ -118,11 +120,13 @@ export async function runCli(
   write: Write = console.log,
   writeErr: Write = console.error,
   scoreRunner: ScoreRunner = claudeScoreRunner,
+  consoleRunner?: ConsoleRunner,
 ): Promise<number> {
   const program = new Command("titan-yt-scout").exitOverride().configureOutput({ writeOut: write, writeErr });
   addConfigCommand(program, write);
   addSeenCommand(program, write);
   addScoreCommand(program, write, scoreRunner);
+  addDailyCommand(program, write, consoleRunner);
   try {
     await program.parseAsync(argv, { from: "user" });
     return 0;
