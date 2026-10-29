@@ -5,6 +5,7 @@
  * sections show the evidence's changed paths, each pinned by blob sha and shown exactly (exact-file.ts). Anything the card
  * cannot show from that object reads as missing, and the gate stays on the terminal.
  */
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
@@ -46,7 +47,7 @@ type EvidenceSection = (CiPolicySection & { files: ExactFile[] }) | { fact: "ski
 
 export type OwnerEvidence =
   | { status: "none"; gateId: string }
-  | { status: "ready"; gateId: string; head: string; mergeBase: string; facts: OwnerAtHeadRow[]; sections: EvidenceSection[] }
+  | { status: "ready"; gateId: string; head: string; mergeBase: string; facts: OwnerAtHeadRow[]; sections: EvidenceSection[]; digest: string }
   | { status: "missing"; gateId: string; facts: string[]; reason: string; command: string };
 
 /** The stored evidence a gate was opened on and the facts land would write from it, equal to the gate's marker. */
@@ -68,7 +69,7 @@ const short = (sha: string): string => sha.slice(0, 8);
 const named = (facts: readonly string[]): string => (facts.length > 0 ? facts.join(", ") : "none");
 
 /** The command the owner runs at the terminal when the card cannot carry the evidence. */
-function terminalCommand(gateId: string, head: string): string {
+export function terminalCommand(gateId: string, head: string): string {
   const slash = gateId.indexOf("/");
   return `titan-factory gate resolve ${gateId.slice(0, slash)} ${gateId.slice(slash + 1)} --json '${JSON.stringify({ decision: "merge", headSha: head })}'`;
 }
@@ -84,11 +85,15 @@ export async function ownerEvidence(gate: GateRecord, { host, port, readText = d
     if (typeof read === "string") return missing(read);
     const sections = await readSections(read, port, readText);
     if (typeof sections === "string") return missing(sections);
-    return { status: "ready", gateId: gate.id, head: land.head, facts: read.facts, ...sections };
+    const body = { gateId: gate.id, head: land.head, mergeBase: sections.mergeBase, facts: read.facts, sections: sections.sections };
+    return { status: "ready", ...body, digest: evidenceDigest(body) };
   } catch (error) {
     return missing(`the evidence could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+/** Key order is fixed by construction, so the console's copy and the tap's re-read hash the same bytes. */
+const evidenceDigest = (body: object): string => createHash("sha256").update(JSON.stringify(body)).digest("hex");
 
 /** The names the gate's marker carries, unknown ones included; a gate with no marker carries its one owner-at-head row. */
 const markedFacts = (gate: GateRecord, row: string): string[] => ownerAtHeadNamesIn(gate.prompt) ?? [row];

@@ -22,6 +22,8 @@ const GateActionSchema = z.strictObject({
   headSha: hex(40),
   /** Any option id reads; `gate.ts` refuses one off the step's allowlist or the gate's schema as `class`, not `record`. */
   decision: z.string().regex(/^[a-z][a-z-]{0,63}$/),
+  /** TP-4404: the digest of the owner-at-head evidence card the owner was shown; `gate.ts` reads it again and resolves only on a match. */
+  evidenceDigest: hex(64).optional(),
 });
 /** No resolver field: the release is always the console's owner-remote, whatever else the record says. */
 const ReleaseActionSchema = z.strictObject({

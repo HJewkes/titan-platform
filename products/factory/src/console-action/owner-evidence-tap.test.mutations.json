@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the tap resolves on a digest other than the card's",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "return evidence.digest === action.evidenceDigest ? evidence.facts",
+      "replace": "return evidence.digest !== action.evidenceDigest ? evidence.facts",
+      "kills": [
+        "a console tap on an owner-at-head gate merges at the pinned head on the digest of the card shown, naming the facts it covered",
+        "a console tap on an owner-at-head gate refuses a digest of another card, so evidence that changed after the owner read it never merges"
+      ]
+    },
+    {
+      "name": "an owner-at-head tap with no digest is not refused",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "  const ownerRow = ownerAtHeadOf(gate);",
+      "replace": "  const ownerRow = undefined as string | undefined;",
+      "kills": [
+        "a console tap on an owner-at-head gate refuses a tap with no digest, naming the terminal command"
+      ]
+    },
+    {
+      "name": "the gate's own head is not checked for an owner-at-head gate",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "  const stale = storeMoved(host, gate, target, action) ?? (await githubOutcome(port, action));",
+      "replace": "  const stale = (ownerAtHeadOf(gate) === undefined ? storeMoved(host, gate, target, action) : undefined) ?? (await githubOutcome(port, action));",
+      "kills": [
+        "a console tap on an owner-at-head gate reads a tap at a head other than the gate's as moved, even when the PR is now at that head"
+      ]
+    },
+    {
+      "name": "a digest on a gate that asks for none is ignored",
+      "file": "products/factory/src/console-action/gate.ts",
+      "find": "return action.evidenceDigest === undefined ? [] : refused(\"record\"",
+      "replace": "return action.evidenceDigest !== null ? [] : refused(\"record\"",
+      "kills": [
+        "a console tap on an owner-at-head gate refuses a digest on a gate that asks for no evidence as a record fault"
+      ]
+    }
+  ]
+}
