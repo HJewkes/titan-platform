@@ -206,6 +206,13 @@ async function readRunningReviews(roster: RosterReader, gate: SpawnGate, firstSe
   return runningReviewStarts(rows, firstSeen, now);
 }
 
+/** Each start waits its turn in the gate's one queue, which reads the running reviewers as it admits; with no gate it launches at once. */
+function queuedStart(gate: SpawnGate | undefined, roster: RosterReader) {
+  const firstSeen = new Map<string, number>();
+  return (name: string, review: ReviewAsk, launch: () => Promise<void>, signal?: AbortSignal): Promise<void> =>
+    gate ? gate.queueReview(name, review, { running: () => readRunningReviews(roster, gate, firstSeen), launch, ...(signal && { signal }) }) : launch();
+}
+
 /** A spawn's ask carries the head it reviews, which the gate drops it on once the PR lists another. */
 function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"], intentAt?: number): ReviewAsk {
   return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr, head: target.head }, ...(intentAt !== undefined && { intentAt }) };
@@ -222,19 +229,19 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const { agentChatBin, roles, cwdFor, configDir } = options;
   const roster = options.roster ?? agentChatRoster(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
   const lineage = options.lineage ?? agentChatLineage(agentChatBin, { timeoutMs: options.rosterTimeoutMs ?? DEFAULT_ROSTER_TIMEOUT_MS });
-  const firstSeen = new Map<string, number>();
-  const runningReviews = async () => (options.gate ? readRunningReviews(roster, options.gate, firstSeen) : []);
-  const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
-  const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
+  const queued = queuedStart(options.gate, roster);
+  // The gate admits each review from its queue, so the adapter that launches it is ungated.
+  const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS, roster });
   const targets = new Map<string, ReviewTarget>();
-  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string, intentAt?: number) => {
+  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string, intentAt?: number, signal?: AbortSignal) => {
     targets.set(name, target);
-    await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer, intentAt), ...(options.gate && { runningReviews: await runningReviews() }) });
+    const cwd = checkoutDir(target.repo, cwdFor);
+    await queued(name, reviewAsk(target, options.isFixer, intentAt), () => agents.spawn({ name, profile, brief, cwd }), signal);
   };
   return {
     roster: () => askBroker(async () => rosterRows(await roster.rows())),
     lineage: () => askBroker(async () => toLineage(await lineage.rows())),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
-    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), resumeAsk(targets.get(name), options.isFixer)), options.onMachineHold),
+    spawn: (name, brief, target, facts = {}, signal) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt, signal), options.onMachineHold),
+    resume: (name, brief, signal) => askBroker(() => queued(name, resumeAsk(targets.get(name), options.isFixer), () => agents.resume(name, brief), signal), options.onMachineHold),
   };
 }

@@ -3,7 +3,9 @@ import { loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
 import { stopReason } from "./machine-stop.js";
 import type { ReviewerReading, ReviewSlots } from "./review-slots.js";
-import { REVIEW_STALE_MS, admitQueued, queueNote, reviewWaitList, type MovedPast, type ReviewAsk, type WaitingReview } from "./review-queue.js";
+import { reviewDispatcher, type ReviewStart } from "./review-dispatcher.js";
+import { admitQueued, queueNote, reviewWaitList, type MovedPast, type ReviewAsk, type WaitingReview } from "./review-queue.js";
+import { DEFAULT_HOLD_WAIT_MS } from "./review-wait.js";
 
 /**
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
@@ -174,6 +176,13 @@ export interface SpawnGate {
   noteReviewers(reading: ReviewerReading): void;
   /** Undefined until a spawn has read the roster in this process. */
   reviewSlots(): ReviewSlots | undefined;
+  /**
+   * Queues a review and resolves once it has launched. It starts when it reaches the front on a trigger the gate admits on;
+   * it rejects with `ReviewSuperseded` once its pull request moves past it, and with `SpawnDeferred` once it outwaits the hold.
+   */
+  queueReview(name: string, review: ReviewAsk, start: ReviewStart): Promise<void>;
+  /** A review ended, so a slot may be free: the queue's front asks again now rather than on the next tick. */
+  reviewEnded(): void;
 }
 
 interface SpawnGateOptions {
@@ -183,9 +192,11 @@ interface SpawnGateOptions {
   /** Read only for a review spawn; absent means unread, so no floor applies. */
   disk?: () => CheckoutDisk;
   now?: () => number;
-  /** How long a refused review stays queued without asking again. */
-  reviewStaleMs?: number;
-  /** Tells when a queued review's run has moved past it, so it leaves the queue at once; absent, it leaves only once it stops asking. */
+  /** While a review waits, the queue's front asks again this often, so a machine that settles admits it. */
+  tickMs?: number;
+  /** A review queued this long gives up, as a machine hold that outlasts its ceiling does. */
+  holdMs?: number;
+  /** Tells when a queued review's run has moved past it, so it leaves the queue at once. */
   movedPast?: MovedPast;
   /** One line per admitted or deferred spawn; defaults to the factory log. */
   log?: (line: string) => void;
@@ -244,33 +255,68 @@ function verdictFor(ask: Ask, starts: readonly number[], checkout: CheckoutDisk,
   return admitQueued(admitReview(checkout, limits, runningReviews.length, admitted), queue, name, review, room);
 }
 
+/** A queued review asks again once a minute while it waits. */
+const REVIEW_TICK_MS = 60_000;
+
+const minutes = (ms: number) => `${Math.round(ms / 60_000)} min`;
+
+function noteStop(ask: Ask, onStop: SpawnGateOptions["onStop"]): void {
+  const stop = stopReason(ask.readings, ask.limits);
+  if (stop !== undefined) onStop?.(ask.at, stop);
+}
+
+const seenNote = (readings: MachineReadings, disk: string) => `load5 ${readings.load5}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${disk}`;
+
+/** Logs and throws a deferral; an admission passes. */
+function deferUnless(verdict: Admission, who: string, seen: string, log: (line: string) => void): void {
+  if (verdict.admit) return;
+  log(`shepherd: spawn_gate deferred ${who}${verdict.reason} ${seen}`);
+  throw new SpawnDeferred(verdict.reason);
+}
+
+/** The one queue of reviews and the dispatcher that starts them from its front through `admit`. */
+function queuedReviews(options: SpawnGateOptions, admit: SpawnGate["admit"], now: () => number, log: (line: string) => void) {
+  const reviews = reviewWaitList({ movedPast: options.movedPast, log, onDrop: (name, head) => dispatcher.dropped(name, head) });
+  const dispatcher = reviewDispatcher({
+    enter: (name, review) => void reviews.ask(name, review, now()),
+    order: () => reviews.order(),
+    remove: (name) => reviews.remove(name),
+    admit: (name, running, review) => admit(name, running, review),
+    deferred: (error) => error instanceof SpawnDeferred,
+    expired: (waitedMs) => new SpawnDeferred(`the review stayed queued for ${minutes(waitedMs)}`),
+    now,
+    tickMs: options.tickMs ?? REVIEW_TICK_MS,
+    holdMs: options.holdMs ?? DEFAULT_HOLD_WAIT_MS,
+  });
+  return { reviews, dispatcher };
+}
+
 /** Remembers the admissions and the waiting reviews of this process, so every spawn site shares one pace and one queue. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const limitsNow = (): SpawnLimits => ({ ...DEFAULT_SPAWN_LIMITS, ...(typeof options.limits === "function" ? options.limits() : options.limits) });
   const { read = () => readMachine(), disk = () => ({}), now = Date.now, log = (line) => console.warn(line) } = options;
   const starts: number[] = [];
   const pending = admittedNotRunning();
-  const reviews = reviewWaitList({ staleMs: options.reviewStaleMs ?? REVIEW_STALE_MS, movedPast: options.movedPast, log });
-  return {
-    ...reviewSlotMemory(() => limitsNow().maxConcurrentReviews, now, pending.seen),
+  const { reviews, dispatcher } = queuedReviews(options, (name, running, review) => gate.admit(name, running, review), now, log);
+  const gate: Pick<SpawnGate, "admit"> = {
     admit(name, runningReviews = [], review) {
       const at = now();
       const ask: Ask = { at, limits: limitsNow(), readings: read(), runningReviews, admitted: pending.count(at) };
-      const stop = stopReason(ask.readings, ask.limits);
-      if (stop !== undefined) options.onStop?.(ask.at, stop);
+      noteStop(ask, options.onStop);
       const checkout = review ? disk() : {};
       const queue = review ? reviews.ask(name, review, ask.at) : [];
-      const verdict = verdictFor(ask, starts, checkout, queue, name, review);
-      const { readings } = ask;
-      const seen = `load5 ${readings.load5}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${review ? diskNote(checkout, runningReviews.length) : ""}`;
-      if (!verdict.admit) {
-        log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})${queueNote(queue, name)}`);
-        throw new SpawnDeferred(verdict.reason);
-      }
+      const seen = seenNote(ask.readings, review ? diskNote(checkout, runningReviews.length) : "");
+      deferUnless(verdictFor(ask, starts, checkout, queue, name, review), `${name}: `, `(${seen})${queueNote(queue, name)}`, log);
       starts.splice(0, starts.length, ask.at);
       if (review) pending.add(name, ask.at);
-      reviews.admitted(name, ask.at);
+      reviews.remove(name);
       log(`shepherd: spawn_gate admitted ${name} (${seen})`);
     },
+  };
+  return {
+    ...reviewSlotMemory(() => limitsNow().maxConcurrentReviews, now, pending.seen),
+    ...gate,
+    queueReview: (name, review, start) => dispatcher.queue(name, review, start),
+    reviewEnded: () => void dispatcher.wake(),
   };
 }
