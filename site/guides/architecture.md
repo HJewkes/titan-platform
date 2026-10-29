@@ -280,6 +280,8 @@ graph TD
   sessionMiner --> workflow
   titan --> daemon
   titan --> health
+  ytScout --> appPaths
+  ytScout --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp
   codewatch --> rpcClient
