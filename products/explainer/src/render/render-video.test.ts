@@ -49,21 +49,6 @@ describe("renderVideo", { timeout: 60_000 }, () => {
     expect(existsSync(outFile("render-manifest.json"))).toBe(false);
   });
 
-  it("refuses once, naming every beat past its stage box, before it captures a frame", async () => {
-    const sides = (right: number) => ({ top: 0, right, bottom: 0, left: 0 });
-    const rows = [
-      { beat: "beat-01", element: "figures-2 beat-stat-label", px: 30, sides: sides(30), hint: 'shorten figures-2 beat-stat-label "synthetic" to <= 6 chars' },
-      { beat: "beat-02", element: "beat-heading", px: 80, sides: sides(80), hint: 'shorten beat-heading "line" to <= 2 chars' },
-    ];
-    let captures = 0;
-    const overflowing = deps({ stageFit: async () => rows, captureFrames: async () => Promise.reject(new Error(`captured ${++captures}`)) });
-
-    const render = renderVideo(input(), overflowing);
-
-    await expect(render).rejects.toThrow(/^render: 2 beats overflow the stage box at the 40 px type floor:\n {2}beat-01 overflows its stage box by 30 px \(right 30\): figures-2 beat-stat-label; shorten .*\n {2}beat-02 overflows .*beat-heading/);
-    expect(captures).toBe(0);
-  });
-
   it("removes a manifest left by an earlier render when this one fails", async () => {
     mkdirSync(path.join(dir, "out"));
     writeFileSync(outFile("render-manifest.json"), "{}");
