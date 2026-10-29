@@ -1,7 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
   closeSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -11,12 +10,9 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { assertSafeToRemove } from '../setup/test-helpers.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DIST_BIN = path.resolve(__dirname, '..', '..', 'dist', 'cli.js');
+import { requireDistBin, runCliInProcess } from './cli-runner.js';
 
 const SLUG = 'scout';
 const TASK_COUNT = 1500;
@@ -45,7 +41,7 @@ function writeTasks(tasksDir: string): void {
   }
 }
 
-const listArgs = [DIST_BIN, '--json', 'task', 'list', SLUG];
+let listArgs: string[];
 
 /** The reference output: stdout to a file, which Node writes synchronously. */
 function listToFile(): Buffer {
@@ -88,10 +84,8 @@ function listToClosingPipe(): Promise<{ status: number | null; stderr: string }>
 }
 
 describe('cli output to a pipe', () => {
-  beforeAll(() => {
-    if (!existsSync(DIST_BIN)) {
-      throw new Error(`Built CLI missing at ${DIST_BIN}; run \`pnpm build:cli\` first.`);
-    }
+  beforeAll(async () => {
+    listArgs = [requireDistBin(), '--json', 'task', 'list', SLUG];
     tempDir = mkdtempSync(path.join(os.tmpdir(), 'aw-test-'));
     const activeRoot = path.join(tempDir, 'root');
     const home = path.join(tempDir, 'home');
@@ -99,9 +93,7 @@ describe('cli output to a pipe', () => {
     mkdirSync(home);
     env = { ...process.env, NO_COLOR: '1', ACTIVE_ROOT: activeRoot, HOME: home };
     env.XDG_STATE_HOME = path.join(home, 'state');
-    const created = spawnSync(process.execPath, [DIST_BIN, 'new', SLUG, '--title', 'Scout'], {
-      env,
-    });
+    const created = await runCliInProcess(['new', SLUG, '--title', 'Scout'], { ACTIVE_ROOT: activeRoot });
     expect(created.status).toBe(0);
     writeTasks(path.join(activeRoot, SLUG, 'tasks'));
   });
