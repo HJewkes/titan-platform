@@ -9,6 +9,7 @@ import { GateStripView } from "./GateStrip.js";
 import { openExternal } from "./homeLinks.js";
 import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, useIsFocused } from "./InboxFocus.js";
 import { NudgeSection } from "./InboxNudges.js";
+import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { TapSheet, type TapCommands, type TapConfirmChoice } from "./TapSheet.js";
 
@@ -117,11 +118,12 @@ function followEvidence(evidence: string): void {
 
 /** Every pending owner decision in one list: blocking first, then planning collapsed, then a count of FYIs; `#/inbox/<id>` focuses one item. */
 export function InboxPage({ route }: { route?: Route }): ReactNode {
-  const inbox = useQuery("inbox.list");
+  // A link may name a planning item, which only the planning read lists.
+  const inbox = useQuery("inbox.list", route?.id === undefined ? {} : PLANNING_READ);
   if (inbox.status === "loading") return <Spinner size="sm" label="Loading the inbox" />;
   if (inbox.data === undefined) return <Alert status="error" message={`Could not load the inbox: ${inbox.error.message}`} />;
   // A snapshot exported before TP-4044 carries no nudges.
-  const { items, gaps, fyiCount, derived, nudges = [] } = inbox.data;
+  const { items, gaps, fyiCount, derived, nudges = [], planningCount } = inbox.data;
   const blocking = items.filter((item) => item.section === "blocking");
   const planning = items.filter((item) => item.section === "planning");
   return (
@@ -130,9 +132,9 @@ export function InboxPage({ route }: { route?: Route }): ReactNode {
         <FocusNotice items={items} focusId={route?.id} gapped={gaps.length > 0} />
         <GapBanners gaps={gaps} />
         {nudges.length > 0 ? <NudgeSection nudges={nudges} /> : null}
-        <BlockingSection items={blocking} quiet={planning.length === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
+        <BlockingSection items={blocking} quiet={planningCount === 0 && derived.length === 0 && nudges.length === 0} gapped={gaps.length > 0} />
         {derived.length > 0 ? <DerivedSection rows={derived} /> : null}
-        {planning.length > 0 ? <PlanningSection items={planning} startOpen={holdsFocus(planning, route?.id)} /> : null}
+        {planningCount > 0 ? <PlanningSection count={planningCount} startOpen={holdsFocus(planning, route?.id)} renderRows={(rows) => <InboxRows items={rows} />} /> : null}
         <Typography variant="caption" color="secondary" testID="inbox-fyi">{`FYI: ${fyiCount}`}</Typography>
       </VStack>
     </InboxFocusProvider>
@@ -211,24 +213,6 @@ function DerivedRowCard({ row }: { row: DerivedRow }): ReactNode {
         </VStack>
       </CardContent>
     </Card>
-  );
-}
-
-/** Planning can run to hundreds of rows, so it opens only when asked, or when a link names one of them. */
-function PlanningSection({ items, startOpen }: { items: readonly InboxItem[]; startOpen: boolean }): ReactNode {
-  const [isOpen, setOpen] = useState(startOpen);
-  return (
-    <Section testID="inbox-planning">
-      <SectionHeader title={`Planning (${items.length})`} subtitle="Answered at each item's source" />
-      <SectionContent>
-        <VStack gap={3}>
-          <Button variant="outline" size="sm" onPress={() => setOpen(!isOpen)}>
-            <ButtonText>{isOpen ? "Hide planning" : `Show ${items.length} planning items`}</ButtonText>
-          </Button>
-          {isOpen ? <InboxRows items={items} /> : null}
-        </VStack>
-      </SectionContent>
-    </Section>
   );
 }
 
