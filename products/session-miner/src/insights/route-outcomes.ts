@@ -30,7 +30,7 @@ export const routeOutcomeSchema = z.object({
   ),
 }) satisfies z.ZodType<{ since: string | null; groups: RouteOutcomeGroup[] }>;
 
-export type RouteOutcomeReport = z.infer<typeof routeOutcomeSchema>;
+type RouteOutcomeReport = z.infer<typeof routeOutcomeSchema>;
 
 export const routeOutcomesQuestion = defineInsight<{ shepherdRuns?: string }, RouteOutcomeReport>({
   id: "Q15",
