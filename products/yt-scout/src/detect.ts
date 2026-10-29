@@ -38,7 +38,7 @@ export function resolveYtDlp(configured: string | undefined, env: NodeJS.Process
 
 const listingArgs = (url: string): string[] => ["--flat-playlist", "--playlist-end", PLAYLIST_END, "--dump-single-json", url];
 
-// Current yt-dlp has no ytsearchdate: prefix; sp=CAI%3D asks YouTube's results page for newest first.
+// sp=CAI%3D asks YouTube's results page for newest first, the same filter yt-dlp's ytsearchdate: sends.
 const searchUrl = (query: string): string => `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=CAI%3D`;
 
 function tabUrls(source: Source, tabs: readonly string[]): string[] {
@@ -87,28 +87,40 @@ function dedupe(videos: DetectedVideo[]): DetectedVideo[] {
   return [...new Map(videos.map((v) => [v.id, v])).values()];
 }
 
+const detectRow = (source: Source, now: Date, started: number, outcome: "fallback" | "fail", errorClass: string): StepRow => ({
+  v: 1,
+  video_id: null,
+  source: source.key,
+  step: "detect",
+  attempt: 1,
+  started_at: now.toISOString(),
+  ms: Date.now() - started,
+  outcome,
+  error_class: errorClass,
+});
+
+async function listSource(deps: DetectDeps, tabs: readonly string[], source: Source, now: Date, started: number): Promise<DetectedVideo[]> {
+  if (source.search !== undefined) {
+    const entries = parseFlatListing(await deps.ytDlp(listingArgs(searchUrl(source.search))));
+    return dedupe(entries.filter((e) => matches(source, e)).map((e) => fromListing(source, e)));
+  }
+  const rss = await tryRss(deps, source);
+  if ("videos" in rss) return dedupe(rss.videos);
+  deps.onRow(detectRow(source, now, started, "fallback", rss.errorClass));
+  return dedupe(await listFlat(deps, source, tabUrls(source, source.tabs ?? tabs)));
+}
+
+/** A source whose listing fails yields no ids and a `fail` row, so one bad tab never stops the others. */
 export function createDetector(deps: DetectDeps, tabs: readonly string[]): Detector {
   return {
     async detect(source, now) {
-      if (source.search !== undefined) {
-        const entries = parseFlatListing(await deps.ytDlp(listingArgs(searchUrl(source.search))));
-        return dedupe(entries.filter((e) => matches(source, e)).map((e) => fromListing(source, e)));
-      }
       const started = Date.now();
-      const rss = await tryRss(deps, source);
-      if ("videos" in rss) return dedupe(rss.videos);
-      deps.onRow({
-        v: 1,
-        video_id: null,
-        source: source.key,
-        step: "detect",
-        attempt: 1,
-        started_at: now.toISOString(),
-        ms: Date.now() - started,
-        outcome: "fallback",
-        error_class: rss.errorClass,
-      });
-      return dedupe(await listFlat(deps, source, tabUrls(source, source.tabs ?? tabs)));
+      try {
+        return await listSource(deps, tabs, source, now, started);
+      } catch {
+        deps.onRow(detectRow(source, now, started, "fail", "listing_error"));
+        return [];
+      }
     },
   };
 }

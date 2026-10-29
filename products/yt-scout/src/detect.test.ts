@@ -133,6 +133,34 @@ describe("detector", () => {
     ]);
     expect(found.get("confTalks")![1]!.next_retry_at).toBe("2026-10-29T16:00:00.000Z");
   });
+
+  it("records a failed listing and still lists the other sources", async () => {
+    const rows: StepRow[] = [];
+    const deps = fakeDeps({
+      rows,
+      ytDlp: async (a) => {
+        if (a.at(-1)!.includes("search_query")) throw new Error("yt-dlp exited 1");
+        return LISTING;
+      },
+    });
+
+    const found = await detectNew(openScoutDb(":memory:"), { ...watchlist, sources: [watchlist.sources[2]!, channel] }, createDetector(deps, ["videos"]), NOW);
+
+    expect(found.get(watchlist.sources[2]!.key)).toEqual([]);
+    expect(found.get("confTalks")!.map((v) => v.id)).toEqual(["vvvvvvvvv01", "sssssssss01"]);
+    expect(rows).toMatchObject([{ source: watchlist.sources[2]!.key, step: "detect", outcome: "fail", error_class: "listing_error" }]);
+  });
+
+  it("records unparseable yt-dlp output as a failed listing", async () => {
+    const rows: StepRow[] = [];
+    const deps = fakeDeps({ rows, fetchText: async () => ({ status: 404, text: "" }), ytDlp: async () => "not json" });
+
+    expect(await createDetector(deps, ["videos"]).detect(channel, NOW)).toEqual([]);
+    expect(rows.map((r) => [r.outcome, r.error_class])).toEqual([
+      ["fallback", "rss_404"],
+      ["fail", "listing_error"],
+    ]);
+  });
 });
 
 describe("titan-yt-scout detect --dry-run", () => {
@@ -156,6 +184,21 @@ describe("titan-yt-scout detect --dry-run", () => {
     const lines = readFileSync(path.join(rowsDirPath, file), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(lines.map((l) => l.outcome)).toEqual(["fallback", "fallback"]);
     expect(openScoutDb(db).prepare("SELECT COUNT(*) AS n FROM videos").get()).toEqual({ n: 0 });
+  });
+
+  it("writes collected rows even when inserting fails", async () => {
+    tree.write("w.yml", VALID_WATCHLIST);
+    const db = path.join(tree.root, "s.sqlite3");
+    const rowsDirPath = path.join(tree.root, "rows");
+    const mk = (onRow: DetectDeps["onRow"], _bin?: string) => fakeDeps({ onRow, fetchText: async () => ({ status: 404, text: "" }) });
+    const scout = openScoutDb(db);
+    scout.exec("CREATE TRIGGER no_insert BEFORE INSERT ON videos BEGIN SELECT RAISE(ABORT, 'read only'); END");
+    scout.close();
+
+    await expect(runCli(["detect", "--config", path.join(tree.root, "w.yml"), "--db", db, "--rows-dir", rowsDirPath], () => {}, () => {}, mk)).rejects.toThrow("read only");
+
+    const file = readdirSync(rowsDirPath)[0]!;
+    expect(readFileSync(path.join(rowsDirPath, file), "utf8").trim().split("\n")).toHaveLength(2);
   });
 });
 

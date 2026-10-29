@@ -65,16 +65,17 @@ function addDetectCommand(program: Command, write: Write, makeDeps: MakeDeps): v
     .action(async (opts: { dryRun?: boolean; config?: string; db?: string; rowsDir?: string }) => {
       const watchlist = loadWatchlist(opts.config ?? configPath());
       const db = openScoutDb(opts.db ?? dbPath());
+      const rows: StepRow[] = [];
       try {
-        const rows: StepRow[] = [];
         const detector = createDetector(makeDeps((row) => rows.push(row), resolveYtDlp(watchlist.yt_dlp)), watchlist.defaults.tabs);
         const now = new Date();
         const found = await detectNew(db, watchlist, detector, now);
-        appendRows(opts.rowsDir ?? rowsDir(), rows);
         for (const line of formatDetected(found)) write(line);
         if (!opts.dryRun) write(`inserted ${insertNew(db, found, now)}`);
-        write(`rss fallbacks: ${rows.length}`);
+        write(`rss fallbacks: ${rows.filter((r) => r.outcome === "fallback").length}`);
+        write(`listing failures: ${rows.filter((r) => r.outcome === "fail").length}`);
       } finally {
+        appendRows(opts.rowsDir ?? rowsDir(), rows);
         db.close();
       }
     });
