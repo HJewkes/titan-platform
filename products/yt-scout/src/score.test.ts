@@ -166,9 +166,9 @@ describe("timestamp check", () => {
     const transcript = "[0:09] a\n[1:02:03] b\n";
     const t = (ts: string) => ({ ts, what: "x" });
 
-    const { kept, dropped } = checkTimestamps([t("00:09"), t("62:03"), t("1:02:03"), t("00:10"), t("nope")], transcript);
+    const { kept, dropped } = checkTimestamps([t("00:09"), t("62:03"), t("1:02:03"), t("00:10"), t("nope"), t("[0:09]")], transcript);
 
-    expect(kept.map((k) => k.ts)).toEqual(["00:09", "62:03", "1:02:03"]);
+    expect(kept.map((k) => k.ts)).toEqual(["00:09", "62:03", "1:02:03", "[0:09]"]);
     expect(dropped.map((d) => d.ts)).toEqual(["00:10", "nope"]);
   });
 });

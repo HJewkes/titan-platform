@@ -48,13 +48,13 @@ export interface TsCheck {
   dropped: Technique[];
 }
 
-/** A technique survives only when its ts is exactly one of the transcript's own anchors (plan section 3, step 5). */
+/** The model often copies the brackets with the anchor, so `[2:23]` counts as `2:23`. A technique survives only when its ts is exactly one of the transcript's own anchors (plan section 3, step 5). */
 export function checkTimestamps(techniques: Technique[], transcript: string): TsCheck {
   const anchors = transcriptAnchors(transcript);
   const kept: Technique[] = [];
   const dropped: Technique[] = [];
   for (const t of techniques) {
-    const m = /^(?:(\d+):)?(\d+):(\d{2})$/.exec(t.ts);
+    const m = /^\[?(?:(\d+):)?(\d+):(\d{2})\]?$/.exec(t.ts);
     const ok = m !== null && anchors.has(toSeconds(m[1], m[2]!, m[3]!));
     (ok ? kept : dropped).push(t);
   }

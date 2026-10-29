@@ -12,7 +12,7 @@ Three fixed examples, given as title, scores and summary only. Judge this video 
 
 ## Output
 
-Return one JSON object matching the schema: actionable, novelty, evidence, pain_points, summary, techniques (up to 4, each with a ts copied from a [mm:ss] anchor in the transcript and a what), caveat. Do not invent timestamps. Most videos score 2 to 3 on each axis.
+Return one JSON object matching the schema: actionable, novelty, evidence, pain_points, summary, techniques (up to 4, each with a ts copied from a [mm:ss] anchor in the transcript, written as mm:ss without the brackets and a what), caveat. Do not invent timestamps. Most videos score 2 to 3 on each axis.
 
 ## Video
 
