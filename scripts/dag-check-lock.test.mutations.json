@@ -10,6 +10,15 @@
         "the dag-check hold log fails at once, naming the queue, the estimate and CI, when the queue ahead cannot clear in the wait budget",
         "the dag-check hold log fails at once behind a live holder with nobody ahead when one median hold exceeds the budget"
       ]
+    },
+    {
+      "name": "the hold log skips the append when its lock never frees",
+      "file": "scripts/dag-check-lock.mjs",
+      "find": "    return fn();",
+      "replace": "    if (!held) return undefined;\n    return fn();",
+      "kills": [
+        "hold log appends anyway when a stuck lock never frees"
+      ]
     }
   ]
 }

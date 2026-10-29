@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LockTimeoutError,
   acquire,
@@ -27,7 +27,10 @@ import {
 
 const MODULE = new URL("./dag-check-lock.mjs", import.meta.url).href;
 const roots = [];
-afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })));
+afterEach(() => {
+  vi.restoreAllMocks();
+  roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true }));
+});
 
 function lockPath() {
   const root = mkdtempSync(join(tmpdir(), "dag-check-lock-"));
@@ -460,8 +463,8 @@ describe("lock slots", () => {
   const quiet = { pollMs: 5, log: () => {} };
   const GIB = 1024 ** 3;
 
-  /** A process that takes a slot under DAG_CHECK_SLOTS, holds it for holdMs, releases, and exits 0, or 75 when it gives up. */
-  function spawnCheck(lockDir, { slots, holdMs, timeoutMs, gateDir = null }) {
+  /** A process that takes a slot under DAG_CHECK_SLOTS, holds it until gateDir/go exists, releases, and exits 0, or 75 when it gives up. */
+  function spawnCheck(lockDir, { slots, timeoutMs, gateDir }) {
     const script = `
       import { existsSync, writeFileSync } from "node:fs";
       import { join } from "node:path";
@@ -470,13 +473,9 @@ describe("lock slots", () => {
       try {
         const hold = await acquire({ lockDir: dir, slots: lockSlots(), timeoutMs: ${timeoutMs}, pollMs: 10, log: () => {} });
         const gateDir = ${JSON.stringify(gateDir)};
-        if (gateDir) {
-          // The hold lasts until the test opens the gate, so no wall-clock hold length can end it early under load.
-          writeFileSync(join(gateDir, "held-" + process.pid), String(hold.slot));
-          while (!existsSync(join(gateDir, "go"))) await new Promise((resolve) => setTimeout(resolve, 10));
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
-        }
+        // The hold lasts until the test opens the gate, so no wall-clock hold length can end it early under load.
+        writeFileSync(join(gateDir, "held-" + process.pid), String(hold.slot));
+        while (!existsSync(join(gateDir, "go"))) await new Promise((resolve) => setTimeout(resolve, 10));
         hold.exit = 0;
         release(dir, hold);
       } catch (err) {
@@ -567,8 +566,14 @@ describe("lock slots", () => {
 
   it("still serializes on one slot, so the same six checks overrun the bound and some exit 75", async () => {
     const lockDir = lockPath();
+    const gateDir = join(lockDir, "..", "gate");
+    mkdirSync(gateDir, { recursive: true });
 
-    const codes = await Promise.all(Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 1, holdMs: 800, timeoutMs: 3000 })));
+    // The first holder keeps its slot until a waiter has given up, so the overrun needs no wall-clock hold length.
+    const exits = Array.from({ length: 6 }, () => spawnCheck(lockDir, { slots: 1, timeoutMs: 300, gateDir }));
+    await Promise.race(exits);
+    writeFileSync(join(gateDir, "go"), "");
+    const codes = await Promise.all(exits);
 
     expect(codes).toContain(75);
   }, 15000);
@@ -664,6 +669,9 @@ describe("hold log", () => {
     const lockDir = lockPath();
     mkdirSync(join(lockDir, ".."), { recursive: true });
     mkdirSync(`${holdLogPath(lockDir)}.lock`);
+    // Each clock read moves 100 ms, so the two-second wait runs out in a few polls while the lock stays short of stale.
+    let now = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => (now += 100));
 
     appendHold(lockDir, { check: "c", exit: 0, slot: 0, acquiredAt: 1 });
 
