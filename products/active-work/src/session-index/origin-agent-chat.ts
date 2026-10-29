@@ -71,7 +71,7 @@ export type OpenDatabase = (file: string, options: Database.Options) => Database
 const openBetterSqlite: OpenDatabase = (file, options) => new Database(file, options);
 
 /** A locked `events.db` is not worth better-sqlite3's default 5 s busy wait: origins and skipping are only savings. */
-export const EVENTS_BUSY_TIMEOUT_MS = 100;
+const EVENTS_BUSY_TIMEOUT_MS = 100;
 
 export const openBriefly: OpenDatabase = (file, options) =>
   new Database(file, { ...options, timeout: EVENTS_BUSY_TIMEOUT_MS });
