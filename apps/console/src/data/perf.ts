@@ -9,10 +9,10 @@ export type PerfRow =
   | { kind: "route"; view: ViewKey; detail: boolean; ms: number; queries: number }
   | { kind: "query"; command: string; ms: number; ok: boolean; fromCache: boolean };
 
-export const MAX_ROWS_PER_POST = 100;
-export const REPORT_EVERY_MS = 10_000;
+const MAX_ROWS_PER_POST = 100;
+const REPORT_EVERY_MS = 10_000;
 /** The queries a page mounts start within this long of the route change. */
-export const ROUTE_WINDOW_MS = 100;
+const ROUTE_WINDOW_MS = 100;
 const REPORT_URL = "/rpc/perf.report";
 
 interface Report {
@@ -20,7 +20,7 @@ interface Report {
   dropped: number;
 }
 
-export interface PerfSink {
+interface PerfSink {
   add(row: PerfRow): void;
   flush(): void;
 }
@@ -73,7 +73,7 @@ interface Visit {
   reported: boolean;
 }
 
-export interface RouteTracker {
+interface RouteTracker {
   /** A route change: starts timing a new page and abandons the one before it. */
   begin(view: ViewKey, detail: boolean): void;
   /** A call began; the returned function marks it finished. A call outside the first window is not the page's own. */

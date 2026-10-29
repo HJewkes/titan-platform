@@ -6,7 +6,7 @@ import type { ClientRow, PerfRecorder, RpcStats } from "./recorder.js";
 export const PERF_REPORT = "perf.report";
 /** The browser sends at most 100 rows a post, so a real body is a few KB; the cap keeps a stray loopback caller small. */
 export const PERF_REPORT_BODY_LIMIT = 16 * 1024;
-export const MAX_REPORT_ROWS = 100;
+const MAX_REPORT_ROWS = 100;
 
 /** Reads the registry lazily: this command is itself registered in it, so the names are not known when it is defined. */
 type CommandNames = () => readonly string[];
