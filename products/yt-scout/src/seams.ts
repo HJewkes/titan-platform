@@ -20,7 +20,16 @@ export interface Detector {
 
 export type StepErrorClass = "http429" | "no_captions" | "live" | "upcoming" | "schema_invalid" | "refusal" | "budget" | "other";
 
-export type StepOutcome<T> = { ok: true; value: T } | { ok: false; errorClass: StepErrorClass; message: string };
+/** What a model call billed. A failed call can still have billed, so a failure carries it too. */
+export interface CallUsage {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export type StepOutcome<T> =
+  | { ok: true; value: T }
+  | { ok: false; errorClass: StepErrorClass; message: string; usage?: CallUsage; raw?: unknown };
 
 export interface Transcript {
   path: string;
@@ -48,12 +57,9 @@ export interface ScoreCall {
   maxBudgetUsd: number;
 }
 
-export interface ScoreCallOutput {
+export interface ScoreCallOutput extends CallUsage {
   /** Unvalidated: the score step parses it against `ScoreCardSchema` itself. */
   output: unknown;
-  costUsd: number;
-  inputTokens: number;
-  outputTokens: number;
   model: string;
 }
 
