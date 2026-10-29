@@ -70,6 +70,14 @@ describe("a chart drawn from its frame slots", () => {
     assert.deepEqual(late, ["40", "70", "100"]);
   });
 
+  test("a bar with no cue below a cued bar waits for that cue", () => {
+    const reveals = [{ target: "north", atS: 1 }, { target: "east", atS: 5 }];
+
+    const early = barWidths(drawChart({ kind: "bar" }, { t: 4, reveals }));
+
+    assert.deepEqual(early, ["40", "0", "0"]);
+  });
+
   test("a broken axis draws the break mark at the origin", () => {
     const html = drawChart({ kind: "line", baseline: 30, axisBreak: true });
 

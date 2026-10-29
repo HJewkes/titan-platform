@@ -22,10 +22,17 @@ function pointColours(slots: ChartSlots): (string | undefined)[] {
   return scaleColours(slots.scale, slots.series.map((point) => point.value), slots.baseline ?? 0);
 }
 
+/** Each later row's cue: its own, else the latest one above it, so an uncued bar never grows ahead of a cued bar above it. */
+function rowCues(slots: ChartSlots, reveal: Reveal): (number | undefined)[] {
+  let latest: number | undefined;
+  return slots.series.map((point, i) => (latest = i === 0 ? undefined : (reveal(point.id) ?? latest)));
+}
+
 /** bar: one row a point, cascading from the first bar's cue, a row with its own cue growing on it; a chart cap marks every row. */
 function BarChart({ slots, reveal, colours }: ChartViewProps) {
+  const cues = rowCues(slots, reveal);
   const rows = slots.series.map((point, i) => {
-    const atS = i === 0 ? undefined : reveal(point.id);
+    const atS = cues[i];
     return {
       id: point.id,
       label: point.label,
