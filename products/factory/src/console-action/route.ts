@@ -14,6 +14,7 @@ import { resolveGate } from "./gate.js";
 import { actOnOp, OP_EFFECTS, type OpDeps } from "./op.js";
 import { recordPlanApproval } from "./plan-approval.js";
 import { statusOf, type Outcome, type Status } from "./outcome.js";
+import type { ReadReviewerText } from "./owner-evidence.js";
 import { readRecord } from "./record.js";
 import { releaseHold } from "./release.js";
 
@@ -43,6 +44,8 @@ interface ConsoleActionDeps {
   agentChat?: AgentChatRetirePort;
   /** The deployer's state directory and its lock and pause-file ports, which a deploy-pause-clear reads and writes. */
   deploy: { stateDir: string; ports: PauseClearPorts };
+  /** Reads the reviewer's verdict text an owner-at-head gate's evidence quotes; absent, the session readers. Tests inject it. */
+  readReviewerText?: ReadReviewerText;
   now: () => number;
   log: Logger;
 }
@@ -84,13 +87,13 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps,
 type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
 
 async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
-  const { host, port, store, freeze, deploy, now, agentChat, stateDir } = deps;
+  const { host, port, store, freeze, deploy, now, agentChat, stateDir, readReviewerText } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
   if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, done: (id) => doneResults(stateDir, id) });
   const { action, confirmEvent } = read;
   if (action.kind === "plan-approval") return recordPlanApproval({ action, confirmEvent }, store.get(), host);
-  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host);
+  return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host, readReviewerText);
 }
 
 function failure(status: Status, message: string): Answer {

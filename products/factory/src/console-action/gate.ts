@@ -9,6 +9,7 @@ import type { FactoryHost } from "../host.js";
 import { headGateAsks } from "../shepherd/stale-gates.js";
 import { z } from "zod";
 import { consoleResolver, githubOutcome, refused, type Outcome } from "./outcome.js";
+import { ownerEvidence, terminalCommand, type ReadReviewerText } from "./owner-evidence.js";
 import type { GateAction, Read } from "./record.js";
 
 /**
@@ -36,7 +37,7 @@ interface GateTarget {
   head: string;
 }
 
-export async function resolveGate(read: Read<GateAction>, port: GitHubPort, host: FactoryHost): Promise<Outcome> {
+export async function resolveGate(read: Read<GateAction>, port: GitHubPort, host: FactoryHost, readText?: ReadReviewerText): Promise<Outcome> {
   const { action } = read;
   const gate = host.gates.get(action.gateId);
   if (gate === undefined) return { outcome: "gone", reason: `no gate ${action.gateId}` };
@@ -44,7 +45,9 @@ export async function resolveGate(read: Read<GateAction>, port: GitHubPort, host
   if ("outcome" in target) return target;
   if (gate.status !== "pending") return settled(gate, read.confirmEvent, `the gate is ${gate.status}`);
   const stale = storeMoved(host, gate, target, action) ?? (await githubOutcome(port, action));
-  return stale ?? resolveOnce(read, gate, host);
+  if (stale !== undefined) return stale;
+  const covered = await evidenceCovers(gate, action, { host, port, ...(readText && { readText }) });
+  return Array.isArray(covered) ? resolveOnce(read, gate, host, covered) : covered;
 }
 
 /** The record's gate must be one the console may answer, with a decision it may give, and ask about the record's PR. */
@@ -52,6 +55,8 @@ function gateRefusal(gate: GateRecord, action: GateAction): GateTarget | Outcome
   if (!stepIdMatches(`${action.runId}/${action.stepId}`, gate.id)) return refused("record", `gate ${gate.id} is not step ${action.stepId} of run ${action.runId}`);
   const target = targetOf(gate);
   if (target === undefined) return refused("class", `${gate.id} is ${batchRefusal(gate) ?? "not on the console's step allowlist"}`);
+  const ownerRow = ownerAtHeadOf(gate);
+  if (ownerRow !== undefined && action.evidenceDigest === undefined) return refused("class", `${gate.id} is a ${ownerRow} gate, which the console answers only with its evidence shown; run ${terminalCommand(gate.id, target.head)}`);
   if (!consoleDecisions(gate).includes(action.decision)) return refused("class", `the console may not answer ${action.decision} on ${gate.id}`);
   const samePr = target.repo.toLowerCase() === action.repo.toLowerCase() && target.pr === action.pr;
   return samePr ? target : refused("mismatch", `${gate.id} asks about ${target.repo}#${target.pr}, the record names ${action.repo}#${action.pr}`);
@@ -60,10 +65,25 @@ function gateRefusal(gate: GateRecord, action: GateAction): GateTarget | Outcome
 function targetOf(gate: GateRecord): GateTarget | undefined {
   const step = stepOf(gate.id);
   if (!CONSOLE_STEPS.has(step)) return undefined;
-  if (step === MERGE_GATE) return ownerAtHeadRow(gate) === undefined ? landGate(gate) : undefined;
+  if (step === MERGE_GATE) return landGate(gate);
   const pr = gatePr(gate);
   const head = headGateAsks(gate);
   return pr && head ? { ...pr, head } : undefined;
+}
+
+const ownerAtHeadOf = (gate: GateRecord): string | undefined => (stepOf(gate.id) === MERGE_GATE ? ownerAtHeadRow(gate) : undefined);
+
+/**
+ * TP-4404: an owner-at-head merge gate resolves from the console only on the digest of the evidence the owner was shown,
+ * read again now at the same head; the facts it covered come back for the outcome. A digest on any other gate is a record
+ * fault, never ignored.
+ */
+async function evidenceCovers(gate: GateRecord, action: GateAction, deps: Parameters<typeof ownerEvidence>[1]): Promise<string[] | Outcome> {
+  if (ownerAtHeadOf(gate) === undefined) return action.evidenceDigest === undefined ? [] : refused("record", `${gate.id} asks for no evidence, yet the record carries a digest`);
+  const evidence = await ownerEvidence(gate, deps);
+  if (evidence.status === "none") return refused("evidence", `${gate.id} names no owner-at-head fact the console can read`);
+  if (evidence.status === "missing") return refused("evidence", `${evidence.reason}; run ${evidence.command}`);
+  return evidence.digest === action.evidenceDigest ? evidence.facts : refused("evidence", `the evidence for ${gate.id} changed since it was shown; read the item again`);
 }
 
 /** The step's allowlist, narrowed to the decisions the gate's own schema offers, so the console never gives one the gate lacks. */
@@ -92,7 +112,7 @@ function payloadOf(gate: GateRecord, action: GateAction): Record<string, string>
 }
 
 /** The store settles a gate once, so of two concurrent posts of one record only one resolves; the other reads back `already`. */
-function resolveOnce({ action, confirmEvent }: Read<GateAction>, gate: GateRecord, host: FactoryHost): Outcome {
+function resolveOnce({ action, confirmEvent }: Read<GateAction>, gate: GateRecord, host: FactoryHost, covered: readonly string[]): Outcome {
   try {
     host.gates.resolve(action.gateId, payloadOf(gate, action), consoleResolver(confirmEvent));
   } catch (error) {
@@ -101,7 +121,7 @@ function resolveOnce({ action, confirmEvent }: Read<GateAction>, gate: GateRecor
     if (error instanceof GateAlreadySettled || error instanceof GateExpired || error instanceof GateNotFound) return settledNow(host, action.gateId, confirmEvent, error.message);
     throw error;
   }
-  return { outcome: "resolved", gateId: action.gateId };
+  return { outcome: "resolved", gateId: action.gateId, ...(covered.length > 0 && { covered: [...covered] }) };
 }
 
 function settledNow(host: FactoryHost, gateId: string, confirmEvent: string, reason: string): Outcome {
