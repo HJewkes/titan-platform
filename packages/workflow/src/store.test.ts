@@ -149,7 +149,7 @@ describe("WorkflowRunStore countByStatus", () => {
 describe("WorkflowRunStore listByWorkflow", () => {
   function storeWithRuns(): { store: WorkflowRunStore; db: ReturnType<typeof openDatabase> } {
     const db = openDatabase(":memory:");
-    runMigrations(db, [workflowMigration(1), workflowNameIndexMigration(2)]);
+    runMigrations(db, [workflowMigration(1)]);
     const store = new WorkflowRunStore(db);
     for (const [index, [id, name]] of ([["a", "alpha"], ["b", "alpha"], ["c", "beta"], ["d", "alpha"]] as const).entries()) {
       store.create({ ...newRun(id, name, {}), startedAt: iso(index * 1000) });

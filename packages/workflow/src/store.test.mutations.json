@@ -16,7 +16,10 @@
       "file": "packages/workflow/src/store.ts",
       "find": "    ${workflowNameIndexDdl(name)}\n  `;",
       "replace": "  `;",
-      "kills": ["WorkflowRunStore listByWorkflow is answered through the workflow-and-status index"]
+      "kills": [
+        "WorkflowRunStore listByWorkflow is answered through the workflow-and-status index",
+        "WorkflowRunStore listByWorkflow adds the index to an existing table, and a second run is a no-op"
+      ]
     },
     {
       "name": "the index migration does nothing",
