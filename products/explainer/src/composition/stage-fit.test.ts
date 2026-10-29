@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch, openCapturePage } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
-import { afterAll, beforeAll, describe, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, test } from "vitest";
 import { chromiumStageFitScan } from "../render/stage-fit-scan.js";
 import { buildPage, fixtureDurationS, renderFrames, servePage, STAGE, type PageServer } from "./page.test-helpers.js";
 import { parseTimeline } from "./timeline.js";
@@ -22,6 +22,9 @@ beforeAll(async () => {
   server = await servePage(pageDir, 0);
   browser = await launch();
 }, BROWSER_TIMEOUT_MS);
+
+// Mutation: the stage-fit scan closes the browser it was lent; its test is the file's last, so only this check sees it.
+afterEach(() => assert.ok(browser.isConnected(), "a step closed the file's browser"));
 
 afterAll(async () => {
   await browser.close();
