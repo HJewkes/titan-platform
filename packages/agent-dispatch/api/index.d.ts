@@ -557,4 +557,32 @@ declare function readAnswers(agentChatBinPath: string, label: string, since: str
 /** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
 declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number, signal?: AbortSignal): Promise<void>;
 
-export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller };
+interface PrefixSection {
+    name: string;
+    text: string;
+}
+interface StablePrefixOptions {
+    /** Refused in every section: a per-agent name makes the prefix unique per spawn. */
+    agentName?: string;
+}
+interface StablePrefix {
+    text: string;
+    hash: string;
+}
+interface PrefixViolation {
+    section: string;
+    rule: string;
+    match: string;
+}
+declare class PrefixLintError extends Error {
+    readonly violations: readonly PrefixViolation[];
+    constructor(violations: readonly PrefixViolation[]);
+}
+declare function lintPrefixSections(sections: readonly PrefixSection[], options?: StablePrefixOptions): PrefixViolation[];
+/**
+ * Joins sections in the order given (order is part of the cache key, so it is
+ * never sorted) and hashes the result. Throws PrefixLintError on any per-spawn value.
+ */
+declare function stablePrefix(sections: readonly PrefixSection[], options?: StablePrefixOptions): StablePrefix;
+
+export { ASK_LABEL_PATTERN, type AgentChatCall, type AgentLineage, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, CALLER_IDENTITY_VARS, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, type LaunchedBy, type MessageOptions, PEER_NAME_PATTERN, type ParkOptions, type ParkResult, PrefixLintError, type PrefixSection, type PrefixViolation, type ResumeAgentResult, ResumeError, type RetireOptions, type RetireResult, type SafeExecResult, type ServiceAnswer, type SpawnAsCallerRequest, type SpawnAsCallerResult, type SpawnPlacement, type StablePrefix, type StablePrefixOptions, type WakeSource, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, callerEnv, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, lintPrefixSections, listAgentLineage, listAgents, messageAgent, minimalEnv, observeAgentChatCalls, parkAgent, parseAgentRows, readAnswers, receivesMessages, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller, stablePrefix };
