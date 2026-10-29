@@ -22,12 +22,13 @@ it("reads titan-platform's own committed required-checks policy as readable for 
   expect(new Set(contexts).size).toBe(contexts.length);
 });
 
-it("lists every main-only test shard in ci.yml as a main-only context, so a red shard freezes main (TP-4401)", () => {
+it("lists no main-only context, because the required validate job judges every test shard in ci.yml (TP-4436)", () => {
   const policy = JSON.parse(readFileSync(new URL(`../../../${PATH}`, import.meta.url), "utf8"));
   const ci = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
-  const matrix = /\n {2}test-shard:\n[\s\S]*?\n {8}shard: \[([^\]]+)\]/.exec(ci);
-  const shards = (matrix?.[1] ?? "").split(",").map((shard) => `test-shard (${shard.trim()})`);
+  const validate = /\n {2}validate:\n([\s\S]*?)\n {2}\S/.exec(ci)?.[1] ?? "";
 
-  expect(shards.length).toBeGreaterThan(0);
-  expect(policy.branches.main.mainContexts).toEqual(shards);
+  expect(policy.branches.main.contexts).toContain("validate");
+  expect(policy.branches.main.mainContexts).toBeUndefined();
+  expect(validate).toContain("needs: test-plan");
+  expect(validate).toContain("node scripts/test-plan.mjs judge");
 });

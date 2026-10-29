@@ -139,7 +139,7 @@ export function readWorkspace(root = ROOT) {
 }
 
 /** The pull request's own changes; --no-renames keeps both sides of a move between packages. */
-function changedFiles(base, head, cwd = ROOT) {
+export function changedFiles(base, head, cwd = ROOT) {
   const out = execFileSync("git", ["diff", "--no-renames", "--name-only", `${base}...${head}`], { cwd, encoding: "utf8" });
   return out.split("\n").filter(Boolean);
 }
@@ -160,15 +160,16 @@ export function scopeForEvent(env, readChanged, loadWorkspace) {
 // after its last file; the watchdog names a file whose worker never yields. Locally they are noise.
 export const CI_REPORTERS = ["default", "hanging-process", "./scripts/vitest-file-watchdog.mjs"];
 
+export const PROJECTS = ["threads", "repo", "forks", "active-work", "active-work-forks"];
+
 export function vitestArgs(scope, env = {}) {
   const reporters = env.CI ? CI_REPORTERS.map((reporter) => `--reporter=${reporter}`) : [];
   const args = ["run", "--passWithNoTests", ...reporters];
   if (scope.mode !== "scoped") return args;
-  const projects = ["threads", "repo", "forks", "active-work", "active-work-forks"];
-  return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
+  return [...args, ...PROJECTS.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 
-function describeScope(scope) {
+export function describeScope(scope) {
   if (scope.mode === "scoped") return `test scope: scoped to ${scope.dirs.join(" ")}`;
   if (scope.mode === "none") return "test scope: none (no changed path is read by a test)";
   return `test scope: full (${scope.reason})`;

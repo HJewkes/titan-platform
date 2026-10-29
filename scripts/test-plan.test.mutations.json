@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a file main never ran costs nothing",
+      "file": "scripts/test-plan.mjs",
+      "find": "const ms = known ? durationsMs.get(resultKey(file)) : fallbackMs;",
+      "replace": "const ms = known ? durationsMs.get(resultKey(file)) : 0;",
+      "kills": [
+        "fileCosts charges a file main never ran the median duration of the files it did"
+      ]
+    },
+    {
+      "name": "the shard cap is ignored",
+      "file": "scripts/test-plan.mjs",
+      "find": "return Math.min(cap, costs.length, Math.max(",
+      "replace": "return Math.min(costs.length, Math.max(",
+      "kills": [
+        "planShards never plans more shards than the cap"
+      ]
+    },
+    {
+      "name": "the shortest file is packed first",
+      "file": "scripts/test-plan.mjs",
+      "find": "b.seconds - a.seconds",
+      "replace": "a.seconds - b.seconds",
+      "kills": [
+        "packBins packs the longest file first and balances the rest around it"
+      ]
+    },
+    {
+      "name": "a running shard reads as finished",
+      "file": "scripts/test-plan.mjs",
+      "find": "job?.status !== \"completed\"",
+      "replace": "job?.status === \"never\"",
+      "kills": [
+        "judgeShards waits while a shard is still running or not yet listed"
+      ]
+    },
+    {
+      "name": "the merged cache keeps files no longer planned",
+      "file": "scripts/test-plan.mjs",
+      "find": "const merged = new Map(previous.filter(([key]) => keep.has(key)));",
+      "replace": "const merged = new Map(previous);",
+      "kills": [
+        "mergeResults keeps main's durations for planned files, takes fresh ones over them, and drops files no longer planned"
+      ]
+    }
+  ]
+}
