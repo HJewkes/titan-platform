@@ -48,6 +48,8 @@ export interface ImplementerAgents {
   message(name: string, message: string): Promise<void>;
   /** `cwd` is a checkout of the PR's repo, which the successor's own worktree is cut from. */
   spawn(name: string, brief: string, cwd: string): Promise<void>;
+  /** Never forced; absent means a live agent that takes no wake is left to its seat. */
+  retire?(name: string): Promise<void>;
 }
 
 export const implementersOver = (agents: AgentChatAgents): ImplementerAgents => ({
@@ -197,11 +199,18 @@ async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, ta
   deps.store.get().recordAuthor(task.input.runId, { agentId: row?.agentId ?? choice.agent, name: choice.agent, role: "successor", predecessor: choice.predecessor });
 }
 
+/** A live agent that took neither the wake nor its message fallback, retired so a successor can take the wake. */
+interface Hung {
+  kind: "hung";
+  agent: string;
+}
+
 /**
  * The woken agent must start a turn within `turnStartMs`. If it does not, one fallback ask goes out: a resume if it has
- * ended by then, else a direct message. No turn after that leaves the wake unhandled, so the run does not wait on nobody.
+ * ended by then, else a direct message. No turn after that leaves the wake unhandled, so the run does not wait on nobody,
+ * unless a live agent ignored both asks and was retired, which `hung` reports so a successor is started.
  */
-async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, asked: Asked, signal: AbortSignal): Promise<WakeStepResult> {
+async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, asked: Asked, signal: AbortSignal): Promise<WakeStepResult | Hung> {
   await recordSuccessor(deps, agents, task, asked.choice, signal);
   const woke = { ...wokenBy(asked.choice), askedAt: asked.at };
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), asked.at, signal)) return woke;
@@ -215,7 +224,25 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
     return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback, askedAt: at };
-  return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
+  const stalled = `${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`;
+  return asked.choice.mode === "live" && fallback === "message" ? retireHung(deps, wiring, agents, task, asked.choice.agent, stalled, signal) : unhandled(stalled);
+}
+
+/**
+ * A live headless agent can sit idle through both asks (tp#2648, tp#2663), so it is retired and a successor takes the
+ * wake. The retire is never forced, so a tree with unpushed work keeps its agent; and an agent no successor could
+ * replace, on an advisory repo or one with no checkout, is left running. Either way the seat is told, as before.
+ */
+async function retireHung(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, agent: string, stalled: string, signal: AbortSignal): Promise<WakeStepResult | Hung> {
+  if (agents.retire === undefined) return unhandled(stalled);
+  if (typeof successorChoice(deps, wiring, task, agent, await rosterWhileBrokerDown(deps, agents, signal)) === "string") return unhandled(stalled);
+  try {
+    await agents.retire(agent);
+    return { kind: "hung", agent };
+  } catch (error) {
+    signal.throwIfAborted();
+    return unhandled(`${stalled}, and its retire failed: ${failureOf(error)}`);
+  }
 }
 
 
@@ -256,15 +283,16 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
 /**
  * A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the
  * ask a poll under its own deadline, so the ask deadline restarts after it. A lineage gone from the roster still has the
- * repo's checkout, so a successor takes over from the registered implementer (TP-4045).
+ * repo's checkout, so a successor takes over from the registered implementer (TP-4045), as it does from a live agent
+ * retired for ignoring the wake and its fallback (TP-4430).
  */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
-  let asked: Asked | undefined, waiting: Waiting | undefined;
-  const refused = new Set<string>();
+  const loop: WakeLoop = { refused: new Set<string>() };
   const unreadable = unreadableHead(deps, task.input, signal);
   for (;;) {
     const roster = await rosterWhileBrokerDown(deps, agents, signal);
-    const settled = asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, waiting);
+    const { asked } = loop;
+    const settled = settle(loop, asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, loop.waiting));
     if (settled !== undefined) return settled;
     const newest = newestAgent(task, roster);
     const live = newest !== undefined && newest.presence !== "exited";
@@ -272,20 +300,50 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     if ("error" in read) {
       const gaveUp = await unreadable.failed(read.error);
       if (gaveUp !== undefined) return unhandled(gaveUp);
-      waiting = undefined;
+      loop.waiting = undefined;
       continue;
     }
     unreadable.read();
     if (read.moved && newest !== undefined) return wokenBy(liveChoice(task, newest));
-    const choice = newest === undefined ? successorChoice(deps, wiring, task, task.implementer, roster) : live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
+    const choice = await nextChoice(deps, wiring, task, roster, newest, loop);
     if (typeof choice === "string") return unhandled(choice);
-    const reask = sameAsk(asked?.choice, choice);
-    asked = { choice, at: deps.now() };
-    const sent = await askOrFallBack(deps, agents, choice, reask, refused, signal);
-    if (sent === "asked") return confirmTurn(deps, wiring, agents, task, asked, signal);
-    if (typeof sent === "object") return sent;
-    if (sent !== "successor") waiting = await waitAPoll(deps, { since: waiting?.since ?? asked.at, wait: sent }, signal);
+    const done = await askOnce(deps, wiring, agents, task, choice, loop, signal);
+    if (done !== undefined) return done;
   }
+}
+
+interface WakeLoop {
+  asked?: Asked;
+  waiting?: Waiting;
+  refused: Set<string>;
+  /** The live agent retired for taking no wake; from then on only its successor is asked. */
+  hung?: string;
+}
+
+/** A retired hung agent sends the loop round again to start its successor; anything else settles the wake. */
+function settle(loop: WakeLoop, result: WakeStepResult | Hung | undefined): WakeStepResult | undefined {
+  if (result?.kind !== "hung") return result;
+  loop.hung = result.agent;
+  loop.asked = loop.waiting = undefined;
+  return undefined;
+}
+
+async function nextChoice(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, roster: readonly AgentRow[], newest: AgentRow | undefined, loop: WakeLoop): Promise<Choice | string> {
+  if (loop.hung !== undefined) return successorChoice(deps, wiring, task, loop.hung, roster);
+  if (newest === undefined) return successorChoice(deps, wiring, task, task.implementer, roster);
+  return newest.presence !== "exited" ? liveChoice(task, newest) : choose(deps, wiring, task, newest, roster, loop.refused);
+}
+
+/** One ask and what follows it: a settled wake, or undefined to go round again after a wait, a fallback or a retire. */
+async function askOnce(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, choice: Choice, loop: WakeLoop, signal: AbortSignal): Promise<WakeStepResult | undefined> {
+  const reask = sameAsk(loop.asked?.choice, choice);
+  const asked: Asked = { choice, at: deps.now() };
+  loop.asked = asked;
+  const sent = await askOrFallBack(deps, agents, choice, reask, loop.refused, signal);
+  if (sent === "asked") return settle(loop, await confirmTurn(deps, wiring, agents, task, asked, signal));
+  if (typeof sent === "object") return sent;
+  if (sent !== "successor") loop.waiting = await waitAPoll(deps, { since: loop.waiting?.since ?? asked.at, wait: sent }, signal);
+  return undefined;
 }
 
 async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Registration): Promise<WakeTask | string> {

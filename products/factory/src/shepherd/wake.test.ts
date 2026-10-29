@@ -49,12 +49,12 @@ function row(name: string, overrides: Partial<AgentRow> = {}): AgentRow {
   return { ...base, cwd: `/work/${name}`, sessionId: `s-${name}`, transcriptPath: `/transcripts/${name}.jsonl`, transcriptExists: true, spawnedBy: null, account: null, generation: 1, teleportFrom: null, ...overrides };
 }
 
-type Asked = { verb: "resume" | "spawn" | "message"; name: string; message: string; cwd?: string; args: number };
+type Asked = { verb: "resume" | "spawn" | "message" | "retire"; name: string; message: string; cwd?: string; args: number };
 
 /** An in-memory roster where a spawn adds a live row; `fail` throws from the next calls of a verb, one error per call. */
 function fakeAgents(rows: AgentRow[]) {
   const asked: Asked[] = [];
-  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message", (Error | undefined)[]>> = {};
+  const fail: Partial<Record<"roster" | "resume" | "spawn" | "message" | "retire", (Error | undefined)[]>> = {};
   const next = (verb: keyof typeof fail) => {
     const error = fail[verb]?.shift();
     if (error) throw error;
@@ -67,6 +67,11 @@ function fakeAgents(rows: AgentRow[]) {
     resume: async (...args: unknown[]) => (next("resume"), void asked.push({ verb: "resume", name: String(args[0]), message: String(args[1]), args: args.length })),
     spawn: async (name, message, cwd) => (next("spawn"), asked.push({ verb: "spawn", name, message, cwd, args: 3 }), void rows.push(row(name, { presence: "live" }))),
     message: async (name, message) => (next("message"), void asked.push({ verb: "message", name, message, args: 2 })),
+    retire: async (name) => {
+      next("retire");
+      asked.push({ verb: "retire", name, message: "", args: 1 });
+      rows.splice(0, rows.length, ...rows.map((agent) => (agent.name === name ? { ...agent, presence: "exited", status: "retired" } : agent)));
+    },
   };
   return agents;
 }
@@ -500,13 +505,19 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
     expect(resumes).toBe(3);
   });
 
-  it("returns unhandled when neither the wake nor its fallback starts a turn", async () => {
+  it("returns unhandled when the successor of a retired live agent also starts no turn after its wake and fallback", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })], turnSince: () => false });
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn within 5 minutes of the wake or of the message fallback" });
-    expect(asks(scene.agents)).toHaveLength(2);
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a-s1 started no turn within 5 minutes of the wake or of the message fallback" });
+    expect(asks(scene.agents)).toEqual([
+      ["message", "impl-a"],
+      ["message", "impl-a"],
+      ["retire", "impl-a"],
+      ["spawn", "impl-a-s1"],
+      ["message", "impl-a-s1"],
+    ]);
   });
 
   it("returns unhandled with the error class, never its text, when the fallback ask is refused", async () => {
@@ -527,6 +538,74 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(asks(scene.agents)).toEqual([["message", "impl-a"]]);
+  });
+});
+
+describe("sh-wake-implementer: a live agent that takes no wake is replaced", () => {
+  const asks = (agents: ReturnType<typeof fakeAgents>) => agents.asked.map((ask) => [ask.verb, ask.name]);
+  const successorStarts = (agents: ReturnType<typeof fakeAgents>) => agents.asked.some((ask) => ask.verb === "spawn");
+  const hungScene = (scene: Scene = {}) => wakeStep({ rows: [row("impl-a", { presence: "live", spawnedBy: "demo-coord" })], turnSince: successorStarts, ...scene });
+
+  it("retires a live agent idle through the ci-red wake and its fallback, and starts a successor on the PR branch with the failure, telling no seat", async () => {
+    const sent: string[] = [];
+    const exitNotice: ExitNoticePorts = { seatFor: () => "demo-seat", lastReport: async () => undefined, send: async (seat) => void sent.push(seat) };
+    const scene = hungScene({ exitNotice });
+    scene.fake.setRuns(H1, [successRun("dag-check", 11, undefined, "failure")]);
+
+    const { result } = await scene.run("ci-red", { failing: [{ name: "dag-check" }] });
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
+    expect(asks(scene.agents)).toEqual([
+      ["message", "impl-a"],
+      ["message", "impl-a"],
+      ["retire", "impl-a"],
+      ["spawn", "impl-a-s1"],
+    ]);
+    const spawn = scene.agents.asked[3]!;
+    expect(spawn.cwd).toBe(MAIN_CHECKOUT);
+    expect(spawn.message).toContain("taking over octo/demo#1 from impl-a");
+    expect(spawn.message).toContain(dataFence("head branch", "feat/demo-fix"));
+    expect(spawn.message).toContain(`CI failed at head ${H1}`);
+    expect(scene.store.get().authorsOf("run-1")).toContainEqual(expect.objectContaining({ name: "impl-a-s1", role: "successor", predecessor: "impl-a" }));
+    expect(sent).toEqual([]);
+  });
+
+  it("polls when the spawn gate defers the successor, and starts it without asking the retired agent again", async () => {
+    const scene = hungScene();
+    scene.agents.fail.spawn = [new SpawnDeferred("load5 40 is past the limit 28")];
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(asks(scene.agents)).toEqual([
+      ["message", "impl-a"],
+      ["message", "impl-a"],
+      ["retire", "impl-a"],
+      ["spawn", "impl-a-s1"],
+    ]);
+  });
+
+  it("starts no successor beside the agent when agent-chat refuses its retire, naming the error class only", async () => {
+    const scene = hungScene();
+    scene.agents.fail.retire = [new DispatchError(LEAKY_MESSAGE)];
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn within 5 minutes of the wake or of the message fallback, and its retire failed: DispatchError" });
+    expect(asks(scene.agents).map(([verb]) => verb)).not.toContain("spawn");
+    expectNoLeak(result);
+  });
+
+  it("leaves the live agent running when no successor could push, as on an advisory repo", async () => {
+    const scene = hungScene({ advisory: () => true });
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn within 5 minutes of the wake or of the message fallback" });
+    expect(asks(scene.agents)).toEqual([
+      ["message", "impl-a"],
+      ["message", "impl-a"],
+    ]);
   });
 });
 
