@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle, type SseMessage } from "@titan-design/daemon";
+import { successEnvelope } from "@titan-design/registry";
 import { liveSource, type Subscription } from "@titan-design/rpc-client";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
@@ -23,11 +24,18 @@ interface FakeStream {
   close(): Promise<void>;
 }
 
-/** A loopback `/events` that streams whatever the test writes; with `token`, a dial without that header gets 401. */
+/**
+ * A loopback `/events` that streams whatever the test writes; with `token`, a dial without that header gets 401. Any
+ * `/rpc` read answers an empty note and source list.
+ */
 async function startFakeStream(token?: string): Promise<FakeStream> {
   const dials: FakeStream["dials"] = [];
   const open = new Set<ServerResponse>();
   const server = createServer((req, res) => {
+    if (req.url?.startsWith("/rpc/")) {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(successEnvelope({ notes: [], sources: [] })));
+      return;
+    }
     dials.push({ at: Date.now(), headers: req.headers });
     if (req.url !== "/events" || (token !== undefined && req.headers["x-agent-chat-token"] !== token)) {
       res.writeHead(token !== undefined ? 401 : 404).end();
@@ -150,6 +158,36 @@ describe("the console daemon's /events", () => {
     expect(JSON.stringify(received)).not.toMatch(/private|synthetic-token|task:X-1/);
     expect(broker.dials[0]?.headers["x-agent-chat-token"]).toBe(TOKEN);
     expect(activeWork.dials[0]?.headers["x-agent-chat-token"]).toBeUndefined();
+  });
+});
+
+describe("the console daemon's refreshed frame", () => {
+  let handle: DaemonHandle | undefined;
+  let browser: Subscription | undefined;
+
+  afterEach(async () => {
+    browser?.close();
+    await handle?.close();
+    handle = undefined;
+  });
+
+  it("tells the browser once the cache has read what an active-work frame moved, after serving it the old answer", async () => {
+    const activeWork = await fake();
+    handle = await startConsoleDaemon({ config: consoleConfig(activeWork.port, (await fake(TOKEN)).port), logger: silentLogger });
+    const console = liveSource({ origin: `http://127.0.0.1:${handle.port}` });
+    const received: string[] = [];
+    let open = false;
+    browser = console.subscribe({ onEvent: ({ data }) => received.push(data), onStatus: (status) => (open ||= status === "open") });
+    await until(() => open && activeWork.openCount() === 1);
+    await console.call("work.notes", {});
+
+    activeWork.write("event: change\ndata: /srv/private/root\n\n");
+    await until(() => received.length === 1);
+    await console.call("work.notes", {});
+    // work.notes makes two cached reads, and each says so as it lands; the browser coalesces them into one refetch.
+    await until(() => received.length === 3);
+
+    expect(received.map((data) => JSON.parse(data) as unknown)).toEqual([{ kind: "change" }, { kind: "refreshed" }, { kind: "refreshed" }]);
   });
 });
 

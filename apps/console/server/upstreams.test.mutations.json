@@ -7,7 +7,7 @@
       "find": "cachedActiveWork(activeWorkClient(config.activeWorkPort), invalidation)",
       "replace": "cachedActiveWork(activeWorkClient(config.activeWorkPort))",
       "kills": [
-        "the active-work reads createSources builds go upstream once per window, and again after an active-work relay frame"
+        "the active-work reads createSources builds go upstream once per window, and refresh behind an active-work relay frame"
       ]
     }
   ]

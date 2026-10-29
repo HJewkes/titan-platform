@@ -8,6 +8,8 @@ export type RelaySource = "active-work" | "agent-chat" | "factory";
 
 /** A kind the browser gets after an upstream stream reopens, since frames sent while it was down are lost. */
 const RECONNECTED_KIND = "reconnected";
+/** A kind the console sends itself, once a cache that served a moved value has read the new one. */
+const REFRESHED_KIND = "refreshed";
 
 /**
  * The data of one relayed frame. Only the kind and the ids a page needs to decide what to refetch:
@@ -237,6 +239,11 @@ function notifyFrame(source: RelaySource, { onFrame, logger }: RelayContext): vo
   } catch (err) {
     logger.warn({ source, err: err instanceof Error ? err.message : String(err) }, "events relay: onFrame threw");
   }
+}
+
+/** Tells the browser a cache has caught up with a source, so the reads it served before that can be read again. */
+export function announceRefreshed(hub: Pick<EventHub, "broadcast">, source: RelaySource): void {
+  broadcast(hub, source, { kind: REFRESHED_KIND });
 }
 
 function broadcast(hub: Pick<EventHub, "broadcast">, source: RelaySource, event: RelayedEvent): void {

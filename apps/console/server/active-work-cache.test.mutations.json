@@ -11,21 +11,21 @@
       ]
     },
     {
-      "name": "the live artifact.status read is cached too",
+      "name": "the one-off search read is cached too",
       "file": "apps/console/server/active-work-cache.ts",
       "find": "  \"deliverable.list\",\n",
-      "replace": "  \"deliverable.list\",\n  \"artifact.status\",\n",
+      "replace": "  \"deliverable.list\",\n  \"search\",\n",
       "kills": [
-        "cachedActiveWork goes upstream every time for a read that must be live"
+        "cachedActiveWork goes upstream every time for a one-off search"
       ]
     },
     {
-      "name": "an active-work frame drops nothing",
+      "name": "an active-work frame marks nothing stale",
       "file": "apps/console/server/active-work-cache.ts",
-      "find": "  invalidation?.on(\"active-work\", cache.invalidate);\n",
+      "find": "  invalidation?.on(\"active-work\", cache.stale);\n",
       "replace": "",
       "kills": [
-        "cachedActiveWork goes upstream again after an active-work frame, and not after another upstream's"
+        "cachedActiveWork serves the kept answer after an active-work frame and refreshes it behind, but not after another upstream's"
       ]
     },
     {
@@ -35,6 +35,16 @@
       "replace": "freshMs: 600_000",
       "kills": [
         "cachedActiveWork serves a recent answer while one refresh runs once it is past five seconds"
+      ]
+    },
+    {
+      "name": "an active-work frame drops the kept answer and the running read again",
+      "file": "apps/console/server/active-work-cache.ts",
+      "find": "invalidation?.on(\"active-work\", cache.stale);",
+      "replace": "invalidation?.on(\"active-work\", cache.invalidate);",
+      "kills": [
+        "cachedActiveWork serves the kept answer after an active-work frame and refreshes it behind, but not after another upstream's",
+        "cachedActiveWork keeps a read that an active-work frame interrupted, so the next read does not wait upstream"
       ]
     }
   ]

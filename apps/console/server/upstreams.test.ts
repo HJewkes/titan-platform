@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActiveWork } from "./active-work.js";
 import { fixtureActiveWork } from "./fixtures.js";
 import { closedPort, startFakeDaemon } from "./test-support.js";
@@ -102,7 +102,7 @@ describe("probing every upstream", () => {
 });
 
 describe("the active-work reads createSources builds", () => {
-  it("go upstream once per window, and again after an active-work relay frame", async () => {
+  it("go upstream once per window, and refresh behind an active-work relay frame", async () => {
     const asked: string[] = [];
     const daemon = await startFakeDaemon({ ok: true }, (command) => (asked.push(command), { sections: [], parse_errors: [] }));
     try {
@@ -114,7 +114,7 @@ describe("the active-work reads createSources builds", () => {
 
       sources.invalidation?.emit("active-work");
       await sources.activeWork.read("list");
-      expect(asked).toEqual(["list", "list"]);
+      await vi.waitFor(() => expect(asked).toEqual(["list", "list"]));
     } finally {
       await daemon.close();
     }

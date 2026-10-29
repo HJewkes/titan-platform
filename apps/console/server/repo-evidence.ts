@@ -28,21 +28,31 @@ interface GitEvidenceOptions {
 
 const EVIDENCE_TTL_MS = 60_000;
 
-/** One cached git and GitHub read per repository per minute, however many tasks or requests ask. */
+/** One promise per key, reused until it is `ttlMs` old. */
+function ttlCache<T>(read: (key: string) => Promise<T>, ttlMs: number, now: () => number): (key: string) => Promise<T> {
+  const cache = new Map<string, { at: number; read: Promise<T> }>();
+  return (key) => {
+    const hit = cache.get(key);
+    if (hit && now() - hit.at < ttlMs) return hit.read;
+    const fresh = read(key);
+    cache.set(key, { at: now(), read: fresh });
+    return fresh;
+  };
+}
+
+/**
+ * One cached git and GitHub read per repository per minute, however many tasks or requests ask. Each path's clone is
+ * cached for as long: a list read names every worktree path, and one `git rev-parse` spawn per path held each read up.
+ */
 export function gitEvidenceReader(options: GitEvidenceOptions = {}): EvidenceReader {
   const git = options.git ?? runGit;
   const github = options.github ?? githubPort(ghCliWire());
   const now = options.now ?? Date.now;
-  const cache = new Map<string, { at: number; read: Promise<RepoEvidence | null> }>();
-  const cached = (root: string): Promise<RepoEvidence | null> => {
-    const hit = cache.get(root);
-    if (hit && now() - hit.at < (options.ttlMs ?? EVIDENCE_TTL_MS)) return hit.read;
-    const read = readRepo(root, git, github);
-    cache.set(root, { at: now(), read });
-    return read;
-  };
+  const ttlMs = options.ttlMs ?? EVIDENCE_TTL_MS;
+  const rootOf = ttlCache((repoPath) => findGitRoot(repoPath, git), ttlMs, now);
+  const cached = ttlCache((root) => readRepo(root, git, github), ttlMs, now);
   return async (repoPaths) => {
-    const roots = await Promise.all([...new Set(repoPaths)].map((repoPath) => findGitRoot(repoPath, git)));
+    const roots = await Promise.all([...new Set(repoPaths)].map(rootOf));
     const read = await Promise.all([...new Set(roots.filter((root): root is string => root !== null))].map(cached));
     return read.filter((entry): entry is RepoEvidence => entry !== null);
   };

@@ -9,7 +9,7 @@ import { cachedReads, stableJson, type CacheTimes } from "./read-cache.js";
 const ACTIVE_WORK_TIMES: CacheTimes = { freshMs: 5_000, staleMs: 120_000 };
 const MAX_KEYS = 256;
 
-/** `artifact.status` runs `gh` live, `search` and `note.read` are one-off; everything else is a whole-tree read worth sharing. */
+/** `search` and `note.read` are one-off; everything else is a whole-tree read worth sharing. */
 const CACHED: ReadonlySet<ReadName> = new Set<ReadName>([
   "list",
   "task.list",
@@ -27,14 +27,19 @@ interface Call {
   args: Record<string, unknown>;
 }
 
-/** Concurrent identical reads share one upstream call, and a recent answer is served while one refresh runs behind it. */
+/**
+ * Concurrent identical reads share one upstream call, and a recent answer is served while one refresh runs behind it.
+ * An active-work frame marks every answer stale rather than dropping it: agents move the tree every few seconds, and a
+ * whole-tree read takes longer than that, so a dropped answer was almost never replaced and every read waited upstream.
+ */
 export function cachedActiveWork(inner: ActiveWork, invalidation?: Invalidation, now?: () => number, times: CacheTimes = ACTIVE_WORK_TIMES): ActiveWork {
   const cache = cachedReads<Call, unknown>(({ command, args }) => inner.read(command, args), times, {
     keyOf: ({ command, args }) => `${command} ${stableJson(args)}`,
     maxKeys: MAX_KEYS,
     ...(now !== undefined && { now }),
+    onRefreshed: () => invalidation?.refreshed("active-work"),
   });
-  invalidation?.on("active-work", cache.invalidate);
+  invalidation?.on("active-work", cache.stale);
   // The overload keeps the typed signature without asserting a cached `unknown` back to its result.
   function read<K extends ReadName>(command: K, args?: Record<string, unknown>): Promise<ReadResult<K>>;
   function read(command: ReadName, args: Record<string, unknown> = {}): Promise<unknown> {
