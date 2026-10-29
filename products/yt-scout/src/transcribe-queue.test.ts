@@ -42,11 +42,27 @@ const wrote = (id: string, source: string): RunResult => {
 };
 const failure = (stderr: string): RunResult => ({ code: 1, stdout: "", stderr });
 
+// extract.py's real outputs: its sys.exit text for a caption-less video, and the traceback an
+// uncaught yt-dlp CalledProcessError leaves (the probe captures yt-dlp's stderr; a download passes it through).
+const NO_CAPTIONS = "no 'en' subtitles or auto-captions (use --whisper to transcribe audio)\n";
+const ytDlpTraceback = (id: string, ...flags: string[]) =>
+  "Traceback (most recent call last):\n" +
+  '  File "/yt/extract.py", line 549, in <module>\n    sys.exit(main())\n' +
+  `subprocess.CalledProcessError: Command '['/yt/.venv/bin/yt-dlp', ${flags.map((f) => `'${f}'`).join(", ")}, 'https://www.youtube.com/watch?v=${id}']' returned non-zero exit status 1.\n`;
+const probeFailed = (id: string) => failure(ytDlpTraceback(id, "--dump-single-json", "--flat-playlist", "--no-warnings"));
+const throttled = (id: string) =>
+  failure(`ERROR: [youtube] ${id}: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests\n` + ytDlpTraceback(id, "--skip-download", "--write-subs"));
+const probeJson = (id: string, liveStatus = "was_live"): RunResult => ({ code: 0, stdout: JSON.stringify({ id, live_status: liveStatus }), stderr: "" });
+
+const isProbe = (argv: string[]) => argv[0]!.endsWith("yt-dlp");
+
+/** `calls` holds extract.py runs; `probes` the yt-dlp probes the runner adds to diagnose a failure. */
 function harness(reply: (id: string, argv: string[]) => RunResult, load = 1) {
   const calls: string[][] = [];
+  const probes: string[][] = [];
   const sleeps: number[] = [];
   const runner: Runner = async (command, args) => {
-    calls.push([command, ...args]);
+    (isProbe([command]) ? probes : calls).push([command, ...args]);
     const url = args.find((a) => a.startsWith("https://"))!;
     return reply(url.split("v=")[1]!, [command, ...args]);
   };
@@ -59,7 +75,7 @@ function harness(reply: (id: string, argv: string[]) => RunResult, load = 1) {
     random: () => 0.5,
     breaker: memoryBreaker(),
   };
-  return { env, calls, sleeps };
+  return { env, calls, probes, sleeps };
 }
 
 describe("transcribe queue", () => {
@@ -76,7 +92,7 @@ describe("transcribe queue", () => {
   it("opens the breaker on a 429 and stops the queue", async () => {
     addVideo("vvvvvvvvv01");
     addVideo("vvvvvvvvv02");
-    const h = harness(() => failure("ERROR: HTTP Error 429: Too Many Requests"));
+    const h = harness((id) => throttled(id));
 
     const report = await runTranscribeQueue(db, h.env);
 
@@ -100,7 +116,7 @@ describe("transcribe queue", () => {
 
   it("doubles the cooldown on a repeat trip up to 24 h, and resets it on a success", async () => {
     addVideo("vvvvvvvvv01");
-    const h = harness(() => failure("HTTP Error 429"));
+    const h = harness((id) => throttled(id));
     h.env.breaker.write({ openUntil: hoursAgo(1), cooldownMs: 16 * 3_600_000 });
     await runTranscribeQueue(db, h.env);
     expect(h.env.breaker.read().cooldownMs).toBe(24 * 3_600_000);
@@ -114,7 +130,7 @@ describe("transcribe queue", () => {
 
   it("reschedules no_captions on a video under 24 h old at +6 h", async () => {
     addVideo("vvvvvvvvv01", { published: hoursAgo(3) });
-    const h = harness(() => failure("ERROR: There are no subtitles for the requested languages"));
+    const h = harness((id, argv) => (isProbe(argv) ? probeJson(id) : failure(NO_CAPTIONS)));
 
     await runTranscribeQueue(db, h.env);
 
@@ -124,7 +140,7 @@ describe("transcribe queue", () => {
   it("walks a young no_captions video through the +6 h retry, the +24 h retry, then Whisper", async () => {
     addVideo("vvvvvvvvv01", { published: hoursAgo(3) });
     let clock = NOW;
-    const h = harness((id, argv) => (argv.includes("--whisper") ? wrote(id, "whisper (base.en)") : failure("no subtitles")));
+    const h = harness((id, argv) => (isProbe(argv) ? probeJson(id) : argv.includes("--whisper") ? wrote(id, "whisper (base.en)") : failure(NO_CAPTIONS)));
     h.env.now = () => clock;
     const tick = async (to: Date) => {
       clock = to;
@@ -154,7 +170,7 @@ describe("transcribe queue", () => {
 
   it("queues a no_captions video older than 24 h for Whisper, which runs niced", async () => {
     addVideo("vvvvvvvvv01", { published: hoursAgo(30) });
-    const h = harness((id, argv) => (argv.includes("--whisper") ? wrote(id, "whisper (base.en)") : failure("no subtitles")));
+    const h = harness((id, argv) => (isProbe(argv) ? probeJson(id) : argv.includes("--whisper") ? wrote(id, "whisper (base.en)") : failure(NO_CAPTIONS)));
 
     const report = await runTranscribeQueue(db, h.env);
 
@@ -185,22 +201,43 @@ describe("transcribe queue", () => {
 
   it("fails a video on its fifth failed attempt", async () => {
     addVideo("vvvvvvvvv01", { attempts: 4 });
-    const h = harness(() => failure("ERROR: something unexpected"));
+    const h = harness(() => failure("extraction produced no text\n"));
 
     await runTranscribeQueue(db, h.env);
 
     expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "failed", attempts: 5, last_error_class: "other" });
+    expect(h.probes).toEqual([]);
   });
 
-  it("retries a live video later and gives up as failed:live after 48 h", async () => {
+  it("recovers an upcoming premiere from the swallowed probe error, and gives up as failed:live after 48 h", async () => {
     addVideo("vvvvvvvvv01", { detected_at: hoursAgo(1) });
     addVideo("vvvvvvvvv02", { detected_at: hoursAgo(49) });
-    const h = harness(() => failure("ERROR: This live event will begin in 2 hours"));
+    const h = harness((id, argv) => (isProbe(argv) ? failure(`ERROR: [youtube] ${id}: This live event will begin in 2 hours.\n`) : probeFailed(id)));
 
     await runTranscribeQueue(db, h.env);
 
     expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", last_error_class: "upcoming", next_retry_at: hoursAhead(6) });
     expect(getVideo(db, "vvvvvvvvv02")!.state).toBe("failed:live");
+  });
+
+  it("opens the breaker when the swallowed probe error was a 429", async () => {
+    addVideo("vvvvvvvvv01");
+    const h = harness((id, argv) => (isProbe(argv) ? failure(`ERROR: [youtube] ${id}: HTTP Error 429: Too Many Requests\n`) : probeFailed(id)));
+
+    const report = await runTranscribeQueue(db, h.env);
+
+    expect(report.breakerOpen).toBe(true);
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ attempts: 0, last_error_class: "http429" });
+  });
+
+  it("treats a caption-less video that is live now as live, not as a Whisper job", async () => {
+    addVideo("vvvvvvvvv01", { published: hoursAgo(30) });
+    const h = harness((id, argv) => (isProbe(argv) ? probeJson(id, "is_live") : failure(NO_CAPTIONS)));
+
+    await runTranscribeQueue(db, h.env);
+
+    expect(getVideo(db, "vvvvvvvvv01")).toMatchObject({ state: "new", last_error_class: "live", next_retry_at: hoursAhead(6) });
+    expect(h.calls.some((c) => c.includes("--whisper"))).toBe(false);
   });
 
   it("spaces videos 6 s apart, jittered, and skips ones not yet due", async () => {
