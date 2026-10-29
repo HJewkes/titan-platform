@@ -4,7 +4,7 @@ import { movedPastOnList } from "./review-queue.js";
 import { spawnGate, type MachineReadings } from "./spawn-gate.js";
 
 export const idle: MachineReadings = { load5: 2, pressureLevel: 1, freeMemoryPct: 85 };
-export const busy: MachineReadings = { ...idle, load5: 30 };
+const busy: MachineReadings = { ...idle, load5: 30 };
 export const HEAD_A = "a".repeat(40);
 export const HEAD_B = "b".repeat(40);
 export const TICK_MS = 60_000;
