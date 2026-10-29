@@ -24,7 +24,7 @@ describe("configPath", () => {
   });
 
   it("falls back to the XDG path when TITAN_FACTORY_CONFIG is empty", () => {
-    const env = { ...xdg(), TITAN_FACTORY_CONFIG: "" };
+    const env: NodeJS.ProcessEnv = { ...xdg(), TITAN_FACTORY_CONFIG: "" };
 
     expect(configPath(env)).toBe(join(env.XDG_CONFIG_HOME!, "titan-factory", "config.json")); // mutation: use `??` instead of truthiness
   });
