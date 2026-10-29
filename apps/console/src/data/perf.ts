@@ -44,9 +44,17 @@ export function createPerfSink(post: (report: Report) => void): PerfSink {
   };
 }
 
-/** A beacon survives the tab closing, which a fetch does not; it carries the cookie the LAN gate asks for. */
-export function beaconPost(report: Report): void {
-  navigator.sendBeacon(REPORT_URL, new Blob([JSON.stringify(report)], { type: "application/json" }));
+type Send = (url: string, init: RequestInit) => Promise<unknown>;
+
+/**
+ * Not `sendBeacon`: Chromium refuses a beacon whose type is `application/json`, and the
+ * daemon's guard refuses any other type. `keepalive` lets the post outlive the tab, and a
+ * same-origin fetch carries the cookie the LAN gate asks for.
+ */
+export function postReport(report: Report, send: Send = fetch): void {
+  const init: RequestInit = { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify(report) };
+  // A lost report costs one batch of timings; it must never reach the console as an error.
+  send(REPORT_URL, init).catch(() => {});
 }
 
 /** Flushes every {@link REPORT_EVERY_MS} and when the tab hides; returns the stop function. */

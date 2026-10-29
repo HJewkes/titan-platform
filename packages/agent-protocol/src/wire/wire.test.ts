@@ -7,27 +7,25 @@ import {
   SpawnRequestSchema,
   SpawnResultSchema,
   SurfaceRequestSchema,
-  buildRequestSchemas,
-  buildResultSchemas,
   type SpawnRequest,
   type SurfaceRequest,
 } from "./index.js";
 import * as frames from "./test-frames.js";
 
-const exactRequests = buildRequestSchemas("exact");
-const exactResults = buildResultSchemas("exact");
+const { exactRequests, exactResults, socketFixture, recordFixture } = frames;
 
 const fullyPopulated = [
-  ["spawn", exactRequests.spawn, frames.spawnRequest],
-  ["resume", exactRequests.resume, frames.resumeRequest],
-  ["retire", exactRequests.retire, frames.retireRequest],
-  ["agents", exactRequests.agents, frames.agentListRequest],
-  ["surface", exactRequests.surface, frames.surfaceRequest],
-  ["profile", exactResults.profile, frames.agentProfile],
-  ["remote launch", exactResults.remoteLaunch, frames.remoteLaunch],
-  ["spawn_result", exactResults.spawnResult, frames.spawnResult],
-  ["agents_result", exactResults.agentsResult, frames.agentListResult],
-  ["switch_result", exactResults.switchResult, frames.surfaceResult],
+  ["spawn", exactRequests.spawn, socketFixture.spawn],
+  ["resume", exactRequests.resume, socketFixture.resume],
+  ["retire", exactRequests.retire, socketFixture.retire],
+  ["agents", exactRequests.agents, socketFixture.agents],
+  ["surface", exactRequests.surface, socketFixture.surface],
+  ["spawn_result", exactResults.spawnResult, socketFixture.spawn_result],
+  ["agents_result", exactResults.agentsResult, socketFixture.agents_result],
+  ["switch_result", exactResults.switchResult, socketFixture.switch_result],
+  ["profile", exactResults.profile, recordFixture.profile],
+  ["remote launch", exactResults.remoteLaunch, recordFixture.remote_launch],
+  ["agent record", exactResults.agentRecord, recordFixture.agent_record],
 ] as const;
 
 describe("agent-chat wire contract", () => {

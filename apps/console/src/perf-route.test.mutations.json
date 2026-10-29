@@ -35,6 +35,27 @@
       "find": "if (!visit?.windowOpen) return () => {};",
       "replace": "if (!visit) return () => {};",
       "kills": ["route tracker does not count a call that starts after the first window"]
+    },
+    {
+      "name": "the report goes out without keepalive",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "keepalive: true",
+      "replace": "keepalive: false",
+      "kills": ["report sending posts the report as JSON to perf.report and outlives the tab"]
+    },
+    {
+      "name": "the tab hiding does not flush",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "if (document.visibilityState === \"hidden\") sink.flush();",
+      "replace": "",
+      "kills": ["report sending flushes when the tab hides and stops when told to"]
+    },
+    {
+      "name": "stopping leaves the hide listener in place",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "document.removeEventListener(\"visibilitychange\", onHide);",
+      "replace": "",
+      "kills": ["report sending flushes when the tab hides and stops when told to"]
     }
   ]
 }

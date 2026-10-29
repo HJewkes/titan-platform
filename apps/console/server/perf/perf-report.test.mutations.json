@@ -28,6 +28,13 @@
       "find": ".max(MAX_REPORT_ROWS)",
       "replace": ".max(10_000)",
       "kills": ["perf.report refuses more than 100 rows in one post"]
+    },
+    {
+      "name": "the report goes out as text the daemon's guard refuses",
+      "file": "apps/console/src/data/perf.ts",
+      "find": "headers: { \"content-type\": \"application/json\" }",
+      "replace": "headers: { \"content-type\": \"text/plain\" }",
+      "kills": ["perf.report over HTTP accepts the post the browser sends through the daemon's default guard"]
     }
   ]
 }

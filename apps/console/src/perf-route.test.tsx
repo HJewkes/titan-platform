@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import { App } from "./App.js";
-import { RouteTrackerProvider, createPerfSink, createRouteTracker, trackCalls, type PerfRow } from "./data/perf.js";
+import { RouteTrackerProvider, createPerfSink, createRouteTracker, postReport, startReporting, trackCalls, type PerfRow } from "./data/perf.js";
 
 afterEach(cleanup);
 
@@ -60,6 +60,35 @@ describe("report batching", () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]?.dropped).toBe(30);
     expect(posts[0]?.rows).toHaveLength(100);
+  });
+});
+
+describe("report sending", () => {
+  const report = { rows: [{ kind: "route" as const, view: "home" as const, detail: false, ms: 5, queries: 1 }], dropped: 0 };
+
+  it("posts the report as JSON to perf.report and outlives the tab", () => {
+    const send = vi.fn((_url: string, _init: RequestInit) => Promise.resolve());
+
+    postReport(report, send);
+
+    expect(send).toHaveBeenCalledWith("/rpc/perf.report", expect.objectContaining({ method: "POST", keepalive: true, headers: { "content-type": "application/json" } }));
+    expect(JSON.parse(String(send.mock.calls[0]?.[1].body))).toEqual(report);
+  });
+
+  it("flushes when the tab hides and stops when told to", () => {
+    const flush = vi.fn();
+    const hide = (): void => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    const stop = startReporting({ add: () => {}, flush });
+    hide();
+    stop();
+    hide();
+    Reflect.deleteProperty(document, "visibilityState");
+
+    expect(flush).toHaveBeenCalledTimes(1);
   });
 });
 

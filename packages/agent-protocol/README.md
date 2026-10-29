@@ -167,6 +167,17 @@ These are legacy projections of agent-chat's vocabulary, not neutral contracts:
 | `SpawnResult` (`ok: false` with `code`) | `HarnessDispatchReceipt` `refused` |
 | `AgentLifecycle` | a roster state, not an `ExecutionPhase` |
 
+The MCP argument schemas for `agent_spawn`, `agent_resume`, `agent_surface`, `agent_list` and
+`agent_profiles` (`AgentSpawnArgsSchema` and so on) are plain objects in the snake_case a model
+types, so a key a tool does not name is stripped, where a socket frame keeps it. They carry no
+`.describe()` text. That help is written for the product's models and changes often, so the product
+adds it with `.extend()`. `requiredString`, `nonBlank`, `oneOf` and `isWorkRole` keep the refusal
+wording callers already match on.
+
+Synthetic fixtures ship under `fixtures/wire/v1/`. `socket-frames.json` and `records.json` hold
+one fully populated value of each frame and record, and `mcp-args.json` one call to each tool.
+All of them parse under the exact schemas.
+
 `SURFACE_NAMES` is owned by `@titan-design/agent-surface`, a tier above; the wire keeps a copy
 and agent-surface's test pins the two equal.
 
